@@ -91,7 +91,7 @@ export function DomEditGroupChrome({
       ))}
       <div
         data-dom-edit-selection-box="true"
-        className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(60,230,172,0.3)]"
+        className="pointer-events-auto absolute rounded-xl border border-studio-accent shadow-[0_0_0_1px_rgba(31,186,192,0.3)]"
         style={{
           left: groupBounds.left,
           top: groupBounds.top,
@@ -208,7 +208,7 @@ export function DomEditSelectionChrome({
         >
           {cropOutlineInsetPx && (
             <div
-              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+              className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(31,186,192,0.25)]"
               style={{
                 left: cropOutlineInsetPx.left,
                 top: cropOutlineInsetPx.top,

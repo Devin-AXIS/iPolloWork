@@ -32,18 +32,18 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # pnpm must be installed BEFORE setup-node so setup-node can find the
       # pnpm binary on PATH. Matches the pattern in build-desktop.yml so
       # the two workflows share the same bootstrap story.
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -60,7 +60,7 @@ jobs:
         run: pnpm --filter @ipollowork/desktop package:electron:dir
 
       - name: Upload Electron artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ipollowork-electron-${{ matrix.artifact }}
           path: apps/desktop/dist-electron/**
@@ -71,15 +71,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -139,5 +139,6 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
+          pnpm --filter @ipollowork/desktop run package:engine-runtimes
           pnpm --filter @ipollowork/desktop run build:electron
           pnpm --dir apps/desktop exec electron-builder --config electron-builder.yml --mac dmg zip --publish never

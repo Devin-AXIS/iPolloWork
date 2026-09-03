@@ -96,15 +96,16 @@ function findByHfId(document: Document, hfId: string): Element | null {
     }
     return matches[0] ?? null;
   } catch {
-    // Malformed selector despite escaping — let the caller fall back.
+    // Malformed selector despite escaping means this stable target is unresolved.
     return null;
   }
 }
 
 function findTargetElement(document: Document, target: SourceMutationTarget): Element | null {
   if (target.hfId) {
-    const el = findByHfId(document, target.hfId);
-    if (el) return el;
+    // Stable ids are authoritative. A stale mutation must fail instead of
+    // falling through to a generic selector and changing a sibling element.
+    return findByHfId(document, target.hfId);
   }
 
   if (target.id) {
@@ -124,13 +125,33 @@ function findTargetElement(document: Document, target: SourceMutationTarget): El
 export function removeElementFromHtml(
   source: string,
   target: SourceMutationTarget,
-): { html: string; matched: boolean } {
+): { html: string; matched: boolean; removedSelectors: string[] } {
   const { document, wrappedFragment } = parseSourceDocument(source);
   const element = findTargetElement(document, target);
-  if (!element) return { html: source, matched: false };
+  if (!element) return { html: source, matched: false, removedSelectors: [] };
+
+  const removedSelectors = new Set<string>();
+  for (const removedElement of [element, ...Array.from(element.querySelectorAll("*"))]) {
+    const hfId = removedElement.getAttribute("data-hf-id");
+    const id = removedElement.getAttribute("id");
+    if (hfId) removedSelectors.add(`[data-hf-id="${escapeCssAttrValue(hfId)}"]`);
+    if (id) removedSelectors.add(`#${id}`);
+  }
+  if (target.selector) {
+    try {
+      const matches = querySelectorAllWithTemplates(document, target.selector);
+      if (matches.length === 1 && matches[0] === element) removedSelectors.add(target.selector);
+    } catch {
+      // The element already resolved through a stable id; ignore an invalid fallback selector.
+    }
+  }
 
   element.remove();
-  return { html: wrappedFragment ? document.body.innerHTML || "" : document.toString(), matched: true };
+  return {
+    html: wrappedFragment ? document.body.innerHTML || "" : document.toString(),
+    matched: true,
+    removedSelectors: Array.from(removedSelectors),
+  };
 }
 
 export function isHTMLElement(el: Node): el is HTMLElement {

@@ -34,6 +34,24 @@ export function isElementVisibleForOverlay(el: HTMLElement): boolean {
   return isElementVisibleThroughAncestors(el);
 }
 
+/**
+ * An explicit selection may sit on an authored opacity:0 animation frame. Its
+ * layout box is still the correct editing target, so opacity alone must not make
+ * the canvas look deselected. Runtime/off-frame display and visibility hiding
+ * remain authoritative and keep their overlays suppressed.
+ */
+export function isElementLaidOutForSelectionOverlay(el: HTMLElement): boolean {
+  const win = el.ownerDocument.defaultView;
+  if (!win) return true;
+  let current: HTMLElement | null = el;
+  while (current) {
+    const computed = win.getComputedStyle(current);
+    if (computed.display === "none" || computed.visibility === "hidden") return false;
+    current = current.parentElement;
+  }
+  return true;
+}
+
 // Sample points (as fractions of the element box) for the occlusion hit-test:
 // the four inner corners plus the center. This is a coarse approximation of the
 // element's painted area — we assume a sampled point that lands inside the box also
@@ -216,14 +234,21 @@ function toOverlayRect(
 
   const elementRect = element.getBoundingClientRect();
   const sourceBoundary = findSourceBoundary(element);
-  const sourceBoundaryRect = sourceBoundary?.getBoundingClientRect();
+  // A composition HOST is positioned in its parent's coordinate system. Its
+  // own data-width/data-height describe the CHILD source mounted inside it,
+  // not the coordinate system used by left/top or GSAP x/y on the host. Using
+  // the child scale here makes an edit-as-unit host
+  // travel too far and then persist at a different-looking drop position.
+  // Descendants drilled into the sub-composition still need the child scale.
+  const nestedSourceBoundary = sourceBoundary && sourceBoundary !== element ? sourceBoundary : null;
+  const sourceBoundaryRect = nestedSourceBoundary?.getBoundingClientRect();
   const editScale = resolveDomEditCoordinateScale({
     rootScaleX,
     rootScaleY,
     sourceRectWidth: sourceBoundaryRect?.width,
     sourceRectHeight: sourceBoundaryRect?.height,
-    sourceWidth: readPositiveDimension(sourceBoundary?.getAttribute("data-width") ?? null),
-    sourceHeight: readPositiveDimension(sourceBoundary?.getAttribute("data-height") ?? null),
+    sourceWidth: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-width") ?? null),
+    sourceHeight: readPositiveDimension(nestedSourceBoundary?.getAttribute("data-height") ?? null),
   });
 
   return {

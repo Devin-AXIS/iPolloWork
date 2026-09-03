@@ -110,7 +110,7 @@ export function buildAgentContextPreview(
     .join("\n");
 }
 
-export function postVideoAiSelectionToHost(selection: DomEditSelection): void {
+export function postVideoAiSelectionToHost(selection: DomEditSelection, semanticContext?: string): void {
   const element = selection.element;
   const computed = element.ownerDocument.defaultView?.getComputedStyle(element);
   window.parent?.postMessage({
@@ -126,6 +126,7 @@ export function postVideoAiSelectionToHost(selection: DomEditSelection): void {
     text: element.textContent || "",
     src: element.getAttribute("src") || "",
     alt: element.getAttribute("alt") || "",
+    semanticContext,
     styles: {
       color: computed?.color ?? "",
       backgroundColor: computed?.backgroundColor ?? "",

@@ -8,7 +8,11 @@ import {
   ensureWorkspaceFiles,
   ensureLocalWorkspaceFiles,
 } from "./workspace-init.js";
-import { ipolloworkExtensionsPreviewPluginPath, ipolloworkPluginPath } from "./ipollowork-extensions-plugin-path.js";
+import {
+  ipolloworkExtensionsPreviewPluginPath,
+  ipolloworkPluginPath,
+} from "./ipollowork-extensions-plugin-path.js";
+import { ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 
 async function withWorkspace(fn: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-workspace-init-"));
@@ -49,7 +53,8 @@ describe("ensureWorkspaceFiles", () => {
     const pluginPath = ipolloworkExtensionsPreviewPluginPath();
     const plugin = await readFile(pluginPath, "utf8");
     expect(pluginPath).toContain(join("opencode-plugins", "ipollowork-extensions-preview.ts"));
-    expect(plugin).toContain("ipollowork_extension_call");
+    expect(plugin).toContain("ENGINE_HOST_TOOL_NAMES.extensionCall");
+    expect(ENGINE_HOST_TOOL_NAMES.extensionCall).toBe("ipollowork_extension_call");
   });
 
   test("uses external resources plugin path in packaged Electron", () => {

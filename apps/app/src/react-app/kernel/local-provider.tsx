@@ -5,12 +5,12 @@ import {
   use,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
-import { THINKING_PREF_KEY } from "../../app/constants";
+import { DEFAULT_MODEL } from "../../app/constants";
 import type { ModelRef, SettingsTab, View } from "../../app/types";
 import {
   DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE,
@@ -18,7 +18,6 @@ import {
   type DesktopNotificationPreference,
 } from "./desktop-notification-preferences";
 import { LOCAL_PREFERENCES_KEY } from "./local-preferences-storage";
-import { readStoredDefaultModel } from "./model-config";
 
 export type LocalUIState = {
   view: View;
@@ -27,14 +26,9 @@ export type LocalUIState = {
 
 export type LocalPreferences = {
   showThinking: boolean;
+  model: ModelRef;
   modelVariant: string | null;
-  defaultModel: ModelRef | null;
-  /**
-   * Name of the opencode agent used for new prompts (null = the server's
-   * default, usually "build"). Persisted so a reload does not silently
-   * fall back to the default agent (#2101).
-   */
-  selectedAgent: string | null;
+  enginePreferences: Record<string, EnginePreferences>;
   featureFlags: {
     microsandboxCreateSandbox: boolean;
     /**
@@ -51,11 +45,6 @@ export type LocalPreferences = {
    */
   hasCompletedOnboarding: boolean;
   /**
-   * One-shot provider selection shown on the user's first send when no
-   * user-added provider is connected. True once completed or skipped.
-   */
-  providerStepCompleted: boolean;
-  /**
    * Anonymous product analytics (PostHog). On by default with a visible
    * opt-out in Settings -> Preferences. Never includes message content.
    */
@@ -65,6 +54,10 @@ export type LocalPreferences = {
    * users are not surprised by system popups.
    */
   desktopNotifications: DesktopNotificationPreference;
+};
+
+export type EnginePreferences = {
+  mode: string | null;
 };
 
 type LocalContextValue = {
@@ -83,15 +76,76 @@ export const DEFAULT_SHOW_THINKING = true;
 const INITIAL_UI: LocalUIState = { view: "settings", tab: "preferences" };
 const INITIAL_PREFS: LocalPreferences = {
   showThinking: DEFAULT_SHOW_THINKING,
+  model: DEFAULT_MODEL,
   modelVariant: null,
-  defaultModel: null,
-  selectedAgent: null,
+  enginePreferences: {},
   featureFlags: { microsandboxCreateSandbox: true, memory: false },
   hasCompletedOnboarding: false,
-  providerStepCompleted: false,
   analyticsEnabled: true,
   desktopNotifications: DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE,
 };
+
+const EMPTY_ENGINE_PREFERENCES: EnginePreferences = {
+  mode: null,
+};
+
+export function getEnginePreferences(
+  preferences: LocalPreferences,
+  engineId?: string | null,
+): EnginePreferences {
+  const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  return preferences.enginePreferences[resolvedEngineId] ?? EMPTY_ENGINE_PREFERENCES;
+}
+
+export function updateEnginePreferences(
+  preferences: LocalPreferences,
+  engineId: string | null | undefined,
+  updater: (previous: EnginePreferences) => EnginePreferences,
+): LocalPreferences {
+  const resolvedEngineId = engineId?.trim() || DEFAULT_ENGINE_ID;
+  const previousEngine = getEnginePreferences(preferences, resolvedEngineId);
+  const next = updater(previousEngine);
+  return {
+    ...preferences,
+    enginePreferences: {
+      ...preferences.enginePreferences,
+      [resolvedEngineId]: {
+        mode: next.mode,
+      },
+    },
+  };
+}
+
+export function updateModelPreferences(
+  preferences: LocalPreferences,
+  updater: (previous: Pick<LocalPreferences, "model" | "modelVariant">) => Pick<LocalPreferences, "model" | "modelVariant">,
+): LocalPreferences {
+  return {
+    ...preferences,
+    ...updater({ model: preferences.model, modelVariant: preferences.modelVariant }),
+  };
+}
+
+function normalizeModelRef(value: unknown): ModelRef | null {
+  if (!value || typeof value !== "object") return null;
+  const model = value as Partial<ModelRef>;
+  return typeof model.providerID === "string" && typeof model.modelID === "string"
+    ? { providerID: model.providerID, modelID: model.modelID }
+    : null;
+}
+
+function normalizeEnginePreferences(value: unknown): Record<string, EnginePreferences> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value).flatMap(([engineId, selection]) => {
+      if (!selection || typeof selection !== "object" || Array.isArray(selection)) return [];
+      const record = selection as Partial<EnginePreferences>;
+      return [[engineId, {
+        mode: typeof record.mode === "string" ? record.mode : null,
+      }]];
+    }),
+  );
+}
 
 function readPersisted<T>(key: string, fallback: T): T {
   if (typeof window === "undefined") return fallback;
@@ -128,30 +182,18 @@ export function LocalProvider({ children }: LocalProviderProps) {
   const [prefs, setPrefsRaw] = useState<LocalPreferences>(() => {
     const persisted = readPersisted(LOCAL_PREFERENCES_KEY, INITIAL_PREFS);
     delete (persisted as { releaseChannel?: unknown }).releaseChannel;
+    delete (persisted as { providerStepCompleted?: unknown }).providerStepCompleted;
     persisted.desktopNotifications = isDesktopNotificationPreference(persisted.desktopNotifications)
       ? persisted.desktopNotifications
       : DEFAULT_DESKTOP_NOTIFICATION_PREFERENCE;
-    // Back-fill: users who onboarded before the agent-screen-first flow have
-    // already picked a provider path. Only fires while the new key is absent
-    // from storage (first write persists it).
-    try {
-      const raw = JSON.parse(window.localStorage.getItem(LOCAL_PREFERENCES_KEY) ?? "{}") as Record<string, unknown>;
-      if (raw.hasCompletedOnboarding === true && raw.providerStepCompleted === undefined) {
-        persisted.providerStepCompleted = true;
-      }
-    } catch {
-      // ignore parse failures; defaults apply
-    }
-    if (persisted.defaultModel) {
-      return persisted;
-    }
     return {
       ...persisted,
-      defaultModel: readStoredDefaultModel(),
+      model: normalizeModelRef(persisted.model) ?? DEFAULT_MODEL,
+      modelVariant: typeof persisted.modelVariant === "string" ? persisted.modelVariant : null,
+      enginePreferences: normalizeEnginePreferences(persisted.enginePreferences),
     };
   });
   const ready = true;
-  const migratedThinkingRef = useRef(false);
 
   useEffect(() => {
     writePersisted(UI_STORAGE_KEY, ui);
@@ -160,30 +202,6 @@ export function LocalProvider({ children }: LocalProviderProps) {
   useEffect(() => {
     writePersisted(LOCAL_PREFERENCES_KEY, prefs);
   }, [prefs]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (migratedThinkingRef.current) return;
-    migratedThinkingRef.current = true;
-
-    const raw = window.localStorage.getItem(THINKING_PREF_KEY);
-    if (raw == null) return;
-
-    try {
-      const parsed = JSON.parse(raw);
-      if (typeof parsed === "boolean") {
-        setPrefsRaw((previous) => ({ ...previous, showThinking: parsed }));
-      }
-    } catch {
-      // ignore invalid legacy values
-    }
-
-    try {
-      window.localStorage.removeItem(THINKING_PREF_KEY);
-    } catch {
-      // ignore
-    }
-  }, []);
 
   const setUi = useCallback(
     (updater: (previous: LocalUIState) => LocalUIState) => {

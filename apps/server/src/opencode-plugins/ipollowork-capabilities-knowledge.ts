@@ -31,7 +31,7 @@ Important docs to know:
 - Desktop policies: packages/docs/cloud/share-with-your-team/desktop-policies.mdx
 - Local MCP setup: packages/docs/start-here/connect-your-stack/add-an-mcp-server.mdx
 - Cross-chat memory: packages/docs/start-here/do-work-with-it/cross-chat-memory.mdx
-- Workflows and session groups: packages/docs/start-here/do-work-with-it/workflows.mdx
+- Projects and conversation workflows: packages/docs/start-here/do-work-with-it/workflows.mdx
 
 Here is what you can help users with:
 
@@ -68,7 +68,7 @@ Here is what you can help users with:
 
 ## Browsing the Web
 - The built-in browser lets the agent navigate, click, type, and screenshot web pages.
-- For reliable browser automation, first open the page with \`ipollowork_browser_open_url\`, then use the returned \`browser_url\` and \`target_id\` with browser snapshot/click/fill/eval tools.
+- For reliable browser automation, open the page with \`ipollowork_browser_open_url\`, read its semantic refs with \`ipollowork_browser_snapshot\`, then use only those latest refs with \`ipollowork_browser_act\`.
 - The browser panel is visible on the right side of the session view.
 
 ## Cross-chat Session Memory

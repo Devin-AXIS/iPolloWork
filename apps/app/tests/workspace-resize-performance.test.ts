@@ -72,4 +72,37 @@ describe("workspace resize performance", () => {
       "state.workspaceLeftSidebarResizing === previous.workspaceLeftSidebarResizing",
     );
   });
+
+  test("lets embedded settings shrink to the main workspace width", () => {
+    expect(sessionPageSource).toContain(
+      '<div className="relative flex min-h-0 min-w-0 flex-1">',
+    );
+  });
+
+  test("uses sidebar navigation instead of a floating close action for full workspace views", () => {
+    expect(sessionPageSource).not.toContain("floatingHeaderActionClosesWorkspaceView");
+    expect(sessionPageSource).not.toContain("floatingHeaderActionLabel");
+    expect(sessionPageSource).not.toContain("floatingRightPanelToggleOffset");
+  });
+
+  test("returns extensions and schedule views to conversation when a session is opened", () => {
+    const start = sessionPageSource.indexOf("const handleSidebarOpenSession = useCallback");
+    const end = sessionPageSource.indexOf("const handleSidebarOpenSessionSearch", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const handler = sessionPageSource.slice(start, end);
+    expect(handler).toContain("setMainWorkspaceView(null);");
+    expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
+      handler.indexOf("props.sidebar.onOpenSession(workspaceId, sessionId);"),
+    );
+  });
+
+  test("keeps the starter navigation shell while hiding its title", () => {
+    expect(sessionPageSource).toContain("mac:titlebar-drag");
+    expect(sessionPageSource).toContain(
+      'const mainHeaderHidden = mainWorkspaceView === "extensions" || mainWorkspaceView === "schedule";',
+    );
+    expect(sessionPageSource).toContain('const projectWorkActiveView = mainWorkspaceView === "project-overview"');
+    expect(sessionPageSource).toContain("{showMainHeaderTitle ? (");
+  });
 });

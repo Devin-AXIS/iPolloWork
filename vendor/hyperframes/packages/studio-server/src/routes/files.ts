@@ -62,6 +62,7 @@ import {
   shiftPositionsInScript,
   scalePositionsInScript,
   dedupePositionWritesInScript,
+  isolateAnimationsForTargetInScript,
 } from "@hyperframes/parsers/gsap-writer-acorn";
 import {
   removeElementFromHtml,
@@ -82,13 +83,19 @@ import {
   defaultMotionDuration,
   getMotionPreset,
   listMotionPresets,
+  materializeStructuredText,
   readMotionInstanceFromExtras,
+  restoreStructuredText,
+  snapshotStructuredText,
+  unwrapStructuredText,
   type MotionParameters,
+  type MotionApplicationKind,
   type MotionInstance,
   type MotionPhase,
   type MotionTargetKind,
   type MotionTextUnit,
 } from "@hyperframes/core/motion-presets";
+import { structuredMotionSelector } from "@hyperframes/core";
 
 // ── Server cutover flag ─────────────────────────────────────────────────────
 
@@ -538,15 +545,17 @@ function extractGsapScriptBlock(html: string): {
 }
 
 /**
- * Remove every GSAP animation that targets `selector` from an HTML string's
- * inline script. Used after unwrapping a group so its leftover `gsap.set("#id")`
- * (the wrapper is gone) doesn't throw "target not found" on every preview run.
+ * Remove every GSAP animation that targets any supplied selector from an HTML
+ * string's inline script. Used after deleting or unwrapping elements so
+ * leftover calls don't throw "target not found" on every preview run.
  */
-function stripGsapAnimationsForSelector(html: string, selector: string): string {
+function stripGsapAnimationsForSelectors(html: string, selectors: Iterable<string>): string {
   const block = extractGsapScriptBlock(html);
   if (!block) return html;
+  const targetSelectors = new Set(selectors);
+  if (targetSelectors.size === 0) return html;
   const parsed = parseGsapScriptAcorn(block.scriptText);
-  const matching = parsed.animations.filter((a) => a.targetSelector === selector);
+  const matching = parsed.animations.filter((a) => targetSelectors.has(a.targetSelector));
   if (matching.length === 0) return html;
   let script = block.scriptText;
   // Reverse so earlier removals don't shift the spans of later ones.
@@ -554,6 +563,10 @@ function stripGsapAnimationsForSelector(html: string, selector: string): string 
     script = removeAnimationFromScript(script, anim.id);
   }
   return block.replaceScript(script);
+}
+
+function stripGsapAnimationsForSelector(html: string, selector: string): string {
+  return stripGsapAnimationsForSelectors(html, [selector]);
 }
 
 /**
@@ -786,12 +799,21 @@ type GsapMutationRequest =
       targetKind: MotionTargetKind;
       phase: MotionPhase;
       presetId?: string;
+      templateId?: string;
+      applicationKind?: MotionApplicationKind;
       start?: number;
+      end?: number;
       duration?: number;
       loop?: boolean;
       parameters?: MotionParameters;
       elementId?: string;
       hfId?: string;
+    }
+  | {
+      type: "isolate-selector-target";
+      targetSelector: string;
+      selectedSelector: string;
+      remainderSelector: string;
     }
   | {
       type: "update-property";
@@ -998,6 +1020,13 @@ type GsapMutationRequest =
       keepAnimationId?: string;
     }
   | {
+      /** Move every position tween for one layer together, preserving its path shape. */
+      type: "offset-position-paths";
+      targetSelector: string;
+      deltaX: number;
+      deltaY: number;
+    }
+  | {
       // Rewrite all top-level helper/loop constructs into literal tweens so
       // computed keyframes become directly editable (visual no-op).
       type: "unroll-timeline";
@@ -1054,13 +1083,27 @@ function segmentText(value: string, granularity: "word" | "grapheme"): string[] 
 
 function unwrapMotionText(target: Element): void {
   if (target.getAttribute("data-ipw-motion-split") !== "v1") return;
-  const text = target.textContent ?? "";
+  const text = readMotionSourceText(target);
   target.replaceChildren(target.ownerDocument.createTextNode(text));
   target.removeAttribute("data-ipw-motion-split");
+  target.removeAttribute("data-ipw-motion-source");
 }
 
-function ensureMotionTextParts(target: Element): number {
-  const text = target.textContent ?? "";
+function readMotionSourceText(target: Element): string {
+  const encoded = target.getAttribute("data-ipw-motion-source");
+  if (encoded !== null) {
+    try {
+      const source = JSON.parse(encoded);
+      if (typeof source === "string") return source;
+    } catch {
+      // Fall through to the DOM text for legacy or malformed markers.
+    }
+  }
+  return target.textContent ?? "";
+}
+
+function ensureMotionTextParts(target: Element, includeCharacters: boolean): number {
+  const text = readMotionSourceText(target);
   unwrapMotionText(target);
   const document = target.ownerDocument;
   const fragment = document.createDocumentFragment();
@@ -1072,19 +1115,45 @@ function ensureMotionTextParts(target: Element): number {
     }
     const wordSpan = document.createElement("span");
     wordSpan.setAttribute("data-ipw-motion-word", "");
-    wordSpan.setAttribute("style", "display:inline-block;white-space:pre");
-    for (const character of segmentText(word, "grapheme")) {
-      const characterSpan = document.createElement("span");
-      characterSpan.setAttribute("data-ipw-motion-char", "");
-      characterSpan.setAttribute("style", "display:inline-block");
-      characterSpan.textContent = character;
-      wordSpan.append(characterSpan);
-      characterCount += 1;
+    wordSpan.setAttribute(
+      "style",
+      "display:inline-block;white-space:pre;font:inherit;font-weight:inherit;line-height:inherit;letter-spacing:inherit;color:inherit;-webkit-text-stroke:inherit",
+    );
+    if (includeCharacters) {
+      for (const character of segmentText(word, "grapheme")) {
+        const characterSpan = document.createElement("span");
+        characterSpan.setAttribute("data-ipw-motion-char", "");
+        characterSpan.setAttribute("style", "display:inline-block");
+        characterSpan.textContent = character;
+        wordSpan.append(characterSpan);
+        characterCount += 1;
+      }
+    } else {
+      wordSpan.textContent = word;
     }
     fragment.append(wordSpan);
   }
   target.replaceChildren(fragment);
   target.setAttribute("data-ipw-motion-split", "v1");
+  target.setAttribute("data-ipw-motion-source", JSON.stringify(text));
+  return characterCount;
+}
+
+function ensureStructuredCharacterParts(target: Element): number {
+  let characterCount = 0;
+  for (const textLayer of Array.from(target.querySelectorAll('[data-ipw-motion-role="text"]'))) {
+    const document = textLayer.ownerDocument;
+    const fragment = document.createDocumentFragment();
+    for (const character of segmentText(textLayer.textContent ?? "", "grapheme")) {
+      const characterSpan = document.createElement("span");
+      characterSpan.setAttribute("data-ipw-motion-char", "");
+      characterSpan.setAttribute("style", "display:inline-block");
+      characterSpan.textContent = character;
+      fragment.append(characterSpan);
+      characterCount += 1;
+    }
+    textLayer.replaceChildren(fragment);
+  }
   return characterCount;
 }
 
@@ -1160,7 +1229,7 @@ function defaultMotionStart(
 ): number {
   if (phase === "enter") return owner.start;
   if (phase === "exit") return Math.max(owner.start, owner.start + owner.duration - duration);
-  return owner.start + Math.max(0, (owner.duration - duration) / 2);
+  return owner.start;
 }
 
 function resolveMotionTiming(
@@ -1177,28 +1246,48 @@ function resolveMotionTiming(
   const start =
     requestedStart !== undefined &&
     Number.isFinite(requestedStart) &&
-    (!owner.constrained ||
-      (requestedStart >= owner.start && requestedStart <= latestStart))
+    (!owner.constrained || (requestedStart >= owner.start && requestedStart <= latestStart))
       ? requestedStart
       : fallback;
   return { start, duration };
 }
 
-function resolveMotionRepeat(
+function resolveMotionPlayback(
   owner: { start: number; duration: number; constrained: boolean },
   timing: { start: number; duration: number },
   loop: boolean,
-): number {
-  if (!loop) return 0;
-  if (!owner.constrained) return 1;
-  const available = owner.start + owner.duration - timing.start;
-  return Math.max(0, Math.floor(available / timing.duration) - 1);
+  requestedEnd?: number,
+): { duration: number; end: number; repeat: number } {
+  const ownerEnd = owner.start + owner.duration;
+  const defaultEnd = loop && owner.constrained ? ownerEnd : timing.start + timing.duration;
+  const end =
+    requestedEnd !== undefined &&
+    Number.isFinite(requestedEnd) &&
+    requestedEnd > timing.start &&
+    (!owner.constrained || requestedEnd <= ownerEnd)
+      ? requestedEnd
+      : defaultEnd;
+  if (!loop) {
+    return {
+      duration: Math.round((end - timing.start) * 1000) / 1000,
+      end: Math.round(end * 1000) / 1000,
+      repeat: 0,
+    };
+  }
+
+  // Fit a finite whole number of cycles into the requested effect window.
+  // This keeps deterministic seeking while avoiding both an idle tail and a
+  // final cycle that spills past the user-visible end time.
+  const windowDuration = end - timing.start;
+  const cycleCount = Math.max(1, Math.round(windowDuration / timing.duration));
+  return {
+    duration: Math.round((windowDuration / cycleCount) * 1000) / 1000,
+    end: Math.round(end * 1000) / 1000,
+    repeat: cycleCount - 1,
+  };
 }
 
-function updateMotionReferenceAttribute(
-  target: Element,
-  script: string,
-): void {
+function updateMotionReferenceAttribute(target: Element, script: string): void {
   const existing = (target.getAttribute("data-ipw-animation-reference") ?? "")
     .split(/[\s,]+/)
     .map((value) => value.trim())
@@ -1215,6 +1304,119 @@ function updateMotionReferenceAttribute(
   else target.removeAttribute("data-ipw-animation-reference");
 }
 
+function mergeStructuredTextLayers(
+  structures: Array<NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>>,
+): NonNullable<ReturnType<typeof compileMotionInstance>["structured"]> {
+  const newest = structures.at(-1)!;
+  const layers = [...newest.layers];
+  const layerKeys = new Set(layers.map((layer) => `${layer.role}:${layer.perUnit}`));
+  for (const structured of structures) {
+    for (const layer of structured.layers) {
+      const key = `${layer.role}:${layer.perUnit}`;
+      if (layerKeys.has(key)) continue;
+      layerKeys.add(key);
+      layers.push(layer);
+    }
+  }
+  const particleSource = [...structures].reverse().find((structured) => structured.particles);
+  const assets = Array.from(new Set(structures.flatMap((structured) => structured.assets ?? [])));
+  return {
+    ...newest,
+    layers,
+    ...(particleSource?.particles ? { particles: particleSource.particles } : {}),
+    ...(assets.length > 0 ? { assets } : {}),
+  };
+}
+
+function materializeStructuredMotionText(
+  target: Element,
+  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
+  sourceText: string,
+): void {
+  materializeStructuredText(target, structured, sourceText);
+  target.setAttribute("data-ipw-motion-presentation", "text-v1");
+  for (const layer of target.querySelectorAll<HTMLElement>(
+    '[data-ipw-motion-role="text"], [data-ipw-motion-role="clone-primary"], [data-ipw-motion-role="clone-accent"]',
+  )) {
+    layer.style.fontWeight = "inherit";
+    layer.style.lineHeight = "inherit";
+    layer.style.letterSpacing = "inherit";
+    layer.style.color = "inherit";
+    layer.style.setProperty("-webkit-text-stroke", "inherit");
+  }
+}
+
+function structuredTrackTargetCount(
+  structured: NonNullable<ReturnType<typeof compileMotionInstance>["structured"]>,
+  role: NonNullable<
+    ReturnType<typeof compileMotionInstance>["structured"]
+  >["tracks"][number]["role"],
+): number {
+  if (role === "particle") return structured.particles?.length ?? 0;
+  const layer = structured.layers.find((candidate) => candidate.role === role);
+  return layer?.perUnit ? structured.units.length : 1;
+}
+
+function readAuthoredPositionBase(
+  animations: GsapAnimation[],
+  targetSelector: string,
+): { x: number; y: number } {
+  const base = { x: 0, y: 0 };
+  for (const animation of animations) {
+    if (
+      animation.targetSelector !== targetSelector ||
+      animation.method !== "set" ||
+      !animation.global ||
+      animation.extras?.data === "hf-hold"
+    ) {
+      continue;
+    }
+    const x = animation.properties.x ?? animation.properties.translateX;
+    const y = animation.properties.y ?? animation.properties.translateY;
+    if (typeof x === "number") base.x = x;
+    if (typeof y === "number") base.y = y;
+  }
+  return base;
+}
+
+function rebaseCompiledMotionKeyframes(
+  keyframes: ReturnType<typeof compileMotionInstance>["keyframes"],
+  base: { x: number; y: number },
+): ReturnType<typeof compileMotionInstance>["keyframes"] {
+  return keyframes.map((keyframe) => {
+    const properties = { ...keyframe.properties };
+    for (const property of ["x", "translateX"] as const) {
+      if (typeof properties[property] === "number") properties[property] += base.x;
+    }
+    for (const property of ["y", "translateY"] as const) {
+      if (typeof properties[property] === "number") properties[property] += base.y;
+    }
+    return { ...keyframe, properties };
+  });
+}
+
+function resolveMotionApplicationKind(
+  requested: MotionApplicationKind | undefined,
+  presetId: string,
+): MotionApplicationKind {
+  if (requested === "general" || requested === "box" || requested === "text") return requested;
+  return presetId.startsWith("text.") ? "text" : "general";
+}
+
+function shouldReplaceMotion(
+  current: MotionInstance,
+  incomingKind: MotionApplicationKind,
+  incomingPresetId: string,
+  incomingTemplateId: string | undefined,
+  incomingPhase: MotionPhase,
+): boolean {
+  if (incomingKind === "text" || current.applicationKind === "text") return true;
+  if (incomingKind === "box") return current.applicationKind === "box";
+  if (current.applicationKind !== "general") return false;
+  if (incomingTemplateId && current.templateId) return incomingTemplateId === current.templateId;
+  return current.presetId === incomingPresetId && current.phase === incomingPhase;
+}
+
 function executeMotionMutation(
   body: MotionMutationRequest,
   block: NonNullable<ReturnType<typeof extractGsapScriptBlock>>,
@@ -1228,18 +1430,20 @@ function executeMotionMutation(
   }
 
   const parsed = parseGsapScriptAcorn(block.scriptText);
-  const existing = parsed.animations.flatMap((animation) => {
+  const authoredPositionBase = readAuthoredPositionBase(parsed.animations, body.targetSelector);
+  const targetMotions = parsed.animations.flatMap((animation) => {
     const instance = readMotionInstanceFromExtras(animation.extras);
-    return instance &&
-      motionInstanceTargetsElement(block.document, target, instance) &&
-      instance.phase === body.phase
+    return instance && motionInstanceTargetsElement(block.document, target, instance)
       ? [{ animation, instance }]
       : [];
   });
+  const existing = targetMotions.filter(
+    (entry) =>
+      entry.instance.phase === body.phase &&
+      (!body.applicationKind || entry.instance.applicationKind === body.applicationKind) &&
+      (!body.templateId || entry.instance.templateId === body.templateId),
+  );
   let script = block.scriptText;
-  for (const entry of [...existing].reverse()) {
-    script = removeAnimationFromScript(script, entry.animation.id);
-  }
 
   if (body.operation === "upsert") {
     const preset = body.presetId ? getMotionPreset(body.presetId) : undefined;
@@ -1247,7 +1451,14 @@ function executeMotionMutation(
     if (preset.phase !== body.phase || !preset.targetKinds.includes(body.targetKind)) {
       return respond({ error: "The preset does not support this target or phase" }, 400);
     }
-    const prior = existing[0];
+    const applicationKind = resolveMotionApplicationKind(body.applicationKind, preset.id);
+    const replaced = targetMotions.filter(({ instance }) =>
+      shouldReplaceMotion(instance, applicationKind, preset.id, body.templateId, body.phase),
+    );
+    for (const entry of [...replaced].reverse()) {
+      script = removeAnimationFromScript(script, entry.animation.id);
+    }
+    const prior = replaced.find((entry) => entry.instance.presetId === preset.id);
     const priorParameters =
       prior?.instance.presetId === preset.id
         ? prior.instance.parameters
@@ -1265,24 +1476,26 @@ function executeMotionMutation(
     );
     const parameters = { ...priorParameters, ...body.parameters };
     const loop = body.loop ?? prior?.instance.loop ?? false;
-    if (target.hasAttribute("data-var-text") && "unit" in parameters) {
-      parameters.unit = "whole";
-    }
+    const requestedEnd =
+      body.end ?? (body.duration === undefined || loop ? prior?.instance.end : undefined);
+    const playback = resolveMotionPlayback(owner, timing, loop, requestedEnd);
     let instance;
     try {
       instance = createMotionInstance({
         presetId: preset.id,
+        templateId: body.templateId,
         target: {
           selector: body.targetSelector,
           ...(body.elementId ? { elementId: body.elementId } : {}),
           ...(body.hfId ? { hfId: body.hfId } : {}),
         },
         targetKind: body.targetKind,
-        start:
-          timing.start,
-        duration: timing.duration,
+        applicationKind,
+        start: timing.start,
+        end: playback.end,
+        duration: playback.duration,
         loop,
-        repeat: resolveMotionRepeat(owner, timing, loop),
+        repeat: playback.repeat,
         parameters,
       });
     } catch (error) {
@@ -1291,20 +1504,70 @@ function executeMotionMutation(
         400,
       );
     }
-    const compiled = compileMotionInstance(instance);
-    if (motionUnit(instance.parameters) !== "whole") ensureMotionTextParts(target);
-    const added = addAnimationWithKeyframesToScript(
-      script,
-      compiled.targetSelector,
-      compiled.position,
-      compiled.duration,
-      compiled.keyframes,
-      compiled.ease,
-      undefined,
-      compiled.extras,
-    );
-    if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
-    script = added.script;
+    const sourceText = readMotionSourceText(target);
+    const compiled = compileMotionInstance(instance, sourceText);
+    if (compiled.structured) {
+      const targetSnapshot = snapshotStructuredText(target);
+      unwrapMotionText(target);
+      materializeStructuredMotionText(target, compiled.structured, sourceText);
+      for (const [trackIndex, track] of compiled.structured.tracks.entries()) {
+        const targetCount = structuredTrackTargetCount(compiled.structured, track.role);
+        const staggerSpan = track.stagger * Math.max(0, targetCount - 1);
+        const added = addAnimationWithKeyframesToScript(
+          script,
+          structuredMotionSelector(body.targetSelector, track.role),
+          compiled.position + track.position,
+          track.duration,
+          track.keyframes,
+          undefined,
+          undefined,
+          {
+            ...compiled.extras,
+            id: `${instance.id}:${trackIndex}:${track.role}`,
+            ...(instance.loop && instance.repeat > 0
+              ? {
+                  // Repeat intervals are measured from each tween's own start,
+                  // so the track position cancels out. Subtracting it made
+                  // later tracks restart early and drift out of sync.
+                  repeatDelay: Number(
+                    Math.max(0, instance.duration - track.duration - staggerSpan).toFixed(12),
+                  ),
+                }
+              : {}),
+            // Structured tracks own their stagger. Writing zero explicitly is
+            // important because compiled.extras may contain the preset-level
+            // stagger, which would otherwise leak into zero-stagger tracks.
+            stagger: track.stagger,
+          },
+        );
+        if (!added.id) {
+          restoreStructuredText(target, targetSnapshot);
+          return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+        }
+        script = added.script;
+      }
+    } else {
+      const keyframes =
+        compiled.targetSelector === body.targetSelector
+          ? rebaseCompiledMotionKeyframes(compiled.keyframes, authoredPositionBase)
+          : compiled.keyframes;
+      const added = addAnimationWithKeyframesToScript(
+        script,
+        compiled.targetSelector,
+        compiled.position,
+        compiled.duration,
+        keyframes,
+        compiled.ease,
+        undefined,
+        compiled.extras,
+      );
+      if (!added.id) return respond({ error: "Could not add motion to the GSAP timeline" }, 400);
+      script = added.script;
+    }
+  } else {
+    for (const entry of [...existing].reverse()) {
+      script = removeAnimationFromScript(script, entry.animation.id);
+    }
   }
 
   const remainingInstances = parseGsapScriptAcorn(script)
@@ -1313,8 +1576,37 @@ function executeMotionMutation(
       (instance): instance is MotionInstance =>
         instance !== null && motionInstanceTargetsElement(block.document, target, instance),
     );
-  if (!remainingInstances.some((instance) => motionUnit(instance!.parameters) !== "whole")) {
-    unwrapMotionText(target);
+  const sourceText = readMotionSourceText(target);
+  const remainingStructured = remainingInstances.flatMap((instance) => {
+    try {
+      const structured = compileMotionInstance(instance, sourceText).structured;
+      return structured ? [structured] : [];
+    } catch {
+      return [];
+    }
+  });
+  if (remainingStructured.length > 0) {
+    materializeStructuredMotionText(
+      target,
+      mergeStructuredTextLayers(remainingStructured),
+      sourceText,
+    );
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) === "character")) {
+      ensureStructuredCharacterParts(target);
+    }
+  } else {
+    if (target.hasAttribute("data-ipw-motion-structure")) {
+      unwrapStructuredText(target);
+      target.removeAttribute("data-ipw-motion-presentation");
+    }
+    if (remainingInstances.some((instance) => motionUnit(instance.parameters) !== "whole")) {
+      ensureMotionTextParts(
+        target,
+        remainingInstances.some((instance) => motionUnit(instance.parameters) === "character"),
+      );
+    } else {
+      unwrapMotionText(target);
+    }
   }
   if (remainingInstances.length > 0) {
     target.setAttribute("data-ipw-motion-selector", body.targetSelector);
@@ -1333,6 +1625,7 @@ function executeMotionMutation(
 // its start across the t=0 boundary must trigger a re-sync.
 const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   "mutate-motion",
+  "isolate-selector-target",
   "add-keyframe",
   "update-keyframe",
   "remove-keyframe",
@@ -1341,6 +1634,7 @@ const HOLD_SYNC_MUTATION_TYPES = new Set<string>([
   "remove-all-keyframes",
   "add-with-keyframes",
   "replace-with-keyframes",
+  "offset-position-paths",
   "convert-to-keyframes",
   "materialize-keyframes",
   "update-motion-path-point",
@@ -1371,6 +1665,26 @@ async function executeGsapMutation(
 ): Promise<GsapMutationResult | Response> {
   if (body.type === "mutate-motion") {
     return executeMotionMutation(body, block, respond);
+  }
+  if (body.type === "offset-position-paths") {
+    const parser = await loadGsapParser();
+    return parser.offsetPositionPathsInScript(
+      block.scriptText,
+      body.targetSelector,
+      body.deltaX,
+      body.deltaY,
+    );
+  }
+  // Selector isolation is an exact source splice shared by both writer modes.
+  // It preserves opaque plugin/keyframe arguments while duplicating each call,
+  // which the structural recast writer cannot guarantee byte-for-byte.
+  if (body.type === "isolate-selector-target") {
+    return isolateAnimationsForTargetInScript(
+      block.scriptText,
+      body.targetSelector,
+      body.selectedSelector,
+      body.remainderSelector,
+    );
   }
   // When the server cutover flag is enabled, delegate to the acorn writer;
   // otherwise use the recast writer (gsapParser.ts) as the default.
@@ -2463,13 +2777,14 @@ export function registerFileRoutes(api: Hono, adapter: StudioApiAdapter): void {
     if (!removed.matched) {
       return c.json({ error: "element not found in source file" }, 404);
     }
+    const cleanedContent = stripGsapAnimationsForSelectors(removed.html, removed.removedSelectors);
     return writeIfChanged(
       c,
       ctx.project.dir,
       ctx.filePath,
       ctx.absPath,
       originalContent,
-      removed.html,
+      cleanedContent,
     );
   });
 

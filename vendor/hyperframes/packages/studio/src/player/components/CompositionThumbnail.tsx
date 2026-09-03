@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useState, useRef } from "react";
 import { useMountEffect } from "../../hooks/useMountEffect";
-import { computeThumbnailStrip } from "./thumbnailUtils";
+import { computeThumbnailStrip, scheduleTimelineThumbnailTask } from "./thumbnailUtils";
 
 interface CompositionThumbnailProps {
   previewUrl: string;
@@ -62,27 +62,58 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
   minLoadWidth = 0,
 }: CompositionThumbnailProps) {
   const [containerWidth, setContainerWidth] = useState(0);
+  const [visible, setVisible] = useState(false);
+  const [ready, setReady] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [aspect, setAspect] = useState(16 / 9);
+  const ioRef = useRef<IntersectionObserver | null>(null);
   const roRef = useRef<ResizeObserver | null>(null);
+  const resizeRafRef = useRef(0);
+  const pendingWidthRef = useRef(0);
+  const idleCallbackRef = useRef<number | null>(null);
+  const releaseTaskRef = useRef<(() => void) | null>(null);
 
   const setContainerRef = useCallback((el: HTMLDivElement | null) => {
+    ioRef.current?.disconnect();
     roRef.current?.disconnect();
     if (!el) return;
 
-    const measured = el.parentElement?.clientWidth || el.clientWidth;
-    // fallow-ignore-next-line code-duplication
-    setContainerWidth(measured);
+    const scheduleWidth = (width: number) => {
+      pendingWidthRef.current = Math.max(0, Math.round(width));
+      if (resizeRafRef.current !== 0) return;
+      resizeRafRef.current = requestAnimationFrame(() => {
+        resizeRafRef.current = 0;
+        setContainerWidth((current) =>
+          current === pendingWidthRef.current ? current : pendingWidthRef.current,
+        );
+      });
+    };
+
+    scheduleWidth(el.parentElement?.clientWidth || el.clientWidth);
+
+    ioRef.current = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry?.isIntersecting) return;
+        setVisible(true);
+        ioRef.current?.disconnect();
+      },
+      { rootMargin: "80px" },
+    );
+    ioRef.current.observe(el);
 
     const target = el.parentElement || el;
     roRef.current = new ResizeObserver(([entry]) => {
-      setContainerWidth(entry.contentRect.width);
+      if (entry) scheduleWidth(entry.contentRect.width);
     });
     roRef.current.observe(target);
   }, []);
 
   useMountEffect(() => () => {
+    ioRef.current?.disconnect();
     roRef.current?.disconnect();
+    if (resizeRafRef.current !== 0) cancelAnimationFrame(resizeRafRef.current);
+    if (idleCallbackRef.current != null) window.cancelIdleCallback(idleCallbackRef.current);
+    releaseTaskRef.current?.();
   });
 
   const url = buildCompositionThumbnailUrl({
@@ -93,14 +124,45 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
     selectorIndex,
     origin: window.location.origin,
   });
-  const shouldLoad = containerWidth >= minLoadWidth;
-  const { frameW, frameCount } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
+  const eligible = visible && containerWidth >= minLoadWidth;
+  const { frameW } = computeThumbnailStrip(containerWidth, aspect, CLIP_HEIGHT);
 
-  useEffect(() => setLoaded(false), [url]);
+  useEffect(() => {
+    setLoaded(false);
+    setReady(false);
+    if (!eligible) return;
+
+    let cancelled = false;
+    idleCallbackRef.current = window.requestIdleCallback(
+      () => {
+        idleCallbackRef.current = null;
+        if (cancelled) return;
+        releaseTaskRef.current = scheduleTimelineThumbnailTask(() => {
+          if (!cancelled) setReady(true);
+        });
+      },
+      { timeout: 1200 },
+    );
+
+    return () => {
+      cancelled = true;
+      if (idleCallbackRef.current != null) {
+        window.cancelIdleCallback(idleCallbackRef.current);
+        idleCallbackRef.current = null;
+      }
+      releaseTaskRef.current?.();
+      releaseTaskRef.current = null;
+    };
+  }, [eligible, url]);
+
+  const finishTask = () => {
+    releaseTaskRef.current?.();
+    releaseTaskRef.current = null;
+  };
 
   return (
     <div ref={setContainerRef} className="absolute inset-0 overflow-hidden">
-      {shouldLoad && (
+      {ready && (
         <img
           src={url}
           alt=""
@@ -112,32 +174,24 @@ export const CompositionThumbnail = memo(function CompositionThumbnail({
               setAspect(img.naturalWidth / img.naturalHeight);
             }
             setLoaded(true);
+            finishTask();
           }}
+          onError={finishTask}
           className="pointer-events-none absolute h-px w-px opacity-0"
         />
       )}
 
       {loaded && (
         <div
-          className="absolute inset-0 flex"
-          style={{ animation: "hf-thumb-fade 200ms ease-out" }}
-        >
-          {Array.from({ length: frameCount }).map((_, i) => (
-            <div
-              key={i}
-              className="relative h-full flex-shrink-0 overflow-hidden"
-              style={{ width: frameW }}
-            >
-              <img
-                src={url}
-                alt=""
-                draggable={false}
-                loading={loading}
-                className="absolute inset-0 h-full w-full object-cover"
-              />
-            </div>
-          ))}
-        </div>
+          className="absolute inset-0"
+          style={{
+            animation: "hf-thumb-fade 200ms ease-out",
+            backgroundImage: `url(${JSON.stringify(url)})`,
+            backgroundPosition: "left center",
+            backgroundRepeat: "repeat-x",
+            backgroundSize: `${frameW}px 100%`,
+          }}
+        />
       )}
 
       {label && (

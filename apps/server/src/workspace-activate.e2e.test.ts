@@ -19,7 +19,7 @@ afterEach(async () => {
     await stops.pop()?.();
   }
   while (roots.length) {
-    await rm(roots.pop()!, { recursive: true, force: true });
+    await rm(roots.pop()!, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 });
 
@@ -67,7 +67,7 @@ async function readPersistedConfig(configPath: string): Promise<unknown> {
   return JSON.parse(await readFile(configPath, "utf8"));
 }
 
-function startMockOpencode() {
+function startMockOpencode(statuses: Record<string, { type: "busy" | "idle" | "retry" }> = {}) {
   const requests: Array<{ method: string; pathname: string; search: string }> = [];
   const server = Bun.serve({
     hostname: "127.0.0.1",
@@ -76,6 +76,9 @@ function startMockOpencode() {
       const url = new URL(request.url);
       requests.push({ method: request.method, pathname: url.pathname, search: url.search });
 
+      if (url.pathname === "/session/status") {
+        return Response.json(statuses);
+      }
       if (url.pathname === "/instance/dispose") {
         return Response.json({ disposed: true });
       }
@@ -208,6 +211,54 @@ describe("workspace activation", () => {
     expect(disposeCount()).toBe(1);
   });
 
+  test("does not reload a busy OpenCode workspace during activation", async () => {
+    const firstRoot = await createWorkspaceRoot();
+    const secondRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode({ ses_running: { type: "busy" } });
+    const opencodeBaseUrl = `http://127.0.0.1:${mock.server.port}`;
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath: join(firstRoot, "server.json"),
+      authorizedRoots: [firstRoot, secondRoot],
+      workspaces: [
+        { id: "ws_1", name: "One", path: firstRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+        { id: "ws_2", name: "Two", path: secondRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+      ],
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/ws_2/activate`, {
+      method: "POST",
+      headers: hostAuth(ipollowork.hostToken),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mock.requests.some((request) => request.pathname === "/session/status")).toBe(true);
+    expect(mock.requests.some((request) => request.pathname === "/instance/dispose")).toBe(false);
+  });
+
+  test("does not reload OpenCode when activating a harness workspace", async () => {
+    const firstRoot = await createWorkspaceRoot();
+    const secondRoot = await createWorkspaceRoot();
+    const mock = startMockOpencode();
+    const opencodeBaseUrl = `http://127.0.0.1:${mock.server.port}`;
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath: join(firstRoot, "server.json"),
+      authorizedRoots: [firstRoot, secondRoot],
+      workspaces: [
+        { id: "ws_1", name: "One", path: firstRoot, preset: "starter", workspaceType: "local", baseUrl: opencodeBaseUrl },
+        { id: "ws_dsh", name: "Harness", path: secondRoot, preset: "starter", workspaceType: "local", engineId: "deepseek-harness", baseUrl: opencodeBaseUrl },
+      ],
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/ws_dsh/activate`, {
+      method: "POST",
+      headers: hostAuth(ipollowork.hostToken),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mock.requests.some((request) => request.pathname === "/session/status")).toBe(false);
+    expect(mock.requests.some((request) => request.pathname === "/instance/dispose")).toBe(false);
+  });
+
   test("persists activation order only when requested", async () => {
     const firstRoot = await createWorkspaceRoot();
     const secondRoot = await createWorkspaceRoot();
@@ -306,6 +357,62 @@ describe("workspace lifecycle registry", () => {
     expect(workspaces[0]?.name).toBe("Persisted Local");
     expect(workspaces[0]?.workContextId).toBe("enterprise:ent_alpha");
     expect(authorizedRootsFromConfig(persisted)).toEqual([workspaceRoot]);
+  });
+
+  test("returns an existing local workspace without overwriting its metadata", async () => {
+    const configRoot = await createWorkspaceRoot();
+    const workspaceRoot = await createWorkspaceRoot();
+    const configPath = join(configRoot, "server.json");
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath,
+      workspaces: [],
+      authorizedRoots: [],
+    });
+    const base = `http://127.0.0.1:${ipollowork.server.port}`;
+    const headers = { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" };
+
+    const createdResponse = await fetch(`${base}/workspaces/local`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Original Project",
+        preset: "starter",
+        workContextId: "enterprise:ent_original",
+        engineId: "deepseek-harness",
+      }),
+    });
+    expect(createdResponse.status).toBe(201);
+
+    const existingResponse = await fetch(`${base}/workspaces/local`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Replacement Project",
+        preset: "minimal",
+        workContextId: "enterprise:ent_replacement",
+        engineId: "opencode",
+      }),
+    });
+    expect(existingResponse.status).toBe(200);
+    const existingBody = await existingResponse.json();
+    expect(existingBody.workspaces).toHaveLength(1);
+    expect(existingBody.workspaces[0]).toMatchObject({
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
+
+    const persisted = await readPersistedConfig(configPath);
+    expect(workspacesFromConfig(persisted)).toHaveLength(1);
+    expect(workspacesFromConfig(persisted)[0]).toMatchObject({
+      name: "Original Project",
+      preset: "starter",
+      workContextId: "enterprise:ent_original",
+      engineId: "deepseek-harness",
+    });
   });
 
   test("does not persist transient local OpenCode runtime fields", async () => {

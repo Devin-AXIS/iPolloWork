@@ -1,6 +1,9 @@
 import { pathToFileURL } from "node:url";
-import { resolve, sep } from "node:path";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { mkdir, rm } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 
+import type { EnvService } from "./env-file.js";
 import { ApiError } from "./errors.js";
 import { bindPluginAuthorizationRuntime, type BoundPluginAuthorizationRuntime } from "./plugin-platform-runtime.js";
 import {
@@ -8,6 +11,7 @@ import {
   resolveInstalledPluginService,
 } from "./plugin-package-lifecycle.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 
 export type PluginServiceAction = {
@@ -22,6 +26,21 @@ export type PluginServiceAction = {
 export type PluginServiceRuntime = {
   plugin: Readonly<{ id: string; version: string }>;
   authorization: BoundPluginAuthorizationRuntime;
+  environment: Readonly<{
+    get(name: string): Promise<string | null>;
+  }>;
+  storage: Readonly<{
+    dataDir: string;
+  }>;
+  workspace: Readonly<{
+    root: string;
+  }>;
+  host: Readonly<{
+    callAction(
+      reference: string,
+      args: Record<string, unknown>,
+    ): Promise<unknown>;
+  }>;
 };
 
 type PluginService = {
@@ -30,6 +49,13 @@ type PluginService = {
 };
 
 type PluginServiceFactory = (runtime: PluginServiceRuntime) => PluginService | Promise<PluginService>;
+
+type PluginHostActionDispatch = (
+  reference: string,
+  args: Record<string, unknown>,
+) => Promise<unknown>;
+
+const pluginHostActionScope = new AsyncLocalStorage<PluginHostActionDispatch | undefined>();
 
 type CachedPluginService = {
   workspaceId: string;
@@ -45,8 +71,32 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function serviceResource(manifest: PluginPackageManifest) {
-  const path = manifest.package?.entrypoints.service;
-  return path ? manifest.resources.find((resource) => resource.type === "local-service" && resource.path === path) : undefined;
+  return manifest.resources.find((resource) => resource.type === "local-service" && resource.path);
+}
+
+function safeSegment(value: string): string {
+  return value.replace(/[^A-Za-z0-9._-]/g, "_") || "default";
+}
+
+export function pluginServiceDataDirectory(config: ServerConfig, workspaceId: string, pluginId: string): string {
+  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId));
+}
+
+export async function deletePluginServiceData(config: ServerConfig, workspaceId: string, pluginId: string): Promise<void> {
+  await rm(pluginServiceDataDirectory(config, workspaceId, pluginId), { recursive: true, force: true });
+}
+
+function bindPluginEnvironmentRuntime(manifest: PluginPackageManifest, env?: EnvService): PluginServiceRuntime["environment"] {
+  const allowed = new Set(serviceResource(manifest)?.environment ?? []);
+  return Object.freeze({
+    async get(name: string): Promise<string | null> {
+      if (!allowed.has(name)) {
+        throw new ApiError(403, "plugin_environment_denied", `Plugin service did not declare environment access: ${name}`);
+      }
+      const stored = env ? (await env.list()).find((entry) => entry.key === name)?.value : undefined;
+      return stored ?? process.env[name] ?? null;
+    },
+  });
 }
 
 function actionsForManifest(manifest: PluginPackageManifest): PluginServiceAction[] {
@@ -82,7 +132,7 @@ export async function listPluginServiceActions(
   workspaceId: string,
   pluginId = "",
 ): Promise<PluginServiceAction[]> {
-  const installed = await listInstalledPluginPackages({ serverConfig: config, workspaceId });
+  const installed = await listInstalledPluginPackages({ serverConfig: config });
   return installed
     .filter((entry) => entry.enabled && (!pluginId || entry.pluginId === pluginId))
     .flatMap((entry) => actionsForManifest(entry.manifest));
@@ -174,24 +224,55 @@ async function assertServiceAuthorizationReady(
 
 export async function callPluginServiceAction(input: {
   config: ServerConfig;
+  env?: EnvService;
   workspaceId: string;
   pluginId: string;
   action: string;
   args: Record<string, unknown>;
   context: Record<string, unknown>;
+  callHostAction?: (
+    reference: string,
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
 }) {
   const installed = await resolveInstalledPluginService({
     serverConfig: input.config,
-    workspaceId: input.workspaceId,
     pluginId: input.pluginId,
   });
   const declared = actionsForManifest(installed.manifest).find((entry) => entry.action === input.action);
   if (!declared) throw new ApiError(404, "plugin_service_action_not_found", "Plugin service action is not declared");
-  const authorization = await bindPluginAuthorizationRuntime(input.config, input.workspaceId, input.pluginId);
+  const authorization = await bindPluginAuthorizationRuntime(input.config, input.pluginId);
   await assertServiceAuthorizationReady(installed.manifest, authorization);
+  const dataDir = pluginServiceDataDirectory(input.config, input.workspaceId, input.pluginId);
+  const workspace = input.config.workspaces.find((entry) => entry.id === input.workspaceId);
+  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
+  const hostActionsAllowed = installed.manifest.source.origin === "builtin" && installed.manifest.source.trusted;
+  const allowedHostActions = new Set(hostActionsAllowed
+    ? (serviceResource(installed.manifest)?.requires ?? []).filter((requirement) => requirement.startsWith("action:"))
+    : []);
+  await mkdir(dataDir, { recursive: true, mode: 0o700 });
   const runtime = {
     plugin: Object.freeze({ id: input.pluginId, version: installed.version }),
     authorization,
+    environment: bindPluginEnvironmentRuntime(installed.manifest, input.env),
+    storage: Object.freeze({ dataDir }),
+    workspace: Object.freeze({ root: resolve(workspace.path) }),
+    host: Object.freeze({
+      callAction: async (
+        reference: string,
+        args: Record<string, unknown>,
+      ) => {
+        const requirement = reference.startsWith("action:") ? reference : `action:${reference}`;
+        if (!allowedHostActions.has(requirement)) {
+          throw new ApiError(403, "plugin_host_action_denied", `Plugin service did not declare host action access: ${requirement}`);
+        }
+        const dispatch = pluginHostActionScope.getStore();
+        if (!dispatch) {
+          throw new ApiError(503, "plugin_host_action_unavailable", "Host action dispatch is not available in this runtime");
+        }
+        return dispatch(requirement, args);
+      },
+    }),
   };
   const service = await persistentService({
     config: input.config,
@@ -207,7 +288,7 @@ export async function callPluginServiceAction(input: {
     ok: true,
     extensionId: input.pluginId,
     action: input.action,
-    result: await handler(input.args, input.context),
+    result: await pluginHostActionScope.run(input.callHostAction, () => handler(input.args, input.context)),
     context: input.context,
   };
 }

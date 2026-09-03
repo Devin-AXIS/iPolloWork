@@ -20,11 +20,12 @@ import { STUDIO_KEYFRAMES_ENABLED } from "./editor/manualEditingAvailability";
 import { Tooltip } from "./ui";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "./editor/domEditingTypes";
-import { canSplitElement } from "../utils/timelineElementSplit";
+import { canSplitElementAt, isSplitTimeWithinBounds } from "../utils/timelineElementSplit";
 import {
   findSelectedTimelineElement,
   rebaseExpandedTimelineEdit,
 } from "../utils/timelineToolbarSelection";
+import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useStudioI18n } from "../i18n";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
@@ -55,16 +56,22 @@ interface TimelineToolbarProps {
   onDeleteDomElement?: (selection: DomEditSelection) => Promise<void> | void;
 }
 
-function useKeyframeToggle(session?: DomEditSessionSlice) {
+function useKeyframeToggle(
+  session: DomEditSessionSlice | undefined,
+  selection: DomEditSelection | null,
+) {
   const currentTime = usePlayerStore((s) => s.currentTime);
   const sessionRef = useRef(session);
-  sessionRef.current = session;
+  // Timeline selection updates immediately, while rebuilding its DOM selection
+  // is asynchronous. Scope the action to the DOM selection that has been
+  // confirmed to match the currently selected timeline row so a quick select +
+  // keyframe click can never mutate the previously selected element.
+  sessionRef.current = session && selection ? { ...session, domEditSelection: selection } : undefined;
   const onToggle = useEnableKeyframes(
     sessionRef as React.RefObject<EnableKeyframesSession | undefined>,
   );
 
-  if (!session) return { state: "none" as const, onToggle: undefined };
-  const selection = session.domEditSelection;
+  if (!session || !selection) return { state: "none" as const, onToggle: undefined };
   const keyframeAnimation = session.selectedGsapAnimations.find((animation) => animation.keyframes);
   let state: "active" | "inactive" | "none" = "none";
 
@@ -81,11 +88,28 @@ function useKeyframeToggle(session?: DomEditSessionSlice) {
     }
   }
 
-  return { state, onToggle: selection ? onToggle : undefined };
+  return { state, onToggle };
 }
 
-function ToolbarIcon({ src, size = 16 }: { src: string; size?: number }) {
-  return <img className="hf-timeline-toolbar-icon" src={src} width={size} height={size} alt="" aria-hidden="true" />;
+function ToolbarIcon({
+  src,
+  width = 16,
+  height = width,
+}: {
+  src: string;
+  width?: number;
+  height?: number;
+}) {
+  return (
+    <img
+      className="hf-timeline-toolbar-icon"
+      src={src}
+      width={width}
+      height={height}
+      alt=""
+      aria-hidden="true"
+    />
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -108,9 +132,21 @@ export function TimelineToolbar({
     selectedElementId,
     selectedElementIds,
   );
+  const domEditSelection = domEditSession?.domEditSelection ?? null;
+  const selectedElementKey = selectedElement ? (selectedElement.key ?? selectedElement.id) : null;
+  const domSelectionTimelineId = domEditSelection
+    ? findMatchingTimelineElementId(domEditSelection, elements)
+    : null;
+  const matchingDomSelection =
+    domEditSelection && (!selectedElementKey || domSelectionTimelineId === selectedElementKey)
+      ? domEditSelection
+      : null;
   const { zoomMode, manualZoomPercent, setZoomMode, setManualZoomPercent } = useTimelineZoom();
   const timelineZoomPercent = getTimelineZoomPercent(zoomMode, manualZoomPercent);
-  const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(domEditSession);
+  const { state: keyframeState, onToggle: onToggleKeyframe } = useKeyframeToggle(
+    domEditSession,
+    matchingDomSelection,
+  );
   const {
     projectId,
     activeCompPath,
@@ -132,20 +168,24 @@ export function TimelineToolbar({
     waitForPendingDomEditSaves,
   });
 
-  useKeyframeKeyboard({
-    enabled: STUDIO_KEYFRAMES_ENABLED && Boolean(onToggleKeyframe),
-    onAddKeyframe: onToggleKeyframe,
-  });
-
   const iconButton =
     "flex h-6 w-6 shrink-0 items-center justify-center rounded transition-colors outline-none hover:bg-[#f2f2f0] focus-visible:ring-2 focus-visible:ring-[#858a94]/35 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-white/10";
-  const canSplit =
-    Boolean(onSplitElement && selectedElement && canSplitElement(selectedElement)) &&
-    currentTime > (selectedElement?.start ?? 0) &&
-    currentTime < (selectedElement?.start ?? 0) + (selectedElement?.duration ?? 0);
-  const canDelete = Boolean(
-    (selectedElement && onDeleteElement) || (domEditSession?.domEditSelection && onDeleteDomElement),
+  const playheadIsInsideSelectedElement = Boolean(
+    selectedElement &&
+      isSplitTimeWithinBounds(currentTime, selectedElement.start, selectedElement.duration),
   );
+  const canSplit = Boolean(
+    onSplitElement && selectedElement && canSplitElementAt(selectedElement, currentTime),
+  );
+  const canToggleKeyframe = Boolean(onToggleKeyframe && playheadIsInsideSelectedElement);
+  const canDelete = Boolean(
+    (matchingDomSelection && onDeleteDomElement) || (selectedElement && onDeleteElement),
+  );
+
+  useKeyframeKeyboard({
+    enabled: STUDIO_KEYFRAMES_ENABLED && canToggleKeyframe,
+    onAddKeyframe: onToggleKeyframe,
+  });
   const runSelectionAction = async (
     action: "split" | "keyframe" | "delete",
     execute: () => Promise<void> | void,
@@ -190,13 +230,13 @@ export function TimelineToolbar({
             <ToolbarIcon src={redoIconSrc} />
           </button>
         </Tooltip>
-        <ToolbarIcon src={dividerIconSrc} size={17} />
-        <Tooltip label={tx(canSplit ? "Split at playhead (S)" : "Select a clip and place the playhead inside it")}>
+        <ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />
+        <Tooltip label={tx(canSplit ? "Split clip at playhead" : "Select a clip and place the playhead inside it")}>
           <button
             type="button"
             className={iconButton}
             disabled={!canSplit || pendingAction !== null}
-            aria-label={tx("Split at playhead")}
+            aria-label={tx("Split clip at playhead")}
             aria-busy={pendingAction === "split"}
             onClick={() => {
               if (canSplit && selectedElement && onSplitElement) {
@@ -212,27 +252,31 @@ export function TimelineToolbar({
         {STUDIO_KEYFRAMES_ENABLED && (
           <Tooltip
             label={tx(
-              !onToggleKeyframe
-                ? "Select an animated element to add a keyframe"
+              !canToggleKeyframe
+                ? "Select a clip and place the playhead inside it"
                 : keyframeState === "active"
                   ? "Remove keyframe at playhead (K)"
-                  : "Add keyframe at playhead (K)"
+                  : "Add keyframe at playhead"
             )}
           >
             <button
               type="button"
               className={`${iconButton} ${keyframeState === "active" ? "bg-[#f2f2f0]" : ""}`}
-              disabled={!onToggleKeyframe || pendingAction !== null}
+              disabled={!canToggleKeyframe || pendingAction !== null}
               onClick={() => {
-                if (onToggleKeyframe) {
+                if (canToggleKeyframe && onToggleKeyframe) {
                   void runSelectionAction("keyframe", onToggleKeyframe);
                 }
               }}
-              aria-label={tx(keyframeState === "active" ? "Remove keyframe at playhead" : "Add keyframe at playhead")}
+              aria-label={tx(
+                keyframeState === "active"
+                  ? "Remove keyframe at playhead"
+                  : "Add keyframe at playhead",
+              )}
               aria-pressed={keyframeState === "active"}
               aria-busy={pendingAction === "keyframe"}
             >
-              <ToolbarIcon src={diamondIconSrc} size={24} />
+            <ToolbarIcon src={diamondIconSrc} width={24} />
             </button>
           </Tooltip>
         )}
@@ -244,9 +288,8 @@ export function TimelineToolbar({
             aria-label={tx("Delete selected element")}
             aria-busy={pendingAction === "delete"}
             onClick={() => {
-              if (domEditSession?.domEditSelection && onDeleteDomElement) {
-                const selection = domEditSession.domEditSelection;
-                void runSelectionAction("delete", () => onDeleteDomElement(selection));
+              if (matchingDomSelection && onDeleteDomElement) {
+                void runSelectionAction("delete", () => onDeleteDomElement(matchingDomSelection));
                 return;
               }
               if (selectedElement && onDeleteElement) {
@@ -256,7 +299,7 @@ export function TimelineToolbar({
               }
             }}
           >
-            <ToolbarIcon src={trashIconSrc} size={24} />
+            <ToolbarIcon src={trashIconSrc} width={24} />
           </button>
         </Tooltip>
       </div>

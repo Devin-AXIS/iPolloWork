@@ -7,7 +7,7 @@ import type { iPolloWorkExtensionManifest } from "../src/app/extensions";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 
 const manifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "acme-research",
   name: "Acme Research",
   description: "Self-contained research plugin.",
@@ -16,9 +16,12 @@ const manifest = {
   package: {
     version: "1.2.3",
     publisher: { id: "acme", name: "Acme" },
+    engines: ["opencode"],
     updateId: "acme/research",
-    entrypoints: { opencode: ".opencode/plugins/acme-research.ts" },
   },
+  engineBindings: [{ engine: "opencode", capabilities: [
+    { id: "acme-runtime", kind: "plugin", label: "Acme runtime", path: "engines/opencode/plugins/acme-research.ts", required: true },
+  ] }],
   permissions: [{ id: "network", reason: "Connect to Acme." }],
   authorization: {
     required: true,
@@ -28,16 +31,37 @@ const manifest = {
     ],
   },
   resources: [
-    { type: "opencode-plugin", id: "acme-runtime", label: "Acme runtime", path: ".opencode/plugins/acme-research.ts", required: true },
-    { type: "skill", id: "acme-search", label: "Acme Search", path: ".opencode/skills/acme-search/SKILL.md", required: true },
+    { type: "skill", id: "acme-search", label: "Acme Search", path: "skills/acme-search/SKILL.md", required: true },
   ],
 };
 
 describe("plugin developer and user flow", () => {
+  test("keeps plugin package loading resilient during a transient server restart", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
+
+    expect(source).toContain("loadPluginPackageData");
+    expect(source).toContain("PLUGIN_PACKAGE_LOAD_RETRY_DELAY_MS");
+    expect(source).toContain("Promise.allSettled([");
+    expect(source).toContain('if (packagesResult.status === "fulfilled")');
+    expect(source).toContain('if (catalogResult.status === "fulfilled")');
+    expect(source).toContain("const previous = current[item.pluginId]");
+  });
+
+  test("asks before replacing an installed plugin with an older version", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/settings/plugin-package-import-modal.tsx", import.meta.url)).text();
+
+    expect(source).toContain('preview?.versionChange === "downgrade"');
+    expect(source).toContain("setDowngradeConfirmationOpen(true)");
+    expect(source).toContain("void install(true)");
+    expect(source).toContain("<ConfirmModal");
+    expect(source).toContain('confirmLabel={t("plugin_platform.import_downgrade_confirm")}');
+    expect(source).toContain('cancelLabel={t("plugin_platform.import_downgrade_cancel")}');
+  });
+
   test("localizes plugin display metadata without changing runtime identity", async () => {
     const { localizePluginPackageManifest } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
     const localizedManifest: iPolloWorkExtensionManifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "localized-plugin",
       name: "本地化插件",
       description: "中文描述",
@@ -45,7 +69,7 @@ describe("plugin developer and user flow", () => {
       source: { format: "ipollowork-extension-manifest", origin: "builtin", trusted: true },
       composer: { prompt: "使用插件" },
       setup: { instructions: "连接插件", primaryCta: "连接", secondaryCta: "帮助" },
-      resources: [{ type: "skill", id: "localized-skill", label: "本地化技能", description: "技能描述", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      resources: [{ type: "skill", id: "localized-skill", label: "本地化技能", description: "技能描述", path: "skills/localized-skill/SKILL.md" }],
       permissions: [{ id: "network", reason: "访问网络" }],
       authorization: {
         required: true,
@@ -93,7 +117,7 @@ describe("plugin developer and user flow", () => {
       category: "Developer Tools",
       composer: { prompt: "Use the plugin" },
       setup: { instructions: "Connect the plugin", primaryCta: "Connect", secondaryCta: "Help" },
-      resources: [{ id: "localized-skill", label: "Localized Skill", description: "Skill description", path: ".opencode/skills/localized-skill/SKILL.md" }],
+      resources: [{ id: "localized-skill", label: "Localized Skill", description: "Skill description", path: "skills/localized-skill/SKILL.md" }],
       permissions: [{ id: "network", reason: "Access the network" }],
       authorization: { methods: [{ id: "api-key", label: "Connect plugin", fields: [{ id: "apiKey", label: "Key", placeholder: "Enter a key" }] }] },
     });
@@ -109,7 +133,7 @@ describe("plugin developer and user flow", () => {
     const installedOlderManifest: iPolloWorkExtensionManifest = { ...localizedManifest, localization: undefined };
     const catalogBacked = localizePluginPackageManifest(installedOlderManifest, "en", localizedManifest.localization);
     expect(catalogBacked.description).toBe("English description");
-    expect(catalogBacked.resources[0]?.path).toBe(".opencode/skills/localized-skill/SKILL.md");
+    expect(catalogBacked.resources[0]?.path).toBe("skills/localized-skill/SKILL.md");
   });
 
   test("derives exactly one simple primary action from package state", async () => {
@@ -135,8 +159,8 @@ describe("plugin developer and user flow", () => {
       authorizationRequired: true,
     });
     expect(details.resources.map((resource) => ({ type: resource.type, label: resource.label }))).toEqual([
-      { type: "opencode-plugin", label: "Acme runtime" },
       { type: "skill", label: "Acme Search" },
+      { type: "opencode/plugin", label: "Acme runtime" },
     ]);
     expect(details.authorizationMethods.map((method) => ({ id: method.id, kind: method.kind, label: method.label }))).toEqual([
       { id: "api-key", kind: "secret-form", label: "API key" },
@@ -169,14 +193,131 @@ describe("plugin developer and user flow", () => {
       manifest: {
         ...manifest,
         id: "figma",
-        resources: [{ type: "skill", id: "figma-use" }],
+        resources: [
+          { type: "skill", id: "figma-use" },
+          { type: "mcp", id: "figma-mcp", mcpServerName: "figma" },
+        ],
       },
     }];
 
     expect(collectPluginPackageRelationships(installed, catalog)).toEqual({
       skillNames: ["figma-use", "hyperframes-cli", "ipollowork-video-studio", "media-use"],
-      installedMcpServerNames: ["video"],
+      mcpServerNames: ["figma", "video"],
     });
+  });
+
+  test("distinguishes universal, engine-specific, and multi-engine plugin packages", async () => {
+    const { pluginPackageEngineScope } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const universal = { ...manifest, package: { ...manifest.package, engines: undefined } };
+    const harness = { ...manifest, package: { ...manifest.package, engines: ["deepseek-harness"] } };
+    const legacyHarness = { ...universal, id: "deepseek-harness" };
+    const multiEngine = { ...manifest, package: { ...manifest.package, engines: ["opencode", "deepseek-harness"] } };
+
+    expect(pluginPackageEngineScope(universal)).toEqual({ kind: "universal" });
+    expect(pluginPackageEngineScope(harness)).toEqual({ kind: "engine", engineId: "deepseek-harness" });
+    expect(pluginPackageEngineScope(legacyHarness)).toEqual({ kind: "engine", engineId: "opencode" });
+    expect(pluginPackageEngineScope(manifest)).toEqual({ kind: "engine", engineId: "opencode" });
+    expect(pluginPackageEngineScope(multiEngine)).toEqual({ kind: "multi-engine", engineIds: ["opencode", "deepseek-harness"] });
+  });
+
+  test("does not offer the current conversation engine as its own external agent", async () => {
+    const { isDelegatableExternalAgent } = await import("../src/app/lib/plugin-package-readiness.js");
+    const engineCompatibility = [{
+      engineId: "deepseek-harness",
+      status: "ready",
+      supportedResourceIds: ["deepseek-harness-service"],
+      unsupportedResourceIds: [],
+      unsupportedRequiredResourceIds: [],
+      unsupportedCapabilityIds: [],
+      nativeEngineOnly: false,
+    }] satisfies Parameters<typeof isDelegatableExternalAgent>[0]["engineCompatibility"];
+    const candidate = {
+      pluginId: "deepseek-harness",
+      activeEngineId: "deepseek-harness",
+      enabled: true,
+      disabledResourceIds: [],
+      engineCompatibility,
+      manifest: {
+        ...manifest,
+        id: "deepseek-harness",
+        composer: { prompt: "Delegate to DSH:" },
+        resources: [{
+          type: "local-service",
+          id: "deepseek-harness-service",
+          provides: ["service:external-subagent"],
+        }],
+      },
+    } satisfies Parameters<typeof isDelegatableExternalAgent>[0];
+
+    expect(isDelegatableExternalAgent(candidate)).toBe(false);
+    expect(isDelegatableExternalAgent({
+      ...candidate,
+      activeEngineId: "opencode",
+      engineCompatibility: [{ ...engineCompatibility[0], engineId: "opencode" }],
+    })).toBe(true);
+  });
+
+  test("uses one full-support scope instead of combining scope and active-engine badges", async () => {
+    const { pluginPackageEngineScope } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const universal = { ...manifest, package: { ...manifest.package, engines: undefined } };
+    const compatibility = (engineId: string, status: "ready" | "partial" | "unsupported") => ({
+      engineId,
+      status,
+      supportedResourceIds: [],
+      unsupportedResourceIds: [],
+      unsupportedRequiredResourceIds: [],
+      unsupportedCapabilityIds: [],
+      nativeEngineOnly: false,
+    });
+
+    expect(pluginPackageEngineScope(universal, [
+      compatibility("opencode", "ready"),
+      compatibility("deepseek-harness", "ready"),
+    ])).toEqual({ kind: "universal" });
+    expect(pluginPackageEngineScope({
+      ...manifest,
+      package: { ...manifest.package, engines: ["opencode"] },
+    }, [
+      compatibility("opencode", "ready"),
+      compatibility("deepseek-harness", "ready"),
+    ])).toEqual({ kind: "universal" });
+    expect(pluginPackageEngineScope(universal, [
+      compatibility("opencode", "ready"),
+      compatibility("deepseek-harness", "partial"),
+    ])).toEqual({ kind: "engine", engineId: "opencode" });
+    expect(pluginPackageEngineScope({
+      ...manifest,
+      package: { ...manifest.package, engines: ["deepseek-harness"] },
+    }, [
+      compatibility("opencode", "partial"),
+      compatibility("deepseek-harness", "ready"),
+    ])).toEqual({ kind: "engine", engineId: "deepseek-harness" });
+  });
+
+  test("projects other-engine limitations with user-facing capability names", async () => {
+    const { pluginPackageEngineLimitations } = await import("../src/react-app/domains/settings/plugin-platform-state.js");
+    const limitations = pluginPackageEngineLimitations({
+      ...manifest,
+      resources: [
+        { type: "skill", id: "portable-skill", label: "Portable skill" },
+        { type: "command", id: "opencode-command", label: "OpenCode command" },
+      ],
+    }, [{
+      engineId: "deepseek-harness",
+      status: "partial",
+      supportedResourceIds: ["portable-skill"],
+      unsupportedResourceIds: ["opencode-command"],
+      unsupportedRequiredResourceIds: ["opencode-command"],
+      unsupportedCapabilityIds: [],
+      nativeEngineOnly: false,
+    }]);
+
+    expect(limitations).toEqual([{
+      engineId: "deepseek-harness",
+      status: "partial",
+      capabilityLabels: ["OpenCode command"],
+      nativeEngineOnly: false,
+    }]);
   });
 
   test("ships the primary plugin-platform states in English and Chinese", () => {
@@ -193,6 +334,12 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.status.revoked",
       "plugin_platform.status.installed",
       "plugin_platform.status.desktop_mcp_unavailable",
+      "plugin_platform.engine.compatibility_title",
+      "plugin_platform.engine.partial_title",
+      "plugin_platform.engine.unsupported_title",
+      "plugin_platform.engine.unavailable_features",
+      "plugin_platform.engine.ecosystem_description",
+      "plugin_platform.engine.unavailable_description",
       "plugin_platform.official_bundle",
       "plugin_platform.bundle_contents",
       "plugin_platform.related_skills",
@@ -212,6 +359,11 @@ describe("plugin developer and user flow", () => {
       "plugin_platform.import_title",
       "plugin_platform.import_safety",
       "plugin_platform.import_error",
+      "plugin_platform.import_invalid_extension",
+      "plugin_platform.import_downgrade_title",
+      "plugin_platform.import_downgrade_description",
+      "plugin_platform.import_downgrade_confirm",
+      "plugin_platform.import_downgrade_cancel",
       "mcp.quick_connect_figma_title",
       "mcp.quick_connect_figma_desc",
     ];
@@ -223,21 +375,44 @@ describe("plugin developer and user flow", () => {
   });
 
   test("reads a wrapped complete plugin archive into a bounded upload payload", async () => {
-    const { readPluginPackageArchive } = await import("../src/react-app/domains/settings/plugin-package-archive");
+    const { readPluginPackageArchive } = await import("../src/app/lib/plugin-package-archive");
     const zip = new JSZip();
     zip.file("acme-research/ipollowork.plugin.json", JSON.stringify({ schemaVersion: 1 }));
-    zip.file("acme-research/.opencode/skills/acme-research/SKILL.md", "# Acme Research\n");
+    zip.file("acme-research/skills/acme-research/SKILL.md", "# Acme Research\n");
     zip.file("__MACOSX/acme-research/._SKILL.md", "ignored");
     const archive = await zip.generateAsync({ type: "uint8array" });
 
-    const upload = await readPluginPackageArchive(new File([archive], "acme-research.zip", { type: "application/zip" }));
+    const upload = await readPluginPackageArchive(
+      new File([archive], "acme-research-source.zip", { type: "application/zip" }),
+      "source",
+    );
 
-    expect(upload.archiveName).toBe("acme-research.zip");
+    expect(upload.archiveName).toBe("acme-research-source.zip");
     expect(upload.files.map((file) => file.path)).toEqual([
-      ".opencode/skills/acme-research/SKILL.md",
       "ipollowork.plugin.json",
+      "skills/acme-research/SKILL.md",
     ]);
     expect(upload.files.every((file) => !file.path.startsWith("acme-research/"))).toBe(true);
+  });
+
+  test("separates install packages from Plugin Workshop source archives", async () => {
+    const { readPluginPackageArchive } = await import("../src/app/lib/plugin-package-archive");
+    const zip = new JSZip();
+    zip.file("ipollowork.plugin.json", JSON.stringify({ schemaVersion: 2 }));
+    const archive = await zip.generateAsync({ type: "uint8array" });
+
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.zip", { type: "application/zip" }),
+      "install",
+    )).rejects.toThrow(".ipollowork-plugin");
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.ipollowork-plugin", { type: "application/zip" }),
+      "source",
+    )).rejects.toThrow(".zip");
+    await expect(readPluginPackageArchive(
+      new File([archive], "acme-research.ipollowork-plugin", { type: "application/zip" }),
+      "install",
+    )).resolves.toMatchObject({ archiveName: "acme-research.ipollowork-plugin" });
   });
 
   test("routes migrated services through the existing MCP directory", async () => {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import net from "node:net";
 import os from "node:os";
@@ -15,6 +15,34 @@ const DIRECT_RUNTIME = "direct";
 const ORCHESTRATOR_RUNTIME = "ipollowork-orchestrator";
 const IPOLLOWORK_SERVER_PORT_RANGE_START = 48_000;
 const IPOLLOWORK_SERVER_PORT_RANGE_END = 51_000;
+const RUNTIME_PROXY_ENV_KEYS = [
+  "HTTP_PROXY",
+  "HTTPS_PROXY",
+  "ALL_PROXY",
+  "http_proxy",
+  "https_proxy",
+  "all_proxy",
+  "NO_PROXY",
+  "no_proxy",
+  "NODE_USE_ENV_PROXY",
+];
+const RUNTIME_PROXY_ENDPOINT_KEYS = RUNTIME_PROXY_ENV_KEYS.slice(0, 6);
+
+function runtimeProxyEnvironment(sourceEnv = {}) {
+  return Object.fromEntries(RUNTIME_PROXY_ENV_KEYS.flatMap((key) => (
+    Object.prototype.hasOwnProperty.call(sourceEnv, key)
+      ? [[key, sourceEnv[key]]]
+      : []
+  )));
+}
+
+function hasRuntimeProxyEndpoint(sourceEnv = {}) {
+  return RUNTIME_PROXY_ENDPOINT_KEYS.some((key) => String(sourceEnv[key] ?? "").trim());
+}
+
+export function runtimeProxyEnvironmentFingerprint(sourceEnv = {}) {
+  return JSON.stringify(RUNTIME_PROXY_ENV_KEYS.map((key) => [key, sourceEnv[key] ?? null]));
+}
 
 function truncateOutput(value, limit = 8000) {
   const text = String(value ?? "");
@@ -76,10 +104,92 @@ export function applyEmbeddedServerEnvironment(targetEnv, sourceEnv) {
     "OPENCODE_CONFIG_DIR",
     "OPENCODE_TEST_HOME",
   ]);
+  for (const key of RUNTIME_PROXY_ENV_KEYS) {
+    if (!Object.prototype.hasOwnProperty.call(sourceEnv ?? {}, key)) delete targetEnv[key];
+  }
   for (const [key, value] of Object.entries(sourceEnv ?? {})) {
     if (!desktopOnlyKeys.has(key)) targetEnv[key] = value;
   }
   return targetEnv;
+}
+
+const MANAGED_OPENCODE_ENV_KEYS = [
+  "HOME",
+  "USERPROFILE",
+  "XDG_CONFIG_HOME",
+  "XDG_DATA_HOME",
+  "XDG_CACHE_HOME",
+  "XDG_STATE_HOME",
+  "OPENCODE_CONFIG_DIR",
+  "OPENCODE_TEST_HOME",
+];
+
+export function managedOpencodeEnvironment(sourceEnv = {}) {
+  return Object.fromEntries(
+    MANAGED_OPENCODE_ENV_KEYS.flatMap((name) => {
+      const value = String(sourceEnv[name] ?? "").trim();
+      return value ? [[name, value]] : [];
+    }),
+  );
+}
+
+export function stageBundledOpencodeRuntime(sourceDir, targetDir) {
+  if (!sourceDir || !existsSync(sourceDir)) return false;
+  mkdirSync(targetDir, { recursive: true });
+  const readJsonObject = (filePath) => {
+    try {
+      const parsed = JSON.parse(readFileSync(filePath, "utf8"));
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const sourcePackage = readJsonObject(path.join(sourceDir, "package.json"));
+  const targetPackagePath = path.join(targetDir, "package.json");
+  const targetPackage = readJsonObject(targetPackagePath);
+  writeFileSync(targetPackagePath, `${JSON.stringify({
+    ...targetPackage,
+    dependencies: {
+      ...(targetPackage.dependencies ?? {}),
+      ...(sourcePackage.dependencies ?? {}),
+    },
+  }, null, 2)}\n`);
+
+  const sourceLock = readJsonObject(path.join(sourceDir, "package-lock.json"));
+  const targetLockPath = path.join(targetDir, "package-lock.json");
+  const targetLock = readJsonObject(targetLockPath);
+  const sourcePackages = sourceLock.packages ?? {};
+  const targetPackages = targetLock.packages ?? {};
+  writeFileSync(targetLockPath, `${JSON.stringify({
+    ...sourceLock,
+    ...targetLock,
+    lockfileVersion: sourceLock.lockfileVersion,
+    packages: {
+      ...targetPackages,
+      ...sourcePackages,
+      "": {
+        ...(targetPackages[""] ?? {}),
+        ...(sourcePackages[""] ?? {}),
+        dependencies: {
+          ...(targetPackages[""]?.dependencies ?? {}),
+          ...(sourcePackages[""]?.dependencies ?? {}),
+        },
+      },
+    },
+  }, null, 2)}\n`);
+
+  const sourceNodeModules = path.join(sourceDir, "node_modules");
+  if (existsSync(sourceNodeModules)) {
+    cpSync(sourceNodeModules, path.join(targetDir, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+  }
+  const targetGitignore = path.join(targetDir, ".gitignore");
+  if (!existsSync(targetGitignore) && existsSync(path.join(sourceDir, ".gitignore"))) {
+    copyFileSync(path.join(sourceDir, ".gitignore"), targetGitignore);
+  }
+  return true;
 }
 
 export function devModeHomeDirectoryPaths(homeDir) {
@@ -179,6 +289,7 @@ function createiPolloWorkServerState() {
     lastStdout: null,
     lastStderr: null,
     managedOpencodeExecution: null,
+    networkEnvironmentFingerprint: null,
   };
 }
 
@@ -304,12 +415,14 @@ function targetTriple() {
   return null;
 }
 
-function binaryFileNames(baseName) {
+export function binaryFileNames(baseName) {
   const ext = process.platform === "win32" ? ".exe" : "";
   const triple = targetTriple();
+  // Packaging normalizes the selected target to this canonical alias. Keep
+  // target-specific files as a fallback so stale dev artifacts cannot shadow it.
   return [
-    triple ? `${baseName}-${triple}${ext}` : null,
     `${baseName}${ext}`,
+    triple ? `${baseName}-${triple}${ext}` : null,
   ].filter(Boolean);
 }
 
@@ -637,6 +750,10 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
   const engineState = createEngineState();
   const ipolloworkServerState = createiPolloWorkServerState();
   const orchestratorState = createOrchestratorState();
+  // Capture only the environment inherited when the desktop launched. Proxy
+  // values copied from a previous child environment must never become the
+  // next launch's "explicit" configuration after a VPN/system-proxy change.
+  const inheritedRuntimeProxyEnv = runtimeProxyEnvironment(process.env);
 
   // Serialize engine lifecycle operations. Without this, concurrent renderer
   // invocations of engineStart/engineStop/engineRestart race: each call's
@@ -667,6 +784,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     path.join(path.dirname(app.getPath("exe")), "sidecars"),
   ].filter(Boolean);
   let systemCaEnvPromise = null;
+  let bundledOpencodeRuntimeStaged = false;
 
   function systemCaEnv() {
     systemCaEnvPromise ??= resolveSystemCaEnv({ tlsModule: tls, userDataDir, parentEnv: process.env });
@@ -852,12 +970,21 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // User env is layered first so process.env + any caller overrides always
     // win. See apps/server/src/env-file.ts and apps/orchestrator/src/cli.ts —
     // all loaders must agree on path + reserved-keys policy.
+    const userEnv = loadUserEnvFile();
     const baseEnv = {
-      ...loadUserEnvFile(),
+      ...userEnv,
       ...process.env,
       BUN_CONFIG_DNS_RESULT_ORDER: "verbatim",
     };
-    Object.assign(baseEnv, resolveWindowsSystemProxyEnv(baseEnv));
+    const explicitProxyEnv = {
+      ...inheritedRuntimeProxyEnv,
+      ...runtimeProxyEnvironment(userEnv),
+    };
+    for (const key of RUNTIME_PROXY_ENV_KEYS) delete baseEnv[key];
+    Object.assign(baseEnv, explicitProxyEnv);
+    if (!hasRuntimeProxyEndpoint(explicitProxyEnv)) {
+      Object.assign(baseEnv, resolveWindowsSystemProxyEnv(explicitProxyEnv));
+    }
     const caEnv = Object.prototype.hasOwnProperty.call(baseEnv, "NODE_EXTRA_CA_CERTS") ? {} : await systemCaEnv();
     // Bun honors Node's NODE_EXTRA_CA_CERTS, so bundled Bun sidecars inherit
     // the exported OS trust store through the same child env variable.
@@ -882,6 +1009,18 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       env.XDG_STATE_HOME = devPaths.xdgStateHome;
       env.OPENCODE_CONFIG_DIR = devPaths.opencodeConfigDir;
       env.OPENCODE_TEST_HOME = devPaths.homeDir;
+    } else if (process.resourcesPath) {
+      const bundledRuntimeDir = path.join(process.resourcesPath, "opencode-runtime");
+      const opencodeConfigDir = path.join(userDataDir, "opencode");
+      if (!bundledOpencodeRuntimeStaged) {
+        bundledOpencodeRuntimeStaged = stageBundledOpencodeRuntime(
+          bundledRuntimeDir,
+          opencodeConfigDir,
+        );
+      }
+      if (bundledOpencodeRuntimeStaged) {
+        env.OPENCODE_CONFIG_DIR = opencodeConfigDir;
+      }
     }
     return env;
   }
@@ -1309,6 +1448,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
       manageOpencode: options.manageOpencode === true,
       opencodeBin: managedOpencode?.path ?? undefined,
       opencodeCwd: managedOpencodeWorkdir(),
+      opencodeEnv: managedOpencodeEnvironment(serverEnv),
     });
     console.info(`[startup] embedded server and OpenCode listening in ${nowMs() - serverStartedAt}ms`);
     inProcessServer = handle;
@@ -1324,6 +1464,7 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     ipolloworkServerState.baseUrl = baseUrl;
     ipolloworkServerState.clientToken = tokens.clientToken;
     ipolloworkServerState.hostToken = tokens.hostToken;
+    ipolloworkServerState.networkEnvironmentFingerprint = runtimeProxyEnvironmentFingerprint(serverEnv);
 
     const connectUrls = options.remoteAccessEnabled ? buildConnectUrls(boundPort) : { connectUrl: null, mdnsUrl: null, lanUrl: null };
     ipolloworkServerState.connectUrl = connectUrls.connectUrl;
@@ -1579,12 +1720,16 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     // the sticky preferred port, racing the not-yet-released socket into
     // EADDRINUSE and leaving the runtime in error -> boot screen.
     const requestedRemoteAccess = options.ipolloworkRemoteAccess === true;
+    const currentNetworkEnvironmentFingerprint = ipolloworkServerState.inProcess
+      ? runtimeProxyEnvironmentFingerprint(await buildChildEnv())
+      : null;
     if (
       options.forceRestart !== true &&
       ipolloworkServerState.inProcess &&
       lifecycleState === "healthy" &&
       normalizeWorkspaceKey(engineState.projectDir) === normalizeWorkspaceKey(safeProjectDir) &&
-      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess
+      ipolloworkServerState.remoteAccessEnabled === requestedRemoteAccess &&
+      ipolloworkServerState.networkEnvironmentFingerprint === currentNetworkEnvironmentFingerprint
     ) {
       const existing = snapshotiPolloWorkServerState(ipolloworkServerState);
       if (existing.running && existing.baseUrl && (existing.ownerToken || existing.clientToken)) {
@@ -1770,34 +1915,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     const result = await runShellCommand("bash", ["-lc", command], {
       env: { ...(await buildChildEnv()), OPENCODE_INSTALL_DIR: installDir },
       timeoutMs: 180_000,
-    });
-    return {
-      ok: result.status === 0,
-      status: result.status,
-      stdout: result.stdout,
-      stderr: result.stderr,
-    };
-  }
-
-  async function opencodeMcpAuth(projectDir, serverName) {
-    const safeProjectDir = String(projectDir ?? "").trim();
-    const safeServerName = String(serverName ?? "").trim();
-    if (!safeProjectDir) {
-      throw new Error("project_dir is required");
-    }
-    if (!safeServerName) {
-      throw new Error("server_name is required");
-    }
-
-    const program = resolveBinary("opencode");
-    if (!program) {
-      throw new Error("Failed to locate opencode.");
-    }
-
-    const result = await runShellCommand(program, ["mcp", "auth", safeServerName], {
-      cwd: safeProjectDir,
-      env: await buildChildEnv(),
-      timeoutMs: 120_000,
     });
     return {
       ok: result.status === 0,
@@ -2115,7 +2232,6 @@ export function createRuntimeManager({ app, desktopRoot, listLocalWorkspacePaths
     orchestratorWorkspaceActivate,
     orchestratorInstanceDispose,
     orchestratorStartDetached,
-    opencodeMcpAuth,
     sandboxDoctor,
     sandboxStop,
     sandboxCleanupiPolloWorkContainers,

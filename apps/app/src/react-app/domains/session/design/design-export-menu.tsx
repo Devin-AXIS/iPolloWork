@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
-import { Check, Download, Ellipsis, LayoutTemplate, Loader2, Monitor, Presentation, Share2, Smartphone } from "lucide-react";
+import { Check, Download, Ellipsis, Loader2, Monitor, Presentation, Share2, Smartphone } from "lucide-react";
 
+import { TemplateIcon } from "@/components/template-icon";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -115,7 +116,7 @@ export function DesignExportMenu({
           <>
             {showExports ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem onClick={onSaveAsTemplate}>
-              <LayoutTemplate />
+              <TemplateIcon className="size-4" />
               {t("template_authoring.save_as_template")}
             </DropdownMenuItem>
           </>

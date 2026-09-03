@@ -1,19 +1,18 @@
 /** @jsxImportSource react */
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 
-import type { createClient } from "../../../../app/lib/opencode";
 import type { iPolloWorkServerClient, iPolloWorkWorkspaceInfo } from "../../../../app/lib/ipollowork-server";
-import { setSessionArchived } from "../../../../app/lib/opencode-session";
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
-import { useSessionManagementStore } from "../sidebar/session-management-store";
+import { useSessionPinStore } from "../sidebar/session-pin-store";
+import type { ConversationEngineConnection } from "../engine/conversation-engine";
 
 type SessionLike = {
   id?: string;
-  title?: string;
+  title?: string | null;
   time?: {
-    updated?: number;
-    created?: number;
+    updated?: number | null;
+    created?: number | null;
   };
 };
 
@@ -29,7 +28,7 @@ type UseSessionControlActionsInput = {
   selectedSessionId: string | null;
   canCreateTask: boolean;
   ipolloworkClient: iPolloWorkServerClient | null;
-  opencodeClient: ReturnType<typeof createClient> | null;
+  conversation: ConversationEngineConnection | null;
   navigateToSession: (sessionId: string) => void;
   navigateToSessionRoot: () => void;
   createTaskInWorkspace: (workspaceId: string) => Promise<unknown> | unknown;
@@ -72,7 +71,7 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
     navigateToSessionRoot,
     openModelPicker,
     ipolloworkClient,
-    opencodeClient,
+    conversation,
     refreshRouteState,
     selectedSessionId,
     selectedWorkspaceId,
@@ -144,24 +143,20 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID from session.list_sessions." },
       { name: "title", type: "string", required: true, description: "New session title." },
     ],
-    disabled: !opencodeClient,
+    disabled: !conversation,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const title = stringArg(args, "title");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
       if (!title) return { ok: false, error: "title is required" };
-      if (!opencodeClient) return { ok: false, error: "OpenCode client is not connected" };
+      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
 
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await opencodeClient.session.update({
-        sessionID: sessionId,
-        title,
-        directory: targetWorkspace?.path || selectedWorkspaceRoot || undefined,
-      });
+      await conversation.rename(sessionId, title, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
       await refreshRouteState();
       return { ok: true, sessionId, title };
     },
-  }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(renameSessionControlAction);
 
   const deleteSessionControlAction = useMemo<iPolloWorkControlAction>(() => ({
@@ -206,27 +201,10 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
   useControlAction(modelPickerControlAction);
 
   // ---------------------------------------------------------------------------
-  // Session management control actions (pin, archive, groups)
+  // Session management control actions (pin and archive)
   // ---------------------------------------------------------------------------
 
-  const store = useSessionManagementStore;
-
-  /** Resolve a workspace ID from user input. Falls back to selectedWorkspaceId
-   *  if the input is empty or doesn't match any known workspace (e.g. if the
-   *  caller passes a display name instead of the actual ID). */
-  const resolveWorkspaceId = useCallback((input: string | undefined): string | undefined => {
-    if (!input) return selectedWorkspaceId || undefined;
-    // Exact match on ID.
-    if (workspaces.some((ws) => ws.id === input)) return input;
-    // Fuzzy match on display name / path — return the first matching workspace ID.
-    const byName = workspaces.find(
-      (ws) =>
-        (ws.displayName?.trim() || ws.name?.trim() || ws.path?.trim() || "").toLowerCase() === input.toLowerCase(),
-    );
-    if (byName) return byName.id;
-    // Unknown — fall back to selected.
-    return selectedWorkspaceId || undefined;
-  }, [selectedWorkspaceId, workspaces]);
+  const store = useSessionPinStore;
 
   const pinControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "session.pin",
@@ -255,111 +233,18 @@ export function useSessionControlActions(input: UseSessionControlActionsInput) {
       { name: "sessionId", type: "string", required: true, description: "Session ID." },
       { name: "archived", type: "boolean", required: true, description: "true to archive, false to unarchive." },
     ],
-    disabled: !opencodeClient,
+    disabled: !conversation,
     execute: async (args) => {
       const sessionId = stringArg(args, "sessionId");
       const archived = booleanArg(args, "archived");
       if (!sessionId) return { ok: false, error: "sessionId is required" };
-      if (!opencodeClient) return { ok: false, error: "OpenCode client is not connected" };
+      if (!conversation) return { ok: false, error: "Conversation engine is not connected" };
       const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      await setSessionArchived(opencodeClient, sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
+      await conversation.setArchived(sessionId, archived, targetWorkspace?.path || selectedWorkspaceRoot || undefined);
       await refreshRouteState();
       return { ok: true, sessionId, archived };
     },
-  }), [opencodeClient, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
+  }), [conversation, refreshRouteState, selectedWorkspaceRoot, sessionsByWorkspaceId, workspaces]);
   useControlAction(archiveControlAction);
 
-  const groupCreateControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "session.group.create",
-    label: "Create a session group",
-    description: "Create a new group (folder/separator) in the current workspace sidebar. Sessions can then be moved into it.",
-    sideEffect: "mutation",
-    requiresArgs: true,
-    args: [
-      { name: "label", type: "string", required: true, description: "Group name (e.g. 'Done', 'In progress', 'Backlog')." },
-      { name: "workspaceId", type: "string", required: false, description: "Workspace ID. Defaults to the selected workspace." },
-    ],
-    disabled: !selectedWorkspaceId,
-    execute: (args) => {
-      const label = stringArg(args, "label");
-      const wsId = resolveWorkspaceId(stringArg(args, "workspaceId"));
-      if (!label) return { ok: false, error: "label is required" };
-      if (!wsId) return { ok: false, error: "No workspace selected" };
-      store.getState().createGroup(wsId, label);
-      const created = store.getState().groupsByWorkspace[wsId];
-      const newGroup = created?.groups[created.groups.length - 1];
-      return { ok: true, workspaceId: wsId, label, groupId: newGroup?.id ?? null };
-    },
-  }), [resolveWorkspaceId]);
-  useControlAction(groupCreateControlAction);
-
-  const groupMoveControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "session.group.move",
-    label: "Move a session to a group",
-    description: "Assign a session to a group (folder). Pass groupId=null or omit to remove from current group. Use session.group.list to see available groups.",
-    sideEffect: "mutation",
-    requiresArgs: true,
-    args: [
-      { name: "sessionId", type: "string", required: true, description: "Session ID." },
-      { name: "groupId", type: "string", required: false, description: "Group ID to move into. Omit or null to ungrouped." },
-      { name: "workspaceId", type: "string", required: false, description: "Workspace ID. Defaults to session's workspace." },
-    ],
-    execute: (args) => {
-      const sessionId = stringArg(args, "sessionId");
-      const groupId = stringArg(args, "groupId") || null;
-      if (!sessionId) return { ok: false, error: "sessionId is required" };
-      const targetWorkspace = findSessionWorkspace(workspaces, sessionsByWorkspaceId, sessionId);
-      const wsId = resolveWorkspaceId(stringArg(args, "workspaceId")) || targetWorkspace?.id;
-      if (!wsId) return { ok: false, error: "Could not determine workspace" };
-      store.getState().assignGroup(wsId, sessionId, groupId);
-      return { ok: true, sessionId, groupId, workspaceId: wsId };
-    },
-  }), [resolveWorkspaceId, sessionsByWorkspaceId, workspaces]);
-  useControlAction(groupMoveControlAction);
-
-  const groupRemoveControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "session.group.remove",
-    label: "Remove a session group",
-    description: "Remove a group from the workspace. Sessions in the group become ungrouped (not deleted).",
-    sideEffect: "mutation",
-    requiresConfirmation: true,
-    requiresArgs: true,
-    args: [
-      { name: "groupId", type: "string", required: true, description: "Group ID to remove." },
-      { name: "workspaceId", type: "string", required: false, description: "Workspace ID. Defaults to selected." },
-      { name: "confirmed", type: "boolean", required: true, description: "Must be true." },
-    ],
-    disabled: !selectedWorkspaceId,
-    execute: (args) => {
-      const groupId = stringArg(args, "groupId");
-      const confirmed = booleanArg(args, "confirmed");
-      const wsId = resolveWorkspaceId(stringArg(args, "workspaceId"));
-      if (!groupId) return { ok: false, error: "groupId is required" };
-      if (!confirmed) return { ok: false, error: "Requires confirmed: true" };
-      if (!wsId) return { ok: false, error: "No workspace selected" };
-      store.getState().removeGroup(wsId, groupId);
-      return { ok: true, groupId, workspaceId: wsId };
-    },
-  }), [resolveWorkspaceId]);
-  useControlAction(groupRemoveControlAction);
-
-  const groupListControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "session.group.list",
-    label: "List session groups",
-    description: "List all groups in a workspace with their IDs and labels.",
-    sideEffect: "none",
-    args: [{ name: "workspaceId", type: "string", required: false, description: "Workspace ID. Defaults to selected." }],
-    execute: (args) => {
-      const wsId = resolveWorkspaceId(stringArg(args, "workspaceId"));
-      if (!wsId) return { ok: false, error: "No workspace selected" };
-      const state = store.getState().groupsByWorkspace[wsId];
-      return {
-        ok: true,
-        workspaceId: wsId,
-        groups: (state?.groups ?? []).map((g) => ({ id: g.id, label: g.label })),
-        assignments: state?.assignments ?? {},
-      };
-    },
-  }), [resolveWorkspaceId]);
-  useControlAction(groupListControlAction);
 }

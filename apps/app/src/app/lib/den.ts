@@ -2,6 +2,7 @@ import {
   normalizeDesktopConfig,
   type DesktopConfig as SharedDesktopConfig,
 } from "@ipollowork/types/den/desktop-policies";
+import { validatePluginPackageManifest } from "@ipollowork/types/plugins";
 
 // Re-export the shared schema under the local alias so React consumers
 // (e.g. the cloud domain's desktop-config provider) can import it alongside
@@ -17,22 +18,16 @@ import {
 } from "./den-session-events";
 import {
   desktopFetch,
+  desktopFetchBinaryViaMain,
   desktopFetchViaMain,
   getDesktopBootstrapConfig as getDesktopBootstrapConfigFromShell,
   setDesktopBootstrapConfig as setDesktopBootstrapConfigInShell,
   type DesktopBootstrapConfig as ShellDesktopBootstrapConfig,
 } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
-import type { DenOrgSkillCard, ReloadReason } from "../types";
+import type { DenOrgSkillCard } from "../types";
 import type {
-  iPolloWorkExtensionContribution,
-  iPolloWorkExtensionContributionType,
-  iPolloWorkExtensionLifecycle,
   iPolloWorkExtensionManifest,
-  iPolloWorkExtensionResource,
-  iPolloWorkExtensionResourceType,
-  iPolloWorkExtensionSetup,
-  iPolloWorkExtensionSource,
   iPolloWorkExtensionSourceFormat,
 } from "../extensions";
 
@@ -65,6 +60,9 @@ export const DEN_INFERENCE_PATH = "/dashboard/inference";
 export type * from "./den-types";
 import type {
   DenOrgExtensionProjection,
+  DenMarketplaceAcquireResult,
+  DenMarketplacePlugin,
+  DenMarketplacePluginDownload,
   DenOrgMarketplace,
   DenOrgPlugin,
   DenOrgPluginResolved,
@@ -1270,256 +1268,58 @@ function parseExtensionSourceFormat(value: unknown): iPolloWorkExtensionSourceFo
   switch (value) {
     case "ipollowork-builtin":
     case "ipollowork-extension-manifest":
-    case "claude-plugin":
-    case "opencode-plugin":
-    case "mcp-directory":
-    case "manual":
+    case "github-compatible":
       return value;
     default:
       return null;
   }
-}
-
-function parseExtensionSourceOrigin(value: unknown): iPolloWorkExtensionSource["origin"] | undefined {
-  switch (value) {
-    case "builtin":
-    case "den":
-    case "workspace":
-    case "local":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionSource(value: unknown): iPolloWorkExtensionSource | null {
-  if (!isRecord(value) || typeof value.trusted !== "boolean") return null;
-  const format = parseExtensionSourceFormat(value.format);
-  if (!format) return null;
-  const origin = parseExtensionSourceOrigin(value.origin);
-  return {
-    format,
-    trusted: value.trusted,
-    ...(origin ? { origin } : {}),
-    ...(typeof value.reference === "string" ? { reference: value.reference } : {}),
-  };
-}
-
-function parseStringList(value: unknown): string[] | undefined {
-  if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) return undefined;
-  return value;
-}
-
-function parseExtensionResourceType(value: unknown): iPolloWorkExtensionResourceType | null {
-  switch (value) {
-    case "skill":
-    case "agent":
-    case "command":
-    case "tool":
-    case "mcp":
-    case "opencode-plugin":
-    case "provider":
-    case "hook":
-    case "context":
-    case "secret":
-    case "file":
-    case "local-service":
-    case "native-binary":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseExtensionLocalCommandRef(value: unknown): iPolloWorkExtensionResource["localCommandRef"] | undefined {
-  switch (value) {
-    case "ipollowork.computerUseMcp":
-    case "ipollowork.uiMcp":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionResource(value: unknown): iPolloWorkExtensionResource | null {
-  if (!isRecord(value) || typeof value.id !== "string") return null;
-  const type = parseExtensionResourceType(value.type);
-  if (!type) return null;
-  const command = parseStringList(value.command);
-  const localCommandRef = parseExtensionLocalCommandRef(value.localCommandRef);
-  return {
-    type,
-    id: value.id,
-    ...(typeof value.label === "string" ? { label: value.label } : {}),
-    ...(typeof value.description === "string" ? { description: value.description } : {}),
-    ...(typeof value.path === "string" ? { path: value.path } : {}),
-    ...(command ? { command } : {}),
-    ...(typeof value.envKey === "string" ? { envKey: value.envKey } : {}),
-    ...(typeof value.packageName === "string" ? { packageName: value.packageName } : {}),
-    ...(typeof value.providerId === "string" ? { providerId: value.providerId } : {}),
-    ...(typeof value.mcpServerName === "string" ? { mcpServerName: value.mcpServerName } : {}),
-    ...(localCommandRef ? { localCommandRef } : {}),
-    ...(typeof value.required === "boolean" ? { required: value.required } : {}),
-  };
-}
-
-function parseExtensionContributionType(value: unknown): iPolloWorkExtensionContributionType | null {
-  switch (value) {
-    case "settings-panel":
-    case "setup-instructions":
-    case "composer-prompt":
-    case "session-side-panel":
-    case "session-rail-item":
-    case "control-actions":
-    case "server-route":
-    case "native-capability":
-    case "test-action":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseExtensionContributionLocation(value: unknown): iPolloWorkExtensionContribution["location"] | undefined {
-  switch (value) {
-    case "settings-detail":
-    case "composer":
-    case "session-right-pane":
-    case "session-rail":
-    case "server":
-    case "native":
-      return value;
-    default:
-      return undefined;
-  }
-}
-
-function parseExtensionContribution(value: unknown): iPolloWorkExtensionContribution | null {
-  if (!isRecord(value)) return null;
-  const type = parseExtensionContributionType(value.type);
-  if (!type) return null;
-  const location = parseExtensionContributionLocation(value.location);
-  return {
-    type,
-    ...(typeof value.ref === "string" ? { ref: value.ref } : {}),
-    ...(typeof value.label === "string" ? { label: value.label } : {}),
-    ...(typeof value.description === "string" ? { description: value.description } : {}),
-    ...(typeof value.prompt === "string" ? { prompt: value.prompt } : {}),
-    ...(location ? { location } : {}),
-  };
-}
-
-function parseExtensionSetup(value: unknown): iPolloWorkExtensionSetup | undefined {
-  if (!isRecord(value)) return undefined;
-  const requiredEnv = parseStringList(value.requiredEnv);
-  return {
-    ...(typeof value.instructions === "string" ? { instructions: value.instructions } : {}),
-    ...(typeof value.primaryCta === "string" ? { primaryCta: value.primaryCta } : {}),
-    ...(typeof value.secondaryCta === "string" ? { secondaryCta: value.secondaryCta } : {}),
-    ...(requiredEnv ? { requiredEnv } : {}),
-    ...(typeof value.testActionRef === "string" ? { testActionRef: value.testActionRef } : {}),
-  };
-}
-
-function parseReloadReason(value: unknown): ReloadReason | null {
-  switch (value) {
-    case "plugins":
-    case "skills":
-    case "mcp":
-    case "config":
-    case "agents":
-    case "commands":
-      return value;
-    default:
-      return null;
-  }
-}
-
-function parseReloadReasons(value: unknown): ReloadReason[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const reasons = value.flatMap((item) => {
-    const reason = parseReloadReason(item);
-    return reason ? [reason] : [];
-  });
-  return reasons.length === value.length ? reasons : undefined;
-}
-
-function parseExtensionLifecycle(value: unknown): iPolloWorkExtensionLifecycle | undefined {
-  if (!isRecord(value)) return undefined;
-  const reload = parseReloadReasons(value.reload);
-  const detection = parseStringList(value.detection);
-  return {
-    ...(reload ? { reload } : {}),
-    ...(detection ? { detection } : {}),
-  };
-}
-
-function parseExtensionPlatform(value: unknown): iPolloWorkExtensionManifest["platform"] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  const platforms = value.flatMap((item) => {
-    switch (item) {
-      case "darwin":
-      case "linux":
-      case "windows":
-      case "web":
-        return [item];
-      default:
-        return [];
-    }
-  });
-  return platforms.length === value.length ? platforms : undefined;
 }
 
 function parseiPolloWorkExtensionManifest(value: unknown): iPolloWorkExtensionManifest | null {
+  const result = validatePluginPackageManifest(value);
+  return result.success ? result.manifest : null;
+}
+
+function parseMarketplacePlugin(value: unknown): DenMarketplacePlugin | null {
+  if (!isRecord(value)) return null;
+  const manifest = parseiPolloWorkExtensionManifest(value.manifest);
   if (
-    !isRecord(value) ||
-    value.schemaVersion !== 1 ||
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    typeof value.description !== "string" ||
-    !Array.isArray(value.resources)
-  ) {
-    return null;
-  }
-  const source = parseExtensionSource(value.source);
-  if (!source) return null;
-  const resources = value.resources.flatMap((entry) => {
-    const resource = parseExtensionResource(entry);
-    return resource ? [resource] : [];
-  });
-  if (resources.length !== value.resources.length) return null;
-  const contributions = Array.isArray(value.contributions)
-    ? value.contributions.flatMap((entry) => {
-        const contribution = parseExtensionContribution(entry);
-        return contribution ? [contribution] : [];
-      })
-    : undefined;
-  if (Array.isArray(value.contributions) && contributions?.length !== value.contributions.length) return null;
-  const setup = parseExtensionSetup(value.setup);
-  const lifecycle = parseExtensionLifecycle(value.lifecycle);
-  const platform = parseExtensionPlatform(value.platform);
-  if (Array.isArray(value.platform) && !platform) return null;
+    !manifest
+    || typeof value.pluginId !== "string"
+    || typeof value.name !== "string"
+    || typeof value.description !== "string"
+    || typeof value.category !== "string"
+    || typeof value.publisher !== "string"
+    || typeof value.version !== "string"
+    || typeof value.pointsCost !== "number"
+    || typeof value.acquired !== "boolean"
+    || typeof value.featured !== "boolean"
+    || typeof value.digest !== "string"
+    || typeof value.size !== "number"
+    || typeof value.updatedAt !== "string"
+  ) return null;
   return {
-    schemaVersion: 1,
-    id: value.id,
+    pluginId: value.pluginId,
     name: value.name,
     description: value.description,
-    source,
-    ...(isRecord(value.icon)
-      ? { icon: {
-          ...(typeof value.icon.src === "string" ? { src: value.icon.src } : {}),
-          ...(typeof value.icon.simpleIconSlug === "string" ? { simpleIconSlug: value.icon.simpleIconSlug } : {}),
-        } }
-      : {}),
-    ...(isRecord(value.composer) && typeof value.composer.prompt === "string" ? { composer: { prompt: value.composer.prompt } } : {}),
-    ...(setup ? { setup } : {}),
-    resources,
-    ...(contributions ? { contributions } : {}),
-    ...(lifecycle ? { lifecycle } : {}),
-    ...(typeof value.defaultEnabled === "boolean" ? { defaultEnabled: value.defaultEnabled } : {}),
-    ...(typeof value.defaultHidden === "boolean" ? { defaultHidden: value.defaultHidden } : {}),
-    ...(platform ? { platform } : {}),
+    category: value.category,
+    publisher: value.publisher,
+    icon: isRecord(value.icon) ? value.icon : null,
+    version: value.version,
+    manifest,
+    pointsCost: value.pointsCost,
+    acquired: value.acquired,
+    featured: value.featured,
+    digest: value.digest,
+    size: value.size,
+    updatedAt: value.updatedAt,
   };
+}
+
+function parseMarketplaceAcquireResult(value: unknown): DenMarketplaceAcquireResult | null {
+  if (!isRecord(value) || value.acquired !== true || typeof value.spentPoints !== "number") return null;
+  if (value.balance !== null && typeof value.balance !== "number") return null;
+  return { acquired: true, spentPoints: value.spentPoints, balance: value.balance };
 }
 
 function parseDenExtensionProjection(value: unknown): DenOrgExtensionProjection | null {
@@ -1854,6 +1654,51 @@ async function requestJson<T>(
   return raw.json as T;
 }
 
+async function requestBinary(
+  input: string | DenBaseUrls,
+  path: string,
+  options: DenRequestOptions = {},
+): Promise<Response> {
+  const baseUrls = typeof input === "string" ? resolveDenBaseUrls(input) : input;
+  const url = `${resolveRequestBaseUrl(baseUrls, path)}${path}`;
+  const headers: Record<string, string> = { Accept: "application/zip" };
+  const token = options.token?.trim() ?? "";
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const fetchImpl: FetchLike = isDesktopRuntime()
+    ? (requestInput, init) => desktopFetchBinaryViaMain(requestInput, init, options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS)
+    : globalThis.fetch;
+  const response = await fetchWithTimeout(fetchImpl, url, {
+    method: options.method ?? "GET",
+    headers,
+    credentials: "include",
+  }, options.timeoutMs ?? DEFAULT_DEN_TIMEOUT_MS);
+  if (response.ok) return response;
+
+  const text = await response.text();
+  let payload: unknown = null;
+  try {
+    payload = text ? JSON.parse(text) : null;
+  } catch {
+    payload = null;
+  }
+  const code = isRecord(payload) && typeof payload.error === "string" ? payload.error : "request_failed";
+  throw new DenApiError(response.status, code, getErrorMessage(payload, `Request failed with ${response.status}.`));
+}
+
+function responseFileName(response: Response, fallback: string): string {
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const encoded = disposition.match(/filename\*=UTF-8''([^;]+)/iu)?.[1];
+  if (encoded) {
+    try {
+      return decodeURIComponent(encoded);
+    } catch {
+      return fallback;
+    }
+  }
+  return disposition.match(/filename="([^"]+)"/u)?.[1] ?? fallback;
+}
+
 async function ensureActiveOrganization(
   baseUrls: DenBaseUrls,
   token: string | null,
@@ -2140,6 +1985,47 @@ export function createDenClient(options: { baseUrl: string; token?: string | nul
         `/v1/oauth-providers/${encodeURIComponent(providerId)}/disconnect`,
         { method: "POST", token, organizationId: orgId },
       );
+    },
+
+    async listMarketplacePlugins(): Promise<DenMarketplacePlugin[]> {
+      const payload = await requestJson<unknown>(baseUrls, "/api/v1/marketplace/plugins", { token });
+      if (!isRecord(payload) || !Array.isArray(payload.items)) {
+        throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace response was invalid.");
+      }
+      const items = payload.items.map(parseMarketplacePlugin);
+      if (items.some((item) => item === null)) {
+        throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace response contained an invalid plugin package.");
+      }
+      return items as DenMarketplacePlugin[];
+    },
+
+    async getMarketplacePlugin(pluginId: string): Promise<DenMarketplacePlugin> {
+      const payload = await requestJson<unknown>(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}`, { token });
+      const item = isRecord(payload) ? parseMarketplacePlugin(payload.item) : null;
+      if (!item) throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace plugin response was invalid.");
+      return item;
+    },
+
+    async acquireMarketplacePlugin(pluginId: string): Promise<DenMarketplaceAcquireResult> {
+      const payload = await requestJson<unknown>(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}/acquire`, {
+        method: "POST",
+        token,
+      });
+      const result = parseMarketplaceAcquireResult(payload);
+      if (!result) throw new DenApiError(500, "invalid_marketplace_payload", "Marketplace purchase response was invalid.");
+      return result;
+    },
+
+    async downloadMarketplacePlugin(pluginId: string): Promise<DenMarketplacePluginDownload> {
+      const response = await requestBinary(baseUrls, `/api/v1/marketplace/plugins/${encodeURIComponent(pluginId)}/download`, {
+        token,
+        timeoutMs: 30_000,
+      });
+      return {
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        fileName: responseFileName(response, `${pluginId.replaceAll("/", "-")}.ipollowork-plugin`),
+        digest: response.headers.get("X-iPollo-Artifact-SHA256"),
+      };
     },
 
     async listOrgMarketplaces(orgId: string): Promise<DenOrgMarketplace[]> {

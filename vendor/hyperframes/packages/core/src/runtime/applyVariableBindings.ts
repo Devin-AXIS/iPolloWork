@@ -129,6 +129,77 @@ function setOwnTextPreservingChildren(el: Element, text: string): void {
   }
 }
 
+function segmentMotionText(text: string, granularity: "word" | "grapheme"): string[] {
+  const Segmenter = (
+    Intl as typeof Intl & {
+      Segmenter?: new (
+        locale?: string,
+        options?: { granularity: "word" | "grapheme" },
+      ) => { segment: (value: string) => Iterable<{ segment: string }> };
+    }
+  ).Segmenter;
+  if (!Segmenter) return Array.from(text);
+  return Array.from(
+    new Segmenter(undefined, { granularity }).segment(text),
+    (part) => part.segment,
+  );
+}
+
+function setSplitVariableBoundText(el: Element, text: string): void {
+  if (el.textContent === text) return;
+  const includeCharacters = el.querySelector("[data-ipw-motion-char]") !== null;
+  const fragment = el.ownerDocument.createDocumentFragment();
+  for (const word of segmentMotionText(text, "word")) {
+    if (/^\s+$/u.test(word)) {
+      fragment.append(el.ownerDocument.createTextNode(word));
+      continue;
+    }
+    const wordSpan = el.ownerDocument.createElement("span");
+    wordSpan.setAttribute("data-ipw-motion-word", "");
+    wordSpan.setAttribute(
+      "style",
+      "display:inline-block;white-space:pre;font-weight:700;line-height:1.1;letter-spacing:-0.025em",
+    );
+    if (includeCharacters) {
+      for (const character of segmentMotionText(word, "grapheme")) {
+        const characterSpan = el.ownerDocument.createElement("span");
+        characterSpan.setAttribute("data-ipw-motion-char", "");
+        characterSpan.setAttribute("style", "display:inline-block");
+        characterSpan.textContent = character;
+        wordSpan.append(characterSpan);
+      }
+    } else {
+      wordSpan.textContent = word;
+    }
+    fragment.append(wordSpan);
+  }
+  el.replaceChildren(fragment);
+}
+
+function setStructuredVariableBoundText(el: Element, text: string): void {
+
+  const encodedSource = el.getAttribute("data-ipw-motion-source");
+  if (encodedSource !== null) {
+    try {
+      if (JSON.parse(encodedSource) === text) return;
+    } catch {
+      // Fall through to the content-first fallback below.
+    }
+  }
+
+  el.replaceChildren(el.ownerDocument.createTextNode(text));
+}
+
+function setVariableBoundText(el: Element, text: string): void {
+  if (el.getAttribute("data-ipw-motion-structure") === "v1") {
+    setStructuredVariableBoundText(el, text);
+  } else if (el.getAttribute("data-ipw-motion-split") === "v1") {
+    setSplitVariableBoundText(el, text);
+  } else {
+    setOwnTextPreservingChildren(el, text);
+  }
+}
+
 /**
  * Composition root, matching the SDK's findRoot chain exactly — the SDK
  * persists `--{id}` defaults on this element, so the runtime must write
@@ -192,6 +263,6 @@ export function applyVariableBindings(doc: Document): void {
     const id = el.getAttribute("data-var-text")?.trim();
     if (!id) continue;
     const value = valuesForElement(el, cache)[id];
-    if (isScalar(value)) setOwnTextPreservingChildren(el, String(value));
+    if (isScalar(value)) setVariableBoundText(el, String(value));
   }
 }

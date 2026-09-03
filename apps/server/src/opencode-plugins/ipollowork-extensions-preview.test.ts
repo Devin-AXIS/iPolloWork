@@ -7,6 +7,7 @@ import { iPolloWorkExtensionsPreview } from "./ipollowork-extensions-preview.js"
 const originalServerUrl = process.env.IPOLLOWORK_SERVER_URL;
 const originalServerToken = process.env.IPOLLOWORK_SERVER_TOKEN;
 const originalUiControlTools = process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
+const originalUiControlDiscovery = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
 const stops: Array<() => void> = [];
 
 const searchResultSchema = z.object({
@@ -40,6 +41,8 @@ afterEach(() => {
   else process.env.IPOLLOWORK_SERVER_TOKEN = originalServerToken;
   if (originalUiControlTools === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
   else process.env.IPOLLOWORK_UI_CONTROL_TOOLS = originalUiControlTools;
+  if (originalUiControlDiscovery === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = originalUiControlDiscovery;
 });
 
 async function transformedSystem(plugin: Awaited<ReturnType<typeof iPolloWorkExtensionsPreview>>): Promise<string> {
@@ -49,7 +52,7 @@ async function transformedSystem(plugin: Awaited<ReturnType<typeof iPolloWorkExt
 }
 
 function startFakeiPolloWorkServer() {
-  const requests: Array<{ pathname: string; search: string; authorization: string | null }> = [];
+  const requests: Array<{ pathname: string; search: string; authorization: string | null; body?: unknown }> = [];
 
   const workspaceOne = { id: "ws_1", name: "Main", path: "/tmp/main" };
   const workspaceTwo = { id: "ws_2", name: "Archive", displayName: "Archive", path: "/tmp/archive" };
@@ -60,16 +63,22 @@ function startFakeiPolloWorkServer() {
   const server = Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
-    fetch(request) {
+    async fetch(request) {
       const url = new URL(request.url);
+      const body = request.method === "POST" ? await request.json() : undefined;
       requests.push({
         pathname: url.pathname,
         search: url.search,
         authorization: request.headers.get("authorization"),
+        body,
       });
 
       if (request.headers.get("authorization") !== "Bearer test-token") {
         return Response.json({ message: "Unauthorized" }, { status: 401 });
+      }
+
+      if (url.pathname === "/engine-tools/call") {
+        return Response.json({ ok: true, received: body });
       }
 
       if (url.pathname === "/workspaces") {
@@ -219,14 +228,34 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).not.toContain("ipollowork_ui_execute_action");
     expect(tools).toContain("ipollowork_session_search");
     expect(tools).toContain("ipollowork_extension_list_actions");
+    expect(tools).toContain("ipollowork_project_read");
+    expect(tools).toContain("ipollowork_project_apply");
+    expect(tools).toContain("ipollowork_schedule_preview");
+    expect(tools).toContain("ipollowork_schedule_apply");
+    expect(tools).toContain("ipollowork_workspace_app_list_tools");
+    expect(tools).toContain("ipollowork_workspace_app_call_tool");
+    expect(tools).toContain("ipollowork_browser_open_url");
+    expect(tools).toContain("ipollowork_browser_snapshot");
+    expect(tools).toContain("ipollowork_browser_act");
+    expect(tools).toContain("ipollowork_browser_set_proxy");
     expect(tools).toContain("list_motion_presets");
     expect(tools).toContain("mutate_motion");
 
     const system = await transformedSystem(plugin);
     expect(system).not.toContain("ipollowork_ui_");
     expect(system).toContain("ipollowork_session_search");
+    expect(system).toContain("Never use these cross-session tools to recover the current task");
+    expect(plugin.tool.ipollowork_session_search.description).toContain("Never use it to recover or infer the current interrupted task");
+    expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("treat that request as agreement to schedule");
+    expect(system).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(system).toContain("call this tool immediately");
+    expect(system).toContain("even when the plan does not yet include concrete dates or times");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
+    expect(system).toContain("stale refs");
+    expect(system).not.toContain("browser_url plus target_id");
   });
 
   test("registers UI-control tools and steering when opted in", async () => {
@@ -241,6 +270,34 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     const system = await transformedSystem(plugin);
     expect(system).toContain("ipollowork_ui_execute_action");
   });
+
+  test("accepts every semantic browser action exposed by the shared host descriptor", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    const actions = [
+      { type: "hover", ref: "r1", expectedName: "Menu" },
+      { type: "select", ref: "r2", expectedName: "Channel", option: "Video" },
+      { type: "check", ref: "r3", expectedName: "Original", checked: true },
+      { type: "scroll", direction: "down", amount: "page" },
+      { type: "press", key: "Enter", ref: "r4", expectedName: "Continue" },
+      { type: "waitFor", condition: "url", value: "/published", match: "contains" },
+      { type: "waitFor", condition: "text", value: "Published" },
+      { type: "waitFor", condition: "load", state: "complete" },
+    ];
+
+    const output = await plugin.tool.ipollowork_browser_act.execute({
+      tabId: "tab-1",
+      snapshotId: "snapshot-1",
+      actions,
+    }, { directory: "/tmp/main" });
+
+    expect(JSON.parse(output)).toMatchObject({ ok: true });
+    expect(fake.requests.find((request) => request.pathname === "/engine-tools/call")?.body).toMatchObject({
+      name: "ipollowork_browser_act",
+      args: { actions },
+    });
+  });
+
 });
 
 describe("iPolloWorkExtensionsPreview semantic motion tools", () => {

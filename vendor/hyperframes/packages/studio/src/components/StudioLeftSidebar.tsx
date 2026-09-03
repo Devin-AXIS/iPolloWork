@@ -8,12 +8,10 @@ import { useStudioShellContext } from "../contexts/StudioContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { getPersistedRenderSettings } from "./renders/renderSettings";
 import { useStudioI18n } from "../i18n";
-import type { EffectInsertIntent } from "../utils/blockInstaller";
 
 export interface StudioLeftSidebarProps {
   leftSidebarRef: RefObject<LeftSidebarHandle | null>;
   onSelectComposition: (comp: string) => void;
-  onAddBlock: (blockName: string, intent?: EffectInsertIntent) => void;
   onLint: () => void;
   linting: boolean;
   lintFindingCount?: number;
@@ -25,7 +23,6 @@ export interface StudioLeftSidebarProps {
 export function StudioLeftSidebar({
   leftSidebarRef,
   onSelectComposition,
-  onAddBlock,
   onLint,
   linting,
   lintFindingCount,
@@ -147,7 +144,6 @@ export function StudioLeftSidebar({
         lintFindingCount={lintFindingCount}
         lintFindingsByFile={lintFindingsByFile}
         onToggleCollapse={toggleLeftSidebar}
-        onAddBlock={onAddBlock}
         onAddAssetToTimeline={onAddAssetToTimeline}
       />
       {/* Vertical resize divider: 3px visible seam, 8px pointer-capture zone via

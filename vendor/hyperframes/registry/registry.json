@@ -40,6 +40,38 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "animated-bar-chart",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "bar-chart-race",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "conic-progress-ring",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "decline-chart",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "logo-wall",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "number-wheel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "oscilloscope-trace",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "star-rating-fill",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "us-map",
       "type": "hyperframes:block"
     },
@@ -57,6 +89,62 @@
     },
     {
       "name": "world-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "route-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "chart-story",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "brand-headline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "feature-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "metric-signal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "architecture-hub",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "decision-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "milestone-timeline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "before-after-contrast",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "learning-pyramid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "profile-quote",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "evidence-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "brand-cta",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "map-flow",
       "type": "hyperframes:block"
     },
     {
@@ -100,63 +188,7 @@
       "type": "hyperframes:component"
     },
     {
-      "name": "caption-neon-accent",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-weight-shift",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-emoji-pop",
-      "type": "hyperframes:component"
-    },
-    {
       "name": "caption-editorial-emphasis",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-parallax-layers",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-glitch-rgb",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-matrix-decode",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-particle-burst",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-texture",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-clip-wipe",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-kinetic-slam",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-gradient-fill",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-neon-glow",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-highlight",
-      "type": "hyperframes:component"
-    },
-    {
-      "name": "caption-blend-difference",
       "type": "hyperframes:component"
     },
     {
@@ -733,42 +765,6 @@
     },
     {
       "name": "caption-editorial-snap",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-opening-focus-title",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-opening-orbit-lockup",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-ending-douyin-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-ending-bilibili-triple",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-ending-instagram-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-ending-x-follow",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-transition-ribbon-wipe",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-transition-iris-pulse",
-      "type": "hyperframes:block"
-    },
-    {
-      "name": "effect-transition-mosaic-flip",
       "type": "hyperframes:block"
     }
   ]

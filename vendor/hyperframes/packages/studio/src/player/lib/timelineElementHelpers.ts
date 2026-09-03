@@ -400,7 +400,13 @@ export function findTimelineDomNodeForClip(
   usedNodes = new Set<Element>(),
 ): Element | null {
   const byIdentity = clip.id ? findTimelineDomNode(doc, clip.id) : null;
-  if (byIdentity && !usedNodes.has(byIdentity)) return byIdentity;
+  // A loaded sub-composition can contain an inner root with the same authored
+  // id as its outer timed host. Identity alone may therefore select the inner
+  // root and make timeline edits persist into the child file instead of the
+  // host clip. Require the manifest timing/tag contract before claiming it.
+  if (byIdentity && !usedNodes.has(byIdentity) && nodeMatchesManifestClip(byIdentity, clip)) {
+    return byIdentity;
+  }
 
   const candidates = getTimelineDomNodes(doc).filter((node) => !usedNodes.has(node));
   const exact = candidates.find((node) => nodeMatchesManifestClip(node, clip));

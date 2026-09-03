@@ -1,13 +1,8 @@
-// Pending permissions, questions, and todos for the selected session:
-// query-cache subscriptions, snapshot seeding, and reply handlers.
-// Extracted verbatim from session-route.tsx (cluster had no readers of its
-// internals besides the JSX).
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { unwrap } from "@/app/lib/opencode";
-import type { Client, PendingPermission, PendingQuestion, TodoItem } from "@/app/types";
+import type { TodoItem } from "@/app/types";
 import { t } from "@/i18n";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useQueryCacheState } from "@/react-app/infra/query-cache-state";
@@ -19,13 +14,35 @@ import {
   seedQuestionState,
   todoKey,
 } from "./session-sync";
+import type {
+  ConversationEngineConnection,
+  ConversationPermission,
+  ConversationQuestion,
+} from "../engine/conversation-engine";
 
-const emptyPendingPermissions: PendingPermission[] = [];
-const emptyPendingQuestions: PendingQuestion[] = [];
+const emptyPermissions: ConversationPermission[] = [];
+const emptyQuestions: ConversationQuestion[] = [];
 const emptyTodos: TodoItem[] = [];
 
+function nonEmptyStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== "string") return [];
+    const pattern = entry.trim();
+    return pattern ? [pattern] : [];
+  });
+}
+
+export function persistentPermissionPatterns(permission: ConversationPermission): string[] {
+  const savedPatterns = nonEmptyStringList(permission.remember);
+  const patterns = savedPatterns.length > 0
+    ? savedPatterns
+    : nonEmptyStringList(permission.resources);
+  return [...new Set(patterns)];
+}
+
 export type UseSessionInteractionsInput = {
-  client: Client | null;
+  connection: ConversationEngineConnection | null;
   workspaceId: string;
   sessionId: string | null;
   workspaceRoot: string;
@@ -35,7 +52,7 @@ export type UseSessionInteractionsInput = {
 
 export function useSessionInteractions(input: UseSessionInteractionsInput) {
   const {
-    client,
+    connection,
     workspaceId,
     sessionId,
     workspaceRoot,
@@ -52,17 +69,17 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
     () => (workspaceId && sessionId ? permissionKey(workspaceId, sessionId) : null),
     [sessionId, workspaceId],
   );
-  const pendingPermissions = useQueryCacheState<PendingPermission[]>(
+  const pendingPermissions = useQueryCacheState<ConversationPermission[]>(
     permissionQueryKey,
-    emptyPendingPermissions,
+    emptyPermissions,
   );
   const questionQueryKey = useMemo(
     () => (workspaceId && sessionId ? questionKey(workspaceId, sessionId) : null),
     [sessionId, workspaceId],
   );
-  const pendingQuestions = useQueryCacheState<PendingQuestion[]>(
+  const pendingQuestions = useQueryCacheState<ConversationQuestion[]>(
     questionQueryKey,
-    emptyPendingQuestions,
+    emptyQuestions,
   );
   const todoQueryKey = useMemo(
     () => (workspaceId && sessionId ? todoKey(workspaceId, sessionId) : null),
@@ -71,27 +88,13 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
   const todos = useQueryCacheState<TodoItem[]>(todoQueryKey, emptyTodos);
 
   useEffect(() => {
-    if (!client || !workspaceId || !sessionId) return;
+    if (!connection || !workspaceId || !sessionId) return;
     let cancelled = false;
     const directory = workspaceRoot || undefined;
     void (async () => {
       const snapshotStartedAt = Date.now();
       try {
-        const list: Parameters<typeof seedPermissionState>[2] = [];
-        let readSucceeded = false;
-        try {
-          list.push(...unwrap(await client.permission.list({ directory })));
-          readSucceeded = true;
-        } catch {
-          // Older/newer OpenCode permission APIs can fail independently.
-        }
-        try {
-          list.push(...unwrap(await client.v2.session.permission.list({ sessionID: sessionId })).data);
-          readSucceeded = true;
-        } catch {
-          // Keep the legacy snapshot if the v2 endpoint is unavailable.
-        }
-        if (!readSucceeded) return;
+        const list = await connection.listPermissions({ sessionId, directory });
         if (!cancelled) {
           seedPermissionState(workspaceId, sessionId, list, { snapshotStartedAt });
         }
@@ -103,16 +106,16 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
     return () => {
       cancelled = true;
     };
-  }, [client, sessionId, workspaceId, workspaceRoot]);
+  }, [connection, sessionId, workspaceId, workspaceRoot]);
 
   useEffect(() => {
-    if (!client || !workspaceId || !sessionId) return;
+    if (!connection || !workspaceId || !sessionId) return;
     let cancelled = false;
     const directory = workspaceRoot || undefined;
     void (async () => {
       const snapshotStartedAt = Date.now();
       try {
-        const list = unwrap(await client.question.list({ directory }));
+        const list = await connection.listQuestions({ sessionId, directory });
         if (!cancelled) {
           seedQuestionState(workspaceId, sessionId, list, { snapshotStartedAt });
         }
@@ -124,52 +127,52 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
     return () => {
       cancelled = true;
     };
-  }, [client, sessionId, workspaceId, workspaceRoot]);
+  }, [connection, sessionId, workspaceId, workspaceRoot]);
 
   const activePermission = pendingPermissions[0] ?? null;
   const respondPermission = useCallback(
     async (requestID: string, reply: "once" | "always" | "reject") => {
-      if (!client || !workspaceId || !sessionId) return;
+      if (!connection || !workspaceId || !sessionId) return;
       if (permissionReplyBusyRef.current) return;
       permissionReplyBusyRef.current = true;
       setPermissionReplyBusy(true);
       try {
         const pendingPermission = pendingPermissions.find((permission) => permission.id === requestID);
-        if (
-          reply === "always" &&
-          pendingPermission?.permission === "external_directory" &&
-          ipolloworkServerClient &&
-          runtimeWorkspaceId
-        ) {
-          const requestedFolders = pendingPermission.patterns.filter((pattern) => pattern.trim().length > 0);
-          if (requestedFolders.length > 0) {
-            const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
-            await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, [
-              ...current.folders,
-              ...requestedFolders,
-            ]);
-          }
-        }
-        if (pendingPermission?.protocol === "v2") {
-          const result = await client.v2.session.permission.reply({
-            sessionID: pendingPermission.sessionID,
-            requestID,
-            reply,
-          });
-          if (result.error !== undefined) unwrap(result);
-        } else {
-          unwrap(
-            await client.permission.reply({
-              requestID,
-              reply,
-              directory: workspaceRoot || undefined,
-            }),
-          );
-        }
-        getReactQueryClient().setQueryData<PendingPermission[]>(
+        if (!pendingPermission) return;
+        await connection.replyPermission({
+          permission: pendingPermission,
+          reply,
+          directory: workspaceRoot || undefined,
+        });
+        getReactQueryClient().setQueryData<ConversationPermission[]>(
           permissionKey(workspaceId, sessionId),
           (current = []) => current.filter((permission) => permission.id !== requestID),
         );
+
+        // The current task must not remain blocked if persisting the future
+        // directory rule fails. Reply first, then save the broader "always"
+        // scope as a best-effort cross-session authorization.
+        if (
+          reply === "always" &&
+          pendingPermission.kind === "external_directory" &&
+          ipolloworkServerClient &&
+          runtimeWorkspaceId
+        ) {
+          const requestedFolders = persistentPermissionPatterns(pendingPermission);
+          if (requestedFolders.length > 0) {
+            try {
+              const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
+              const nextFolders = [...new Set([...current.folders, ...requestedFolders])];
+              if (nextFolders.length !== current.folders.length) {
+                await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, nextFolders);
+              }
+            } catch (error) {
+              toast.error(t("app.error_request_failed"), {
+                description: describeRouteError(error),
+              });
+            }
+          }
+        }
       } catch (error) {
         toast.error(t("app.error_request_failed"), {
           description: describeRouteError(error),
@@ -180,7 +183,7 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
       }
     },
     [
-      client,
+      connection,
       ipolloworkServerClient,
       pendingPermissions,
       runtimeWorkspaceId,
@@ -193,19 +196,19 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
   const activeQuestion = pendingQuestions[0] ?? null;
   const respondQuestion = useCallback(
     async (requestID: string, answers: string[][]) => {
-      if (!client || !workspaceId || !sessionId) return;
+      if (!connection || !workspaceId || !sessionId) return;
       if (questionReplyBusyRef.current) return;
       questionReplyBusyRef.current = true;
       setQuestionReplyBusy(true);
       try {
-        unwrap(
-          await client.question.reply({
-            requestID,
-            answers,
-            directory: workspaceRoot || undefined,
-          }),
-        );
-        getReactQueryClient().setQueryData<PendingQuestion[]>(
+        const pendingQuestion = pendingQuestions.find((question) => question.id === requestID);
+        if (!pendingQuestion) return;
+        await connection.replyQuestion({
+          question: pendingQuestion,
+          answers,
+          directory: workspaceRoot || undefined,
+        });
+        getReactQueryClient().setQueryData<ConversationQuestion[]>(
           questionKey(workspaceId, sessionId),
           (current = []) => current.filter((question) => question.id !== requestID),
         );
@@ -218,7 +221,7 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
         setQuestionReplyBusy(false);
       }
     },
-    [client, sessionId, workspaceId, workspaceRoot],
+    [connection, pendingQuestions, sessionId, workspaceId, workspaceRoot],
   );
 
   return {

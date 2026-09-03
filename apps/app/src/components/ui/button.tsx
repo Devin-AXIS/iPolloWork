@@ -1,10 +1,11 @@
 import { Button as ButtonPrimitive } from "@base-ui/react/button"
 import { cva, type VariantProps } from "class-variance-authority"
+import { createContext, useContext, type ReactNode } from "react"
 
 import { cn } from "@/lib/utils"
 
 const buttonVariants = cva(
-  "group/button inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative",
+  "group/button inline-flex shrink-0 items-center justify-center rounded-4xl border border-transparent bg-clip-padding text-ui-control font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 relative",
   {
     variants: {
       variant: {
@@ -22,7 +23,7 @@ const buttonVariants = cva(
       size: {
         default:
           "h-9 gap-1.5 px-3 has-data-[icon=inline-end]:pe-2.5 has-data-[icon=inline-start]:ps-2.5 rounded-xl",
-        xs: "h-6 gap-1 px-2.5 text-xs has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3",
+        xs: "h-6 gap-1 px-2.5 text-ui-caption has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3",
         sm: "h-8 gap-1 px-3 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 rounded-xl",
         lg: "h-10 gap-1.5 px-6 has-data-[icon=inline-end]:pe-4 has-data-[icon=inline-start]:ps-3 rounded-full",
         icon: "size-9",
@@ -38,19 +39,71 @@ const buttonVariants = cva(
   }
 )
 
+const settingsCompactButtonSize = "h-7 px-2 has-data-[icon=inline-end]:pe-2 has-data-[icon=inline-start]:ps-2 [&_svg:not([class*='size-'])]:size-3.5"
+const settingsCompactIconButtonSize = "size-7 [&_svg:not([class*='size-'])]:size-3.5"
+
+const settingsButtonVariants = cva(
+  "gap-[6px] rounded-[8px] text-[13px] font-medium before:rounded-[7px] active:not-aria-[haspopup]:translate-y-0",
+  {
+    variants: {
+      variant: {
+        default: "",
+        outline:
+          "bg-transparent shadow-none before:shadow-none hover:bg-foreground/[0.06] active:bg-foreground/[0.12] aria-expanded:bg-foreground/[0.08] aria-pressed:bg-foreground/[0.08] aria-selected:bg-foreground/[0.08] data-[state=on]:bg-foreground/[0.08] data-[state=open]:bg-foreground/[0.08] dark:bg-transparent dark:before:shadow-none dark:hover:bg-foreground/[0.06] dark:active:bg-foreground/[0.12]",
+        secondary:
+          "bg-foreground/[0.08] hover:bg-foreground/[0.10] active:bg-foreground/[0.12]",
+        ghost:
+          "bg-transparent hover:bg-foreground/[0.06] active:bg-foreground/[0.12] aria-expanded:bg-foreground/[0.08] aria-pressed:bg-foreground/[0.08] aria-selected:bg-foreground/[0.08] data-[state=on]:bg-foreground/[0.08] data-[state=open]:bg-foreground/[0.08]",
+        destructive: "",
+        link: "",
+      },
+      size: {
+        default: settingsCompactButtonSize,
+        xs: settingsCompactButtonSize,
+        sm: settingsCompactButtonSize,
+        lg: settingsCompactButtonSize,
+        icon: settingsCompactIconButtonSize,
+        "icon-xs": settingsCompactIconButtonSize,
+        "icon-sm": settingsCompactIconButtonSize,
+        "icon-lg": settingsCompactIconButtonSize,
+      },
+    },
+  },
+)
+
+type ButtonStyleScope = "default" | "settings"
+
+const ButtonStyleScopeContext = createContext<ButtonStyleScope>("default")
+
+function ButtonStyleScopeProvider({
+  value,
+  children,
+}: {
+  value: ButtonStyleScope
+  children: ReactNode
+}) {
+  return <ButtonStyleScopeContext.Provider value={value}>{children}</ButtonStyleScopeContext.Provider>
+}
+
 function Button({
   className,
   variant = "default",
   size = "default",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  const styleScope = useContext(ButtonStyleScopeContext)
+
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        buttonVariants({ variant, size }),
+        styleScope === "settings" ? settingsButtonVariants({ variant, size }) : null,
+        className,
+      )}
       {...props}
     />
   )
 }
 
-export { Button, buttonVariants }
+export { Button, ButtonStyleScopeProvider, buttonVariants }

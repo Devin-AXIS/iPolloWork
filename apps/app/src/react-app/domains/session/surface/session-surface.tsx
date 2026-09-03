@@ -2,44 +2,58 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useQuery } from "@tanstack/react-query";
-import type { SessionStatus } from "@opencode-ai/sdk/v2/client";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 import { Check, Minimize2, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { abortSessionSafe } from "@/app/lib/opencode-session";
+import { isDelegatableExternalAgent, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
 import { t } from "@/i18n";
-import { readWorkspaceCloudImports, type CloudImportedPlugin } from "@/app/cloud/import-state";
 import type {
   HyperframesAnimationSelection,
   HyperframesCatalogItem,
   HyperframesEffectVariableValues,
+  iPolloWorkPluginPackageItem,
   iPolloWorkServerClient,
-  iPolloWorkSessionSnapshot,
 } from "@/app/lib/ipollowork-server";
 import {
   hyperframesAnimationDisplayMetadata,
   hyperframesSelectionPayload,
 } from "@/app/lib/hyperframes-effect-params";
 import type {
+  ArtifactCompletionTarget,
   ComposerAttachment,
   ComposerDraft,
   McpServerEntry,
   McpStatusMap,
   ModelRef,
-  PendingPermission,
-  PendingQuestion,
+  PromptDispatchOptions,
+  PromptDispatchOutcome,
   SkillCard,
   TodoItem,
 } from "@/app/types";
+import {
+  artifactCompletionRecoveryInstruction,
+  checkArtifactCompletion,
+  promptArtifactCompletionTargets,
+  promptWasDispatched,
+} from "../artifacts/artifact-completion";
+import type {
+  ConversationAgent,
+  ConversationEngineConnection,
+  ConversationMode,
+  ConversationPermission,
+  ConversationQuestion,
+  ConversationSnapshot,
+  ConversationStatus,
+} from "../engine/conversation-engine";
+import { conversationMessageContextUsage } from "../engine/conversation-engine";
 import {
   publishInspectorSlice,
   recordInspectorEvent,
 } from "@/app/lib/app-inspector";
 import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
-import { attemptSilentMcpReauth } from "@/react-app/domains/connections/mcp-silent-reauth";
 import { ReactSessionComposer } from "./composer/composer";
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
@@ -56,17 +70,27 @@ import {
   type VideoVoiceAiReference,
 } from "../video/video-voice";
 import {
-  parseVideoIllustrationReference,
-  videoIllustrationReferenceInstruction,
-  type VideoIllustrationAiReference,
-} from "../video/video-illustration";
+  hasVideoDeliveryRequirements,
+  unchangedVideoArtifactIssue,
+  videoDeliveryRequirementsForPrompt,
+  videoProjectEntryPath,
+  type VideoArtifactCompletionRequirement,
+  type VideoDeliveryRequirements,
+} from "../video/video-project";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
 import { SessionDebugPanel } from "./debug-panel";
-import { deriveRenderedSessionMessages, resolveRenderedSessionSnapshot } from "./session-render-state";
+import {
+  deriveComposerInputHistory,
+  deriveRenderedSessionMessages,
+  resolveRenderedSessionSnapshot,
+} from "./session-render-state";
 import { useLocal } from "@/react-app/kernel/local-provider";
-import { isModelReadableAttachment } from "@/react-app/domains/session/sync/attachment-support";
+import {
+  attachmentRequiresNativeModelSupport,
+  isModelReadableAttachment,
+} from "@/react-app/domains/session/sync/attachment-support";
 import { deriveSessionRenderModel } from "@/react-app/domains/session/sync/transition-controller";
 import { useSessionScrollController } from "./scroll-controller";
 import { SessionScrollOverlay } from "./scroll-overlay";
@@ -76,30 +100,41 @@ import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionAct
 import { PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
-import { deriveOpenTargets, selectAutoOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
+import { deriveOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-store";
 import {
+  beginOptimisticSessionPrompt,
+  publishSessionErrorForEvaluation,
+  rollbackOptimisticSessionPrompt,
+  sanitizeInterruptedSessionSnapshot,
   seedSessionState,
+  settleInterruptedSessionRun,
   snapshotKey as reactSnapshotKey,
   statusKey as reactStatusKey,
   transcriptKey as reactTranscriptKey,
 } from "@/react-app/domains/session/sync/session-sync";
-import { resolveForkBoundaryId } from "@/react-app/domains/session/sync/transcript-reconcile";
 import {
   getComposerAttachments,
   getComposerDraft,
-  getComposerHistory,
   getComposerMentions,
   getComposerPasteParts,
   getComposerQueuedDrafts,
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList } from "@/components/chat/message-list";
-import type { ArtifactInteractionContext } from "@/lib/artifacts";
+import {
+  assignArtifactRequestOwnership,
+  artifactDirectoryPath,
+  artifactPathIsWithinDirectory,
+  artifactPathMatchesTarget,
+  type ArtifactInteractionContext,
+  type ArtifactRequestOwnership,
+} from "@/lib/artifacts";
 import { NewConversationStarter, newConversationPlaceholder, type NewConversationMode, type StarterCapability } from "@/components/chat/new-conversation-starter";
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
+import { collectToolParts, getActiveToolLabel } from "@/lib/tool-activity";
 
 import {
   EnvironmentVariableProvider,
@@ -107,9 +142,10 @@ import {
 } from "@/react-app/domains/settings/pages/environment-variable-provider";
 
 const EMPTY_TRANSCRIPT: UIMessage[] = [];
-const IDLE_STATUS: SessionStatus = { type: "idle" };
+const IDLE_STATUS: ConversationStatus = { type: "idle" };
 const DEFAULT_COMPOSER_CONTROL_TEXT = "Help me outline the next iPolloWork task.";
 const SESSION_SURFACE_SELECTOR = "[data-session-surface-id]";
+const STALLED_SESSION_WARNING_MS = 90_000;
 const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
   "thinking",
   "responding",
@@ -119,19 +155,57 @@ const ACTIVE_SESSION_ACTIVITY_STATUSES = new Set<SessionActivityStatus>([
 
 type SessionError = {
   message: string;
-  kind?: "model-not-found" | "generic";
+  kind?: "model-not-found" | "generic" | "stalled";
   /** For model-not-found: the model that failed. */
   failedModel?: { providerID: string; modelID: string };
   /** For model-not-found: suggested replacements from the backend. */
   suggestions?: Array<{ providerID: string; modelID: string }>;
 };
 
+type PendingVideoDeliveryValidation = {
+  sourcePath: string;
+  requirements: VideoDeliveryRequirements;
+  baselineFingerprint: string | null;
+  requestOrdinal: number;
+  mustChange: boolean;
+  recoveryAttempted: boolean;
+};
+
+type PendingArtifactCompletionValidation = {
+  targets: ArtifactCompletionTarget[];
+  assistantMessageBaseline: number;
+  requestOrdinal: number;
+  recoveryAttempted: boolean;
+};
+
+type VideoDeliveryValidationOutput = {
+  valid: boolean;
+  issues: Array<{ code?: string; message?: string }>;
+};
+
+function videoDeliveryValidationOutput(response: unknown): VideoDeliveryValidationOutput | null {
+  if (!response || typeof response !== "object") return null;
+  const result = "result" in response && response.result && typeof response.result === "object"
+    ? response.result
+    : null;
+  const output = result && "output" in result && result.output && typeof result.output === "object"
+    ? result.output
+    : null;
+  if (!output || !("valid" in output) || typeof output.valid !== "boolean") return null;
+  const issues = "issues" in output && Array.isArray(output.issues)
+    ? output.issues.filter((issue): issue is { code?: string; message?: string } => Boolean(issue && typeof issue === "object"))
+    : [];
+  return { valid: output.valid, issues };
+}
+
 export type SessionSurfaceProps = {
   client: iPolloWorkServerClient;
+  conversation: ConversationEngineConnection;
   environmentClient?: iPolloWorkServerClient | null;
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string;
+  engineId?: string;
   sessionTitle?: string;
   opencodeBaseUrl: string;
   ipolloworkToken: string;
@@ -141,20 +215,26 @@ export type SessionSurfaceProps = {
   modelPickerOpen: boolean;
   modelUnavailable?: boolean;
   selectedModel: ModelRef;
+  modelContextWindow?: number | null;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onSendDraft: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
+  onSendDraft: (
+    draft: ComposerDraft,
+    sessionId: string,
+    options?: PromptDispatchOptions,
+  ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
   onDraftChange: (draft: ComposerDraft) => void;
-  attachmentsEnabled: boolean;
-  attachmentsDisabledReason: string | null;
+  supportsNativeAttachments: boolean;
   modelVariantLabel: string;
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
   onConfigureTokenStar?: () => void;
-  agentLabel: string;
-  selectedAgent: string | null;
-  listAgents: () => Promise<import("@opencode-ai/sdk/v2/client").Agent[]>;
+  selectedMode: string | null;
+  onModeSelectionLockedChange?: (locked: boolean) => void;
+  listModes: () => Promise<ConversationMode[]>;
+  onSelectMode: (mode: string | null) => void;
+  listAgents: () => Promise<ConversationAgent[]>;
   onSelectAgent: (agent: string | null) => void;
   listCommands: () => Promise<import("@/app/types").SlashCommandOption[]>;
   recentFiles: string[];
@@ -162,15 +242,18 @@ export type SessionSurfaceProps = {
   isRemoteWorkspace: boolean;
   isSandboxWorkspace: boolean;
   todos?: TodoItem[];
-  activePermission?: PendingPermission | null;
+  activePermission?: ConversationPermission | null;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
-  activeQuestion?: PendingQuestion | null;
+  activeQuestion?: ConversationQuestion | null;
   questionReplyBusy?: boolean;
   respondQuestion?: (requestID: string, answers: string[][]) => void;
   safeStringify?: (value: unknown) => string;
+  assistantWaitLabel?: string;
+  pendingProgrammaticDraft?: { id: string; draft: ComposerDraft } | null;
+  onPendingProgrammaticDraftSettled?: (id: string, dispatched: boolean) => void;
   onChangeModel?: (model: { providerID: string; modelID: string }) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
@@ -178,7 +261,12 @@ export type SessionSurfaceProps = {
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
   /** Opens the session-owned Video Studio for a generated video artifact. */
-  onOpenVideoStudio?: () => void;
+  onOpenVideoStudio?: (displayName?: string) => void;
+  /** Opens iPolloWork Schedule focused on an imported task. */
+  onOpenSchedule?: (focusAt: number) => void;
+  /** Opens the installed plugin's Workspace App when selected from the extension menu. */
+  onOpenWorkspaceApp?: (pluginId: string) => void;
+  onOpenTemplateMarket?: () => void;
   designTemplates?: TemplateCatalogItem[];
   designTemplatesLoading?: boolean;
   designTemplateBusyId?: string | null;
@@ -186,13 +274,15 @@ export type SessionSurfaceProps = {
   onRequestDesignTemplates?: () => void;
   onOpenSettingsSection?: ((section: "commands" | "skills" | "mcps" | "plugins" | "providers") => void) | undefined;
   onRevertToMessage?: (messageId: string, sessionId: string) => Promise<boolean>;
-  onForkAtMessage?: (messageId: string | null, sessionId: string) => void;
+  onForkAtMessage?: (messageId: string, sessionId: string, messages: UIMessage[]) => void;
   onOpenTarget?: (target: OpenTarget, options?: OpenTargetOptions, sessionId?: string) => void;
   onConversationMessagesChange?: (sessionId: string, messages: UIMessage[]) => void;
   onLoadSettled?: (sessionId: string) => void;
   templateEntryPath?: string;
   artifactFiles?: readonly string[];
   artifactContext?: ArtifactInteractionContext;
+  artifactCompletionRequirement?: VideoArtifactCompletionRequirement;
+  onArtifactCompletionRequirementConsumed?: () => void;
   environmentRuntimeKey?: string | null;
   onApplyEnvironmentChanges?: () => Promise<ApplyEnvironmentChangesResult>;
 };
@@ -247,7 +337,7 @@ function resolveFindOwnerSessionId() {
   return firstMountedSessionSurfaceId();
 }
 
-function statusLabel(snapshot: iPolloWorkSessionSnapshot | undefined, busy: boolean) {
+function statusLabel(snapshot: ConversationSnapshot | undefined, busy: boolean) {
   if (busy) return t("session.status_running");
   if (snapshot?.status.type === "busy") return t("session.status_running");
   if (snapshot?.status.type === "retry") return t("session.status_retrying", { message: snapshot.status.message });
@@ -296,6 +386,23 @@ function AssistantWaitingCard({ label = t("session.assistant_thinking") }: { lab
       </div>
     </div>
   );
+}
+
+function sessionProgressFingerprint(messages: UIMessage[]) {
+  const message = messages.at(-1);
+  if (!message) return "empty";
+  return `${message.id}:${message.parts.map((part) => {
+    if (part.type === "text" || part.type === "reasoning") return `${part.type}:${part.text.length}`;
+    if (part.type === "dynamic-tool") return `${part.type}:${part.toolName}:${part.state}`;
+    return part.type;
+  }).join("|")}`;
+}
+
+function latestAssistantMessageCompleted(messages: UIMessage[]) {
+  const latest = messages.findLast((message) => message.role === "assistant");
+  if (!latest) return false;
+  const metadata = latest.metadata as { ipollowork?: { completed?: unknown } } | undefined;
+  return typeof metadata?.ipollowork?.completed === "number";
 }
 
 function TodoPanel(props: { todos: TodoItem[] }) {
@@ -441,19 +548,26 @@ function revokeAttachmentPreview(attachment: { previewUrl?: string | undefined }
   URL.revokeObjectURL(attachment.previewUrl);
 }
 
-function StarterCapabilityChip({ capability, onClear }: { capability: StarterCapability; onClear: () => void }) {
+export function StarterCapabilityChip({ capability, onClear }: { capability: StarterCapability; onClear: () => void }) {
   const CapabilityIcon = capability.icon;
+  const isWebsiteCapability = capability.id === "site";
   return (
-    <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border border-dls-border bg-dls-hover/70 px-2.5 text-[11px] text-dls-text shadow-sm">
-      <CapabilityIcon className="size-3.5 shrink-0 text-dls-secondary" aria-hidden />
-      <span className="max-w-[13rem] truncate font-medium">{capability.label}</span>
+    <div className="new-conversation-capability-chip inline-flex h-7 max-w-full items-center gap-1.5 rounded-[18px] border border-[#E0DDC3] bg-[#F4F4EE] px-2 py-1 text-[11px] font-normal leading-4 text-[#161E24] dark:border-[#666] dark:bg-[#343434] dark:text-[#f5f5f5]">
+      {isWebsiteCapability ? (
+        <span className="relative size-3.5 shrink-0">
+          <img src={publicAssetUrl("quick-task-globe-selected.svg")} alt="" aria-hidden className="absolute inset-[8.33%] size-[83.34%] dark:invert" />
+        </span>
+      ) : (
+        <CapabilityIcon className="size-3.5 shrink-0" aria-hidden />
+      )}
+      <span className="max-w-[13rem] truncate">{capability.label}</span>
       <button
         type="button"
-        className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-dls-secondary transition-colors hover:bg-dls-border hover:text-dls-text"
+        className="inline-flex size-3.5 shrink-0 items-center justify-center rounded-full transition-colors hover:bg-[#E0DDC3] dark:hover:bg-[#666]"
         aria-label={t("new_conversation.capability.clear")}
         onClick={onClear}
       >
-        <X className="size-3" aria-hidden />
+        <img src={publicAssetUrl("quick-task-close.svg")} alt="" aria-hidden className="size-3.5" />
       </button>
     </div>
   );
@@ -481,17 +595,6 @@ function VoiceChip({ reference, onClear }: { reference: VideoVoiceAiReference; o
     <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11" data-composer-token="voice-reference" title={reference.label}>
       <span className="max-w-[13rem] truncate">{reference.label}</span>
       <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={`Remove voice reference: ${reference.label}`} onClick={onClear}>
-        <X className="size-3" aria-hidden />
-      </button>
-    </div>
-  );
-}
-
-function IllustrationChip({ reference, onClear }: { reference: VideoIllustrationAiReference; onClear: () => void }) {
-  return (
-    <div className="inline-flex max-w-full items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11" data-composer-token="illustration-reference" title={reference.repository}>
-      <span className="max-w-[13rem] truncate">插画 · {reference.label}</span>
-      <button type="button" className="inline-flex size-4 shrink-0 items-center justify-center rounded-full text-violet-10 transition-colors hover:bg-violet-4 hover:text-violet-12 active:bg-violet-5" aria-label={`Remove illustration reference: ${reference.label}`} onClick={onClear}>
         <X className="size-3" aria-hidden />
       </button>
     </div>
@@ -554,8 +657,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const setComposerMentions = useComposerStateStore((state) => state.setMentions);
   const setComposerPasteParts = useComposerStateStore((state) => state.setPasteParts);
   const clearComposerSession = useComposerStateStore((state) => state.clearSession);
-  const inputHistory = useComposerStateStore((state) => getComposerHistory(state, props.sessionId));
-  const appendComposerHistory = useComposerStateStore((state) => state.appendHistory);
+  const restoreComposerSessionIfEmpty = useComposerStateStore((state) => state.restoreSessionIfEmpty);
   // Queued follow-up drafts live in the shared composer store keyed by session
   // id. That keeps a queued message in session A from being drained into
   // session B when the route swaps the same surface component to another
@@ -566,14 +668,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
+  const [stopAcknowledged, setStopAcknowledged] = useState(false);
+  const [artifactRequestOwnership, setArtifactRequestOwnership] = useState<ArtifactRequestOwnership[]>([]);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
-  const [rendered, setRendered] = useState<{ sessionId: string; snapshot: iPolloWorkSessionSnapshot } | null>(null);
+  const [rendered, setRendered] = useState<{ sessionId: string; snapshot: ConversationSnapshot } | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
   const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
-  const [toolImportedPlugins, setToolImportedPlugins] = useState<CloudImportedPlugin[]>([]);
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
@@ -583,8 +686,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [animationCatalogRevision, setAnimationCatalogRevision] = useState(0);
   const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
   const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
-  const [selectedIllustrationReference, setSelectedIllustrationReference] = useState<VideoIllustrationAiReference | null>(null);
   const runActivityObservedRef = useRef(false);
+  const stalledAtProgressRef = useRef<string | null>(null);
+  const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
+  const videoDeliveryValidationInFlightRef = useRef(false);
+  const pendingArtifactCompletionRef = useRef<PendingArtifactCompletionValidation | null>(null);
+  const artifactCompletionValidationInFlightRef = useRef(false);
+  const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
+  const promptDispatchAbortRef = useRef<AbortController | null>(null);
+  const activeClientUserMessageIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -603,21 +713,26 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId]);
 
   useEffect(() => {
-    const addIllustrationReference = (event: Event) => {
-      const detail = (event as CustomEvent<{ sessionId?: unknown; reference?: unknown }>).detail;
-      if (detail?.sessionId !== props.sessionId) return;
-      const reference = parseVideoIllustrationReference(detail.reference);
-      if (!reference) return;
-      setSelectedIllustrationReference(reference);
-      const defaultPrompt = "请根据当前视频 HTML 中的内容，为我生成一张适合当前视频使用的插画。";
-      const current = getComposerDraft(useComposerStateStore.getState(), props.sessionId).trimEnd();
-      if (!current.includes(defaultPrompt)) setComposerDraft(props.sessionId, `${current}${current ? "\n" : ""}${defaultPrompt}`);
-      toast.success("AI 插画已添加到对话框");
-      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    const requirement = props.artifactCompletionRequirement;
+    if (!requirement) {
+      artifactCompletionRequirementKeyRef.current = null;
+      return;
+    }
+    const key = `${requirement.sourcePath}:${requirement.baselineFingerprint}:${requirement.assistantMessageBaseline}:${requirement.requestOrdinal}`;
+    if (artifactCompletionRequirementKeyRef.current === key) return;
+    artifactCompletionRequirementKeyRef.current = key;
+    pendingVideoDeliveryRef.current = {
+      sourcePath: requirement.sourcePath,
+      requirements: videoDeliveryRequirementsForPrompt({}),
+      baselineFingerprint: requirement.baselineFingerprint,
+      requestOrdinal: requirement.requestOrdinal,
+      mustChange: true,
+      recoveryAttempted: false,
     };
-    window.addEventListener("ipollowork:add-illustration-reference", addIllustrationReference);
-    return () => window.removeEventListener("ipollowork:add-illustration-reference", addIllustrationReference);
-  }, [props.sessionId, setComposerDraft]);
+    runActivityObservedRef.current = false;
+    setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
+    setSending(true);
+  }, [props.artifactCompletionRequirement]);
 
   useEffect(() => {
     const addVoiceReference = (event: Event) => {
@@ -638,8 +753,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId, setComposerDraft]);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
-  const autoOpenedTargetRef = useRef<string | null>(null);
-  const initializedAutoOpenSessionRef = useRef<string | null>(null);
   const opencodeClient = useMemo(
     () => createClient(props.opencodeBaseUrl, undefined, { token: props.ipolloworkToken, mode: "ipollowork" }),
     [props.opencodeBaseUrl, props.ipolloworkToken],
@@ -657,9 +770,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => reactStatusKey(props.workspaceId, props.sessionId),
     [props.workspaceId, props.sessionId],
   );
-  const snapshotQuery = useQuery<iPolloWorkSessionSnapshot>({
+  const snapshotQuery = useQuery<ConversationSnapshot>({
     queryKey: snapshotQueryKey,
-    queryFn: async () => (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
+    queryFn: async () => sanitizeInterruptedSessionSnapshot(
+      props.workspaceId,
+      props.conversation.mapSnapshot(
+        (await props.client.getSessionSnapshot(props.workspaceId, props.sessionId, { limit: 140 })).item,
+      ),
+    ),
     staleTime: 500,
   });
 
@@ -676,13 +794,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
     hydratedKeyRef.current = null;
     setError(null);
     setSending(false);
+    setStopAcknowledged(false);
+    activeClientUserMessageIdRef.current = null;
     runActivityObservedRef.current = false;
+    stalledAtProgressRef.current = null;
+    pendingVideoDeliveryRef.current = null;
+    videoDeliveryValidationInFlightRef.current = false;
+    pendingArtifactCompletionRef.current = null;
+    artifactCompletionValidationInFlightRef.current = false;
+    setArtifactRequestOwnership([]);
     setShowDelayedLoading(false);
     setAwaitingAssistantBaseline(null);
     // Composer draft state lives in the shared store keyed by session id, so
     // switching sessions preserves each session's own in-progress composer.
-    autoOpenedTargetRef.current = null;
-    initializedAutoOpenSessionRef.current = null;
     setVerifiedOpenTargets([]);
     setNewConversationMode("work");
     setStarterCapability(null);
@@ -771,28 +895,110 @@ export function SessionSurface(props: SessionSurfaceProps) {
     currentSnapshot,
     cachedRendered: rendered,
   });
+  const modeState = snapshot ? props.conversation.modeState?.(snapshot.session) : undefined;
+  const modeSelectionLocked = modeState?.mutable === false;
+  const selectedMode = modeSelectionLocked ? modeState.id ?? props.selectedMode : props.selectedMode;
+  const [optimisticAccessMode, setOptimisticAccessMode] = useState<string | null>(null);
+  useEffect(() => {
+    setOptimisticAccessMode(null);
+  }, [props.conversation, props.sessionId]);
+  const accessModeState = snapshot ? props.conversation.accessModeState?.(snapshot.session) : undefined;
+  const selectedAccessMode = optimisticAccessMode ?? accessModeState?.id ?? null;
+  const listAccessModes = useCallback(
+    () => props.conversation.listAccessModes?.({
+      sessionId: props.sessionId,
+      directory: props.workspaceRoot || undefined,
+    }) ?? Promise.resolve([]),
+    [props.conversation, props.sessionId, props.workspaceRoot],
+  );
+  const selectAccessMode = useCallback(async (accessMode: string) => {
+    if (!props.conversation.setAccessMode) return;
+    await props.conversation.setAccessMode({
+      sessionId: props.sessionId,
+      accessMode,
+      directory: props.workspaceRoot || undefined,
+    });
+    setOptimisticAccessMode(accessMode);
+  }, [props.conversation, props.sessionId, props.workspaceRoot]);
+  useEffect(() => {
+    props.onModeSelectionLockedChange?.(modeSelectionLocked);
+  }, [modeSelectionLocked, props.onModeSelectionLockedChange]);
+  useEffect(() => () => {
+    props.onModeSelectionLockedChange?.(false);
+  }, [props.onModeSelectionLockedChange]);
   const liveStatus = statusState ?? snapshot?.status ?? IDLE_STATUS;
   const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
-  const chatStreaming = sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive;
+  const chatStreaming = !stopAcknowledged
+    && (sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive);
   const status = useMemo((): ThreadStatus => {
-    if (sending) {
-      return "submitted";
+    if (stopAcknowledged) {
+      return "ready";
     }
 
-    if (liveStatus.type === "busy") {
-      return "streaming";
+    if (sending) {
+      return "submitted";
     }
 
     if (liveStatus.type === "retry") {
       return "retrying";
     }
 
+    if (liveStatus.type === "busy" || activityRunActive) {
+      return "streaming";
+    }
+
     return "ready";
-  }, [liveStatus, sending]);
+  }, [activityRunActive, liveStatus, sending, stopAcknowledged]);
   const renderedMessages = useMemo(
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const visibleUserRequestCount = useMemo(
+    () => renderedMessages.filter(
+      (message) => message.role === "user" && message.parts.length > 0,
+    ).length,
+    [renderedMessages],
+  );
+  const contextUsage = useMemo(() => (
+    [...renderedMessages]
+      .reverse()
+      .flatMap((message) => message.role === "assistant"
+        ? conversationMessageContextUsage(message) ?? []
+        : [])[0]
+    ?? snapshot?.contextUsage
+    ?? null
+  ), [renderedMessages, snapshot?.contextUsage]);
+  const inputHistory = useMemo(
+    () => deriveComposerInputHistory(renderedMessages),
+    [renderedMessages],
+  );
+  const progressFingerprint = useMemo(
+    () => sessionProgressFingerprint(renderedMessages),
+    [renderedMessages],
+  );
+  const latestAssistantCompleted = useMemo(
+    () => latestAssistantMessageCompleted(renderedMessages),
+    [renderedMessages],
+  );
+  const activeToolLabel = useMemo(
+    () => getActiveToolLabel(collectToolParts(renderedMessages)),
+    [renderedMessages],
+  );
+  useEffect(() => {
+    if (stalledAtProgressRef.current && stalledAtProgressRef.current !== progressFingerprint) {
+      stalledAtProgressRef.current = null;
+      setError((current) => current?.kind === "stalled" ? null : current);
+    }
+    if (!chatStreaming || activeToolLabel) return;
+    const timeout = window.setTimeout(() => {
+      stalledAtProgressRef.current = progressFingerprint;
+      setError((current) => current ?? {
+        kind: "stalled",
+        message: t("session.run_stalled"),
+      });
+    }, STALLED_SESSION_WARNING_MS);
+    return () => window.clearTimeout(timeout);
+  }, [activeToolLabel, chatStreaming, progressFingerprint]);
   useEffect(() => {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
@@ -806,7 +1012,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => openTargets.map((target) => `${target.kind}:${target.value}:${target.confidence}`).join("|"),
     [openTargets],
   );
-  const autoOpenTarget = selectAutoOpenTarget(verifiedOpenTargets);
   const pendingSessionLoad = !snapshot && snapshotQuery.isLoading && renderedMessages.length === 0;
   useEffect(() => {
     if (snapshotQuery.isLoading) return;
@@ -845,23 +1050,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
   });
 
   useEffect(() => {
-    if (!autoOpenTarget || chatStreaming) return;
-    if (autoOpenedTargetRef.current === autoOpenTarget.id) return;
-    autoOpenedTargetRef.current = autoOpenTarget.id;
-    props.onOpenTarget?.(autoOpenTarget, { auto: true }, props.sessionId);
-  }, [autoOpenTarget, chatStreaming, props.onOpenTarget, props.sessionId]);
-
-  useEffect(() => {
     let cancelled = false;
-    function initializeAutoOpenState(targets: OpenTarget[]) {
-      if (initializedAutoOpenSessionRef.current === props.sessionId) return;
-      initializedAutoOpenSessionRef.current = props.sessionId;
-      autoOpenedTargetRef.current = selectAutoOpenTarget(targets)?.id ?? null;
-    }
-
     async function verifyTargets() {
       if (!openTargets.length) {
-        initializeAutoOpenState([]);
         setVerifiedOpenTargets([]);
         return;
       }
@@ -869,13 +1060,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
         const response = await props.client.resolveArtifacts(props.workspaceId, openTargets);
         if (!cancelled) {
           const nextTargets = response.items as OpenTarget[];
-          initializeAutoOpenState(nextTargets);
           setVerifiedOpenTargets(nextTargets);
         }
       } catch {
         if (!cancelled) {
           const nextTargets = openTargets.map((target) => ({ ...target, exists: target.kind === "url" }));
-          initializeAutoOpenState(nextTargets);
           setVerifiedOpenTargets(nextTargets);
         }
       }
@@ -914,7 +1103,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     renderedSessionId: renderedMessages.length > 0 || snapshot ? props.sessionId : null,
     hasSnapshot: Boolean(snapshot) || renderedMessages.length > 0,
     isFetching: snapshotQuery.isFetching,
-    isError: snapshotQuery.isError || Boolean(error),
+    // A turn-level provider/runtime error is rendered inside the transcript
+    // and must not put the entire session route into a failed transition.
+    // Only failure to load the session itself disables route-bound actions.
+    isError: snapshotQuery.isError,
   });
 
   const buildDraft = useCallback((text: string, nextAttachments: ComposerAttachment[]): ComposerDraft => {
@@ -938,8 +1130,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const slashCommand = parseSlashCommandInvocation(resolved);
     const animationInstruction = animationSelectionInstruction(selectedAnimations);
     const voiceInstruction = voiceReferenceInstruction(selectedVoiceReference);
-    const illustrationInstruction = selectedIllustrationReference ? videoIllustrationReferenceInstruction(selectedIllustrationReference) : null;
-    const capabilityInstruction = [starterCapability?.instruction, animationInstruction, voiceInstruction, illustrationInstruction]
+    const capabilityInstruction = [starterCapability?.instruction, animationInstruction, voiceInstruction]
       .filter((value): value is string => Boolean(value))
       .join("\n\n");
     return {
@@ -949,11 +1140,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
       text,
       resolvedText: resolved,
       capability: capabilityInstruction
-        ? { id: selectedAnimations.length ? "hyperframes-animation-selection" : selectedVoiceReference ? "video-voice-reference" : selectedIllustrationReference ? "video-illustration-reference" : starterCapability!.id, instruction: capabilityInstruction }
+        ? { id: selectedAnimations.length ? "hyperframes-animation-selection" : selectedVoiceReference ? "video-voice-reference" : starterCapability!.id, instruction: capabilityInstruction }
         : undefined,
       command: slashCommand ?? undefined,
     };
-  }, [mentions, pasteParts, selectedAnimations, selectedIllustrationReference, selectedVoiceReference, starterCapability]);
+  }, [mentions, pasteParts, selectedAnimations, selectedVoiceReference, starterCapability]);
 
   const handleComposerDraftChange = useCallback((value: string) => {
     setComposerDraft(props.sessionId, value);
@@ -971,13 +1162,70 @@ export function SessionSurface(props: SessionSurfaceProps) {
   // in the local queue until the current run has completed.
   const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
     setError(null);
-    // Record the prompt for Up/Down recall in the composer (#2012).
-    appendComposerHistory(props.sessionId, nextDraft.text);
+    setStopAcknowledged(false);
     runActivityObservedRef.current = false;
     setSending(true);
     setAwaitingAssistantBaseline(renderedMessages.length);
+    const requestOrdinal = visibleUserRequestCount;
+    const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery";
+    const recoveryDraft = artifactRecoveryDraft
+      || nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
+    const clientUserMessageId = !recoveryDraft
+      ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
+      : null;
+    activeClientUserMessageIdRef.current = clientUserMessageId;
+    const dispatchAbort = new AbortController();
+    promptDispatchAbortRef.current = dispatchAbort;
+    const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
+    const videoTask = newConversationMode === "video"
+      || props.artifactContext?.kind === "video"
+      || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
+    let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
-      const dispatched = await props.onSendDraft(nextDraft, props.sessionId);
+      if (videoTask && !recoveryDraft) {
+        const requirements = videoDeliveryRequirementsForPrompt({
+          capabilityId: nextDraft.capability?.id,
+          promptText: nextDraft.resolvedText ?? nextDraft.text,
+          animationReferences: selectedAnimations.map((selection) => selection.item.name),
+        });
+        const mustChange = false;
+        if (hasVideoDeliveryRequirements(requirements)) {
+          const sourcePath = props.artifactContext?.kind === "video"
+            ? props.artifactContext.entryPath
+            : templateEntryPath || videoProjectEntryPath(props.sessionId);
+          pendingDelivery = {
+            sourcePath,
+            requirements,
+            baselineFingerprint: null,
+            requestOrdinal,
+            mustChange,
+            recoveryAttempted: false,
+          };
+          pendingVideoDeliveryRef.current = pendingDelivery;
+        }
+      }
+      const dispatchOutcome = await props.onSendDraft(
+        nextDraft,
+        props.sessionId,
+        {
+          ...(clientUserMessageId ? { clientUserMessageId } : {}),
+          signal: dispatchAbort.signal,
+        },
+      );
+      if (dispatchAbort.signal.aborted) {
+        draftAttachments.forEach(revokeAttachmentPreview);
+        return false;
+      }
+      const dispatched = promptWasDispatched(dispatchOutcome);
+      const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
+      if (dispatched && artifactCompletionTargets.length > 0) {
+        pendingArtifactCompletionRef.current = {
+          targets: artifactCompletionTargets,
+          assistantMessageBaseline: renderedMessages.length,
+          requestOrdinal,
+          recoveryAttempted: false,
+        };
+      }
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
           workspaceId: props.workspaceId,
@@ -989,26 +1237,208 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setStarterCapability(null);
       setSelectedAnimations([]);
       setSelectedVoiceReference(null);
-      setSelectedIllustrationReference(null);
       // promptAsync resolves once the run is accepted, before generation
       // finishes. Keep the optimistic busy latch until the session's idle
       // event; only release immediately when the route did not dispatch.
-      if (!dispatched) {
+      if (!dispatched && !dispatchAbort.signal.aborted) {
+        rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+        setAwaitingAssistantBaseline(null);
         runActivityObservedRef.current = false;
         setSending(false);
       }
+      return dispatched;
     } catch (nextError) {
+      if (!dispatchAbort.signal.aborted) {
+        rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+      }
+      if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
+      if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
+      if (dispatchAbort.signal.aborted) {
+        setAwaitingAssistantBaseline(null);
+        runActivityObservedRef.current = false;
+        setSending(false);
+        return;
+      }
       const parsed = parseSessionError(nextError);
       captureAnalyticsEvent("task_send_failed", {});
       setError(parsed);
       useSessionActivityStore.getState().setError(props.workspaceId, props.sessionId, parsed.message);
-      if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) setComposerDraft(props.sessionId, "");
+      if (!shouldPreserveComposerDraftAfterSendFailure(nextDraft)) {
+        draftAttachments.forEach(revokeAttachmentPreview);
+      }
       setAwaitingAssistantBaseline(null);
       runActivityObservedRef.current = false;
       setSending(false);
       throw nextError;
     }
-  }, [appendComposerHistory, props.onSendDraft, props.sessionId, props.workspaceId, renderedMessages.length, selectedAnimations, setComposerDraft]);
+  }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, visibleUserRequestCount]);
+
+  const programmaticDraftIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const pending = props.pendingProgrammaticDraft;
+    if (!pending || programmaticDraftIdRef.current === pending.id) return;
+    programmaticDraftIdRef.current = pending.id;
+    void sendDraft(pending.draft, pending.draft.attachments).then(
+      (dispatched) => props.onPendingProgrammaticDraftSettled?.(pending.id, Boolean(dispatched)),
+      () => props.onPendingProgrammaticDraftSettled?.(pending.id, false),
+    );
+  }, [props.onPendingProgrammaticDraftSettled, props.pendingProgrammaticDraft, sendDraft]);
+
+  const validatePendingArtifactCompletion = useCallback(async () => {
+    const pending = pendingArtifactCompletionRef.current;
+    if (!pending || artifactCompletionValidationInFlightRef.current) return;
+    artifactCompletionValidationInFlightRef.current = true;
+    try {
+      const currentEntries = await Promise.all(pending.targets.map(async (target) => {
+        const content = await props.client
+          .readWorkspaceFile(props.workspaceId, target.sourcePath)
+          .then((file) => file.content)
+          .catch(() => null);
+        return [target.sourcePath, content] as const;
+      }));
+      if (pendingArtifactCompletionRef.current !== pending) return;
+      const assistantOutput = renderedMessages
+        .slice(pending.assistantMessageBaseline)
+        .filter((message) => message.role === "assistant")
+        .flatMap((message) => message.parts.flatMap((part) => part.type === "text" ? [part.text] : []))
+        .join("\n");
+      const check = checkArtifactCompletion(pending.targets, new Map(currentEntries), assistantOutput);
+      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0) {
+        setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
+          current,
+          pending.requestOrdinal,
+          pending.targets.map((target) => target.sourcePath),
+        ));
+        pendingArtifactCompletionRef.current = null;
+        setSending(false);
+        return;
+      }
+      if (!pending.recoveryAttempted) {
+        pending.recoveryAttempted = true;
+        toast.warning(t("session.artifact_delivery_repairing"));
+        const recoveryInstruction = artifactCompletionRecoveryInstruction(check);
+        await sendDraft({
+          mode: "prompt",
+          parts: [{ type: "text", text: recoveryInstruction, synthetic: true }],
+          attachments: [],
+          text: "Continue the unfinished artifact delivery.",
+          resolvedText: "Continue the unfinished artifact delivery.",
+          capability: { id: "artifact-delivery-recovery", instruction: recoveryInstruction },
+        }, []);
+        return;
+      }
+      setError({
+        kind: "generic",
+        message: t("session.artifact_delivery_failed"),
+      });
+      setSending(false);
+    } catch (validationError) {
+      if (pendingArtifactCompletionRef.current === pending) {
+        setError({
+          kind: "generic",
+          message: validationError instanceof Error ? validationError.message : t("session.artifact_delivery_failed"),
+        });
+      }
+      setSending(false);
+    } finally {
+      artifactCompletionValidationInFlightRef.current = false;
+    }
+  }, [props.client, props.workspaceId, renderedMessages, sendDraft]);
+
+  const validatePendingVideoDelivery = useCallback(async () => {
+    const pending = pendingVideoDeliveryRef.current;
+    if (!pending || videoDeliveryValidationInFlightRef.current) return;
+    videoDeliveryValidationInFlightRef.current = true;
+    try {
+      const currentContent = pending.mustChange
+        ? (await props.client.readWorkspaceFile(props.workspaceId, pending.sourcePath)).content
+        : "";
+      if (pendingVideoDeliveryRef.current !== pending) return;
+      const mutationIssue = pending.mustChange
+        ? unchangedVideoArtifactIssue(pending.baselineFingerprint, currentContent)
+        : null;
+      let issues: VideoDeliveryValidationOutput["issues"] = mutationIssue ? [mutationIssue] : [];
+      if (!mutationIssue) {
+        const response = await props.client.callExtensionAction({
+          extensionId: "media",
+          action: "voiceover_timeline_validate",
+          args: {
+            sourcePath: pending.sourcePath,
+            requirements: {
+              ...pending.requirements,
+              ...(pending.requirements.captions ? { captionStyle: "transparent-bottom" } : {}),
+            },
+          },
+          context: { directory: props.workspaceRoot || undefined },
+        });
+        if (pendingVideoDeliveryRef.current !== pending) return;
+        if (!response.ok) throw new Error(response.message);
+        const output = videoDeliveryValidationOutput(response);
+        if (!output) throw new Error("Video delivery validation returned an unreadable result.");
+        issues = output.issues;
+        if (output.valid) {
+          const directory = artifactDirectoryPath(pending.sourcePath);
+          const ownedPaths = [
+            pending.sourcePath,
+            ...(props.artifactFiles ?? []).filter((path) =>
+              artifactPathMatchesTarget(path, pending.sourcePath)
+              || artifactPathIsWithinDirectory(path, directory),
+            ),
+          ];
+          setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
+            current,
+            pending.requestOrdinal,
+            ownedPaths,
+          ));
+          pendingVideoDeliveryRef.current = null;
+          props.onArtifactCompletionRequirementConsumed?.();
+          setSending(false);
+          toast.success(t("session.video_delivery_validated"));
+          return;
+        }
+      }
+      const issueMessages = issues
+        .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
+        .filter(Boolean);
+      if (!pending.recoveryAttempted) {
+        pending.recoveryAttempted = true;
+        toast.warning(t("session.video_delivery_repairing"));
+        const recoveryInstruction = [
+          "The preceding video run ended without satisfying the application's authoritative delivery validation.",
+          `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
+          `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
+          "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
+          "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
+          ...issueMessages.map((issue) => `- ${issue}`),
+        ].join("\n");
+        await sendDraft({
+          mode: "prompt",
+          parts: [{ type: "text", text: recoveryInstruction, synthetic: true }],
+          attachments: [],
+          text: "Continue the unfinished video delivery.",
+          resolvedText: "Continue the unfinished video delivery.",
+          capability: { id: pending.requirements.voiceover ? "video-voice-reference" : "video-delivery-recovery", instruction: recoveryInstruction },
+        }, []);
+        return;
+      }
+
+      setError({
+        kind: "generic",
+        message: `${t("session.video_delivery_failed")} ${issueMessages.slice(0, 3).join(" ")}`.trim(),
+      });
+      setSending(false);
+    } catch (validationError) {
+      if (pendingVideoDeliveryRef.current === pending) {
+        setError({
+          kind: "generic",
+          message: validationError instanceof Error ? validationError.message : t("session.video_delivery_failed"),
+        });
+      }
+      setSending(false);
+    } finally {
+      videoDeliveryValidationInFlightRef.current = false;
+    }
+  }, [props.artifactFiles, props.client, props.onArtifactCompletionRequirementConsumed, props.workspaceId, props.workspaceRoot, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -1017,9 +1447,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   // Initial send (agent idle) and explicit "Steer" follow-up (agent busy)
   // share the same immediate path.
-  const handleSend = useCallback(async () => {
-    const text = draft.trim();
-    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) return;
+  const handleSend = useCallback(async (draftOverride?: string) => {
+    const text = (draftOverride ?? draft).trim();
+    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) return;
     // A user can select Video and type directly into the centred first-prompt
     // composer. Mark it before the request is sent so SessionPage opens the
     // session-owned Studio while the agent is creating the composition.
@@ -1028,24 +1458,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
     const nextDraft = buildDraft(text, attachments);
     const sentAttachments = attachments;
+    const submittedComposerState = { draft, attachments, mentions, pasteParts };
+    clearComposer();
     try {
       await sendDraft(nextDraft, sentAttachments);
-      clearComposer();
-    } catch {}
-  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, newConversationMode, props.onActivateVideoStudio, props.sessionId, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference, sendDraft, setComposerDraft]);
+    } catch {
+      if (shouldPreserveComposerDraftAfterSendFailure(nextDraft)) {
+        restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
+      }
+    }
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedVoiceReference, sendDraft]);
 
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
   const handleQueue = useCallback(() => {
     const text = draft.trim();
-    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) return;
+    if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) return;
     appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
     clearComposer();
     setStarterCapability(null);
     setSelectedAnimations([]);
     setSelectedVoiceReference(null);
-    setSelectedIllustrationReference(null);
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference]);
+  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
 
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
@@ -1067,33 +1501,102 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }),
     [queuedDrafts],
   );
+  const hasOpenTodos = (props.todos ?? []).some((todo) => todo.content.trim());
+  const composerHasPromptContext = selectedAnimations.length > 0
+    || Boolean(selectedVoiceReference);
+  const composerTopAccessoryVisible = Boolean(
+    starterCapability
+      || selectedAnimations.length
+      || selectedVoiceReference
+      || props.activeQuestion
+      || hasOpenTodos
+      || props.activePermission
+      || queuedMessages.length > 0,
+  );
 
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
     setError(null);
+    // Establish the transcript tombstone at click time, before awaiting a
+    // native interrupt or an idle snapshot. Otherwise a late snapshot can
+    // replay this run while the engine adapter is still confirming Stop.
+    settleInterruptedSessionRun(
+      props.workspaceId,
+      props.sessionId,
+      activeClientUserMessageIdRef.current,
+    );
+    activeClientUserMessageIdRef.current = null;
+    // Stop preflight work immediately. This closes the race where the user
+    // presses Stop before the engine has created a native run/turn; the route
+    // observes this signal and must not dispatch the model request later.
+    promptDispatchAbortRef.current?.abort();
     // Abort only the active run. Queued follow-ups stay intact and the drain
     // effect below starts the next one after the session reports idle.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
     // without it the server resolves the default project, finds no live run,
     // and answers `200: false` while the stream keeps going (#2014).
-    const aborted = await abortSessionSafe(
-      opencodeClient,
-      props.sessionId,
-      props.workspaceRoot.trim() || undefined,
-    );
-    if (!aborted) {
-      setError({ message: t("session.stop_failed") });
-      return;
+    // Do not wait for prompt dispatch here. DSH keeps session.prompt pending
+    // while the turn runs, so waiting would prevent session.cancel from ever
+    // being sent. Each engine adapter owns its native startup/interrupt race.
+    let aborted = false;
+    try {
+      aborted = await props.conversation.abort(
+        props.sessionId,
+        props.workspaceRoot.trim() || undefined,
+      );
+    } catch {
+      // A failed interrupt can still mean the engine completed between the
+      // click and the request. The snapshot reconciliation below is the
+      // authoritative fallback for every engine.
     }
-    captureAnalyticsEvent("task_run_stopped", {});
-    await snapshotQuery.refetch();
-  }, [chatStreaming, opencodeClient, props.sessionId, props.workspaceRoot, snapshotQuery.refetch]);
+    if (!aborted) {
+      try {
+        const refreshed = await snapshotQuery.refetch();
+        if (refreshed.isError || !refreshed.data) {
+          setError({ message: t("session.stop_failed") });
+          return;
+        }
+        const refreshedStatus = refreshed.data.status.type;
+        if (refreshedStatus === "busy" || refreshedStatus === "retry") {
+          setError({ message: t("session.stop_failed") });
+          return;
+        }
+      } catch {
+        setError({ message: t("session.stop_failed") });
+        return;
+      }
+    }
+    // Once the engine accepts the interrupt (or confirms it is already
+    // idle), release every local latch owned by this run. Late busy events
+    // remain suppressed until the user starts the next run.
+    pendingVideoDeliveryRef.current = null;
+    pendingArtifactCompletionRef.current = null;
+    setAwaitingAssistantBaseline(null);
+    runActivityObservedRef.current = false;
+    setSending(false);
+    setStopAcknowledged(true);
+    if (aborted) captureAnalyticsEvent("task_run_stopped", {});
+    void snapshotQuery.refetch();
+  }, [chatStreaming, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);
     useSessionActivityStore.getState().clearError(props.workspaceId, props.sessionId);
   }, [props.sessionId, props.workspaceId]);
+
+  useEffect(() => {
+    if (sessionActivityStatus !== "error") return;
+    // Every engine error is a terminal boundary for only the current turn.
+    // Release UI-owned latches immediately so a following prompt is sent as
+    // a new turn instead of remaining queued behind a run that already died.
+    pendingVideoDeliveryRef.current = null;
+    pendingArtifactCompletionRef.current = null;
+    activeClientUserMessageIdRef.current = null;
+    setAwaitingAssistantBaseline(null);
+    runActivityObservedRef.current = false;
+    setSending(false);
+  }, [sessionActivityStatus]);
 
   useEffect(() => {
     if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
@@ -1105,9 +1608,33 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // request. Release the optimistic latch only after this run was observed,
     // or after new assistant output proves it actually ran.
     if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;
-    runActivityObservedRef.current = false;
-    setSending(false);
-  }, [activityRunActive, assistantOutputAfterAwaitStart, liveStatus.type, sending]);
+    // OpenCode can emit idle just before the final message.updated event.
+    // Give that completion metadata a short reconciliation window; if it
+    // never arrives, surface the interrupted run instead of showing Ready as
+    // though a reasoning-only/tool-only turn were a finished task.
+    const timeout = window.setTimeout(() => {
+      runActivityObservedRef.current = false;
+      // Artifact delivery is authoritative for this turn. Validate it before
+      // ordinary assistant-completion metadata so a tool-only/incomplete turn
+      // cannot release a queued follow-up and overwrite this turn's gate.
+      if (pendingArtifactCompletionRef.current) {
+        void validatePendingArtifactCompletion();
+      } else if (pendingVideoDeliveryRef.current) {
+        void validatePendingVideoDelivery();
+      } else if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {
+        setSending(false);
+        setError((current) => current ?? {
+          kind: "stalled",
+          message: t("session.run_ended_incomplete"),
+        });
+      } else if (latestAssistantCompleted) {
+        setSending(false);
+      } else {
+        setSending(false);
+      }
+    }, 1_200);
+    return () => window.clearTimeout(timeout);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery]);
 
   // Drain one queued follow-up each time the session goes idle. The ref guards
   // against re-entrancy while the send is in flight.
@@ -1116,6 +1643,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (drainingQueueRef.current) return;
     if (queuedDrafts.length === 0) return;
     if (chatStreaming || liveStatus.type !== "idle") return;
+    // A queued user request belongs after the current turn's deliverables,
+    // including any automatic recovery pass. Keep it queued until the gate
+    // succeeds; on terminal validation failure the error and queue stay
+    // visible instead of the next send clearing or replacing them.
+    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     const next = queuedDrafts[0];
     if (!next) return;
     drainingQueueRef.current = true;
@@ -1141,10 +1673,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [attachments, buildDraft, draft, props.onDraftChange]);
 
   const handleAttachFiles = (files: File[]) => {
-    if (!props.attachmentsEnabled) {
-      toast.warning(props.attachmentsDisabledReason ?? "Attachments are unavailable.");
-      return;
-    }
     const oversized = files.filter((file) => file.size > 25 * 1024 * 1024);
     const sized = files.filter((file) => file.size <= 25 * 1024 * 1024);
     if (oversized.length) {
@@ -1154,7 +1682,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
       );
     }
     const unreadable = sized.filter((file) => !isModelReadableAttachment(file.type));
-    const accepted = sized.filter((file) => isModelReadableAttachment(file.type));
+    const readable = sized.filter((file) => isModelReadableAttachment(file.type));
+    const unsupportedNative = props.supportsNativeAttachments
+      ? []
+      : readable.filter((file) => attachmentRequiresNativeModelSupport(file.type));
+    const accepted = readable.filter((file) => (
+      props.supportsNativeAttachments || !attachmentRequiresNativeModelSupport(file.type)
+    ));
     if (unreadable.length) {
       toast.warning(
         unreadable.length === 1
@@ -1162,6 +1696,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           : `${unreadable.length} files have formats the model can't read`,
         { description: "Convert to PDF, image, or plain text and attach again." },
       );
+    }
+    if (unsupportedNative.length) {
+      toast.warning(t("composer.attachments_require_multimodal"));
     }
     if (!accepted.length) return;
     const next = accepted.map((file) => ({
@@ -1293,14 +1830,55 @@ export function SessionSurface(props: SessionSurfaceProps) {
     label: "Send the composer prompt",
     description: "Send the currently visible composer draft to the active session.",
     sideEffect: "mutation",
-    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedIllustrationReference) || model.transitionState !== "idle",
+    disabled: props.modelUnavailable || (!draft.trim() && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) || model.transitionState !== "idle",
     targetRef: composerShellRef,
     execute: async () => {
-      await handleSend();
+      const liveDraft = getComposerDraft(useComposerStateStore.getState(), props.sessionId);
+      await handleSend(liveDraft);
       return true;
     },
-  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, selectedAnimations.length, selectedIllustrationReference, selectedVoiceReference]);
+  }), [attachments.length, draft, handleSend, model.transitionState, props.modelUnavailable, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
   useControlAction(composerSendControlAction);
+
+  const evalSessionErrorControlAction = useMemo<iPolloWorkControlAction | null>(() => {
+    if (!import.meta.env.DEV) return null;
+    return {
+      id: "eval.session.seed_error",
+      label: "Seed a failed conversation turn",
+      description: "Create a deterministic failed user turn through the live session synchronization boundary.",
+      sideEffect: "mutation",
+      requiresArgs: true,
+      args: [
+        { name: "prompt", type: "string", required: true, description: "Visible user prompt for the failed turn." },
+        { name: "errorText", type: "string", required: true, description: "Visible terminal error." },
+      ],
+      execute: (args) => {
+        const values = args && typeof args === "object" && !Array.isArray(args)
+          ? args as { prompt?: unknown; errorText?: unknown }
+          : {};
+        const prompt = typeof values.prompt === "string" ? values.prompt.trim() : "";
+        const errorText = typeof values.errorText === "string" ? values.errorText.trim() : "";
+        if (!prompt || !errorText) return { ok: false, error: "prompt and errorText are required" };
+        const clientUserMessageId = beginOptimisticSessionPrompt(
+          props.workspaceId,
+          props.sessionId,
+          prompt,
+        );
+        const published = publishSessionErrorForEvaluation({
+          workspaceId: props.workspaceId,
+          sessionId: props.sessionId,
+          parentUserMessageId: clientUserMessageId,
+          errorText,
+        });
+        if (!published) {
+          rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
+          return { ok: false, error: "No tracked session runtime is available" };
+        }
+        return { clientUserMessageId };
+      },
+    };
+  }, [props.sessionId, props.workspaceId]);
+  useControlAction(evalSessionErrorControlAction);
 
   const composerStopControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "composer.stop",
@@ -1349,32 +1927,37 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setToolMcpStatuses(statuses);
     setToolMcpStatus(status);
 
-    // Quiet self-heal: remote OAuth connectors whose access token expired
-    // show "Sign in needed" even though the stored refresh token still
-    // works. `mcp.connect` retries the refresh grant on a fresh transport
-    // without ever opening a browser; on success the badge flips live.
-    const directory = props.workspaceRoot.trim();
-    if (directory && servers.length) {
-      void attemptSilentMcpReauth({ client: opencodeClient, directory, servers, statuses })
-        .then(async (attempted) => {
-          if (!attempted) return;
-          const healed = unwrap(await opencodeClient.mcp.status({ directory })) as McpStatusMap;
-          setToolMcpStatuses(healed);
-        })
-        .catch(() => {
-          // Best-effort; the manual Sign in path is unaffected.
-        });
-    }
-
     return { servers, statuses, status };
   };
 
-  const listImportedPlugins = async (): Promise<CloudImportedPlugin[]> => {
-    const response = await props.client.getConfig(props.workspaceId);
-    const plugins = Object.values(readWorkspaceCloudImports(response.ipollowork).plugins)
+  const listInstalledExtensions = async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    const [packageResponse, mcpState] = await Promise.all([
+      props.client.listPluginPackages(props.workspaceId),
+      listMcp(),
+    ]);
+    const enabledItems = packageResponse.items.filter((item) => item.enabled);
+    const authorizationEntries = await Promise.all(enabledItems.map(async (item) => {
+      if (!(item.manifest.authorization?.methods?.length ?? 0)) {
+        return [item.pluginId, undefined] as const;
+      }
+      try {
+        const state = await props.client.getPluginAuthorization(props.workspaceId, item.pluginId);
+        return [item.pluginId, state] as const;
+      } catch {
+        return [item.pluginId, undefined] as const;
+      }
+    }));
+    const authorizations = new Map(authorizationEntries);
+
+    return enabledItems
+      .filter((item) => isPluginPackageReady(item, authorizations.get(item.pluginId), mcpState.statuses))
       .sort((left, right) => left.name.localeCompare(right.name));
-    setToolImportedPlugins(plugins);
-    return plugins;
+  };
+  const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
+    const response = await props.client.listPluginPackages(props.workspaceId);
+    return response.items
+      .filter(isDelegatableExternalAgent)
+      .sort((left, right) => left.name.localeCompare(right.name));
   };
 
   const handleUploadInboxFiles = async (files: File[]) => {
@@ -1456,9 +2039,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.onRevertToMessage, props.sessionId]);
 
   const handleForkAtMessage = useCallback((messageId: string) => {
-    // OpenCode's fork copies messages strictly before the given id, so pass
-    // the next real message to make the branch include the clicked message.
-    props.onForkAtMessage?.(resolveForkBoundaryId(renderedMessages, messageId), props.sessionId);
+    props.onForkAtMessage?.(messageId, props.sessionId, renderedMessages);
   }, [props.onForkAtMessage, props.sessionId, renderedMessages]);
 
   const handleEditUserMessage = useCallback((messageId: string, text: string) => {
@@ -1572,6 +2153,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
+          inputDisabled={false}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
           modelPickerOpen={props.modelPickerOpen}
@@ -1580,18 +2162,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onModelChange={props.onModelChange}
           onConfigureModels={props.onConfigureModels}
           attachments={attachments}
-          hasPromptContext={selectedAnimations.length > 0 || Boolean(selectedVoiceReference) || Boolean(selectedIllustrationReference)}
+          hasPromptContext={composerHasPromptContext}
           onAttachFiles={handleAttachFiles}
           onRemoveAttachment={handleRemoveAttachment}
-          attachmentsEnabled={props.attachmentsEnabled}
-          attachmentsDisabledReason={props.attachmentsDisabledReason}
           modelVariantLabel={props.modelVariantLabel}
           modelVariant={props.modelVariant}
           modelBehaviorOptions={props.modelBehaviorOptions}
           onModelVariantChange={props.onModelVariantChange}
           onConfigureTokenStar={props.onConfigureTokenStar}
-          agentLabel={props.agentLabel}
-          selectedAgent={props.selectedAgent}
+          selectedMode={selectedMode}
+          modeSelectionDisabled={modeSelectionLocked}
+          listModes={props.listModes}
+          onSelectMode={props.onSelectMode}
+          selectedAccessMode={selectedAccessMode}
+          accessModeSelectionDisabled={accessModeState?.mutable === false}
+          listAccessModes={props.conversation.listAccessModes ? listAccessModes : undefined}
+          onSelectAccessMode={props.conversation.setAccessMode ? selectAccessMode : undefined}
           listAgents={props.listAgents}
           onSelectAgent={props.onSelectAgent}
           listCommands={props.listCommands}
@@ -1601,8 +2187,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mcpServers={toolMcpServers}
           mcpStatus={toolMcpStatus}
           mcpStatuses={toolMcpStatuses}
-          listImportedPlugins={listImportedPlugins}
-          importedPlugins={toolImportedPlugins}
+          listInstalledExtensions={listInstalledExtensions}
+          onOpenWorkspaceApp={props.onOpenWorkspaceApp}
+          onOpenTemplateMarket={props.onOpenTemplateMarket}
+          listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}
           searchFiles={props.searchFiles}
@@ -1617,17 +2205,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
           isSandboxWorkspace={props.isSandboxWorkspace}
           onUploadInboxFiles={props.onUploadInboxFiles ?? handleUploadInboxFiles}
           layout={layout}
-          placeholder={isEmptyConversation ? newConversationPlaceholder(newConversationMode) : undefined}
-          compactTopSpacing={Boolean(starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0)}
+          contextUsage={contextUsage}
+          modelContextWindow={props.modelContextWindow}
+          placeholder={isEmptyConversation ? newConversationPlaceholder() : undefined}
+          compactTopSpacing={composerTopAccessoryVisible}
           topAccessory={
-            starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference || props.activeQuestion || (props.todos ?? []).some((todo) => todo.content.trim()) || props.activePermission || queuedMessages.length > 0 ? (
+            composerTopAccessoryVisible ? (
               <div>
-                {starterCapability || selectedAnimations.length || selectedVoiceReference || selectedIllustrationReference ? (
+                {starterCapability || selectedAnimations.length || selectedVoiceReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
                     {selectedAnimations.map((animation) => <AnimationChip key={animation.item.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.item.name !== animation.item.name))} />)}
                     {selectedVoiceReference ? <VoiceChip reference={selectedVoiceReference} onClear={() => setSelectedVoiceReference(null)} /> : null}
-                    {selectedIllustrationReference ? <IllustrationChip reference={selectedIllustrationReference} onClear={() => setSelectedIllustrationReference(null)} /> : null}
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
@@ -1641,7 +2230,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       if (props.activeQuestion) props.respondQuestion?.(props.activeQuestion.id, answers);
                     }}
                   />
-                ) : (props.todos ?? []).some((todo) => todo.content.trim()) ? (
+                ) : hasOpenTodos ? (
                   <TodoPanel todos={props.todos ?? []} />
                 ) : null}
                 {props.activePermission ? (
@@ -1677,9 +2266,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
       ) : null}
 
       {isEmptyConversation ? (
-        <div className="flex min-h-0 flex-1 justify-center overflow-y-auto bg-background px-5 dark:bg-[#131313]">
-          <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-12 pt-8">
-            <NewConversationStarter
+        <div className="flex h-0 min-h-0 flex-1 justify-center overflow-y-auto bg-background px-5 dark:bg-[#131313]">
+          <div className="flex min-h-full w-full max-w-[800px] flex-col justify-center pb-[max(64px,env(safe-area-inset-bottom))] pt-8 has-[[data-testid=new-conversation-template-strip]]:justify-start">
+            <div data-testid="new-conversation-starter-slot" className="shrink-0">
+              <NewConversationStarter
               selectedMode={newConversationMode}
               selectedCapabilityId={starterCapability?.id}
               onSelectMode={(mode) => {
@@ -1687,8 +2277,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 setStarterCapability(null);
                 if (mode !== "video") setSelectedAnimations([]);
               }}
-              onSelectPrompt={(_prompt, capability) => {
+              onSelectPrompt={(prompt, capability) => {
                 setStarterCapability(capability ?? null);
+                if (prompt) setComposerDraft(props.sessionId, prompt);
                 window.dispatchEvent(new Event("ipollowork:focusPrompt"));
               }}
               templates={props.designTemplates}
@@ -1707,9 +2298,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 { item: animation, values },
               ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
-              onUseTemplate={props.onMaterializeTemplate ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface) : props.onCreateSession ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId) : undefined}
-            />
-            <div ref={composerShellRef} className="mt-12 shrink-0">
+              onUseTemplate={props.onMaterializeTemplate
+                ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface)
+                : props.onCreateSession
+                  ? (templateId, surface) => props.onCreateSession?.(surface === "video" ? "video" : "design", templateId)
+                  : undefined}
+              />
+            </div>
+            <div ref={composerShellRef} data-testid="new-conversation-starter-composer-shell" className="mt-6 w-full shrink-0">
               {renderComposer("inline")}
             </div>
           </div>
@@ -1765,7 +2361,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               </div>
             ) : renderedMessages.length === 0 && effectiveActivityStatus !== "idle" ? (
               <div className="px-6 py-12">
-                <AssistantWaitingCard label={getSessionActivityStatusLabel(effectiveActivityStatus)} />
+                <AssistantWaitingCard label={props.assistantWaitLabel ?? getSessionActivityStatusLabel(effectiveActivityStatus)} />
               </div>
             ) : renderedMessages.length === 0 && snapshot && snapshot.messages.length === 0 && error ? (
               <SessionErrorCard
@@ -1795,6 +2391,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       displaySuggestions={shellConfig.starterCards}
                       providerConnectedCount={props.providerConnectedCount ?? 0}
                       onOpenVideoStudio={props.onOpenVideoStudio}
+                      onOpenSchedule={props.onOpenSchedule}
                       dispatchAction={handleMessageListDispatchAction}
                       setPrompt={handleMessageListSetPrompt}
                       onRevertToUserMessage={handleRevertToUserMessage}
@@ -1807,7 +2404,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
                         templateEntryPath={props.templateEntryPath}
                         artifactFiles={props.artifactFiles}
+                        artifactRequestOwnership={artifactRequestOwnership}
                         artifactContext={props.artifactContext}
+                        activeMessageBaseline={awaitingAssistantBaseline}
+                        assistantWaitLabel={props.assistantWaitLabel}
                       />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>

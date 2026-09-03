@@ -5,10 +5,6 @@ type DesignSystemManifest = {
   name: string;
   category: string;
   description?: string;
-  preview?: {
-    dir?: string;
-    pages?: Array<{ path: string; role?: string; title?: string }>;
-  };
   files?: {
     tokens?: string;
     designTokens?: string;
@@ -31,17 +27,8 @@ export type DesignSystemTheme = {
   name: string;
   category: string;
   description: string;
-  previewHtml: string;
   tokensCss: string;
   tokens: DesignSystemToken[];
-};
-
-export type DesignThemeTokenHints = {
-  colors: string[];
-  fonts: string[];
-  lengths: string[];
-  shadows: string[];
-  byToken: Record<string, string[]>;
 };
 
 export type DesignSystemTokenControl = {
@@ -57,54 +44,10 @@ const TOKEN_GROUP_ORDER = [
   "间距", "圆角", "层级阴影", "聚焦", "动效", "布局", "其他",
 ] as const;
 
-const THEME_TOKEN_SOURCES: Record<string, readonly string[]> = {
-  "--ipw-color-bg": ["--bg", "--page-bg", "--canvas"],
-  "--ipw-color-surface": ["--surface", "--surface-1", "--panel"],
-  "--ipw-color-text": ["--fg", "--text", "--text-1", "--on-surface"],
-  "--ipw-color-muted": ["--muted", "--fg-2", "--text-muted", "--text-2"],
-  "--ipw-color-border": ["--border", "--border-soft"],
-  "--ipw-color-primary": ["--accent", "--primary", "--brand"],
-  "--ipw-color-secondary": ["--secondary", "--accent-hover", "--accent"],
-  "--ipw-color-accent": ["--meta", "--accent", "--highlight"],
-  "--ipw-color-success": ["--success", "--good"],
-  "--ipw-color-warning": ["--warn", "--warning"],
-  "--ipw-color-danger": ["--danger", "--bad"],
-  "--ipw-color-on-primary": ["--accent-on", "--on-accent", "--on-primary"],
-  "--ipw-font-display": ["--font-display"],
-  "--ipw-font-body": ["--font-body"],
-  "--ipw-body-line-height": ["--leading-body"],
-  "--ipw-content-width": ["--container-max"],
-  "--ipw-page-padding": ["--container-gutter-desktop", "--container-gutter-tablet", "--container-gutter-phone"],
-  "--ipw-section-space": ["--section-y-desktop", "--section-y-tablet", "--section-y-phone"],
-  "--ipw-button-radius": ["--radius-pill", "--radius-md", "--radius-sm"],
-  "--ipw-card-bg": ["--surface", "--surface-1", "--bg"],
-  "--ipw-card-border": ["--border", "--border-soft"],
-  "--ipw-card-radius": ["--radius-lg", "--radius-md", "--radius-sm"],
-  "--ipw-card-shadow": ["--elev-raised", "--elev-ring", "--elev-flat"],
-};
-
 const manifestModules = import.meta.glob("./design-systems/design-systems/*/manifest.json", {
   eager: true,
   import: "default",
 }) as Record<string, DesignSystemManifest>;
-
-const kitPreviewModules = import.meta.glob("./design-systems/design-systems/*/system/kit.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
-
-const systemIndexModules = import.meta.glob("./design-systems/design-systems/*/system/index.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
-
-const previewModules = import.meta.glob("./design-systems/design-systems/*/preview/colors.html", {
-  eager: true,
-  query: "?raw",
-  import: "default",
-}) as Record<string, string>;
 
 const tokenModules = import.meta.glob("./design-systems/design-systems/*/tokens.css", {
   eager: true,
@@ -136,23 +79,16 @@ function sortThemeItems(left: DesignSystemTheme, right: DesignSystemTheme) {
 export const DESIGN_SYSTEM_THEMES: DesignSystemTheme[] = Object.entries(manifestModules)
   .flatMap(([manifestPath, manifest]) => {
     const root = manifestPath.replace(/\/manifest\.json$/, "");
-    const previewPath = `${root}/system/kit.html`;
-    const previewFallbackPath = `${root}/system/index.html`;
-    const legacyPreviewPath = `${root}/preview/colors.html`;
     const tokensPath = `${root}/tokens.css`;
     const designTokensPath = `${root}/design-tokens.json`;
-    const previewHtml = kitPreviewModules[previewPath]
-      ?? systemIndexModules[previewFallbackPath]
-      ?? previewModules[legacyPreviewPath];
     const tokensCss = tokenModules[tokensPath];
     const tokenDocument = designTokenModules[designTokensPath];
-    if (!previewHtml || !tokensCss) return [];
+    if (!tokensCss) return [];
     return [{
       id: manifest.id,
       name: manifest.name,
       category: manifest.category,
       description: manifest.description ?? "",
-      previewHtml,
       tokensCss,
       tokens: tokenDocument?.format === "od-design-tokens/v1" ? tokenDocument.tokens : [],
     }];
@@ -281,6 +217,8 @@ export function buildTemplateTokenValues(theme: DesignSystemTheme): Record<strin
     "--ipw-color-warning": themeTokenReference(tokens, ["--warn", "--warning"], "#d97706"),
     "--ipw-color-danger": themeTokenReference(tokens, ["--danger", "--bad"], "#dc2626"),
     "--ipw-color-on-primary": themeTokenReference(tokens, ["--accent-on", "--on-accent", "--on-primary"], "#ffffff"),
+    "--ipw-bg-color": "var(--ipw-color-bg)",
+    "--ipw-bg-decoration-opacity": "1",
     "--ipw-font-display": themeTokenReference(tokens, ["--font-display"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
     "--ipw-font-body": themeTokenReference(tokens, ["--font-body"], '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'),
     "--ipw-type-scale": themeTypeScale(tokens),
@@ -332,18 +270,37 @@ export function buildStableTokenBridgeCss() {
     `  --motion-duration: var(--ipw-motion-duration) !important;`,
     `  --motion-distance: var(--ipw-motion-distance) !important;`,
     `  --motion-ease: var(--ipw-motion-ease) !important;`,
+    `  --duration-fast: var(--ipw-motion-duration) !important;`,
+    `  --duration-normal: var(--ipw-motion-duration) !important;`,
+    `  --duration-slow: var(--ipw-motion-duration) !important;`,
+    `  --motion-fast: var(--ipw-motion-duration) !important;`,
+    `  --motion-base: var(--ipw-motion-duration) !important;`,
+    `  --ease: var(--ipw-motion-ease) !important;`,
+    `  --ease-standard: var(--ipw-motion-ease) !important;`,
+    `  --page-padding: var(--ipw-page-padding) !important;`,
+    `  --page-gutter: var(--ipw-page-padding) !important;`,
+    `  --gutter: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-desktop: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-tablet: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-phone: var(--ipw-page-padding) !important;`,
+    `  --section-space: var(--ipw-section-space) !important;`,
+    `  --section-gap: var(--ipw-section-space) !important;`,
+    `  --section-y-desktop: var(--ipw-section-space) !important;`,
+    `  --section-y-tablet: var(--ipw-section-space) !important;`,
+    `  --section-y-phone: var(--ipw-section-space) !important;`,
+    `  --elev-flat: var(--ipw-card-shadow) !important;`,
+    `  --elev-ring: var(--ipw-card-shadow) !important;`,
+    `  --elev-raised: var(--ipw-card-shadow) !important;`,
     `}`,
     `html:root body { font-family: var(--ipw-font-body) !important; line-height: var(--ipw-body-line-height) !important; }`,
-    `html:root :where(h1, h2, h3, h4, h5, h6, [data-ipw-theme-role="heading"]) { font-family: var(--ipw-font-display) !important; }`,
-    `html:root :where(h1, [data-ipw-theme-role="heading"], .title, .headline, .hero-title) { --ipw-original-font-size: 2.5rem; font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
-    `html:root :where(h2, .section-title, .card-title) { --ipw-original-font-size: 2rem; font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
-    `html:root :where(h3) { --ipw-original-font-size: 1.5rem; font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
-    `html:root :where(h4, h5, h6, p, li, blockquote, [data-ipw-theme-role="body"], .body, .copy, .caption, .meta, .label, .metric, .stat, .badge) { font-family: var(--ipw-font-body) !important; font-size: calc(var(--ipw-original-font-size, 1rem) * var(--ipw-type-scale)) !important; }`,
+    `html:root body :where(*):not(svg):not(svg *):not([data-ipw-preserve-font]):not([data-ipw-preserve-font] *) { font-family: var(--ipw-font-body) !important; }`,
+    `html:root body :where(h1, h1 *, h2, h2 *, h3, h3 *, h4, h4 *, h5, h5 *, h6, h6 *, [role="heading"], [role="heading"] *, [data-ipw-theme-role="heading"], [data-ipw-theme-role="heading"] *, .title, .title *, .headline, .headline *, .heading, .heading *, .hero-title, .hero-title *, .section-title, .section-title *, .card-title, .card-title *):not(svg):not(svg *):not([data-ipw-preserve-font]):not([data-ipw-preserve-font] *) { font-family: var(--ipw-font-display) !important; }`,
+    `html:root body, html:root body > :where(#root, [data-composition-id], .composition, .stage, .canvas), html:root :where([data-composition-file][data-composition-id], [data-ipw-slide], section.slide, .slide-frame, .scene.clip) { background-color: var(--ipw-bg-color, var(--ipw-color-bg)) !important; background-image: var(--ipw-bg-overlay), var(--ipw-bg-image), var(--ipw-bg-gradient) !important; background-position: center, var(--ipw-bg-position), center !important; background-repeat: no-repeat, no-repeat, no-repeat !important; background-size: cover, var(--ipw-bg-size), cover !important; }`,
     `html:root :where(button, input, select, textarea, [role="button"]) { border-radius: var(--ipw-button-radius) !important; }`,
-    `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"], .scene, .hero, .section, .content, .media) { border-radius: var(--ipw-card-radius) !important; box-shadow: var(--ipw-card-shadow) !important; }`,
-    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) { padding-inline: var(--ipw-page-padding) !important; }`,
-    `html:root :where([data-composition-id] > section, .scene, .hero, .section, .content, .page-section) { padding-block: var(--ipw-section-space) !important; padding-inline: var(--ipw-page-padding) !important; gap: var(--ipw-page-padding) !important; }`,
-    `html:root :where(.animate-in, .reveal, .fade-in, .slide-in, .enter, [data-ipw-motion], [data-ipw-animation-reference]) { transition-duration: var(--ipw-motion-duration) !important; transition-timing-function: var(--ipw-motion-ease) !important; animation-duration: var(--ipw-motion-duration) !important; animation-timing-function: var(--ipw-motion-ease) !important; --ipw-motion-offset: var(--ipw-motion-distance); }`,
+    `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class~="panel"], [class~="tile"], [class~="task"]) { border-radius: var(--ipw-card-radius) !important; box-shadow: var(--ipw-card-shadow) !important; }`,
+    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell) { padding-inline: var(--ipw-page-padding) !important; }`,
+    `html:root :where([data-ipw-theme-role="section"]) { padding-block: var(--ipw-section-space) !important; }`,
+    `html:root :where(.animate, .animated, .animate-in, .reveal, .fade-in, .slide-in, .enter, [data-ipw-motion], [data-ipw-animation-reference]) { transition-duration: var(--ipw-motion-duration) !important; transition-timing-function: var(--ipw-motion-ease) !important; animation-duration: var(--ipw-motion-duration) !important; animation-timing-function: var(--ipw-motion-ease) !important; --ipw-motion-offset: var(--ipw-motion-distance); }`,
     `@media (prefers-reduced-motion: reduce) { html:root :where(.animate-in, .reveal, .fade-in, .slide-in, .enter, [data-ipw-motion], [data-ipw-animation-reference]) { transition-duration: 0ms !important; animation-duration: 0ms !important; } }`,
     `/* ipw-runtime-theme-bridge:end */`,
   ].join("\n");
@@ -356,17 +313,8 @@ function isColorTokenValue(value: string) {
     || value.includes("color-mix(");
 }
 
-function isFontTokenValue(value: string) {
-  return /,/.test(value) && /(?:sans|serif|mono|display|ui-|system-ui|apple-system|inter|georgia|helvetica|arial)/i.test(value);
-}
-
 function isLengthTokenValue(value: string) {
   return /^-?\d+(?:\.\d+)?(?:px|rem|em|vh|vw|%)?$/.test(value.trim());
-}
-
-function isShadowTokenValue(value: string) {
-  const trimmed = value.trim();
-  return trimmed !== "none" && /(?:rgba?\(|hsla?\(|color-mix\(|\b\d+px\b)/i.test(trimmed) && /\b(?:inset|px)\b/i.test(trimmed);
 }
 
 function escapeHtml(value: string) {
@@ -375,50 +323,6 @@ function escapeHtml(value: string) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function inlineTokensIntoPreview(previewHtml: string, tokensCss: string) {
-  const escapedCss = escapeHtml(tokensCss);
-  return previewHtml.replace(
-    /<link\b[^>]*href=["'][^"']*tokens\.css["'][^>]*>/i,
-    `<style id="design-system-preview-tokens">${escapedCss}</style>`,
-  );
-}
-
-export function buildDesignSystemPreviewDoc(theme: DesignSystemTheme) {
-  return inlineTokensIntoPreview(theme.previewHtml, theme.tokensCss);
-}
-
-export function buildThemeTokenHints(theme: DesignSystemTheme): DesignThemeTokenHints {
-  const tokens = themeTokenValues(theme);
-  const colors = new Set<string>();
-  const fonts = new Set<string>();
-  const lengths = new Set<string>();
-  const shadows = new Set<string>();
-  for (const [name, value] of Object.entries(tokens)) {
-    if (isColorTokenValue(value)) colors.add(value);
-    if (isFontTokenValue(value)) fonts.add(value);
-    if (isLengthTokenValue(value)) lengths.add(value);
-    if (isShadowTokenValue(value) || name.includes("shadow") || name.includes("elev")) shadows.add(value);
-  }
-  const byToken = Object.fromEntries(Object.entries(THEME_TOKEN_SOURCES).map(([target, sources]) => {
-    const exact = sources.map((source) => tokens[source]).filter((value): value is string => Boolean(value));
-    const family = target.includes("color") || target.endsWith("-bg") || target.endsWith("-border")
-      ? [...colors]
-      : target.includes("font")
-        ? [...fonts]
-        : target.includes("shadow")
-          ? [...shadows]
-          : [...lengths];
-    return [target, [...new Set([...exact, ...family])]];
-  }));
-  return {
-    colors: [...colors],
-    fonts: [...fonts],
-    lengths: [...lengths],
-    shadows: [...shadows],
-    byToken,
-  };
 }
 
 export function buildDesignSystemCardPreviewDoc(theme: DesignSystemTheme) {
@@ -606,7 +510,7 @@ function pickThemeToken(values: Record<string, string>, names: string[], fallbac
 
 function templateTokenAliasLine(name: string) {
   const storageName = designSystemTokenStorageName(name);
-  if (/^--text-[A-Za-z0-9_-]+$/.test(name)) {
+  if (/^--(?:text|font-size|fs)-[A-Za-z0-9_-]+$/.test(name)) {
     return `  ${name}: calc(var(${storageName}) * var(--ipw-type-scale)) !important;`;
   }
   return `  ${name}: var(${storageName}) !important;`;
@@ -638,6 +542,9 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `  --ipw-color-danger: ${values["--ipw-color-danger"]};`,
     `  --ipw-color-on-primary: ${values["--ipw-color-on-primary"]};`,
     `  --ipw-color-primary-soft: color-mix(in srgb, var(--ipw-color-primary) 12%, var(--ipw-color-bg));`,
+    `  --ipw-bg-mode: solid;`,
+    `  --ipw-bg-color: ${values["--ipw-bg-color"]};`,
+    `  --ipw-bg-decoration-opacity: ${values["--ipw-bg-decoration-opacity"]};`,
     `  --ipw-bg-gradient: none;`,
     `  --ipw-bg-image: none;`,
     `  --ipw-bg-size: cover;`,
@@ -712,40 +619,50 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `  --motion-duration: var(--ipw-motion-duration) !important;`,
     `  --motion-distance: var(--ipw-motion-distance) !important;`,
     `  --motion-ease: var(--ipw-motion-ease) !important;`,
+    `  --duration-fast: var(--ipw-motion-duration) !important;`,
+    `  --duration-normal: var(--ipw-motion-duration) !important;`,
+    `  --duration-slow: var(--ipw-motion-duration) !important;`,
+    `  --motion-fast: var(--ipw-motion-duration) !important;`,
+    `  --motion-base: var(--ipw-motion-duration) !important;`,
+    `  --ease: var(--ipw-motion-ease) !important;`,
+    `  --ease-standard: var(--ipw-motion-ease) !important;`,
+    `  --page-padding: var(--ipw-page-padding) !important;`,
+    `  --page-gutter: var(--ipw-page-padding) !important;`,
+    `  --gutter: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-desktop: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-tablet: var(--ipw-page-padding) !important;`,
+    `  --container-gutter-phone: var(--ipw-page-padding) !important;`,
+    `  --section-space: var(--ipw-section-space) !important;`,
+    `  --section-gap: var(--ipw-section-space) !important;`,
+    `  --section-y-desktop: var(--ipw-section-space) !important;`,
+    `  --section-y-tablet: var(--ipw-section-space) !important;`,
+    `  --section-y-phone: var(--ipw-section-space) !important;`,
+    `  --elev-flat: var(--ipw-card-shadow) !important;`,
+    `  --elev-ring: var(--ipw-card-shadow) !important;`,
+    `  --elev-raised: var(--ipw-card-shadow) !important;`,
     `}`,
     ``,
     `html:root, html:root body {`,
-    `  background-color: var(--ipw-color-bg) !important;`,
+    `  background-color: var(--ipw-bg-color, var(--ipw-color-bg)) !important;`,
     `  color: var(--ipw-color-text) !important;`,
     `  font-family: var(--ipw-font-body) !important;`,
     `  line-height: var(--ipw-body-line-height);`,
     `}`,
-    `html:root body {`,
+    `html:root body, html:root body > :where(#root, [data-composition-id], .composition, .stage, .canvas), html:root :where([data-composition-file][data-composition-id], [data-ipw-slide], section.slide, .slide-frame, .scene.clip) {`,
+    `  background-color: var(--ipw-bg-color, var(--ipw-color-bg)) !important;`,
     `  background-image: var(--ipw-bg-overlay), var(--ipw-bg-image), var(--ipw-bg-gradient) !important;`,
     `  background-position: center, var(--ipw-bg-position), center !important;`,
     `  background-repeat: no-repeat, no-repeat, no-repeat !important;`,
     `  background-size: cover, var(--ipw-bg-size), cover !important;`,
     `}`,
-    `html:root :where(h1, h2, h3, h4, h5, h6, [data-ipw-theme-role="heading"]) { font-family: var(--ipw-font-display) !important; line-height: var(--leading-tight, 1.08) !important; letter-spacing: var(--tracking-display, 0) !important; }`,
-    `html:root :where(h1, [data-ipw-theme-role="heading"]) { --ipw-original-font-size: var(--ipw-od-text-4xl, 2.5rem); }`,
-    `html:root :where(h2) { --ipw-original-font-size: var(--ipw-od-text-3xl, 2rem); }`,
-    `html:root :where(h3) { --ipw-original-font-size: var(--ipw-od-text-2xl, 1.5rem); }`,
-    `html:root :where(h4) { --ipw-original-font-size: var(--ipw-od-text-lg, 1.25rem); }`,
-    `html:root :where(h5) { --ipw-original-font-size: var(--ipw-od-text-base, 1.125rem); }`,
-    `html:root :where(h6, p, li, blockquote, [data-ipw-theme-role="body"]) { --ipw-original-font-size: var(--ipw-od-text-base, 1rem); }`,
-    `html:root :where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--ipw-od-text-xs, .75rem); }`,
-    `html:root :where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--ipw-od-text-lg, 1.125rem); }`,
-    `html:root :where(.title, .headline, .hero-title, .section-title, .card-title) { --ipw-original-font-size: var(--ipw-od-text-3xl, 2rem); }`,
-    `html:root :where(.body, .copy, .caption, .meta, .label, .metric, .stat, .badge) { --ipw-original-font-size: var(--ipw-od-text-base, 1rem); }`,
-    `html:root :where(h1, h2, h3, h4, h5, h6, p, li, blockquote, [data-ipw-theme-role="heading"], [data-ipw-theme-role="body"], [data-ipw-theme-role="accent"], [data-ipw-theme-role="muted"], .eyebrow, .kicker, .lede, .lead, .subtitle, .description, [class~="accent"], .title, .headline, .hero-title, .section-title, .card-title, .body, .copy, .caption, .meta, .label, .metric, .stat, .badge) { font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important; }`,
+    `html:root body :where(*):not(svg):not(svg *):not([data-ipw-preserve-font]):not([data-ipw-preserve-font] *) { font-family: var(--ipw-font-body) !important; }`,
+    `html:root body :where(h1, h1 *, h2, h2 *, h3, h3 *, h4, h4 *, h5, h5 *, h6, h6 *, [role="heading"], [role="heading"] *, [data-ipw-theme-role="heading"], [data-ipw-theme-role="heading"] *, .title, .title *, .headline, .headline *, .heading, .heading *, .hero-title, .hero-title *, .section-title, .section-title *, .card-title, .card-title *):not(svg):not(svg *):not([data-ipw-preserve-font]):not([data-ipw-preserve-font] *) { font-family: var(--ipw-font-display) !important; }`,
     `html:root :where(button, input, select, textarea, [role="button"]) { border-radius: var(--ipw-button-radius) !important; }`,
-    `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"], .scene, .hero, .section, .content, .media) { border-radius: var(--ipw-card-radius) !important; }`,
-    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) { padding-inline: var(--ipw-page-padding) !important; background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
-    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell, main) > :where(section, [data-ipw-theme-role="section"]) { padding-block: var(--ipw-section-space) !important; }`,
-    `html:root :where([data-composition-id] > section, .scene, .hero, .section, .content, .page-section) { padding-block: var(--ipw-section-space) !important; padding-inline: var(--ipw-page-padding) !important; gap: var(--ipw-page-padding) !important; }`,
-    `html:root :where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
-    `html:root :where([data-composition-id], .composition, .scene.clip) { background-color: var(--ipw-color-bg) !important; color: var(--ipw-color-text) !important; }`,
-    `html:root :where([data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], article, [class~="card"], [class*="-card"], [class~="panel"], [class*="-panel"], [class~="tile"], [class~="task"], .scene, .hero, .section, .content, .media) {`,
+    `html:root :where(article, [data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], [class~="card"], [class~="panel"], [class~="tile"], [class~="task"]) { border-radius: var(--ipw-card-radius) !important; }`,
+    `html:root :where([data-ipw-theme-role="page"], .shell, .page, .app-shell) { padding-inline: var(--ipw-page-padding) !important; color: var(--ipw-color-text) !important; }`,
+    `html:root :where([data-ipw-theme-role="section"]) { padding-block: var(--ipw-section-space) !important; }`,
+    `html:root :where([data-ipw-slide], section.slide, .slide-frame, [data-composition-id], .composition, .scene.clip) { color: var(--ipw-color-text) !important; }`,
+    `html:root :where([data-ipw-theme-role="surface"], [data-ipw-theme-role="card"], article, [class~="card"], [class~="panel"], [class~="tile"], [class~="task"]) {`,
     `  background-color: var(--ipw-card-bg) !important;`,
     `  border-color: var(--ipw-card-border) !important;`,
     `  box-shadow: var(--ipw-card-shadow) !important;`,
@@ -758,7 +675,7 @@ export function buildTemplateTokenCss(theme: DesignSystemTheme) {
     `html:root :where([data-ipw-theme-role="border"]) { border-color: var(--ipw-color-border) !important; }`,
     `html:root [data-ipw-brand-slot] { position: fixed !important; right: 18px !important; bottom: 18px !important; z-index: 2147483000 !important; display: inline-flex !important; width: auto !important; height: auto !important; max-width: calc(100vw - 36px) !important; align-items: center !important; gap: 7px !important; padding: 7px 10px !important; border: 1px solid color-mix(in srgb, var(--ipw-color-primary) 35%, var(--ipw-color-border)) !important; border-radius: 999px !important; background: color-mix(in srgb, var(--ipw-color-surface) 84%, transparent) !important; color: var(--ipw-color-text) !important; box-shadow: 0 12px 44px color-mix(in srgb, var(--ipw-color-primary) 18%, transparent) !important; font: 600 11px/1 var(--ipw-font-body) !important; letter-spacing: 0 !important; backdrop-filter: blur(14px); }`,
     `html:root [data-ipw-brand-slot] :where(img, [data-ipw-logo]) { display: block !important; width: 18px !important; height: 18px !important; min-width: 18px !important; max-width: 18px !important; min-height: 18px !important; max-height: 18px !important; object-fit: contain !important; }`,
-    `html:root :where(.animate-in, .reveal, .fade-in, .slide-in, .enter, [data-ipw-motion], [data-ipw-animation-reference]) { transition-duration: var(--ipw-motion-duration) !important; transition-timing-function: var(--ipw-motion-ease) !important; animation-duration: var(--ipw-motion-duration) !important; animation-timing-function: var(--ipw-motion-ease) !important; --ipw-motion-offset: var(--ipw-motion-distance); }`,
+    `html:root :where(.animate, .animated, .animate-in, .reveal, .fade-in, .slide-in, .enter, [data-ipw-motion], [data-ipw-animation-reference]) { transition-duration: var(--ipw-motion-duration) !important; transition-timing-function: var(--ipw-motion-ease) !important; animation-duration: var(--ipw-motion-duration) !important; animation-timing-function: var(--ipw-motion-ease) !important; --ipw-motion-offset: var(--ipw-motion-distance); }`,
     `@media (max-width: 640px) { html:root [data-ipw-brand-slot] { right: 10px !important; bottom: 10px !important; } }`,
     `/* ipw-theme:end */`,
   ];

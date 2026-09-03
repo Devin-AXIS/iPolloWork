@@ -18,9 +18,10 @@ import {
   findClosestByAttribute,
   getCuratedComputedStyles,
   getDataAttributes,
+  getCompositionSourceForHost,
+  getEditableSourceFileForElement,
   getInlineStyles,
   getSelectorIndex,
-  getSourceFileForElement,
   isHtmlElement,
   isTextBearingTag,
 } from "./domEditingDom";
@@ -29,11 +30,27 @@ import {
   getDomLayerPatchTarget,
   getDirectLayerChildren,
   getSelectionCandidate,
+  getStructuredMotionSelectionRoot,
 } from "./domEditingElement";
 import { isCompositionRootLayer } from "./domEditingRootLayer";
 
 export function isEditableTextLeaf(el: HTMLElement): boolean {
   return isTextBearingTag(el.tagName.toLowerCase()) && el.children.length === 0;
+}
+
+function readGeneratedMotionTextSource(el: HTMLElement): string | null {
+  const generated =
+    el.getAttribute("data-ipw-motion-structure") === "v1" ||
+    el.getAttribute("data-ipw-motion-split") === "v1";
+  if (!generated) return null;
+  const encoded = el.getAttribute("data-ipw-motion-source");
+  if (!encoded) return el.textContent ?? "";
+  try {
+    const source = JSON.parse(encoded);
+    return typeof source === "string" ? source : (el.textContent ?? "");
+  } catch {
+    return el.textContent ?? "";
+  }
 }
 
 function sameTagChildIndex(el: HTMLElement): number {
@@ -62,13 +79,14 @@ function buildTextField(
   total: number,
   source: "self" | "child",
   sourceChildIndex?: number,
+  valueOverride?: string,
 ): DomEditTextField {
   const tagName = el.tagName.toLowerCase();
   const key = el.getAttribute("data-hf-text-key") ?? `${source}:${index}:${tagName}`;
   return {
     key,
     label: getTextFieldLabel(tagName, index, total, source),
-    value: el.textContent ?? "",
+    value: valueOverride ?? el.textContent ?? "",
     tagName,
     attributes: Array.from(el.attributes)
       .filter((attribute) => attribute.name !== "style")
@@ -85,6 +103,11 @@ function buildTextField(
 
 // fallow-ignore-next-line complexity
 export function collectDomEditTextFields(el: HTMLElement): DomEditTextField[] {
+  const generatedMotionSource = readGeneratedMotionTextSource(el);
+  if (generatedMotionSource !== null) {
+    return [buildTextField(el, 0, 1, "self", undefined, generatedMotionSource)];
+  }
+
   const childElements = Array.from(el.children).filter(isHtmlElement).filter(isEditableTextLeaf);
 
   if (childElements.length > 0) {
@@ -318,17 +341,22 @@ export async function resolveDomEditSelection(
   options: DomEditContextOptions & { projectId?: string | null; skipSourceProbe?: boolean },
 ): Promise<DomEditSelection | null> {
   if (!startEl) return null;
-  const doc = startEl.ownerDocument;
+  const normalizedStartEl = getStructuredMotionSelectionRoot(startEl) ?? startEl;
+  const doc = normalizedStartEl.ownerDocument;
 
-  let capture = resolveGroupCapture(startEl, options.activeGroupElement ?? null);
+  let capture = resolveGroupCapture(normalizedStartEl, options.activeGroupElement ?? null);
   if (capture.kind === "out-of-scope") {
     // Drill-in is non-sticky: clicking/hovering OUTSIDE the drilled-into group
     // exits it and resolves the target normally, rather than selecting nothing
     // (which felt like "can't select anything" once you'd drilled in).
-    capture = resolveGroupCapture(startEl, null);
+    capture = resolveGroupCapture(normalizedStartEl, null);
   }
   let current: HTMLElement | null =
-    capture.kind === "unit" ? capture.element : getSelectionCandidate(startEl, options);
+    capture.kind === "unit"
+      ? capture.element
+      : options.exactTarget
+        ? normalizedStartEl
+        : getSelectionCandidate(normalizedStartEl, options);
   while (current && current !== doc.body && current !== doc.documentElement) {
     const selector = buildStableSelector(current);
     const hfId = readHfId(current);
@@ -337,22 +365,24 @@ export async function resolveDomEditSelection(
       continue;
     }
 
-    const { sourceFile, compositionPath } = getSourceFileForElement(
+    const { sourceFile, compositionPath } = getEditableSourceFileForElement(
       current,
       options.activeCompositionPath,
     );
     const selectorIndex = selector
       ? getSelectorIndex(doc, current, selector, sourceFile, options.activeCompositionPath)
       : undefined;
-    const compositionSrc =
-      current.getAttribute("data-composition-src") ??
-      current.getAttribute("data-composition-file") ??
-      undefined;
+    const compositionSrc = getCompositionSourceForHost(current);
     const inlineStyles = getInlineStyles(current);
     const computedStyles = getCuratedComputedStyles(current);
+    // Runtime-inlined composition hosts are themselves data-composition-id
+    // roots for the child content, but they remain editable boxes in the parent
+    // canvas. Only a node with no recovered child source can be the active
+    // composition root whose bounds must stay fixed.
+    const activeCompositionRoot = doc.querySelector<HTMLElement>("[data-composition-id]");
     const isCompositionRoot =
-      (current.hasAttribute("data-composition-id") && !compositionSrc) ||
-      isCompositionRootLayer(current, doc, computedStyles);
+      !compositionSrc &&
+      (current === activeCompositionRoot || isCompositionRootLayer(current, doc, computedStyles));
     const textFields = collectDomEditTextFields(current);
     const isInsideLocked = Boolean(findClosestByAttribute(current, ["data-timeline-locked"]));
     let existsInSource: boolean | undefined;
@@ -510,7 +540,10 @@ export function buildDomEditStylePatchOperation(
   return {
     type: "inline-style",
     property,
-    value,
+    // An empty CSS declaration (for example `line-height: ;`) is invalid and
+    // does not restore the inherited/computed value. Treat the inspector's
+    // empty reset value as a real declaration removal for every style channel.
+    value: value === "" ? null : value,
     ...childLocator,
   };
 }

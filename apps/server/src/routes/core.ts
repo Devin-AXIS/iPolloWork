@@ -1,5 +1,20 @@
 import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, resolve } from "node:path";
+import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
+import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
+import {
+  createDefaultProjectWorkspaceConfig,
+  projectWorkspaceConfigSchema,
+  type ProjectWorkspaceConfig,
+} from "@ipollowork/types/project-workspace";
+import {
+  workItemPrioritySchema,
+  type WorkItemCreateInput,
+  type WorkItemPriority,
+} from "@ipollowork/types/work-items";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { z } from "zod";
 import { recordAudit } from "../audit.js";
 import {
   getConnectSnapshot,
@@ -9,9 +24,17 @@ import {
 import {
   isAuthorizationServiceId,
   listAuthorizationServices,
+  saveAuthorizationService,
   testAuthorizationService,
 } from "../authorization-center.js";
 import { EnvStoreReadError, InvalidEnvKeyError, isValidEnvKey, type EnvService } from "../env-file.js";
+import {
+  ENGINE_HOST_TOOLS,
+  ENGINE_HOST_TOOL_NAMES,
+  consequentialBrowserControlNames,
+  engineHostTool,
+  type EngineHostToolName,
+} from "../engine-host-tools.js";
 import { ApiError } from "../errors.js";
 import {
   createGoogleWorkspaceConnectFlowManager,
@@ -23,6 +46,12 @@ import {
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
 import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
+import { listOpencodeOAuthProviderIds } from "../opencode-db.js";
+import {
+  readiPolloWorkWorkspaceConfig,
+  writeiPolloWorkWorkspaceConfig,
+} from "../ipollowork-workspace-config-store.js";
+import { uiControlRequest } from "../ui-control-client.js";
 import type { TokenService } from "../tokens.js";
 import {
   TOY_UI_CSS,
@@ -36,7 +65,8 @@ import {
 } from "../toy-ui.js";
 import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
 import { shortId } from "../utils.js";
-import { addRoute, type Route } from "./registry.js";
+import { addRoute, type RequestContext, type Route } from "./registry.js";
+import { createWorkItems } from "../work-items.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -55,7 +85,7 @@ interface RegisterCoreRoutesOptions {
   readOptionalJsonBody: ReadJsonBody;
   parseOptionalBoolean: ParseOptionalBoolean;
   ensureWritable: (config: ServerConfig) => void;
-  buildCapabilities: (config: ServerConfig) => Capabilities;
+  buildCapabilities: (config: ServerConfig, workspace?: WorkspaceInfo) => Capabilities;
   fetchRuntimeControl: FetchRuntimeControl;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
   serializeWorkspace: (workspace: ServerConfig["workspaces"][number]) => unknown;
@@ -66,6 +96,94 @@ interface RegisterCoreRoutesOptions {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+const scheduleDateTimeSchema = z.string().trim().max(40).superRefine((value, context) => {
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    context.addIssue({ code: "custom", message: "Date-time must include an explicit Z or ±HH:mm time zone" });
+    return;
+  }
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    context.addIssue({ code: "custom", message: "Date-time must be valid ISO 8601" });
+    return;
+  }
+  const date = new Date(timestamp);
+  if (date.getUTCMinutes() % 15 !== 0 || date.getUTCSeconds() !== 0 || date.getUTCMilliseconds() !== 0) {
+    context.addIssue({ code: "custom", message: "Date-time must align to a 15-minute boundary" });
+  }
+});
+
+const schedulePreviewInputSchema = z.object({
+  tasks: z.array(z.object({
+    title: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(4_000).optional(),
+    startAt: scheduleDateTimeSchema,
+    dueAt: scheduleDateTimeSchema,
+    priority: workItemPrioritySchema.default("normal"),
+  }).strict()).min(1).max(50),
+}).strict();
+
+type PendingScheduleTask = {
+  title: string;
+  description: string | null;
+  startAt: number;
+  dueAt: number;
+  priority: WorkItemPriority;
+};
+
+type PendingSchedulePreview = {
+  workspaceId: string;
+  tasks: PendingScheduleTask[];
+  expiresAt: number;
+};
+
+const SCHEDULE_PREVIEW_TTL_MS = 15 * 60 * 1_000;
+const SCHEDULE_PREVIEW_LIMIT = 200;
+const pendingSchedulePreviews = new Map<string, PendingSchedulePreview>();
+
+function pruneSchedulePreviews(now = Date.now()): void {
+  for (const [id, preview] of pendingSchedulePreviews) {
+    if (preview.expiresAt <= now) pendingSchedulePreviews.delete(id);
+  }
+  while (pendingSchedulePreviews.size >= SCHEDULE_PREVIEW_LIMIT) {
+    const oldest = pendingSchedulePreviews.keys().next();
+    if (oldest.done) break;
+    pendingSchedulePreviews.delete(oldest.value);
+  }
+}
+
+function browserActionRecords(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value) ? value.filter(isRecord) : [];
+}
+
+function browserRequesterLabel(context: Record<string, unknown>): string {
+  for (const [key, label] of [["extensionId", "plugin"], ["sessionId", "session"], ["agent", "agent"]] as const) {
+    const value = typeof context[key] === "string" ? context[key].trim() : "";
+    if (value) return `${label} ${value.slice(0, 80)}`;
+  }
+  return "current engine session";
+}
+
+async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {
+  const response = await uiControlRequest("/execute", {
+    method: "POST",
+    body: { actionId, args },
+  });
+  if (isRecord(response) && response.ok === false) {
+    throw new ApiError(
+      503,
+      "desktop_browser_unavailable",
+      typeof response.error === "string" ? response.error : "iPolloWork Desktop browser runtime is unavailable",
+    );
+  }
+  return isRecord(response) && response.ok === true && "result" in response
+    ? response.result
+    : response;
+}
+
+function defaultProjectConfig(workspace: WorkspaceInfo): ProjectWorkspaceConfig {
+  return createDefaultProjectWorkspaceConfig({ engineId: workspace.engineId });
 }
 
 export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
@@ -91,6 +209,392 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
+  const projectBuilderSessions = new Set<string>();
+  const projectBuilderSessionKey = (workspaceId: string, sessionId: string) => `${workspaceId}:${sessionId}`;
+
+  const callExtensionAction = async (ctx: RequestContext, body: Record<string, unknown>) => {
+    if (ctx.actor?.scope === "viewer") {
+      throw new ApiError(403, "forbidden", "Viewer tokens cannot call extension actions");
+    }
+    const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
+    const actionId = typeof body.action === "string" ? body.action.trim() : "";
+    const context = isRecord(body.context) ? body.context : {};
+    const connectSnapshot = await getConnectSnapshot(config);
+    const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
+      .find((action) => action.extensionId === extensionId && action.action === actionId);
+    const effect = declared && "effect" in declared ? declared.effect : "read";
+    const requiresConfirmation = effect === "write" || effect === "destructive";
+    let approvedWorkspace: WorkspaceInfo | null = null;
+    if (requiresConfirmation && declared) {
+      ensureWritable(config);
+      const workspaceId = workspaceIdForPluginContext(config, context);
+      approvedWorkspace = await resolveWorkspace(config, workspaceId);
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId,
+        action: `plugin_service.${extensionId}.${actionId}`,
+        summary: `${declared.title} (${extensionId})`,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Plugin write action denied", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+    }
+    const result = await callExperimentalExtensionAction(config, env, body, connectSnapshot);
+    if (approvedWorkspace && declared) {
+      await recordAudit(approvedWorkspace.path, {
+        id: shortId(),
+        workspaceId: approvedWorkspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: `plugin_service.${extensionId}.${actionId}`,
+        target: `${extensionId}:${actionId}`,
+        summary: declared.title,
+        timestamp: Date.now(),
+      });
+    }
+    return result;
+  };
+
+  const resolveEngineToolWorkspace = async (context: Record<string, unknown>): Promise<WorkspaceInfo> => {
+    const workspaceId = typeof context.workspaceId === "string" ? context.workspaceId.trim() : "";
+    if (workspaceId) return resolveWorkspace(config, workspaceId);
+    const directories = [context.directory, context.worktree]
+      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
+      .map((value) => value.trim());
+    const workspace = config.workspaces.find((candidate) => {
+      const candidatePath = candidate.path?.trim();
+      if (!candidatePath) return false;
+      return directories.some((directory) => (
+        directory === candidatePath || resolve(directory) === resolve(candidatePath)
+      ));
+    });
+    if (!workspace) {
+      throw new ApiError(400, "project_workspace_context_missing", "Project Builder could not resolve the current iPolloWork workspace");
+    }
+    return resolveWorkspace(config, workspace.id);
+  };
+
+  const requireProjectBuilderSession = (workspace: WorkspaceInfo, context: Record<string, unknown>): void => {
+    const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+    if (!sessionId || !projectBuilderSessions.has(projectBuilderSessionKey(workspace.id, sessionId))) {
+      throw new ApiError(403, "project_builder_not_active", "Open Project Builder from the project menu before using project configuration tools");
+    }
+  };
+
+  type EngineHostToolHandler = (
+    ctx: RequestContext,
+    args: Record<string, unknown>,
+    context: Record<string, unknown>,
+  ) => Promise<unknown>;
+  const engineHostToolHandlers = {
+    [ENGINE_HOST_TOOL_NAMES.extensionListActions]: async (_ctx, args, context) => {
+      const extensionId = typeof args.extensionId === "string" ? args.extensionId.trim() : "";
+      const connectSnapshot = await getConnectSnapshot(config);
+      return {
+        ok: true,
+        actions: await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.extensionCall]: async (ctx, args, context) => callExtensionAction(ctx, {
+      extensionId: args.extensionId,
+      action: args.action,
+      args: isRecord(args.args) ? args.args : {},
+      context,
+    }),
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: async (_ctx, _args, context) => {
+      const workspace = await resolveEngineToolWorkspace(context);
+      requireProjectBuilderSession(workspace, context);
+      const stored = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+      const parsed = projectWorkspaceConfigSchema.safeParse(stored.project);
+      return {
+        ok: true,
+        workspaceId: workspace.id,
+        source: parsed.success ? "saved" : "default",
+        project: parsed.success ? parsed.data : defaultProjectConfig(workspace),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot change a project configuration");
+      }
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      requireProjectBuilderSession(workspace, context);
+      const parsed = projectWorkspaceConfigSchema.safeParse(args.config);
+      if (!parsed.success) {
+        throw new ApiError(400, "invalid_project_config", "Project Builder produced an invalid project configuration", {
+          issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        });
+      }
+      const projectEngineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
+      const incompatibleAgent = parsed.data.agents.find((agent) => (
+        agent.runtime.engineId !== null && agent.runtime.engineId !== projectEngineId
+      ));
+      if (incompatibleAgent) {
+        throw new ApiError(
+          409,
+          "project_agent_engine_mismatch",
+          `Agent '${incompatibleAgent.name}' must use the project's engine until cross-engine project sessions are supported`,
+        );
+      }
+      const summary = typeof args.summary === "string" && args.summary.trim()
+        ? args.summary.trim().slice(0, 240)
+        : "Apply Project Builder changes";
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId: workspace.id,
+        action: "project.builder.apply",
+        summary,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Project Builder change was not approved", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+      const currentConfig = await readiPolloWorkWorkspaceConfig(config, workspace.id);
+      const currentProject = projectWorkspaceConfigSchema.safeParse(currentConfig.project);
+      const project = projectWorkspaceConfigSchema.parse({
+        ...parsed.data,
+        revision: (currentProject.success ? currentProject.data.revision : 0) + 1,
+      });
+      await writeiPolloWorkWorkspaceConfig(config, workspace.id, (current) => ({ ...current, project }));
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "project.builder.apply",
+        target: "project",
+        summary,
+        timestamp: Date.now(),
+      });
+      return { ok: true, workspaceId: workspace.id, project, updatedAt: Date.now() };
+    },
+    [ENGINE_HOST_TOOL_NAMES.schedulePreview]: async (_ctx, args, context) => {
+      const workspace = await resolveEngineToolWorkspace(context);
+      const parsed = schedulePreviewInputSchema.safeParse(args);
+      if (!parsed.success) {
+        throw new ApiError(400, "invalid_schedule_preview", "Schedule preview contains invalid tasks", {
+          issues: parsed.error.issues.map((issue) => ({ path: issue.path.join("."), message: issue.message })),
+        });
+      }
+      const tasks = parsed.data.tasks.map((task): PendingScheduleTask => ({
+        title: task.title,
+        description: task.description || null,
+        startAt: Date.parse(task.startAt),
+        dueAt: Date.parse(task.dueAt),
+        priority: task.priority,
+      }));
+      const invalidTaskIndex = tasks.findIndex((task) => task.dueAt < task.startAt);
+      if (invalidTaskIndex >= 0) {
+        throw new ApiError(400, "invalid_schedule_range", "Schedule task due time cannot be earlier than its start time", {
+          taskIndex: invalidTaskIndex,
+        });
+      }
+      pruneSchedulePreviews();
+      const previewId = `schedule_${shortId()}`;
+      const expiresAt = Date.now() + SCHEDULE_PREVIEW_TTL_MS;
+      pendingSchedulePreviews.set(previewId, { workspaceId: workspace.id, tasks, expiresAt });
+      return {
+        ok: true,
+        previewId,
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        expiresAt,
+        confirmationRequired: true,
+        confirmationPrompt: `Add ${tasks.length} planned task${tasks.length === 1 ? "" : "s"} to ${workspace.name}'s iPolloWork Schedule?`,
+        tasks: tasks.map((task) => ({
+          ...task,
+          startAt: new Date(task.startAt).toISOString(),
+          dueAt: new Date(task.dueAt).toISOString(),
+        })),
+      };
+    },
+    [ENGINE_HOST_TOOL_NAMES.scheduleApply]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot add tasks to iPolloWork Schedule");
+      }
+      ensureWritable(config);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const previewId = typeof args.previewId === "string" ? args.previewId.trim() : "";
+      const preview = pendingSchedulePreviews.get(previewId);
+      if (!preview) {
+        throw new ApiError(404, "schedule_preview_not_found", "Schedule preview was not found or was already applied");
+      }
+      if (preview.expiresAt <= Date.now()) {
+        pendingSchedulePreviews.delete(previewId);
+        throw new ApiError(410, "schedule_preview_expired", "Schedule preview expired; create a new preview before importing");
+      }
+      if (preview.workspaceId !== workspace.id) {
+        throw new ApiError(403, "schedule_preview_workspace_mismatch", "Schedule preview belongs to a different workspace");
+      }
+      const approval = await ctx.approvals.requestApproval({
+        workspaceId: workspace.id,
+        action: "schedule.import.apply",
+        summary: `Add ${preview.tasks.length} planned task${preview.tasks.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        paths: [],
+        actor: ctx.actor ?? { type: "remote" },
+      });
+      if (!approval.allowed) {
+        throw new ApiError(403, "write_denied", "Schedule import was not approved", {
+          requestId: approval.id,
+          reason: approval.reason,
+        });
+      }
+      const inputs: WorkItemCreateInput[] = preview.tasks.map((task) => ({
+        ...task,
+        status: "planned",
+        automation: null,
+        customFields: {},
+      }));
+      const items = await createWorkItems(config, workspace.id, inputs);
+      pendingSchedulePreviews.delete(previewId);
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "schedule.import.apply",
+        target: previewId,
+        summary: `Added ${items.length} planned task${items.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        timestamp: Date.now(),
+      });
+      return { ok: true, previewId, workspaceId: workspace.id, items };
+    },
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: async () => uiControlRequest("/execute", {
+      method: "POST",
+      body: { actionId: "workspace_app.list_tools", args: {} },
+    }),
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool]: async (_ctx, args) => uiControlRequest("/execute", {
+      method: "POST",
+      body: {
+        actionId: "workspace_app.call_tool",
+        args: {
+          name: typeof args.name === "string" ? args.name : "",
+          arguments: isRecord(args.arguments) ? args.arguments : {},
+        },
+      },
+    }),
+    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args) => executeUiControlAction(
+      "browser.open_url",
+      { url: typeof args.url === "string" ? args.url : "" },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(
+      "browser.snapshot",
+      { tabId: typeof args.tabId === "string" ? args.tabId : "" },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserAct]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot act on external websites");
+      }
+      const actions = browserActionRecords(args.actions);
+      const workspace = await resolveEngineToolWorkspace(context);
+      const consequentialNames = consequentialBrowserControlNames(actions);
+      const requester = browserRequesterLabel(context);
+      if (consequentialNames.length > 0) {
+        const summary = `${requester} requests browser action: ${consequentialNames.slice(0, 3).join(", ")}`.slice(0, 240);
+        const approval = await ctx.approvals.requestApproval({
+          workspaceId: workspace.id,
+          action: "browser.external.consequential",
+          summary,
+          paths: [],
+          actor: ctx.actor ?? { type: "remote" },
+        });
+        if (!approval.allowed) {
+          throw new ApiError(403, "browser_action_denied", "Consequential browser action was not approved", {
+            requestId: approval.id,
+            reason: approval.reason,
+          });
+        }
+      }
+      const result = await executeUiControlAction("browser.act", {
+        tabId: typeof args.tabId === "string" ? args.tabId : "",
+        snapshotId: typeof args.snapshotId === "string" ? args.snapshotId : "",
+        actions,
+        workspaceRoot: workspace.path,
+      });
+      if (isRecord(result) && result.ok !== false) {
+        await recordAudit(workspace.path, {
+          id: shortId(),
+          workspaceId: workspace.id,
+          actor: ctx.actor ?? { type: "remote" },
+          action: "browser.external.act",
+          target: typeof args.tabId === "string" ? args.tabId : "browser",
+          summary: `${requester}: ${actions.length} browser action${actions.length === 1 ? "" : "s"}`,
+          timestamp: Date.now(),
+        });
+      }
+      return result;
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserSetProxy]: async (ctx, args, context) => {
+      if (ctx.actor?.scope === "viewer") {
+        throw new ApiError(403, "forbidden", "Viewer tokens cannot change the browser proxy");
+      }
+      const workspace = await resolveEngineToolWorkspace(context);
+      const result = await executeUiControlAction("browser.set_proxy", {
+        proxy: typeof args.proxy === "string" ? args.proxy : "",
+      });
+      if (isRecord(result) && result.ok !== false) {
+        await recordAudit(workspace.path, {
+          id: shortId(),
+          workspaceId: workspace.id,
+          actor: ctx.actor ?? { type: "remote" },
+          action: "browser.proxy.set",
+          target: "browser",
+          summary: typeof args.proxy === "string" && args.proxy.trim() ? "Set browser proxy" : "Clear browser proxy",
+          timestamp: Date.now(),
+        });
+      }
+      return result;
+    },
+  } satisfies Record<EngineHostToolName, EngineHostToolHandler>;
+
+  const handleEngineHostMcpRequest = async (ctx: RequestContext): Promise<Response> => {
+    const workspaceId = ctx.url.searchParams.get("workspaceId")?.trim() ?? "";
+    if (!workspaceId) {
+      throw new ApiError(400, "engine_host_workspace_required", "The engine host MCP requires a workspaceId");
+    }
+    await resolveWorkspace(config, workspaceId);
+    const server = new McpServer(
+      { name: "ipollowork-host", version: serverVersion },
+      { capabilities: { tools: {} } },
+    );
+    server.setRequestHandler(ListToolsRequestSchema, async () => ({
+      tools: ENGINE_HOST_TOOLS.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.parameters,
+      })),
+    }));
+    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const descriptor = engineHostTool(request.params.name);
+      if (!descriptor) {
+        throw new ApiError(
+          404,
+          "engine_host_tool_not_found",
+          `Engine host tool is not registered: ${request.params.name || "missing"}`,
+        );
+      }
+      const args = isRecord(request.params.arguments) ? request.params.arguments : {};
+      const value = await engineHostToolHandlers[descriptor.name](ctx, args, { workspaceId });
+      return {
+        content: [{
+          type: "text",
+          text: JSON.stringify(value ?? null),
+        }],
+        ...(isRecord(value) ? { structuredContent: value } : {}),
+      };
+    });
+    const transport = new WebStandardStreamableHTTPServerTransport({
+      sessionIdGenerator: undefined,
+      enableJsonResponse: true,
+    });
+    await server.connect(transport);
+    return transport.handleRequest(ctx.request);
+  };
 
   const healthResponse = () => jsonResponse({
     ok: true,
@@ -211,8 +715,9 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     });
   });
 
-  addRoute(routes, "GET", "/w/:id/capabilities", "client", async () => {
-    return jsonResponse(buildCapabilities(config));
+  addRoute(routes, "GET", "/w/:id/capabilities", "client", async (ctx) => {
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    return jsonResponse(buildCapabilities(config, workspace));
   });
 
   addRoute(routes, "GET", "/w/:id/workspaces", "client", async (ctx) => {
@@ -302,50 +807,47 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   });
 
   addRoute(routes, "POST", "/experimental/extensions/call", "client", async (ctx) => {
-    if (ctx.actor?.scope === "viewer") {
-      throw new ApiError(403, "forbidden", "Viewer tokens cannot call extension actions");
-    }
     const body = await readJsonBody(ctx.request);
-    const extensionId = typeof body.extensionId === "string" ? body.extensionId.trim() : "";
-    const actionId = typeof body.action === "string" ? body.action.trim() : "";
+    return jsonResponse(await callExtensionAction(ctx, body));
+  });
+
+  addRoute(routes, "GET", "/engine-tools", "client", async () => {
+    return jsonResponse({ ok: true, schemaVersion: 1, tools: ENGINE_HOST_TOOLS });
+  });
+
+  // Codex Harness consumes the same server-owned extension and Workspace App
+  // actions as OpenCode and DSH through a standard, stateless MCP transport.
+  // Keeping dispatch here prevents engine-specific copies of plugin behavior.
+  addRoute(routes, "POST", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
+  addRoute(routes, "GET", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
+  addRoute(routes, "DELETE", "/engine-tools/mcp", "client", handleEngineHostMcpRequest);
+
+  addRoute(routes, "POST", "/workspace/:id/project-builder-sessions/:sessionId", "client", async (ctx) => {
+    if (ctx.actor?.scope === "viewer") {
+      throw new ApiError(403, "forbidden", "Viewer tokens cannot activate Project Builder");
+    }
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const sessionId = ctx.params.sessionId.trim();
+    if (!sessionId) throw new ApiError(400, "invalid_session", "Project Builder session id is required");
+    projectBuilderSessions.add(projectBuilderSessionKey(workspace.id, sessionId));
+    while (projectBuilderSessions.size > 500) {
+      const oldest = projectBuilderSessions.values().next();
+      if (oldest.done) break;
+      projectBuilderSessions.delete(oldest.value);
+    }
+    return jsonResponse({ ok: true, workspaceId: workspace.id, sessionId });
+  });
+
+  addRoute(routes, "POST", "/engine-tools/call", "client", async (ctx) => {
+    const body = await readJsonBody(ctx.request);
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const args = isRecord(body.args) ? body.args : {};
     const context = isRecord(body.context) ? body.context : {};
-    const connectSnapshot = await getConnectSnapshot(config);
-    const declared = (await listExperimentalExtensionActions(config, extensionId, context, connectSnapshot))
-      .find((action) => action.extensionId === extensionId && action.action === actionId);
-    const effect = declared && "effect" in declared ? declared.effect : "read";
-    const requiresConfirmation = effect === "write" || effect === "destructive";
-    let approvedWorkspace: WorkspaceInfo | null = null;
-    if (requiresConfirmation && declared) {
-      ensureWritable(config);
-      const workspaceId = workspaceIdForPluginContext(config, context);
-      approvedWorkspace = await resolveWorkspace(config, workspaceId);
-      const approval = await ctx.approvals.requestApproval({
-        workspaceId,
-        action: `plugin_service.${extensionId}.${actionId}`,
-        summary: `${declared.title} (${extensionId})`,
-        paths: [],
-        actor: ctx.actor ?? { type: "remote" },
-      });
-      if (!approval.allowed) {
-        throw new ApiError(403, "write_denied", "Plugin write action denied", {
-          requestId: approval.id,
-          reason: approval.reason,
-        });
-      }
+    const descriptor = engineHostTool(name);
+    if (!descriptor) {
+      throw new ApiError(404, "engine_host_tool_not_found", `Engine host tool is not registered: ${name || "missing"}`);
     }
-    const result = await callExperimentalExtensionAction(config, env, body, connectSnapshot);
-    if (approvedWorkspace && declared) {
-      await recordAudit(approvedWorkspace.path, {
-        id: shortId(),
-        workspaceId: approvedWorkspace.id,
-        actor: ctx.actor ?? { type: "remote" },
-        action: `plugin_service.${extensionId}.${actionId}`,
-        target: `${extensionId}:${actionId}`,
-        summary: declared.title,
-        timestamp: Date.now(),
-      });
-    }
-    return jsonResponse(result);
+    return jsonResponse(await engineHostToolHandlers[descriptor.name](ctx, args, context));
   });
 
   addRoute(routes, "GET", "/experimental/google-workspace/status", "client", async () => {
@@ -452,7 +954,13 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
 
   addRoute(routes, "GET", "/env/keys", "host-token", async () => {
     const items = await env.list().catch(rethrowEnvStoreReadError);
-    return jsonResponse({ keys: items.map((item) => item.key) });
+    return jsonResponse({
+      keys: items.map((item) => item.key),
+      oauthProviderIds: listOpencodeOAuthProviderIds({
+        managedOnly: true,
+        ...(config.opencodeAuthPath ? { authPath: config.opencodeAuthPath } : {}),
+      }),
+    });
   });
 
   function envRuntimeKeyFromUrl(url: URL): string {
@@ -551,12 +1059,22 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     return jsonResponse({ ok: true });
   });
 
-  // Curated service credentials use the same user-scoped local secret store
-  // as the generic Environment settings. This route only
-  // exposes configuration state; raw secrets stay server-side.
   addRoute(routes, "GET", "/authorization-services", "host-token", async () => {
-    const items = await env.list().catch(rethrowEnvStoreReadError);
-    return jsonResponse({ items: listAuthorizationServices(items) });
+    return jsonResponse({ items: await listAuthorizationServices(config) });
+  });
+
+  addRoute(routes, "PUT", "/authorization-services/:serviceId/credentials", "host-token", async (ctx) => {
+    ensureWritable(config);
+    const serviceId = ctx.params.serviceId;
+    if (!isAuthorizationServiceId(serviceId)) {
+      throw new ApiError(404, "authorization_service_not_found", "Authorization service not found");
+    }
+    const body = await readJsonBody(ctx.request);
+    try {
+      return jsonResponse({ status: await saveAuthorizationService(config, serviceId, body.values) });
+    } catch (error) {
+      throw new ApiError(400, "authorization_values_invalid", error instanceof Error ? error.message : "Authorization values are invalid");
+    }
   });
 
   addRoute(routes, "POST", "/authorization-services/:serviceId/test", "host-token", async (ctx) => {
@@ -564,10 +1082,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     if (!isAuthorizationServiceId(serviceId)) {
       throw new ApiError(404, "authorization_service_not_found", "Authorization service not found");
     }
-    const result = await testAuthorizationService(env, serviceId).catch(rethrowEnvStoreReadError);
-    // A failed remote credential test is a valid completed test, not a route
-    // failure. Returning it as JSON lets the UI show a useful result instead
-    // of collapsing the provider response into a generic request error.
+    const result = await testAuthorizationService(config, serviceId);
     return jsonResponse(result);
   });
 

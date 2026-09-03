@@ -1,7 +1,9 @@
 "use client";
 
 import { type ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, Ref } from "react";
+import { createPortal } from "react-dom";
+import { LazyMotion, domAnimation, m, useReducedMotion, type Transition } from "motion/react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -47,6 +49,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { resolveHyperframesEffectVariableValues } from "@ipollowork/types/hyperframes";
 import {
   hyperframesSelectionUpdateMode,
@@ -55,12 +64,11 @@ import {
 import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { listSavedPromptTemplates, type SavedPromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 
 export type NewConversationMode = "work" | "code" | "design" | "video";
 
 type Icon = LucideIcon;
-type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
+export type TemplateCoverLoader = (templateId: string) => Promise<{ data: ArrayBuffer; contentType?: string | null }>;
 
 type NewConversationStarterProps = {
   selectedMode: NewConversationMode;
@@ -71,7 +79,8 @@ type NewConversationStarterProps = {
   templatesLoading?: boolean;
   templateBusyId?: string | null;
   getTemplateCover?: TemplateCoverLoader;
-  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
   animationCatalog?: HyperframesCatalogItem[];
@@ -109,6 +118,17 @@ const MODES = [
   { id: "design", iconSrc: publicAssetUrl("new-conversation-tabs/design.svg"), label: "new_conversation.mode.design" },
   { id: "video", iconSrc: publicAssetUrl("new-conversation-tabs/video.svg"), label: "new_conversation.mode.video" },
 ] as const satisfies ReadonlyArray<{ id: NewConversationMode; iconSrc: string; label: string }>;
+
+const QUICK_TASK_GLOBE_ASSET = publicAssetUrl("quick-task-globe.svg");
+const QUICK_TASK_GLOBE_SELECTED_ASSET = publicAssetUrl("quick-task-globe-selected.svg");
+const QUICK_TASK_PLUS_ASSET = publicAssetUrl("quick-task-plus.svg");
+
+const MODE_TAB_SPRING = {
+  type: "spring",
+  mass: 1,
+  stiffness: 300,
+  damping: 28,
+} satisfies Transition;
 
 type StarterAction = {
   id: string;
@@ -207,6 +227,7 @@ function TemplateStrip({
   category,
   getTemplateCover,
   onUseTemplate,
+  onUseCustomTemplate,
   onInstallTemplate,
   onRequestTemplates,
 }: {
@@ -215,7 +236,8 @@ function TemplateStrip({
   busyId?: string | null;
   category: TemplateCategory;
   getTemplateCover?: TemplateCoverLoader;
-  onUseTemplate?: (templateId: string, surface: "design" | "video") => void;
+  onUseTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<unknown>;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onInstallTemplate?: (templateId: string) => void;
   onRequestTemplates?: () => void;
 }) {
@@ -258,7 +280,7 @@ function TemplateStrip({
   };
 
   return (
-    <section className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3" aria-live="polite">
+    <section data-testid="new-conversation-template-strip" data-category={category} className="mt-4 min-h-[185px] min-w-0 overflow-hidden rounded-xl border border-border/80 bg-muted/25 p-3" aria-live="polite">
       <div className="mb-2 flex items-baseline justify-between gap-3 px-0.5">
         <div>
           <p className="text-[13px] font-medium text-foreground">{t("new_conversation.templates.title", { category: categoryLabel })}</p>
@@ -275,18 +297,36 @@ function TemplateStrip({
             <span>{t("new_conversation.templates.loading")}</span>
           </div>
         </div>
-      ) : categoryTemplates.length ? (
+      ) : onUseCustomTemplate || categoryTemplates.length ? (
         <div>
-          <div ref={scrollerRef} className="-mx-0.5 flex snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+          <div ref={scrollerRef} className="-mx-0.5 flex min-w-0 snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {onUseCustomTemplate ? (
+              <button
+                type="button"
+                disabled={Boolean(busyId)}
+                aria-label={`${t("new_conversation.templates.use")}: ${t("template_market.custom_title")}`}
+                className="group relative h-[106px] min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-md disabled:cursor-not-allowed disabled:opacity-55"
+                onClick={() => onUseCustomTemplate(category)}
+              >
+                <div className="flex h-full w-full flex-col items-center justify-center gap-2 text-primary">
+                  <Plus className="size-6" strokeWidth={1.75} aria-hidden />
+                  <span className="text-[12px] font-medium text-foreground">{t("template_market.custom_title")}</span>
+                </div>
+                <span aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 group-active:opacity-100">
+                  <span className="flex h-6 items-center rounded-md bg-white px-2 py-0.5 text-[12px] font-medium leading-none text-black shadow-sm">{t("new_conversation.templates.use")}</span>
+                </span>
+              </button>
+            ) : null}
             {categoryTemplates.map((template) => {
               const busy = busyId === template.manifest.id;
+              const anyBusy = Boolean(busyId);
               const canUse = template.installed && Boolean(onUseTemplate);
               const label = template.installed ? t("new_conversation.templates.use") : t("new_conversation.templates.install");
               return (
                 <button
                   key={template.manifest.id}
                   type="button"
-                  disabled={busy || (!canUse && !onInstallTemplate)}
+                  disabled={anyBusy || (!canUse && !onInstallTemplate)}
                   aria-label={`${label}: ${template.manifest.title}`}
                   data-busy={busy ? "true" : undefined}
                   className="group relative h-[106px] min-w-[172px] snap-start overflow-hidden rounded-lg border border-border/80 bg-background text-left shadow-sm transition-[box-shadow,transform] hover:-translate-y-px hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:shadow-md disabled:cursor-not-allowed disabled:opacity-55 data-[busy=true]:shadow-md"
@@ -516,15 +556,19 @@ function AnimationVariableControl({
         </div>
       ) : null}
       {variable.type === "enum" ? (
-        <select
-          id={inputId}
+        <Select
           value={typeof value === "string" ? value : variable.default}
-          aria-label={variable.label}
-          className="h-9 w-full rounded-lg border border-border bg-background px-3 text-[12px] text-foreground"
-          onChange={(event) => onChange(event.target.value)}
+          onValueChange={(nextValue) => {
+            if (nextValue) onChange(nextValue);
+          }}
         >
-          {variable.options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+          <SelectTrigger id={inputId} aria-label={variable.label} className="w-full text-[12px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {variable.options.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
       ) : null}
       {variable.type === "string" ? (
         <input
@@ -862,6 +906,7 @@ function ShortcutEditor({
   templates,
   templatesLoading,
   position,
+  panelRef,
   onToggle,
   onMove,
   onClose,
@@ -872,13 +917,17 @@ function ShortcutEditor({
   templates: TemplateCatalogItem[];
   templatesLoading: boolean;
   position: CSSProperties;
+  panelRef: Ref<HTMLDivElement>;
   onToggle: (id: string) => void;
   onMove: (id: string, direction: -1 | 1) => void;
   onClose: () => void;
 }) {
   const creativeMode = mode === "design";
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div
+      ref={panelRef}
+      data-testid="new-conversation-shortcut-editor"
       className="fixed z-[80] max-h-[min(420px,calc(100vh-2rem))] w-[min(340px,calc(100vw-2rem))] overflow-y-auto rounded-xl border border-border/80 bg-background/95 p-3 shadow-xl backdrop-blur"
       style={position}
       role="dialog"
@@ -959,12 +1008,13 @@ function ShortcutEditor({
           );
         })}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
-export function newConversationPlaceholder(mode: NewConversationMode) {
-  return t(`new_conversation.placeholder.${mode}`);
+export function newConversationPlaceholder() {
+  return t("new_conversation.placeholder");
 }
 
 export function NewConversationStarter({
@@ -977,6 +1027,7 @@ export function NewConversationStarter({
   templateBusyId,
   getTemplateCover,
   onUseTemplate,
+  onUseCustomTemplate,
   onInstallTemplate,
   onRequestTemplates,
   animationCatalog = [],
@@ -987,26 +1038,14 @@ export function NewConversationStarter({
   onChangeAnimationParams,
   onRetryAnimationCatalog,
 }: NewConversationStarterProps) {
+  const reduceMotion = useReducedMotion();
   const [activeTemplateCategory, setActiveTemplateCategory] = useState<TemplateCategory | null>(null);
-  const [hoveredMode, setHoveredMode] = useState<NewConversationMode | null>(null);
   const [shortcutEditorOpen, setShortcutEditorOpen] = useState(false);
   const [shortcutEditorPosition, setShortcutEditorPosition] = useState<CSSProperties>({});
   const [shortcutIds, setShortcutIds] = useState<Record<NewConversationMode, string[]>>(DEFAULT_SHORTCUT_IDS);
-  const [savedPromptTemplates, setSavedPromptTemplates] = useState<SavedPromptTemplate[]>([]);
   const shortcutEditorRef = useRef<HTMLDivElement>(null);
+  const shortcutEditorPanelRef = useRef<HTMLDivElement>(null);
   const shortcutButtonRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const refreshSavedTemplates = () => setSavedPromptTemplates(listSavedPromptTemplates().slice(0, 4));
-    refreshSavedTemplates();
-    window.addEventListener("ipollowork:saved-prompt-templates-changed", refreshSavedTemplates);
-    window.addEventListener("storage", refreshSavedTemplates);
-    return () => {
-      window.removeEventListener("ipollowork:saved-prompt-templates-changed", refreshSavedTemplates);
-      window.removeEventListener("storage", refreshSavedTemplates);
-    };
-  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1036,7 +1075,11 @@ export function NewConversationStarter({
   useEffect(() => {
     if (!shortcutEditorOpen) return;
     const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!shortcutEditorRef.current?.contains(event.target as Node)) setShortcutEditorOpen(false);
+      if (!(event.target instanceof Node)) return;
+      if (
+        !shortcutEditorRef.current?.contains(event.target)
+        && !shortcutEditorPanelRef.current?.contains(event.target)
+      ) setShortcutEditorOpen(false);
     };
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setShortcutEditorOpen(false);
@@ -1053,11 +1096,24 @@ export function NewConversationStarter({
     const button = shortcutButtonRef.current;
     if (!button || typeof window === "undefined") return;
     const rect = button.getBoundingClientRect();
-    const right = Math.max(16, window.innerWidth - rect.right);
-    const opensAbove = rect.bottom > window.innerHeight * 0.58;
+    const contentRect = button.closest<HTMLElement>('[data-slot="sidebar-inset"]')?.getBoundingClientRect();
+    const contentLeft = contentRect?.left ?? 0;
+    const contentRight = contentRect?.right ?? window.innerWidth;
+    const horizontalMargin = 16;
+    const width = Math.min(340, Math.max(0, contentRight - contentLeft - horizontalMargin * 2));
+    const left = Math.min(
+      Math.max(rect.right - width, contentLeft + horizontalMargin),
+      contentRight - horizontalMargin - width,
+    );
+    const verticalMargin = 16;
+    const gap = 8;
+    const availableAbove = Math.max(0, rect.top - gap - verticalMargin);
+    const availableBelow = Math.max(0, window.innerHeight - rect.bottom - gap - verticalMargin);
+    const opensAbove = availableAbove > availableBelow;
+    const maxHeight = Math.min(420, opensAbove ? availableAbove : availableBelow);
     setShortcutEditorPosition(opensAbove
-      ? { right, bottom: Math.max(16, window.innerHeight - rect.top + 8) }
-      : { right, top: Math.max(16, rect.bottom + 8) });
+      ? { left, width, maxHeight, bottom: window.innerHeight - rect.top + gap }
+      : { left, width, maxHeight, top: rect.bottom + gap });
   };
 
   useEffect(() => {
@@ -1072,10 +1128,10 @@ export function NewConversationStarter({
   }, [shortcutEditorOpen]);
 
   const modeDefinitions = MODE_ACTIONS[selectedMode];
+  const modeTabIndicatorX = MODES.findIndex(({ id }) => id === selectedMode) * 100;
   const actions = shortcutIds[selectedMode]
     .map((id) => modeDefinitions.find((action) => action.id === id))
     .filter((action): action is StarterAction => Boolean(action));
-
   const toggleShortcut = (id: string) => {
     const definition = modeDefinitions.find((action) => action.id === id);
     if (!definition) return;
@@ -1105,20 +1161,20 @@ export function NewConversationStarter({
     setActiveTemplateCategory(null);
     setShortcutEditorOpen(false);
     if (mode === "design" || (mode === "video" && VIDEO_TEMPLATE_PICKER_ENABLED)) {
-      onRequestTemplates?.();
+      if (!templates.length && !templatesLoading) onRequestTemplates?.();
     }
     onSelectMode(mode);
   };
 
   return (
-    <div className="relative w-full overflow-visible px-6 py-8 sm:px-0 sm:pb-0 sm:pt-12">
+    <div data-testid="new-conversation-starter-layout" className="relative w-full overflow-visible px-6 pt-8 sm:px-0 sm:pt-12">
       <img
         src={publicAssetUrl("new-conversation-bg.png")}
         alt=""
         aria-hidden
         className="pointer-events-none absolute left-[calc(50%-280px)] -top-[18px] h-[243px] w-[243px] max-w-none dark:opacity-20"
       />
-      <div className="relative">
+      <div data-testid="new-conversation-starter-header" className="relative">
         <div className="max-w-4xl">
           <img
             src={publicAssetUrl("ipollo-work-wordmark.svg")}
@@ -1128,66 +1184,88 @@ export function NewConversationStarter({
           <h1 className="mt-3 font-sans text-[48px] font-semibold leading-none tracking-[-1.92px] text-black dark:text-white">
             {t("new_conversation.title")}
           </h1>
-          <p className="mt-8 font-sans text-[16px] font-light leading-normal tracking-[-0.64px] text-[#666] dark:text-[#ccc]">{t("new_conversation.subtitle")}</p>
         </div>
 
+        <LazyMotion features={domAnimation}>
+          <div
+            className="relative isolate mt-8 flex h-[42px] w-fit max-w-full items-center gap-2 rounded-[40px] bg-[var(--new-conversation-tab-surface)] p-1"
+            role="tablist"
+            aria-label={t("new_conversation.mode_label")}
+          >
+            <m.span
+              data-testid="new-conversation-mode-indicator"
+              aria-hidden="true"
+              initial={false}
+              animate={{ x: modeTabIndicatorX }}
+              transition={reduceMotion ? { duration: 0 } : MODE_TAB_SPRING}
+              className="pointer-events-none absolute left-1 top-[3px] z-0 h-9 w-[92px] rounded-[40px] bg-[var(--new-conversation-tab-selected)]"
+            />
+            {MODES.map(({ id, iconSrc, label }) => {
+              const selected = id === selectedMode;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  className={cn(
+                    "relative z-10 inline-flex w-[92px] min-w-0 items-center justify-center gap-1 px-3 font-['PingFang_SC'] text-[13px] font-medium leading-[20px] transition-[background-color,border-radius,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                    selected
+                      ? "h-9 rounded-[40px] text-[var(--new-conversation-tab-text)]"
+                      : "h-[38px] rounded-[12px] text-[var(--new-conversation-tab-muted)] hover:rounded-[40px] hover:bg-[var(--new-conversation-tab-selected)]/70 hover:text-[var(--new-conversation-tab-text)]",
+                  )}
+                  onClick={() => selectMode(id)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="size-[16px] shrink-0 bg-current transition-opacity duration-150"
+                    style={{
+                      WebkitMaskImage: `url(${iconSrc})`,
+                      maskImage: `url(${iconSrc})`,
+                      WebkitMaskPosition: "center",
+                      maskPosition: "center",
+                      WebkitMaskRepeat: "no-repeat",
+                      maskRepeat: "no-repeat",
+                      WebkitMaskSize: "contain",
+                      maskSize: "contain",
+                    }}
+                  />
+                  <span className="min-w-0 truncate">{t(label)}</span>
+                </button>
+              );
+            })}
+          </div>
+        </LazyMotion>
+      </div>
+
+      <div data-testid="new-conversation-starter-tasks" className="relative pt-6">
         <div
-          className="mt-8 grid h-[46px] w-full max-w-[394px] grid-cols-4 items-center gap-1.5 rounded-[12px] bg-[#F5F5F5] p-1 dark:bg-[#333]"
-          role="tablist"
-          aria-label={t("new_conversation.mode_label")}
+          data-testid="new-conversation-quick-actions"
+          className={cn(
+            "flex flex-wrap gap-2",
+            selectedMode === "video" ? "" : "min-h-[56px] content-start",
+          )}
+          aria-label={t("new_conversation.quick_actions_label")}
         >
-        {MODES.map(({ id, iconSrc, label }) => {
-          const selected = id === selectedMode;
-          return (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={selected}
-              className={cn(
-                "inline-flex h-[38px] min-w-0 items-center justify-center gap-1.5 rounded-[8px] px-1.5 font-sans text-[12px] font-medium leading-normal transition-[background-color,color,box-shadow] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                selected
-                  ? "bg-white text-black dark:bg-black dark:text-[#ccc]"
-                  : "text-[#999] hover:bg-white/70 hover:text-black dark:hover:bg-black/50 dark:hover:text-[#ccc] dark:active:bg-black dark:active:text-[#ccc]",
-              )}
-              onClick={() => selectMode(id)}
-              onMouseEnter={() => setHoveredMode(id)}
-              onMouseLeave={() => setHoveredMode(null)}
-            >
-              <img
-                src={iconSrc}
-                alt=""
-                aria-hidden
-                className={cn(
-                  "shrink-0 object-contain",
-                  id === "video" ? "h-[14px] w-[18px]" : "size-4",
-                  (selected || hoveredMode === id) && "brightness-0 dark:invert dark:opacity-80",
-                )}
-              />
-              <span className="min-w-0 truncate">{t(label)}</span>
-            </button>
-          );
-        })}
-        </div>
-
-        <div className="mt-5 flex flex-wrap gap-2" aria-label={t("new_conversation.quick_actions_label")}>
         {actions.map(({ id, label, prompt, templateCategory, icon: ActionIcon }) => {
           const selectedTemplateAction = templateCategory !== undefined && templateCategory === activeTemplateCategory;
           const selectedCapabilityAction = !templateCategory && selectedCapabilityId === id;
+          const selected = selectedTemplateAction || selectedCapabilityAction;
+          const isWebsiteAction = id === "site";
           return (
             <button
               key={id}
               type="button"
               aria-pressed={templateCategory !== undefined ? selectedTemplateAction : selectedCapabilityAction}
               className={cn(
-                "inline-flex h-[24px] min-w-[50px] items-center justify-center rounded-[18px] border px-2 text-[12px] font-medium transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-                selectedTemplateAction || selectedCapabilityAction
-                  ? "border-[#CCC] bg-[#F5F5F5] text-[#999] dark:border-[#666] dark:bg-[#343434] dark:text-[#ccc]"
-                  : "border-[#CBCBCB] bg-white text-[#999] hover:border-[#CCC] hover:bg-[#F5F5F5] dark:border-[#666] dark:bg-transparent dark:hover:border-[#999] dark:hover:bg-[#343434] dark:hover:text-[#ccc]",
+                "new-conversation-quick-action inline-flex h-7 items-center justify-center gap-1.5 rounded-[18px] border px-2 py-1 text-[11px] font-normal leading-4 transition-[background-color,border-color,color] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                selected
+                  ? "border-[#E0DDC3] bg-[#F4F4EE] text-[#161E24] dark:border-[#666] dark:bg-[#343434] dark:text-[#f5f5f5]"
+                  : "border-[#EBEBEB] bg-transparent text-[#5A6774] hover:border-[#EBEBEB] hover:bg-[#EFEFEF] dark:border-[#666] dark:text-[#b0b4ba] dark:hover:border-[#999] dark:hover:bg-[#343434] dark:hover:text-[#f5f5f5]",
               )}
               onClick={() => {
                 if (templateCategory) {
-                  onRequestTemplates?.();
+                  if (!templates.length && !templatesLoading) onRequestTemplates?.();
                   setActiveTemplateCategory((current) => current === templateCategory ? null : templateCategory);
                 } else if (prompt) {
                   onSelectPrompt("", selectedCapabilityAction ? undefined : {
@@ -1199,7 +1277,18 @@ export function NewConversationStarter({
                 }
               }}
             >
-              <ActionIcon className="mr-1 size-3.5 shrink-0" aria-hidden />
+              {isWebsiteAction ? (
+                <span className="relative size-3.5 shrink-0">
+                  <img
+                    src={selected ? QUICK_TASK_GLOBE_SELECTED_ASSET : QUICK_TASK_GLOBE_ASSET}
+                    alt=""
+                    aria-hidden
+                    className={cn("absolute inset-[8.33%] size-[83.34%]", selected && "dark:invert")}
+                  />
+                </span>
+              ) : (
+                <ActionIcon className="size-3.5 shrink-0" aria-hidden />
+              )}
               <span className="whitespace-nowrap">{t(label)}</span>
             </button>
           );
@@ -1218,26 +1307,15 @@ export function NewConversationStarter({
               aria-label={t("new_conversation.shortcuts.add")}
               aria-expanded={shortcutEditorOpen}
               onClick={() => {
-                if (selectedMode === "design") onRequestTemplates?.();
+                if (selectedMode === "design" && !templates.length && !templatesLoading) onRequestTemplates?.();
                 updateShortcutEditorPosition();
                 setShortcutEditorOpen((open) => !open);
               }}
             >
-              <Plus className="size-4 text-[#999]" strokeWidth={1.8} aria-hidden />
+              <span className="relative size-4 shrink-0">
+                <img src={QUICK_TASK_PLUS_ASSET} alt="" aria-hidden className="absolute inset-[20.83%] size-[58.34%]" />
+              </span>
             </button>
-            {shortcutEditorOpen ? (
-              <ShortcutEditor
-                mode={selectedMode}
-                definitions={modeDefinitions}
-                selectedIds={shortcutIds[selectedMode]}
-                templates={templates}
-                templatesLoading={templatesLoading}
-                position={shortcutEditorPosition}
-                onToggle={toggleShortcut}
-                onMove={moveShortcut}
-                onClose={() => setShortcutEditorOpen(false)}
-              />
-            ) : null}
           </div>
         ) : null}
         </div>
@@ -1250,29 +1328,10 @@ export function NewConversationStarter({
             category={activeTemplateCategory}
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
+            onUseCustomTemplate={onUseCustomTemplate}
             onInstallTemplate={onInstallTemplate}
             onRequestTemplates={onRequestTemplates}
           />
-        ) : null}
-        {selectedMode === "work" && savedPromptTemplates.length > 0 ? (
-          <div className="mt-4 rounded-xl border border-border/80 bg-muted/25 p-3">
-            <div className="mb-2 px-0.5">
-              <p className="text-[13px] font-medium text-foreground">{t("new_conversation.saved_templates.title")}</p>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {savedPromptTemplates.map((template) => (
-                <button
-                  key={template.id}
-                  type="button"
-                  className="max-w-full rounded-lg border border-border bg-background px-3 py-2 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  onClick={() => onSelectPrompt(template.prompt)}
-                >
-                  <span className="block truncate font-medium text-foreground">{template.title}</span>
-                  <span className="mt-0.5 block max-w-[220px] truncate">{template.prompt}</span>
-                </button>
-              ))}
-            </div>
-          </div>
         ) : null}
         {selectedMode === "video" && VIDEO_ANIMATION_PICKER_ENABLED ? (
           <AnimationCatalogStrip
@@ -1293,11 +1352,26 @@ export function NewConversationStarter({
             category="video"
             getTemplateCover={getTemplateCover}
             onUseTemplate={onUseTemplate}
+            onUseCustomTemplate={onUseCustomTemplate}
             onInstallTemplate={onInstallTemplate}
             onRequestTemplates={onRequestTemplates}
           />
         ) : null}
       </div>
+      {shortcutEditorOpen ? (
+        <ShortcutEditor
+          mode={selectedMode}
+          definitions={modeDefinitions}
+          selectedIds={shortcutIds[selectedMode]}
+          templates={templates}
+          templatesLoading={templatesLoading}
+          position={shortcutEditorPosition}
+          panelRef={shortcutEditorPanelRef}
+          onToggle={toggleShortcut}
+          onMove={moveShortcut}
+          onClose={() => setShortcutEditorOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

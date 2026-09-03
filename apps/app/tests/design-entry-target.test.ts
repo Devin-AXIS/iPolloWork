@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  designProjectSessionIdFromEntryPath,
+  resolveTemplateEntryContentSurface,
   resolveTemplateEntrySurface,
   waitForTemplateEntrySurface,
 } from "../src/react-app/domains/session/templates/template-entry-route";
 
 describe("template entry surface routing", () => {
+  test("derives the prepared Design project id from its entry path", () => {
+    expect(designProjectSessionIdFromEntryPath("design/ses_bank-artifact-slides/entry.html")).toBe("ses_bank-artifact-slides");
+    expect(designProjectSessionIdFromEntryPath("reports/bank.html")).toBeNull();
+  });
+
   test("routes website and Slides entries to Design", () => {
     expect(resolveTemplateEntrySurface(
       { kind: "file", value: "design/ses_site/entry.html" },
@@ -22,6 +29,19 @@ describe("template entry surface routing", () => {
       { kind: "file", value: "video/ses_video/index.html" },
       { surface: "video", entry: "video/ses_video/index.html" },
     )).toBe("video");
+  });
+
+  test("recovers ordinary webpages that an older run wrote over a Video entry", () => {
+    const binding = { surface: "video", entry: "video/ses_video/index.html" } as const;
+    expect(resolveTemplateEntryContentSurface(
+      binding,
+      "<!doctype html><html><body><main>Today's AI news</main></body></html>",
+    )).toBe("design");
+    expect(resolveTemplateEntryContentSurface(
+      binding,
+      '<main data-composition-id="main" data-duration="8"></main>',
+    )).toBe("video");
+    expect(resolveTemplateEntryContentSurface(binding, null)).toBe("video");
   });
 
   test("keeps ordinary HTML and non-entry files on the artifact route", () => {

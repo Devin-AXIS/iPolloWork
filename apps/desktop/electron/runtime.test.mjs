@@ -1,21 +1,37 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   applyEmbeddedServerEnvironment,
+  binaryFileNames,
   commandMatchesPackagedSidecar,
   devModeHomeDirectoryPaths,
   embeddedServerImportUrl,
+  managedOpencodeEnvironment,
   prioritizeWorkspacePaths,
   resolveiPolloWorkServerConfigPath,
+  runtimeProxyEnvironmentFingerprint,
   seedWorkspacePathsForEmbeddedServer,
   selectStickyiPolloWorkPortWorkspace,
+  stageBundledOpencodeRuntime,
   windowsProxyEnvFromServer,
 } from "./runtime.mjs";
+
+describe("binaryFileNames", () => {
+  it("prefers the canonical packaged alias before the target-specific fallback", () => {
+    const extension = process.platform === "win32" ? ".exe" : "";
+    const names = binaryFileNames("opencode");
+
+    assert.equal(names[0], `opencode${extension}`);
+    if (names.length > 1) {
+      assert.match(names[1], new RegExp(`^opencode-.+${extension.replace(".", "\\.")}$`));
+    }
+  });
+});
 
 describe("windowsProxyEnvFromServer", () => {
   it("maps a Windows system proxy to child-process proxy variables", () => {
@@ -58,6 +74,76 @@ describe("applyEmbeddedServerEnvironment", () => {
     assert.equal(desktopEnv.XDG_CONFIG_HOME, "C:\\Users\\Lenovo\\.config");
     assert.equal(desktopEnv.OPENCODE_CONFIG_DIR, undefined);
     assert.equal(desktopEnv.OPENAI_API_KEY, "test-key");
+  });
+
+  it("replaces and removes stale proxy values after a VPN change", () => {
+    const desktopEnv = {
+      HTTP_PROXY: "http://127.0.0.1:7890",
+      HTTPS_PROXY: "http://127.0.0.1:7890",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "desktop",
+    };
+
+    applyEmbeddedServerEnvironment(desktopEnv, {
+      HTTP_PROXY: "http://127.0.0.1:7891",
+      HTTPS_PROXY: "http://127.0.0.1:7891",
+      NODE_USE_ENV_PROXY: "1",
+      KEEP_ME: "child",
+    });
+    assert.equal(desktopEnv.HTTP_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.HTTPS_PROXY, "http://127.0.0.1:7891");
+    assert.equal(desktopEnv.KEEP_ME, "child");
+
+    const beforeDisable = runtimeProxyEnvironmentFingerprint(desktopEnv);
+    applyEmbeddedServerEnvironment(desktopEnv, { KEEP_ME: "without-proxy" });
+    assert.equal(desktopEnv.HTTP_PROXY, undefined);
+    assert.equal(desktopEnv.HTTPS_PROXY, undefined);
+    assert.equal(desktopEnv.NODE_USE_ENV_PROXY, undefined);
+    assert.notEqual(runtimeProxyEnvironmentFingerprint(desktopEnv), beforeDisable);
+  });
+});
+
+describe("managedOpencodeEnvironment", () => {
+  it("forwards only managed OpenCode home and config paths", () => {
+    assert.deepEqual(managedOpencodeEnvironment({
+      HOME: " C:\\runtime-home ",
+      OPENCODE_CONFIG_DIR: "C:\\runtime-config",
+      OPENAI_API_KEY: "must-not-be-copied",
+    }), {
+      HOME: "C:\\runtime-home",
+      OPENCODE_CONFIG_DIR: "C:\\runtime-config",
+    });
+  });
+});
+
+describe("stageBundledOpencodeRuntime", () => {
+  it("overlays bootstrap files without deleting user configuration", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-opencode-bootstrap-"));
+    const sourceDir = path.join(root, "source");
+    const targetDir = path.join(root, "target");
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "package.json"), '{"dependencies":{"@opencode-ai/plugin":"1.18.16"}}\n');
+    await writeFile(path.join(sourceDir, "package-lock.json"), '{"lockfileVersion":3,"packages":{"":{"dependencies":{"@opencode-ai/plugin":"1.18.16"}},"node_modules/@opencode-ai/plugin":{"version":"1.18.16"}}}\n');
+    await writeFile(path.join(targetDir, "package.json"), '{"userSetting":true,"dependencies":{"user-plugin":"1.0.0"}}\n');
+    await writeFile(path.join(targetDir, "package-lock.json"), '{"lockfileVersion":3,"packages":{"":{"dependencies":{"user-plugin":"1.0.0"}},"node_modules/user-plugin":{"version":"1.0.0"}}}\n');
+    await writeFile(path.join(targetDir, "opencode.jsonc"), "// user config\n");
+
+    try {
+      assert.equal(stageBundledOpencodeRuntime(sourceDir, targetDir), true);
+      const stagedPackage = JSON.parse(await readFile(path.join(targetDir, "package.json"), "utf8"));
+      assert.equal(stagedPackage.userSetting, true);
+      assert.deepEqual(stagedPackage.dependencies, {
+        "@opencode-ai/plugin": "1.18.16",
+        "user-plugin": "1.0.0",
+      });
+      const stagedLock = JSON.parse(await readFile(path.join(targetDir, "package-lock.json"), "utf8"));
+      assert.equal(stagedLock.packages["node_modules/user-plugin"].version, "1.0.0");
+      assert.equal(stagedLock.packages["node_modules/@opencode-ai/plugin"].version, "1.18.16");
+      assert.equal(await readFile(path.join(targetDir, "opencode.jsonc"), "utf8"), "// user config\n");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

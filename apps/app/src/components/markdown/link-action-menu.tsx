@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useEffect, useRef, useState } from "react";
-import { ExternalLink, Eye, FolderOpen, Loader2 } from "lucide-react";
+import { Clapperboard, ExternalLink, Eye, FolderOpen, Globe2, Loader2, Palette } from "lucide-react";
 
 import type { DesktopApplication } from "@/app/lib/desktop";
 import { getDesktopApplicationsForFile, openDesktopWithApp } from "@/app/lib/desktop";
@@ -23,6 +23,9 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
   const [apps, setApps] = useState<DesktopApplication[] | null>(null);
   const [appsLoading, setAppsLoading] = useState(false);
   const canOpenInPanel = target.kind === "file" && SUPPORTED_PANEL_PREVIEWS.has(target.preview);
+  const isHtmlFile = target.kind === "file" && target.preview === "html";
+  const canOpenInVideoStudio = isHtmlFile
+    && /(?:^|\/)video\/[^/]+\/index\.html$/i.test(target.value.replaceAll("\\", "/"));
   const canOpenExternally = isElectronRuntime() && target.kind === "file";
 
   useEffect(() => {
@@ -71,6 +74,11 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
     onClose();
   };
 
+  const handleOpenWithViewer = (viewer: "design" | "preview" | "video") => {
+    onOpenTarget(target, { viewer });
+    onClose();
+  };
+
   const handleReveal = () => {
     onOpenTarget(target, { external: true, reveal: true });
     onClose();
@@ -111,8 +119,38 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
           className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
         >
           <Eye className="size-4 shrink-0" />
-          {t("link_action.open_panel")}
+          {t(isHtmlFile ? "link_action.open_recommended" : "link_action.open_panel")}
         </button>
+      ) : null}
+      {isHtmlFile ? (
+        <>
+          <button
+            type="button"
+            onClick={() => handleOpenWithViewer("design")}
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
+          >
+            <Palette className="size-4 shrink-0" />
+            {t("link_action.open_design")}
+          </button>
+          <button
+            type="button"
+            onClick={() => handleOpenWithViewer("preview")}
+            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
+          >
+            <Globe2 className="size-4 shrink-0" />
+            {t("link_action.open_web_preview")}
+          </button>
+          {canOpenInVideoStudio ? (
+            <button
+              type="button"
+              onClick={() => handleOpenWithViewer("video")}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
+            >
+              <Clapperboard className="size-4 shrink-0" />
+              {t("link_action.open_video_studio")}
+            </button>
+          ) : null}
+        </>
       ) : null}
       <button
         type="button"

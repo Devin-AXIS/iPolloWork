@@ -86,9 +86,7 @@ Sandbox advertisement (for capability discovery):
 - `PATCH /workspace/:id/config`
 - `GET /workspace/:id/events`
 - `POST /workspace/:id/engine/reload`
-- `GET /workspace/:id/plugins`
-- `POST /workspace/:id/plugins`
-- `DELETE /workspace/:id/plugins/:name`
+- `GET /w/:id/capabilities` (includes engine-specific session write support)
 - `GET /workspace/:id/skills`
 - `POST /workspace/:id/skills`
 - `GET /workspace/:id/mcp`
@@ -101,6 +99,13 @@ Sandbox advertisement (for capability discovery):
 - `GET /workspace/:id/export`
 - `POST /workspace/:id/import/preview`
 - `POST /workspace/:id/import`
+
+Sessions (the same API works for OpenCode and DeepSeek Harness workspaces):
+
+- `GET /workspace/:id/sessions`
+- `POST /workspace/:id/sessions` (body: `{ "title"?: string }`)
+- `GET /workspace/:id/sessions/:sessionId/messages`
+- `POST /workspace/:id/sessions/:sessionId/prompt` (body: `{ "text": string, "model"?: { "providerID": string, "modelID": string }, "mode"?: string, "reasoningEffort"?: string, "clientTimeZone"?: string }`)
 
 Token management (host/owner auth):
 

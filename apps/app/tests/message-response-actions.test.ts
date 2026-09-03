@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { setLocale } from "../src/i18n";
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, buildReviseFilePrompt, buildSessionMarkdown, sessionMarkdownFilename } from "../src/components/chat/utils";
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, buildReviseFilePrompt, buildSessionMarkdown, getFileMediaType, getFileTitle, sessionMarkdownFilename } from "../src/components/chat/utils";
 
 describe("assistant response actions", () => {
   test("exports trimmed response text with a trailing newline", () => {
@@ -46,5 +46,12 @@ describe("assistant response actions", () => {
     setLocale("zh");
     expect(buildReviseFilePrompt("src/index.html")).toBe("请基于这个文件继续修改： src/index.html");
     setLocale("en");
+  });
+
+  test("handles legacy file parts without media metadata", () => {
+    const part = { type: "file", filename: "notes.txt" } as any;
+
+    expect(getFileTitle(part)).toBe("notes.txt");
+    expect(getFileMediaType(part)).toBe("");
   });
 });

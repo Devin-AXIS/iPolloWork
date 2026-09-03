@@ -1,8 +1,13 @@
 import { nativeDeepLinkEvent } from "./deep-link-bridge";
 
+export const desktopResumeEvent = "ipollowork:desktop-resumed";
+
 export type * from "./desktop-types";
 export type {
   EngineInfo,
+  EnginePackageInfo,
+  EnginePackageSource,
+  EnginePackageStatus,
   iPolloWorkServerInfo,
   EngineDoctorResult,
   WorkspaceInfo,
@@ -65,6 +70,7 @@ declare global {
       shell?: {
         openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
         openAuth?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        clearAuthSession?: () => Promise<{ ok: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -124,12 +130,34 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, provider?: "auto" | "builtin" | "external") => Promise<{
+        openUrl?: (url: string) => Promise<{
           provider: "builtin";
-          browser_url: string;
-          target_id: string;
-          tab_id: string;
+          tabId: string;
           url: string;
+        }>;
+        snapshot?: (payload: { tabId: string }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          snapshotId: string;
+          url: string;
+          title: string;
+          tree: string;
+          elementCount: number;
+          truncated: boolean;
+        }>;
+        act?: (payload: {
+          tabId: string;
+          snapshotId: string;
+          workspaceRoot?: string;
+          actions: Array<Record<string, unknown>>;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          results: Array<Record<string, unknown>>;
+          snapshotRequired: boolean;
         }>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;
@@ -400,6 +428,16 @@ export async function openDesktopAuthUrl(url: string): Promise<void> {
   }
 }
 
+export async function clearDesktopAuthSession(): Promise<void> {
+  const clearAuthSession = window.__IPOLLOWORK_ELECTRON__?.shell?.clearAuthSession;
+  if (!clearAuthSession) return;
+
+  const result = await clearAuthSession();
+  if (result && result.ok === false) {
+    throw new Error(result.error ?? "Failed to clear sign-in session");
+  }
+}
+
 export async function openDesktopPath(target: string): Promise<void> {
   const result = await invokeElectronHelper("__openPath", target);
   if (typeof result === "string" && result.trim()) {
@@ -549,6 +587,9 @@ const {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
   pickDirectory,
   pickFile,
   saveFile,
@@ -565,7 +606,6 @@ const {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 } = desktopBridge;
 
@@ -606,6 +646,9 @@ export {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
   pickDirectory,
   pickFile,
   saveFile,
@@ -622,6 +665,5 @@ export {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 };

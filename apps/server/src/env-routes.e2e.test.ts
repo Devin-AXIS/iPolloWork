@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { EnvService } from "./env-file.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -16,6 +17,7 @@ const stops: Array<() => void | Promise<void>> = [];
 const dirs: string[] = [];
 const priorEnvStore = process.env.IPOLLOWORK_ENV_STORE;
 const priorTokenStore = process.env.IPOLLOWORK_TOKEN_STORE;
+const priorRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 const priorOpenAiApiKey = process.env.OPENAI_API_KEY;
 const prioriPolloWorkApiKey = process.env.IPOLLOWORK_API_KEY;
 const prioriPolloWorkInferenceBaseUrl = process.env.IPOLLOWORK_INFERENCE_BASE_URL;
@@ -60,6 +62,7 @@ beforeEach(() => {
   // touches the developer's real ~/.config/ipollowork/env.json.
   process.env.IPOLLOWORK_ENV_STORE = join(dir, "env.json");
   process.env.IPOLLOWORK_TOKEN_STORE = join(dir, "tokens.json");
+  process.env.IPOLLOWORK_RUNTIME_DB = join(dir, "runtime.sqlite");
 });
 
 afterEach(async () => {
@@ -78,6 +81,11 @@ afterEach(async () => {
     delete process.env.IPOLLOWORK_TOKEN_STORE;
   } else {
     process.env.IPOLLOWORK_TOKEN_STORE = priorTokenStore;
+  }
+  if (priorRuntimeDb === undefined) {
+    delete process.env.IPOLLOWORK_RUNTIME_DB;
+  } else {
+    process.env.IPOLLOWORK_RUNTIME_DB = priorRuntimeDb;
   }
   if (priorOpenAiApiKey === undefined) {
     delete process.env.OPENAI_API_KEY;
@@ -232,19 +240,19 @@ describe("env routes", () => {
 
     const list = await fetch(`${base}/env/keys`, { headers: hostAuth() });
     expect(list.status).toBe(200);
-    expect(await list.json()).toEqual({ keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"] });
+    expect(await list.json()).toEqual({
+      keys: ["ANTHROPIC_API_KEY", "NBA_LIVE_KEY"],
+      oauthProviderIds: [],
+    });
   });
 
   test("authorization catalog returns safe AI usage metadata, never secret values", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/openai-images/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "OPENAI_API_KEY", value: "sk-openai-secret" },
-          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
-        ],
+        values: { OPENAI_API_KEY: "sk-openai-secret" },
       }),
     });
 
@@ -273,10 +281,10 @@ describe("env routes", () => {
 
   test("authorization tests keep credentials server-side and return a completed test result", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/openai-images/credentials`, {
       method: "PUT",
       headers: hostAuth(),
-      body: JSON.stringify({ key: "OPENAI_API_KEY", value: "sk-openai-secret" }),
+      body: JSON.stringify({ values: { OPENAI_API_KEY: "sk-openai-secret" } }),
     });
 
     globalThis.fetch = ((input, init) => {
@@ -298,16 +306,16 @@ describe("env routes", () => {
 
   test("OSS authorization test signs a read-only bucket listing with V4", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/aliyun-oss/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "ALIYUN_OSS_ACCESS_KEY_ID", value: "LTAItest" },
-          { key: "ALIYUN_OSS_ACCESS_KEY_SECRET", value: "test-secret" },
-          { key: "ALIYUN_OSS_BUCKET", value: "private-assets" },
-          { key: "ALIYUN_OSS_REGION", value: "cn-hangzhou" },
-        ],
+        values: {
+          ALIYUN_OSS_ACCESS_KEY_ID: "LTAItest",
+          ALIYUN_OSS_ACCESS_KEY_SECRET: "test-secret",
+          ALIYUN_OSS_BUCKET: "private-assets",
+          ALIYUN_OSS_REGION: "cn-hangzhou",
+        },
       }),
     });
 
@@ -336,16 +344,16 @@ describe("env routes", () => {
 
   test("Wasabi authorization test signs a read-only bucket listing with V4", async () => {
     const { base } = await boot();
-    await fetch(`${base}/env`, {
+    await fetch(`${base}/authorization-services/wasabi/credentials`, {
       method: "PUT",
       headers: hostAuth(),
       body: JSON.stringify({
-        entries: [
-          { key: "WASABI_ACCESS_KEY_ID", value: "WasabiAccess" },
-          { key: "WASABI_SECRET_ACCESS_KEY", value: "wasabi-secret" },
-          { key: "WASABI_BUCKET", value: "media" },
-          { key: "WASABI_REGION", value: "us-east-1" },
-        ],
+        values: {
+          WASABI_ACCESS_KEY_ID: "WasabiAccess",
+          WASABI_SECRET_ACCESS_KEY: "wasabi-secret",
+          WASABI_BUCKET: "media",
+          WASABI_REGION: "us-east-1",
+        },
       }),
     });
 

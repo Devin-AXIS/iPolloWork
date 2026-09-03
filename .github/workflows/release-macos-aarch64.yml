@@ -252,15 +252,27 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
+
+      - name: Verify recovery source contains the release tag
+        if: github.event_name == 'workflow_dispatch'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor "${RELEASE_TAG}^{}" HEAD; then
+            echo "Recovery ref $(git rev-parse HEAD) does not contain ${RELEASE_TAG}; refusing to replace published assets from unrelated source." >&2
+            exit 1
+          fi
 
       - name: Verify tag matches app versions
         run: node scripts/release/verify-tag.mjs --tag "$RELEASE_TAG"
@@ -320,9 +332,11 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
-          ref: ${{ env.RELEASE_TAG }}
+          # Dispatch-based recovery builds from the selected workflow ref so a
+          # packaging fix can repair an existing tag without moving that tag.
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Enable git long paths (Windows)
@@ -331,12 +345,12 @@ jobs:
         run: git config --global core.longpaths true
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
@@ -352,7 +366,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -403,6 +417,12 @@ jobs:
           echo "macOS Electron release assets must be notarized. Re-run with notarize=true or set MACOS_NOTARIZE=true." >&2
           exit 1
 
+      - name: Build Agent engine packages
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target_triple }}
+        run: node apps/desktop/scripts/package-engine-runtime.mjs --all --clean --outdir "$GITHUB_WORKSPACE/apps/desktop/dist-engine-packs"
+
       - name: Build Electron app
         shell: bash
         env:
@@ -421,6 +441,7 @@ jobs:
           APPLE_API_KEY_PATH: ${{ env.NOTARY_KEY_PATH }}
         run: |
           set -euo pipefail
+          ulimit -n 65536
           pnpm --dir apps/desktop exec electron-builder \
             --config electron-builder.yml \
             ${{ matrix.electron_args }} \
@@ -488,7 +509,7 @@ jobs:
       - name: Upload unsigned Windows installer for SignPath
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true'
         id: upload-unsigned-windows-installer
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unsigned-${{ matrix.artifact }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/signpath-unsigned/*.exe
@@ -539,7 +560,10 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          assets=(apps/desktop/dist-electron/ipollowork-*)
+          assets=(
+            apps/desktop/dist-electron/ipollowork-*
+            apps/desktop/dist-engine-packs/ipollowork-*
+          )
           if [ ${#assets[@]} -eq 0 ]; then
             echo "No Electron release assets found in apps/desktop/dist-electron" >&2
             exit 1
@@ -547,7 +571,7 @@ jobs:
           gh release upload "$RELEASE_TAG" "${assets[@]}" --repo "$GITHUB_REPOSITORY" --clobber
 
       - name: Upload Electron updater manifest artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.artifact }}
           path: apps/desktop/dist-electron/latest*.yml
@@ -567,7 +591,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Dispatch-based release recovery uses the workflow ref so fixes to
           # release asset publishing can run without moving an already-shipped tag.
@@ -575,12 +599,12 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Download Electron updater manifest artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: electron-*
           path: ${{ runner.temp }}/electron-dist
@@ -599,23 +623,23 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           # Bun >= 1.3.10 is required to compile bun-windows-arm64 sidecars.
           bun-version: "1.3.10"
@@ -626,7 +650,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -713,7 +737,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # Dispatch-based release recovery uses the workflow ref so fixes to
           # npm release automation can run without moving an already-shipped tag.
@@ -721,17 +745,17 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 11.4.0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v1
+        uses: oven-sh/setup-bun@v2
         with:
           # Bun >= 1.3.10 is required to compile bun-windows-arm64 sidecars.
           bun-version: "1.3.10"
@@ -742,7 +766,7 @@ jobs:
         run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
 
       - name: Cache pnpm store
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         continue-on-error: true
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
@@ -851,6 +875,7 @@ jobs:
     needs: [resolve-release, publish-electron, publish-release]
     if: |
       always() &&
+      vars.AUR_PUBLISH_ENABLED == 'true' &&
       needs.resolve-release.result == 'success' &&
       needs.publish-electron.result == 'success' &&
       (needs.publish-release.result == 'success' || needs.publish-release.result == 'skipped')
@@ -861,7 +886,7 @@ jobs:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
     steps:
       - name: Checkout dev
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: dev
           fetch-depth: 0
@@ -906,23 +931,46 @@ jobs:
       - verify-release
       - publish-electron
       - publish-electron-assets
-      - release-orchestrator-sidecars
-      - publish-npm
-      - publish-daytona-snapshot
     if: |
       always() &&
       needs.resolve-release.result == 'success' &&
       needs.verify-release.result == 'success' &&
       (needs.publish-electron.result == 'success' || needs.publish-electron.result == 'skipped') &&
-      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped') &&
-      (needs.release-orchestrator-sidecars.result == 'success' || needs.release-orchestrator-sidecars.result == 'skipped') &&
-      (needs.publish-npm.result == 'success' || needs.publish-npm.result == 'skipped') &&
-      (needs.publish-daytona-snapshot.result == 'success' || needs.publish-daytona-snapshot.result == 'skipped')
+      (needs.publish-electron-assets.result == 'success' || needs.publish-electron-assets.result == 'skipped')
     runs-on: ubuntu-latest
     env:
       RELEASE_TAG: ${{ needs.resolve-release.outputs.release_tag }}
       RELEASE_PRERELEASE: ${{ needs.resolve-release.outputs.prerelease }}
     steps:
+      - name: Publish release checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_dir="$RUNNER_TEMP/release-assets"
+          rm -rf "$release_dir"
+          mkdir -p "$release_dir"
+
+          gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --dir "$release_dir"
+          find "$release_dir" -type f \( -name 'SHA256SUMS*' -o -name '*.sha256' \) -delete
+
+          if ! find "$release_dir" -type f -print -quit | grep -q .; then
+            echo "No release assets found for checksum generation." >&2
+            exit 1
+          fi
+
+          (
+            cd "$release_dir"
+            find . -type f ! -name 'SHA256SUMS.txt' -printf '%P\n' | sort | while IFS= read -r asset; do
+              sha256sum "$asset"
+            done > SHA256SUMS.txt
+          )
+
+          gh release upload "$RELEASE_TAG" "$release_dir/SHA256SUMS.txt" \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
       - name: Publish release after assets are ready
         env:
           GH_TOKEN: ${{ github.token }}

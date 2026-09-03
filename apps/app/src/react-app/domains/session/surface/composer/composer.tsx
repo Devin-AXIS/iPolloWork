@@ -1,19 +1,31 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { Agent } from "@opencode-ai/sdk/v2/client";
-import { AppWindowMac, ArrowUp, Check, ChevronRight, FileText, Plus, Plug, Settings, Square, Terminal, X, Zap } from "lucide-react";
+import { flushSync } from "react-dom";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
-import { IPOLLOWORK_EXTENSION_CATALOG, type McpDirectoryInfo } from "@/app/constants";
-import type { CloudImportedPlugin, CloudImportedPluginFile } from "@/app/cloud/import-state";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import type { iPolloWorkPluginPackageItem } from "@/app/lib/ipollowork-server";
+import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
 import type { ComposerAttachment, McpServerEntry, McpStatusMap, ModelRef, SkillCard, SlashCommandOption } from "@/app/types";
+import {
+  formatContextTokenCount,
+  resolveConversationContextHealth,
+  type ConversationAccessMode,
+  type ConversationAccessModeIcon,
+  type ConversationAgent,
+  type ConversationContextUsage,
+  type ConversationMode,
+  type ConversationModeIcon,
+} from "../../engine/conversation-engine";
 import { formatBytes } from "@/app/utils";
 import { t } from "@/i18n";
-import { isiPolloWorkExtensionEnabled, isiPolloWorkExtensionHidden, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "@/react-app/domains/settings/extension-state";
-import { useDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { LexicalPromptEditor, type LexicalPromptEditorHandle } from "./editor";
-import { ModelBehaviorMenu } from "./model-behavior-menu";
+import { ModelBehaviorMenu } from "@/components/model-behavior-menu";
+import { TemplateIcon } from "@/components/template-icon";
+import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { listRunningAppsForMention } from "./app-mentions";
 import type { ComposerMentionKind } from "./mention-encoding";
 import { getSlashCommandQuery } from "./slash-command";
@@ -33,18 +45,10 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions" | `plugin:${string}`;
-type PlusMenuSection = "tools" | "agents";
+type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
+type PlusMenuSection = "tools" | "delegation";
 
-function isComposerExtensionAvailable(entry: McpDirectoryInfo) {
-  const hasSessionSurface = entry.extensionManifest?.contributions?.some((contribution) =>
-    contribution.type === "session-side-panel" || contribution.type === "session-rail-item"
-  ) === true;
-  if (hasSessionSurface) return isiPolloWorkExtensionEnabled(entry);
-  return !entry.defaultEnabled || isiPolloWorkExtensionEnabled(entry);
-}
-
-type ComposerProps = {
+export type ComposerProps = {
   draft: string;
   mentions: Record<string, ComposerMentionKind>;
   onDraftChange: (value: string) => void;
@@ -54,27 +58,32 @@ type ComposerProps = {
   busy: boolean;
   queuedCount: number;
   disabled: boolean;
+  inputDisabled?: boolean;
   modelUnavailable?: boolean;
   statusLabel: string;
   modelPickerOpen: boolean;
   selectedModel: ModelRef;
   onModelPickerOpenChange: (open: boolean) => void;
   onModelChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   attachments: ComposerAttachment[];
   hasPromptContext?: boolean;
   onAttachFiles: (files: File[]) => void;
   onRemoveAttachment: (id: string) => void;
-  attachmentsEnabled: boolean;
-  attachmentsDisabledReason: string | null;
   modelVariantLabel: string;
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
   onModelVariantChange: (value: string | null) => void;
-  agentLabel: string;
-  selectedAgent: string | null;
-  listAgents: () => Promise<Agent[]>;
+  selectedMode: string | null;
+  modeSelectionDisabled?: boolean;
+  listModes: () => Promise<ConversationMode[]>;
+  onSelectMode: (mode: string | null) => void;
+  selectedAccessMode?: string | null;
+  accessModeSelectionDisabled?: boolean;
+  listAccessModes?: () => Promise<ConversationAccessMode[]>;
+  onSelectAccessMode?: (mode: string) => void | Promise<void>;
+  listAgents: () => Promise<ConversationAgent[]>;
   onSelectAgent: (agent: string | null) => void;
   listCommands: () => Promise<SlashCommandOption[]>;
   listSkills?: () => Promise<SkillCard[]>;
@@ -83,8 +92,12 @@ type ComposerProps = {
   mcpServers?: McpServerEntry[];
   mcpStatus?: string | null;
   mcpStatuses?: McpStatusMap;
-  listImportedPlugins?: () => Promise<CloudImportedPlugin[]>;
-  importedPlugins?: CloudImportedPlugin[];
+  listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  /** Compatibility alias used by the project-first starter while plugin packages migrate to extensions. */
+  listImportedPlugins?: () => Promise<iPolloWorkPluginPackageItem[]>;
+  importedPlugins?: iPolloWorkPluginPackageItem[];
+  onOpenWorkspaceApp?: (pluginId: string) => void;
+  listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
   recentFiles: string[];
   searchFiles: (query: string) => Promise<string[]>;
@@ -99,11 +112,16 @@ type ComposerProps = {
   isRemoteWorkspace: boolean;
   isSandboxWorkspace: boolean;
   onUploadInboxFiles?: ((files: File[]) => void | Promise<unknown>) | null;
+  onOpenTemplateMarket?: () => void;
+  maxAttachmentBytes?: number;
   draftScopeKey?: string;
   placeholder?: string;
   layout?: "dock" | "inline";
+  inlineAppearance?: "default" | "engine-selected";
   compactTopSpacing?: boolean;
   topAccessory?: ReactNode;
+  contextUsage?: ConversationContextUsage | null;
+  modelContextWindow?: number | null;
 };
 
 const FLUSH_PROMPT_EVENT = "ipollowork:flushPromptDraft";
@@ -114,10 +132,101 @@ const IMAGE_COMPRESS_QUALITY = 0.82;
 const IMAGE_COMPRESS_TARGET_BYTES = 1_500_000;
 const FILE_URL_RE = /^file:\/\//i;
 const HTTP_URL_RE = /^https?:\/\//i;
-const DEFAULT_AGENT_NAME = "ipollowork";
 
-function isNonDefaultAgent(agent: Agent) {
-  return agent.name !== DEFAULT_AGENT_NAME;
+function ContextProgress({ percentage }: { percentage: number | null }) {
+  const progress = Math.min(100, Math.max(0, percentage ?? 0));
+
+  return (
+    <svg viewBox="0 0 16 16" className="size-4 shrink-0" aria-hidden="true">
+      <circle cx="8" cy="8" r="6.25" fill="none" className="stroke-gray-5" strokeWidth="1.75" />
+      <circle
+        cx="8"
+        cy="8"
+        r="6.25"
+        fill="none"
+        stroke="#1FBAC0"
+        strokeWidth="1.75"
+        strokeLinecap="round"
+        pathLength={100}
+        strokeDasharray="100"
+        strokeDashoffset={100 - progress}
+        transform="rotate(-90 8 8)"
+        className="transition-[stroke-dashoffset] duration-300 motion-reduce:transition-none"
+      />
+    </svg>
+  );
+}
+
+function ContextHealth({
+  usage,
+  modelContextWindow,
+}: {
+  usage?: ConversationContextUsage | null;
+  modelContextWindow?: number | null;
+}) {
+  const health = resolveConversationContextHealth(usage, modelContextWindow);
+  const usedLabel = formatContextTokenCount(health.usedTokens);
+  const limitLabel = health.contextWindow ? formatContextTokenCount(health.contextWindow) : t("composer.context_limit_unknown");
+  const percentageLabel = health.percentage === null ? "—" : `${health.percentage}%`;
+  const summary = `${usedLabel} / ${limitLabel}${health.percentage === null ? "" : ` · ${percentageLabel}`}`;
+
+  return (
+    <Popover>
+      <PopoverTrigger
+        type="button"
+        data-testid="composer-context-health"
+        aria-label={`${t("composer.context_health")}: ${summary}`}
+        className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2.5 text-[12px] font-medium leading-[18px] transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 @max-[560px]/composer:w-8 @max-[560px]/composer:justify-center @max-[560px]/composer:px-0 ${health.compressionWarning ? "text-amber-11" : "text-gray-10"}`}
+      >
+        <ContextProgress percentage={health.percentage} />
+        <span className="whitespace-nowrap tabular-nums @max-[560px]/composer:hidden">{percentageLabel}</span>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={8} className="w-72 gap-0 rounded-2xl p-4">
+        <div className="flex items-center justify-between gap-4">
+          <span className="text-sm font-medium text-gray-11">{t("composer.context_health")}</span>
+          <span className={`text-sm font-semibold tabular-nums ${health.compressionWarning ? "text-amber-11" : "text-gray-12"}`}>
+            {percentageLabel}
+          </span>
+        </div>
+        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-gray-3" aria-hidden="true">
+          <div
+            className="h-full rounded-full bg-[#1FBAC0] transition-[width]"
+            style={{ width: `${Math.min(100, health.percentage ?? 0)}%` }}
+          />
+        </div>
+        <dl className="mt-4 space-y-2 text-sm">
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-gray-10">{t("composer.context_usage_label")}</dt>
+            <dd className="font-medium tabular-nums text-gray-12">{usedLabel}</dd>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <dt className="text-gray-10">{t("composer.context_model_limit")}</dt>
+            <dd className="font-medium tabular-nums text-gray-12">{limitLabel}</dd>
+          </div>
+        </dl>
+        {health.compressionWarning ? (
+          <div className="mt-4 rounded-xl bg-amber-3 px-3 py-2 text-xs leading-5 text-amber-11">
+            {t("composer.context_compression_warning")}
+          </div>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+function WorkModeIcon({ icon, className }: { icon: ConversationModeIcon; className?: string }) {
+  if (icon === "plan") return <ListTodo className={className} />;
+  if (icon === "code") return <Code2 className={className} />;
+  if (icon === "minimal") return <Terminal className={className} />;
+  if (icon === "create") return <Sparkles className={className} />;
+  return <Zap className={className} />;
+}
+
+function AccessModeIcon({ icon, className }: { icon: ConversationAccessModeIcon; className?: string }) {
+  if (icon === "read-only") return <Shield className={className} />;
+  if (icon === "full-access") return <ShieldAlert className={className} />;
+  if (icon === "ask") return <ShieldQuestion className={className} />;
+  return <ShieldCheck className={className} />;
 }
 
 /**
@@ -244,40 +353,22 @@ function mcpStatusBadgeClass(status: McpServerStatus) {
   }
 }
 
-function extensionIcon(entry: McpDirectoryInfo, size = 16) {
-  const serviceUrl = typeof entry.url === "string" ? entry.url : undefined;
-  const iconUrl = resolveExtensionIconUrl({ iconSrc: entry.iconSrc, iconSlug: entry.iconSlug, serviceUrl });
+function extensionIcon(entry: iPolloWorkPluginPackageItem, size = 16) {
+  const iconUrl = resolveExtensionIconUrl({
+    iconSrc: entry.manifest.icon?.src,
+    iconSlug: entry.manifest.icon?.simpleIconSlug,
+  });
   if (iconUrl) {
     return <img src={iconUrl} alt="" width={size} height={size} loading="lazy" style={{ display: "block" }} />;
   }
   return <Plug size={size} className="text-gray-9" />;
 }
 
-function formatPluginObjectType(type: string) {
-  const normalized = type.trim().toLowerCase();
-  if (!normalized) return "File";
-  if (normalized === "mcp") return "MCP";
-  return `${normalized.charAt(0).toUpperCase()}${normalized.slice(1)}`;
-}
-
-function pluginSlashCommandName(file: CloudImportedPluginFile) {
-  const path = file.path.trim();
-  if (file.objectType === "command") {
-    const command = path.match(/^\.opencode\/(?:command|commands)\/(.+)\.md$/i)?.[1];
-    return command?.trim() || null;
-  }
-  if (file.objectType === "skill") {
-    const skill = path.match(/^\.opencode\/(?:skill|skills)\/(?:[^/]+\/)?([^/]+)\/SKILL\.md$/i)?.[1];
-    return skill?.trim() || null;
-  }
-  return null;
-}
-
 export function ReactSessionComposer(props: ComposerProps) {
-  const builtInExtensionsDisabled = useDesktopRestriction("allowBuiltInExtensions");
   let fileInput: HTMLInputElement | undefined;
-  const [agents, setAgents] = useState<Agent[]>([]);
-  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [externalAgents, setExternalAgents] = useState<iPolloWorkPluginPackageItem[]>([]);
+  const [externalAgentsLoading, setExternalAgentsLoading] = useState(false);
+  const [delegationMenuOpen, setDelegationMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommandOption[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
   const [skillsLoading, setSkillsLoading] = useState(false);
@@ -286,12 +377,22 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
   const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
-  const [importedPlugins, setImportedPlugins] = useState<CloudImportedPlugin[]>(props.importedPlugins ?? []);
-  const [pluginsLoading, setPluginsLoading] = useState(false);
+  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>(props.importedPlugins ?? []);
+  const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
   const [toolMenuOpen, setToolMenuOpen] = useState(false);
+  const [workModeOpen, setWorkModeOpen] = useState(false);
+  const [accessModeOpen, setAccessModeOpen] = useState(false);
+  const [accessModeBusy, setAccessModeBusy] = useState(false);
+  const [pendingDangerousAccessMode, setPendingDangerousAccessMode] = useState<ConversationAccessMode | null>(null);
+  const engineSelectedAppearance = props.layout === "inline" && props.inlineAppearance === "engine-selected";
+  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
+  const editorDisabled = props.inputDisabled ?? props.disabled;
+  const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
+  const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
+  const [accessModes, setAccessModes] = useState<ConversationAccessMode[]>([]);
   const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -303,26 +404,26 @@ export function ReactSessionComposer(props: ComposerProps) {
   const listCommandsRef = useRef(props.listCommands);
   const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
-  const listImportedPluginsRef = useRef(props.listImportedPlugins);
+  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
+  const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
     commands: false,
     skills: false,
     mcps: false,
-    plugins: false,
+    extensions: false,
   });
   const [commandsLoaded, setCommandsLoaded] = useState(false);
   const [skillsLoaded, setSkillsLoaded] = useState(Boolean(props.skills));
   const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
-  const [pluginsLoaded, setPluginsLoaded] = useState(Boolean(props.importedPlugins));
-  const [, setExtensionStateVersion] = useState(0);
-  const [agentMenuIndex, setAgentMenuIndex] = useState(0);
-  const agentItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [extensionsLoaded, setExtensionsLoaded] = useState(false);
+  const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
+  const delegationItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement | null>(null);
   const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<LexicalPromptEditorHandle | null>(null);
-  const agentMenuRef = useRef<HTMLDivElement | null>(null);
+  const delegationMenuRef = useRef<HTMLDivElement | null>(null);
   // IME composition guard: while an IME composition is active, we must not
   // treat Enter as a submit. Three signals keep this reliable across WebKit,
   // Chrome, and Safari: event.isComposing, event.keyCode === 229, and the
@@ -341,6 +442,18 @@ export function ReactSessionComposer(props: ComposerProps) {
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
   const escapeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [emptySubmitHintOpen, setEmptySubmitHintOpen] = useState(false);
+  const emptySubmitHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionPointerSubmittedRef = useRef(false);
+
+  const showEmptySubmitHint = useCallback(() => {
+    if (emptySubmitHintTimerRef.current) clearTimeout(emptySubmitHintTimerRef.current);
+    setEmptySubmitHintOpen(true);
+    emptySubmitHintTimerRef.current = setTimeout(() => {
+      emptySubmitHintTimerRef.current = null;
+      setEmptySubmitHintOpen(false);
+    }, 2_500);
+  }, []);
 
   const disarmEscape = useCallback(() => {
     if (escapeTimerRef.current) {
@@ -371,21 +484,47 @@ export function ReactSessionComposer(props: ComposerProps) {
     }
   }, [props.draft]);
 
+  useEffect(() => {
+    if (canSend) setEmptySubmitHintOpen(false);
+  }, [canSend]);
+
   useEffect(() => () => {
     if (escapeTimerRef.current) clearTimeout(escapeTimerRef.current);
+    if (emptySubmitHintTimerRef.current) clearTimeout(emptySubmitHintTimerRef.current);
   }, []);
 
   // Editor submit (Enter). While idle this sends normally; while busy every
   // submit is queued. Only the explicit Stop control may interrupt a run.
   const handleEditorSubmit = useCallback(() => {
-    const hasContent = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
-    if (!hasContent) return;
+    if (!canSend) {
+      showEmptySubmitHint();
+      return;
+    }
     if (props.busy) {
       void props.onQueue();
       return;
     }
     void props.onSend();
-  }, [props.busy, props.draft, props.attachments, props.hasPromptContext, props.onSend, props.onQueue]);
+  }, [canSend, props.busy, props.onSend, props.onQueue, showEmptySubmitHint]);
+
+  const runComposerAction = useCallback(() => {
+    void handleEditorSubmit();
+  }, [handleEditorSubmit]);
+
+  const handleActionPointerDown: React.PointerEventHandler<HTMLButtonElement> = (event) => {
+    if (event.button !== 0 || props.disabled) return;
+    event.preventDefault();
+    actionPointerSubmittedRef.current = true;
+    runComposerAction();
+  };
+
+  const handleActionClick = () => {
+    if (actionPointerSubmittedRef.current) {
+      actionPointerSubmittedRef.current = false;
+      return;
+    }
+    runComposerAction();
+  };
 
   const slashCommandQuery = getSlashCommandQuery(props.draft);
   const slashOpenNext = slashCommandQuery !== null;
@@ -393,8 +532,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   const mentionMatch = props.draft.match(/@([^\s@]*)$/);
   const mentionOpenNext = Boolean(mentionMatch);
   const mentionQuery = mentionMatch?.[1] ?? "";
-  const nonDefaultAgents = useMemo(() => agents.filter(isNonDefaultAgent), [agents]);
-  const showAgentPicker = props.selectedAgent !== null || nonDefaultAgents.length > 0;
 
   useEffect(() => {
     setSlashOpen(slashOpenNext);
@@ -407,27 +544,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [mentionOpenNext, mentionQuery]);
 
   useEffect(() => {
-    if (!agentMenuOpen) return;
-    void props.listAgents().then(setAgents).catch(() => setAgents([]));
-  }, [agentMenuOpen, props.listAgents]);
-
-  useEffect(() => {
-    if (!showAgentPicker) setAgentMenuOpen(false);
-  }, [showAgentPicker]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void props.listAgents().then((next) => {
-      if (!cancelled) setAgents(next);
-    }).catch(() => {
-      if (!cancelled) setAgents([]);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [props.listAgents]);
-
-  useEffect(() => {
     setSkills(props.skills ?? []);
   }, [props.skills]);
 
@@ -436,10 +552,6 @@ export function ReactSessionComposer(props: ComposerProps) {
     setMcpStatus(props.mcpStatus ?? null);
     setMcpStatuses(props.mcpStatuses ?? {});
   }, [props.mcpServers, props.mcpStatus, props.mcpStatuses]);
-
-  useEffect(() => {
-    setImportedPlugins(props.importedPlugins ?? []);
-  }, [props.importedPlugins]);
 
   useEffect(() => {
     listCommandsRef.current = props.listCommands;
@@ -454,17 +566,82 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.listMcp]);
 
   useEffect(() => {
-    listImportedPluginsRef.current = props.listImportedPlugins;
-  }, [props.listImportedPlugins]);
+    let cancelled = false;
+    void props.listModes()
+      .then((modes) => {
+        if (!cancelled) setWorkModes(modes);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkModes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.listModes]);
 
   useEffect(() => {
-    setAgentMenuIndex(0);
-  }, [agentMenuOpen]);
+    let cancelled = false;
+    if (!props.listAccessModes) {
+      setAccessModes([]);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void props.listAccessModes()
+      .then((modes) => {
+        if (!cancelled) setAccessModes(modes);
+      })
+      .catch(() => {
+        if (!cancelled) setAccessModes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.listAccessModes]);
 
   useEffect(() => {
-    const target = agentItemRefs.current[agentMenuIndex];
+    if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);
+  }, [props.busy, props.modeSelectionDisabled]);
+
+  useEffect(() => {
+    if (props.busy || props.accessModeSelectionDisabled) setAccessModeOpen(false);
+  }, [props.accessModeSelectionDisabled, props.busy]);
+
+  useEffect(() => {
+    listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
+  }, [props.listInstalledExtensions, props.listImportedPlugins]);
+
+  useEffect(() => {
+    listExternalAgentsRef.current = props.listExternalAgents;
+  }, [props.listExternalAgents]);
+
+  useEffect(() => {
+    if (!delegationMenuOpen) return;
+    let cancelled = false;
+    setExternalAgentsLoading(true);
+    void listExternalAgentsRef.current()
+      .then((next) => {
+        if (!cancelled) setExternalAgents(next);
+      })
+      .catch(() => {
+        if (!cancelled) setExternalAgents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setExternalAgentsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [delegationMenuOpen]);
+
+  useEffect(() => {
+    setDelegationMenuIndex(0);
+  }, [delegationMenuOpen]);
+
+  useEffect(() => {
+    const target = delegationItemRefs.current[delegationMenuIndex];
     target?.scrollIntoView({ block: "nearest" });
-  }, [agentMenuIndex, agentMenuOpen]);
+  }, [delegationMenuIndex, delegationMenuOpen]);
 
   useEffect(() => {
     commandsLoadVersionRef.current += 1;
@@ -495,16 +672,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, []);
 
   useEffect(() => {
-    const refresh = () => setExtensionStateVersion((value) => value + 1);
-    window.addEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(IPOLLOWORK_EXTENSION_STATE_CHANGED, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!plusMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
@@ -512,12 +679,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       if (
         plusMenuRef.current?.contains(target)
         || toolMenuRef.current?.contains(target)
-        || agentMenuRef.current?.contains(target)
+        || delegationMenuRef.current?.contains(target)
       ) return;
       setPlusMenuOpen(false);
       setPlusMenuSection(null);
       setToolMenuOpen(false);
-      setAgentMenuOpen(false);
+      setDelegationMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
@@ -525,8 +692,26 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   useEffect(() => {
     if (!plusMenuOpen) return;
+    const handlePointerMove = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (
+        plusMenuRef.current?.contains(target)
+        || toolMenuRef.current?.contains(target)
+        || delegationMenuRef.current?.contains(target)
+      ) return;
+      setPlusMenuSection(null);
+      setToolMenuOpen(false);
+      setDelegationMenuOpen(false);
+    };
+    window.addEventListener("pointermove", handlePointerMove);
+    return () => window.removeEventListener("pointermove", handlePointerMove);
+  }, [plusMenuOpen]);
+
+  useEffect(() => {
+    if (!plusMenuOpen) return;
     setToolMenuOpen(plusMenuSection === "tools");
-    setAgentMenuOpen(plusMenuSection === "agents");
+    setDelegationMenuOpen(plusMenuSection === "delegation");
   }, [plusMenuOpen, plusMenuSection]);
 
   useEffect(() => {
@@ -536,12 +721,12 @@ export function ReactSessionComposer(props: ComposerProps) {
       commands: false,
       skills: false,
       mcps: false,
-      plugins: false,
+      extensions: false,
     };
     setCommandsLoaded(false);
     setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
-    setPluginsLoaded(Boolean(props.importedPlugins));
+    setExtensionsLoaded(Boolean(props.importedPlugins));
   }, [toolMenuOpen]);
 
   useEffect(() => {
@@ -620,55 +805,25 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [toolMenuOpen]);
 
   useEffect(() => {
-    if (!agentMenuOpen) return;
+    if (!delegationMenuOpen) return;
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (plusMenuRef.current?.contains(target) || agentMenuRef.current?.contains(target)) return;
-      setAgentMenuOpen(false);
+      if (plusMenuRef.current?.contains(target) || delegationMenuRef.current?.contains(target)) return;
+      setDelegationMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => {
       window.removeEventListener("mousedown", handlePointerDown);
     };
-  }, [agentMenuOpen]);
-
-  useEffect(() => {
-    if (!toolMenuOpen) return;
-    const openId = toolMenuLoadRef.current.openId;
-    const listImportedPlugins = listImportedPluginsRef.current;
-    if (listImportedPlugins && !toolMenuLoadRef.current.plugins) {
-      let cancelled = false;
-      toolMenuLoadRef.current.plugins = true;
-      setPluginsLoading(true);
-      void listImportedPlugins()
-        .then((next) => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setImportedPlugins(next);
-            setPluginsLoaded(true);
-          }
-        })
-        .catch(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setImportedPlugins([]);
-            setPluginsLoaded(true);
-          }
-        })
-        .finally(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) setPluginsLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-    return undefined;
-  }, [toolMenuOpen]);
+  }, [delegationMenuOpen]);
 
   useEffect(() => {
     if (!toolMenuOpen) return;
     const openId = toolMenuLoadRef.current.openId;
     const listSkills = listSkillsRef.current;
     const listMcp = listMcpRef.current;
+    const listInstalledExtensions = listInstalledExtensionsRef.current;
     if (toolMenuSection === "skills" && listSkills && !toolMenuLoadRef.current.skills) {
       let cancelled = false;
       toolMenuLoadRef.current.skills = true;
@@ -718,6 +873,28 @@ export function ReactSessionComposer(props: ComposerProps) {
         cancelled = true;
       };
     }
+    if (toolMenuSection === "extensions" && listInstalledExtensions && !toolMenuLoadRef.current.extensions) {
+      let cancelled = false;
+      toolMenuLoadRef.current.extensions = true;
+      setExtensionsLoading(true);
+      void listInstalledExtensions()
+        .then((next) => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions(next);
+          setExtensionsLoaded(true);
+        })
+        .catch(() => {
+          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
+          setInstalledExtensions([]);
+          setExtensionsLoaded(true);
+        })
+        .finally(() => {
+          if (!cancelled && toolMenuLoadRef.current.openId === openId) setExtensionsLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
     return undefined;
   }, [toolMenuOpen, toolMenuSection]);
 
@@ -748,24 +925,9 @@ export function ReactSessionComposer(props: ComposerProps) {
   const toolSkillItems = commands.filter((command) => command.source === "skill");
   const toolMcpItems = commands.filter((command) => command.source === "mcp");
   void toolMcpItems;
-  const pluginSections = importedPlugins
-    .filter((plugin) => plugin.files.length > 0)
-    .map((plugin) => ({ section: `plugin:${plugin.pluginId}` as const, plugin }));
-  const activePlugin = toolMenuSection.startsWith("plugin:")
-    ? pluginSections.find((entry) => entry.section === toolMenuSection)?.plugin ?? null
-    : null;
-  const composerExtensions = IPOLLOWORK_EXTENSION_CATALOG.filter((entry) =>
-    !builtInExtensionsDisabled &&
-    !isiPolloWorkExtensionHidden(entry) && isComposerExtensionAvailable(entry)
-  );
-  const canSend = props.draft.trim().length > 0 || props.attachments.length > 0 || props.hasPromptContext;
-
-  useEffect(() => {
-    if (!toolMenuSection.startsWith("plugin:")) return;
-    if (activePlugin) return;
-    setToolMenuSection("commands");
-  }, [activePlugin, toolMenuSection]);
-
+  const composerExtensions = installedExtensions.filter((item) => (
+    activePluginEngineCompatibility(item)?.status !== "unsupported"
+  ));
   useEffect(() => {
     if (!activeItems.length) {
       setMenuIndex(0);
@@ -806,29 +968,68 @@ export function ReactSessionComposer(props: ComposerProps) {
     setToolMenuOpen(false);
   };
 
-  const applyPluginFileSelection = (file: CloudImportedPluginFile) => {
-    const commandName = pluginSlashCommandName(file);
-    if (commandName) {
-      if (file.objectType === "skill") applySkillSelection(commandName);
-      else applyCommandSelection({
-        id: `plugin:${file.configObjectId}`,
-        name: commandName,
-        source: "command",
+  const applyExternalAgentSelection = (item: iPolloWorkPluginPackageItem) => {
+    const prompt = item.manifest.composer?.prompt;
+    if (!prompt) return;
+    props.onDraftChange(props.draft.trim() ? `${prompt}\n\n${props.draft}` : `${prompt} `);
+    setDelegationMenuOpen(false);
+    setPlusMenuOpen(false);
+    setPlusMenuSection(null);
+    window.requestAnimationFrame(() => window.dispatchEvent(new Event(FOCUS_PROMPT_EVENT)));
+  };
+
+  const selectWorkMode = (mode: string) => {
+    if (props.busy || props.modeSelectionDisabled) return;
+    props.onSelectMode(mode);
+    setWorkModeOpen(false);
+  };
+
+  const activeWorkMode = workModes.find((mode) => mode.id === props.selectedMode)
+    ?? workModes.find((mode) => mode.isDefault)
+    ?? workModes[0]
+    ?? {
+      id: props.selectedMode ?? "default",
+      label: props.selectedMode || t("composer.work_mode_execute"),
+      icon: "execute" as const,
+    };
+
+  const activeAccessMode = accessModes.find((mode) => mode.id === props.selectedAccessMode)
+    ?? accessModes.find((mode) => mode.isDefault)
+    ?? accessModes[0]
+    ?? null;
+
+  const applyAccessMode = async (mode: ConversationAccessMode) => {
+    if (props.busy || props.accessModeSelectionDisabled || accessModeBusy || mode.selectable === false) return;
+    setAccessModeOpen(false);
+    setAccessModeBusy(true);
+    try {
+      await props.onSelectAccessMode?.(mode.id);
+    } catch (error) {
+      toast.error(t("composer.access_mode_switch_failed"), {
+        description: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      setAccessModeBusy(false);
+      setPendingDangerousAccessMode(null);
+    }
+  };
+
+  const selectAccessMode = (mode: ConversationAccessMode) => {
+    if (mode.id === props.selectedAccessMode || mode.selectable === false) {
+      setAccessModeOpen(false);
       return;
     }
-    props.onInsertMention("file", file.path);
-    setToolMenuOpen(false);
+    if (mode.dangerous) {
+      setAccessModeOpen(false);
+      setPendingDangerousAccessMode(mode);
+      return;
+    }
+    void applyAccessMode(mode);
   };
 
-  const applyAgentSelection = (name: string | null) => {
-    props.onSelectAgent(name);
-    setAgentMenuOpen(false);
-    setToolMenuOpen(false);
-  };
-
-  const applyExtensionSelection = (entry: McpDirectoryInfo) => {
-    props.onDraftChange(entry.composerPrompt ?? `Use ${entry.name} to `);
+  const applyExtensionSelection = (entry: iPolloWorkPluginPackageItem) => {
+    props.onOpenWorkspaceApp?.(entry.pluginId);
+    props.onDraftChange(entry.manifest.composer?.prompt.trim() || `Use ${entry.name} to `);
     setToolMenuOpen(false);
   };
 
@@ -898,7 +1099,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     // Escape-to-stop while the agent is busy. Only when no menu is open so
     // Escape can still close menus. First press arms a confirmation prompt
     // for 3s; a second Escape within that window stops the agent.
-    const anyMenuOpen = plusMenuOpen || agentMenuOpen || toolMenuOpen || Boolean(activeMenu);
+    const anyMenuOpen = plusMenuOpen || delegationMenuOpen || toolMenuOpen || Boolean(activeMenu);
     if (event.key === "Escape" && props.busy && !anyMenuOpen) {
       event.preventDefault();
       if (escapeArmed) {
@@ -914,28 +1115,29 @@ export function ReactSessionComposer(props: ComposerProps) {
       }
       return;
     }
-    if (agentMenuOpen) {
-      const total = nonDefaultAgents.length + 1;
-      if (event.key === "ArrowDown") {
-        event.preventDefault();
-        setAgentMenuIndex((current) => (current + 1) % total);
-        return;
-      }
-      if (event.key === "ArrowUp") {
-        event.preventDefault();
-        setAgentMenuIndex((current) => (current - 1 + total) % total);
-        return;
-      }
-      if (event.key === "Enter" || event.key === "Tab") {
-        event.preventDefault();
-        const selected = agentMenuIndex === 0 ? null : nonDefaultAgents[agentMenuIndex - 1]?.name ?? null;
-        props.onSelectAgent(selected);
-        setAgentMenuOpen(false);
-        return;
-      }
+    if (delegationMenuOpen) {
       if (event.key === "Escape") {
         event.preventDefault();
-        setAgentMenuOpen(false);
+        setDelegationMenuOpen(false);
+        setPlusMenuOpen(false);
+        setPlusMenuSection(null);
+        return;
+      }
+      const total = externalAgents.length;
+      if (total > 0 && event.key === "ArrowDown") {
+        event.preventDefault();
+        setDelegationMenuIndex((current) => (current + 1) % total);
+        return;
+      }
+      if (total > 0 && event.key === "ArrowUp") {
+        event.preventDefault();
+        setDelegationMenuIndex((current) => (current - 1 + total) % total);
+        return;
+      }
+      if (total > 0 && (event.key === "Enter" || event.key === "Tab")) {
+        event.preventDefault();
+        const selected = externalAgents[delegationMenuIndex];
+        if (selected) applyExternalAgentSelection(selected);
         return;
       }
     }
@@ -957,7 +1159,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
       !imeActive &&
-      !agentMenuOpen &&
+      !delegationMenuOpen &&
       !toolMenuOpen &&
       (!activeMenu || !activeItems.length)
     ) {
@@ -1017,17 +1219,13 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   const addAttachments = async (inputFiles: File[]) => {
     if (!inputFiles.length) return;
-    if (!props.attachmentsEnabled) {
-      toast.warning(props.attachmentsDisabledReason ?? t("composer.attachments_unavailable"));
-      return;
-    }
 
     const accepted: File[] = [];
     const oversize: string[] = [];
 
     for (const original of inputFiles) {
       const processed = original.type.startsWith("image/") ? await compressImageFile(original) : original;
-      if (processed.size > MAX_ATTACHMENT_BYTES) {
+      if (processed.size > maxAttachmentBytes) {
         oversize.push(processed.name || original.name);
         continue;
       }
@@ -1183,8 +1381,8 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`relative overflow-visible rounded-[18px] border border-transparent bg-dls-surface shadow-[0_4px_12.9px_rgba(80,130,222,0.20)] transition-all ${props.layout === "inline" ? "new-conversation-composer dark:bg-[#343434] dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]" : ""} ${panelRoundedClass}`}
-          style={{
+          className={`@container/composer relative overflow-visible rounded-[18px] border bg-dls-surface transition-all ${engineSelectedAppearance ? "border-sky-8 shadow-[var(--dls-card-shadow)]" : "border-transparent shadow-[0_4px_12.9px_rgba(80,130,222,0.20)]"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434] ${engineSelectedAppearance ? "" : "dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]"}` : ""} ${panelRoundedClass}`}
+          style={engineSelectedAppearance ? undefined : {
             backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
             backgroundOrigin: "border-box",
             backgroundClip: "padding-box, border-box",
@@ -1251,7 +1449,8 @@ export function ReactSessionComposer(props: ComposerProps) {
               value={props.draft}
               mentions={props.mentions}
               pastedText={pastedTextTokens}
-              disabled={props.disabled}
+              disabled={editorDisabled}
+              submitDisabled={props.disabled}
               placeholder={props.placeholder ?? t("composer.placeholder")}
               onChange={props.onDraftChange}
               onSubmit={handleEditorSubmit}
@@ -1332,7 +1531,7 @@ export function ReactSessionComposer(props: ComposerProps) {
 
             {/* Action row — attachments, quick actions, model controls, and send */}
             <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 overflow-visible">
+              <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible">
                 <input
                   ref={(element) => {
                     fileInput = element ?? undefined;
@@ -1346,13 +1545,14 @@ export function ReactSessionComposer(props: ComposerProps) {
                     event.currentTarget.value = "";
                   }}
                 />
-                <div ref={plusMenuRef} className="relative">
+                <div ref={plusMenuRef} className="relative me-2 shrink-0">
                   <button
                     type="button"
-                    className={`inline-flex h-9 max-h-9 w-9 items-center justify-center rounded-md transition-colors ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "text-gray-10 hover:bg-gray-3"}`}
+                    className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3 hover:text-gray-12"}`}
                     onClick={() => {
+                      setWorkModeOpen(false);
                       setToolMenuOpen(false);
-                      setAgentMenuOpen(false);
+                      setDelegationMenuOpen(false);
                       setPlusMenuOpen((open) => {
                         if (open) setPlusMenuSection(null);
                         return !open;
@@ -1362,49 +1562,82 @@ export function ReactSessionComposer(props: ComposerProps) {
                     aria-haspopup="menu"
                     title={t("composer.plus_menu_label")}
                   >
-                    <Plus size={18} />
+                    <Plus size={16} strokeWidth={1.75} />
                   </button>
                   {plusMenuOpen ? (
                     <div className="absolute bottom-full left-0 z-40 mb-2 flex items-end gap-1">
                       <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className={`flex w-full items-center rounded-[12px] px-3 py-2.5 text-left text-sm ${props.attachmentsEnabled ? "text-gray-11 hover:bg-gray-2" : "cursor-not-allowed text-gray-9 opacity-60"}`}
-                        onClick={() => {
-                          if (!props.attachmentsEnabled) return;
-                          setPlusMenuOpen(false);
+                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                        onMouseEnter={() => {
                           setPlusMenuSection(null);
-                          fileInput?.click();
+                          setToolMenuOpen(false);
+                          setDelegationMenuOpen(false);
                         }}
-                        disabled={!props.attachmentsEnabled}
+                        onClick={() => {
+                          const input = fileInput;
+                          flushSync(() => {
+                            setPlusMenuOpen(false);
+                            setPlusMenuSection(null);
+                            setToolMenuOpen(false);
+                            setDelegationMenuOpen(false);
+                          });
+                          input?.click();
+                        }}
                       >
-                        {t("composer.plus_attach_files")}
+                        <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />
+                        <span>{t("composer.plus_attach_files")}</span>
                       </button>
+                      {props.onOpenTemplateMarket ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                          onMouseEnter={() => {
+                            setPlusMenuSection(null);
+                            setToolMenuOpen(false);
+                            setDelegationMenuOpen(false);
+                          }}
+                          onClick={() => {
+                            setPlusMenuOpen(false);
+                            setPlusMenuSection(null);
+                            props.onOpenTemplateMarket?.();
+                          }}
+                        >
+                          <TemplateIcon className="size-3.5 opacity-60" />
+                          <span>{t("composer.plus_use_template")}</span>
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("tools")}
                         onClick={() => {
                           setPlusMenuSection("tools");
                           setToolMenuOpen(true);
-                          setAgentMenuOpen(false);
+                          setDelegationMenuOpen(false);
                         }}
                       >
-                        <span>{t("composer.plus_tools")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Wrench className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.plus_tools")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between rounded-[12px] px-3 py-2.5 text-left text-sm disabled:cursor-not-allowed disabled:text-gray-9 disabled:opacity-60 ${plusMenuSection === "agents" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                        onMouseEnter={() => setPlusMenuSection("agents")}
+                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        onMouseEnter={() => setPlusMenuSection("delegation")}
                         onClick={() => {
-                          setPlusMenuSection("agents");
-                          setAgentMenuOpen(true);
+                          setPlusMenuSection("delegation");
+                          setDelegationMenuOpen(true);
                           setToolMenuOpen(false);
                         }}
-                        disabled={!showAgentPicker || props.busy}
                       >
-                        <span>{t("composer.plus_agents")}</span>
+                        <span className="flex min-w-0 items-center gap-2">
+                          <Bot className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <span>{t("composer.delegate_external_agents")}</span>
+                        </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       </div>
@@ -1436,18 +1669,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                               onClick={() => setToolMenuSection(section)}
                             >
                               <span className="truncate">{label}</span>
-                              <ChevronRight size={14} className="shrink-0 text-gray-9" />
-                            </button>
-                          ))}
-                          {pluginSections.length > 0 ? <div className="my-2 border-t border-dls-border" /> : null}
-                          {pluginSections.map(({ section, plugin }) => (
-                            <button
-                              key={plugin.pluginId}
-                              type="button"
-                              className={`mb-1 flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left text-sm transition-colors ${toolMenuSection === section ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                              onClick={() => setToolMenuSection(section)}
-                            >
-                              <span className="truncate">{plugin.name}</span>
                               <ChevronRight size={14} className="shrink-0 text-gray-9" />
                             </button>
                           ))}
@@ -1543,7 +1764,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               <div className="grid gap-1">
                                 {composerExtensions.map((entry) => (
                                   <button
-                                    key={entry.id ?? entry.serverName ?? entry.name}
+                                    key={entry.pluginId}
                                     type="button"
                                     className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
                                     onClick={() => applyExtensionSelection(entry)}
@@ -1554,48 +1775,22 @@ export function ReactSessionComposer(props: ComposerProps) {
                                     <div className="min-w-0 flex-1">
                                       <div className="flex items-center justify-between gap-3">
                                         <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        {entry.defaultEnabled ? (
+                                        {activePluginEngineCompatibility(entry)?.status === "partial" ? (
+                                          <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
+                                        ) : (
                                           <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
-                                        ) : null}
+                                        )}
                                       </div>
-                                      <div className="truncate text-xs text-gray-10">{entry.description}</div>
+                                      <div className="truncate text-xs text-gray-10">{entry.manifest.description}</div>
                                     </div>
                                   </button>
                                 ))}
                               </div>
                             ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_extensions_enabled")}</div>
-                            )
-                          ) : null}
-                          {activePlugin ? (
-                            activePlugin.files.length > 0 ? (
-                              <div className="grid gap-1">
-                                {activePlugin.files.map((file) => (
-                                  <button
-                                    key={`${file.configObjectId}:${file.path}`}
-                                    type="button"
-                                    className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
-                                    onClick={() => applyPluginFileSelection(file)}
-                                  >
-                                    <FileText size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="truncate text-xs font-semibold text-gray-11">{file.title}</div>
-                                        <span className="shrink-0 rounded-full bg-gray-3 px-2 py-0.5 text-[10px] font-medium text-gray-11">
-                                          {formatPluginObjectType(file.objectType)}
-                                        </span>
-                                      </div>
-                                    </div>
-                                  </button>
-                                ))}
+                              <div className="px-3 py-2 text-xs text-gray-10">
+                                {!extensionsLoaded && extensionsLoading ? t("composer.loading_commands") : t("composer.no_extensions_enabled")}
                               </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_plugin_files")}</div>
                             )
-                          ) : toolMenuSection.startsWith("plugin:") ? (
-                            <div className="px-3 py-2 text-xs text-gray-10">
-                              {!pluginsLoaded && pluginsLoading ? t("composer.loading_commands") : t("composer.plugin_files_unavailable")}
-                            </div>
                           ) : null}
                         </div>
                       </div>
@@ -1603,53 +1798,43 @@ export function ReactSessionComposer(props: ComposerProps) {
                   ) : null}
                 </div>
 
-                <div ref={agentMenuRef} className={showAgentPicker ? "relative" : "hidden"}>
-                  {agentMenuOpen ? (
+                <div ref={delegationMenuRef} className="relative">
+                  {delegationMenuOpen ? (
                     <div className="absolute left-[10.75rem] bottom-full z-40 mb-2 w-64 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
                       <div className="border-b border-dls-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10">
-                        {t("composer.agent_label")}
+                        {t("composer.external_agents_label")}
                       </div>
                       <div
                         role="presentation"
                         className="max-h-64 space-y-1 overflow-y-auto p-2"
                         onMouseDown={(event) => event.preventDefault()}
                       >
-                        <button
-                          ref={(element) => {
-                            agentItemRefs.current[0] = element;
-                          }}
-                          type="button"
-                          className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${!props.selectedAgent || agentMenuIndex === 0 ? "bg-gray-2 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
-                          onMouseEnter={() => setAgentMenuIndex(0)}
-                          onMouseDown={(event) => {
-                            event.preventDefault();
-                            applyAgentSelection(null);
-                          }}
-                        >
-                          <span>{t("composer.default_agent")}</span>
-                          {!props.selectedAgent ? <Check size={14} className="text-gray-10" /> : null}
-                        </button>
-                        {nonDefaultAgents.map((agent, index) => {
-                          const active = props.selectedAgent === agent.name;
-                          return (
-                            <button
-                              key={agent.name}
-                              ref={(element) => {
-                                agentItemRefs.current[index + 1] = element;
-                              }}
-                              type="button"
-                              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs transition-colors ${active || agentMenuIndex === index + 1 ? "bg-gray-2 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
-                              onMouseEnter={() => setAgentMenuIndex(index + 1)}
-                              onMouseDown={(event) => {
-                                event.preventDefault();
-                                applyAgentSelection(agent.name);
-                              }}
-                            >
-                              <span className="truncate">{agent.name.charAt(0).toUpperCase() + agent.name.slice(1)}</span>
-                              {active ? <Check size={14} className="text-gray-10" /> : null}
-                            </button>
-                          );
-                        })}
+                        {externalAgents.map((agent, index) => (
+                          <button
+                            key={agent.pluginId}
+                            ref={(element) => {
+                              delegationItemRefs.current[index] = element;
+                            }}
+                            type="button"
+                            className={`flex w-full items-start gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors ${delegationMenuIndex === index ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
+                            onMouseEnter={() => setDelegationMenuIndex(index)}
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              applyExternalAgentSelection(agent);
+                            }}
+                          >
+                            <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
+                            <span className="min-w-0">
+                              <span className="block truncate text-xs font-semibold">{agent.name}</span>
+                              <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-gray-10">{agent.manifest.description}</span>
+                            </span>
+                          </button>
+                        ))}
+                        {externalAgentsLoading ? (
+                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.loading_external_agents")}</div>
+                        ) : externalAgents.length === 0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_external_agents")}</div>
+                        ) : null}
                       </div>
                     </div>
                   ) : null}
@@ -1666,10 +1851,103 @@ export function ReactSessionComposer(props: ComposerProps) {
                   onConfigureTokenStar={props.onConfigureTokenStar}
                   disabled={props.busy}
                 />
+                {activeAccessMode && props.onSelectAccessMode ? (
+                  <Popover
+                    open={accessModeOpen}
+                    onOpenChange={(open) => {
+                      setAccessModeOpen(open);
+                      if (!open) return;
+                      setWorkModeOpen(false);
+                      setPlusMenuOpen(false);
+                      setPlusMenuSection(null);
+                      setToolMenuOpen(false);
+                      setDelegationMenuOpen(false);
+                    }}
+                  >
+                    <PopoverTrigger
+                      type="button"
+                      disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy}
+                      aria-label={`${t("composer.access_mode_label")}: ${activeAccessMode.label}`}
+                      className="me-2 inline-flex h-8 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
+                    >
+                      <AccessModeIcon icon={activeAccessMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
+                      <span className="@max-[560px]/composer:hidden">{activeAccessMode.label}</span>
+                      <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
+                    </PopoverTrigger>
+                    <PopoverContent side="top" align="start" sideOffset={8} className="w-72 gap-0 p-1.5">
+                      {accessModes.map((mode) => {
+                        const active = mode.id === activeAccessMode.id;
+                        return (
+                          <button
+                            key={mode.id}
+                            type="button"
+                            disabled={props.busy || props.accessModeSelectionDisabled || accessModeBusy || mode.selectable === false}
+                            data-access-mode-option={mode.id}
+                            aria-pressed={active}
+                            className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:cursor-not-allowed disabled:opacity-55"
+                            onClick={() => selectAccessMode(mode)}
+                          >
+                            <AccessModeIcon icon={mode.icon} className={`mt-0.5 size-4 shrink-0 ${mode.dangerous ? "text-red-10" : "text-gray-10"}`} />
+                            <span className="min-w-0 flex-1">
+                              <span className="block font-medium">{mode.label}</span>
+                              {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                            </span>
+                            {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
+                          </button>
+                        );
+                      })}
+                    </PopoverContent>
+                  </Popover>
+                ) : null}
+                <Popover
+                  open={workModeOpen}
+                  onOpenChange={(open) => {
+                    setWorkModeOpen(open);
+                    if (!open) return;
+                    setPlusMenuOpen(false);
+                    setPlusMenuSection(null);
+                    setToolMenuOpen(false);
+                    setDelegationMenuOpen(false);
+                  }}
+                >
+                  <PopoverTrigger
+                    type="button"
+                    disabled={props.busy || props.modeSelectionDisabled}
+                    aria-label={`${t("composer.work_mode_label")}: ${activeWorkMode.label}`}
+                    className="inline-flex h-8 max-w-32 shrink-0 items-center gap-1.5 rounded-full bg-transparent px-2 text-[12px] leading-[18px] text-gray-10 transition-colors hover:bg-gray-3 hover:text-gray-12 data-[state=open]:bg-gray-3 data-[state=open]:text-gray-12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 disabled:pointer-events-none disabled:opacity-60 @max-[560px]/composer:w-10 @max-[560px]/composer:justify-center @max-[560px]/composer:gap-0.5 @max-[560px]/composer:px-1"
+                  >
+                    <WorkModeIcon icon={activeWorkMode.icon} className="size-4 shrink-0 [stroke-width:1.75]" />
+                    <span className="truncate @max-[560px]/composer:hidden">{activeWorkMode.label}</span>
+                    <ChevronDown className="size-3.5 shrink-0 [stroke-width:1.75]" />
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" sideOffset={8} className="w-64 gap-0 p-1.5">
+                    {workModes.map((mode) => {
+                      const active = mode.id === activeWorkMode.id;
+                      return (
+                        <button
+                          key={mode.id}
+                          type="button"
+                          disabled={props.busy || props.modeSelectionDisabled}
+                          data-work-mode-option={mode.id}
+                          aria-pressed={active}
+                          className="flex w-full items-start gap-2.5 rounded-xl px-3 py-2 text-left text-sm hover:bg-gray-2 disabled:pointer-events-none disabled:opacity-60"
+                          onClick={() => selectWorkMode(mode.id)}
+                        >
+                          <WorkModeIcon icon={mode.icon} className="mt-0.5 size-4 shrink-0 text-gray-10" />
+                          <span className="min-w-0 flex-1">
+                            <span className="block font-medium">{mode.label}</span>
+                            {mode.description ? <span className="mt-0.5 block text-xs leading-4 text-gray-9">{mode.description}</span> : null}
+                          </span>
+                          {active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}
+                        </button>
+                      );
+                    })}
+                  </PopoverContent>
+                </Popover>
                 {props.modelUnavailable ? (
                   <button
                     type="button"
-                    className="text-xs font-medium text-red-10 underline-offset-2 hover:underline"
+                    className="ms-1.5 text-xs font-medium text-red-10 underline-offset-2 hover:underline"
                     onClick={() => props.onModelPickerOpenChange(true)}
                   >
                     {t("composer.model_unavailable")}
@@ -1685,7 +1963,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                   badge shows how many follow-ups are waiting.
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
-              <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5">
+              <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5 @max-[560px]/composer:gap-1">
+                <ContextHealth
+                  usage={props.contextUsage}
+                  modelContextWindow={props.modelContextWindow}
+                />
                 {props.busy ? (
                   <>
                     {escapeArmed ? (
@@ -1704,13 +1986,14 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={canSend ? props.onQueue : undefined}
+                      onPointerDown={canSend ? handleActionPointerDown : undefined}
+                      onClick={canSend ? handleActionClick : undefined}
                       disabled={!canSend}
                       aria-label={t("composer.queue")}
                       className={`relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
                         canSend
                           ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                          : "bg-gray-4 text-gray-10"
+                          : "bg-gray-2 text-gray-10"
                       }`}
                       title={t("composer.queue_hint")}
                     >
@@ -1723,27 +2006,56 @@ export function ReactSessionComposer(props: ComposerProps) {
                     </button>
                   </>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={canSend ? props.onSend : undefined}
-                    disabled={props.disabled || !canSend}
-                    className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
-                      !canSend || props.disabled
-                        ? `bg-gray-4 text-gray-10 ${props.layout === "inline" ? "dark:bg-white/15 dark:text-[#999]" : ""}`
-                        : props.layout === "inline"
-                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
-                          : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                    }`}
-                    title={t("composer.run_task")}
-                  >
-                    <ArrowUp size={15} />
-                  </button>
+                  <Tooltip open={emptySubmitHintOpen}>
+                    <TooltipTrigger
+                      render={(
+                        <button
+                          type="button"
+                          onPointerDown={handleActionPointerDown}
+                          onClick={handleActionClick}
+                          disabled={props.disabled}
+                          className={`inline-flex h-8 max-h-8 w-8 items-center justify-center rounded-full transition-colors ${
+                            props.disabled
+                              ? "bg-gray-2 text-gray-10"
+                              : !canSend
+                                ? "bg-gray-9 text-white hover:bg-gray-10"
+                                : props.layout === "inline"
+                                  ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)] dark:bg-white dark:text-black dark:hover:bg-white/90"
+                                  : "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
+                          }`}
+                          title={t("composer.run_task")}
+                        >
+                          <ArrowUp size={15} />
+                        </button>
+                      )}
+                    />
+                    <TooltipContent
+                      side="top"
+                      sideOffset={10}
+                      className="max-w-none whitespace-nowrap rounded-2xl px-4 py-3 text-sm font-medium"
+                      data-testid="composer-empty-submit-hint"
+                    >
+                      {t("composer.empty_submit_hint")}
+                    </TooltipContent>
+                  </Tooltip>
                 )}
               </div>
             </div>
           </div>
         </div>
 
+        <ConfirmModal
+          open={pendingDangerousAccessMode !== null}
+          title={t("composer.access_mode_full_access_confirm_title")}
+          message={t("composer.access_mode_full_access_confirm_message")}
+          confirmLabel={t("composer.access_mode_full_access_confirm_action")}
+          cancelLabel={t("common.cancel")}
+          variant="danger"
+          onConfirm={() => {
+            if (pendingDangerousAccessMode) void applyAccessMode(pendingDangerousAccessMode);
+          }}
+          onCancel={() => setPendingDangerousAccessMode(null)}
+        />
       </div>
     </div>
   );

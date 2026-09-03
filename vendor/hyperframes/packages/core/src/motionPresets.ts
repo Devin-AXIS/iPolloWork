@@ -1,5 +1,19 @@
-import { MOTION_PRESETS } from "./motionPresetCatalog.js";
+import { MOTION_PRESETS, resolveStructuredTextRecipe } from "./motionPresetCatalog.js";
 import { buildPresetKeyframes } from "./motionPresetKeyframes.js";
+import {
+  compileStructuredTextMotion,
+  isStructuredTextPreset,
+  type CompiledStructuredTextMotion,
+  type StructuredTextRecipe,
+} from "./structuredTextMotion.js";
+
+export {
+  materializeStructuredText,
+  restoreStructuredText,
+  snapshotStructuredText,
+  unwrapStructuredText,
+  type StructuredTextSnapshot,
+} from "./structuredTextDom.js";
 
 export {
   MOTION_COLOR_SOURCE_PARAMETER,
@@ -12,6 +26,7 @@ export {
 export type MotionPhase = "enter" | "emphasis" | "exit";
 export type MotionTargetKind = "text" | "element";
 export type MotionTextUnit = "whole" | "word" | "character";
+export type MotionApplicationKind = "general" | "box" | "text";
 
 export type MotionParameterValue = string | number | boolean;
 export type MotionParameters = Record<string, MotionParameterValue>;
@@ -46,6 +61,7 @@ export interface MotionPreset {
     preferredFor: string[];
     avoidFor: string[];
   };
+  structuredText?: StructuredTextRecipe;
 }
 
 export interface StableElementLocator {
@@ -57,10 +73,14 @@ export interface StableElementLocator {
 export interface MotionInstance {
   id: string;
   presetId: string;
+  templateId?: string;
   target: StableElementLocator;
   targetKind: MotionTargetKind;
+  applicationKind: MotionApplicationKind;
   phase: MotionPhase;
   start: number;
+  /** Absolute timeline boundary for the complete effect window. */
+  end?: number;
   duration: number;
   loop: boolean;
   repeat: number;
@@ -71,7 +91,10 @@ export interface MotionMutationInput {
   operation: "upsert" | "remove";
   phase: MotionPhase;
   presetId?: string;
+  templateId?: string;
+  applicationKind?: MotionApplicationKind;
   start?: number;
+  end?: number;
   duration?: number;
   loop?: boolean;
   parameters?: MotionParameters;
@@ -90,6 +113,7 @@ export interface CompiledMotion {
   keyframes: MotionKeyframe[];
   ease: string;
   extras: Record<string, MotionParameterValue>;
+  structured?: CompiledStructuredTextMotion;
 }
 
 export interface MotionValidationIssue {
@@ -107,6 +131,25 @@ export interface MotionValidationResult {
 export const MOTION_DATA_PREFIX = "ipw-motion:v1:";
 
 const PRESETS_BY_ID = new Map(MOTION_PRESETS.map((preset) => [preset.id, preset]));
+
+const MIGRATED_CAPTION_DURATIONS: Record<string, number> = {
+  "text.enter.editorial-emphasis": 1.55,
+  "text.emphasis.karaoke-flow": 2.1,
+  "text.enter.camera-track": 1.7,
+  "text.enter.visual-layers": 1.55,
+  "text.emphasis.highlight-sweep": 1.45,
+  "text.enter.matrix-decode": 1.8,
+  "text.emphasis.gradient-fill": 1.5,
+  "text.emphasis.neon-glow": 2,
+  "text.emphasis.neon-accent": 1.7,
+  "text.emphasis.rgb-glitch": 1.8,
+  "text.enter.clip-wipe": 1.6,
+  "text.emphasis.weight-shift": 1.4,
+  "text.emphasis.texture-fill": 1.5,
+  "text.emphasis.kinetic-slam": 1.35,
+  "text.emphasis.emoji-pop": 1.35,
+  "text.emphasis.particle-burst": 2,
+};
 
 const MOTION_SEARCH_ALIASES: Record<string, string[]> = {
   modern: ["现代"],
@@ -284,6 +327,7 @@ export function readMotionInstanceFromExtras(
     if (!value || typeof value !== "object") return null;
     const preset = getMotionPreset(value.presetId);
     if (!preset || !value.target?.selector) return null;
+    if (value.templateId !== undefined && typeof value.templateId !== "string") return null;
     if (preset.phase !== value.phase || !preset.targetKinds.includes(value.targetKind)) return null;
     if (!Number.isFinite(value.start) || value.start < 0) return null;
     if (!Number.isFinite(value.duration) || value.duration <= 0) return null;
@@ -296,13 +340,25 @@ export function readMotionInstanceFromExtras(
         : loop
           ? 1
           : 0;
-    return { ...value, loop, repeat, parameters: validated.parameters };
+    const end =
+      Number.isFinite(value.end) && Number(value.end) > value.start
+        ? Number(value.end)
+        : value.start + value.duration * (repeat + 1);
+    const applicationKind: MotionApplicationKind =
+      value.applicationKind === "general" ||
+      value.applicationKind === "box" ||
+      value.applicationKind === "text"
+        ? value.applicationKind
+        : preset.id.startsWith("text.")
+          ? "text"
+          : "general";
+    return { ...value, applicationKind, end, loop, repeat, parameters: validated.parameters };
   } catch {
     return null;
   }
 }
 
-export function compileMotionInstance(instance: MotionInstance): CompiledMotion {
+export function compileMotionInstance(instance: MotionInstance, text = ""): CompiledMotion {
   const preset = getMotionPreset(instance.presetId);
   if (!preset) throw new Error(`Unknown motion preset: ${instance.presetId}`);
   if (preset.phase !== instance.phase)
@@ -323,7 +379,7 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
         ? `${instance.target.selector} > [data-ipw-motion-word]`
         : instance.target.selector;
   const stagger = unit === "whole" ? 0 : Number(validated.parameters.stagger ?? 0);
-  return {
+  const compiled: CompiledMotion = {
     targetSelector,
     position: instance.start,
     duration: instance.duration,
@@ -338,9 +394,19 @@ export function compileMotionInstance(instance: MotionInstance): CompiledMotion 
       ...(stagger > 0 ? { stagger } : {}),
     },
   };
+  if (isStructuredTextPreset(preset)) {
+    compiled.structured = compileStructuredTextMotion(
+      { ...instance, parameters: validated.parameters },
+      text,
+      resolveStructuredTextRecipe(preset, validated.parameters),
+    );
+  }
+  return compiled;
 }
 
 export function defaultMotionDuration(preset: MotionPreset): number {
+  const migratedCaptionDuration = MIGRATED_CAPTION_DURATIONS[preset.id];
+  if (migratedCaptionDuration !== undefined) return migratedCaptionDuration;
   if (preset.id.startsWith("background.")) return 3.2;
   if (preset.id === "text.enter.fold-reveal") return 0.9;
   if (preset.id === "motion.enter.gradual-focus") return 0.85;
@@ -361,10 +427,13 @@ export function defaultMotionDuration(preset: MotionPreset): number {
 
 export function createMotionInstance(input: {
   presetId: string;
+  templateId?: string;
   target: StableElementLocator;
   targetKind: MotionTargetKind;
+  applicationKind?: MotionApplicationKind;
   start: number;
   duration?: number;
+  end?: number;
   loop?: boolean;
   repeat?: number;
   parameters?: MotionParameters;
@@ -380,14 +449,27 @@ export function createMotionInstance(input: {
       : loop
         ? 1
         : 0;
+  const duration = input.duration ?? defaultMotionDuration(preset);
+  const end = input.end ?? input.start + duration * (repeat + 1);
+  if (!Number.isFinite(end) || end <= input.start) {
+    throw new Error("Motion end must be later than motion start");
+  }
+  const applicationKind =
+    input.applicationKind ?? (preset.id.startsWith("text.") ? "text" : "general");
+  const templateId = input.templateId?.trim() || undefined;
   return {
-    id: `motion:${input.target.selector}:${preset.phase}`,
+    id: templateId
+      ? `motion:${input.target.selector}:${applicationKind}:${templateId}`
+      : `motion:${input.target.selector}:${preset.phase}`,
     presetId: preset.id,
+    ...(templateId ? { templateId } : {}),
     target: input.target,
     targetKind: input.targetKind,
+    applicationKind,
     phase: preset.phase,
     start: input.start,
-    duration: input.duration ?? defaultMotionDuration(preset),
+    end,
+    duration,
     loop,
     repeat,
     parameters: validated.parameters,

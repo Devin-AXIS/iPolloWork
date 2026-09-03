@@ -3,13 +3,38 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
+import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
+import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
+
+test("browser host policy identifies only consequential verified activations", () => {
+  expect(consequentialBrowserControlNames([
+    { type: "fill", ref: "@e1", value: "Publish" },
+    { type: "click", ref: "@e2", expectedName: "Preview" },
+    { type: "click", ref: "@e3", expectedName: "确认发布" },
+    { type: "click", ref: "@e4", expectedName: "Delete post" },
+    { type: "press", key: "Enter", ref: "@e5", expectedName: "Submit" },
+    { type: "check", ref: "@e6", expectedName: "Authorize access", checked: true },
+  ])).toEqual(["确认发布", "Delete post", "Submit", "Authorize access"]);
+});
+
+test("browser host action schema exposes one complete semantic action set", () => {
+  const tool = engineHostTool(ENGINE_HOST_TOOL_NAMES.browserAct);
+  const schema = JSON.stringify(tool?.parameters);
+  for (const action of ["check", "click", "fill", "hover", "press", "scroll", "select", "upload", "wait", "waitFor"]) {
+    expect(schema).toContain(`\"${action}\"`);
+  }
+  expect(schema).toContain("Enter");
+  expect(schema).toContain("Space");
+  for (const condition of ["load", "ref", "text", "url"]) expect(schema).toContain(`\"${condition}\"`);
+});
 
 const actionSchema = z.object({
   extensionId: z.string(),
@@ -104,11 +129,12 @@ function serverConfig(root: string): ServerConfig {
   };
 }
 
-async function boot() {
+async function boot(options: { approval?: ServerConfig["approval"] } = {}) {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-connect-gating-"));
   dirs.push(root);
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
   const config = serverConfig(root);
+  if (options.approval) config.approval = options.approval;
   const server = await startServer(config);
   stops.push(() => server.stop());
   return { base: `http://127.0.0.1:${server.port}`, config };
@@ -186,9 +212,9 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(33);
+  expect(actions).toHaveLength(34);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
-  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(2);
+  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(3);
   expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(15);
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
 }
@@ -212,7 +238,285 @@ afterEach(async () => {
   restoreEnv("GOOGLE_WORKSPACE_TOKEN_BROKER_URL", previousEnv.legacyTokenBrokerUrl);
 });
 
-describe("Connect-aware legacy extension gating", () => {
+describe("extension and engine host tool gating", () => {
+  test("pauses consequential browser clicks and identifies the requesting session", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const pendingCall = fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({
+        name: "ipollowork_browser_act",
+        args: {
+          tabId: "tab_publish",
+          snapshotId: "snapshot_publish",
+          actions: [{ type: "click", ref: "@e7", expectedName: "Publish now" }],
+        },
+        context: { workspaceId: "ws_1", sessionId: "session_editor" },
+      }),
+    });
+
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+
+    expect(approval).toMatchObject({
+      action: "browser.external.consequential",
+      summary: "session session_editor requests browser action: Publish now",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingCall;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "browser_action_denied" });
+  });
+
+  test("exposes one engine-neutral host tool catalog and dispatches extension discovery through it", async () => {
+    const { base } = await boot();
+    const catalogResponse = await fetch(`${base}/engine-tools`, { headers: clientHeaders() });
+    expect(catalogResponse.status).toBe(200);
+    const catalog = await catalogResponse.json() as { tools?: Array<{ name?: string; description?: string }> };
+    expect(catalog.tools?.map((tool) => tool.name)).toEqual([
+      "ipollowork_extension_list_actions",
+      "ipollowork_extension_call",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
+      "ipollowork_workspace_app_list_tools",
+      "ipollowork_workspace_app_call_tool",
+      "ipollowork_browser_open_url",
+      "ipollowork_browser_snapshot",
+      "ipollowork_browser_act",
+      "ipollowork_browser_set_proxy",
+    ]);
+    const scheduleDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_schedule_preview")?.description;
+    expect(scheduleDescription).toContain("是否需要生成计划并加入 iPolloWork 日程？");
+    expect(scheduleDescription).toContain("even when the plan does not yet include concrete dates or times");
+    expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
+    expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
+
+    const callResponse = await fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({
+        name: "ipollowork_extension_list_actions",
+        args: { extensionId: "storage" },
+        context: { workspaceId: "ws_1" },
+      }),
+    });
+    expect(callResponse.status).toBe(200);
+    const call = await callResponse.json() as { actions?: Array<{ extensionId?: string }> };
+    expect(call.actions?.length).toBeGreaterThan(0);
+    expect(call.actions?.every((action) => action.extensionId === "storage")).toBe(true);
+  });
+
+  test("exposes the shared host tools through the Codex-compatible MCP bridge", async () => {
+    const { base } = await boot();
+    const client = new McpClient({ name: "ipollowork-host-test", version: "1.0.0" });
+    const transport = new StreamableHTTPClientTransport(
+      new URL(`${base}/engine-tools/mcp?workspaceId=ws_1`),
+      { requestInit: { headers: clientHeaders() } },
+    );
+    try {
+      await client.connect(transport);
+      const tools = await client.listTools();
+      expect(tools.tools.map((tool) => tool.name)).toEqual([
+        "ipollowork_extension_list_actions",
+        "ipollowork_extension_call",
+      "ipollowork_project_read",
+      "ipollowork_project_apply",
+      "ipollowork_schedule_preview",
+      "ipollowork_schedule_apply",
+      "ipollowork_workspace_app_list_tools",
+        "ipollowork_workspace_app_call_tool",
+        "ipollowork_browser_open_url",
+        "ipollowork_browser_snapshot",
+        "ipollowork_browser_act",
+        "ipollowork_browser_set_proxy",
+      ]);
+      const result = await client.callTool({
+        name: "ipollowork_extension_list_actions",
+        arguments: { extensionId: "storage" },
+      });
+      expect(result.structuredContent).toMatchObject({
+        ok: true,
+        actions: expect.arrayContaining([
+          expect.objectContaining({ extensionId: "storage" }),
+        ]),
+      });
+    } finally {
+      await client.close();
+    }
+  });
+
+  test("reads and applies a validated project through the shared engine host tools", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: { ...clientHeaders(), "content-type": "application/json" },
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_builder" } }),
+    });
+
+    const blockedResponse = await call("ipollowork_project_read", {});
+    expect(blockedResponse.status).toBe(403);
+    const activateResponse = await fetch(`${base}/workspace/ws_1/project-builder-sessions/session_builder`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: "{}",
+    });
+    expect(activateResponse.status).toBe(200);
+
+    const initialResponse = await call("ipollowork_project_read", {});
+    expect(initialResponse.status).toBe(200);
+    const initial = await initialResponse.json() as { source?: string; project?: { agents?: Array<{ id?: string }> } };
+    expect(initial.source).toBe("default");
+    expect(initial.project?.agents?.[0]?.id).toBe("project-lead");
+
+    const project = {
+      schemaVersion: 1,
+      goal: "Publish the weekly briefing",
+      agents: [{ id: "editor", name: "Editor", avatarSeed: "editor" }],
+      orchestration: { entryAgentId: "editor", relations: [] },
+    };
+    const applyResponse = await call("ipollowork_project_apply", { config: project, summary: "Create editor workflow" });
+    expect(applyResponse.status).toBe(200);
+
+    const savedResponse = await call("ipollowork_project_read", {});
+    expect(savedResponse.status).toBe(200);
+    const saved = await savedResponse.json() as { source?: string; project?: { goal?: string } };
+    expect(saved.source).toBe("saved");
+    expect(saved.project?.goal).toBe("Publish the weekly briefing");
+
+    const invalidResponse = await call("ipollowork_project_apply", {
+      config: { ...project, orchestration: { entryAgentId: "missing", relations: [] } },
+      summary: "Break the project",
+    });
+    expect(invalidResponse.status).toBe(400);
+  });
+
+  test("previews and atomically imports confirmed AI plans into iPolloWork Schedule", async () => {
+    const { base } = await boot();
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+
+    const invalidResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Unaligned task",
+        startAt: "2026-08-26T09:10:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    expect(invalidResponse.status).toBe(400);
+
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [
+        {
+          title: "Outline launch plan",
+          description: "Create the first draft",
+          startAt: "2026-08-26T09:00:00+08:00",
+          dueAt: "2026-08-26T10:00:00+08:00",
+          priority: "high",
+        },
+        {
+          title: "Review launch plan",
+          startAt: "2026-08-26T10:15:00+08:00",
+          dueAt: "2026-08-26T11:00:00+08:00",
+        },
+      ],
+    });
+    expect(previewResponse.status).toBe(200);
+    const preview = await previewResponse.json() as {
+      previewId?: string;
+      confirmationRequired?: boolean;
+      tasks?: Array<{ startAt?: string }>;
+    };
+    expect(preview.previewId).toMatch(/^schedule_/);
+    expect(preview).toMatchObject({
+      confirmationRequired: true,
+      tasks: [{ startAt: "2026-08-26T01:00:00.000Z" }, { startAt: "2026-08-26T02:15:00.000Z" }],
+    });
+
+    const beforeApply = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await beforeApply.json()).toMatchObject({ items: [] });
+
+    const applyResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    const applied = await applyResponse.json();
+    expect({ status: applyResponse.status, body: applied }).toMatchObject({
+      status: 200,
+      body: {
+        ok: true,
+        items: [
+          { title: "Outline launch plan", status: "planned", priority: "high" },
+          { title: "Review launch plan", status: "planned", priority: "normal" },
+        ],
+      },
+    });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    const list = await listed.json() as { items?: Array<{ title?: string; startAt?: number }> };
+    expect(list.items).toHaveLength(2);
+    expect(list.items?.map((item) => item.title).sort()).toEqual(["Outline launch plan", "Review launch plan"]);
+
+    const repeatedResponse = await call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    expect(repeatedResponse.status).toBe(404);
+  });
+
+  test("keeps a schedule preview read-only when the user denies import approval", async () => {
+    const { base } = await boot({ approval: { mode: "manual", timeoutMs: 5_000 } });
+    const call = (name: string, args: Record<string, unknown>) => fetch(`${base}/engine-tools/call`, {
+      method: "POST",
+      headers: clientJsonHeaders(),
+      body: JSON.stringify({ name, args, context: { workspaceId: "ws_1", sessionId: "session_planner" } }),
+    });
+    const previewResponse = await call("ipollowork_schedule_preview", {
+      tasks: [{
+        title: "Prepare campaign brief",
+        startAt: "2026-08-26T09:00:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+      }],
+    });
+    const preview = await previewResponse.json() as { previewId?: string };
+    if (!preview.previewId) throw new Error("Schedule preview id is required");
+
+    const pendingApply = call("ipollowork_schedule_apply", { previewId: preview.previewId });
+    let approval: { id?: string; action?: string; summary?: string } | undefined;
+    const deadline = Date.now() + 2_000;
+    while (!approval && Date.now() < deadline) {
+      const response = await fetch(`${base}/approvals`, { headers: hostJsonHeaders() });
+      const payload = await response.json() as { items?: Array<{ id?: string; action?: string; summary?: string }> };
+      approval = payload.items?.[0];
+      if (!approval) await Bun.sleep(20);
+    }
+    expect(approval).toMatchObject({
+      action: "schedule.import.apply",
+      summary: "Add 1 planned task to iPolloWork Schedule",
+    });
+    const reply = await fetch(`${base}/approvals/${approval?.id}`, {
+      method: "POST",
+      headers: hostJsonHeaders(),
+      body: JSON.stringify({ reply: "deny" }),
+    });
+    expect(reply.status).toBe(200);
+    const denied = await pendingApply;
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({ code: "write_denied" });
+
+    const listed = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
+    expect(await listed.json()).toMatchObject({ items: [] });
+  });
+
   test("defaults to unchanged legacy extension behavior when no connect state file exists", async () => {
     const { base } = await boot();
 
@@ -277,6 +581,7 @@ describe("Connect-aware legacy extension gating", () => {
       "media/voice_clone_workspace_file",
       "media/voice_list",
       "media/voiceover_timeline_validate",
+      "openai-image-generation/image_edit",
       "openai-image-generation/image_generate",
       "openai-image-generation/status",
       "storage/status",

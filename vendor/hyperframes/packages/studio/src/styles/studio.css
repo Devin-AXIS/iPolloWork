@@ -9,11 +9,34 @@
  */
 :root {
   color-scheme: dark;
+  --ipollowork-font-sans:
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "Noto Sans",
+    Arial,
+    sans-serif,
+    "Apple Color Emoji",
+    "Segoe UI Emoji";
+  --ipollowork-font-mono:
+    ui-monospace,
+    "SFMono-Regular",
+    "Cascadia Code",
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
   --hf-studio-bg: #0a0a0a;
   --hf-studio-surface: #141414;
   --hf-studio-border: #262626;
   --hf-studio-text: #e5e5e5;
-  --hf-studio-muted: #737373;
+  --hf-studio-muted: #8b8d98;
   --hf-studio-divider: rgba(255, 255, 255, 0.075);
   --hf-panel-bg: #0c0c0e;
   --hf-panel-bg-inset: #121214;
@@ -26,7 +49,7 @@
   --hf-panel-text-0: #fafafa;
   --hf-panel-text-1: #e4e4e7;
   --hf-panel-text-2: #a1a1aa;
-  --hf-panel-text-3: #71717a;
+  --hf-panel-text-3: #8b8d98;
   --hf-panel-text-4: #52525b;
   --hf-panel-text-5: #3f3f46;
   --hf-shortcuts-bg: #161618;
@@ -43,7 +66,7 @@
   --hf-timeline-clip-text: #e4e4e7;
   --hf-animation-preview-bg: #111318;
   --hf-animation-preview-text: #f8fafc;
-  --hf-animation-preview-primary: #20bbc0;
+  --hf-animation-preview-primary: #1FBAC0;
   --hf-animation-preview-accent: #7c3aed;
 }
 
@@ -113,7 +136,7 @@ body {
   padding: 0;
   background: #0a0a0a;
   color: #e5e5e5;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--ipollowork-font-sans);
   overflow: hidden;
 }
 
@@ -163,6 +186,11 @@ body {
   border-color: #c4c4c8 !important;
 }
 
+:root[data-ipollowork-theme="light"] .hf-animation-category-filter[aria-pressed="true"],
+:root:not([data-ipollowork-theme="light"]) .hf-animation-category-filter[aria-pressed="true"] {
+  color: #ffffff !important;
+}
+
 .hf-studio-header-export {
   background-color: #000000 !important;
   color: #ffffff !important;
@@ -176,37 +204,80 @@ body {
   background-color: #444440 !important;
 }
 
-.hf-property-ask-ai {
+.hf-studio-properties-action,
+.hf-studio-properties-action:hover,
+.hf-studio-properties-action:active {
   background-color: transparent !important;
-  color: #171816 !important;
 }
 
-.hf-property-ask-ai__label {
-  color: #171816 !important;
+.hf-studio-header-title,
+.hf-studio-header-title-text {
+  min-width: 0;
+}
+
+.hf-studio-header-title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hf-studio-header-actions {
+  gap: 8px;
+}
+
+.hf-studio-header-utilities {
+  gap: 4px;
+}
+
+@media (max-width: 720px) {
+  .hf-studio-header {
+    gap: 8px;
+  }
+
+  .hf-studio-header-title {
+    padding-right: 0;
+  }
+
+  .hf-studio-header-title-text {
+    max-width: none;
+  }
+
+  .hf-studio-header-views {
+    position: static;
+    left: auto;
+    flex: 0 0 auto;
+    transform: none;
+  }
+
+  .hf-studio-header-actions {
+    flex: 0 0 auto;
+  }
+
+  .hf-studio-header-action {
+    display: grid;
+    width: 36px;
+    min-width: 36px;
+    height: 36px;
+    place-items: center;
+    padding: 0;
+  }
+
+  .hf-studio-header-action-label {
+    display: none;
+  }
+}
+
+.hf-property-ask-ai {
+  background-color: #1FBAC0 !important;
+  color: #ffffff !important;
 }
 
 .hf-property-ask-ai:hover:not(:disabled) {
-  background-color: rgba(23, 24, 22, 0.06) !important;
+  background-color: #18a9ae !important;
 }
 
 .hf-property-ask-ai:active:not(:disabled) {
-  background-color: rgba(23, 24, 22, 0.12) !important;
-}
-
-:root:not([data-ipollowork-theme="light"]) .hf-property-ask-ai {
-  color: #ffffff !important;
-}
-
-:root:not([data-ipollowork-theme="light"]) .hf-property-ask-ai__label {
-  color: #ffffff !important;
-}
-
-:root:not([data-ipollowork-theme="light"]) .hf-property-ask-ai:hover:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.08) !important;
-}
-
-:root:not([data-ipollowork-theme="light"]) .hf-property-ask-ai:active:not(:disabled) {
-  background-color: rgba(255, 255, 255, 0.14) !important;
+  background-color: #148f94 !important;
 }
 
 .hf-text-icon-button {
@@ -735,14 +806,14 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 .hf-color-grading-range:focus-visible::-webkit-slider-thumb {
   box-shadow:
     0 0 0 2px #0c0c0e,
-    0 0 0 4px rgba(60, 230, 172, 0.22),
+    0 0 0 4px rgba(31, 186, 192, 0.22),
     0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
 .hf-color-grading-range:focus-visible::-moz-range-thumb {
   box-shadow:
     0 0 0 2px #0c0c0e,
-    0 0 0 4px rgba(60, 230, 172, 0.22),
+    0 0 0 4px rgba(31, 186, 192, 0.22),
     0 1px 4px rgba(0, 0, 0, 0.55);
 }
 
@@ -773,7 +844,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--timeline-clip-background-active, rgba(60, 230, 172, 0.2));
+  background: var(--timeline-clip-background-active, rgba(31, 186, 192, 0.2));
   opacity: 0;
   pointer-events: none;
 }
@@ -836,13 +907,13 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 .timeline-clip.is-selected {
-  background-color: #20bbc0;
-  border-color: #20bbc0;
+  background-color: #1FBAC0;
+  border-color: #1FBAC0;
   box-shadow: none;
 }
 
 .timeline-clip[data-active].is-selected {
-  border-color: #20bbc0;
+  border-color: #1FBAC0;
   box-shadow: none;
 }
 
@@ -856,12 +927,12 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 /* Keep the white selection outline while dragging (a plain box-shadow alone gets
    overridden by .is-dragging's drop shadow, so re-state both together). */
 .timeline-clip.is-selected.is-dragging {
-  border-color: #20bbc0;
+  border-color: #1FBAC0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
 .timeline-clip[data-active].is-selected.is-dragging {
-  border-color: #20bbc0;
+  border-color: #1FBAC0;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
@@ -892,7 +963,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   left: 12px;
   overflow: hidden;
   color: rgba(255, 255, 255, 0.34);
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--ipollowork-font-mono);
   font-size: 9px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -902,6 +973,12 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 
 .hf-timeline-layer-header {
   isolation: isolate;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.hf-timeline-layer-header:hover:not(.is-selected) {
+  background: rgba(255, 255, 255, 0.06) !important;
 }
 
 .hf-timeline-layer-header.is-selected {
@@ -959,7 +1036,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 .hf-timeline-layer-header__select:focus-visible,
 .hf-timeline-layer-header__caret:focus-visible,
 .hf-timeline-layer-header__reorder:focus-visible {
-  outline: 1px solid #3ce6ac;
+  outline: 1px solid #1FBAC0;
   outline-offset: -1px;
 }
 
@@ -1006,10 +1083,6 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   transition:
     background-color 120ms ease,
     color 120ms ease;
-}
-
-.hf-timeline-layer-header__select:hover {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .hf-timeline-layer-header__kind,
@@ -1071,24 +1144,6 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   white-space: nowrap;
 }
 
-.hf-timeline-layer-header__rename-input {
-  min-width: 0;
-  flex: 1;
-  height: 22px;
-  border: 1px solid var(--hf-studio-accent, #22c7b8);
-  border-radius: 4px;
-  background: var(--hf-studio-input-bg, rgba(255, 255, 255, 0.08));
-  color: inherit;
-  padding: 0 5px;
-  font: inherit;
-  line-height: 20px;
-  outline: none;
-}
-
-.hf-timeline-layer-header__rename-input:focus {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--hf-studio-accent, #22c7b8) 24%, transparent);
-}
-
 .hf-timeline-layer-header__caret {
   opacity: 0.55;
 }
@@ -1139,13 +1194,16 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   background: #f5f6f9 !important;
 }
 
+:root[data-ipollowork-theme="light"] .hf-timeline-layer-header:hover:not(.is-selected) {
+  background: #e7eaed !important;
+}
+
 :root[data-ipollowork-theme="light"]
   .hf-timeline-layer-header.is-uneditable:not(.is-selected)
   .hf-timeline-layer-header__select {
   color: #b6bbc3;
 }
 
-:root[data-ipollowork-theme="light"] .hf-timeline-layer-header__select:hover,
 :root[data-ipollowork-theme="light"] .hf-timeline-layer-header__caret:hover,
 :root[data-ipollowork-theme="light"] .hf-timeline-layer-header__visibility:hover,
 :root[data-ipollowork-theme="light"] .hf-timeline-layer-header__reorder:hover:not(:disabled) {
@@ -1168,8 +1226,8 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 :root[data-ipollowork-theme="light"] .timeline-clip.is-selected {
-  background-color: #20bbc0 !important;
-  border-color: #20bbc0 !important;
+  background-color: #1FBAC0 !important;
+  border-color: #1FBAC0 !important;
   box-shadow: none;
 }
 
@@ -1239,7 +1297,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 .hf-timeline-clip-content__timecode {
   flex: none;
   color: rgba(255, 255, 255, 0.68);
-  font-family: "SF Mono", "Fira Code", monospace;
+  font-family: var(--ipollowork-font-mono);
   font-size: 8px;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1314,7 +1372,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 .cm-editor .cm-scroller {
-  font-family: "JetBrains Mono", "Fira Code", "SF Mono", monospace;
+  font-family: var(--ipollowork-font-mono);
 }
 
 .cm-editor.cm-focused {
@@ -1371,12 +1429,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 .hf-loader-title {
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--ipollowork-font-sans);
   font-size: 1rem;
   font-weight: 600;
   letter-spacing: 0;
@@ -1392,12 +1445,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   min-height: 2.5rem;
   overflow: hidden;
   color: var(--hf-text-secondary, rgba(244, 244, 245, 0.68));
-  font-family:
-    Inter,
-    -apple-system,
-    BlinkMacSystemFont,
-    "Segoe UI",
-    sans-serif;
+  font-family: var(--ipollowork-font-sans);
   font-size: 0.82rem;
   line-height: 1.6;
 }
@@ -1409,7 +1457,7 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--hf-text-tertiary, rgba(244, 244, 245, 0.46));
-  font-family: "IBM Plex Mono", "SF Mono", "Fira Code", monospace;
+  font-family: var(--ipollowork-font-mono);
   font-size: 0.75rem;
   letter-spacing: 0;
   font-variant-numeric: tabular-nums;

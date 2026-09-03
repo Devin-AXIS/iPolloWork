@@ -466,6 +466,7 @@ export function useGsapScriptCommits({ projectIdRef, activeCompPath, previewIfra
   });
   const animationOps = useGsapAnimationOps({
     projectIdRef,
+    previewIframeRef,
     activeCompPath,
     commitMutation,
     commitMutationSafely,

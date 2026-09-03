@@ -40,7 +40,6 @@ export function useGsapSelectionHandlers({
   resizeKeyframedTween,
   convertToKeyframes,
   removeAllKeyframes,
-  handleDomManualEditsReset,
   selectedGsapAnimations,
   showToast,
 }: {
@@ -66,7 +65,8 @@ export function useGsapSelectionHandlers({
   mutateMotion: (
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
-    mutation: MotionMutationInput,)=> Promise<void>;
+    mutation: MotionMutationInput,
+  ) => Promise<boolean>;
   applyGsapMotionPreset: (
     sel: DomEditSelection,
     preset: RegistryMotionPreset,
@@ -125,7 +125,6 @@ export function useGsapSelectionHandlers({
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
 
-  handleDomManualEditsReset: (sel: DomEditSelection) => void;
   selectedGsapAnimations: GsapAnimation[];
   showToast: (message: string, tone?: "error" | "info") => void;
 }) {
@@ -218,11 +217,8 @@ export function useGsapSelectionHandlers({
           trackGsapHandlerFailure(error, domEditSelection, "add", `Add GSAP ${method} animation`);
         },
       );
-      if (domEditSelection.element.hasAttribute("data-hf-studio-path-offset")) {
-        handleDomManualEditsReset(domEditSelection);
-      }
     },
-    [domEditSelection, addGsapAnimation, handleDomManualEditsReset, trackGsapHandlerFailure],
+    [domEditSelection, addGsapAnimation, trackGsapHandlerFailure],
   );
 
   const handleMotionMutation = useCallback(
@@ -232,7 +228,7 @@ export function useGsapSelectionHandlers({
       selectionOverride?: DomEditSelection | null,
     ) => {
       const selection = selectionOverride ?? domEditSelection;
-      if (!selection) return Promise.resolve();
+      if (!selection) return Promise.resolve(false);
       return mutateMotion(selection, targetKind, mutation).catch((error) => {
         trackGsapHandlerFailure(
           error,
@@ -240,6 +236,7 @@ export function useGsapSelectionHandlers({
           "mutate-motion",
           mutation.operation === "remove" ? "Remove motion preset" : "Apply motion preset",
         );
+        return false;
       });
     },
     [domEditSelection, mutateMotion, trackGsapHandlerFailure],
@@ -347,17 +344,15 @@ export function useGsapSelectionHandlers({
       percentage: number,
       properties: Record<string, number | string>,
       commitOverrides?: Partial<CommitMutationOptions>,
+      selectionOverride?: DomEditSelection | null,
     ) => {
-      if (!domEditSelection) return Promise.resolve();
-      return addKeyframeBatch(
-        domEditSelection,
-        animId,
-        percentage,
-        properties,
-        commitOverrides,
-      ).catch((error) => {
-        trackGsapHandlerFailure(error, domEditSelection, "add-keyframe", "Add keyframe");
-      });
+      const sel = selectionOverride ?? domEditSelection ?? lastSelectionRef.current;
+      if (!sel) return Promise.resolve();
+      return addKeyframeBatch(sel, animId, percentage, properties, commitOverrides).catch(
+        (error) => {
+          trackGsapHandlerFailure(error, sel, "add-keyframe", "Add keyframe");
+        },
+      );
     },
     [domEditSelection, addKeyframeBatch, trackGsapHandlerFailure],
   );

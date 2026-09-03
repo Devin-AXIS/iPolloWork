@@ -7,18 +7,37 @@ import { getReactQueryClient } from "../src/react-app/infra/query-client";
 import {
   __applySessionSyncEventForTest,
   __createWorkspaceSessionSyncForTest,
+  beginOptimisticSessionPrompt,
+  statusKey,
   trackWorkspaceSessionSync,
   transcriptKey,
 } from "../src/react-app/domains/session/sync/session-sync";
-import { describeOpencodeSessionError } from "../src/react-app/domains/session/sync/usechat-adapter";
+import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
+import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
+
+function applyOpenCodeEvent(
+  input: { workspaceId: string; connectionKey: string },
+  event: unknown,
+) {
+  const mapped = mapOpenCodeConversationEvent(event);
+  if (mapped) __applySessionSyncEventForTest(input, mapped);
+}
+import {
+  describeConversationSessionError,
+  describeOpencodeSessionError,
+} from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
   parseDynamicToolUIPart,
   parseStructuredOutputUIPart,
-} from "../src/react-app/domains/session/sync/parse-tool-parts";
+} from "../src/react-app/domains/session/engine/opencode-tool-parts";
 import { videoVoiceDisplayMetadata } from "../src/react-app/domains/session/video/video-voice";
 
 afterEach(() => {
   getReactQueryClient().clear();
+  useSessionActivityStore.setState({
+    recordsByWorkspaceId: {},
+    statusesByWorkspaceId: {},
+  });
 });
 
 function writeToolPart(
@@ -94,6 +113,12 @@ describe("tool part mapper", () => {
     })).toBe("The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.");
   });
 
+  test("turns exhausted 429 retries into an actionable provider error", () => {
+    const message = describeConversationSessionError("exceeded retry limit, last status: 429 Too Many Requests");
+    expect(message).toContain("429");
+    expect(message).not.toContain("exceeded retry limit");
+  });
+
   test("defers in-progress tools with empty input", () => {
     // shouldDeferInProgressTool left with the legacy message list (#2016);
     // the deferral behavior itself is still pinned here via the parser and
@@ -146,16 +171,16 @@ describe("tool part mapper", () => {
   });
 
   test("session sync defers empty in-progress write tools until input arrives", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-a", role: "assistant", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: { part: writeToolPart("pending", {}) },
       } as any);
@@ -163,7 +188,7 @@ describe("tool part mapper", () => {
       let transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
       expect(transcript?.[0]?.parts ?? []).toEqual([]);
 
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: {
           part: writeToolPart("running", { content: "hello", filePath: "src/main.ts" }),
@@ -183,17 +208,262 @@ describe("tool part mapper", () => {
     }
   });
 
-  test("session sync preserves every reference tag from one synthetic part", () => {
-    const syncInput = { workspaceId: "workspace-a", baseUrl: "http://127.0.0.1:1234", ipolloworkToken: "token" };
+  test("session sync completes streamed messages through the shared engine protocol", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
     const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
     const release = trackWorkspaceSessionSync(syncInput, "session-a");
 
     try {
       __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "msg-a",
+          role: "assistant",
+          parts: [{ type: "text", text: "Done", state: "streaming" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "msg-a",
+        completedAt: 42,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript?.[0]).toMatchObject({
+        metadata: { ipollowork: { completed: 42 } },
+        parts: [{ type: "text", text: "Done", state: "done" }],
+      });
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("session sync does not append buffered deltas after an authoritative final message", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:1",
+        partId: "dsh:session-a:assistant:1:1:block:0",
+        parts: [{
+          type: "text",
+          text: "",
+          state: "streaming",
+          providerMetadata: { ipollowork: { partId: "dsh:session-a:assistant:1:1:block:0" } },
+        }],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      });
+      for (const delta of ["DS", "H", "_OK"]) {
+        __applySessionSyncEventForTest(syncInput, {
+          type: "message.chunk",
+          sessionId: "session-a",
+          messageId: "dsh:session-a:assistant:1:1",
+          chunk: {
+            type: "text-delta",
+            id: "dsh:session-a:assistant:1:1:block:0",
+            delta,
+          },
+        });
+      }
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "dsh:session-a:assistant:1:1",
+          role: "assistant",
+          parts: [{ type: "text", text: "DSH_OK", state: "done" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:1",
+        completedAt: 42,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript?.[0]?.parts).toEqual([{ type: "text", text: "DSH_OK", state: "done" }]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("session sync keeps consecutive DSH steps on the assistant side", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "dsh:session-a:assistant:1:1",
+          role: "assistant",
+          parts: [{ type: "reasoning", text: "Inspecting", state: "streaming" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "dsh:session-a:assistant:1:2",
+        partId: "dsh:session-a:assistant:1:2:0",
+        parts: [{
+          type: "text",
+          text: "Final result",
+          state: "streaming",
+          providerMetadata: { ipollowork: { partId: "dsh:session-a:assistant:1:2:0" } },
+        }],
+        messageRole: "assistant",
+        visibleAssistantOutput: true,
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toEqual([
+        expect.objectContaining({ id: "dsh:session-a:assistant:1:1", role: "assistant" }),
+        expect.objectContaining({
+          id: "dsh:session-a:assistant:1:2",
+          role: "assistant",
+          parts: [expect.objectContaining({ type: "text", text: "Final result" })],
+        }),
+      ]);
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("acknowledges an exact-id optimistic user message without duplicating its text", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "当前是什么模型", "user-current-model");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: { id: "user-current-model", role: "user", parts: [] },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.parts",
+        sessionId: "session-a",
+        messageId: "user-current-model",
+        partId: "user-current-model:text",
+        messageRole: "user",
+        parts: [{
+          type: "text",
+          text: "当前是什么模型",
+          state: "done",
+          providerMetadata: { ipollowork: { partId: "user-current-model:text" } },
+        }],
+      });
+
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toHaveLength(1);
+      expect(transcript?.[0]).toMatchObject({
+        id: "user-current-model",
+        role: "user",
+        parts: [{ type: "text", text: "当前是什么模型" }],
+      });
+      expect(transcript?.[0]?.metadata).toBeUndefined();
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("settles each failed turn independently and allows the next turn to complete", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "first", "user-first");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.error",
+        sessionId: "session-a",
+        parentUserMessageId: "user-first",
+        errorText: "first failed",
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "idle" },
+      });
+
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("error");
+
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "second", "user-second");
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("thinking");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.error",
+        sessionId: "session-a",
+        parentUserMessageId: "user-second",
+        errorText: "second failed",
+      });
+
+      let transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.map((message) => message.id)).toEqual([
+        "user-first",
+        "session-error:user-first",
+        "user-second",
+        "session-error:user-second",
+      ]);
+
+      beginOptimisticSessionPrompt("workspace-a", "session-a", "third", "user-third");
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: {
+          id: "assistant-third",
+          role: "assistant",
+          parts: [{ type: "text", text: "third completed", state: "done" }],
+        },
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.completed",
+        sessionId: "session-a",
+        messageId: "assistant-third",
+        completedAt: 42,
+      });
+      __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+
+      transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
+      expect(transcript.at(-2)).toMatchObject({ id: "user-third", role: "user" });
+      expect(transcript.at(-1)).toMatchObject({
+        id: "assistant-third",
+        role: "assistant",
+        parts: [{ type: "text", text: "third completed" }],
+      });
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
+    } finally {
+      release();
+      cleanup();
+    }
+  });
+
+  test("session sync preserves every reference tag from one synthetic part", () => {
+    const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const release = trackWorkspaceSessionSync(syncInput, "session-a");
+
+    try {
+      applyOpenCodeEvent(syncInput, {
         type: "message.updated",
         properties: { info: { id: "msg-a", role: "user", sessionID: "session-a" } },
       } as any);
-      __applySessionSyncEventForTest(syncInput, {
+      applyOpenCodeEvent(syncInput, {
         type: "message.part.updated",
         properties: {
           part: {

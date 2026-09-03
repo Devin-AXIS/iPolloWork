@@ -43,6 +43,7 @@ interface UseTimelineSyncCallbacksParams {
   attachIframeShortcutListeners: () => void;
   applyPreviewAudioState: () => void;
   stopPreviewMedia: () => void;
+  resumePlayback: () => void;
 }
 
 /**
@@ -129,6 +130,7 @@ export function useTimelineSyncCallbacks({
   attachIframeShortcutListeners,
   applyPreviewAudioState,
   stopPreviewMedia,
+  resumePlayback,
 }: UseTimelineSyncCallbacksParams) {
   // Convert a runtime timeline message (from iframe postMessage) into TimelineElements
   const processTimelineMessage = useCallback(
@@ -272,6 +274,16 @@ export function useTimelineSyncCallbacks({
     const adapter = getAdapter();
     if (!adapter || adapter.getDuration() <= 0) return false;
 
+    // Runtime readiness can arrive after the preview is already usable. If the
+    // user presses Play during that window, initialization must preserve that
+    // latest intent instead of pausing playback a moment later. The live adapter
+    // time is authoritative for this first-load race because the store playhead
+    // intentionally does not re-render on every animation frame.
+    const playerState = usePlayerStore.getState();
+    const shouldResumePlayback = playerState.isPlaying;
+    const adapterTime = adapter.getTime();
+    const currentPlaybackTime =
+      shouldResumePlayback && Number.isFinite(adapterTime) ? adapterTime : playerState.currentTime;
     adapter.pause();
     // Honor a seek requested before the adapter was ready. It may sit in either
     // place: `pendingSeekRef` if the store subscription was mounted when requestSeek
@@ -283,7 +295,7 @@ export function useTimelineSyncCallbacks({
     const startTime = resolveReloadSeekTime({
       pendingSeek: pendingSeekRef.current,
       requestedSeek: storeSeek,
-      storeCurrentTime: usePlayerStore.getState().currentTime,
+      storeCurrentTime: currentPlaybackTime,
       duration: adapter.getDuration(),
     });
     pendingSeekRef.current = null;
@@ -323,7 +335,7 @@ export function useTimelineSyncCallbacks({
       setTimelineReady(true);
     }
     isRefreshingRef.current = false;
-    setIsPlaying(false);
+    if (!shouldResumePlayback) setIsPlaying(false);
 
     try {
       const iframe = iframeRef.current;
@@ -361,6 +373,7 @@ export function useTimelineSyncCallbacks({
         }
       }
     } catch {}
+    if (shouldResumePlayback) resumePlayback();
     return true;
   }, [
     getAdapter,
@@ -376,6 +389,7 @@ export function useTimelineSyncCallbacks({
     iframeRef,
     isRefreshingRef,
     pendingSeekRef,
+    resumePlayback,
   ]);
 
   const onIframeLoad = useCallback(() => {

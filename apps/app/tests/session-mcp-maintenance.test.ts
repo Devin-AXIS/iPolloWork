@@ -241,19 +241,16 @@ describe("session MCP maintenance", () => {
       client: firstClient,
       cloudSignedIn: true,
       workspaceId: "workspace_a",
-      directory: "/workspace/a",
     });
     const recreatedTargetA = getSessionMcpMaintenanceTargetKey({
       client: recreatedClient,
       cloudSignedIn: true,
       workspaceId: "workspace_a",
-      directory: "/workspace/a",
     });
     const targetB = getSessionMcpMaintenanceTargetKey({
       client: recreatedClient,
       cloudSignedIn: true,
       workspaceId: "workspace_b",
-      directory: "/workspace/b",
     });
     let releaseTargetA = () => {};
     let targetARuns = 0;

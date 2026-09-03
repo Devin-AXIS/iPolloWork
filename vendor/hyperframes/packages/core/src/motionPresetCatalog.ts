@@ -4,6 +4,29 @@ import type {
   MotionParameters,
   MotionPreset,
 } from "./motionPresets.js";
+import type { StructuredTextRecipe } from "./structuredTextMotion.js";
+import {
+  resolveClipWipeStructuredRecipe,
+  resolveEditorialEmphasisStructuredRecipe,
+  resolveGradientFillStructuredRecipe,
+  resolveKaraokeFlowStructuredRecipe,
+  resolveMatrixDecodeStructuredRecipe,
+  resolveWeightShiftStructuredRecipe,
+} from "./migratedCaptionRecipesA.js";
+import {
+  resolveBlendDifferenceStructuredRecipe,
+  resolveCameraTrackStructuredRecipe,
+  resolveGlitchRgbStructuredRecipe,
+  resolveNeonAccentStructuredRecipe,
+  resolveNeonGlowStructuredRecipe,
+  resolveVisualLayersStructuredRecipe,
+} from "./migratedCaptionRecipesB.js";
+import {
+  resolveEmojiPopStructuredRecipe,
+  resolveKineticSlamStructuredRecipe,
+  resolveParticleBurstStructuredRecipe,
+  resolveTextureFillStructuredRecipe,
+} from "./migratedCaptionRecipesC.js";
 
 const EASE_OPTIONS: MotionParameterOption[] = [
   { value: "power2.out", label: "柔和" },
@@ -49,6 +72,64 @@ const MOTION_INTENSITY_PARAMETER: MotionParameter = {
   step: 0.1,
 };
 
+const MOTION_GLOW_PARAMETER: MotionParameter = {
+  id: "glow",
+  label: "辉光",
+  kind: "number",
+  min: 0,
+  max: 2,
+  step: 0.1,
+};
+
+const MOTION_BLUR_PARAMETER: MotionParameter = {
+  id: "blur",
+  label: "模糊",
+  kind: "number",
+  min: 0,
+  max: 32,
+  step: 1,
+  unit: "px",
+};
+
+const MOTION_DENSITY_PARAMETER: MotionParameter = {
+  id: "density",
+  label: "密度",
+  kind: "number",
+  min: 0,
+  max: 2,
+  step: 0.1,
+};
+
+const MOTION_DISTANCE_PARAMETER: MotionParameter = {
+  id: "distance",
+  label: "移动距离",
+  kind: "number",
+  min: 0,
+  max: 180,
+  step: 2,
+  unit: "px",
+};
+
+const MOTION_SPEED_PARAMETER: MotionParameter = {
+  id: "speed",
+  label: "Animation speed",
+  kind: "number",
+  min: 0.5,
+  max: 2,
+  step: 0.1,
+  unit: "x",
+};
+
+const MOTION_READABILITY_PARAMETER: MotionParameter = {
+  id: "preserveReadable",
+  label: "保持可读",
+  kind: "select",
+  options: [
+    { value: "true", label: "开启" },
+    { value: "false", label: "关闭" },
+  ],
+};
+
 export const MOTION_DIRECTION_PARAMETER: MotionParameter = {
   id: "direction",
   label: "方向",
@@ -67,6 +148,190 @@ type PresetSeed = Omit<MotionPreset, "version" | "targetKinds" | "parameterSchem
   color?: boolean;
   defaults?: MotionParameters;
 };
+
+function finiteParameter(parameters: MotionParameters, id: string, fallback: number): number {
+  const value = Number(parameters[id] ?? fallback);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function highlightTransformOrigin(direction: string): string {
+  if (direction === "left") return "100% 50%";
+  if (direction === "up") return "50% 100%";
+  if (direction === "down") return "50% 0%";
+  return "0% 50%";
+}
+
+function highlightColor(parameters: MotionParameters): string {
+  const color =
+    parameters.colorSource === "theme"
+      ? "var(--ipw-color-accent, #ff1745)"
+      : String(parameters.color ?? "#ff1745");
+  return color.toLowerCase();
+}
+
+export function createHighlightSweepStructuredRecipe(
+  parameters: MotionParameters = {},
+): StructuredTextRecipe {
+  const direction = String(parameters.direction ?? "right");
+  const split = String(parameters.unit ?? "word") as StructuredTextRecipe["split"];
+  const stagger = finiteParameter(parameters, "stagger", 0.05);
+  const speed = finiteParameter(parameters, "speed", 1);
+  const intensity = finiteParameter(parameters, "intensity", 1);
+  const roundness = finiteParameter(parameters, "roundness", 10);
+  const color = highlightColor(parameters);
+  const defaultRed = color === "#ff1745";
+  const endColor = defaultRed ? "#df1238" : `color-mix(in srgb, ${color} 87%, #000000)`;
+  const shadowAlpha = Math.min(0.8, 0.32 * intensity).toFixed(2);
+  const shadow = defaultRed
+    ? `0 12px 30px rgba(229, 20, 58, ${shadowAlpha})`
+    : `0 12px 30px color-mix(in srgb, ${color} ${Math.round(Number(shadowAlpha) * 100)}%, transparent)`;
+  const transformOrigin = highlightTransformOrigin(direction);
+  const horizontal = direction === "left" || direction === "right";
+  const scaleProperty = horizontal ? "scaleX" : "scaleY";
+  const hiddenScale = { [scaleProperty]: 0 };
+  const visibleScale = { [scaleProperty]: 1 };
+  const exitScale = { [scaleProperty]: 1.02 };
+
+  return {
+    version: 1,
+    id: "caption-highlight.word-sweep",
+    presetId: "text.emphasis.highlight-sweep",
+    split,
+    layers: [
+      { role: "unit", perUnit: true, className: "ipw-highlight-word" },
+      { role: "background", perUnit: true, className: "ipw-highlight-word-bg" },
+      { role: "text", perUnit: true, className: "ipw-highlight-word-text" },
+    ],
+    tracks: [
+      {
+        role: "background",
+        position: 0,
+        duration: 0.15 / speed,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: {
+              opacity: 0,
+              ...hiddenScale,
+              transformOrigin,
+              backgroundImage: `linear-gradient(135deg, ${color} 0%, ${endColor} 100%)`,
+              borderRadius: `${roundness}px`,
+              boxShadow: shadow,
+            },
+          },
+          {
+            percentage: 100,
+            ease: "power2.out",
+            properties: { opacity: 1, ...visibleScale, transformOrigin },
+          },
+        ],
+      },
+      {
+        role: "background",
+        position: 0.23 / speed,
+        duration: 0.1 / speed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { opacity: 1, ...visibleScale, transformOrigin } },
+          {
+            percentage: 100,
+            ease: "power2.in",
+            properties: { opacity: 0, ...exitScale, transformOrigin },
+          },
+        ],
+      },
+      {
+        role: "background",
+        position: 0.33 / speed,
+        duration: 0,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { opacity: 0, ...hiddenScale, transformOrigin },
+          },
+        ],
+      },
+      {
+        role: "unit",
+        position: 0,
+        duration: 0.24 / speed,
+        stagger,
+        keyframes: [
+          { percentage: 0, properties: { filter: "brightness(1)" } },
+          {
+            percentage: 33,
+            ease: "power2.out",
+            properties: { filter: `brightness(${(1 + 0.05 * intensity).toFixed(2)})` },
+          },
+          { percentage: 100, ease: "power2.out", properties: { filter: "brightness(1)" } },
+        ],
+      },
+      {
+        role: "text",
+        position: 0,
+        duration: 0.33 / speed,
+        stagger,
+        keyframes: [
+          {
+            percentage: 0,
+            properties: { color: "inherit", textShadow: "none" },
+          },
+          {
+            percentage: 38,
+            properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" },
+          },
+          {
+            percentage: 70,
+            properties: { color: "#ffffff", textShadow: "0 6px 18px rgba(0, 0, 0, 0.45)" },
+          },
+          {
+            percentage: 100,
+            properties: { color: "inherit", textShadow: "none" },
+          },
+        ],
+      },
+    ],
+  };
+}
+
+export function resolveStructuredTextRecipe(
+  preset: MotionPreset,
+  parameters: MotionParameters,
+): StructuredTextRecipe | undefined {
+  if (preset.id === "text.emphasis.highlight-sweep")
+    return createHighlightSweepStructuredRecipe(parameters);
+  if (preset.id === "text.enter.editorial-emphasis")
+    return resolveEditorialEmphasisStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.karaoke-flow")
+    return resolveKaraokeFlowStructuredRecipe(parameters);
+  if (preset.id === "text.enter.camera-track")
+    return resolveCameraTrackStructuredRecipe(parameters);
+  if (preset.id === "text.enter.visual-layers")
+    return resolveVisualLayersStructuredRecipe(parameters);
+  if (preset.id === "text.enter.matrix-decode")
+    return resolveMatrixDecodeStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.gradient-fill")
+    return resolveGradientFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.neon-glow") return resolveNeonGlowStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.neon-accent")
+    return resolveNeonAccentStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.rgb-glitch") return resolveGlitchRgbStructuredRecipe(parameters);
+  if (preset.id === "text.enter.clip-wipe") return resolveClipWipeStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.blend-difference")
+    return resolveBlendDifferenceStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.weight-shift")
+    return resolveWeightShiftStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.texture-fill")
+    return resolveTextureFillStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.kinetic-slam")
+    return resolveKineticSlamStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.emoji-pop") return resolveEmojiPopStructuredRecipe(parameters);
+  if (preset.id === "text.emphasis.particle-burst")
+    return resolveParticleBurstStructuredRecipe(parameters);
+  return preset.structuredText;
+}
 
 function textPreset(seed: PresetSeed): MotionPreset {
   return {
@@ -96,7 +361,45 @@ function textPreset(seed: PresetSeed): MotionPreset {
       ...(seed.color ? { colorSource: "custom", color: "#7c3aed" } : {}),
       ...seed.defaults,
     },
+    ...(seed.structuredText ? { structuredText: seed.structuredText } : {}),
     semantics: seed.semantics,
+  };
+}
+
+function migratedTextPreset(
+  seed: PresetSeed & {
+    extraParameters?: MotionParameter[];
+  },
+): MotionPreset {
+  return {
+    ...textPreset(seed),
+    parameterSchema: [
+      ...MOTION_COMMON_PARAMETERS,
+      MOTION_INTENSITY_PARAMETER,
+      ...(seed.direction ? [MOTION_DIRECTION_PARAMETER] : []),
+      ...MOTION_TEXT_PARAMETERS,
+      ...(seed.color
+        ? [
+            MOTION_COLOR_SOURCE_PARAMETER,
+            { id: "color", label: "效果颜色", kind: "color" as const },
+          ]
+        : []),
+      ...(seed.extraParameters ?? []),
+      ...(seed.defaults?.speed !== undefined &&
+      !(seed.extraParameters ?? []).some((parameter) => parameter.id === "speed")
+        ? [MOTION_SPEED_PARAMETER]
+        : []),
+    ],
+    defaults: {
+      ease: seed.phase === "emphasis" ? "sine.inOut" : "power3.out",
+      intensity: 1,
+      unit: "word",
+      stagger: 0.04,
+      ...(seed.direction ? { direction: "right" } : {}),
+      ...(seed.color ? { colorSource: "theme", color: "#20BBC0" } : {}),
+      ...seed.defaults,
+    },
+    ...(seed.structuredText ? { structuredText: seed.structuredText } : {}),
   };
 }
 
@@ -372,6 +675,353 @@ const TEXT_MOTION_PRESETS: readonly MotionPreset[] = [
     },
   }),
 ] as const;
+
+const MIGRATED_CAPTION_TEXT_PRESETS: readonly MotionPreset[] = [
+  migratedTextPreset({
+    id: "text.enter.editorial-emphasis",
+    label: "编辑重点",
+    phase: "enter",
+    direction: true,
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.075,
+      direction: "up",
+      colorSource: "theme",
+      color: "#20BBC0",
+      blur: 7,
+      distance: 28,
+      emphasisWeight: 800,
+      speed: 1,
+    },
+    extraParameters: [
+      MOTION_BLUR_PARAMETER,
+      MOTION_DISTANCE_PARAMETER,
+      {
+        id: "emphasisWeight",
+        label: "强调字重",
+        kind: "number",
+        min: 100,
+        max: 900,
+        step: 50,
+      },
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveEditorialEmphasisStructuredRecipe(),
+    semantics: {
+      intents: ["编辑重点", "逐词强调", "标题显现"],
+      tones: ["编辑感", "高级", "清晰"],
+      preferredFor: ["标题", "关键句", "品牌主张"],
+      avoidFor: ["超长正文", "极小字号"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.karaoke-flow",
+    label: "移动卡拉 OK",
+    phase: "emphasis",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.12,
+      colorSource: "theme",
+      color: "#20BBC0",
+      roundness: 10,
+      lift: 7,
+      speed: 1,
+    },
+    extraParameters: [
+      { id: "roundness", label: "圆角", kind: "number", min: 0, max: 40, step: 1, unit: "px" },
+      { id: "lift", label: "抬升距离", kind: "number", min: 0, max: 40, step: 1, unit: "px" },
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveKaraokeFlowStructuredRecipe(),
+    semantics: {
+      intents: ["卡拉 OK", "逐词跟随", "字幕强调"],
+      tones: ["清晰", "节奏", "现代"],
+      preferredFor: ["字幕", "旁白重点", "短句"],
+      avoidFor: ["单字标题", "超长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.camera-track",
+    label: "镜头跟随",
+    phase: "enter",
+    direction: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.075,
+      direction: "up",
+      distance: 54,
+      blur: 12,
+      speed: 1,
+    },
+    extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_BLUR_PARAMETER, MOTION_SPEED_PARAMETER],
+    structuredText: resolveCameraTrackStructuredRecipe(),
+    semantics: {
+      intents: ["镜头跟随", "拉焦", "景深显现"],
+      tones: ["电影感", "沉浸", "精致"],
+      preferredFor: ["标题", "章节文字", "短字幕"],
+      avoidFor: ["长段正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.visual-layers",
+    label: "视觉层叠",
+    phase: "enter",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.055,
+      colorSource: "theme",
+      color: "#5B6CFF",
+      accentColor: "#20BBC0",
+      distance: 18,
+      blur: 4,
+      speed: 1,
+    },
+    extraParameters: [
+      { id: "accentColor", label: "强调色", kind: "color" },
+      MOTION_DISTANCE_PARAMETER,
+      MOTION_BLUR_PARAMETER,
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: resolveVisualLayersStructuredRecipe(),
+    semantics: {
+      intents: ["视觉层叠", "颜色分层", "聚合显现"],
+      tones: ["设计感", "品牌感", "现代"],
+      preferredFor: ["标题", "品牌词", "章节文字"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.highlight-sweep",
+    label: "高亮扫过",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.05,
+      colorSource: "custom",
+      color: "#FF1745",
+      roundness: 10,
+      speed: 1,
+    },
+    extraParameters: [
+      { id: "roundness", label: "圆角", kind: "number", min: 0, max: 24, step: 1, unit: "px" },
+      MOTION_SPEED_PARAMETER,
+    ],
+    structuredText: createHighlightSweepStructuredRecipe(),
+    semantics: {
+      intents: ["高亮", "扫过", "关键词强化"],
+      tones: ["清晰", "编辑感"],
+      preferredFor: ["关键词", "标题", "字幕文字"],
+      avoidFor: ["很小的正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.matrix-decode",
+    label: "矩阵解码",
+    phase: "enter",
+    color: true,
+    defaults: { unit: "word", stagger: 0.1, color: "#00FF41", density: 1, blur: 0, speed: 1 },
+    extraParameters: [MOTION_DENSITY_PARAMETER, MOTION_BLUR_PARAMETER, MOTION_SPEED_PARAMETER],
+    structuredText: resolveMatrixDecodeStructuredRecipe(),
+    semantics: {
+      intents: ["解码", "科技显现", "字符扰动"],
+      tones: ["科技", "利落"],
+      preferredFor: ["科技标题", "编号", "短句"],
+      avoidFor: ["长段正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.gradient-fill",
+    label: "渐变填充",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    intensity: true,
+    defaults: { unit: "word", stagger: 0.1, color: "#FE9F1B", accentColor: "#FD56CB", speed: 1 },
+    extraParameters: [{ id: "accentColor", label: "强调色", kind: "color" }],
+    structuredText: resolveGradientFillStructuredRecipe(),
+    semantics: {
+      intents: ["渐变", "填充", "流动"],
+      tones: ["明亮", "品牌感"],
+      preferredFor: ["标题", "关键词"],
+      avoidFor: ["正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.neon-glow",
+    label: "霓虹辉光",
+    phase: "emphasis",
+    color: true,
+    defaults: { unit: "word", stagger: 0.3, color: "#00FFF0", glow: 1, speed: 1 },
+    extraParameters: [MOTION_GLOW_PARAMETER],
+    structuredText: resolveNeonGlowStructuredRecipe(),
+    semantics: {
+      intents: ["霓虹", "发光", "强调"],
+      tones: ["科技", "夜景"],
+      preferredFor: ["标题", "品牌词"],
+      avoidFor: ["长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.neon-accent",
+    label: "霓虹强调",
+    phase: "emphasis",
+    color: true,
+    defaults: { unit: "word", stagger: 0.04, color: "#53FF01", glow: 1, speed: 1 },
+    extraParameters: [MOTION_GLOW_PARAMETER],
+    structuredText: resolveNeonAccentStructuredRecipe(),
+    semantics: {
+      intents: ["霓虹", "强调色", "轻微漂移"],
+      tones: ["活跃", "科技"],
+      preferredFor: ["短标题", "关键词"],
+      avoidFor: ["正式正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.rgb-glitch",
+    label: "RGB 故障",
+    phase: "emphasis",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.04,
+      color: "#FF003C",
+      preserveReadable: "true",
+      blur: 0,
+      density: 1,
+      speed: 1,
+    },
+    extraParameters: [
+      MOTION_BLUR_PARAMETER,
+      MOTION_DENSITY_PARAMETER,
+      MOTION_READABILITY_PARAMETER,
+    ],
+    structuredText: resolveGlitchRgbStructuredRecipe(),
+    semantics: {
+      intents: ["故障", "RGB", "扰动"],
+      tones: ["强烈", "科技"],
+      preferredFor: ["科技标题", "转折词"],
+      avoidFor: ["稳重品牌", "长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.enter.clip-wipe",
+    label: "裁切揭幕",
+    phase: "enter",
+    direction: true,
+    color: true,
+    defaults: { unit: "word", stagger: 0.04, color: "#FFD700", speed: 1 },
+    structuredText: resolveClipWipeStructuredRecipe(),
+    semantics: {
+      intents: ["裁切", "揭幕", "方向进入"],
+      tones: ["利落", "编辑感"],
+      preferredFor: ["标题", "短句", "字幕文字"],
+      avoidFor: ["超长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.blend-difference",
+    label: "差值反色",
+    phase: "emphasis",
+    color: true,
+    defaults: {
+      unit: "word",
+      stagger: 0.08,
+      color: "#FFFFFF",
+      preserveReadable: "true",
+      blur: 0,
+      speed: 1,
+    },
+    extraParameters: [MOTION_BLUR_PARAMETER, MOTION_READABILITY_PARAMETER],
+    structuredText: resolveBlendDifferenceStructuredRecipe(),
+    semantics: {
+      intents: ["反色", "混合", "强调"],
+      tones: ["实验", "编辑感"],
+      preferredFor: ["标题", "海报文字"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.weight-shift",
+    label: "字重切换",
+    phase: "emphasis",
+    defaults: { unit: "word", stagger: 0.08, minWeight: 300, maxWeight: 700, speed: 1 },
+    structuredText: resolveWeightShiftStructuredRecipe(),
+    extraParameters: [
+      { id: "minWeight", label: "起始字重", kind: "number", min: 100, max: 900, step: 50 },
+      { id: "maxWeight", label: "强调字重", kind: "number", min: 100, max: 900, step: 50 },
+    ],
+    semantics: {
+      intents: ["字重", "强调", "排版"],
+      tones: ["克制", "高级"],
+      preferredFor: ["标题", "关键词"],
+      avoidFor: ["不支持可变字重的字体"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.texture-fill",
+    label: "纹理填充",
+    phase: "emphasis",
+    direction: true,
+    color: true,
+    defaults: { unit: "word", stagger: 0.04, color: "#FFD0A0", density: 1, speed: 1 },
+    extraParameters: [MOTION_DENSITY_PARAMETER],
+    structuredText: resolveTextureFillStructuredRecipe(),
+    semantics: {
+      intents: ["纹理", "遮罩", "填充"],
+      tones: ["设计感", "海报"],
+      preferredFor: ["大标题", "品牌词"],
+      avoidFor: ["小字号正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.kinetic-slam",
+    label: "动感冲击",
+    phase: "emphasis",
+    direction: true,
+    defaults: { unit: "word", stagger: 0.04, preserveReadable: "true", distance: 120, speed: 1 },
+    extraParameters: [MOTION_DISTANCE_PARAMETER, MOTION_READABILITY_PARAMETER],
+    structuredText: resolveKineticSlamStructuredRecipe(),
+    semantics: {
+      intents: ["冲击", "动感", "强调"],
+      tones: ["强烈", "节奏"],
+      preferredFor: ["短标题", "关键词"],
+      avoidFor: ["长正文"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.emoji-pop",
+    label: "Emoji 弹出",
+    phase: "emphasis",
+    defaults: { unit: "word", stagger: 0.04, speed: 1 },
+    structuredText: resolveEmojiPopStructuredRecipe(),
+    semantics: {
+      intents: ["emoji", "弹出", "轻松"],
+      tones: ["playful", "社交"],
+      preferredFor: ["社媒文字", "轻松标题"],
+      avoidFor: ["正式报告"],
+    },
+  }),
+  migratedTextPreset({
+    id: "text.emphasis.particle-burst",
+    label: "粒子爆发",
+    phase: "emphasis",
+    color: true,
+    defaults: { unit: "word", stagger: 0.018, color: "#FFD700", density: 1, speed: 1 },
+    extraParameters: [MOTION_DENSITY_PARAMETER],
+    structuredText: resolveParticleBurstStructuredRecipe(),
+    semantics: {
+      intents: ["粒子", "爆发", "关键词强化"],
+      tones: ["活跃", "庆祝"],
+      preferredFor: ["关键词", "数字", "短标题"],
+      avoidFor: ["长正文"],
+    },
+  }),
+];
 
 const ELEMENT_MOTION_PRESETS: readonly MotionPreset[] = [
   elementPreset({
@@ -1016,6 +1666,7 @@ const REACT_BITS_BOX_PRESETS: readonly MotionPreset[] = [
 
 export const MOTION_PRESETS: readonly MotionPreset[] = [
   ...TEXT_MOTION_PRESETS,
+  ...MIGRATED_CAPTION_TEXT_PRESETS,
   ...ELEMENT_MOTION_PRESETS,
   ...REACT_BITS_TEXT_PRESETS,
   ...REACT_BITS_GENERAL_PRESETS,

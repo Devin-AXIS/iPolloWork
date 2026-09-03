@@ -1,10 +1,13 @@
-import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
+import { useEffect, useRef } from "react";
 import { useStudioI18n } from "../../i18n";
-import { FlipHorizontal, FlipVertical, RotateCw } from "../../icons/SystemIcons";
+import { ChevronRight, FlipHorizontal, FlipVertical, RotateCw } from "../../icons/SystemIcons";
 import { FlatRow, FlatSegmentedRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
-import { KeyframeNavigation } from "./KeyframeNavigation";
-import { formatPxMetricValue } from "./propertyPanelHelpers";
-import { STUDIO_KEYFRAMES_ENABLED } from "./manualEditingAvailability";
+import {
+  applyStudioBoxSizeDraft,
+  applyStudioPathOffsetDraft,
+  applyStudioRotationDraft,
+} from "./manualEdits";
+import { formatPxMetricValue, parsePxMetricValue } from "./propertyPanelHelpers";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { PropertyPanel3dTransform } from "./propertyPanel3dTransform";
 import type { DomEditSelection } from "./domEditingTypes";
@@ -41,6 +44,7 @@ interface GeometryRowsProps {
   ) => Promise<void>;
   onRemoveKeyframe?: (animId: string, pct: number) => void;
   onConvertToKeyframes?: (animId: string) => void;
+  onLivePreviewProps?: (element: DomEditSelection, props: Record<string, number>) => void;
   large?: boolean;
 }
 
@@ -48,58 +52,71 @@ export function flipScaleValue(value: number | undefined): number {
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? -value : -1;
 }
 
-function KeyframeGutter({
-  element,
-  property,
-  displayValue,
-  gsapAnimId,
-  navKeyframes,
-  currentPct,
-  seekFromKfPct,
-  animIdForProp,
-  onCommitAnimatedProperty,
-  onRemoveKeyframe,
-  onConvertToKeyframes,
+export function parseCssScaleValue(value: string | undefined): { x: number; y: number } {
+  const normalized = value?.trim();
+  if (!normalized || normalized === "none") return { x: 1, y: 1 };
+  const values = normalized
+    .replaceAll(",", " ")
+    .split(/\s+/)
+    .map((part) => Number.parseFloat(part))
+    .filter(Number.isFinite);
+  const x = values[0] ?? 1;
+  return { x, y: values[1] ?? x };
+}
+
+function readStaticScale(element: HTMLElement, authoredValue?: string): { x: number; y: number } {
+  const inlineValue = element.style.getPropertyValue("scale");
+  if (inlineValue) return parseCssScaleValue(inlineValue);
+  if (authoredValue) return parseCssScaleValue(authoredValue);
+  return parseCssScaleValue(element.ownerDocument.defaultView?.getComputedStyle(element).scale);
+}
+
+export function GeometryStepper({
+  label,
+  value,
+  disabled = false,
+  min,
+  onStep,
 }: {
-  property: string;
-  displayValue: number;
-} & Pick<
-  GeometryRowsProps,
-  | "element"
-  | "gsapAnimId"
-  | "navKeyframes"
-  | "currentPct"
-  | "seekFromKfPct"
-  | "animIdForProp"
-  | "onCommitAnimatedProperty"
-  | "onRemoveKeyframe"
-  | "onConvertToKeyframes"
->) {
-  const track = useTrackDesignInput();
-  if (!STUDIO_KEYFRAMES_ENABLED || !gsapAnimId) return null;
+  label: string;
+  value: number;
+  disabled?: boolean;
+  min?: number;
+  onStep: (nextValue: number) => void;
+}) {
+  const { tx } = useStudioI18n();
+  const valueRef = useRef(value);
+
+  useEffect(() => {
+    valueRef.current = value;
+  }, [value]);
+
+  const step = (delta: -1 | 1) => {
+    const nextValue = Math.max(min ?? Number.NEGATIVE_INFINITY, valueRef.current + delta);
+    valueRef.current = nextValue;
+    onStep(nextValue);
+  };
+
   return (
-    <span data-flat-kf-gutter="true" className="flex flex-none items-center">
-      <KeyframeNavigation
-        property={property}
-        keyframes={navKeyframes}
-        currentPercentage={currentPct}
-        onSeek={seekFromKfPct}
-        onAddKeyframe={() => {
-          if (!onCommitAnimatedProperty) return;
-          track("button", `Add ${property} keyframe`);
-          void onCommitAnimatedProperty(element, property, displayValue);
-        }}
-        onRemoveKeyframe={(pct) => {
-          if (!onRemoveKeyframe) return;
-          track("button", `Remove ${property} keyframe`);
-          onRemoveKeyframe(animIdForProp(property), pct);
-        }}
-        onConvertToKeyframes={() => {
-          if (!onConvertToKeyframes) return;
-          track("button", `Convert ${property} to keyframes`);
-          onConvertToKeyframes(animIdForProp(property));
-        }}
-      />
+    <span data-geometry-stepper="true" className="flex h-5 flex-none items-center gap-0.5">
+      <button
+        type="button"
+        aria-label={tx(`Decrease ${label}`)}
+        disabled={disabled || (min != null && valueRef.current <= min)}
+        onClick={() => step(-1)}
+        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 disabled:cursor-default disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+      >
+        <ChevronRight size={10} className="rotate-180" />
+      </button>
+      <button
+        type="button"
+        aria-label={tx(`Increase ${label}`)}
+        disabled={disabled}
+        onClick={() => step(1)}
+        className="flex h-5 w-4 items-center justify-center rounded-sm text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.94] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 disabled:cursor-default disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+      >
+        <ChevronRight size={10} />
+      </button>
     </span>
   );
 }
@@ -118,25 +135,69 @@ export function LayoutGeometryRows({
   commitManualSize,
   commitManualRotation,
   gsapAnimId,
-  navKeyframes,
-  currentPct,
-  seekFromKfPct,
-  animIdForProp,
-  onCommitAnimatedProperty,
-  onRemoveKeyframe,
-  onConvertToKeyframes,
+  onLivePreviewProps,
   large,
 }: GeometryRowsProps) {
-  const gutterProps = {
-    element,
-    gsapAnimId,
-    navKeyframes,
-    currentPct,
-    seekFromKfPct,
-    animIdForProp,
-    onCommitAnimatedProperty,
-    onRemoveKeyframe,
-    onConvertToKeyframes,
+  const valuesRef = useRef({
+    x: displayX,
+    y: displayY,
+    width: displayW,
+    height: displayH,
+    rotation: displayR,
+  });
+
+  useEffect(() => {
+    valuesRef.current = {
+      x: displayX,
+      y: displayY,
+      width: displayW,
+      height: displayH,
+      rotation: displayR,
+    };
+  }, [displayH, displayR, displayW, displayX, displayY]);
+
+  const previewGeometry = (
+    property: "x" | "y" | "width" | "height" | "rotation",
+    value: number,
+  ) => {
+    valuesRef.current = { ...valuesRef.current, [property]: value };
+    if (gsapAnimId) {
+      onLivePreviewProps?.(element, { [property]: value });
+      return;
+    }
+    const values = valuesRef.current;
+    if (property === "x" || property === "y") {
+      applyStudioPathOffsetDraft(element.element, { x: values.x, y: values.y });
+      return;
+    }
+    if (property === "width" || property === "height") {
+      applyStudioBoxSizeDraft(element.element, {
+        width: Math.max(1, values.width),
+        height: Math.max(1, values.height),
+      });
+      return;
+    }
+    applyStudioRotationDraft(element.element, { angle: values.rotation });
+  };
+
+  const previewAndCommit = (
+    property: "x" | "y" | "width" | "height" | "rotation",
+    value: number,
+    commit: (nextValue: string) => void,
+  ) => {
+    previewGeometry(property, value);
+    commit(String(value));
+  };
+  const previewPxInput = (
+    property: "x" | "y" | "width" | "height",
+    value: string,
+  ) => {
+    const parsed = parsePxMetricValue(value);
+    if (parsed !== null) previewGeometry(property, parsed);
+  };
+  const previewRotationInput = (value: string) => {
+    const parsed = Number.parseFloat(value);
+    if (Number.isFinite(parsed)) previewGeometry("rotation", parsed);
   };
   return (
     <>
@@ -146,8 +207,21 @@ export function LayoutGeometryRows({
         tier={displayX === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
         large={large}
-        onCommit={(next) => commitManualOffset("x", next)}
-        suffix={<KeyframeGutter property="x" displayValue={displayX} {...gutterProps} />}
+        onPreview={(next) => previewPxInput("x", next)}
+        onCommit={(next) => {
+          const parsed = parsePxMetricValue(next);
+          if (parsed !== null) previewAndCommit("x", parsed, (value) => commitManualOffset("x", value));
+        }}
+        suffix={
+          <GeometryStepper
+            label="X"
+            value={displayX}
+            disabled={manualOffsetEditingDisabled}
+            onStep={(next) =>
+              previewAndCommit("x", next, (value) => commitManualOffset("x", value))
+            }
+          />
+        }
       />
       <FlatRow
         label="Y"
@@ -155,8 +229,21 @@ export function LayoutGeometryRows({
         tier={displayY === 0 ? "default" : "explicitCustom"}
         disabled={manualOffsetEditingDisabled}
         large={large}
-        onCommit={(next) => commitManualOffset("y", next)}
-        suffix={<KeyframeGutter property="y" displayValue={displayY} {...gutterProps} />}
+        onPreview={(next) => previewPxInput("y", next)}
+        onCommit={(next) => {
+          const parsed = parsePxMetricValue(next);
+          if (parsed !== null) previewAndCommit("y", parsed, (value) => commitManualOffset("y", value));
+        }}
+        suffix={
+          <GeometryStepper
+            label="Y"
+            value={displayY}
+            disabled={manualOffsetEditingDisabled}
+            onStep={(next) =>
+              previewAndCommit("y", next, (value) => commitManualOffset("y", value))
+            }
+          />
+        }
       />
       {!large && (
         <>
@@ -165,16 +252,48 @@ export function LayoutGeometryRows({
             value={formatPxMetricValue(displayW)}
             tier="default"
             disabled={manualSizeEditingDisabled}
-            onCommit={(next) => commitManualSize("width", next)}
-            suffix={<KeyframeGutter property="width" displayValue={displayW} {...gutterProps} />}
+            onPreview={(next) => previewPxInput("width", next)}
+            onCommit={(next) => {
+              const parsed = parsePxMetricValue(next);
+              if (parsed !== null && parsed > 0) {
+                previewAndCommit("width", parsed, (value) => commitManualSize("width", value));
+              }
+            }}
+            suffix={
+              <GeometryStepper
+                label="Width"
+                value={displayW}
+                min={1}
+                disabled={manualSizeEditingDisabled}
+                onStep={(next) =>
+                  previewAndCommit("width", next, (value) => commitManualSize("width", value))
+                }
+              />
+            }
           />
           <FlatRow
             label="H"
             value={formatPxMetricValue(displayH)}
             tier="default"
             disabled={manualSizeEditingDisabled}
-            onCommit={(next) => commitManualSize("height", next)}
-            suffix={<KeyframeGutter property="height" displayValue={displayH} {...gutterProps} />}
+            onPreview={(next) => previewPxInput("height", next)}
+            onCommit={(next) => {
+              const parsed = parsePxMetricValue(next);
+              if (parsed !== null && parsed > 0) {
+                previewAndCommit("height", parsed, (value) => commitManualSize("height", value));
+              }
+            }}
+            suffix={
+              <GeometryStepper
+                label="Height"
+                value={displayH}
+                min={1}
+                disabled={manualSizeEditingDisabled}
+                onStep={(next) =>
+                  previewAndCommit("height", next, (value) => commitManualSize("height", value))
+                }
+              />
+            }
           />
         </>
       )}
@@ -184,8 +303,19 @@ export function LayoutGeometryRows({
         tier="default"
         disabled={manualRotationEditingDisabled}
         large={large}
-        onCommit={(next) => commitManualRotation(next.replace("°", ""))}
-        suffix={<KeyframeGutter property="rotation" displayValue={displayR} {...gutterProps} />}
+        onPreview={previewRotationInput}
+        onCommit={(next) => {
+          const parsed = Number.parseFloat(next);
+          if (Number.isFinite(parsed)) previewAndCommit("rotation", parsed, commitManualRotation);
+        }}
+        suffix={
+          <GeometryStepper
+            label="Rotation"
+            value={displayR}
+            disabled={manualRotationEditingDisabled}
+            onStep={(next) => previewAndCommit("rotation", next, commitManualRotation)}
+          />
+        }
       />
     </>
   );
@@ -279,7 +409,6 @@ export function LayoutTransform3DBlock({
   elStart,
   elDuration,
   element,
-  onCommitAnimatedProperty,
   onCommitAnimatedProperties,
   onSeekToTime,
   onRemoveKeyframe,
@@ -298,11 +427,6 @@ export function LayoutTransform3DBlock({
   elStart: number;
   elDuration: number;
   element: DomEditSelection;
-  onCommitAnimatedProperty?: (
-    element: DomEditSelection,
-    property: string,
-    value: number,
-  ) => Promise<void>;
   onCommitAnimatedProperties?: (
     element: DomEditSelection,
     props: Record<string, number | string>,
@@ -323,7 +447,6 @@ export function LayoutTransform3DBlock({
         elStart={elStart}
         elDuration={elDuration}
         element={element}
-        onCommitAnimatedProperty={onCommitAnimatedProperty}
         onCommitAnimatedProperties={onCommitAnimatedProperties}
         onSeekToTime={onSeekToTime}
         onRemoveKeyframe={onRemoveKeyframe}
@@ -357,6 +480,50 @@ interface FlatLayoutSectionProps
 
 export function FlatLayoutSection(props: FlatLayoutSectionProps) {
   const { tx } = useStudioI18n();
+  const currentScale = () =>
+    props.onCommitAnimatedProperty
+      ? {
+          x: props.gsapRuntimeValues.scaleX ?? props.gsapRuntimeValues.scale ?? 1,
+          y: props.gsapRuntimeValues.scaleY ?? props.gsapRuntimeValues.scale ?? 1,
+        }
+      : readStaticScale(props.element.element, props.styles.scale);
+  const scaleRef = useRef(currentScale());
+
+  useEffect(() => {
+    scaleRef.current = currentScale();
+  }, [
+    props.element,
+    props.gsapRuntimeValues.scale,
+    props.gsapRuntimeValues.scaleX,
+    props.gsapRuntimeValues.scaleY,
+    props.onCommitAnimatedProperty,
+    props.styles.scale,
+  ]);
+
+  const commitFlip = (axis: "x" | "y") => {
+    const property = axis === "x" ? "scaleX" : "scaleY";
+    const next = flipScaleValue(scaleRef.current[axis]);
+    scaleRef.current = { ...scaleRef.current, [axis]: next };
+    if (props.onCommitAnimatedProperty) {
+      props.onLivePreviewProps?.(props.element, { [property]: next });
+      void props.onCommitAnimatedProperty(props.element, property, next).catch(() => undefined);
+      return;
+    }
+
+    // Static/template elements do not have an animation commit callback. CSS
+    // `scale` keeps their authored transform intact and still updates the canvas
+    // immediately before the source patch finishes.
+    const cssScale = `${scaleRef.current.x} ${scaleRef.current.y}`;
+    props.element.element.style.setProperty("scale", cssScale);
+    void Promise.resolve(props.onSetStyle("scale", cssScale)).catch(() => undefined);
+  };
+
+  const rotateClockwise = () => {
+    const next = (props.displayR + 90) % 360;
+    if (props.gsapAnimId) props.onLivePreviewProps?.(props.element, { rotation: next });
+    else applyStudioRotationDraft(props.element.element, { angle: next });
+    props.commitManualRotation(String(next));
+  };
   return (
     <div className="hf-flat-responsive-grid grid grid-cols-2 gap-2">
       <LayoutGeometryRows {...props} large />
@@ -365,24 +532,26 @@ export function FlatLayoutSection(props: FlatLayoutSectionProps) {
           type="button"
           aria-label={tx("Rotate clockwise")}
           disabled={props.manualRotationEditingDisabled}
-          onClick={() => props.commitManualRotation(String((props.displayR + 90) % 360))}
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-colors hover:text-[#24262b] disabled:cursor-not-allowed"
+          onClick={rotateClockwise}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <RotateCw size={16} />
         </button>
         <button
           type="button"
-          aria-label={tx("Flip horizontally (unavailable)")}
-          disabled
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+          aria-label={tx("Flip horizontally")}
+          disabled={props.disabled}
+          onClick={() => commitFlip("x")}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <FlipHorizontal size={16} />
         </button>
         <button
           type="button"
-          aria-label={tx("Flip vertically (unavailable)")}
-          disabled
-          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] disabled:cursor-not-allowed"
+          aria-label={tx("Flip vertically")}
+          disabled={props.disabled}
+          onClick={() => commitFlip("y")}
+          className="flex h-[34px] items-center justify-center rounded-[6px] bg-panel-input text-[#858a94] transition-[color,background-color,box-shadow,transform] hover:bg-black/5 hover:text-[#24262b] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:bg-panel-bg-inset disabled:text-panel-text-3 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
         >
           <FlipVertical size={16} />
         </button>

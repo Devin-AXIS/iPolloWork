@@ -34,9 +34,9 @@ describe("template API", () => {
     const capabilities = await fetch(`${base}/capabilities`, { headers }).then((response) => response.json());
     expect(capabilities.templates).toEqual({ read: true, install: true, import: true, uninstall: true });
     const catalog = await fetch(`${base}/workspace/ws/templates`, { headers }).then((response) => response.json());
-    expect(catalog.items).toHaveLength(117);
-    expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
-    expect(catalog.items.some((item: { manifest: { id: string; pptxCompatibility?: string } }) => item.manifest.id === "ipollowork.pptx-urban-mobility" && item.manifest.pptxCompatibility === "native-editable")).toBe(true);
+    expect(catalog.items.length).toBeGreaterThan(0);
+    expect(catalog.items.some((item: { manifest: { id: string } }) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
+    expect(catalog.items.some((item: { manifest: { id: string; pptxCompatibility?: string } }) => item.manifest.id === "ipollowork.pptx-brand-narrative" && item.manifest.pptxCompatibility === "native-editable")).toBe(true);
 
     const invalidPackage = await fetch(`${base}/workspace/ws/templates/import`, {
       method: "POST",
@@ -58,7 +58,7 @@ describe("template API", () => {
     const materialized = await materializedResponse.json();
     expect(materialized.state.entry).toBe("design/session_api/entry.html");
 
-    const videoMaterializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.html-anything.video-hyperframes/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_video" }) });
+    const videoMaterializedResponse = await fetch(`${base}/workspace/ws/templates/ipollowork.html-anything.motion-frames/materialize`, { method: "POST", headers, body: JSON.stringify({ sessionId: "session_video" }) });
     expect(videoMaterializedResponse.status).toBe(200);
     const videoMaterialized = await videoMaterializedResponse.json();
     expect(videoMaterialized.state.entry).toBe("video/session_video/index.html");

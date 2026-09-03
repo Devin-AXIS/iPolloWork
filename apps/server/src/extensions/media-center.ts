@@ -1,5 +1,5 @@
 import { ApiError } from "../errors.js";
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
@@ -139,6 +139,28 @@ function relativeHtmlMediaSource(compositionPath: string | undefined, mediaPath:
   return relativePath.startsWith(".") ? relativePath : `./${relativePath}`;
 }
 
+function scopeVoiceoverSceneToComposition(
+  scene: WorkspaceVoiceoverSceneInput,
+  compositionPath: string | undefined,
+): WorkspaceVoiceoverSceneInput {
+  if (!compositionPath) return scene;
+  const compositionDirectory = posix.dirname(compositionPath.replace(/\\/g, "/"));
+  const assetDirectory = compositionDirectory === "." ? "assets" : `${compositionDirectory}/assets`;
+  const requestedPath = posix.normalize(scene.outputPath.replace(/\\/g, "/"));
+  const outputPath = requestedPath.startsWith("assets/") && compositionDirectory !== "."
+    ? posix.join(compositionDirectory, requestedPath)
+    : requestedPath;
+  const relativeToAssets = posix.relative(assetDirectory, outputPath);
+  if (relativeToAssets === ".." || relativeToAssets.startsWith("../") || posix.isAbsolute(relativeToAssets)) {
+    throw new ApiError(
+      400,
+      "voiceover_output_outside_composition",
+      `outputPath must be inside the current composition assets directory (${assetDirectory}/).`,
+    );
+  }
+  return outputPath === scene.outputPath ? scene : { ...scene, outputPath };
+}
+
 function voiceoverAudioElementHtml(input: {
   id: string;
   sourcePath: string;
@@ -188,8 +210,10 @@ type VoiceoverTimelineIssue = {
 type VideoTimelineRequirements = {
   voiceover?: boolean;
   captions?: boolean;
+  captionStyle?: "transparent-bottom" | "custom";
   bgm?: boolean;
   animationReferences?: string[];
+  targetDurationSeconds?: number;
 };
 
 type TimelineNode = {
@@ -335,6 +359,111 @@ function finiteTimelineNumber(node: TimelineNode, name: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+function inlineStyleDeclarations(node: TimelineNode) {
+  const declarations = new Map<string, string>();
+  for (const declaration of (node.attributes.get("style") ?? "").split(";")) {
+    const separator = declaration.indexOf(":");
+    if (separator < 0) continue;
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration.slice(separator + 1).trim().toLowerCase().replace(/\s*!important\s*$/, "");
+    if (property && value) declarations.set(property, value);
+  }
+  return declarations;
+}
+
+function insetSides(value: string) {
+  const values = value.trim().split(/\s+/).filter(Boolean);
+  if (values.length < 1 || values.length > 4) return null;
+  const [top, second = top, third = top, fourth = second] = values;
+  return values.length === 2
+    ? { top, right: second, bottom: top, left: second }
+    : values.length === 3
+      ? { top, right: second, bottom: third, left: second }
+      : { top, right: second, bottom: third, left: fourth };
+}
+
+function captionStyleDeclarations(html: string, node: TimelineNode) {
+  const values = new Map<string, { value: string; specificity: number; order: number }>();
+  let order = 0;
+  const apply = (property: string, value: string, specificity: number) => {
+    order += 1;
+    const current = values.get(property);
+    if (!current || specificity > current.specificity || (specificity === current.specificity && order > current.order)) {
+      values.set(property, { value, specificity, order });
+    }
+  };
+  const applyDeclarations = (declarations: Map<string, string>, specificity: number) => {
+    for (const [property, value] of declarations) {
+      if (property === "inset") {
+        const sides = insetSides(value);
+        if (sides) for (const [side, sideValue] of Object.entries(sides)) apply(side, sideValue, specificity);
+      } else {
+        apply(property, value, specificity);
+      }
+    }
+  };
+  for (const style of html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)) {
+    const css = (style[1] ?? "").replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const rule of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+      const declarations = inlineStyleDeclarations({ ...node, attributes: new Map([["style", rule[2] ?? ""]]) });
+      for (const selector of (rule[1] ?? "").split(",")) {
+        const normalized = selector.trim();
+        if (!/^\.[-_A-Za-z0-9]+(?:\.[-_A-Za-z0-9]+)*$/.test(normalized)) continue;
+        const classes = normalized.split(".").filter(Boolean);
+        if (classes.every((className) => node.classNames.has(className))) {
+          applyDeclarations(declarations, classes.length);
+        }
+      }
+    }
+  }
+  applyDeclarations(inlineStyleDeclarations(node), 1_000);
+  return new Map(Array.from(values, ([property, entry]) => [property, entry.value]));
+}
+
+function defaultCaptionStyleIssues(html: string, caption: TimelineNode): VoiceoverTimelineIssue[] {
+  const issues: VoiceoverTimelineIssue[] = [];
+  const captionId = caption.attributes.get("id")?.trim();
+  const label = captionId ? `Caption ${captionId}` : "Every default caption";
+  const outer = captionStyleDeclarations(html, caption);
+  const hasHorizontalBounds = outer.has("left") && outer.has("right");
+  const hasBottomAnchor = outer.has("bottom");
+  if (
+    outer.get("position") !== "absolute"
+    || outer.get("top") !== "auto"
+    || !hasHorizontalBounds
+    || !hasBottomAnchor
+    || outer.get("height") !== "auto"
+    || outer.get("display") !== "flex"
+    || outer.get("justify-content") !== "center"
+    || !["center", "flex-end"].includes(outer.get("align-items") ?? "")
+    || outer.get("overflow") !== "visible"
+    || outer.get("background") !== "transparent"
+  ) {
+    issues.push({
+      code: "default_caption_layout_invalid",
+      message: `${label} must use the canonical transparent-bottom layout so global .clip inset/stretch rules cannot turn it into a full-height panel.`,
+    });
+  }
+  const captionChildren = timelineNodes(nodeInnerHtml(html, caption));
+  const captionText = captionChildren.find((node) => node.attributes.get("data-ipw-caption-text") === "true")
+    ?? captionChildren.find((node) => node.classNames.has("caption-inner"));
+  const textStyle = captionText ? captionStyleDeclarations(html, captionText) : new Map<string, string>();
+  if (
+    !captionText
+    || textStyle.get("background") !== "transparent"
+    || textStyle.get("text-align") !== "center"
+    || !textStyle.has("max-width")
+    || !textStyle.has("color")
+    || (!textStyle.has("text-shadow") && !textStyle.has("-webkit-text-stroke"))
+  ) {
+    issues.push({
+      code: "default_caption_background_invalid",
+      message: `${label} text must explicitly use a transparent background, centered bounded text, and shadow or stroke for contrast.`,
+    });
+  }
+  return issues;
+}
+
 export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];
@@ -425,6 +554,17 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       .filter(Boolean)),
   );
   const requirements = options.requirements ?? {};
+  if (requirements.targetDurationSeconds != null && requirements.targetDurationSeconds > 0 && compositionDuration != null) {
+    const toleranceSeconds = Math.max(0.5, requirements.targetDurationSeconds * 0.1);
+    const minimumDuration = requirements.targetDurationSeconds - toleranceSeconds;
+    const maximumDuration = requirements.targetDurationSeconds + toleranceSeconds;
+    if (compositionDuration < minimumDuration || compositionDuration > maximumDuration) {
+      issues.push({
+        code: "requested_duration_mismatch",
+        message: `The user requested about ${requirements.targetDurationSeconds} seconds, but the composition is ${compositionDuration} seconds. Keep the final duration between ${roundVoiceoverTime(minimumDuration)} and ${roundVoiceoverTime(maximumDuration)} seconds.`,
+      });
+    }
+  }
   if (requirements.voiceover && voiceovers.length === 0) {
     issues.push({ code: "required_voiceover_missing", message: "The user requested narration, but the timeline has no data-ipw-voiceover audio nodes." });
   }
@@ -454,6 +594,9 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
         code: "non_seek_safe_caption_animation",
         message: "Caption animation must use a finite seek-safe timeline; infinite CSS animation can diverge between preview and render.",
       });
+    }
+    if (requirements.captions && requirements.captionStyle !== "custom") {
+      issues.push(...defaultCaptionStyleIssues(html, caption));
     }
   }
   if (requirements.bgm && bgmNodes.length === 0) {
@@ -612,8 +755,8 @@ export const MEDIA_EXTENSION_ACTIONS = [
         sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
         sceneStart: { type: "number", description: "The exact scene start time in seconds." },
         sceneDuration: { type: "number", description: "The visual scene's current duration in seconds. Used with the measured MP3 duration to return a non-overlapping timeline allocation." },
-        outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
-        compositionPath: { type: "string", description: "Optional index.html path relative to the active workspace. When present, the returned audioElementHtml uses a src relative to that HTML file." },
+        outputPath: { type: "string", description: "New immutable .mp3 path. With compositionPath, use assets/<file>.mp3 (preferred) or the full workspace-relative path inside that composition's assets directory; output outside the current composition is rejected." },
+        compositionPath: { type: "string", description: "Optional current index.html path relative to the active workspace. When present, bare assets/<file>.mp3 output is scoped to this HTML file's directory and audioElementHtml uses a relative src." },
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
@@ -642,13 +785,13 @@ export const MEDIA_EXTENSION_ACTIONS = [
               sceneText: { type: "string", description: "The scene's marked narration-source transcript, or full visible text for legacy scenes. Must exactly equal text." },
               sceneStart: { type: "number", description: "The scene's current start time before narration shifts are applied." },
               sceneDuration: { type: "number", description: "The scene's current duration in seconds." },
-              outputPath: { type: "string", description: "New immutable .mp3 path relative to the active workspace." },
+              outputPath: { type: "string", description: "New immutable .mp3 path. With compositionPath, use assets/<file>.mp3 (preferred) or the full workspace-relative path inside that composition's assets directory; cross-project output is rejected." },
             },
             required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
             additionalProperties: false,
           },
         },
-        compositionPath: { type: "string", description: "Optional index.html path relative to the active workspace." },
+        compositionPath: { type: "string", description: "Optional current index.html path relative to the active workspace. Bare assets/<file>.mp3 scene outputs are scoped to this HTML file's directory." },
         targetDurationSeconds: { type: "number", description: "Optional user-requested final duration. Narration is rejected before synthesis when its estimated timeline cannot fit." },
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
@@ -673,8 +816,10 @@ export const MEDIA_EXTENSION_ACTIONS = [
           properties: {
             voiceover: { type: "boolean" },
             captions: { type: "boolean" },
+            captionStyle: { type: "string", enum: ["transparent-bottom", "custom"], description: "Defaults to transparent-bottom. Use custom only when the user explicitly requested a different caption position or background treatment." },
             bgm: { type: "boolean" },
             animationReferences: { type: "array", items: { type: "string" } },
+            targetDurationSeconds: { type: "number", description: "Optional user-requested final video duration. The final composition must remain within ten percent of this target." },
           },
           additionalProperties: false,
         },
@@ -1241,14 +1386,13 @@ function safeProviderBaseUrl(value: string): string {
   return url.origin;
 }
 
-async function resolveBailianCredentials(env: EnvService): Promise<{ apiKey: string; baseUrl: string }> {
-  const records = await env.list();
-  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
-  const apiKey = values.get("DASHSCOPE_API_KEY") || process.env.DASHSCOPE_API_KEY?.trim() || "";
+async function resolveBailianCredentials(authorization: AuthorizationAccess): Promise<{ apiKey: string; baseUrl: string }> {
+  const values = await authorization.read("aliyun-bailian");
+  const apiKey = values.DASHSCOPE_API_KEY?.trim() ?? "";
   if (!apiKey) {
     throw new ApiError(400, "dashscope_api_key_missing", "Model Studio API key missing. Configure Alibaba Model Studio media in Authorization Center.");
   }
-  const configuredBaseUrl = values.get("DASHSCOPE_BASE_URL") || process.env.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
+  const configuredBaseUrl = values.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
@@ -1259,12 +1403,11 @@ function minimaxErrorMessage(payload: unknown): string {
 }
 
 async function resolveMiniMaxCredentials(
-  env: EnvService,
+  authorization: AuthorizationAccess,
   region = DEFAULT_MINIMAX_SPEECH_REGION,
 ): Promise<{ apiKey: string; baseUrl: string }> {
-  const records = await env.list();
-  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
-  const apiKey = values.get("MINIMAX_API_KEY") || process.env.MINIMAX_API_KEY?.trim() || "";
+  const values = await authorization.read("minimax-media");
+  const apiKey = values.MINIMAX_API_KEY?.trim() ?? "";
   if (!apiKey) {
     throw new ApiError(400, "minimax_api_key_missing", "MiniMax API key missing. Configure MiniMax media in Authorization Center.");
   }
@@ -1596,9 +1739,9 @@ function asMediaTask(action: string, payload: unknown): JsonRecord {
   };
 }
 
-export async function bailianMediaStatus(env: EnvService) {
+export async function bailianMediaStatus(authorization: AuthorizationAccess) {
   try {
-    const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+    const { apiKey, baseUrl } = await resolveBailianCredentials(authorization);
     return { configured: Boolean(apiKey), connected: Boolean(apiKey), baseUrl, error: null };
   } catch (error) {
     return {
@@ -1612,7 +1755,7 @@ export async function bailianMediaStatus(env: EnvService) {
 
 export async function callMediaExtensionAction(
   config: ServerConfig,
-  env: EnvService,
+  authorization: AuthorizationAccess,
   action: string,
   args: JsonRecord,
   context: JsonRecord,
@@ -1625,7 +1768,7 @@ export async function callMediaExtensionAction(
       result: {
         provider: "aliyun-bailian",
         operation: action,
-        output: await bailianMediaStatus(env),
+        output: await bailianMediaStatus(authorization),
       },
       context,
     };
@@ -1648,8 +1791,10 @@ export async function callMediaExtensionAction(
       requirements: {
         voiceover: readOptionalBoolean(requirementInput, "voiceover") === true,
         captions: readOptionalBoolean(requirementInput, "captions") === true,
+        captionStyle: readStringField(requirementInput, "captionStyle") === "custom" ? "custom" : "transparent-bottom",
         bgm: readOptionalBoolean(requirementInput, "bgm") === true,
         animationReferences: readStringArray(requirementInput, "animationReferences"),
+        targetDurationSeconds: readOptionalNumber(requirementInput, "targetDurationSeconds") ?? undefined,
       },
     });
     return {
@@ -1669,9 +1814,9 @@ export async function callMediaExtensionAction(
   let apiKey: string;
   let baseUrl: string;
   if (provider === "minimax") {
-    ({ apiKey, baseUrl } = await resolveMiniMaxCredentials(env, readStringField(args, "region") || DEFAULT_MINIMAX_SPEECH_REGION));
+    ({ apiKey, baseUrl } = await resolveMiniMaxCredentials(authorization, readStringField(args, "region") || DEFAULT_MINIMAX_SPEECH_REGION));
   } else {
-    ({ apiKey, baseUrl } = await resolveBailianCredentials(env));
+    ({ apiKey, baseUrl } = await resolveBailianCredentials(authorization));
   }
   let result: unknown;
   switch (action) {
@@ -1715,7 +1860,7 @@ export async function callMediaExtensionAction(
       break;
     }
     case "speech_synthesize_workspace_file": {
-      const scene = workspaceVoiceoverSceneInput(args);
+      const parsedScene = workspaceVoiceoverSceneInput(args);
       const compositionPath = readStringField(args, "compositionPath");
       if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
         throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
@@ -1726,6 +1871,7 @@ export async function callMediaExtensionAction(
       const composition = compositionPath
         ? resolveWorkspaceFile(workspaceForContext(config, context).path, compositionPath).relativePath
         : undefined;
+      const scene = scopeVoiceoverSceneToComposition(parsedScene, composition);
       const synthesized = await synthesizeWorkspaceVoiceover({
         config,
         context,
@@ -1744,7 +1890,17 @@ export async function callMediaExtensionAction(
       if (rawScenes.length < 1 || rawScenes.length > MAX_VOICEOVER_BATCH_SCENES) {
         throw new ApiError(400, "invalid_voiceover_batch", `scenes must contain between 1 and ${MAX_VOICEOVER_BATCH_SCENES} items.`);
       }
-      const scenes = rawScenes.map(workspaceVoiceoverSceneInput);
+      const compositionPath = readStringField(args, "compositionPath");
+      if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
+        throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
+      }
+      const workspace = workspaceForContext(config, context);
+      const composition = compositionPath
+        ? resolveWorkspaceFile(workspace.path, compositionPath).relativePath
+        : undefined;
+      const scenes = rawScenes
+        .map(workspaceVoiceoverSceneInput)
+        .map((scene) => scopeVoiceoverSceneToComposition(scene, composition));
       if (new Set(scenes.map((scene) => scene.sceneId)).size !== scenes.length) {
         throw new ApiError(400, "duplicate_voiceover_scene", "Each batch sceneId must be unique.");
       }
@@ -1781,14 +1937,6 @@ export async function callMediaExtensionAction(
           `Narration is estimated to require ${estimatedTimelineEndSeconds} seconds, exceeding the requested ${targetDurationSeconds} seconds. Preserve the important page facts, but compact the narration before synthesis.`,
         );
       }
-      const compositionPath = readStringField(args, "compositionPath");
-      if (compositionPath && extname(compositionPath).toLowerCase() !== ".html") {
-        throw new ApiError(400, "invalid_voiceover_composition_path", "compositionPath must use the .html extension.");
-      }
-      const workspace = workspaceForContext(config, context);
-      const composition = compositionPath
-        ? resolveWorkspaceFile(workspace.path, compositionPath).relativePath
-        : undefined;
       const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
       const requestedVoice = readStringField(args, "voice");
       const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : "";
@@ -1901,7 +2049,7 @@ export async function callMediaExtensionAction(
       try {
         providerResponse = await withTemporaryWorkspaceObject({
           config,
-          env,
+          authorization,
           context,
           sourcePath,
           purpose: "voice-clone",

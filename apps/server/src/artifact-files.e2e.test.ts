@@ -25,6 +25,10 @@ async function createWorkspaceRoot() {
   await writeFile(join(root, "reports", "index.html"), "<!doctype html><h1>Artifact site</h1>", "utf8");
   await writeFile(join(root, "reports", "artifact-eval.xlsx"), new Uint8Array([80, 75, 3, 4, 1, 2, 3, 4]));
   await writeFile(join(root, "reports", "artifact-eval.pptx"), new Uint8Array([80, 75, 3, 4, 5, 6, 7, 8]));
+  await mkdir(join(root, "analysis", "data"), { recursive: true });
+  await writeFile(join(root, "analysis", "data", "account_monthly.csv"), "month,total\n2026-08,12\n", "utf8");
+  await mkdir(join(root, "duplicate"), { recursive: true });
+  await writeFile(join(root, "duplicate", "index.html"), "<!doctype html><h1>Duplicate</h1>", "utf8");
   return root;
 }
 
@@ -70,6 +74,8 @@ describe("artifact file routes", () => {
           { kind: "file", value: "reports/artifact-eval.xlsx", confidence: 80 },
           { kind: "file", value: "reports/artifact-eval.pptx", confidence: 80 },
           { kind: "file", value: "reports/index.html", confidence: 80 },
+          { kind: "file", value: "account_monthly.csv", confidence: 80 },
+          { kind: "file", value: "index.html", confidence: 80 },
           { kind: "file", value: "reports/missing.md", confidence: 80 },
           { kind: "url", value: "http://localhost:4321", confidence: 80 },
           { kind: "url", value: "ws://localhost:4321/socket", confidence: 80 },
@@ -83,6 +89,8 @@ describe("artifact file routes", () => {
     expect(resolved.items.find((item) => item.value === "reports/artifact-eval.xlsx")).toMatchObject({ exists: true, preview: "sheet" });
     expect(resolved.items.find((item) => item.value === "reports/artifact-eval.pptx")).toMatchObject({ exists: true, preview: "slides", contentType: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
     expect(resolved.items.find((item) => item.value === "reports/index.html")).toMatchObject({ exists: true, preview: "html" });
+    expect(resolved.items.find((item) => item.value === "analysis/data/account_monthly.csv")).toMatchObject({ exists: true, preview: "sheet" });
+    expect(resolved.items.find((item) => item.value === "index.html")).toMatchObject({ exists: false });
     expect(resolved.items.find((item) => item.value === "reports/missing.md")).toMatchObject({ exists: false });
     expect(resolved.items.find((item) => item.value === "http://localhost:4321/")).toMatchObject({ kind: "url", preview: "browser" });
     expect(resolved.items.find((item) => item.value === "ws://localhost:4321/socket")).toMatchObject({ kind: "url", preview: "browser" });

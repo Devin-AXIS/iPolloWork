@@ -1,10 +1,6 @@
 import type {
   Message,
   Part,
-  PermissionRequest as ApiPermissionRequest,
-  PermissionV2Request,
-  QuestionRequest,
-  ProviderListResponse,
   Session,
 } from "@opencode-ai/sdk/v2/client";
 import type { createClient } from "./lib/opencode";
@@ -12,7 +8,43 @@ import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
 export type Client = ReturnType<typeof createClient>;
 
-export type ProviderListItem = ProviderListResponse["all"][number];
+export type ProviderModel = {
+  id: string;
+  name: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  limit?: {
+    context?: number;
+    output?: number;
+  };
+  capabilities: {
+    attachment?: boolean;
+    reasoning?: boolean;
+    toolcall?: boolean;
+    input?: {
+      text?: boolean;
+      image?: boolean;
+    };
+    output?: {
+      text?: boolean;
+    };
+  };
+  variants?: Record<string, Record<string, unknown>>;
+};
+
+export type ProviderListItem = {
+  id: string;
+  name: string;
+  source: "env" | "config" | "custom" | "api";
+  env: string[];
+  models: Record<string, ProviderModel>;
+};
+
+export type ProviderListResponse = {
+  all: ProviderListItem[];
+  connected: string[];
+  default: Record<string, string>;
+};
 
 export type SidebarSessionItem = {
   id: string;
@@ -30,7 +62,7 @@ export type SidebarSessionItem = {
   directory?: string | null;
 };
 
-export type WorkspaceSessionGroup = {
+export type ProjectSessionList = {
   workspace: WorkspaceInfo;
   sessions: SidebarSessionItem[];
   status: "idle" | "loading" | "ready" | "error";
@@ -125,6 +157,8 @@ export type ComposerDraft = {
   mode: PromptMode;
   parts: ComposerPart[];
   attachments: ComposerAttachment[];
+  /** Permission preset selected before a new conversation has a session id. */
+  accessMode?: string;
   /** Editor-visible text (may include collapsed paste placeholders). */
   text: string;
   /**
@@ -141,6 +175,29 @@ export type ComposerDraft = {
   /** When set, draft is a slash command invocation */
   command?: { name: string; arguments: string } | undefined;
 };
+
+/** Transient dispatch metadata shared by the session surface and engine adapter. */
+export type PromptDispatchOptions = {
+  clientUserMessageId?: string;
+  signal?: AbortSignal;
+};
+
+/** A workspace artifact that must be changed and reported before a run is complete. */
+export type ArtifactCompletionTarget = {
+  sourcePath: string;
+  baselineFingerprint: string;
+};
+
+/**
+ * Most prompt dispatchers only need a boolean. Artifact-routing dispatchers
+ * return the prepared targets as well so the surface can enforce delivery.
+ */
+export type PromptDispatchResult = {
+  dispatched: boolean;
+  artifactCompletionTargets?: ArtifactCompletionTarget[];
+};
+
+export type PromptDispatchOutcome = boolean | PromptDispatchResult;
 
 export type ArtifactItem = {
   id: string;
@@ -175,6 +232,7 @@ export type OnboardingStep = "welcome" | "local" | "server" | "connecting";
 export const SETTINGS_TAB_VALUES = [
   "general",
   "ai",
+  "engines",
   "preferences",
   "permissions",
   "shell",
@@ -306,27 +364,6 @@ export type DenOrgSkillCard = {
   updatedAt: string | null;
 };
 
-export type PluginInstallStep = {
-  title: string;
-  description: string;
-  command?: string;
-  url?: string;
-  path?: string;
-  note?: string;
-};
-
-export type SuggestedPlugin = {
-  name: string;
-  packageName: string;
-  description: string;
-  tags: string[];
-  aliases?: string[];
-  installMode?: "simple" | "guided";
-  steps?: PluginInstallStep[];
-};
-
-export type PluginScope = "project" | "global";
-
 export type McpServerSource = "config.project" | "config.global" | "config.remote";
 
 export type McpServerConfig = {
@@ -380,17 +417,6 @@ export type ReloadTrigger = {
   path?: string;
 };
 
-export type PendingPermission = Omit<ApiPermissionRequest, "always"> & {
-  always: unknown;
-  receivedAt: number;
-  protocol: "legacy" | "v2";
-  v2?: Pick<PermissionV2Request, "action" | "resources" | "save">;
-};
-
-export type PendingQuestion = QuestionRequest & {
-  receivedAt: number;
-};
-
 export type TodoItem = {
   id: string;
   content: string;
@@ -423,7 +449,9 @@ export type ModelOption = {
   disabled?: boolean;
   isFree: boolean;
   isConnected: boolean;
+  runtimePending?: boolean;
   isRecommended?: boolean;
+  supportsVision?: boolean;
   /** "cloud" for org-managed providers (lpr_*), undefined for local. */
   source?: "cloud";
 };
@@ -438,12 +466,6 @@ export type WorkspaceState = {
   active: WorkspaceInfo | null;
   path: string;
   root: string;
-};
-
-export type PluginState = {
-  scope: PluginScope;
-  config: OpencodeConfigFile | null;
-  list: string[];
 };
 
 export type WorkspaceDisplay = WorkspaceInfo & {

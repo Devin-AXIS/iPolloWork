@@ -35,12 +35,16 @@ import {
 import type { InitialConfigType } from "@lexical/react/LexicalComposer.js";
 import { decodeComposerMentionValue, encodeComposerMentionValue, type ComposerMentionKind } from "./mention-encoding";
 import { useDesignAiSelectionStore } from "../../design/design-ai-selection-store";
+import { publicAssetUrl } from "@/app/lib/public-asset";
+
+const QUICK_TASK_CLOSE_ASSET = publicAssetUrl("quick-task-close.svg");
 
 type EditorProps = {
   value: string;
   mentions: Record<string, ComposerMentionKind>;
   pastedText?: Array<{ label: string; lines: number }>;
   disabled: boolean;
+  submitDisabled?: boolean;
   placeholder: string;
   onChange: (value: string) => void;
   onSubmit: () => void | Promise<void>;
@@ -346,7 +350,7 @@ class ComposerDesignSelectionNode extends TextNode {
 
   override createDOM(_config: EditorConfig) {
     const dom = document.createElement("span");
-    dom.className = "inline-flex items-center gap-1 rounded-full border border-violet-6/35 bg-violet-3/20 py-1 pl-2.5 pr-1.5 text-xs font-medium text-violet-11";
+    dom.className = "composer-design-selection inline-flex h-7 items-center gap-1.5 rounded-[18px] border border-[#E0DDC3] bg-[#F4F4EE] px-2 py-1 text-[11px] font-normal leading-4 text-[#161E24] dark:border-[#666] dark:bg-[#343434] dark:text-[#f5f5f5]";
     dom.contentEditable = "false";
     dom.setAttribute("data-composer-token", "design-selection");
     dom.setAttribute("spellcheck", "false");
@@ -362,20 +366,12 @@ class ComposerDesignSelectionNode extends TextNode {
     button.setAttribute("aria-label", `Remove design selection: ${this.__label}`);
     button.dataset.designSelectionRemoveKey = this.getKey();
 
-    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 16 16");
-    svg.setAttribute("fill", "none");
-    svg.setAttribute("stroke", "currentColor");
-    svg.setAttribute("stroke-width", "1.75");
-    svg.setAttribute("stroke-linecap", "round");
-    svg.setAttribute("class", "h-3 w-3");
-    svg.setAttribute("aria-hidden", "true");
-    const firstLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    firstLine.setAttribute("d", "M4 4l8 8");
-    const secondLine = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    secondLine.setAttribute("d", "M12 4l-8 8");
-    svg.append(firstLine, secondLine);
-    button.append(svg);
+    const closeIcon = document.createElement("img");
+    closeIcon.src = QUICK_TASK_CLOSE_ASSET;
+    closeIcon.alt = "";
+    closeIcon.className = "size-3.5 dark:invert";
+    closeIcon.setAttribute("aria-hidden", "true");
+    button.append(closeIcon);
     dom.append(text, button);
     return dom;
   }
@@ -728,7 +724,6 @@ function SubmitPlugin(props: { onSubmit: () => void | Promise<void>; disabled: b
     return editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent | null) => {
-        if (props.disabled) return false;
         // IME composition guard: three signals keep this reliable across
         // Chrome, Safari, and WebKit. While IME is mid-character, Enter
         // must always fall through to the editor so the composition can
@@ -736,6 +731,13 @@ function SubmitPlugin(props: { onSubmit: () => void | Promise<void>; disabled: b
         if (event?.isComposing === true || event?.keyCode === 229) return false;
         // Shift+Enter inserts a newline — let the editor handle it.
         if (event?.shiftKey) return false;
+        // Keep a temporarily unavailable submit action from turning Enter
+        // into an accidental newline. The editor remains available for
+        // drafting; only Shift+Enter intentionally creates a new line.
+        if (props.disabled) {
+          event?.preventDefault();
+          return true;
+        }
         const selection = $getSelection();
         if (!$isRangeSelection(selection)) return false;
         // Every submit uses the same safe path. The composer decides whether
@@ -1035,7 +1037,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
             />
           }
           placeholder={
-            <div className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-dls-secondary/70">
+            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[15px] leading-6 text-[color:var(--new-conversation-placeholder)]">
               {props.placeholder}
             </div>
           }
@@ -1044,7 +1046,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         <OnChangePlugin onChange={syncPromptFromEditorState} />
         <HistoryPlugin />
         <SyncPlugin value={props.value} mentions={props.mentions} pastedText={props.pastedText} disabled={props.disabled} />
-        <SubmitPlugin onSubmit={props.onSubmit} disabled={props.disabled} />
+        <SubmitPlugin onSubmit={props.onSubmit} disabled={props.submitDisabled ?? props.disabled} />
         <PasteChipPlugin onPasteText={props.onPasteText} />
         <MentionChipNavigationPlugin />
         <DesignSelectionDeletePlugin disabled={props.disabled} />

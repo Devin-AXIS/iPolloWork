@@ -377,14 +377,28 @@ export async function commitGsapPositionFromDrag(
         },
         { label: "Convert from() for drag", skipReload: true, coalesceKey },
       );
+      // Conversion changes the parsed animation identity (`from` ->
+      // keyframes). Re-fetch before the follow-up write instead of posting the
+      // stale pre-conversion id, which rejects the commit and lets the resumed
+      // effect timeline snap the child back to its authored position.
+      const convertedAnimations = callbacks.fetchAnimations
+        ? await callbacks.fetchAnimations()
+        : [];
+      const convertedAnimation =
+        convertedAnimations.find(
+          (candidate) =>
+            candidate.targetSelector === anim.targetSelector &&
+            candidate.propertyGroup === "position" &&
+            candidate.keyframes,
+        ) ?? anim;
       const { activeKeyframePct, setActiveKeyframePct } = usePlayerStore.getState();
-      const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
+      const pct = activeKeyframePct ?? computeCurrentPercentage(selection, convertedAnimation);
       if (activeKeyframePct != null) setActiveKeyframePct(null);
       await callbacks.commitMutation(
         selection,
         {
           type: "add-keyframe",
-          animationId: anim.id,
+          animationId: convertedAnimation.id,
           percentage: pct,
           properties: dragProps,
           ...(backfillDefaults ? { backfillDefaults } : {}),

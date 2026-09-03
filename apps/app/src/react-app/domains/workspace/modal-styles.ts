@@ -58,4 +58,4 @@ export const modalNoticeSuccessClass =
   "rounded-xl border border-dls-border bg-emerald-2/25 px-3 py-2.5 text-[13px] leading-relaxed text-dls-text";
 
 export const modalNoticeErrorClass =
-  "rounded-xl border border-dls-border bg-red-2/20 px-3 py-2.5 text-[13px] leading-relaxed text-dls-text";
+  "flex min-h-9 items-center rounded-[8px] bg-red-2/60 px-3 py-2 text-[13px] leading-5 text-[#E5484D] dark:bg-red-2/20";

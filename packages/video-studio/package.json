@@ -1,0 +1,19 @@
+{
+  "name": "@ipollowork/video-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": "./src/index.ts",
+    "./bridge": "./src/bridge.ts",
+    "./host": "./src/host.ts",
+    "./project": "./src/project.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@ipollowork/types": "workspace:*"
+  }
+}

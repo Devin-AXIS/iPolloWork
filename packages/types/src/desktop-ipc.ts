@@ -93,6 +93,40 @@ export type EngineDoctorResult = {
   serveHelpStderr: string | null;
 };
 
+export type EnginePackageStatus =
+  | "not-installed"
+  | "downloading"
+  | "verifying"
+  | "installing"
+  | "uninstalling"
+  | "ready"
+  | "failed";
+
+export type EnginePackageSource =
+  | "bundled"
+  | "downloaded"
+  | "official"
+  | "system"
+  | "custom"
+  | "none";
+
+/** Machine-global Agent engine package state. Project and conversation data live elsewhere. */
+export type EnginePackageInfo = {
+  id: string;
+  name: string;
+  version: string;
+  status: EnginePackageStatus;
+  source: EnginePackageSource;
+  installed: boolean;
+  builtIn: boolean;
+  canInstall: boolean;
+  canUninstall: boolean;
+  installedBytes: number | null;
+  downloadedBytes: number | null;
+  totalBytes: number | null;
+  error: string | null;
+};
+
 export type WorkspaceList = {
   selectedId?: string;
   watchedId?: string | null;
@@ -305,10 +339,11 @@ export type DesktopFetchResult = {
 };
 
 export type WorkspaceCreateInput = {
-  folderPath: string;
+  folderPath?: string | null;
   name?: string | null;
   preset?: string | null;
   workContextId?: `enterprise:${string}` | null;
+  engineId?: string | null;
 };
 
 export type WorkspaceCreateRemoteInput = {
@@ -411,6 +446,9 @@ export type DesktopCommandMap = {
   engineInfo: { args: []; result: EngineInfo };
   engineDoctor: { args: [projectDir?: string]; result: EngineDoctorResult };
   engineInstall: { args: []; result: unknown };
+  enginePackagesList: { args: []; result: EnginePackageInfo[] };
+  enginePackageInstall: { args: [engineId: string]; result: EnginePackageInfo };
+  enginePackageUninstall: { args: [engineId: string]; result: EnginePackageInfo };
   orchestratorStatus: { args: []; result: unknown };
   orchestratorWorkspaceActivate: { args: [input?: Record<string, unknown>]; result: unknown };
   orchestratorInstanceDispose: { args: [instanceId: string]; result: unknown };
@@ -516,7 +554,6 @@ export type DesktopCommandMap = {
    */
   resetiPolloWorkState: { args: [mode?: "onboarding" | "all"]; result: unknown };
   resetOpencodeCache: { args: []; result: CacheResetResult };
-  opencodeMcpAuth: { args: [action: string, name: string]; result: ExecResult };
   setWindowDecorations: { args: [decorated: boolean]; result: unknown };
 
   // Window / OS utilities (dunder commands)

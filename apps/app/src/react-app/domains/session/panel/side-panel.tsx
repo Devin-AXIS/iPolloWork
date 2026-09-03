@@ -4,10 +4,12 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  Film,
   Globe,
   Loader2,
   Maximize2,
   Minimize2,
+  PanelsTopLeft,
   Plus,
   RotateCw,
   X,
@@ -15,9 +17,18 @@ import {
 import { useDragControls } from "motion/react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -40,7 +51,11 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
-import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import { VideoPanel } from "../video/video-panel";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
+import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
   computeBounds,
   getElectronBrowser,
@@ -58,7 +73,10 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
+  onEditImage?: (target: OpenTarget) => void;
   onSaveAsTemplate?: () => void;
+  aiEditing?: boolean;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -174,6 +192,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
           } : undefined}
           title={tab.label}
           aria-label={`Select tab: ${tab.label}`}
+          aria-selected={active}
         >
           {tab.type === "browser" ? (
             tab.favicon ? (
@@ -184,7 +203,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
               <Globe />
             )
           ) : (
-            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
+            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : tab.type === "plugin-studio" ? <img src={publicAssetUrl("sidebar-icon/tool-case.svg")} alt="" className="size-4 dark:invert" /> : <ArtifactIcon type={tab.preview} />
           )}
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
@@ -203,11 +222,22 @@ type BrowserPanelContentProps = {
   onClose: () => void;
 };
 
+function browserAddressLabel(url: string) {
+  if (!url || url === "about:blank") return t("side_panel.new_tab");
+
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
 function BrowserPanelContent({
   tab,
   onClose,
 }: BrowserPanelContentProps) {
   const isAvailable = Boolean(getElectronBrowser());
+  const [addressExpanded, setAddressExpanded] = React.useState(false);
   const [urlInput, setUrlInput] = React.useState(tab.url);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -221,6 +251,29 @@ function BrowserPanelContent({
       setUrlInput(tab.url);
     }
   }, [tab.id, tab.url]);
+
+  React.useEffect(() => {
+    setAddressExpanded(false);
+  }, [tab.id]);
+
+  const expandAddress = React.useCallback(() => {
+    setAddressExpanded(true);
+    window.requestAnimationFrame(() => {
+      urlInputRef.current?.focus();
+      urlInputRef.current?.select();
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const handleAddressShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "l") return;
+      event.preventDefault();
+      expandAddress();
+    };
+
+    window.addEventListener("keydown", handleAddressShortcut);
+    return () => window.removeEventListener("keydown", handleAddressShortcut);
+  }, [expandAddress]);
 
   const navigate = React.useCallback(() => {
     void getElectronBrowser()?.navigate?.(urlInput);
@@ -243,8 +296,15 @@ function BrowserPanelContent({
       event.preventDefault();
       navigate();
       urlInputRef.current?.blur();
+      return;
     }
-  }, [navigate]);
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setUrlInput(tab.url);
+      urlInputRef.current?.blur();
+    }
+  }, [navigate, tab.url]);
 
   React.useLayoutEffect(() => {
     const browser = getElectronBrowser();
@@ -401,29 +461,73 @@ function BrowserPanelContent({
               />
               <TooltipContent>{t("side_panel.reload")}</TooltipContent>
             </Tooltip>
-            <InputGroup className="mx-1 h-7 flex-1 rounded-md">
-              <InputGroupInput
-                ref={urlInputRef}
-                type="text"
-                className="h-7"
-                value={urlInput}
-                onChange={(event) => setUrlInput(event.target.value)}
-                onKeyDown={handleUrlKeyDown}
-                onFocus={() => {
-                  urlFocusedRef.current = true;
-                  urlInputRef.current?.select();
-                }}
-                onBlur={() => {
-                  urlFocusedRef.current = false;
-                }}
-                placeholder={t("side_panel.enter_url")}
-                spellCheck={false}
-                autoComplete="off"
+            {addressExpanded ? (
+              <InputGroup className="mx-1 h-7 flex-1 rounded-md">
+                <InputGroupInput
+                  ref={urlInputRef}
+                  type="text"
+                  className="h-7"
+                  value={urlInput}
+                  onChange={(event) => setUrlInput(event.target.value)}
+                  onKeyDown={handleUrlKeyDown}
+                  onFocus={() => {
+                    urlFocusedRef.current = true;
+                    urlInputRef.current?.select();
+                  }}
+                  onBlur={() => {
+                    urlFocusedRef.current = false;
+                    setAddressExpanded(false);
+                  }}
+                  placeholder={t("side_panel.enter_url")}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <InputGroupAddon align="inline-start" className="ps-2">
+                  <Globe />
+                </InputGroupAddon>
+              </InputGroup>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mx-1 h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs font-normal text-muted-foreground shadow-none before:shadow-none hover:text-foreground"
+                onClick={expandAddress}
+                aria-label={t("side_panel.edit_address", { site: browserAddressLabel(tab.url) })}
+                title={tab.url || t("side_panel.enter_url")}
+              >
+                <Globe className="size-3.5" />
+                <span className="truncate">{browserAddressLabel(tab.url)}</span>
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full p-0"
+                    aria-label={t("side_panel.browser_profile_trigger")}
+                    title={t("side_panel.browser_profile_trigger")}
+                  >
+                    <MarbleAvatar seed="browser-profile:default" className="size-6 rounded-full" />
+                  </Button>
+                )}
               />
-              <InputGroupAddon align="inline-start" className="ps-2">
-                <Globe />
-              </InputGroupAddon>
-            </InputGroup>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("side_panel.browser_profile")}</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked className="items-start">
+                    <MarbleAvatar seed="browser-profile:default" className="mt-0.5 size-7 rounded-full" />
+                    <span className="min-w-0">
+                      <span className="block truncate">{t("side_panel.default_browser_profile")}</span>
+                      <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        {t("side_panel.browser_profile_saved_hint")}
+                      </span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">
@@ -455,7 +559,10 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
+  onSendWorkspaceAppMessage,
+  onEditImage,
   onSaveAsTemplate,
+  aiEditing = false,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -662,7 +769,7 @@ export function SidePanel({
                           "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
                         ].join(" ")}
                       >
-                        <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
+                        <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
                         <span className="flex-1">{item.label}</span>
                         {item.shortcut ? (
                           <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
@@ -715,13 +822,58 @@ export function SidePanel({
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
               initialPath={activeTab.path}
+              displayName={activeTab.label}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
+        ) : activeTab?.type === "video" ? (
+          <VideoPanel
+            key={activeTab.id}
+            title={activeTab.label}
+            sessionId={activeTab.sessionId}
+            workspaceRoot={workspaceRoot}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            aiEditing={aiEditing}
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+            onAskAi={onAskAi}
+            onSaveAsTemplate={onSaveAsTemplate}
+          />
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+        ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <PluginWorkshopPanel
+              key={`${activeTab.sessionId}:${activeTab.id}`}
+              tab={activeTab}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              aiEditing={aiEditing}
+              expanded={expanded}
+              onSendMessage={onSendWorkspaceAppMessage}
+            />
+          </div>
+        ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <WorkspaceAppFrame
+              surface={activeTab.surface}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              sessionId={activeTab.sessionId}
+              launch={activeTab.launch}
+              placement="workspace"
+              displayMode={expanded ? "fullscreen" : "inline"}
+              onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
+              onSendMessage={onSendWorkspaceAppMessage}
+              onRequestClose={() => closeTab(activeTab)}
+            />
+          </div>
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel
@@ -731,6 +883,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               isRemoteWorkspace={isRemoteWorkspace}
+              onEditImage={onEditImage}
               onClose={onClose}
             />
           </div>

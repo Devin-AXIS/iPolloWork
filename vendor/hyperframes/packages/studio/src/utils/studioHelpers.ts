@@ -10,7 +10,14 @@ export interface EditingFile {
 
 export interface AppToast {
   message: string;
-  tone: "error" | "info";
+  tone: "error" | "info" | "notice";
+}
+
+export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (!("type" in value) || value.type !== "ipollowork:studio-ai-editing") return null;
+  if (!("projectId" in value) || value.projectId !== projectId) return null;
+  return "active" in value && typeof value.active === "boolean" ? value.active : null;
 }
 
 export type RightPanelTab =
@@ -18,12 +25,10 @@ export type RightPanelTab =
   | "design"
   | "voice"
   | "style"
-  | "illustration"
+  | "components"
   | "assets"
   | "animation"
   | "animation-properties"
-  | "catalog"
-  | "effects"
   | "renders"
   | "block-params"
   | "slideshow"
@@ -154,8 +159,7 @@ function matchesByHfId(
 ): boolean {
   if (!selection.hfId) return false;
   return (
-    element.hfId === selection.hfId &&
-    (element.sourceFile || "index.html") === selectionSourceFile
+    element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
 }
 
@@ -306,14 +310,6 @@ export type ToggleHiddenHandler = (
 type TimelineSelectionRange = Pick<TimelineElement, "start" | "duration"> &
   Partial<Pick<TimelineElement, "id" | "timelineKind" | "compositionSrc" | "sourceFile">>;
 
-function isStandaloneEffectClip(element: TimelineSelectionRange): boolean {
-  if (element.timelineKind === "effect") return true;
-  if (element.id?.startsWith("effect-")) return true;
-  return [element.compositionSrc, element.sourceFile].some(
-    (path) => path != null && /(^|[\\/])effects[\\/]/i.test(path),
-  );
-}
-
 export function resolveTimelineSelectionSeekTime(
   currentTime: number,
   element: TimelineSelectionRange | null | undefined,
@@ -325,11 +321,13 @@ export function resolveTimelineSelectionSeekTime(
   const end = Math.max(start, start + Math.max(0, element.duration));
   const time = Number.isFinite(currentTime) ? currentTime : start;
   if (end === start) return start;
-  // Standalone effects commonly animate from a deliberately transparent first
-  // frame. In the paused editor, use the midpoint as a representative proof
-  // frame only when selection would otherwise land on an invisible boundary.
+  // Animated layers commonly begin/end on a deliberately transparent frame.
+  // Timeline rows represent the whole authored layer, so selecting one at an
+  // end-exclusive boundary should inspect a representative frame inside it.
+  // Otherwise the DOM/inspector selection succeeds while the canvas correctly
+  // suppresses the invisible selection box, which looks like lost selection.
   // Playback/export still seek the authored timeline from local time zero.
-  if (isStandaloneEffectClip(element) && (time <= start + 0.001 || time >= end - 0.001)) {
+  if (time <= start + 0.001 || time >= end - 0.001) {
     return start + (end - start) / 2;
   }
   // Runtime clip windows are end-exclusive. Seeking exactly to `end` leaves
@@ -351,7 +349,6 @@ export function collectHtmlIds(source: string): string[] {
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
-  html: 5,
   video: 5,
   audio: 5,
 };
@@ -361,7 +358,7 @@ export async function resolveDroppedAssetDuration(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<number> {
-  if (kind === "image" || kind === "html") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
+  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
@@ -401,7 +398,7 @@ export async function resolveDroppedAssetDimensions(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
-  if (kind === "audio" || kind === "html") return null;
+  if (kind === "audio") return null;
   const src = `/api/projects/${projectId}/preview/${assetPath}`;
 
   if (kind === "image") {

@@ -1,0 +1,14 @@
+diff --git a/lib/index.js b/lib/index.js
+index 9ff0895..f182ebe 100644
+--- a/lib/index.js
++++ b/lib/index.js
+@@ -500 +500,4 @@ function taskkillProcessTree(pid) {
+-	], { stdio: "ignore" });
++	], {
++		stdio: "ignore",
++		windowsHide: true
++	});
+@@ -556 +559,2 @@ function spawnSubprocess(spec, internals = {}) {
+-		detached: platform !== "win32"
++		detached: platform !== "win32",
++		windowsHide: platform === "win32"

@@ -75,9 +75,9 @@
     "linkedom": "^0.18.12"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
+    "@types/node": "^26.2.0",
     "happy-dom": "^20.9.0",
-    "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

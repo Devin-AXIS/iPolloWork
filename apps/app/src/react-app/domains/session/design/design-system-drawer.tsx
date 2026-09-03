@@ -58,6 +58,8 @@ const DEFAULTS = {
   "--ipw-color-primary-soft": "color-mix(in srgb,var(--ipw-color-primary) 12%,var(--ipw-color-bg))",
   "--ipw-bg-gradient": "none",
   "--ipw-bg-mode": "none",
+  "--ipw-bg-color": "transparent",
+  "--ipw-bg-decoration-opacity": "0",
   "--ipw-bg-image": "none",
   "--ipw-bg-size": "cover",
   "--ipw-bg-position": "50% 50%",
@@ -236,9 +238,19 @@ export function DesignSystemDrawer({
   }, [onTokenChange, onTokenChangeMany]);
 
   const resetAll = React.useCallback(() => {
-    const themeDefaults = Object.fromEntries(selectedThemeControls.map((control) => [control.storageName, control.value]));
+    const presetDefaults = selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS;
     updateMany({
-      ...themeDefaults,
+      ...DEFAULTS,
+      ...presetDefaults,
+      "--ipw-bg-mode": selectedTheme ? "solid" : "none",
+      "--ipw-bg-color": selectedTheme ? "var(--ipw-color-bg)" : "transparent",
+      "--ipw-bg-decoration-opacity": selectedTheme ? "1" : "0",
+      "--ipw-bg-gradient": "none",
+      "--ipw-bg-image": "none",
+      "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))",
+      "--ipw-bg-overlay-opacity": "0",
+      "--ipw-bg-size": "cover",
+      "--ipw-bg-position": "50% 50%",
       "--ipw-type-scale": "1",
       "--ipw-body-line-height": "1.55",
       "--ipw-button-radius": "8px",
@@ -253,7 +265,7 @@ export function DesignSystemDrawer({
       "--ipw-font-display": DEFAULTS["--ipw-font-display"],
       "--ipw-font-body": DEFAULTS["--ipw-font-body"],
     });
-  }, [selectedThemeControls, updateMany]);
+  }, [selectedTheme, updateMany]);
   const resetThemeColors = React.useCallback(() => {
     const presetValues = selectedTheme ? buildDesignSystemPresetValues(selectedTheme) : DEFAULTS;
     updateMany(Object.fromEntries(THEME_COLOR_TOKEN_NAMES.map((name) => [name, presetValues[name] ?? DEFAULTS[name]])));
@@ -545,7 +557,6 @@ function EmbeddedDesignSystemControls({
   const [presetOpen, setPresetOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState("All");
-  const motion = values["--ipw-motion-style"] ?? "none";
   const backgroundMode = backgroundModeFor(values);
   const categories = React.useMemo(
     () => ["All", ...new Set(DESIGN_SYSTEM_THEMES.map((theme) => theme.category))],
@@ -571,16 +582,18 @@ function EmbeddedDesignSystemControls({
   const cardShadow = resolveThemeTokenValue(values["--ipw-card-shadow"], themeTokens);
 
   const applyBackgroundMode = (mode: BackgroundMode) => {
-    if (mode === "none") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-gradient": "none", "--ipw-bg-image": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))", "--ipw-bg-overlay-opacity": "0" });
-    if (mode === "solid") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-gradient": "none", "--ipw-bg-image": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))", "--ipw-bg-overlay-opacity": "0" });
+    if (mode === "none") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-color": "transparent", "--ipw-bg-decoration-opacity": "0", "--ipw-bg-gradient": "none", "--ipw-bg-image": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))", "--ipw-bg-overlay-opacity": "0" });
+    if (mode === "solid") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-color": "var(--ipw-color-bg)", "--ipw-bg-decoration-opacity": "1", "--ipw-bg-gradient": "none", "--ipw-bg-image": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))", "--ipw-bg-overlay-opacity": "0" });
     if (mode === "gradient") onTokenChangeMany({
       "--ipw-bg-mode": mode,
+      "--ipw-bg-color": "var(--ipw-color-bg)",
+      "--ipw-bg-decoration-opacity": "1",
       "--ipw-bg-gradient": `linear-gradient(135deg, ${colorValues[0]}, ${colorValues[1]})`,
       "--ipw-bg-image": "none",
       "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,0), rgba(28,27,26,0))",
       "--ipw-bg-overlay-opacity": "0",
     });
-    if (mode === "image") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-gradient": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))", "--ipw-bg-overlay-opacity": "0.45", "--ipw-bg-size": "cover", "--ipw-bg-position": "50% 50%" });
+    if (mode === "image") onTokenChangeMany({ "--ipw-bg-mode": mode, "--ipw-bg-color": "var(--ipw-color-bg)", "--ipw-bg-decoration-opacity": "1", "--ipw-bg-gradient": "none", "--ipw-bg-overlay": "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))", "--ipw-bg-overlay-opacity": "0.45", "--ipw-bg-size": "cover", "--ipw-bg-position": "50% 50%" });
   };
 
   return (
@@ -618,15 +631,6 @@ function EmbeddedDesignSystemControls({
         <PanelSection title={t("design_system.embedded.radius_style")}><div className="grid grid-cols-3 gap-1">{([{ id: "none", label: t("design_system.embedded.none"), button: "0px", card: "0px" }, { id: "subtle", label: t("design_system.embedded.subtle"), button: "8px", card: "12px" }, { id: "rounded", label: t("design_system.embedded.rounded"), button: "16px", card: "24px" }] as const).map((item) => <SegmentButton key={item.id} active={radiusPresetFor(cardRadius) === item.id} onClick={() => onTokenChangeMany({ "--ipw-button-radius": item.button, "--ipw-card-radius": item.card })}>{item.label}</SegmentButton>)}</div></PanelSection>
         <PanelSection title={t("design_system.embedded.spacing")}><div className="grid grid-cols-3 gap-1">{([{ id: "compact", label: t("design_system.embedded.compact"), page: "20px", section: "48px" }, { id: "standard", label: t("design_system.embedded.standard"), page: "32px", section: "80px" }, { id: "spacious", label: t("design_system.embedded.spacious"), page: "48px", section: "112px" }] as const).map((item) => <SegmentButton key={item.id} active={spacingPresetFor(pagePadding) === item.id} onClick={() => onTokenChangeMany({ "--ipw-page-padding": item.page, "--ipw-section-space": item.section })}>{item.label}</SegmentButton>)}</div></PanelSection>
         <PanelSection title={t("design_system.embedded.shadow")}><TokenSelect value={cardShadow ?? "none"} ariaLabel={t("design_system.embedded.shadow")} options={shadowOptions(cardShadow)} onChange={(value) => onTokenChange("--ipw-card-shadow", value)} /></PanelSection>
-        <PanelSection title={t("design_system.embedded.motion")}><TokenSelect value={motion} ariaLabel={t("design_system.embedded.motion")} options={localizedOptions(MOTION_OPTION_DEFS)} onChange={(value) => {
-          const profile = MOTION_OPTION_DEFS.find((item) => item.value === value) ?? MOTION_OPTION_DEFS[0];
-          onTokenChangeMany({
-            "--ipw-motion-style": profile.value,
-            "--ipw-motion-duration": profile.duration,
-            "--ipw-motion-distance": profile.distance,
-            "--ipw-motion-ease": profile.ease,
-          });
-        }} /></PanelSection>
       </div>
       <div className="flex items-center justify-end border-t border-border px-4 py-2"><Button variant="ghost" size="xs" onClick={onReset}><RotateCcw /> {t("design_system.embedded.reset")}</Button></div>
     </div>
@@ -645,11 +649,6 @@ const SHADOW_OPTION_DEFS = [
   { labelKey: "design_system.embedded.subtle", value: "0 8px 24px rgba(28,27,26,.08)" },
   { labelKey: "design_system.embedded.strong", value: "0 18px 42px rgba(28,27,26,.16)" },
 ];
-const MOTION_OPTION_DEFS = [
-  { labelKey: "design_system.embedded.none", value: "none", duration: "0ms", distance: "0px", ease: "linear" },
-  { labelKey: "design_system.embedded.gentle", value: "gentle", duration: "280ms", distance: "12px", ease: "cubic-bezier(.22, 1, .36, 1)" },
-  { labelKey: "design_system.embedded.expressive", value: "expressive", duration: "520ms", distance: "28px", ease: "cubic-bezier(.16, 1, .3, 1)" },
-] as const;
 function withPresetOption(options: Array<{ label: string; value: string }>, value: string | undefined, label: string) { return value && !options.some((item) => item.value === value) ? [{ label, value }, ...options] : options; }
 function localizedOptions(defs: ReadonlyArray<{ labelKey: string; value: string }>) { return defs.map((item) => ({ label: t(item.labelKey), value: item.value })); }
 function fontOptions(value: string, label: string) { return withPresetOption(localizedOptions(FONT_OPTION_DEFS), value, label); }

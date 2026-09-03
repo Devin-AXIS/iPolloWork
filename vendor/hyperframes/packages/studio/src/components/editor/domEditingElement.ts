@@ -12,6 +12,8 @@ import type {
 import {
   buildStableSelector,
   escapeCssString,
+  getCompositionSourceForHost,
+  getEditableSourceFileForElement,
   getSelectorIndex,
   getSourceFileForElement,
   isHtmlElement,
@@ -101,17 +103,33 @@ function isInspectableLayerElement(el: HTMLElement): boolean {
   return true;
 }
 
+const GENERATED_MOTION_TEXT_ROOT_SELECTOR =
+  '[data-ipw-motion-structure="v1"], [data-ipw-motion-split="v1"]';
+const STRUCTURED_MOTION_INTERNAL_SELECTOR =
+  "[data-ipw-motion-role], [data-ipw-motion-word], [data-ipw-motion-char]";
+
+/**
+ * Text motion materializes word/character spans so GSAP can animate them
+ * independently. Both structured recipes and legacy split presets use those
+ * spans as implementation details, never as independently selectable layers.
+ */
+export function getStructuredMotionSelectionRoot(el: HTMLElement): HTMLElement | null {
+  if (!el.matches(STRUCTURED_MOTION_INTERNAL_SELECTOR)) return null;
+  return el.closest<HTMLElement>(GENERATED_MOTION_TEXT_ROOT_SELECTOR);
+}
+
 export function getDomLayerPatchTarget(
   el: HTMLElement,
   activeCompositionPath: string | null,
 ): Pick<DomEditSelection, "id" | "hfId" | "selector" | "selectorIndex" | "sourceFile"> | null {
   if (!isInspectableLayerElement(el)) return null;
   if (el.hasAttribute("data-composition-id")) return null;
+  if (getStructuredMotionSelectionRoot(el)) return null;
 
   const selector = buildStableSelector(el);
   if (!selector) return null;
 
-  const { sourceFile } = getSourceFileForElement(el, activeCompositionPath);
+  const { sourceFile } = getEditableSourceFileForElement(el, activeCompositionPath);
   return {
     id: el.id || undefined,
     hfId: el.getAttribute("data-hf-id") || undefined,
@@ -143,10 +161,28 @@ function getPreferredClipAncestor(startEl: HTMLElement): HTMLElement | null {
   return null;
 }
 
+export function getEditableUnitSelectionTarget(
+  startEl: HTMLElement,
+  _options?: Pick<DomEditContextOptions, "isMasterView">,
+): HTMLElement | null {
+  let editableUnit: HTMLElement | null = startEl;
+  while (editableUnit) {
+    if (editableUnit.hasAttribute("data-hf-edit-as-unit")) return editableUnit;
+    editableUnit = editableUnit.parentElement;
+  }
+  return null;
+}
+
 export function getSelectionCandidate(
   startEl: HTMLElement,
   options: DomEditContextOptions,
 ): HTMLElement {
+  const editableUnit = getEditableUnitSelectionTarget(startEl, options);
+  if (editableUnit) return editableUnit;
+
+  const structuredMotionRoot = getStructuredMotionSelectionRoot(startEl);
+  if (structuredMotionRoot) return structuredMotionRoot;
+
   if (options.preferClipAncestor) {
     const clipAncestor = getPreferredClipAncestor(startEl);
     if (clipAncestor) {
@@ -240,14 +276,17 @@ export function findElementForSelection(
   const sourceMatches = (candidate: Element): candidate is HTMLElement =>
     isHtmlElement(candidate) &&
     (!selection.sourceFile ||
-      getSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
+      getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
         selection.sourceFile);
   const findAll = (selector: string): HTMLElement[] =>
     querySelectorAllSafely(queryRoot, selector).filter(sourceMatches);
 
   if (selection.hfId) {
     const byHfId = findAll(`[data-hf-id="${escapeCssString(selection.hfId)}"]`)[0];
-    if (byHfId) return byHfId;
+    // A minted hf id is the element identity, not merely one locator option.
+    // Falling through after deletion can rebind a stale selection to another
+    // same-tag element through its generic selector.
+    return byHfId ?? null;
   }
 
   if (selection.id) {
@@ -289,7 +328,8 @@ function findElementForTimelineTiming(
           timelineNumberMatches(candidate, "data-start", element.start ?? 0) &&
           timelineNumberMatches(candidate, "data-duration", element.duration ?? 0) &&
           timelineNumberMatches(candidate, "data-track-index", element.track ?? 0) &&
-          getSourceFileForElement(candidate, activeCompositionPath).sourceFile === sourceFile,
+          getEditableSourceFileForElement(candidate, activeCompositionPath).sourceFile ===
+            sourceFile,
       ) ?? null
   );
 }
@@ -304,8 +344,10 @@ export function findElementForTimelineElement(
   const compositionSource =
     normalizeTimelineCompositionSource(element.compositionSrc) ??
     options.compIdToSrc?.get(elementId);
+  // A composition host renders `compositionSource`, but its own tag is authored
+  // in the parent source file. Expanded descendants already carry their child
+  // `sourceFile`, so this owner-first rule works for both levels.
   const sourceFile =
-    compositionSource ??
     normalizeTimelineCompositionSource(element.sourceFile) ??
     options.activeCompositionPath ??
     "index.html";

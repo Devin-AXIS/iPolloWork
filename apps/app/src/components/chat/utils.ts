@@ -1,5 +1,5 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
-import type { ThreadStatus } from "@/lib/messages"
+import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 
 interface MessageGroup {
@@ -8,6 +8,67 @@ interface MessageGroup {
 
 export type UIMessageWithIndex = { index: number, message: UIMessage }
 type MessageListItem = MessageGroup | UIMessageWithIndex
+
+export type ScheduleApplyResult = {
+  itemCount: number
+  focusAt: number
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+}
+
+function parseJson(value: unknown): unknown {
+  if (typeof value !== "string") return value
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return parsed
+  } catch {
+    return value
+  }
+}
+
+function findScheduleApplyPayload(value: unknown, depth = 0): Record<string, unknown> | null {
+  if (depth > 4) return null
+  const parsed = parseJson(value)
+  if (isRecord(parsed)) {
+    if (parsed.ok === true && Array.isArray(parsed.items)) return parsed
+    for (const key of ["structuredContent", "result", "output", "content", "text"]) {
+      const nested = findScheduleApplyPayload(parsed[key], depth + 1)
+      if (nested) return nested
+    }
+    return null
+  }
+  if (!Array.isArray(parsed)) return null
+  for (const item of parsed.slice(0, 20)) {
+    const nested = findScheduleApplyPayload(item, depth + 1)
+    if (nested) return nested
+  }
+  return null
+}
+
+export function getScheduleApplyResult(messages: readonly UIMessage[]): ScheduleApplyResult | null {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex]
+    if (!message) continue
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex]
+      if (!part || !isToolUIPart(part) || part.state !== "output-available") continue
+      const toolName = part.type === "dynamic-tool" ? part.toolName : part.type
+      if (!toolName.toLowerCase().endsWith("ipollowork_schedule_apply")) continue
+      const payload = findScheduleApplyPayload(part.output)
+      if (!payload || !Array.isArray(payload.items) || payload.items.length === 0) continue
+      const scheduledTimes = payload.items.flatMap((item) => {
+        if (!isRecord(item)) return []
+        const value = typeof item.startAt === "number" ? item.startAt : item.dueAt
+        return typeof value === "number" && Number.isFinite(value) ? [value] : []
+      })
+      if (scheduledTimes.length === 0) continue
+      return { itemCount: payload.items.length, focusAt: Math.min(...scheduledTimes) }
+    }
+  }
+  return null
+}
 
 function getMessageText(message: UIMessage): string {
   return message.parts
@@ -85,21 +146,31 @@ export function getLastTextPart(message: UIMessage): UIMessage | null {
   return lastTextPart ? { ...message, parts: [lastTextPart] } : null
 }
 
+export function getFileUrl(part: FileUIPart) {
+  return typeof part.url === "string" ? part.url : ""
+}
+
+export function getFileMediaType(part: FileUIPart) {
+  return typeof part.mediaType === "string" ? part.mediaType : ""
+}
+
 export function getFileTitle(part: FileUIPart) {
   if (part.filename) {
     return part.filename
   }
 
-  if (part.url.startsWith("data:")) {
+  const url = getFileUrl(part)
+  if (url.startsWith("data:")) {
     return "Attached file"
   }
 
-  return part.url || "File"
+  return url || "File"
 }
 
 export function getMediaBadge(part: FileUIPart) {
-  if (part.mediaType && part.mediaType !== "application/octet-stream") {
-    return part.mediaType.replace(/^application\//, "").replace(/^text\//, "").toUpperCase()
+  const mediaType = getFileMediaType(part)
+  if (mediaType && mediaType !== "application/octet-stream") {
+    return mediaType.replace(/^application\//, "").replace(/^text\//, "").toUpperCase()
   }
 
   return part.filename?.split(".").pop()?.toUpperCase() ?? null
@@ -159,27 +230,58 @@ export function isMessageGroup(item: MessageListItem): item is MessageGroup {
   return "messages" in item
 }
 
-export function groupMessages(messages: UIMessage[], status: ThreadStatus): MessageListItem[] {
+export function isInternalContinuationMessage(message: UIMessage): boolean {
+  return message.role === "user" && message.parts.length === 0
+}
+
+function assistantMessageHasRenderableContent(message: UIMessage) {
+  if (message.role !== "assistant") return false
+  return message.parts.some((part) => {
+    if (part.type === "text" || part.type === "reasoning") return part.text.trim().length > 0
+    if (part.type === "file") return true
+    return isToolUIPart(part)
+  })
+}
+
+export function getActiveAssistantMessageId(
+  messages: UIMessage[],
+  activeMessageBaseline?: number | null,
+) {
+  const latestVisibleUserIndex = messages.findLastIndex(
+    (message) => message.role === "user" && !isInternalContinuationMessage(message),
+  )
+  const turnStart = activeMessageBaseline ?? Math.max(0, latestVisibleUserIndex)
+  return messages.slice(turnStart).findLast(
+    (message) => message.role === "assistant"
+      && assistantMessageHasRenderableContent(message)
+      && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX),
+  )?.id
+}
+
+export function groupMessages(messages: UIMessage[]): MessageListItem[] {
   const items: MessageListItem[] = []
+  const visibleMessages = messages.flatMap((message, index) =>
+    isInternalContinuationMessage(message) ? [] : [{ index, message }]
+  )
   let index = 0
 
-  while (index < messages.length) {
-    const message = messages[index]
+  while (index < visibleMessages.length) {
+    const item = visibleMessages[index]
 
-    if (message.role !== "assistant") {
-      items.push({ index, message })
+    if (item.message.role !== "assistant") {
+      items.push(item)
       index++
       continue
     }
 
     const assistantMessages: UIMessageWithIndex[] = []
 
-    while (index < messages.length && messages[index].role === "assistant") {
-      assistantMessages.push({ message: messages[index], index });
+    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant") {
+      assistantMessages.push(visibleMessages[index])
       index++
     }
 
-    items.push({ messages: assistantMessages });
+    items.push({ messages: assistantMessages })
   }
 
   return items
@@ -192,6 +294,13 @@ type AssistantRenderGroup =
   | { kind: "tool"; part: ToolUIPart | DynamicToolUIPart }
 
 export type AssistantProcessRenderGroup = Extract<AssistantRenderGroup, { kind: "reasoning" | "file" | "tool" }>
+
+export type AssistantProcessState = "streaming" | "failed" | "completed"
+
+export function getAssistantProcessState(isStreaming: boolean, hasError: boolean): AssistantProcessState {
+  if (isStreaming) return "streaming"
+  return hasError ? "failed" : "completed"
+}
 
 export interface AssistantRenderSections {
   processGroups: AssistantProcessRenderGroup[]

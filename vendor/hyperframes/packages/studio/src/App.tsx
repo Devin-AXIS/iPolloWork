@@ -189,7 +189,12 @@ export function StudioApp() {
     const preload = () => {
       if (!active) return;
       void loadStudioRightPanelModule()
-        .then((module) => module.preloadStudioEffectsPanel())
+        .then((module) =>
+          Promise.all([
+            module.preloadStudioComponentsPanel(),
+            module.preloadStudioAnimationPanel(),
+          ]),
+        )
         .catch(() => {});
     };
     const idleId = window.requestIdleCallback(preload, { timeout: 800 });
@@ -278,6 +283,7 @@ export function StudioApp() {
     activeBlockParams,
     setActiveBlockParams,
     handleAddBlock,
+    handleBlockVariableChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   } = useBlockHandlers({
@@ -293,7 +299,6 @@ export function StudioApp() {
       reloadPreview,
       showToast,
     },
-    previewIframeRef,
     setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
@@ -585,7 +590,6 @@ export function StudioApp() {
                             <StudioLeftSidebar
                               leftSidebarRef={leftSidebarRef}
                               onSelectComposition={handleSelectComposition}
-                              onAddBlock={handleAddBlock}
                               onLint={handleLint}
                               linting={linting}
                               lintFindingCount={lintModal?.length ?? findingsByFile.size}
@@ -597,14 +601,18 @@ export function StudioApp() {
                       }
                       right={
                         panelLayout.rightCollapsed ? null : (
-                          <Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}>
+                          <Suspense
+                            fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
+                          >
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}
                               onCloseBlockParams={() => {
+                                const returnTab = activeBlockParams?.returnTab ?? "design";
                                 setActiveBlockParams(null);
-                                panelLayout.setRightPanelTab("design");
+                                panelLayout.setRightPanelTab(returnTab);
                               }}
+                              onBlockVariableChange={handleBlockVariableChange}
                               recordingState={gestureState}
                               recordingDuration={gestureRecording.recordingDuration}
                               onToggleRecording={recordingToggle}

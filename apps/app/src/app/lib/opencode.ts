@@ -189,32 +189,6 @@ async function wrapiPolloWorkRead<T>(
   }
 }
 
-function shouldFallbackToLegacySessionRead(error: unknown): boolean {
-  if (!(error instanceof iPolloWorkServerError)) return false;
-  return error.status === 404 || error.status === 405 || error.status === 501;
-}
-
-async function wrapiPolloWorkReadWithFallback<T>(
-  url: string,
-  read: () => Promise<T>,
-  fallback: () => Promise<FieldsResult<T>>,
-  options?: { throwOnError?: boolean },
-): Promise<FieldsResult<T>> {
-  try {
-    return createSyntheticResult(url, "GET", { ok: true, data: await read() });
-  } catch (error) {
-    if (!shouldFallbackToLegacySessionRead(error)) {
-      if (options?.throwOnError) throw error;
-      return createSyntheticResult(url, "GET", {
-        ok: false,
-        error,
-        status: error instanceof iPolloWorkServerError ? error.status : 500,
-      });
-    }
-    return fallback();
-  }
-}
-
 async function fetchWithTimeout(
   fetchImpl: typeof globalThis.fetch,
   input: RequestInfo | URL,
@@ -376,8 +350,6 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
     ipolloworkMount && auth?.token
       ? createiPolloWorkServerClient({ baseUrl: ipolloworkMount.baseUrl, token: auth.token })
       : null;
-  // TODO(2026-04-12): remove the old-server compatibility path here once all
-  // iPolloWork servers expose the workspace-scoped session read APIs.
   const sessionOverrides = session as any as {
     list: (parameters?: SessionListParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session[]>>;
     get: (parameters: SessionLookupParameters, options?: { throwOnError?: boolean }) => Promise<FieldsResult<Session>>;
@@ -398,10 +370,9 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
     if (parameters?.search?.trim()) query.set("search", parameters.search.trim());
     if (typeof parameters?.limit === "number") query.set("limit", String(parameters.limit));
     const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions${query.size ? `?${query.toString()}` : ""}`;
-    return wrapiPolloWorkReadWithFallback(
+    return wrapiPolloWorkRead(
       url,
       async () => (await ipolloworkSessionClient.listSessions(ipolloworkMount.workspaceId, parameters)).items,
-      () => listOriginal(parameters, options),
       options,
     );
   };
@@ -412,10 +383,9 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
       return getOriginal(parameters, options);
     }
     const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}`;
-    return wrapiPolloWorkReadWithFallback(
+    return wrapiPolloWorkRead(
       url,
       async () => (await ipolloworkSessionClient.getSession(ipolloworkMount.workspaceId, parameters.sessionID)).item,
-      () => getOriginal(parameters, options),
       options,
     );
   };
@@ -428,13 +398,12 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
     const query = new URLSearchParams();
     if (typeof parameters.limit === "number") query.set("limit", String(parameters.limit));
     const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/messages${query.size ? `?${query.toString()}` : ""}`;
-    return wrapiPolloWorkReadWithFallback(
+    return wrapiPolloWorkRead(
       url,
       async () =>
         (await ipolloworkSessionClient.getSessionMessages(ipolloworkMount.workspaceId, parameters.sessionID, {
           limit: parameters.limit,
         })).items,
-      () => messagesOriginal(parameters, options),
       options,
     );
   };
@@ -445,10 +414,9 @@ export function createClient(baseUrl: string, directory?: string, auth?: Opencod
       return todoOriginal(parameters, options);
     }
     const url = `${ipolloworkMount.baseUrl}/workspace/${encodeURIComponent(ipolloworkMount.workspaceId)}/sessions/${encodeURIComponent(parameters.sessionID)}/snapshot`;
-    return wrapiPolloWorkReadWithFallback(
+    return wrapiPolloWorkRead(
       url,
       async () => (await ipolloworkSessionClient.getSessionSnapshot(ipolloworkMount.workspaceId, parameters.sessionID)).item.todos,
-      () => todoOriginal(parameters, options),
       options,
     );
   };

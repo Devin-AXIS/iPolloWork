@@ -34,7 +34,7 @@ function normalizeProjectPath(value: string): string {
     .replace(/^\.?\//, "");
 }
 
-function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
+export function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): string {
   const fromParts = normalizeProjectPath(sourceFile).split("/").filter(Boolean);
   const targetParts = normalizeProjectPath(assetPath).split("/").filter(Boolean);
   fromParts.pop();
@@ -45,8 +45,60 @@ function toRelativeProjectAssetPath(sourceFile: string, assetPath: string): stri
   return [...fromParts.map(() => ".."), ...targetParts].join("/") || assetPath;
 }
 
-function toProjectRootAssetPath(assetPath: string): string {
-  return normalizeProjectPath(assetPath);
+export function isThemeBackgroundSurface(element: HTMLElement): boolean {
+  if (
+    element.matches(
+      "[data-composition-src][data-composition-id], [data-composition-file][data-composition-id], [data-ipw-slide], section.slide, .slide-frame, .scene.clip",
+    )
+  ) {
+    return true;
+  }
+  return (
+    element.parentElement === element.ownerDocument.body &&
+    (element.id === "root" ||
+      element.hasAttribute("data-composition-id") ||
+      element.classList.contains("composition") ||
+      element.classList.contains("stage") ||
+      element.classList.contains("canvas"))
+  );
+}
+
+export async function commitElementBackgroundImage(
+  element: HTMLElement,
+  nextValue: string,
+  onSetStyle: (prop: string, value: string) => void | Promise<void>,
+): Promise<void> {
+  element.style.setProperty("background-image", nextValue);
+  if (isThemeBackgroundSurface(element)) {
+    // Theme surfaces use an !important layered background declaration. Feed
+    // the image layer through its token so the fill remains visible and keeps
+    // participating in theme switches.
+    element.style.setProperty("--ipw-bg-image", nextValue);
+    await onSetStyle("--ipw-bg-image", nextValue);
+  }
+  await onSetStyle("background-image", nextValue);
+}
+
+export function resolveEditableBackgroundImage(
+  element: HTMLElement,
+  styles: Record<string, string>,
+): string {
+  const authoredThemeImage = element.style.getPropertyValue("--ipw-bg-image").trim();
+  if (authoredThemeImage) return authoredThemeImage;
+  const authoredImage = element.style.getPropertyValue("background-image").trim();
+  if (authoredImage) return authoredImage;
+  const computedThemeImage = styles["--ipw-bg-image"]?.trim();
+  if (computedThemeImage && computedThemeImage !== "none") return computedThemeImage;
+  return styles["background-image"] ?? "none";
+}
+
+export function syncLegacyThemeBackgroundPreview(element: HTMLElement): boolean {
+  if (!isThemeBackgroundSurface(element)) return false;
+  if (element.style.getPropertyValue("--ipw-bg-image").trim()) return false;
+  const authoredImage = element.style.getPropertyValue("background-image").trim();
+  if (!authoredImage || authoredImage === "none") return false;
+  element.style.setProperty("--ipw-bg-image", authoredImage);
+  return true;
 }
 
 function resolveSelectedAsset(
@@ -113,7 +165,7 @@ export function ImageFillField({
       const nextImage = uploaded.find((a) => IMAGE_EXT.test(a));
       if (nextImage) {
         track("button", "Upload image");
-        onCommit(`url("${toProjectRootAssetPath(nextImage)}")`);
+        onCommit(`url("${toRelativeProjectAssetPath(sourceFile, nextImage)}")`);
       }
     } finally {
       setUploading(false);
@@ -140,7 +192,7 @@ export function ImageFillField({
             valueClassName="text-[12px] text-[#858a94]"
             onChange={(next) => {
               track("select", "Image fill");
-              onCommit(next ? `url("${toProjectRootAssetPath(next)}")` : "none");
+              onCommit(next ? `url("${toRelativeProjectAssetPath(sourceFile, next)}")` : "none");
             }}
           />
         </div>
@@ -159,8 +211,9 @@ export function ImageFillField({
             type="button"
             disabled={disabled || uploading || !onImportAssets}
             onClick={() => fileInputRef.current?.click()}
-            className="rounded-[8px] bg-black px-4 py-2 text-[10px] text-white shadow-sm transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-[8px] border border-black/80 bg-white px-4 py-2 text-[11px] font-semibold text-black shadow-[0_3px_14px_rgba(0,0,0,0.38),0_0_0_1px_rgba(255,255,255,0.72)] transition-colors hover:bg-[#f5f6f9] disabled:cursor-not-allowed disabled:opacity-50"
           >
+            <Plus size={14} aria-hidden="true" />
             {tx(uploading ? "Uploading…" : "Choose Media")}
           </button>
           <input
@@ -232,7 +285,7 @@ export function ImageFillField({
                     onCommit("none");
                     return;
                   }
-                  onCommit(`url("${toProjectRootAssetPath(next)}")`);
+                  onCommit(`url("${toRelativeProjectAssetPath(sourceFile, next)}")`);
                 }}
                 className="min-w-0 w-full appearance-none bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600"
               >
@@ -367,7 +420,7 @@ export function GradientField({
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.min(1, baseHsv.value + 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, value: Math.max(0.18, baseHsv.value - 0.22) })),
       toHexColor(hsvToRgb({ ...baseHsv, hue: (baseHsv.hue + 32) % 360 })),
-      "#20BBC0",
+      "#1FBAC0",
       "#7C5CFC",
       "#F6C344",
     ];

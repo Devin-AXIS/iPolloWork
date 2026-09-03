@@ -2,9 +2,10 @@ import { describe, expect, it } from "bun:test";
 import type { UIMessage } from "ai";
 
 import {
+  createWorkspaceFileOpenTarget,
   deriveOpenTargets,
   isCollectibleArtifactTarget,
-  selectAutoOpenTarget,
+  localFilePathFromHref,
 } from "../src/react-app/domains/session/artifacts/open-target";
 
 function message(id: string, role: "user" | "assistant", text: string): UIMessage {
@@ -27,6 +28,22 @@ function toolMessage(id: string, toolName: string, input: Record<string, unknown
 }
 
 describe("deriveOpenTargets", () => {
+  it("creates verified open targets from workspace catalog files", () => {
+    expect(createWorkspaceFileOpenTarget({
+      path: "exports\\launch-deck.pptx",
+      size: 4096,
+      mtimeMs: 123,
+    })).toMatchObject({
+      id: "file:exports/launch-deck.pptx",
+      value: "exports/launch-deck.pptx",
+      name: "launch-deck.pptx",
+      preview: "slides",
+      exists: true,
+      size: 4096,
+      updatedAt: 123,
+    });
+  });
+
   it("includes a template entry without assistant file text", () => {
     const targets = deriveOpenTargets([], {
       supplementalFiles: ["design/ses_deck/entry.html"],
@@ -127,6 +144,38 @@ describe("deriveOpenTargets", () => {
     expect(targets.map((target) => target.value).sort()).toEqual(["reports/native-link.txt", "summary.md"]);
   });
 
+  it("always resolves explicit local image links without relying on artifact prose", () => {
+    const imagePath = "/Users/test/Application Support/workspace/design/session/reddit-post-card.png";
+    const targets = deriveOpenTargets([
+      message("msg_1", "assistant", `可以，已导出为 PNG：\n[下载 Reddit Post Card 图片](<${imagePath}>)`),
+    ]);
+
+    expect(targets).toEqual([
+      expect.objectContaining({
+        kind: "file",
+        value: imagePath,
+        name: "reddit-post-card.png",
+        preview: "image",
+      }),
+    ]);
+  });
+
+  it("normalizes file URLs before resolving explicit local links", () => {
+    const targets = deriveOpenTargets([
+      message("msg_1", "assistant", "[查看图片](file:///Users/test/workspace/output%20image.png)"),
+    ]);
+
+    expect(targets[0]).toMatchObject({
+      value: "/Users/test/workspace/output image.png",
+      preview: "image",
+    });
+  });
+
+  it("decodes browser-normalized local file hrefs", () => {
+    expect(localFilePathFromHref("/Users/test/Application%20Support/workspace/card.png"))
+      .toBe("/Users/test/Application Support/workspace/card.png");
+  });
+
   it("extracts PowerPoint decks from assistant artifact summaries", () => {
     const targets = deriveOpenTargets([
       message("msg_1", "assistant", "Updated file: decks/ipollowork-vertebrae-deck.pptx"),
@@ -219,6 +268,39 @@ describe("deriveOpenTargets", () => {
     expect(targets.map((target) => target.value)).toContain("reports/existing-report.csv");
   });
 
+  it("extracts paths from array-shaped write tool results", () => {
+    const targets = deriveOpenTargets([
+      toolMessage("msg_tool", "apply_patch", {}, [
+        { path: "video/ses_launch/index.html", kind: "update", diff: "@@" },
+        { path: "reports/launch.xlsx", kind: "add", diff: "@@" },
+      ]),
+    ]);
+
+    expect(targets.map((target) => target.value)).toEqual([
+      "video/ses_launch/index.html",
+      "reports/launch.xlsx",
+    ]);
+  });
+
+  it("resolves bare filenames under directory headings in assistant output", () => {
+    const targets = deriveOpenTargets([
+      message("msg_1", "assistant", [
+        "已完成，产物如下：",
+        "① 数据采集 opensauced-demo/01-data/",
+        "account_monthly.csv - 月度概览",
+        "README.md - 数据口径",
+        "② 数据分析 opensauced-demo/02-analysis/",
+        "metrics_summary.csv - 核心指标",
+      ].join("\n")),
+    ]);
+
+    expect(targets.map((target) => target.value)).toEqual([
+      "opensauced-demo/01-data/account_monthly.csv",
+      "opensauced-demo/01-data/README.md",
+      "opensauced-demo/02-analysis/metrics_summary.csv",
+    ]);
+  });
+
   it("does not turn package search results into artifacts", () => {
     const targets = deriveOpenTargets([
       toolMessage("msg_tool", "glob", { pattern: "**/package.json" }, {
@@ -267,17 +349,6 @@ describe("deriveOpenTargets", () => {
     expect(isCollectibleArtifactTarget({ ...target, exists: true })).toBe(true);
   });
 
-  it("does not auto-open generated html files or localhost browser previews", () => {
-    const targets = deriveOpenTargets([
-      toolMessage("msg_tool", "write", { filePath: "public/index.html" }, { filePath: "public/index.html" }),
-      message("msg_1", "assistant", "Created public/index.html. API: `http://localhost:3000/api/info`. App: `http://localhost:3000`."),
-    ]).map((target) => ({ ...target, exists: target.kind === "url" || target.value === "public/index.html" }));
-
-    expect(targets.map((target) => target.value)).toContain("http://localhost:3000/api/info");
-    expect(targets.map((target) => target.value)).toContain("http://localhost:3000");
-    expect(selectAutoOpenTarget(targets)).toBeNull();
-  });
-
   it("normalizes escaped localhost root URL variants into one target", () => {
     const targets = deriveOpenTargets([
       message("msg_1", "assistant", "App: `http://localhost:3000/\\` and also http://localhost:3000//"),
@@ -299,12 +370,4 @@ describe("deriveOpenTargets", () => {
     expect(targets.map((target) => target.value)).toContain("http://localhost:3000");
   });
 
-  it("does not auto-open high-confidence deliverables or browser previews", () => {
-    const targets = deriveOpenTargets([
-      toolMessage("msg_tool", "write", { filePath: "data/customers.csv" }, { filePath: "data/customers.csv" }),
-      message("msg_1", "assistant", "Created data/customers.csv and see https://example.com for docs."),
-    ]).map((target) => ({ ...target, exists: target.kind === "file" }));
-
-    expect(selectAutoOpenTarget(targets)).toBeNull();
-  });
 });

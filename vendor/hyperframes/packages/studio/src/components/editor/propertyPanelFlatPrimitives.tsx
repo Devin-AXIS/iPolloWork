@@ -21,6 +21,12 @@ export function FlatRow({
   liveCommit,
   suffix,
   dropdown,
+  inputType,
+  placeholder,
+  maxLength,
+  min,
+  max,
+  step,
   large = true,
   onPreview,
   onCommit,
@@ -34,6 +40,12 @@ export function FlatRow({
   suffix?: ReactNode;
   /** Renders a trailing 10px caret-down, for select-backed rows. */
   dropdown?: boolean;
+  inputType?: "text" | "number";
+  placeholder?: string;
+  maxLength?: number;
+  min?: number;
+  max?: number;
+  step?: number;
   /** Figma's 34px inspector control used by the expanded Layer sections. */
   large?: boolean;
   onPreview?: (nextValue: string) => void;
@@ -71,6 +83,13 @@ export function FlatRow({
             disabled={disabled}
             liveCommit={liveCommit}
             align="right"
+            inputType={inputType}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            min={min}
+            max={max}
+            step={step}
+            ariaLabel={tx(label)}
             onPreview={onPreview}
             onCommit={(nextValue) => {
               track("metric", label);
@@ -88,7 +107,7 @@ export function FlatRow({
               track("button", `Reset ${label}`);
               onReset();
             }}
-            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-opacity hover:text-panel-text-1 group-hover:opacity-100"
+            className="flex-shrink-0 text-panel-text-3 opacity-0 transition-[color,opacity,transform] hover:text-panel-text-1 active:scale-[0.96] focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 group-hover:opacity-100"
           >
             <RotateCcw size={11} />
           </button>
@@ -159,10 +178,10 @@ export function FlatSegmentedRow({
                 if (!option.active) track("segmented", label);
                 onChange(option.key);
               }}
-              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-colors disabled:cursor-not-allowed ${
+              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-[color,background-color,box-shadow,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${
                 option.active
-                  ? "bg-[#171816] text-white"
-                  : "bg-panel-input text-panel-text-4 hover:text-panel-text-1"
+                  ? "bg-[#171816] text-white dark:bg-panel-accent/15 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/40"
+                  : "bg-panel-input text-panel-text-4 hover:text-panel-text-1 dark:text-panel-text-2 dark:hover:bg-panel-hover"
               }`}
             >
               {option.node}
@@ -217,14 +236,14 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input`}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50`}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
             {translatedTitle}
           </span>
           {summary && (
-            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4">
+            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4 dark:text-[10px] dark:leading-[14px] dark:text-panel-text-2">
               {tx(summary)}
             </span>
           )}
@@ -236,12 +255,12 @@ export function FlatGroupHeader({
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#20bbc0]`}
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#1FBAC0]`}
     >
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex h-full min-w-0 flex-1 items-center text-left"
+        className="flex h-full min-w-0 flex-1 items-center text-left active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
         aria-label={tx(`Collapse ${title}`)}
       >
         <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
@@ -255,7 +274,7 @@ export function FlatGroupHeader({
         type="button"
         onClick={onToggleOpen}
         title={tx("Collapse")}
-        className="flex h-full items-center pl-2 text-[#858a94]"
+        className="flex h-full items-center pl-2 text-[#858a94] transition-[color,transform] hover:text-panel-text-1 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
       >
         <ChevronDown size={16} className="flex-shrink-0" />
       </button>
@@ -298,6 +317,7 @@ export function FlatSlider({
   step = 1,
   tier,
   displayValue,
+  showValue = true,
   disabled,
   centerTick,
   large = true,
@@ -314,6 +334,8 @@ export function FlatSlider({
   step?: number;
   tier: "default" | "explicitCustom";
   displayValue: string;
+  /** Hide the read-only value surface when the slider is the only intended control. */
+  showValue?: boolean;
   disabled?: boolean;
   centerTick?: boolean;
   /** Figma's labeled two-column slider used by expanded Layer sections. */
@@ -337,6 +359,9 @@ export function FlatSlider({
   // the leading edge and on a trailing timer, so the preview keeps updating
   // while dragging, with an immediate flush on release for the final value.
   const [draft, setDraft] = useState(value);
+  // Synchronous source of truth for the last position the user actually saw.
+  // React state can still be one render behind during a fast capture loss.
+  const draftRef = useRef(value);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastCommitAtRef = useRef(0);
   const pendingRef = useRef<number | null>(null);
@@ -389,6 +414,7 @@ export function FlatSlider({
 
   useEffect(() => {
     if (draggingRef.current) return;
+    draftRef.current = value;
     setDraft(value);
     lastCommittedRef.current = value;
   }, [value]);
@@ -415,6 +441,7 @@ export function FlatSlider({
     return Math.max(min, Math.min(max, stepped));
   };
   const applyDraft = (nextDraft: number) => {
+    draftRef.current = nextDraft;
     setDraft(nextDraft);
     onPreviewRef.current?.(nextDraft);
   };
@@ -461,6 +488,7 @@ export function FlatSlider({
       explicitReleaseRef.current = true;
       target.releasePointerCapture(pointerId);
     }
+    draftRef.current = dragStartValueRef.current;
     setDraft(dragStartValueRef.current);
     if (onPreviewCancelRef.current) onPreviewCancelRef.current();
     else onPreviewRef.current?.(dragStartValueRef.current);
@@ -494,7 +522,7 @@ export function FlatSlider({
         aria-disabled={disabled}
         tabIndex={disabled ? -1 : 0}
         style={{ touchAction: "none" }}
-        className={`relative ${large ? "h-[34px] w-full" : "h-5 flex-1"} ${
+        className={`relative ${large ? `h-[34px] w-full ${showValue ? "" : "col-span-2"}` : "h-5 flex-1"} ${
           disabled ? "cursor-not-allowed" : "cursor-pointer"
         }`}
         onPointerDown={(e) => {
@@ -514,21 +542,24 @@ export function FlatSlider({
           scheduleCommit(stepped);
         }}
         onPointerUp={(e) => {
+          if (disabled) return;
+          if (!draggingRef.current) return;
+          draggingRef.current = false;
+          activePointerIdRef.current = null;
+          // Commit the last position already rendered during pointerdown/move.
+          // Some Chromium/touchpad paths report 0 or an out-of-track clientX
+          // on pointerup; recalculating from that event made the knob jump to
+          // min/max even though the drag itself ended in the middle.
+          const stepped = draftRef.current;
+          commitDraft(stepped);
+          if (stepped !== dragStartValueRef.current) track("slider", label);
+          // Persist the final position before releasing capture. Some Chromium
+          // input paths dispatch lostpointercapture synchronously; releasing
+          // first allowed that event to restore a stale parent value.
           if (e.currentTarget.hasPointerCapture(e.pointerId)) {
             explicitReleaseRef.current = true;
             e.currentTarget.releasePointerCapture(e.pointerId);
           }
-          if (disabled) return;
-          if (!draggingRef.current) return;
-          draggingRef.current = false;
-          // Recompute from the event itself rather than reading the `draft`
-          // closure — if pointerdown+pointerup land in the same React batch
-          // (e.g. a very fast click), the onPointerUp handler can still be
-          // bound to the pre-drag render, making `draft` stale.
-          const stepped = stepFromClientX(e.clientX, e.currentTarget.getBoundingClientRect());
-          applyDraft(stepped);
-          commitDraft(stepped);
-          if (stepped !== dragStartValueRef.current) track("slider", label);
         }}
         onPointerCancel={(e) => {
           // A native pointercancel means the platform aborted the gesture (a
@@ -549,17 +580,13 @@ export function FlatSlider({
             explicitReleaseRef.current = false;
             return;
           }
-          // A genuine EXTERNAL capture loss (another element steals it, or
-          // the browser reclaims it for a scroll/touch gesture) — no other
-          // handler is about to run, so resync immediately and directly
-          // from latestValueRef rather than only clearing draggingRef and
-          // waiting for the [value] effect to notice (that effect depends
-          // on `value` actually changing again to re-run).
+          if (!draggingRef.current) return;
+          // Capture loss without pointercancel is an implicit release, not a
+          // cancellation. Persist the last position rendered under the pointer;
+          // explicit cancel paths still go through cancelDrag.
           draggingRef.current = false;
-          setDraft(latestValueRef.current);
-          if (onPreviewCancelRef.current) onPreviewCancelRef.current();
-          else onPreviewRef.current?.(latestValueRef.current);
-          lastCommittedRef.current = latestValueRef.current;
+          activePointerIdRef.current = null;
+          commitDraft(draftRef.current);
         }}
         onKeyDown={(e) => {
           if (disabled) return;
@@ -615,25 +642,27 @@ export function FlatSlider({
           style={{ left: `${clampedPct}%` }}
         />
       </div>
-      <span
-        data-flat-slider-value="true"
-        className={
-          large
-            ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
-            : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
-                tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
-              }`
-        }
-      >
-        {large && displayValue.endsWith("%") ? (
-          <>
-            <span>{displayValue.slice(0, -1)}</span>
-            <span className="text-[10px] text-[#858a94]">%</span>
-          </>
-        ) : (
-          displayValue
-        )}
-      </span>
+      {showValue && (
+        <span
+          data-flat-slider-value="true"
+          className={
+            large
+              ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
+              : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
+                  tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
+                }`
+          }
+        >
+          {large && displayValue.endsWith("%") ? (
+            <>
+              <span>{displayValue.slice(0, -1)}</span>
+              <span className="text-[10px] text-[#858a94]">%</span>
+            </>
+          ) : (
+            displayValue
+          )}
+        </span>
+      )}
       {!large && (centerTick || onReset) && (
         <span data-flat-slider-reset-slot="true" className="w-3.5 flex-shrink-0">
           {tier === "explicitCustom" && onReset && (

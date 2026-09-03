@@ -12,7 +12,11 @@ import {
 } from "../../icons/SystemIcons";
 import { isTextEditableSelection, type DomEditSelection } from "./domEditing";
 import type { ImportedFontAsset } from "./fontAssets";
-import { normalizeTextMetricValue } from "./propertyPanelHelpers";
+import {
+  formatNumericValue,
+  normalizeTextMetricValue,
+  parseNumericToken,
+} from "./propertyPanelHelpers";
 import { FontFamilyField } from "./propertyPanelFont";
 import { PromotableControl } from "./PromotableControl";
 import { FlatRow, FlatSelectRow } from "./propertyPanelFlatPrimitives";
@@ -48,6 +52,35 @@ const FONT_SIZE_OPTIONS = [
   "96",
 ].map((size) => ({ value: `${size}px`, label: size }));
 
+export function resolveNumericTextMetricValue(
+  property: "letter-spacing" | "line-height",
+  value: string,
+  fontSize: string,
+): string {
+  const fontToken = parseNumericToken(fontSize);
+  const fontSizePx =
+    fontToken?.unit.toLowerCase() === "rem"
+      ? fontToken.value * 16
+      : fontToken?.value && fontToken.value > 0
+        ? fontToken.value
+        : 16;
+  const metric = parseNumericToken(value);
+  if (!metric) {
+    return property === "letter-spacing" ? "0" : formatNumericValue(fontSizePx * 1.2);
+  }
+
+  const unit = metric.unit.toLowerCase();
+  if (unit === "em") return formatNumericValue(metric.value * fontSizePx);
+  if (unit === "rem") return formatNumericValue(metric.value * 16);
+  if (property === "line-height" && unit === "%") {
+    return formatNumericValue((metric.value / 100) * fontSizePx);
+  }
+  if (property === "line-height" && !unit && metric.value <= 4) {
+    return formatNumericValue(metric.value * fontSizePx);
+  }
+  return formatNumericValue(metric.value);
+}
+
 export function toggleDecoration(
   current: string,
   decoration: "underline" | "line-through",
@@ -80,7 +113,7 @@ export function TextIconButton({
       title={disabled ? `${tx(label)}（此图层暂不可用）` : tx(label)}
       disabled={disabled}
       onClick={onClick}
-      className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/50 disabled:cursor-not-allowed disabled:opacity-45"
+      className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-not-allowed disabled:opacity-45"
     >
       {children}
     </button>
@@ -106,6 +139,17 @@ function FlatTextFieldEditor({
 }) {
   const track = useTrackDesignInput();
   const weight = getTextStyleValue(field, styles, "font-weight", "400");
+  const fontSize = field.computedStyles["font-size"] || styles["font-size"] || "16px";
+  const lineHeight = resolveNumericTextMetricValue(
+    "line-height",
+    getTextStyleValue(field, styles, "line-height", "normal"),
+    fontSize,
+  );
+  const letterSpacing = resolveNumericTextMetricValue(
+    "letter-spacing",
+    getTextStyleValue(field, styles, "letter-spacing", "normal"),
+    fontSize,
+  );
   const weightOptions = detectAvailableWeights(
     field.computedStyles["font-family"] || styles["font-family"] || "",
   );
@@ -163,7 +207,7 @@ function FlatTextFieldEditor({
         />
         <FlatSelectRow
           label="Size"
-          value={field.computedStyles["font-size"] || styles["font-size"] || "16px"}
+          value={fontSize}
           valueOnly
           options={FONT_SIZE_OPTIONS}
           tier={resolveValueTier(field.inlineStyles["font-size"], styles["font-size"] || "16px")}
@@ -173,8 +217,11 @@ function FlatTextFieldEditor({
       <div className="hf-flat-responsive-grid grid grid-cols-2 gap-3">
         <FlatRow
           label="Line height"
-          value={getTextStyleValue(field, styles, "line-height", "normal")}
+          value={lineHeight}
           tier={resolveValueTier(field.inlineStyles["line-height"], "normal")}
+          liveCommit
+          inputType="number"
+          suffix={<span className="text-[10px] text-[#858a94]">px</span>}
           onCommit={(next) =>
             onSetTextFieldStyle(
               field.key,
@@ -186,8 +233,11 @@ function FlatTextFieldEditor({
         />
         <FlatRow
           label="Letter spacing"
-          value={getTextStyleValue(field, styles, "letter-spacing", "0px")}
+          value={letterSpacing}
           tier={resolveValueTier(field.inlineStyles["letter-spacing"], "0px")}
+          liveCommit
+          inputType="number"
+          suffix={<span className="text-[10px] text-[#858a94]">px</span>}
           onCommit={(next) =>
             onSetTextFieldStyle(
               field.key,

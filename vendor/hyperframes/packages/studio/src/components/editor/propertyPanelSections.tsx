@@ -77,8 +77,8 @@ export function TextAreaField({
 }) {
   const track = useTrackDesignInput();
   const [draft, setDraft] = useState(value);
+  const draftRef = useRef(value);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const interactionChangedRef = useRef(false);
   const focusedRef = useRef(false);
   const valueRef = useRef(value);
@@ -86,51 +86,33 @@ export function TextAreaField({
 
   useEffect(() => {
     if (focusedRef.current) return;
+    draftRef.current = value;
     setDraft(value);
   }, [value]);
-  useEffect(
-    () => () => {
-      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    },
-    [],
-  );
   useEffect(() => {
     if (!autoFocus) return;
     textareaRef.current?.focus();
   }, [autoFocus]);
 
   const commitDraft = (d: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
     if (interactionChangedRef.current) {
       interactionChangedRef.current = false;
       track("text", label);
     }
     if (d !== valueRef.current) onCommit(d);
   };
-  const scheduleCommit = (d: string) => {
-    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
-    commitTimerRef.current = setTimeout(() => {
-      if (d !== valueRef.current) {
-        if (interactionChangedRef.current) {
-          interactionChangedRef.current = false;
-          track("text", label);
-        }
-        onCommit(d);
-      }
-    }, 120);
-  };
 
   const handleFocus = () => {
     focusedRef.current = true;
   };
   const handleChange = (e: ChangeEvent<HTMLTextAreaElement>) => {
+    draftRef.current = e.target.value;
     setDraft(e.target.value);
     interactionChangedRef.current = true;
-    scheduleCommit(e.target.value);
   };
   const handleBlur = () => {
     focusedRef.current = false;
-    commitDraft(draft);
+    commitDraft(draftRef.current);
   };
 
   if (flat) {
@@ -144,6 +126,12 @@ export function TextAreaField({
           aria-label={label}
           onFocus={handleFocus}
           onChange={handleChange}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
+            event.preventDefault();
+            event.stopPropagation();
+            event.currentTarget.blur();
+          }}
           onBlur={handleBlur}
           className="w-full resize-none bg-transparent font-sans text-[14px] font-normal leading-[20px] text-[#24262b] outline-none disabled:cursor-not-allowed disabled:text-panel-text-4 dark:text-panel-text-1"
         />

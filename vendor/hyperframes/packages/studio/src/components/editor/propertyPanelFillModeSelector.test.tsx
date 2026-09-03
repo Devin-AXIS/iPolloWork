@@ -2,6 +2,14 @@
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  commitElementBackgroundImage,
+  ImageFillField,
+  isThemeBackgroundSurface,
+  resolveEditableBackgroundImage,
+  syncLegacyThemeBackgroundPreview,
+  toRelativeProjectAssetPath,
+} from "./propertyPanelFill";
 import { FillModeSelector } from "./propertyPanelFlatStyleSections";
 
 describe("FillModeSelector", () => {
@@ -53,5 +61,90 @@ describe("FillModeSelector", () => {
 
     buttons[1]?.click();
     expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("keeps the image-picker action legible over light and dark thumbnails", () => {
+    flushSync(() =>
+      root.render(
+        <ImageFillField
+          flat
+          projectId="project-1"
+          sourceFile="index.html"
+          value='url("assets/cover.png")'
+          assets={["assets/cover.png"]}
+          onCommit={vi.fn()}
+          onImportAssets={vi.fn()}
+        />,
+      ),
+    );
+
+    const action = [...container.querySelectorAll("button")].find((button) =>
+      button.textContent?.includes("Choose Media"),
+    );
+    if (!(action instanceof HTMLButtonElement)) throw new Error("Image picker action missing");
+    expect(action.className).toContain("border-black/80");
+    expect(action.className).toContain("bg-white");
+    expect(action.className).toContain("text-black");
+  });
+
+  it("writes an asset path relative to a nested composition", () => {
+    expect(
+      toRelativeProjectAssetPath("compositions/components/route-map.html", "assets/fill.png"),
+    ).toBe("../../assets/fill.png");
+    expect(toRelativeProjectAssetPath("index.html", "assets/fill.png")).toBe("assets/fill.png");
+  });
+
+  it("routes a full-frame composition fill through the theme image token", async () => {
+    const element = document.createElement("div");
+    element.dataset.compositionId = "ending";
+    element.dataset.compositionSrc = "compositions/ending.html";
+    const onSetStyle = vi.fn(async () => undefined);
+
+    expect(isThemeBackgroundSurface(element)).toBe(true);
+    await commitElementBackgroundImage(element, 'url("assets/cover.png")', onSetStyle);
+
+    expect(element.style.getPropertyValue("--ipw-bg-image")).toBe('url("assets/cover.png")');
+    expect(onSetStyle.mock.calls).toEqual([
+      ["--ipw-bg-image", 'url("assets/cover.png")'],
+      ["background-image", 'url("assets/cover.png")'],
+    ]);
+  });
+
+  it("keeps ordinary element fills on the direct background property", async () => {
+    const element = document.createElement("div");
+    const onSetStyle = vi.fn(async () => undefined);
+
+    expect(isThemeBackgroundSurface(element)).toBe(false);
+    await commitElementBackgroundImage(element, "linear-gradient(red, blue)", onSetStyle);
+
+    expect(element.style.getPropertyValue("--ipw-bg-image")).toBe("");
+    expect(onSetStyle).toHaveBeenCalledOnce();
+    expect(onSetStyle).toHaveBeenCalledWith("background-image", "linear-gradient(red, blue)");
+  });
+
+  it("prefers an authored image over the theme's computed gradient layers", () => {
+    const element = document.createElement("div");
+    element.style.backgroundImage = 'url("cover.png")';
+
+    expect(
+      resolveEditableBackgroundImage(element, {
+        "background-image": "linear-gradient(transparent, transparent), none, none",
+        "--ipw-bg-image": "none",
+      }),
+    ).toBe('url("cover.png")');
+
+    element.style.setProperty("--ipw-bg-image", 'url("theme-cover.png")');
+    expect(resolveEditableBackgroundImage(element, {})).toBe('url("theme-cover.png")');
+  });
+
+  it("shows legacy full-frame image fills without writing the project", () => {
+    const element = document.createElement("div");
+    element.dataset.compositionId = "ending";
+    element.dataset.compositionSrc = "compositions/ending.html";
+    element.style.backgroundImage = 'url("legacy-cover.png")';
+
+    expect(syncLegacyThemeBackgroundPreview(element)).toBe(true);
+    expect(element.style.getPropertyValue("--ipw-bg-image")).toBe('url("legacy-cover.png")');
+    expect(syncLegacyThemeBackgroundPreview(element)).toBe(false);
   });
 });

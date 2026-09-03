@@ -48,6 +48,7 @@ import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
  */
 export interface TimelineLaneBaseProps {
   pps: number;
+  gutterWidth: number;
   trackContentWidth: number;
   theme: TimelineTheme;
   displayTrackOrder: number[];
@@ -70,7 +71,6 @@ export interface TimelineLaneBaseProps {
   onDrillDown?: (element: TimelineElement) => void;
   onSeek?: (time: number) => void;
   onSelectElement?: (element: TimelineElement | null) => void;
-  onRenameElement?: (element: TimelineElement, label: string) => Promise<void> | void;
   onContextMenuElement?: (element: TimelineElement, anchor: { x: number; y: number }) => void;
   setHoveredClip: (key: string | null) => void;
   setShowPopover: (v: boolean) => void;
@@ -123,6 +123,7 @@ interface TimelineLanesProps extends TimelineLaneBaseProps {
 
 export const TimelineLanes = memo(function TimelineLanes({
   pps,
+  gutterWidth,
   trackContentWidth,
   theme,
   displayTrackOrder,
@@ -144,7 +145,6 @@ export const TimelineLanes = memo(function TimelineLanes({
   onDrillDown,
   onSeek,
   onSelectElement,
-  onRenameElement,
   onContextMenuElement,
   setHoveredClip,
   setShowPopover,
@@ -283,6 +283,7 @@ export const TimelineLanes = memo(function TimelineLanes({
                 expandable={expandable}
                 theme={theme}
                 visualStyle={ts}
+                gutterWidth={gutterWidth}
                 onToggleHidden={(hidden) => {
                   void onToggleTrackHidden?.(trackNum, hidden);
                 }}
@@ -294,11 +295,11 @@ export const TimelineLanes = memo(function TimelineLanes({
                   usePlayerStore
                     .getState()
                     .setSelection(elementKey ? [elementKey] : [], elementKey);
-                  const nextTime = resolveTimelineSelectionSeekTime(element?.start ?? 0, element);
+                  const selectionTime = usePlayerStore.getState().currentTime;
+                  const nextTime = resolveTimelineSelectionSeekTime(selectionTime, element);
                   if (nextTime != null) onSeek?.(nextTime);
                   onSelectElement?.(element);
                 }}
-                onRename={onRenameElement}
                 onToggleExpanded={(element) => {
                   usePlayerStore
                     .getState()
@@ -615,8 +616,9 @@ export const TimelineLanes = memo(function TimelineLanes({
                               // of treating the follow-up click as a request to deselect it.
                               // Empty-lane clicks remain the explicit way to clear selection.
                               usePlayerStore.getState().setSelection([elementKey], elementKey);
+                              const selectionTime = usePlayerStore.getState().currentTime;
                               const nextTime = resolveTimelineSelectionSeekTime(
-                                previewElement.start,
+                                selectionTime,
                                 previewElement,
                               );
                               if (nextTime != null) onSeek?.(nextTime);

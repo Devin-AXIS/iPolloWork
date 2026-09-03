@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
@@ -24,10 +24,8 @@ const config = {
   workspaces: [],
 } as unknown as ServerConfig;
 
-function env(values: Record<string, string>): EnvService {
-  return {
-    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
-  } as unknown as EnvService;
+function env(values: Record<string, string>): AuthorizationAccess {
+  return { read: async () => values };
 }
 
 afterEach(async () => {
@@ -216,6 +214,55 @@ describe("Media Center extension", () => {
     expect(result.issues).toContainEqual(expect.objectContaining({ code: "non_seek_safe_caption_animation" }));
   });
 
+  test("rejects default captions that stretch from the top or paint a solid panel", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div id="caption-one" data-ipw-caption="true" class="clip caption" data-start="0" data-duration="4"><div class="caption-inner">Caption</div></div>
+      </main>
+      <style>
+        .clip { position: absolute; inset: 0; }
+        .caption { left: 0; right: 0; bottom: 28px; display: flex; justify-content: center; }
+        .caption-inner { background: #111827; color: white; }
+      </style>
+    `, { requirements: { captions: true } });
+
+    expect(result.valid).toBe(false);
+    expect(result.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining([
+      "default_caption_layout_invalid",
+      "default_caption_background_invalid",
+    ]));
+  });
+
+  test("accepts default captions whose class rules override a global clip inset", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <style>
+        .clip { position: absolute; inset: 0; overflow: hidden; }
+        .caption { position: absolute; inset: auto 5% 5%; height: auto; display: flex; align-items: flex-end; justify-content: center; overflow: visible; background: transparent; }
+        .caption-inner { max-width: 90%; background: transparent; color: white; text-align: center; text-shadow: 0 2px 8px black; }
+      </style>
+      <main data-composition-id="main" data-duration="5">
+        <section id="scene" class="scene clip" data-start="0" data-duration="5" data-track-index="0"></section>
+        <div class="caption clip" data-ipw-caption="true" data-start="0" data-duration="5" data-track-index="1">
+          <span class="caption-inner">Caption</span>
+        </div>
+      </main>
+    `, { requirements: { captions: true } });
+
+    expect(result.valid).toBe(true);
+    expect(result.issues).toEqual([]);
+  });
+
+  test("allows explicitly requested custom caption treatments", () => {
+    const result = validateVoiceoverTimelineHtml(`
+      <main data-composition-id="main" data-duration="4">
+        <section id="scene" class="scene clip" data-start="0" data-duration="4"></section>
+        <div id="caption-one" data-ipw-caption="true" class="clip caption-card" data-start="0" data-duration="4">Caption</div>
+      </main>
+    `, { requirements: { captions: true, captionStyle: "custom" } });
+    expect(result.valid).toBe(true);
+  });
+
   test("rejects legacy frame timelines that only describe a longer narrated video in script", () => {
     const result = validateVoiceoverTimelineHtml(`<!doctype html><body>
       <div id="root" data-composition-id="main" data-duration="8">
@@ -373,6 +420,7 @@ describe("Media Center extension", () => {
         captions: true,
         bgm: true,
         animationReferences: ["caption-clip-wipe"],
+        targetDurationSeconds: 120,
       },
     });
 
@@ -382,13 +430,14 @@ describe("Media Center extension", () => {
       "required_captions_missing",
       "required_bgm_missing",
       "required_animation_missing",
+      "requested_duration_mismatch",
     ]));
   });
 
   test("accepts requested media only when the timeline contains every deliverable", () => {
     const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5.25">
       <section id="intro" class="scene clip" data-start="0" data-duration="5.25"><span data-ipw-narration-source="true">Intro</span></section>
-      <div class="clip" data-ipw-caption="true" data-ipw-animation-reference="caption-clip-wipe" data-start="0" data-duration="5">Intro</div>
+      <div class="clip" data-ipw-caption="true" data-ipw-caption-style="transparent-bottom" data-ipw-animation-reference="caption-clip-wipe" data-start="0" data-duration="5" style="position:absolute;inset:auto 5% 5%;height:auto;display:flex;align-items:flex-end;justify-content:center;overflow:visible;background:transparent;pointer-events:none"><span data-ipw-caption-text="true" style="max-width:90%;background:transparent;color:white;text-align:center;text-shadow:0 2px 8px black">Intro</span></div>
       <audio src="./assets/voiceover-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
       <audio src="./assets/bgm.mp3" data-ipw-bgm="true" data-start="0" data-duration="5.25" data-track-index="11"></audio>
     </main>`, {
@@ -396,8 +445,10 @@ describe("Media Center extension", () => {
       requirements: {
         voiceover: true,
         captions: true,
+        captionStyle: "transparent-bottom",
         bgm: true,
         animationReferences: ["caption-clip-wipe"],
+        targetDurationSeconds: 5,
       },
     });
 
@@ -538,8 +589,8 @@ describe("Media Center extension", () => {
       "speech_synthesize_workspace_batch",
       {
         scenes: [
-          { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-intro.mp3" },
-          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "video/session/assets/voiceover-batch-details.mp3" },
+          { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "assets/voiceover-batch-intro.mp3" },
+          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "assets/voiceover-batch-details.mp3" },
         ],
         compositionPath: "video/session/index.html",
         voice: "longyingmu_v3",
@@ -557,6 +608,7 @@ describe("Media Center extension", () => {
           items: [
             {
               sceneId: "intro",
+              sourcePath: "video/session/assets/voiceover-batch-intro.mp3",
               originalSceneStart: 0,
               sceneStart: 0,
               cumulativeShiftAfterSeconds: expect.any(Number),
@@ -564,6 +616,7 @@ describe("Media Center extension", () => {
             },
             {
               sceneId: "details",
+              sourcePath: "video/session/assets/voiceover-batch-details.mp3",
               originalSceneStart: 1,
               sceneStart: expect.any(Number),
               cumulativeShiftAfterSeconds: expect.any(Number),
@@ -575,6 +628,29 @@ describe("Media Center extension", () => {
     });
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
+  test("rejects voiceover output outside the current composition assets directory", async () => {
+    const workspace = await workspaceConfig();
+    let requested = false;
+    globalThis.fetch = (() => {
+      requested = true;
+      throw new Error("provider must not be called");
+    }) as unknown as typeof fetch;
+
+    await expect(callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      "speech_synthesize_workspace_batch",
+      {
+        scenes: [
+          { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "assets-other/voiceover.mp3" },
+        ],
+        compositionPath: "video/session/index.html",
+      },
+      { directory: workspace.root },
+    )).rejects.toMatchObject({ code: "voiceover_output_outside_composition" });
+    expect(requested).toBe(false);
   });
 
   test("reuses identical synthesized narration without changing workspace output paths", async () => {

@@ -10,14 +10,14 @@
  */
 import type { GsapAnimation, PropertyGroupName } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
-import { usePlayerStore } from "../player/store/playerStore";
+import { shouldCommitAnimationKeyframe, usePlayerStore } from "../player/store/playerStore";
 
 import { readAllAnimatedProperties, readGsapProperty } from "./gsapRuntimeReaders";
 import { commitGsapPositionFromDrag } from "./gsapDragPositionCommit";
 import {
+  commitAllPositionPathsOffset,
   commitStaticGsapPosition,
   commitStaticGsapRotation,
-  commitWholePathOffset,
   computeCurrentPercentage,
   findExistingPositionWrite,
   findRotationSetAnimation,
@@ -118,6 +118,91 @@ export async function resolveGroupTween(
 
 export type { GsapDragCommitCallbacks };
 
+function selectorSharesSelectedElement(
+  selection: DomEditSelection,
+  targetSelector: string,
+  selectedSelector: string,
+): boolean {
+  if (targetSelector === selectedSelector) return false;
+  try {
+    const matches = selection.element.ownerDocument.querySelectorAll(targetSelector);
+    return matches.length > 1 && Array.from(matches).includes(selection.element);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Give one selected element private copies of any animations authored against
+ * a shared selector. The sibling target keeps the original animations, so the
+ * split is visually neutral until the selected copies are edited.
+ */
+export async function isolateSharedAnimationTargets(
+  selection: DomEditSelection,
+  animations: GsapAnimation[],
+  commitMutation: GsapDragCommitCallbacks["commitMutation"],
+  fetchFallbackAnimations?: () => Promise<GsapAnimation[]>,
+): Promise<{
+  animations: GsapAnimation[];
+  commitMutation: GsapDragCommitCallbacks["commitMutation"];
+  isolated: boolean;
+}> {
+  const selectedSelector = selectorFromSelection(selection);
+  if (!selectedSelector) return { animations, commitMutation, isolated: false };
+  const initialAnimations =
+    animations.length === 0 && fetchFallbackAnimations
+      ? await fetchFallbackAnimations()
+      : animations;
+  const sharedSelectors = [
+    ...new Set(
+      initialAnimations
+        .map((animation) => animation.targetSelector)
+        .filter((target) => selectorSharesSelectedElement(selection, target, selectedSelector)),
+    ),
+  ];
+  if (sharedSelectors.length === 0) {
+    return { animations: initialAnimations, commitMutation, isolated: false };
+  }
+
+  for (const targetSelector of sharedSelectors) {
+    await commitMutation(
+      selection,
+      {
+        type: "isolate-selector-target",
+        targetSelector,
+        selectedSelector,
+        remainderSelector: `:is(${targetSelector}):not(${selectedSelector})`,
+      },
+      { label: "Isolate selected element animation", skipReload: true },
+    );
+  }
+  const isolatedAnimations = fetchFallbackAnimations ? await fetchFallbackAnimations() : [];
+  // The source now has a different target topology, but the live preview still
+  // owns the old shared-selector tween because isolation deliberately skipped
+  // its intermediate reload. A value-only instant patch can update the selected
+  // element for one frame while leaving that old tween alive; when the gesture
+  // resumes playback it writes the pre-drag value back (the first-drop snap).
+  // Force the rest of this operation through the structural soft-reload path so
+  // move/resize/rotate all rebuild the runtime once from the final source.
+  const structurallySyncedCommit: GsapDragCommitCallbacks["commitMutation"] = (
+    nextSelection,
+    mutation,
+    options,
+  ) => {
+    if (options.skipReload) return commitMutation(nextSelection, mutation, options);
+    const { instantPatch: _instantPatch, ...structuralOptions } = options;
+    return commitMutation(nextSelection, mutation, {
+      ...structuralOptions,
+      softReload: true,
+    });
+  };
+  return {
+    animations: isolatedAnimations,
+    commitMutation: structurallySyncedCommit,
+    isolated: true,
+  };
+}
+
 /**
  * Attempt to handle a drag commit via the GSAP script mutation path.
  *
@@ -140,41 +225,21 @@ export async function tryGsapDragIntercept(
     return false;
   }
 
-  // Self-heal: enforce a single position write BEFORE committing. A corrupted
-  // file can carry 2+ conflicting position writes for one selector (e.g. a
-  // degenerate `tl.to(...,{duration:0,x,y})` AND a `gsap.set(...,{x,y})`) — the
-  // later one silently overrides the earlier, so the element "can't move". Keep
-  // the live keyframed/real tween if present (else any), strip the rest, so the
-  // commit below updates ONE write instead of fighting duplicates.
-  let workingAnimations = animations;
-  const isPosWrite = (a: GsapAnimation) =>
-    a.targetSelector === selector && a.propertyGroup === "position";
-  if (animations.filter(isPosWrite).length > 1 && fetchFallbackAnimations) {
-    const fresh = await fetchFallbackAnimations();
-    const dupes = fresh.filter(isPosWrite);
-    if (dupes.length > 1) {
-      const keeper =
-        dupes.find((a) => a.keyframes) ?? dupes.find((a) => (a.duration ?? 0) > 0) ?? dupes[0]!;
-      await commitMutation(
-        selection,
-        {
-          type: "consolidate-position-writes",
-          targetSelector: selector,
-          keepAnimationId: keeper.id,
-        },
-        { label: "Consolidate position writes", skipReload: true },
-      );
-      workingAnimations = await fetchFallbackAnimations();
-    } else {
-      workingAnimations = fresh;
-    }
-  }
+  const isolation = await isolateSharedAnimationTargets(
+    selection,
+    animations,
+    commitMutation,
+    fetchFallbackAnimations,
+  );
+  const workingAnimations = isolation.animations;
+  const persistMutation = isolation.commitMutation;
 
+  // degenerate `tl.to(...,{duration:0,x,y})` AND a `gsap.set(...,{x,y})`) — the
   const resolved = await resolveGroupTween(
     "position",
     workingAnimations,
     selection,
-    commitMutation,
+    persistMutation,
     fetchFallbackAnimations,
   );
 
@@ -215,15 +280,20 @@ export async function tryGsapDragIntercept(
         ? posAnim
         : findExistingPositionWrite(resolvedAnimations, selector);
     await commitStaticGsapPosition(selection, offset, gsapPos, selector, existingSet, {
-      commitMutation,
+      commitMutation: persistMutation,
       fetchAnimations: fetchFallbackAnimations,
     });
     return true;
   }
 
-  if (!posAnim) {
-    return false;
+  const cbs = { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations };
+  const { autoKeyframeEnabled, activeKeyframePct } = usePlayerStore.getState();
+  if (options?.altKey || !shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
+    await commitAllPositionPathsOffset(selection, offset, gsapPos, selector, cbs);
+    return true;
   }
+
+  if (!posAnim) return false;
 
   // Verify the anim ID is still valid in the current file. The React-state
   // `animations` list can lag behind the file after a prior mutation changed
@@ -240,17 +310,11 @@ export async function tryGsapDragIntercept(
     }
   }
 
-  const cbs = { commitMutation, fetchAnimations: fetchFallbackAnimations };
   // Alt-drag already means "shift the whole path" — the global auto-keyframe
   // toggle (#1808) just makes that the default while it's off, so a manual
   // edit on an already-animated element nudges the animation instead of
   // inserting/updating a keyframe at the playhead.
-  const autoKeyframeEnabled = usePlayerStore.getState().autoKeyframeEnabled;
-  if (options?.altKey || !autoKeyframeEnabled) {
-    await commitWholePathOffset(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
-  } else {
-    await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
-  }
+  await commitGsapPositionFromDrag(selection, posAnim, offset, gsapPos, iframe, selector, cbs);
   return true;
 }
 
@@ -271,20 +335,29 @@ export async function tryGsapRotationIntercept(
   const selector = selectorFromSelection(selection);
   if (!selector) return false;
 
-  // Resolve the rotation-group tween, splitting legacy mixed tweens if needed.
-  const resolved = await resolveGroupTween(
-    "rotation",
-    animations,
+  const isolation = await isolateSharedAnimationTargets(
     selection,
+    animations,
     commitMutation,
     fetchFallbackAnimations,
   );
-  const resolvedAnimations = resolved?.animations ?? animations;
+  const workingAnimations = isolation.animations;
+  const persistMutation = isolation.commitMutation;
+
+  // Resolve the rotation-group tween, splitting legacy mixed tweens if needed.
+  const resolved = await resolveGroupTween(
+    "rotation",
+    workingAnimations,
+    selection,
+    persistMutation,
+    fetchFallbackAnimations,
+  );
+  const resolvedAnimations = resolved?.animations ?? workingAnimations;
 
   // Fallback: legacy heuristic for hand-written scripts
   let anim = resolved?.anim ?? null;
   if (!anim) {
-    anim = animations.find((a) => "rotation" in a.properties || a.keyframes) ?? null;
+    anim = workingAnimations.find((a) => "rotation" in a.properties || a.keyframes) ?? null;
     if (!anim && fetchFallbackAnimations) {
       const fresh = await fetchFallbackAnimations();
       anim = fresh.find((a) => "rotation" in a.properties || a.keyframes) ?? null;
@@ -303,25 +376,27 @@ export async function tryGsapRotationIntercept(
   if (!anim || isInstantHold(anim)) {
     const existingSet = anim ?? findRotationSetAnimation(resolvedAnimations, selector);
     await commitStaticGsapRotation(selection, newRotation, selector, existingSet, {
-      commitMutation,
+      commitMutation: persistMutation,
       fetchAnimations: fetchFallbackAnimations,
     });
     return true;
   }
 
-  const pct = computeCurrentPercentage(selection, anim);
+  const { autoKeyframeEnabled, activeKeyframePct, setActiveKeyframePct } =
+    usePlayerStore.getState();
+  const pct = activeKeyframePct ?? computeCurrentPercentage(selection, anim);
 
   // With auto-keyframe off (#1808), a rotation tween already exists for this
   // element (checked above) so nudge it as a whole rather than adding a
   // keyframe at the playhead.
-  if (!usePlayerStore.getState().autoKeyframeEnabled) {
+  if (!shouldCommitAnimationKeyframe(autoKeyframeEnabled, activeKeyframePct)) {
     await commitWholePropertyOffset(
       selection,
       anim,
       { rotation: newRotation },
       pct,
       iframe,
-      { commitMutation, fetchAnimations: fetchFallbackAnimations },
+      { commitMutation: persistMutation, fetchAnimations: fetchFallbackAnimations },
       "Rotate animation",
     );
     return true;
@@ -329,13 +404,13 @@ export async function tryGsapRotationIntercept(
 
   // fallow-ignore-next-line code-duplication
   if (anim.hasUnresolvedKeyframes || anim.hasUnresolvedSelector) {
-    const newId = await materializeIfDynamic(anim, iframe, commitMutation, selection);
+    const newId = await materializeIfDynamic(anim, iframe, persistMutation, selection);
     if (newId) anim = { ...anim, id: newId };
   } else if (!anim.keyframes) {
     const resolvedFromValues = selector
       ? readAllAnimatedProperties(iframe, selector, anim, "rotation")
       : undefined;
-    await commitMutation(
+    await persistMutation(
       selection,
       { type: "convert-to-keyframes", animationId: anim.id, resolvedFromValues },
       { label: "Convert to keyframes for rotation", skipReload: true },
@@ -351,7 +426,7 @@ export async function tryGsapRotationIntercept(
 
   const properties = { ...runtimeProps, rotation: newRotation };
 
-  await commitMutation(
+  await persistMutation(
     selection,
     {
       type: "add-keyframe",
@@ -362,6 +437,12 @@ export async function tryGsapRotationIntercept(
     },
     { label: `Rotate (keyframe ${pct}%)`, softReload: true },
   );
+  if (
+    activeKeyframePct != null &&
+    usePlayerStore.getState().activeKeyframePct === activeKeyframePct
+  ) {
+    setActiveKeyframePct(null);
+  }
   return true;
 }
 

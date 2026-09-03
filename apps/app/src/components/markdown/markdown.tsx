@@ -19,7 +19,7 @@ import { bundledLanguages, codeToHtml } from "shiki";
 
 import { cn } from "@/lib/utils";
 import { useOpenTargets } from "@/lib/target-provider";
-import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
+import { localFilePathFromHref, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 
 import { applyTextHighlights } from "./text-highlights";
 import { LinkActionMenu } from "./link-action-menu";
@@ -74,33 +74,6 @@ function safeImageHref(href: string) {
   return safeHref(trimmed);
 }
 
-function localPathFromHref(href: string) {
-  const trimmed = href.trim();
-
-  if (!trimmed || trimmed.startsWith("#") || /^(?:https?|mailto):/i.test(trimmed)) {
-    return "";
-  }
-
-  if (/^file:/i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      const host = decodeURIComponent(parsed.hostname);
-      const pathname = decodeURIComponent(parsed.pathname);
-      const localPath = /^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname;
-
-      if (host && host !== "localhost") {
-        return `//${host}${localPath.startsWith("/") ? localPath : `/${localPath}`}`;
-      }
-
-      return localPath;
-    } catch {
-      return "";
-    }
-  }
-
-  return trimmed.split(/[?#]/)[0] ?? trimmed;
-}
-
 function normalizeFilePathForMatch(path: string) {
   return path
     .trim()
@@ -120,7 +93,7 @@ function filePathMatchesTarget(path: string, targetValue: string) {
 }
 
 function openTargetForHref(href: string, openTargets: OpenTarget[]) {
-  const path = localPathFromHref(href);
+  const path = localFilePathFromHref(href);
 
   if (!path) {
     return null;
@@ -285,13 +258,13 @@ const baseMarkedOptions = {
       const safe = escapeAttribute(safeHref(href));
       const originalHref = escapeAttribute(href);
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
-      const isFilePath = !/^(https?|wss?|ftp|mailto|tel|file):/i.test(href);
+      const isFilePath = Boolean(localFilePathFromHref(href));
 
       if (isFilePath) {
         const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
         const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m6 9 6 6 6-6"/></svg>`;
 
-        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="inline-flex items-center gap-1 px-1.5 py-0.5 no-underline transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</a><button type="button" data-ipollowork-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
+        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><button type="button" data-ipollowork-link-href="${originalHref}"${titleAttr} class="inline-flex items-center gap-1 px-1.5 py-0.5 text-left transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</button><button type="button" data-ipollowork-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
       }
 
       return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
@@ -377,6 +350,56 @@ type MarkdownBlockInnerProps = {
   "ref" | "className" | "children" | "dangerouslySetInnerHTML"
 >;
 
+const STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50;
+
+function useStreamingMarkdownText(text: string, streaming: boolean | undefined) {
+  const [renderedText, setRenderedText] = useState(text);
+  const latestTextRef = useRef(text);
+  const lastRenderAtRef = useRef(0);
+  const renderTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  latestTextRef.current = text;
+
+  useEffect(() => {
+    if (!streaming) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      setRenderedText(text);
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastRenderAtRef.current;
+    if (elapsed >= STREAMING_MARKDOWN_RENDER_INTERVAL_MS) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      lastRenderAtRef.current = now;
+      setRenderedText(text);
+      return;
+    }
+
+    if (renderTimerRef.current !== undefined) return;
+
+    renderTimerRef.current = setTimeout(() => {
+      renderTimerRef.current = undefined;
+      lastRenderAtRef.current = Date.now();
+      setRenderedText(latestTextRef.current);
+    }, STREAMING_MARKDOWN_RENDER_INTERVAL_MS - elapsed);
+  }, [streaming, text]);
+
+  useEffect(() => () => {
+    if (renderTimerRef.current !== undefined) {
+      clearTimeout(renderTimerRef.current);
+    }
+  }, []);
+
+  return streaming ? renderedText : text;
+}
+
 function MarkdownBlockInner({
   className,
   text,
@@ -387,26 +410,27 @@ function MarkdownBlockInner({
   const rootRef = useRef<HTMLDivElement>(null);
   const { openTargets, onOpenTarget } = useOpenTargets();
   const [linkMenu, setLinkMenu] = useState<{ target: OpenTarget; rect: DOMRect } | null>(null);
+  const renderedText = useStreamingMarkdownText(text, streaming);
   const syncHtml = useMemo(() => {
-    if (!text.trim()) {
+    if (!renderedText.trim()) {
       return "";
     }
-    return sanitizeMarkdownHtml(markdownParser.parse(text, { async: false }));
-  }, [text]);
+    return sanitizeMarkdownHtml(markdownParser.parse(renderedText, { async: false }));
+  }, [renderedText]);
   const [highlightedHtml, setHighlightedHtml] = useState<{ text: string; html: string } | null>(null);
 
   useEffect(() => {
-    if (streaming || !hasFencedCodeBlock(text)) {
+    if (streaming || !hasFencedCodeBlock(renderedText)) {
       setHighlightedHtml(null);
       return;
     }
 
     let cancelled = false;
-    void highlightedMarkdownParser.parse(text, { async: true }).then((html) => {
+    void highlightedMarkdownParser.parse(renderedText, { async: true }).then((html) => {
       const sanitizedHtml = sanitizeMarkdownHtml(html);
 
       if (!cancelled && sanitizedHtml.trim()) {
-        setHighlightedHtml({ text, html: sanitizedHtml });
+        setHighlightedHtml({ text: renderedText, html: sanitizedHtml });
       }
     }).catch(() => {
       if (!cancelled) {
@@ -416,9 +440,9 @@ function MarkdownBlockInner({
     return () => {
       cancelled = true;
     };
-  }, [streaming, text]);
+  }, [renderedText, streaming]);
 
-  const html = !streaming && highlightedHtml?.text === text ? highlightedHtml.html : syncHtml;
+  const html = !streaming && highlightedHtml?.text === renderedText ? highlightedHtml.html : syncHtml;
 
   // Re-apply search highlights after EVERY render (no dependency array on
   // purpose): motion.div re-sets dangerouslySetInnerHTML on unrelated
@@ -468,13 +492,16 @@ function MarkdownBlockInner({
         return;
       }
 
-      const link = event.target.closest("a[data-ipollowork-link-href]");
-      if (link instanceof HTMLAnchorElement) {
+      const link = event.target.closest("[data-ipollowork-link-href]");
+      if (link instanceof HTMLElement) {
         const href = link.dataset.ipolloworkLinkHref ?? link.getAttribute("href") ?? "";
         const target = openTargetForHref(href, openTargets);
 
-        if (target && onOpenTarget) {
+        if (localFilePathFromHref(href)) {
           event.preventDefault();
+          event.stopPropagation();
+        }
+        if (target && onOpenTarget) {
           onOpenTarget(target);
           return;
         }

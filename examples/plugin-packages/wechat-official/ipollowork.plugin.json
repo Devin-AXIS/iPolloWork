@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "wechat-official",
   "name": "微信公众号",
   "description": "管理公众号图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。",
-  "category": "内容与运营",
+  "category": "商业与运营",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -22,7 +22,7 @@
       "en": {
         "name": "WeChat Official Account",
         "description": "Manage WeChat Official Account articles, drafts, publishing, comments, messages, followers, menus, and operational workflows.",
-        "category": "Content & Operations",
+        "category": "Business & Operations",
         "composer": { "prompt": "Use the WeChat Official Account operations plugin to check account capabilities and draft status before handling content, comments, menus, or follower interactions within the confirmed scope." },
         "resources": {
           "wechat-official-service": {
@@ -75,19 +75,15 @@
     }
   },
   "package": {
-    "version": "0.1.1",
+    "version": "0.1.4",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.28",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.17.28"
     },
-    "updateId": "ipollowork/wechat-official",
-    "entrypoints": {
-      "service": "service/wechat-official.ts"
-    }
+    "updateId": "ipollowork/wechat-official"
   },
   "permissions": [
     {
@@ -104,6 +100,7 @@
     "methods": [
       {
         "id": "wechat-official-account",
+        "connectionId": "wechat-official",
         "kind": "secret-form",
         "label": "连接微信公众号",
         "description": "填写服务号的 AppID 与 AppSecret。凭据仅保存在 iPolloWork 加密授权仓库中；需要具备相应 API 发布权限的认证服务号。",
@@ -291,7 +288,7 @@
       "id": "wechat-official-content",
       "label": "公众号内容创作",
       "description": "创作符合公众号图文结构的标题、摘要、正文与 CTA。",
-      "path": ".opencode/skills/wechat-official-content/SKILL.md",
+      "path": "skills/wechat-official-content/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-content"],
       "required": true
@@ -301,7 +298,7 @@
       "id": "wechat-official-assets",
       "label": "卡片与素材适配",
       "description": "将工作区卡片与图片适配为公众号封面和正文素材。",
-      "path": ".opencode/skills/wechat-official-assets/SKILL.md",
+      "path": "skills/wechat-official-assets/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-assets"],
       "required": true
@@ -311,7 +308,7 @@
       "id": "wechat-official-publishing",
       "label": "草稿与发布",
       "description": "管理草稿、预览、发布确认和发布状态。",
-      "path": ".opencode/skills/wechat-official-publishing/SKILL.md",
+      "path": "skills/wechat-official-publishing/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-publishing"],
       "required": true
@@ -321,7 +318,7 @@
       "id": "wechat-official-comments",
       "label": "评论运营",
       "description": "查看、筛选、回复、精选和处理文章评论。",
-      "path": ".opencode/skills/wechat-official-comments/SKILL.md",
+      "path": "skills/wechat-official-comments/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-comments"],
       "required": true
@@ -331,7 +328,7 @@
       "id": "wechat-official-messages",
       "label": "消息自动化",
       "description": "设计安全的私信回复策略，并在当前可用客服窗口内发送经确认的消息。",
-      "path": ".opencode/skills/wechat-official-messages/SKILL.md",
+      "path": "skills/wechat-official-messages/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-messages"],
       "required": true
@@ -341,7 +338,7 @@
       "id": "wechat-official-community",
       "label": "粉丝与菜单运营",
       "description": "理解关注者范围并审查、更新公众号自定义菜单。",
-      "path": ".opencode/skills/wechat-official-community/SKILL.md",
+      "path": "skills/wechat-official-community/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-community"],
       "required": true
@@ -351,7 +348,7 @@
       "id": "wechat-official-review",
       "label": "公众号运营复盘",
       "description": "从草稿、发布和评论证据中整理运营复盘与下一步建议。",
-      "path": ".opencode/skills/wechat-official-review/SKILL.md",
+      "path": "skills/wechat-official-review/SKILL.md",
       "requires": ["service:wechat-official-service", "authorization:wechat-official-account"],
       "provides": ["workflow:wechat-official-review"],
       "required": true

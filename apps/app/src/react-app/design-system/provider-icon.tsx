@@ -1,11 +1,13 @@
 /** @jsxImportSource react */
 
+import { publicAssetUrl } from "../../app/lib/public-asset";
+
 export type ProviderIconProps = {
   providerId?: string | null;
   /**
    * Optional provider display name. When the id is an opaque cloud id
-   * (e.g. a uuid), the name is what tells us whether it's an Anthropic /
-   * OpenAI / OpenCode provider. Ported from dev 022b68a8 ("key cloud
+   * (e.g. a uuid), the name is what tells us whether it's an Anthropic,
+   * OpenAI, or bundled iPolloWork provider. Ported from dev 022b68a8 ("key cloud
    * providers by cloud id") so the icon still resolves by family.
    */
   providerName?: string | null;
@@ -22,10 +24,12 @@ export function ProviderIcon(props: ProviderIconProps) {
 
   const isAnthropic = hasProviderFamily("anthropic");
   const isOpenAI = hasProviderFamily("openai");
-  const isOpenCode = hasProviderFamily("opencode");
+  const isiPolloWorkBuiltIn = hasProviderFamily("opencode") || hasProviderFamily("ipollowork");
+  const iPolloWorkLogoUrl = publicAssetUrl("default-brand-avatar.jpg");
 
   const fallbackLetters = (() => {
     if (normalizedId === "openrouter") return "OR";
+    if (normalizedId === "orcarouter") return "OC";
     if (normalizedId === "deepseek") return "DS";
     if (normalizedId === "google") return "GO";
     if (normalizedId.length >= 2) return normalizedId.substring(0, 2).toUpperCase();
@@ -61,23 +65,15 @@ export function ProviderIcon(props: ProviderIconProps) {
         >
           <path d="M17.304 3.541h-3.672l6.696 16.918H24Zm-10.608 0L0 20.459h3.744l1.369-3.553h7.005l1.369 3.553h3.744L10.536 3.541Zm-.371 10.223 2.291-5.946 2.291 5.946Z" />
         </svg>
-      ) : isOpenCode ? (
-        <svg
-          role="img"
-          viewBox="0 0 24 24"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
+      ) : isiPolloWorkBuiltIn ? (
+        <img
+          src={iPolloWorkLogoUrl}
+          alt="iPolloWork logo"
           width={size}
           height={size}
-        >
-          <path d="M12 2L2 7l10 5 10-5-10-5Z" />
-          <path d="M2 17l10 5 10-5" />
-          <path d="M2 12l10 5 10-5" />
-        </svg>
+          className="h-full w-full rounded-full object-cover"
+          draggable={false}
+        />
       ) : (
         <div
           className="flex h-full w-full items-center justify-center rounded bg-gray-3 text-[10px] font-bold tracking-tight text-gray-11"

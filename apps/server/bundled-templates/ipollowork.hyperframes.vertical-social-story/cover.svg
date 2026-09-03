@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="540" viewBox="0 0 960 540">
+  <rect width="960" height="540" fill="#f5f2eb"/>
+  <rect x="26" y="26" width="908" height="488" rx="38" fill="none" stroke="#d4dae3" stroke-width="2"/>
+  <g transform="translate(54 56)">
+    <rect width="170" height="34" rx="17" fill="none" stroke="#f15d44" stroke-width="2"/>
+    <text x="18" y="22" fill="#f15d44" font-family="Arial, sans-serif" font-size="12" font-weight="800" letter-spacing="1.4">VERTICAL / 9:16</text>
+    <text y="108" fill="#14213d" font-family="Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="-2">Vertical stories,</text>
+    <text y="160" fill="#14213d" font-family="Arial, sans-serif" font-size="48" font-weight="900" letter-spacing="-2">built to flow.</text>
+    <text y="205" fill="#566177" font-family="Arial, sans-serif" font-size="18" font-weight="600">1080 × 1920 · Editable · Export ready</text>
+    <g transform="translate(0 252)">
+      <rect width="350" height="72" rx="22" fill="#fffdf8" stroke="#d4dae3" stroke-width="2"/>
+      <rect x="18" y="14" width="44" height="44" rx="14" fill="#14213d"/>
+      <text x="31" y="42" fill="#fffdf8" font-family="Arial, sans-serif" font-size="14" font-weight="900">01</text>
+      <text x="82" y="31" fill="#566177" font-family="Arial, sans-serif" font-size="10" font-weight="800" letter-spacing="1.2">START</text>
+      <text x="82" y="51" fill="#14213d" font-family="Arial, sans-serif" font-size="18" font-weight="800">Shape the brief</text>
+      <rect x="278" y="23" width="54" height="26" rx="13" fill="#dceee7"/>
+      <circle cx="291" cy="36" r="4" fill="#12614b"/>
+    </g>
+    <g transform="translate(30 336)">
+      <rect width="350" height="72" rx="22" fill="#fffdf8" stroke="#d4dae3" stroke-width="2"/>
+      <rect x="18" y="14" width="44" height="44" rx="14" fill="#f15d44"/>
+      <text x="31" y="42" fill="#fffdf8" font-family="Arial, sans-serif" font-size="14" font-weight="900">02</text>
+      <text x="82" y="31" fill="#566177" font-family="Arial, sans-serif" font-size="10" font-weight="800" letter-spacing="1.2">BUILD</text>
+      <text x="82" y="51" fill="#14213d" font-family="Arial, sans-serif" font-size="18" font-weight="800">Coordinate the work</text>
+      <rect x="278" y="23" width="54" height="26" rx="13" fill="#dceee7"/>
+      <circle cx="291" cy="36" r="4" fill="#12614b"/>
+    </g>
+  </g>
+  <g transform="translate(585 28)">
+    <rect width="260" height="484" rx="48" fill="#14213d"/>
+    <rect x="16" y="16" width="228" height="452" rx="35" fill="none" stroke="#fffdf8" stroke-opacity=".2" stroke-width="2"/>
+    <text x="34" y="65" fill="#ffc857" font-family="Arial, sans-serif" font-size="11" font-weight="800" letter-spacing="1.5">MOMENTUM</text>
+    <rect x="32" y="88" width="196" height="132" rx="26" fill="#ffffff" fill-opacity=".06" stroke="#ffffff" stroke-opacity=".14"/>
+    <text x="48" y="171" fill="#f15d44" font-family="Arial, sans-serif" font-size="78" font-weight="900" letter-spacing="-7">3x</text>
+    <text x="149" y="139" fill="#f5f2eb" font-family="Arial, sans-serif" font-size="13" font-weight="700">FASTER</text>
+    <text x="149" y="158" fill="#f5f2eb" font-family="Arial, sans-serif" font-size="13" font-weight="700">TO SHIP</text>
+    <rect x="32" y="236" width="196" height="112" rx="24" fill="#dceee7"/>
+    <g transform="translate(50 258)" fill="#14213d">
+      <rect width="15" height="48" rx="5" opacity=".25"/>
+      <rect x="25" y="11" width="15" height="37" rx="5" opacity=".42"/>
+      <rect x="50" y="3" width="15" height="45" rx="5" opacity=".58"/>
+      <rect x="75" y="-13" width="15" height="61" rx="5" opacity=".76"/>
+      <rect x="100" y="-28" width="15" height="76" rx="5" fill="#f15d44"/>
+      <rect x="125" y="-39" width="15" height="87" rx="5" fill="#ffc857"/>
+    </g>
+    <rect x="32" y="365" width="196" height="68" rx="22" fill="#ffffff" fill-opacity=".06" stroke="#ffffff" stroke-opacity=".14"/>
+    <circle cx="61" cy="399" r="15" fill="#ffc857"/>
+    <text x="55" y="404" fill="#14213d" font-family="Arial, sans-serif" font-size="12" font-weight="900">1</text>
+    <rect x="89" y="388" width="105" height="7" rx="3.5" fill="#f5f2eb" fill-opacity=".85"/>
+    <rect x="89" y="405" width="78" height="6" rx="3" fill="#f5f2eb" fill-opacity=".3"/>
+  </g>
+  <circle cx="858" cy="91" r="38" fill="#f15d44"/>
+  <text x="858" y="99" text-anchor="middle" fill="#fffdf8" font-family="Arial, sans-serif" font-size="20" font-weight="900">GO</text>
+</svg>

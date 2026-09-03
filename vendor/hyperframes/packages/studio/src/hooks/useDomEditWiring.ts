@@ -74,7 +74,7 @@ export interface UseDomEditWiringParams {
     sel: DomEditSelection,
     targetKind: MotionTargetKind,
     mutation: MotionMutationInput,
-     ) => Promise<void>;
+  ) => Promise<boolean>;
   applyGsapMotionPreset: (
     sel: DomEditSelection,
     preset: RegistryMotionPreset,
@@ -124,7 +124,6 @@ export interface UseDomEditWiringParams {
     resolvedFromValues?: Record<string, number | string>,
   ) => Promise<void>;
   removeAllKeyframes: (sel: DomEditSelection, animId: string) => Promise<void>;
-  handleDomManualEditsReset: (sel: DomEditSelection) => void;
 }
 
 // fallow-ignore-next-line complexity
@@ -168,7 +167,6 @@ export function useDomEditWiring({
   resizeKeyframedTween,
   convertToKeyframes,
   removeAllKeyframes,
-  handleDomManualEditsReset,
 }: UseDomEditWiringParams) {
   const timelineElements = usePlayerStore((state) => state.elements);
   const clipManifest = usePlayerStore((state) => state.clipManifest);
@@ -293,7 +291,6 @@ export function useDomEditWiring({
     resizeKeyframedTween,
     convertToKeyframes,
     removeAllKeyframes,
-    handleDomManualEditsReset,
     selectedGsapAnimations,
     showToast,
   });

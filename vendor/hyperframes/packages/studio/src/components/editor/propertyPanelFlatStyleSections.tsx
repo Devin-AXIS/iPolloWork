@@ -31,7 +31,13 @@ import { FlatRow, FlatSelectRow, FlatSlider } from "./propertyPanelFlatPrimitive
 import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
 import { resolveValueTier } from "./propertyPanelValueTier";
 import { ColorField } from "./propertyPanelColor";
-import { GradientField, ImageFillField } from "./propertyPanelFill";
+import {
+  commitElementBackgroundImage,
+  GradientField,
+  ImageFillField,
+  resolveEditableBackgroundImage,
+  syncLegacyThemeBackgroundPreview,
+} from "./propertyPanelFill";
 
 /* ------------------------------------------------------------------ */
 /*  Flat Fill sub-block (design_handoff_studio_inspector, #11a)        */
@@ -93,7 +99,7 @@ export function FillModeSelector({
             aria-pressed={active}
             disabled={disabled}
             onClick={() => onChange(key)}
-            className={`flex h-[34px] items-center justify-center rounded-[6px] transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/50 disabled:cursor-not-allowed disabled:opacity-40 ${
+            className={`flex h-[34px] items-center justify-center rounded-[6px] transition-colors duration-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-not-allowed disabled:opacity-40 ${
               active
                 ? "bg-black hover:bg-[#1f1f1f] active:bg-[#333333]"
                 : "bg-[#f5f6f9] hover:bg-[#eceef2] active:bg-[#e2e5ea] dark:bg-panel-input dark:hover:bg-panel-input/80 dark:active:bg-panel-input/60"
@@ -129,7 +135,7 @@ export function FlatFillSection({
   onImportAssets?: (files: FileList) => Promise<string[]>;
 }) {
   const styleEditingDisabled = !element.capabilities.canEditStyles;
-  const backgroundImage = styles["background-image"] ?? "none";
+  const backgroundImage = resolveEditableBackgroundImage(element.element, styles);
   const fillMode: FillMode =
     backgroundImage && backgroundImage !== "none"
       ? backgroundImage.includes("gradient")
@@ -146,15 +152,26 @@ export function FlatFillSection({
     setPreferredFillMode(fillMode);
   }, [fillMode, element.id, element.selector, backgroundImage]);
 
+  useEffect(() => {
+    // Keep image fills authored by older Studio versions visible immediately;
+    // also migrate the token once so subsequent preview reloads retain it.
+    if (syncLegacyThemeBackgroundPreview(element.element)) {
+      void Promise.resolve(onSetStyle("--ipw-bg-image", backgroundImage)).catch(() => undefined);
+    }
+  }, [element.element, backgroundImage, onSetStyle]);
+
+  const commitBackgroundImage = (nextValue: string) =>
+    commitElementBackgroundImage(element.element, nextValue, onSetStyle);
+
   const handleFillModeChange = async (nextMode: FillMode) => {
     setPreferredFillMode(nextMode);
     if (nextMode === "None") {
-      await onSetStyle("background-image", "none");
+      await commitBackgroundImage("none");
       await onSetStyle("background-color", "transparent");
       return;
     }
     if (nextMode === "Solid") {
-      await onSetStyle("background-image", "none");
+      await commitBackgroundImage("none");
       if (
         styles["background-color"] === "transparent" ||
         styles["background-color"] === "rgba(0, 0, 0, 0)"
@@ -164,8 +181,7 @@ export function FlatFillSection({
       return;
     }
     if (nextMode === "Gradient" && !backgroundImage.includes("gradient")) {
-      onSetStyle(
-        "background-image",
+      void commitBackgroundImage(
         serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
@@ -196,7 +212,7 @@ export function FlatFillSection({
             }
             fallbackColor={styles["background-color"]}
             disabled={styleEditingDisabled}
-            onCommit={(next) => onSetStyle("background-image", next)}
+            onCommit={(next) => void commitBackgroundImage(next)}
           />
         ) : (
           <ImageFillField
@@ -206,7 +222,7 @@ export function FlatFillSection({
             value={imageUrl}
             assets={assets}
             disabled={styleEditingDisabled}
-            onCommit={(next) => onSetStyle("background-image", next)}
+            onCommit={(next) => void commitBackgroundImage(next)}
             onImportAssets={onImportAssets}
           />
         ))}
@@ -519,49 +535,6 @@ function FlatAppearanceOpacityRow({
   );
 }
 
-const SHADOW_INTENSITY: Record<BoxShadowPreset, number> = {
-  none: 0,
-  soft: 25,
-  lift: 50,
-  glow: 75,
-  custom: 100,
-};
-
-function FlatAppearanceShadowRow({
-  styles,
-  disabled,
-  onSetStyle,
-  onPreviewStyle,
-}: {
-  styles: Record<string, string>;
-  disabled: boolean;
-  onSetStyle: (prop: string, value: string) => void | Promise<void>;
-  onPreviewStyle?: (prop: string, value: string) => void;
-}) {
-  const intensity = SHADOW_INTENSITY[inferBoxShadowPreset(styles["box-shadow"])];
-  const shadowValueFor = (next: number) => {
-    const preset: BoxShadowPreset =
-      next <= 0 ? "none" : next <= 33 ? "soft" : next <= 66 ? "lift" : "glow";
-    return buildBoxShadowPresetValue(preset, styles["box-shadow"]);
-  };
-  return (
-    <FlatSlider
-      large
-      label="Shadow"
-      value={intensity}
-      min={0}
-      max={100}
-      tier="explicitCustom"
-      displayValue={`${intensity}%`}
-      disabled={disabled}
-      commitMode={onPreviewStyle ? "release" : "live"}
-      onPreview={(next) => onPreviewStyle?.("box-shadow", shadowValueFor(next))}
-      onPreviewCancel={() => onPreviewStyle?.("box-shadow", styles["box-shadow"] ?? "none")}
-      onCommit={(next) => void onSetStyle("box-shadow", shadowValueFor(next))}
-    />
-  );
-}
-
 export function FlatStyleSection({
   projectId,
   element,
@@ -645,12 +618,6 @@ export function FlatAppearanceSection({
         onPreviewStyle={onPreviewStyle}
       />
       <FlatAppearanceOpacityRow
-        styles={styles}
-        disabled={disabled}
-        onSetStyle={onSetStyle}
-        onPreviewStyle={onPreviewStyle}
-      />
-      <FlatAppearanceShadowRow
         styles={styles}
         disabled={disabled}
         onSetStyle={onSetStyle}

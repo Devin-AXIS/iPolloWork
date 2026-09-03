@@ -6,11 +6,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import {
-  CompositionRefreshLoadingOverlay,
-  PlayerControls,
-  usePlayerStore,
-} from "../../player";
+import { CompositionRefreshLoadingOverlay, PlayerControls, usePlayerStore } from "../../player";
 import { NLEPreview } from "./NLEPreview";
 import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
@@ -19,6 +15,9 @@ import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
+import { SpinnerGap } from "@phosphor-icons/react";
+import { useStudioI18n } from "../../i18n";
+import { parseHostAiEditingMessage } from "../../utils/studioHelpers";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -65,8 +64,25 @@ export function PreviewPane({
     setPreviewCompositionSize,
   } = useNLEContext();
   const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
+  const { t } = useStudioI18n();
+  const [aiEditing, setAiEditing] = useState(false);
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
-  const { domEditSelection } = useDomEditSelectionContext();
+  const handlePreviewRefreshSettled = useCallback(() => {
+    const playerState = usePlayerStore.getState();
+    if (playerState.previewDeletePending) playerState.setPreviewDeletePending(false);
+  }, []);
+  const { domEditSelection, previewSelectionInteraction } = useDomEditSelectionContext();
+
+  useEffect(() => {
+    setAiEditing(false);
+    const handleHostMessage = (event: MessageEvent<unknown>) => {
+      if (event.source !== window.parent) return;
+      const nextAiEditing = parseHostAiEditingMessage(event.data, projectId);
+      if (nextAiEditing !== null) setAiEditing(nextAiEditing);
+    };
+    window.addEventListener("message", handleHostMessage);
+    return () => window.removeEventListener("message", handleHostMessage);
+  }, [projectId]);
 
   const stageRefForDrop = useRef<HTMLDivElement | null>(null);
   const handleStageRef = useCallback((ref: React.RefObject<HTMLDivElement | null>) => {
@@ -184,6 +200,7 @@ export function PreviewPane({
             iframeRef={iframeRef}
             onIframeLoad={onIframeLoad}
             onCompositionLoadingChange={setCompositionLoading}
+            onRefreshSettled={handlePreviewRefreshSettled}
             portrait={portrait}
             directUrl={directUrl}
             suppressLoadingOverlay={hasLoadedOnceRef.current}
@@ -203,9 +220,29 @@ export function PreviewPane({
           iframeRef={iframeRef}
           containerRef={containerRef}
           activeSelection={editingEnabled ? domEditSelection : null}
-          hidden={timelineDisabled || !editingEnabled}
+          hidden={timelineDisabled || !editingEnabled || previewSelectionInteraction !== "primary"}
         />
       </div>
+      {!isFullscreen && aiEditing ? (
+        <div className="flex shrink-0 justify-center bg-transparent pb-2">
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="studio-ai-editing-status"
+            className="flex h-[34px] min-w-[241px] max-w-[calc(100%_-_32px)] items-center rounded-[6px] bg-[#087b82] px-4 py-2 text-[#a9e7ea]"
+          >
+            <span className="flex min-w-[207px] items-center justify-between gap-2">
+              <SpinnerGap
+                className="size-4 shrink-0 animate-spin text-[#a9e7ea] motion-reduce:animate-none"
+                aria-hidden="true"
+              />
+              <span className="whitespace-nowrap text-[12px] font-normal leading-normal">
+                {t("preview.aiEditingWarning")}
+              </span>
+            </span>
+          </div>
+        </div>
+      ) : null}
       {/* Transport row: no own background or border — the controls sit flat on
           the preview panel's surface (CapCut-style). */}
       <div className="flex-shrink-0">

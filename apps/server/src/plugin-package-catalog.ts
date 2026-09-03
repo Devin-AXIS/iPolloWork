@@ -15,7 +15,11 @@ export const bundledPluginPackageIds = [
   "wechat-official",
   "design-agent",
   "video-agent",
+  "image-studio",
+  "deepseek-harness",
 ] as const;
+
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio"] as const;
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

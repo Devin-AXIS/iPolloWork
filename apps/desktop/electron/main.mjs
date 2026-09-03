@@ -1,6 +1,5 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import net from "node:net";
 import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
@@ -17,10 +16,11 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, screen, session, shell, systemPreferences } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, nativeImage, nativeTheme, net as electronNet, Notification as ElectronNotification, powerMonitor, screen, session, shell, systemPreferences } from "electron";
 import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./media-permissions.mjs";
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
+import { createEnginePackageManager } from "./engine-package-manager.mjs";
 import { registerUpdaterIpc } from "./updater.mjs";
 import {
   checkComputerUsePermissions,
@@ -36,7 +36,7 @@ import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
 import { relaunchActionForMode } from "./relaunch-policy.mjs";
 import { listSystemFontFamilies } from "./system-font-catalog.mjs";
-import { createDesktopAuthWindow } from "./desktop-auth-window.mjs";
+import { clearDesktopAuthSession, createDesktopAuthWindow } from "./desktop-auth-window.mjs";
 import {
   registerDesktopProtocolClient,
   resolveDesktopProtocolRegistration,
@@ -57,7 +57,27 @@ protectOutputStreamFromBrokenPipe(process.stdout);
 protectOutputStreamFromBrokenPipe(process.stderr);
 const require = createRequire(import.meta.url);
 const pty = require(["node", "pty"].join("-"));
+
+function enginePackageVersions() {
+  const candidates = app.isPackaged
+    ? [path.join(app.getAppPath(), "server", "dist", "constants.json")]
+    : [path.resolve(__dirname, "../../..", "constants.json")];
+  for (const candidate of candidates) {
+    try {
+      const constants = require(candidate);
+      return {
+        opencode: constants.opencodeVersion,
+        deepseekHarness: constants.deepseekHarnessVersion,
+        codexHarness: constants.codexHarnessVersion,
+      };
+    } catch {
+      // The settings surface reports unknown versions if constants are absent.
+    }
+  }
+  return { opencode: "unknown", deepseekHarness: "unknown", codexHarness: "unknown" };
+}
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
+const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";
 const TAURI_APP_IDENTIFIER = "com.differentai.ipollowork";
 const DEV_APP_IDENTIFIER = "com.differentai.ipollowork.dev";
 const isDevMode = process.env.IPOLLOWORK_DEV_MODE === "1";
@@ -95,6 +115,7 @@ const uiControlServer = createUiControlServer({
 
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
+const processCleanupWebContents = new Set();
 let nextTerminalId = 1;
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
 const HYPERFRAMES_IDLE_STOP_DELAY_MS = 60_000;
@@ -141,7 +162,11 @@ function killTerminal(terminalId) {
   // processes. HyperFrames previews would then outlive their conversation and
   // keep serving an old project on its session port. End the POSIX process
   // group first so the panel cannot reconnect to stale video content.
-  if (process.platform !== "win32" && Number.isInteger(terminal.process.pid) && terminal.process.pid > 0) {
+  if (process.platform === "win32") {
+    killProcessTree(terminal.process);
+    return;
+  }
+  if (Number.isInteger(terminal.process.pid) && terminal.process.pid > 0) {
     try { process.kill(-terminal.process.pid, "SIGTERM"); } catch { /* process group already gone */ }
   }
   try { terminal.process.kill(); } catch { /* already gone */ }
@@ -527,12 +552,29 @@ function stopHyperframesForWebContents(webContentsId) {
   }
 }
 
+function ensureProcessCleanupForWebContents(webContents) {
+  const webContentsId = webContents.id;
+  if (processCleanupWebContents.has(webContentsId)) return;
+  processCleanupWebContents.add(webContentsId);
+  webContents.once("destroyed", () => {
+    processCleanupWebContents.delete(webContentsId);
+    killTerminalsForWebContents(webContentsId);
+    stopHyperframesForWebContents(webContentsId);
+  });
+}
+
+function stopAllDesktopChildProcesses() {
+  for (const terminalId of Array.from(terminalProcesses.keys())) killTerminal(terminalId);
+  for (const key of Array.from(hyperframesProcesses.keys())) stopHyperframesForKey(key);
+}
+
 async function startHyperframesPreview(event, options = {}) {
   const sessionId = String(options.sessionId ?? "").trim();
   if (!sessionId) throw new Error("sessionId is required.");
   const port = Number(options.port);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("Valid HyperFrames port is required.");
   const { workspaceRoot, projectPath, projectDirectory } = resolveWorkspaceChild(options.workspaceRoot, options.projectDirectory);
+  ensureProcessCleanupForWebContents(event.sender);
   const key = hyperframesKey(event.sender.id, sessionId);
   const current = hyperframesProcesses.get(key);
   if (
@@ -569,7 +611,6 @@ async function startHyperframesPreview(event, options = {}) {
       child.stderr?.off("data", onData);
       child.off("error", onError);
       hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, projectPath, timeout: null, idleTimeout: null });
-      event.sender.once("destroyed", () => stopHyperframesForWebContents(event.sender.id));
       resolve({ ok: true, port, reused: false });
     };
     const failStart = (error) => {
@@ -586,7 +627,14 @@ async function startHyperframesPreview(event, options = {}) {
       failStart(error);
     };
     const onExit = (code) => {
-      if (ready) return;
+      if (ready) {
+        const running = hyperframesProcesses.get(key);
+        if (running?.process === child) {
+          clearTimeout(running.idleTimeout);
+          hyperframesProcesses.delete(key);
+        }
+        return;
+      }
       failStart(new Error(output.trim() || `HyperFrames stopped before Studio was ready (${code ?? "unknown"}).`));
     };
     const timeout = setTimeout(() => {
@@ -1310,41 +1358,20 @@ if (process.platform === "darwin" && INITIAL_APP_ICON_IMAGE && !INITIAL_APP_ICON
   app.dock.setIcon(INITIAL_APP_ICON_IMAGE);
 }
 
-// Expose Chrome DevTools Protocol so the opencode-chrome-devtools plugin can
-// drive the built-in browser panel.  Use IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT to
-// pin a specific port; otherwise probe for a free one starting at 9223.
-// Must resolve before app.commandLine.appendSwitch (before `ready`).
-function probePort(port) {
-  return new Promise((resolve) => {
-    const srv = net.createServer();
-    srv.once("error", () => resolve(false));
-    srv.listen({ port, host: "127.0.0.1" }, () => {
-      srv.close(() => resolve(true));
-    });
-  });
-}
-
-async function findFreeCdpPort(candidates) {
-  for (const port of candidates) {
-    if (await probePort(port)) return port;
-  }
-  return 0;
-}
-
+// Development/evaluation tools may opt into a localhost CDP port. Product
+// browser automation runs directly inside the Desktop Host and does not expose
+// or depend on this endpoint.
 const explicitCdpPort = Number.parseInt(
   process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT?.trim() ?? "",
   10,
 );
 const remoteDebugPort = Number.isFinite(explicitCdpPort) && explicitCdpPort > 0
   ? explicitCdpPort
-  : await findFreeCdpPort([9223, 9224, 9225, 9226, 9227]);
+  : 0;
 if (remoteDebugPort > 0) {
   app.commandLine.appendSwitch("remote-debugging-port", String(remoteDebugPort));
   app.commandLine.appendSwitch("remote-debugging-address", "127.0.0.1");
 }
-// Make the resolved port available to the embedded server so it flows into
-// agent instructions via ensureiPolloWorkAgent → resolveAgentTemplate.
-process.env.IPOLLOWORK_ELECTRON_REMOTE_DEBUG_PORT = String(remoteDebugPort);
 
 // Apply extra Chromium flags from ELECTRON_EXTRA_LAUNCH_ARGS.
 // Used in headless/Daytona environments to pass e.g. --disable-gpu.
@@ -1474,17 +1501,18 @@ async function writeMainWindowState(win) {
   }
 }
 
-const browserPanel = createBrowserPanel({
-  remoteDebugPort,
-  getWindow: () => mainWindow,
-  onDeepLink: (urls) => queueDeepLinks(urls),
-});
-
 const workspaceStore = createWorkspaceStore({
   app,
   defaultDenBaseUrl: DEFAULT_DEN_BASE_URL,
   defaultRequireSignin: DEFAULT_DESKTOP_REQUIRE_SIGNIN,
   forceRequireSignin: FORCE_DESKTOP_REQUIRE_SIGNIN,
+});
+
+const browserPanel = createBrowserPanel({
+  getWindow: () => mainWindow,
+  listLocalWorkspaces: async () => (await workspaceStore.readWorkspaceState()).workspaces
+    .filter((entry) => entry?.workspaceType !== "remote"),
+  onDeepLink: (urls) => queueDeepLinks(urls),
 });
 
 function normalizePlatform(value) {
@@ -1652,10 +1680,44 @@ const runtimeManager = createRuntimeManager({
   desktopRoot: path.resolve(__dirname, ".."),
   listLocalWorkspacePaths: () => workspaceStore.listLocalWorkspacePaths(),
 });
+const enginePackageManager = createEnginePackageManager({
+  app,
+  desktopRoot: path.resolve(__dirname, ".."),
+  resourcesPath: process.resourcesPath,
+  versions: enginePackageVersions(),
+  fetch: electronNet.fetch.bind(electronNet),
+  beforeUninstall: async () => {
+    const server = await runtimeManager.ipolloworkServerInfo();
+    if (!server.running) return null;
+    await runtimeManager.dispose();
+    return () => runtimeManager.ipolloworkServerRestart({
+      remoteAccessEnabled: server.remoteAccessEnabled,
+    });
+  },
+});
 
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
 let runtimeBootstrapPromise = null;
+let runtimeResumePromise = null;
+let desktopNetworkSuspended = false;
+let lastRuntimeResumeStartedAt = 0;
+let lastDesktopNetworkResumeAt = 0;
+let desktopNetworkGeneration = 0;
+let desktopNetworkRecoveryPromise = null;
+const activeDesktopFetchControllers = new Set();
+const DESKTOP_FETCH_DEFAULT_TIMEOUT_MS = 30_000;
+const DESKTOP_NETWORK_RESET_STEP_TIMEOUT_MS = 5_000;
+const DESKTOP_RESUME_FETCH_RETRY_WINDOW_MS = 30_000;
+const DESKTOP_RESUME_FETCH_RETRY_DELAYS_MS = [250, 750, 1_500, 3_000];
+const DESKTOP_TRANSIENT_NETWORK_ERRORS = [
+  "ERR_NAME_NOT_RESOLVED",
+  "ERR_NETWORK_CHANGED",
+  "ERR_INTERNET_DISCONNECTED",
+  "ERR_CONNECTION_ABORTED",
+  "ERR_CONNECTION_CLOSED",
+  "ERR_CONNECTION_RESET",
+];
 
 function showShutdownScreen() {
   const win = mainWindow;
@@ -1790,6 +1852,136 @@ function ensureRuntimeBootstrap() {
     }));
   }
   return runtimeBootstrapPromise;
+}
+
+function abortSuspendedDesktopFetches() {
+  for (const controller of activeDesktopFetchControllers) {
+    controller.abort(new Error("Desktop network I/O was suspended."));
+  }
+  activeDesktopFetchControllers.clear();
+}
+
+async function runDesktopNetworkResetStep(label, operation) {
+  let timeout;
+  try {
+    await Promise.race([
+      operation,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error(`${label} timed out.`)), DESKTOP_NETWORK_RESET_STEP_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.warn(`[power] ${label} failed`, error);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+async function resetDesktopNetworkSession() {
+  const defaultSession = session.defaultSession;
+  await runDesktopNetworkResetStep("closing stale Chromium connections", defaultSession.closeAllConnections());
+  await Promise.all([
+    runDesktopNetworkResetStep("clearing Chromium DNS cache", defaultSession.clearHostResolverCache()),
+    runDesktopNetworkResetStep("reloading Chromium proxy settings", defaultSession.forceReloadProxyConfig()),
+  ]);
+}
+
+function recoverDesktopNetworkAfterResume() {
+  if (desktopNetworkRecoveryPromise) return desktopNetworkRecoveryPromise;
+  const generation = desktopNetworkGeneration;
+  const recovery = resetDesktopNetworkSession()
+    .finally(() => {
+      if (generation === desktopNetworkGeneration) desktopNetworkSuspended = false;
+      if (desktopNetworkRecoveryPromise === recovery) desktopNetworkRecoveryPromise = null;
+    });
+  desktopNetworkRecoveryPromise = recovery;
+  return recovery;
+}
+
+function isRetryableDesktopFetch(error, method, attempt) {
+  if (attempt >= DESKTOP_RESUME_FETCH_RETRY_DELAYS_MS.length) return false;
+  if (method !== "GET" && method !== "HEAD" && method !== "OPTIONS") return false;
+  if (Date.now() - lastDesktopNetworkResumeAt > DESKTOP_RESUME_FETCH_RETRY_WINDOW_MS) return false;
+  const message = desktopErrorMessageWithCauses(error).toUpperCase();
+  return DESKTOP_TRANSIENT_NETWORK_ERRORS.some((code) => message.includes(code));
+}
+
+function waitForDesktopFetchRetry(delayMs, signal) {
+  if (signal.aborted) return Promise.reject(signal.reason ?? new Error("Desktop fetch was aborted."));
+  return new Promise((resolve, reject) => {
+    const handleAbort = () => {
+      clearTimeout(timer);
+      reject(signal.reason ?? new Error("Desktop fetch was aborted."));
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", handleAbort);
+      resolve();
+    }, delayMs);
+    signal.addEventListener("abort", handleAbort, { once: true });
+  });
+}
+
+function notifyRendererDesktopResumed(result) {
+  const win = mainWindow;
+  if (!win || win.isDestroyed() || win.webContents.isDestroyed()) return;
+  win.webContents.send(DESKTOP_RESUMED_EVENT, result);
+}
+
+function recoverRuntimeAfterDesktopResume(trigger) {
+  if (runtimeResumePromise) return runtimeResumePromise;
+  const startedAt = Date.now();
+  if (startedAt - lastRuntimeResumeStartedAt < 60_000) return runtimeBootstrapPromise;
+  lastRuntimeResumeStartedAt = startedAt;
+  lastDesktopNetworkResumeAt = startedAt;
+  const recoveryGeneration = desktopNetworkGeneration;
+  console.info(`[power] desktop ${trigger}; checking local runtime`);
+
+  const networkRecovery = recoverDesktopNetworkAfterResume();
+  const runtimeRecovery = bootRuntimeForSelectedWorkspace().catch((error) => ({
+    ok: false,
+    error: error instanceof Error ? error.message : String(error),
+  }));
+  runtimeBootstrapPromise = runtimeRecovery;
+  const resumeRecovery = Promise.all([runtimeRecovery, networkRecovery])
+    .then(([result]) => {
+      if (recoveryGeneration !== desktopNetworkGeneration || desktopNetworkSuspended) return result;
+      if (result.ok === false && runtimeBootstrapPromise === runtimeRecovery) runtimeBootstrapPromise = null;
+      notifyRendererDesktopResumed(result);
+      console.info(`[power] desktop resume recovery completed in ${Date.now() - startedAt}ms`, {
+        ok: result.ok !== false,
+      });
+      return result;
+    })
+    .finally(() => {
+      if (runtimeResumePromise === resumeRecovery) runtimeResumePromise = null;
+    });
+  runtimeResumePromise = resumeRecovery;
+  return resumeRecovery;
+}
+
+let desktopPowerRecoveryInstalled = false;
+function installDesktopPowerRecovery() {
+  if (desktopPowerRecoveryInstalled) return;
+  desktopPowerRecoveryInstalled = true;
+  powerMonitor.on("suspend", () => {
+    desktopNetworkGeneration += 1;
+    desktopNetworkSuspended = true;
+    desktopNetworkRecoveryPromise = null;
+    runtimeResumePromise = null;
+    lastRuntimeResumeStartedAt = 0;
+    abortSuspendedDesktopFetches();
+    void session.defaultSession.closeAllConnections().catch(() => undefined);
+    console.info("[power] desktop suspended; cancelled pending network requests");
+  });
+  powerMonitor.on("resume", () => {
+    void recoverRuntimeAfterDesktopResume("resumed");
+  });
+  // Some Windows machines report only lock/unlock around modern standby.
+  // The debounce in recoverRuntimeAfterDesktopResume coalesces an unlock that
+  // follows a normal resume event.
+  powerMonitor.on("unlock-screen", () => {
+    void recoverRuntimeAfterDesktopResume("unlocked");
+  });
 }
 
 function resolveOpencodeConfigPath(scope, projectDir) {
@@ -2193,6 +2385,15 @@ const desktopCommandHandlers = {
   "engineInstall": async (event, ...args) => {
       return runtimeManager.engineInstall();
   },
+  "enginePackagesList": async (event, ...args) => {
+      return enginePackageManager.list();
+  },
+  "enginePackageInstall": async (event, ...args) => {
+      return enginePackageManager.install(String(args[0] ?? "").trim());
+  },
+  "enginePackageUninstall": async (event, ...args) => {
+      return enginePackageManager.uninstall(String(args[0] ?? "").trim());
+  },
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
   },
@@ -2443,9 +2644,6 @@ const desktopCommandHandlers = {
   "resetOpencodeCache": async (event, ...args) => {
       return { removed: [], missing: [], errors: [] };
   },
-  "opencodeMcpAuth": async (event, ...args) => {
-      return runtimeManager.opencodeMcpAuth(String(args[0] ?? "").trim(), String(args[1] ?? "").trim());
-  },
   "setWindowDecorations": async (event, ...args) => {
       return undefined;
   },
@@ -2603,23 +2801,51 @@ const desktopCommandHandlers = {
       const url = String(args[0] ?? "").trim();
       const init = args[1] ?? {};
       if (!url) throw new Error("URL is required.");
-      const timeoutMs = Number(init.timeoutMs);
-      const response = await electronNet.fetch(url, {
-        method: typeof init.method === "string" ? init.method : undefined,
-        headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
-        body: typeof init.body === "string" ? init.body : undefined,
-        signal: Number.isFinite(timeoutMs) && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined,
-        credentials: "omit",
-        cache: "no-store",
-      });
-      return {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Array.from(response.headers.entries()),
-        body: init.responseType === "arrayBuffer"
-          ? await response.arrayBuffer()
-          : await response.text(),
-      };
+      if (desktopNetworkSuspended) {
+        if (!desktopNetworkRecoveryPromise) {
+          throw new Error("Desktop network is suspended. Retry after the computer resumes.");
+        }
+        await desktopNetworkRecoveryPromise;
+        if (desktopNetworkSuspended) {
+          throw new Error("Desktop network is suspended. Retry after the computer resumes.");
+        }
+      }
+      const configuredTimeoutMs = Number(init.timeoutMs);
+      const timeoutMs = Number.isFinite(configuredTimeoutMs) && configuredTimeoutMs > 0
+        ? configuredTimeoutMs
+        : DESKTOP_FETCH_DEFAULT_TIMEOUT_MS;
+      const suspendController = new AbortController();
+      const signal = AbortSignal.any([suspendController.signal, AbortSignal.timeout(timeoutMs)]);
+      const method = typeof init.method === "string" ? init.method.toUpperCase() : "GET";
+      activeDesktopFetchControllers.add(suspendController);
+      try {
+        for (let attempt = 0; ; attempt += 1) {
+          try {
+            const response = await electronNet.fetch(url, {
+              method,
+              headers: init.headers && typeof init.headers === "object" ? init.headers : undefined,
+              body: typeof init.body === "string" ? init.body : undefined,
+              signal,
+              credentials: "omit",
+              cache: "no-store",
+            });
+            return {
+              status: response.status,
+              statusText: response.statusText,
+              headers: Array.from(response.headers.entries()),
+              body: init.responseType === "arrayBuffer"
+                ? await response.arrayBuffer()
+                : await response.text(),
+            };
+          } catch (error) {
+            if (!isRetryableDesktopFetch(error, method, attempt)) throw error;
+            await session.defaultSession.clearHostResolverCache().catch(() => undefined);
+            await waitForDesktopFetchRetry(DESKTOP_RESUME_FETCH_RETRY_DELAYS_MS[attempt], signal);
+          }
+        }
+      } finally {
+        activeDesktopFetchControllers.delete(suspendController);
+      }
   },
   "__homeDir": async (event, ...args) => {
       return os.homedir();
@@ -2855,6 +3081,15 @@ async function createMainWindow() {
     browserPanel.routeBlockedMainWindowNavigation(url);
   });
 
+  let rendererLoadStartedAt = Date.now();
+  mainWindow.webContents.on("did-start-loading", () => {
+    rendererLoadStartedAt = Date.now();
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    console.info(`[startup] renderer finished loading in ${Date.now() - rendererLoadStartedAt}ms`);
+    flushPendingDeepLinks();
+  });
+
   const startUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || process.env.ELECTRON_START_URL?.trim();
   if (startUrl) {
     await mainWindow.loadURL(startUrl);
@@ -2879,6 +3114,18 @@ ipcMain.handle("ipollowork:shell:openAuth", async (_event, url) => {
     return { ok: false, error: "empty authentication URL" };
   }
   return openDesktopAuthWindow(url.trim());
+});
+ipcMain.handle("ipollowork:shell:clearAuthSession", async () => {
+  closeDesktopAuthWindow();
+  try {
+    await clearDesktopAuthSession(session);
+    return { ok: true };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 });
 ipcMain.handle("ipollowork:shell:relaunch", async () => {
   if (relaunchActionForMode(isDevMode) === "reload-window") {
@@ -2923,7 +3170,7 @@ ipcMain.handle("ipollowork:terminal:create", async (event, options = {}) => {
   });
 
   terminalProcesses.set(terminalId, { process: child, webContentsId: event.sender.id });
-  event.sender.once("destroyed", () => killTerminalsForWebContents(event.sender.id));
+  ensureProcessCleanupForWebContents(event.sender);
   child.onData((data) => {
     if (event.sender.isDestroyed()) return;
     event.sender.send("ipollowork:terminal:data", { terminalId, data });
@@ -3009,11 +3256,12 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       if (changed) location.hash = path + '?' + params.toString();
     };
     const applyCanvasSelection = (target) => {
-      if (!target || (!target.id && !target.selector)) return false;
+      if (!target || (!target.hfId && !target.id && !target.selector)) return false;
       const [path, query = ''] = location.hash.slice(1).split('?');
       const params = new URLSearchParams(query);
       for (const key of [...params.keys()]) if (key.startsWith('sel')) params.delete(key);
       if (target.file) params.set('selFile', target.file);
+      if (target.hfId) params.set('selHfId', target.hfId);
       if (target.id) params.set('selId', target.id);
       if (target.selector) params.set('selSelector', target.selector);
       if (Number.isFinite(target.selectorIndex)) params.set('selIndex', String(target.selectorIndex));
@@ -3021,12 +3269,13 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
       return true;
     };
     const applyCanvasSelectionLive = (target, options = {}) => {
-      if (!target || (!target.id && !target.selector)) return false;
+      if (!target || (!target.hfId && !target.id && !target.selector)) return false;
       window.dispatchEvent(new CustomEvent('ipollowork:studio-apply-selection', {
         detail: {
           revealPanel: options.revealPanel === true,
           selection: {
             sourceFile: target.file || '',
+            hfId: target.hfId || undefined,
             id: target.id || undefined,
             selector: target.selector || undefined,
             selectorIndex: Number.isFinite(target.selectorIndex) ? target.selectorIndex : undefined,
@@ -3304,8 +3553,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         iframe?.contentWindow?.__player?.seek?.(0);
       }, 120);
     }
-    if (window.__ipolloworkSimpleVideoListener !== 15) {
-      window.__ipolloworkSimpleVideoListener = 15;
+    if (window.__ipolloworkSimpleVideoListener !== 16) {
+      window.__ipolloworkSimpleVideoListener = 16;
       window.__ipolloworkVideoAdvancedExplicit = false;
       window.addEventListener('message', (event) => {
         const inspector = document.querySelector('button[aria-label="Inspector"]');
@@ -3435,8 +3684,8 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
   })()`);
   if (enabled) {
     await Promise.all(frames.filter((frame) => frame !== studioFrame).map((frame) => frame.executeJavaScript(`(() => {
-      if (window.__ipolloworkSimpleVideoClickInstalled === 22) return;
-      window.__ipolloworkSimpleVideoClickInstalled = 22;
+      if (window.__ipolloworkSimpleVideoClickInstalled === 23) return;
+      window.__ipolloworkSimpleVideoClickInstalled = 23;
       const encodedProjectId = location.pathname.match(/^\\/api\\/projects\\/([^/]+)/)?.[1];
       const projectId = encodedProjectId ? decodeURIComponent(encodedProjectId) : '';
       if (!projectId) return;
@@ -3512,18 +3761,30 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
         const composition = element.closest('[data-composition-file]') || element.closest('[data-composition-id]');
         const file = composition?.getAttribute('data-composition-file') || 'index.html';
         if (!composition) return null;
+        const hfId = element.getAttribute('data-hf-id') || undefined;
+        const id = element.id || undefined;
         const tag = element.tagName.toLowerCase();
-        const stableClasses = [...element.classList].filter((name) => !name.startsWith('__hf-'));
-        const selector = stableClasses.length
-          ? tag + stableClasses.map((name) => '.' + CSS.escape(name)).join('')
-          : tag;
+        const transientClasses = new Set(['active', 'current', 'playing', 'paused', 'selected', 'visible', 'hidden']);
+        const stableClasses = [...element.classList].filter((name) =>
+          !name.startsWith('__hf-') && !transientClasses.has(name)
+        );
+        // Generated compositions already carry an authored identity. Prefer it
+        // over runtime classes such as active, which change during playback
+        // and make a click resolve to a different source node after pausing.
+        const selector = hfId
+          ? '[data-hf-id="' + CSS.escape(hfId) + '"]'
+          : id
+            ? '#' + CSS.escape(id)
+            : stableClasses.length
+              ? tag + stableClasses.map((name) => '.' + CSS.escape(name)).join('')
+              : tag;
         const scope = composition.querySelector('[data-hf-inner-root]') || composition;
         const matches = [...scope.querySelectorAll(selector)];
         const selectorIndex = Math.max(0, matches.indexOf(element));
         return {
           file,
-          hfId: element.getAttribute('data-hf-id') || undefined,
-          id: element.id || undefined,
+          hfId,
+          id,
           selector,
           selectorIndex,
         };
@@ -3715,7 +3976,7 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
 
       const editableAtPoint = (x, y) => {
         const elements = document.elementsFromPoint(x, y).filter((element) => element instanceof Element && !toolbar.contains(element));
-        const patchable = elements.find((element) => sourceTargetFor(element));
+        const patchable = elements.find((element) => isEffectivelyVisible(element) && sourceTargetFor(element));
         const geometric = [...document.querySelectorAll('[id],[data-hf-id]')]
           .filter((element) => {
             if (toolbar.contains(element) || !sourceTargetFor(element)) return false;
@@ -3747,7 +4008,9 @@ ipcMain.handle("ipollowork:hyperframes:set-simple-mode", async (event, enabled) 
           const rect = element.getBoundingClientRect();
           return rect.width > 0 && rect.height > 0 && isEffectivelyVisible(element) &&
             x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom &&
-            Boolean((element.textContent || '').trim()) && sourceTargetFor(element);
+            Boolean((element.textContent || '').trim()) &&
+            (!element.closest('[data-ipw-caption="true"]') || element.hasAttribute('data-hf-id') || Boolean(element.id)) &&
+            sourceTargetFor(element);
         })
         .sort((a, b) => {
           const ar = a.getBoundingClientRect();
@@ -3995,6 +4258,7 @@ if (!app.requestSingleInstanceLock()) {
     event.preventDefault();
     if (runtimeDisposeInProgress) return;
     showShutdownScreen();
+    stopAllDesktopChildProcesses();
     void Promise.all([disposeRuntimeBeforeQuit(), uiControlServer.stop()]).finally(() => app.quit());
   });
 
@@ -4015,8 +4279,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(async () => {
-    const startupStartedAt = Date.now();
     console.info("[startup] Electron ready");
+    await enginePackageManager.applyEnvironment();
+    installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
     const bootstrapConfig = await workspaceStore.getDesktopBootstrapConfig();
@@ -4050,12 +4315,8 @@ if (!app.requestSingleInstanceLock()) {
 
     queueDeepLinks(forwardedDeepLinks(process.argv));
     const windowStartedAt = Date.now();
-    const win = await createMainWindow();
+    await createMainWindow();
     console.info(`[startup] main window loaded in ${Date.now() - windowStartedAt}ms`);
-    win.webContents.on("did-finish-load", () => {
-      console.info(`[startup] renderer finished loading after ${Date.now() - startupStartedAt}ms`);
-      flushPendingDeepLinks();
-    });
 
     // Initialize the packaged updater after the window is up so the user sees
     // a working app first. Renderer-owned checks pass the selected release

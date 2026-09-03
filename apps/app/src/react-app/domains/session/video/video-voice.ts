@@ -25,6 +25,18 @@ export type VoiceSampleDescriptor = {
   type?: string;
 };
 
+type VoiceSampleValidationMessages = {
+  invalidType: string;
+  empty: string;
+  tooLarge: string;
+};
+
+const DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES: VoiceSampleValidationMessages = {
+  invalidType: "请选择 WAV、MP3 或 M4A 音频文件。",
+  empty: "音频文件为空，无法复刻。",
+  tooLarge: "音频文件不能超过 10 MB。",
+};
+
 export const BAILIAN_PRESET_VOICES = [
   { id: "longanyang", label: "龙安阳", description: "阳光自然的中文男声" },
   { id: "longanhuan_v3", label: "龙安欢", description: "明朗欢快的中文女声" },
@@ -122,13 +134,16 @@ export function parseVideoVoiceDisplayMetadata(text: string): VideoVoiceAiRefere
   }
 }
 
-export function validateVoiceSampleFile(file: VoiceSampleDescriptor): string | null {
+export function validateVoiceSampleFile(
+  file: VoiceSampleDescriptor,
+  messages: VoiceSampleValidationMessages = DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES,
+): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase();
   if (extension !== "wav" && extension !== "mp3" && extension !== "m4a") {
-    return "请选择 WAV、MP3 或 M4A 音频文件。";
+    return messages.invalidType;
   }
-  if (!Number.isFinite(file.size) || file.size <= 0) return "音频文件为空，无法复刻。";
-  if (file.size > MAX_VOICE_SAMPLE_BYTES) return "音频文件不能超过 10 MB。";
+  if (!Number.isFinite(file.size) || file.size <= 0) return messages.empty;
+  if (file.size > MAX_VOICE_SAMPLE_BYTES) return messages.tooLarge;
   return null;
 }
 

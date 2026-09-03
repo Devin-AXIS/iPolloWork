@@ -54,15 +54,15 @@
   },
   "dependencies": {
     "@hyperframes/parsers": "workspace:*",
-    "htmlparser2": "^10.1.0",
+    "htmlparser2": "^12.0.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.8"
+    "postcss": "^8.5.26"
   },
   "devDependencies": {
-    "@types/node": "^25.0.10",
+    "@types/node": "^26.2.0",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }

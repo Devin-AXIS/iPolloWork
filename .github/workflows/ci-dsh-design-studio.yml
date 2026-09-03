@@ -1,0 +1,146 @@
+name: DeepSeek Harness Studio plugins
+
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "external-plugins/deepseek-harness/**"
+      - "packages/design-studio/**"
+      - "packages/video-studio/**"
+      - "packages/types/**"
+      - "apps/app/src/**"
+      - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
+      - "scripts/export-deepseek-design-repository.mjs"
+      - ".github/workflows/ci-dsh-design-studio.yml"
+    tags:
+      - "deepseek-idesign-v*"
+      - "deepseek-ippt-v*"
+      - "deepseek-ivideo-v*"
+  pull_request:
+    branches: [main, dev]
+    paths:
+      - "external-plugins/deepseek-harness/**"
+      - "packages/design-studio/**"
+      - "packages/video-studio/**"
+      - "packages/types/**"
+      - "apps/app/src/**"
+      - "apps/server/bundled-templates/**"
+      - "vendor/hyperframes/packages/studio/src/**"
+      - "vendor/hyperframes/packages/cli/**"
+      - "scripts/export-deepseek-design-repository.mjs"
+      - ".github/workflows/ci-dsh-design-studio.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Build ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [design-studio, ppt-studio, video-studio]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Setup Bun
+        if: matrix.package == 'video-studio'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install iPolloWork workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Install plugin workspaces
+        run: |
+          pnpm --dir external-plugins/deepseek-harness/design-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/ppt-studio install --frozen-lockfile
+          pnpm --dir external-plugins/deepseek-harness/video-studio install --frozen-lockfile
+
+      - name: Typecheck and package
+        run: |
+          mkdir -p "${RUNNER_TEMP}/packages"
+          pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} run check
+          if [[ "${{ matrix.package }}" == "video-studio" ]]; then
+            pnpm --dir external-plugins/deepseek-harness/video-studio run test
+          fi
+          pnpm --dir external-plugins/deepseek-harness/${{ matrix.package }} pack --pack-destination "${RUNNER_TEMP}/packages"
+
+  publish:
+    name: Publish tagged package to npm
+    needs: check
+    if: startsWith(github.ref, 'refs/tags/deepseek-idesign-v') || startsWith(github.ref, 'refs/tags/deepseek-ippt-v') || startsWith(github.ref, 'refs/tags/deepseek-ivideo-v')
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.4.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: pnpm
+
+      - name: Setup Bun
+        if: startsWith(github.ref, 'refs/tags/deepseek-ivideo-v')
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Resolve tagged package
+        id: package
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "${RELEASE_TAG}" == deepseek-idesign-v* ]]; then
+            package_directory="external-plugins/deepseek-harness/design-studio"
+            tag_version="${RELEASE_TAG#deepseek-idesign-v}"
+          elif [[ "${RELEASE_TAG}" == deepseek-ippt-v* ]]; then
+            package_directory="external-plugins/deepseek-harness/ppt-studio"
+            tag_version="${RELEASE_TAG#deepseek-ippt-v}"
+          else
+            package_directory="external-plugins/deepseek-harness/video-studio"
+            tag_version="${RELEASE_TAG#deepseek-ivideo-v}"
+          fi
+          package_version="$(node -p "require('./${package_directory}/package.json').version")"
+          test "${package_version}" = "${tag_version}"
+          echo "directory=${package_directory}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install iPolloWork workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Install plugin workspace
+        run: pnpm --dir "${{ steps.package.outputs.directory }}" install --frozen-lockfile
+
+      - name: Publish
+        run: pnpm --dir "${{ steps.package.outputs.directory }}" publish --access public --provenance --no-git-checks
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

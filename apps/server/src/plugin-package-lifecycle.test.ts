@@ -4,11 +4,29 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import {
+  codexHarnessPluginEngineAdapter,
+  deepSeekHarnessPluginEngineAdapter,
+  openCodePluginEngineAdapter,
+  pluginEngineAdapters,
+  pluginEngineCompatibility,
+  PluginEngineAdapterRegistry,
+  type PluginEngineAdapter,
+} from "./plugin-engine-adapter.js";
+import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
+import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
+import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
+import {
+  disposeRuntimeOpencodeConfigStore,
+  readRuntimeOpencodeConfig,
+} from "./runtime-opencode-config-store.js";
+import { pluginServiceDataDirectory } from "./plugin-service-runtime.js";
 import { startServer } from "./server.js";
+import { disposeTemplateStore } from "./templates.js";
 import type { ServerConfig } from "./types.js";
 
 const WORKSPACE_ID = "ws_plugin_package";
+const ENGINE_ID = "opencode";
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
 
@@ -21,7 +39,7 @@ function serverConfig(root: string): ServerConfig {
     configPath: join(root, "server.json"),
     approval: { mode: "auto", timeoutMs: 0 },
     corsOrigins: [],
-    workspaces: [{ id: WORKSPACE_ID, name: "Test", path: root, preset: "starter", workspaceType: "local" }],
+    workspaces: [{ id: WORKSPACE_ID, name: "Test", path: root, preset: "starter", workspaceType: "local", engineId: ENGINE_ID }],
     authorizedRoots: [root],
     readOnly: false,
     startedAt: Date.now(),
@@ -39,37 +57,41 @@ async function createRoot(prefix: string) {
 }
 
 async function writePackage(packageRoot: string, version: string, runtimeText: string, skillText: string, options: { mcp?: boolean } = {}) {
-  const pluginPath = ".opencode/plugins/acme-research.ts";
-  const skillPath = ".opencode/skills/acme-research/SKILL.md";
-  const mcpPath = ".opencode/mcps/acme-research.json";
-  await mkdir(join(packageRoot, ".opencode", "plugins"), { recursive: true });
-  await mkdir(join(packageRoot, ".opencode", "skills", "acme-research"), { recursive: true });
+  const pluginPath = "engines/opencode/plugins/acme-research.ts";
+  const skillPath = "skills/acme-research/SKILL.md";
+  const mcpPath = "mcp/acme-research.json";
+  await mkdir(join(packageRoot, dirname(pluginPath)), { recursive: true });
+  await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
   await writeFile(join(packageRoot, pluginPath), runtimeText, "utf8");
   await writeFile(join(packageRoot, skillPath), skillText, "utf8");
   if (options.mcp) {
-    await mkdir(join(packageRoot, ".opencode", "mcps"), { recursive: true });
+    await mkdir(join(packageRoot, dirname(mcpPath)), { recursive: true });
     await writeFile(join(packageRoot, mcpPath), JSON.stringify({ type: "remote", url: "https://mcp.acme.example/mcp" }), "utf8");
   }
   const resources: Array<Record<string, unknown>> = [
-    { type: "opencode-plugin", id: "acme-runtime", path: pluginPath, required: true },
     { type: "skill", id: "acme-skill", path: skillPath, required: true },
   ];
   if (options.mcp) resources.push({ type: "mcp", id: "acme-mcp", mcpServerName: "acme-research", path: mcpPath, required: true });
   await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "acme-research",
     name: "Acme Research",
     description: "Self-contained research plugin.",
     source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
     package: {
       version,
+      engines: ["opencode"],
       updateId: "acme/research",
-      entrypoints: { opencode: pluginPath },
     },
+    engineBindings: [{
+      engine: "opencode",
+      capabilities: [{ id: "acme-runtime", kind: "plugin", path: pluginPath, required: true }],
+    }],
     authorization: {
       required: true,
       methods: [{
         id: "api-key",
+        connectionId: "acme-research",
         kind: "secret-form",
         label: "API key",
         fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
@@ -83,19 +105,22 @@ async function writeDeclarativePackage(packageRoot: string, version = "1.0.0") {
   await writePackage(packageRoot, version, "export default async () => ({})\n", "# Acme Research\n");
   const manifestPath = join(packageRoot, "ipollowork.plugin.json");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-  manifest.package.entrypoints = {};
+  delete manifest.engineBindings;
+  delete manifest.package.engines;
   delete manifest.authorization;
   manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type === "skill");
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 }
 
 async function writeSignedExecutablePackage(packageRoot: string) {
-  const skillPath = ".opencode/skills/signed-research/SKILL.md";
+  const skillPath = "skills/signed-research/SKILL.md";
+  const servicePath = "service/signed-research.mjs";
   await mkdir(join(packageRoot, dirname(skillPath)), { recursive: true });
-  await writeFile(join(packageRoot, "service.mjs"), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
+  await mkdir(join(packageRoot, dirname(servicePath)), { recursive: true });
+  await writeFile(join(packageRoot, servicePath), "export default async () => ({ actions: { ping: async () => ({ pong: true }) } });\n", "utf8");
   await writeFile(join(packageRoot, skillPath), "# Signed Research\n", "utf8");
   await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "signed-research",
     name: "Signed Research",
     description: "Signed executable test package.",
@@ -104,12 +129,11 @@ async function writeSignedExecutablePackage(packageRoot: string) {
       version: "1.0.0",
       publisher: { id: "smart-future-school", name: "智慧未来学校" },
       updateId: "smart-future-school/signed-research",
-      entrypoints: { service: "service.mjs" },
-      checksum: { algorithm: "sha256", value: "e1f0989fd33e680640c020a16309a1ac88b01412b837181aacdc1f059e257346" },
+      checksum: { algorithm: "sha256", value: "96043f0fff207f9cb89dc07efe09ddb66f40a0f37f78138d37852e7263cf98aa" },
       signature: {
         algorithm: "ed25519",
         keyId: "smart-future-school-2026",
-        value: "zz4FD0ePLKBuyasb69aanwG5GemRzLF6uZCQ23Zg4Pc+H3QxWpANef5RGfGoIMNriqbW2e96X7vRSmBrvIy7Dw==",
+        value: "8ovn8bYOQwHeLdo/lrx/rIYZnw7fJCxVQ4IKKA6WDCFsnsX8mvQ9XMtjnYydnSlML+5dalES/p0iqDV9jGyOCQ==",
       },
     },
     permissions: [{ id: "network", reason: "Run the signed local service." }],
@@ -117,7 +141,7 @@ async function writeSignedExecutablePackage(packageRoot: string) {
       {
         type: "local-service",
         id: "signed-research-service",
-        path: "service.mjs",
+        path: servicePath,
         actions: [{
           id: "ping",
           title: "Ping",
@@ -142,53 +166,238 @@ async function expectMissing(path: string) {
   await expect(stat(path)).rejects.toThrow();
 }
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 afterEach(async () => {
+  for (const root of roots) {
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const config = serverConfig(root);
+    await Promise.all([
+      disposeRuntimeOpencodeConfigStore(config),
+      disposeiPolloWorkWorkspaceConfigStore(config),
+      disposeTemplateStore(config),
+    ]);
+  }
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
   while (roots.length) {
     const root = roots.pop();
-    if (root) await rm(root, { recursive: true, force: true });
+    if (root) await removeTestRoot(root);
   }
 });
 
 describe("plugin package lifecycle", () => {
+  test("classifies upgrades and downgrades using semantic version precedence", async () => {
+    const { pluginPackageVersionChange } = await import("./plugin-package-lifecycle.js");
+
+    expect(pluginPackageVersionChange(null, "1.0.0")).toBe("install");
+    expect(pluginPackageVersionChange("1.0.0", "1.0.0+build.2")).toBe("same");
+    expect(pluginPackageVersionChange("1.0.0-beta.2", "1.0.0-beta.11")).toBe("upgrade");
+    expect(pluginPackageVersionChange("2.0.0", "1.9.9")).toBe("downgrade");
+    expect(pluginPackageVersionChange("1.0.0", "1.0.0-rc.1")).toBe("downgrade");
+  });
+
+  test("registers unique engine adapters and rejects duplicate IDs", () => {
+    const alternateAdapter: PluginEngineAdapter = {
+      id: "deepseek-harness",
+      projectionRoots: [".alternate"],
+      portableResourceTypes: new Set(["skill"]),
+      nativeCapabilityKinds: new Set(),
+      compatibility: () => [],
+      workspaceFiles: () => [],
+      skillTargetPath: () => null,
+      syncRuntime: async () => undefined,
+    };
+    const registry = new PluginEngineAdapterRegistry([openCodePluginEngineAdapter, alternateAdapter]);
+
+    expect(registry.ids()).toEqual([ENGINE_ID, "deepseek-harness"]);
+    expect(registry.get(ENGINE_ID)).toBe(openCodePluginEngineAdapter);
+    expect(registry.get("deepseek-harness")).toBe(alternateAdapter);
+    expect(pluginEngineAdapters.ids()).toEqual([ENGINE_ID, "deepseek-harness", "codex-harness"]);
+    expect(pluginEngineAdapters.get("deepseek-harness")).toBe(deepSeekHarnessPluginEngineAdapter);
+    expect(pluginEngineAdapters.get("codex-harness")).toBe(codexHarnessPluginEngineAdapter);
+    expect(openCodePluginEngineAdapter.projectionRoots).toEqual([".opencode"]);
+    expect(deepSeekHarnessPluginEngineAdapter.projectionRoots).toEqual([".dsh"]);
+    expect(codexHarnessPluginEngineAdapter.projectionRoots).toEqual([".agents"]);
+    expect(() => new PluginEngineAdapterRegistry([
+      openCodePluginEngineAdapter,
+      openCodePluginEngineAdapter,
+    ])).toThrow("Duplicate plugin engine adapter: opencode");
+  });
+
+  test("reports portable resources as ready when each engine has an adapter path", async () => {
+    const packageRoot = await createRoot("ipollowork-plugin-compatibility-");
+    await writeDeclarativePackage(packageRoot);
+    const manifest = JSON.parse(await readFile(join(packageRoot, "ipollowork.plugin.json"), "utf8"));
+
+    expect(pluginEngineCompatibility(openCodePluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "opencode",
+      status: "ready",
+      supportedResourceIds: ["acme-skill"],
+    });
+
+    manifest.resources.push({
+      type: "mcp",
+      id: "private-mcp",
+      mcpServerName: "private",
+      path: "mcp/private.json",
+      oauth: true,
+      required: true,
+    });
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "deepseek-harness",
+      status: "ready",
+      supportedResourceIds: ["acme-skill", "private-mcp"],
+    });
+    expect(pluginEngineCompatibility(codexHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      engineId: "codex-harness",
+      status: "ready",
+      supportedResourceIds: ["acme-skill", "private-mcp"],
+    });
+
+    manifest.resources = [{ type: "command", id: "command-only", path: "commands/only.md", required: true }];
+    manifest.package.engines = ["opencode"];
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      status: "ready",
+      supportedResourceIds: ["command-only"],
+      nativeEngineOnly: false,
+    });
+
+    manifest.engineBindings = [{
+      engine: "opencode",
+      compatibility: ">=1.0.0",
+      capabilities: [{ id: "native-plugin", kind: "plugin", path: "plugins/native.ts", required: true }],
+    }];
+    expect(pluginEngineCompatibility(deepSeekHarnessPluginEngineAdapter, manifest)).toMatchObject({
+      status: "partial",
+      nativeEngineOnly: true,
+    });
+  });
+
   test("previews the complete Figma package and every bundled workflow file", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-figma-preview-workspace-");
     const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
 
     expect(preview.manifest.id).toBe("figma");
     expect(preview.files.length).toBeGreaterThan(100);
-    expect(preview.files.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(true);
+    expect(preview.files.some((entry) => entry.path === "mcp/figma.json")).toBe(true);
     expect(preview.writes.some((entry) => entry.path === ".opencode/skills/figma-use/references/plugin-api-standalone.d.ts")).toBe(true);
     expect(preview.writes.some((entry) => entry.path === "README.md")).toBe(false);
     expect(preview.writes.some((entry) => entry.path === ".opencode/mcps/figma.json")).toBe(false);
+  });
+
+  test("installs signed-era Cloud packages through the portable V2 runtime", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-legacy-cloud-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-legacy-cloud-package-");
+    await writeDeclarativePackage(packageRoot);
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.schemaVersion = 1;
+    manifest.composer = { prompt: "Use the legacy Cloud workflow.", suggestions: ["Run it"] };
+    manifest.package.compatibility = { ipollowork: ">=0.17.0" };
+    manifest.package.entrypoints = {};
+    manifest.resources[0].path = ".opencode/skills/acme-research/SKILL.md";
+    await mkdir(join(packageRoot, ".opencode", "skills", "acme-research"), { recursive: true });
+    await copyFile(
+      join(packageRoot, "skills", "acme-research", "SKILL.md"),
+      join(packageRoot, ".opencode", "skills", "acme-research", "SKILL.md"),
+    );
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
+    expect(preview.manifest).toMatchObject({
+      schemaVersion: 2,
+      id: "acme-research",
+      composer: { prompt: "Use the legacy Cloud workflow." },
+      resources: [{ id: "acme-skill", path: "skills/acme-research/SKILL.md" }],
+    });
+    expect(preview.files.some((file) => file.path === ".opencode/skills/acme-research/SKILL.md")).toBe(true);
+    expect(preview.writes.some((file) => file.path === ".opencode/skills/acme-research/SKILL.md")).toBe(true);
+    const legacyVersion = { manifest: preview.manifest, artifactRoot: packageRoot, files: preview.files };
+    expect(deepSeekHarnessPluginEngineAdapter.workspaceFiles(legacyVersion))
+      .toContainEqual(expect.objectContaining({
+        sourcePath: ".opencode/skills/acme-research/SKILL.md",
+        targetPath: ".dsh/skills/acme-research/SKILL.md",
+      }));
+    expect(codexHarnessPluginEngineAdapter.workspaceFiles(legacyVersion))
+      .toContainEqual(expect.objectContaining({
+        sourcePath: ".opencode/skills/acme-research/SKILL.md",
+        targetPath: ".agents/skills/acme-research/SKILL.md",
+      }));
+
+    const config = serverConfig(workspaceRoot);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const installed = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8"))
+      .toBe("# Acme Research\n");
+  });
+
+  test("installs and serves an enabled Workspace App from immutable package artifacts", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-workspace-app-");
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/workspace-canvas", import.meta.url));
+    const config = serverConfig(workspaceRoot);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+    const resource = await lifecycle.readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: "workspace-canvas",
+      resourceId: "canvas",
+    });
+
+    expect(resource.resource.ui.uri).toBe("ui://workspace-canvas/canvas");
+    expect(resource.html).toContain("Workspace Canvas");
+    await lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      pluginId: "workspace-canvas",
+      enabled: false,
+    });
+    await expect(lifecycle.readInstalledPluginUiResource({
+      serverConfig: config,
+      pluginId: "workspace-canvas",
+      resourceId: "canvas",
+    })).rejects.toMatchObject({ code: "plugin_package_disabled" });
   });
 
   test("expands directory resources into owned files without duplicates", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-directory-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-directory-package-");
-    const skillRoot = join(packageRoot, ".opencode", "skills", "figma");
+    const skillRoot = join(packageRoot, "skills", "figma");
     await mkdir(join(skillRoot, "references"), { recursive: true });
     await writeFile(join(skillRoot, "SKILL.md"), "# Figma\n", "utf8");
     await writeFile(join(skillRoot, "references", "api.md"), "# API\n", "utf8");
     await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       id: "figma",
       name: "Figma",
       description: "Figma workflows.",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
-      package: { version: "1.0.0", updateId: "figma/workflows", entrypoints: {} },
+      package: { version: "1.0.0", updateId: "figma/workflows" },
       resources: [
-        { type: "skill", id: "figma-skill", path: ".opencode/skills/figma/SKILL.md", required: true },
-        { type: "file", id: "figma-skill-files", path: ".opencode/skills/figma", required: true },
+        { type: "skill", id: "figma-skill", path: "skills/figma/SKILL.md", required: true },
+        { type: "file", id: "figma-skill-files", path: "skills/figma", required: true },
       ],
     }), "utf8");
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
 
     expect(preview.writes.map((entry) => entry.path)).toEqual([
       ".opencode/skills/figma/SKILL.md",
@@ -205,25 +414,25 @@ describe("plugin package lifecycle", () => {
     await writeFile(join(workspaceRoot, "unrelated.txt"), "keep me", "utf8");
     const config = serverConfig(workspaceRoot);
 
-    const preview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
     expect(preview.writes.map((entry) => entry.path).sort()).toEqual([
       ".opencode/skills/acme-research/SKILL.md",
     ]);
     expect(preview.files.map((entry) => entry.path).sort()).toEqual([
-      ".opencode/plugins/acme-research.ts",
-      ".opencode/skills/acme-research/SKILL.md",
+      "engines/opencode/plugins/acme-research.ts",
+      "skills/acme-research/SKILL.md",
     ]);
 
-    const installed = await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
-    const repeated = await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    const installed = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    const repeated = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
     expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research", version: "1.0.0" });
     expect(repeated).toMatchObject({ status: "unchanged", pluginId: "acme-research", version: "1.0.0" });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
     const installedSpec = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0] ?? "";
-    expect(installedSpec).toContain("/plugin-packages/ws_plugin_package/artifacts/acme-research/1.0.0/");
+    expect(installedSpec).toContain("/plugin-packages/artifacts/acme-research/1.0.0/");
     expect(installedSpec).not.toContain(`${workspaceRoot}/.opencode/plugins`);
 
-    await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
     expect(await readFile(join(workspaceRoot, "unrelated.txt"), "utf8")).toBe("keep me");
@@ -243,9 +452,7 @@ describe("plugin package lifecycle", () => {
 
     const installed = await lifecycle.installPluginPackage({
       serverConfig: serverConfig(matchingWorkspace),
-      workspaceId: WORKSPACE_ID,
       packageRoot,
-      workspaceRoot: matchingWorkspace,
     });
     expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
     expect(await readFile(matchingTarget, "utf8")).toBe("# Acme Research\n");
@@ -258,9 +465,7 @@ describe("plugin package lifecycle", () => {
 
     await expect(lifecycle.installPluginPackage({
       serverConfig: serverConfig(conflictingWorkspace),
-      workspaceId: WORKSPACE_ID,
       packageRoot,
-      workspaceRoot: conflictingWorkspace,
     })).rejects.toMatchObject({
       code: "plugin_package_conflict",
       details: { paths: [".opencode/skills/acme-research/SKILL.md"] },
@@ -278,35 +483,96 @@ describe("plugin package lifecycle", () => {
     await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
     const config = serverConfig(workspaceRoot);
 
-    await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV1, workspaceRoot });
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
     await lifecycle.setPluginPackageResourceEnabled({
       serverConfig: config,
-      workspaceId: WORKSPACE_ID,
       pluginId: "acme-research",
       resourceId: "acme-skill",
-      workspaceRoot,
       enabled: false,
     });
-    const updated = await lifecycle.updatePluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV2, workspaceRoot });
+    const updated = await lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 });
     expect(updated).toMatchObject({ status: "updated", previousVersion: "1.0.0", version: "1.1.0" });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0]).toContain("/1.1.0/");
     await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
 
-    const rolledBack = await lifecycle.rollbackPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
+    const rolledBack = await lifecycle.rollbackPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     expect(rolledBack).toMatchObject({ status: "rolled_back", previousVersion: "1.1.0", version: "1.0.0" });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).plugin?.[0]).toContain("/1.0.0/");
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
 
     await lifecycle.setPluginPackageResourceEnabled({
       serverConfig: config,
-      workspaceId: WORKSPACE_ID,
       pluginId: "acme-research",
       resourceId: "acme-skill",
-      workspaceRoot,
       enabled: true,
     });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Version one\n");
+  });
+
+  test("ignores obsolete historical manifests while keeping the current package usable", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-history-workspace-");
+    const packageV1 = await createRoot("ipollowork-plugin-history-v1-");
+    const packageV2 = await createRoot("ipollowork-plugin-history-v2-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageV1, "1.0.0", "export const version = 'v1'\n", "# Version one\n");
+    await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
+    const config = serverConfig(workspaceRoot);
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
+    await lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 });
+    const statePath = join(workspaceRoot, "plugin-packages", "state.json");
+    const state = JSON.parse(await readFile(statePath, "utf8"));
+    state.packages["acme-research"].versions["1.0.0"].manifest.schemaVersion = 1;
+    await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, "utf8");
+
+    await lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    });
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([
+      expect.objectContaining({ pluginId: "acme-research", version: "1.1.0" }),
+    ]);
+    await expect(lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    })).resolves.toMatchObject({ status: "uninstalled", version: "1.1.0" });
+  });
+
+  test("reconciles package-owned files left at a verified historical version", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-stale-projection-workspace-");
+    const packageV1 = await createRoot("ipollowork-plugin-stale-projection-v1-");
+    const packageV2 = await createRoot("ipollowork-plugin-stale-projection-v2-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageV1, "1.0.0", "export const version = 'v1'\n", "# Version one\n");
+    await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
+    const config = serverConfig(workspaceRoot);
+    const target = join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md");
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
+    await lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 });
+    await writeFile(target, "# Version one\n", "utf8");
+
+    await lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    });
+    expect(await readFile(target, "utf8")).toBe("# Version two\n");
+
+    await writeFile(target, "# User customization\n", "utf8");
+    await expect(lifecycle.reconcilePluginPackagesForWorkspace({
+      serverConfig: config,
+      workspaceId: WORKSPACE_ID,
+      workspaceRoot,
+    })).rejects.toMatchObject({
+      code: "plugin_package_conflict",
+      details: { paths: [".opencode/skills/acme-research/SKILL.md"] },
+    });
+    expect(await readFile(target, "utf8")).toBe("# User customization\n");
   });
 
   test("stops an update when an owned file was modified by the user", async () => {
@@ -319,11 +585,11 @@ describe("plugin package lifecycle", () => {
     await writePackage(packageV2, "1.1.0", "export const version = 'v2'\n", "# Version two\n");
     const config = serverConfig(workspaceRoot);
 
-    await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV1, workspaceRoot });
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: packageV1 });
     const target = join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md");
     await writeFile(target, "# User customization\n", "utf8");
 
-    await expect(lifecycle.updatePluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot: packageV2, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.updatePluginPackage({ serverConfig: config, packageRoot: packageV2 })).rejects.toMatchObject({
       code: "plugin_package_conflict",
     });
     expect(await readFile(target, "utf8")).toBe("# User customization\n");
@@ -335,7 +601,7 @@ describe("plugin package lifecycle", () => {
     const packageRoot = await createRoot("ipollowork-plugin-integrity-package-");
     await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
 
-    const unsigned = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const unsigned = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
     expect(unsigned.integrity.status).toBe("unsigned");
     expect(unsigned.integrity.sha256).toMatch(/^[a-f0-9]{64}$/);
 
@@ -343,22 +609,545 @@ describe("plugin package lifecycle", () => {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
     manifest.description = "Changed package metadata";
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-    const changed = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
+    const changed = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
     expect(changed.integrity.sha256).not.toBe(unsigned.integrity.sha256);
 
     manifest.package.checksum = { algorithm: "sha256", value: "0".repeat(64) };
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID })).rejects.toMatchObject({
       code: "plugin_package_checksum_mismatch",
     });
 
     delete manifest.package.checksum;
     manifest.package.compatibility = { ipollowork: ">=99.0.0" };
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
-    await expect(lifecycle.previewPluginPackage({ packageRoot, workspaceRoot })).rejects.toMatchObject({
+    await expect(lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID })).rejects.toMatchObject({
       code: "plugin_package_incompatible",
     });
+  });
+
+  test("keeps portable resources available outside a package's native engine list", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-engine-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-engine-package-");
+    await writeDeclarativePackage(packageRoot);
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.engines = ["deepseek-harness"];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const preview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
+    expect(preview.writes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: ".opencode/skills/acme-research/SKILL.md" }),
+    ]));
+  });
+
+  test("validates every compatible local engine before a global install", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-compat-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-compat-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-compat-package-");
+    await writeDeclarativePackage(packageRoot);
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.engines = ["opencode", "deepseek-harness"];
+    manifest.engineBindings = [{
+      engine: "deepseek-harness",
+      compatibility: ">=99.0.0",
+      capabilities: [],
+    }];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+
+    await expect(lifecycle.installPluginPackage({ serverConfig: config, packageRoot }))
+      .rejects.toMatchObject({ code: "plugin_package_incompatible" });
+    await expectMissing(join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    await expectMissing(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
+  });
+
+  test("installs portable skills through the DeepSeek Harness adapter", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-engine-selection-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-engine-selection-package-");
+    await writeDeclarativePackage(packageRoot);
+    const skill = "---\nname: acme-research\ndescription: Research with Acme.\n---\n\n# Acme Research\n";
+    await writeFile(join(packageRoot, "skills", "acme-research", "SKILL.md"), skill, "utf8");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+
+    const installed = await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".dsh", "skills", "acme-research", "SKILL.md"), "utf8")).toBe(skill);
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    });
+    await expectMissing(join(workspaceRoot, ".dsh", "skills", "acme-research", "SKILL.md"));
+  });
+
+  test("installs portable skills through the Codex Harness adapter", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-codex-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-codex-package-");
+    await writeDeclarativePackage(packageRoot);
+    const skill = "---\nname: acme-research\ndescription: Research with Acme.\n---\n\n# Acme Research\n";
+    await writeFile(join(packageRoot, "skills", "acme-research", "SKILL.md"), skill, "utf8");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "codex-harness";
+
+    const installed = await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    expect(installed).toMatchObject({ status: "installed", pluginId: "acme-research" });
+    expect(await readFile(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"), "utf8")).toBe(skill);
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+    await expectMissing(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"));
+  });
+
+  test("projects bundled Design and Video packages into DeepSeek Harness skills", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+    const packages = [
+      {
+        id: "design-agent",
+        root: fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url)),
+        skill: "ipollowork-design-studio",
+        heading: "# iPolloWork Design Studio",
+      },
+      {
+        id: "video-agent",
+        root: fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url)),
+        skill: "ipollowork-video-studio",
+        heading: "# iPolloWork Video Studio",
+      },
+    ];
+
+    for (const item of packages) {
+      await lifecycle.installPluginPackage({
+        serverConfig: config,
+        packageRoot: item.root,
+      });
+      expect(await readFile(join(workspaceRoot, ".dsh", "skills", item.skill, "SKILL.md"), "utf8"))
+        .toContain(item.heading);
+    }
+  });
+
+  test("shares one installed package inventory across OpenCode and DeepSeek Harness projects", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-shared-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-shared-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-shared-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(openCodeRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.engines = ["opencode"];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+    config.authorizedRoots.push(deepSeekRoot);
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+    const server = await startServer(config);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/ws_deepseek_harness/plugin-packages`, {
+        headers: { authorization: `Bearer ${config.token}` },
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId: "acme-research", version: "1.0.0" }),
+      ]));
+      const openCodeSkill = join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md");
+      const deepSeekSkill = join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md");
+      expect(await readFile(join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md"), "utf8"))
+        .toBe("# Acme Research\n");
+      await lifecycle.setPluginPackageResourceEnabled({
+        serverConfig: config,
+        pluginId: "acme-research",
+        resourceId: "acme-skill",
+        enabled: false,
+      });
+      await expectMissing(openCodeSkill);
+      await expectMissing(deepSeekSkill);
+      await lifecycle.setPluginPackageResourceEnabled({
+        serverConfig: config,
+        pluginId: "acme-research",
+        resourceId: "acme-skill",
+        enabled: true,
+      });
+      expect(await readFile(openCodeSkill, "utf8")).toBe("# Acme Research\n");
+      expect(await readFile(deepSeekSkill, "utf8")).toBe("# Acme Research\n");
+      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+      await expectMissing(openCodeSkill);
+      await expectMissing(deepSeekSkill);
+      expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).map((item) => item.pluginId))
+        .not.toContain("acme-research");
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("serializes workspace reconciliation with uninstall artifact cleanup", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-reconcile-uninstall-");
+    const packageRoot = await createRoot("ipollowork-plugin-reconcile-uninstall-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(workspaceRoot);
+
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+
+    await Promise.all([
+      lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" }),
+      lifecycle.reconcilePluginPackagesForWorkspace({
+        serverConfig: config,
+        workspaceId: WORKSPACE_ID,
+        workspaceRoot,
+      }),
+    ]);
+
+    await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
+  });
+
+  test("preflights every workspace before a global install mutates any project", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-atomic-install-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-atomic-install-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-atomic-install-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(openCodeRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+    config.authorizedRoots.push(deepSeekRoot);
+    const conflictingTarget = join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md");
+    await mkdir(dirname(conflictingTarget), { recursive: true });
+    await writeFile(conflictingTarget, "# School-owned content\n", "utf8");
+
+    await expect(lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    })).rejects.toMatchObject({ code: "plugin_package_conflict" });
+
+    await expectMissing(join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    expect(await readFile(conflictingTarget, "utf8")).toBe("# School-owned content\n");
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([]);
+  });
+
+  test("keeps every workspace and global state intact when uninstall preflight fails", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-atomic-uninstall-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-atomic-uninstall-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-atomic-uninstall-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(openCodeRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+    config.authorizedRoots.push(deepSeekRoot);
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+    const openCodeTarget = join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md");
+    const deepSeekTarget = join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md");
+    await writeFile(deepSeekTarget, "# Teacher customization\n", "utf8");
+
+    await expect(lifecycle.uninstallPluginPackage({
+      serverConfig: config,
+      pluginId: "acme-research",
+    })).rejects.toMatchObject({ code: "plugin_package_conflict" });
+
+    expect(await readFile(openCodeTarget, "utf8")).toBe("# Acme Research\n");
+    expect(await readFile(deepSeekTarget, "utf8")).toBe("# Teacher customization\n");
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([
+      expect.objectContaining({ pluginId: "acme-research", enabled: true }),
+    ]);
+  });
+
+  test("does not half-enable a plugin when a later workspace has a conflict", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const openCodeRoot = await createRoot("ipollowork-plugin-atomic-enable-opencode-");
+    const deepSeekRoot = await createRoot("ipollowork-plugin-atomic-enable-dsh-");
+    const packageRoot = await createRoot("ipollowork-plugin-atomic-enable-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(openCodeRoot, "runtime.sqlite");
+    await writeDeclarativePackage(packageRoot);
+    const config = serverConfig(openCodeRoot);
+    config.workspaces.push({
+      id: "ws_deepseek_harness",
+      name: "DeepSeek Harness",
+      path: deepSeekRoot,
+      preset: "starter",
+      workspaceType: "local",
+      engineId: "deepseek-harness",
+    });
+    config.authorizedRoots.push(deepSeekRoot);
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+    await lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      pluginId: "acme-research",
+      enabled: false,
+    });
+    const deepSeekTarget = join(deepSeekRoot, ".dsh", "skills", "acme-research", "SKILL.md");
+    await mkdir(dirname(deepSeekTarget), { recursive: true });
+    await writeFile(deepSeekTarget, "# Independent project skill\n", "utf8");
+
+    await expect(lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      pluginId: "acme-research",
+      enabled: true,
+    })).rejects.toMatchObject({ code: "plugin_package_conflict" });
+
+    await expectMissing(join(openCodeRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    expect(await readFile(deepSeekTarget, "utf8")).toBe("# Independent project skill\n");
+    expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual([
+      expect.objectContaining({ pluginId: "acme-research", enabled: false }),
+    ]);
+  });
+
+  test("lists the same bundled packages for the DeepSeek Harness engine", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-catalog-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "deepseek-harness";
+    const server = await startServer(config);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, {
+        headers: { authorization: "Bearer token" },
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
+      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      for (const item of payload.items as Array<{
+        pluginId: string;
+        engineCompatibility: Array<{ engineId: string; status: string }>;
+      }>) {
+        const compatibility = new Map(item.engineCompatibility.map((entry) => [entry.engineId, entry.status]));
+        expect(compatibility.get("opencode")).toBe("ready");
+        expect(compatibility.get("deepseek-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+      }
+
+      const parallelEnginePluginApi = await fetch(
+        `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugins`,
+        { headers: { authorization: "Bearer token" } },
+      );
+      expect(parallelEnginePluginApi.status).toBe(404);
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("lists the same bundled packages for the Codex Harness engine", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-codex-catalog-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const workspace = config.workspaces[0];
+    if (!workspace) throw new Error("Test workspace is missing");
+    workspace.engineId = "codex-harness";
+    const server = await startServer(config);
+
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, {
+        headers: { authorization: "Bearer token" },
+      });
+      expect(response.status).toBe(200);
+      const payload = await response.json();
+      const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
+      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      for (const item of payload.items as Array<{
+        pluginId: string;
+        engineCompatibility: Array<{ engineId: string; status: string }>;
+      }>) {
+        const compatibility = new Map(item.engineCompatibility.map((entry) => [entry.engineId, entry.status]));
+        expect(compatibility.get("opencode")).toBe("ready");
+        expect(compatibility.get("deepseek-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+        expect(compatibility.get("codex-harness")).toBe(
+          item.pluginId === "deepseek-harness" ? "partial" : "ready",
+        );
+      }
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("keeps Work-layer resources while projecting DeepSeek Harness skills", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-unsupported-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-dsh-unsupported-package-");
+    await writeDeclarativePackage(packageRoot);
+    const mcpPath = join(packageRoot, "mcp", "acme.json");
+    await mkdir(dirname(mcpPath), { recursive: true });
+    await writeFile(mcpPath, JSON.stringify({ type: "remote", url: "https://mcp.acme.example/mcp" }), "utf8");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.resources.push({ type: "mcp", id: "acme-mcp", path: "mcp/acme.json", required: true });
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+
+    const preview = await lifecycle.previewPluginPackage({
+      packageRoot,
+      engineId: "deepseek-harness",
+    });
+    expect(preview.files.map((file) => file.path)).toContain("mcp/acme.json");
+    expect(preview.writes.map((file) => file.path)).toEqual([".dsh/skills/acme-research/SKILL.md"]);
+  });
+
+  test("exposes portable plugin commands and agents to both Harness engines", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-prompts-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-dsh-prompts-package-");
+    await writeDeclarativePackage(packageRoot);
+    await mkdir(join(packageRoot, "commands"), { recursive: true });
+    await mkdir(join(packageRoot, "agents"), { recursive: true });
+    await writeFile(join(packageRoot, "commands", "research-topic.md"), "# Research topic\n\nInvestigate the requested topic.\n", "utf8");
+    await writeFile(join(packageRoot, "agents", "research-reviewer.md"), "Review research claims and require sources.\n", "utf8");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.resources.push(
+      { type: "command", id: "research-command", path: "commands/research-topic.md", label: "Research a topic" },
+      { type: "agent", id: "research-reviewer", path: "agents/research-reviewer.md", description: "Review research claims" },
+    );
+    manifest.package.engines = ["opencode"];
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    const config = serverConfig(workspaceRoot);
+    config.workspaces[0]!.engineId = "deepseek-harness";
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "deepseek-harness",
+    })).toEqual([
+      expect.objectContaining({ type: "agent", name: "research-reviewer", description: "Review research claims" }),
+      expect.objectContaining({ type: "command", name: "research-topic", description: "Research a topic" }),
+    ]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "codex-harness",
+    })).toEqual([
+      expect.objectContaining({ type: "agent", name: "research-reviewer", description: "Review research claims" }),
+      expect.objectContaining({ type: "command", name: "research-topic", description: "Research a topic" }),
+    ]);
+
+    await lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      pluginId: "acme-research",
+      enabled: false,
+    });
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "deepseek-harness",
+    })).toEqual([]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "codex-harness",
+    })).toEqual([]);
+
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config,
+      engineId: "deepseek-harness",
+    })).toEqual([]);
+  });
+
+  test("registers OAuth MCP resources through the scoped proxy for DeepSeek Harness", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-dsh-mcp-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-dsh-mcp-package-");
+    await writeDeclarativePackage(packageRoot);
+    await mkdir(join(packageRoot, "mcp"), { recursive: true });
+    await writeFile(join(packageRoot, "mcp", "acme.json"), JSON.stringify({
+      type: "remote",
+      url: "https://mcp.acme.example/mcp",
+      oauth: {},
+    }), "utf8");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.resources.push({ type: "mcp", id: "acme-mcp", path: "mcp/acme.json", mcpServerName: "acme", oauth: true });
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
+    const config = serverConfig(workspaceRoot);
+    config.workspaces[0]!.engineId = "deepseek-harness";
+
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    const runtimeMcp = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.acme;
+    expect(runtimeMcp).toMatchObject({
+      type: "remote",
+      enabled: true,
+      oauth: false,
+    });
+    expect(runtimeMcp?.url).toMatch(/^http:\/\/127\.0\.0\.1:0\/mcp-proxy\//);
+    expect((runtimeMcp?.headers as Record<string, unknown> | undefined)?.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+
+    const patch = await buildDeepSeekHarnessPatch(config, config.workspaces[0]!);
+    expect(JSON.stringify(patch)).toContain('"transport":"streamable-http"');
+    expect(JSON.stringify(patch)).toContain('"serverName":"acme"');
+    expect(JSON.stringify(patch)).toContain('"Authorization":"Bearer ');
+
+    await lifecycle.setPluginPackageEnabled({
+      serverConfig: config,
+      pluginId: "acme-research",
+      enabled: false,
+    });
+    expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.acme).toBeUndefined();
+
   });
 
   test("allows remote HTTPS MCP imports but blocks local MCP commands", async () => {
@@ -368,22 +1157,24 @@ describe("plugin package lifecycle", () => {
     await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n", { mcp: true });
     const manifestPath = join(packageRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.package.entrypoints = {};
+    delete manifest.engineBindings;
+    delete manifest.package.engines;
     delete manifest.authorization;
-    manifest.resources = manifest.resources.filter((resource: { type?: string }) => resource.type !== "opencode-plugin");
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), "utf8");
 
-    const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
-    expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: remotePreview }))
+    const remotePreview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
+    expect(await lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: remotePreview, purpose: "install" }))
+
       .toMatchObject({ level: "declarative", localCode: false });
 
     await writeFile(
-      join(packageRoot, ".opencode", "mcps", "acme-research.json"),
+      join(packageRoot, "mcp", "acme-research.json"),
       JSON.stringify({ type: "local", command: ["node", "malicious.mjs"] }),
       "utf8",
     );
-    const localPreview = await lifecycle.previewPluginPackage({ packageRoot, workspaceRoot });
-    await expect(lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: localPreview })).rejects.toMatchObject({
+    const localPreview = await lifecycle.previewPluginPackage({ packageRoot, engineId: ENGINE_ID });
+    await expect(lifecycle.assertPluginPackageSafeForImport({ packageRoot, preview: localPreview, purpose: "install" })).rejects.toMatchObject({
+
       code: "plugin_package_import_unsafe",
     });
   });
@@ -406,8 +1197,233 @@ describe("plugin package lifecycle", () => {
       expect(validation.status).toBe(400);
       expect(await validation.json()).toMatchObject({
         code: "plugin_package_import_unsafe",
-        details: { reasons: expect.arrayContaining([expect.stringContaining("executable entrypoints")]) },
+        details: { reasons: expect.arrayContaining([expect.stringContaining("executable capabilities")]) },
       });
+    } finally {
+      await server.stop();
+    }
+  });
+
+  test("discovers, imports, previews, refreshes, and exports Plugin Workshop projects", async () => {
+    const workspaceRoot = await createRoot("ipollowork-plugin-workshop-api-");
+    const projectRoot = join(workspaceRoot, "plugins", "focus-board");
+    const uiPath = join(projectRoot, "ui", "studio.html");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await mkdir(dirname(uiPath), { recursive: true });
+    await writeFile(uiPath, "<!doctype html><main>Focus Board v1</main>\n", "utf8");
+    await writeFile(join(projectRoot, "ipollowork.plugin.json"), JSON.stringify({
+      schemaVersion: 2,
+      id: "focus-board",
+      name: "Focus Board",
+      description: "A Plugin Workshop test package.",
+      source: { format: "ipollowork-extension-manifest", origin: "workspace", trusted: false },
+      package: { version: "1.0.0", updateId: "personal/focus-board" },
+      resources: [{
+        type: "ui",
+        id: "studio",
+        label: "Focus Board",
+        path: "ui/studio.html",
+        required: true,
+        ui: { uri: "ui://focus-board/studio", mimeType: "text/html;profile=mcp-app" },
+      }],
+      contributions: [{ type: "workspace-app", ref: "studio", label: "Focus Board" }],
+    }, null, 2), "utf8");
+
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-workshop/projects`;
+    const headers = { authorization: "Bearer token" };
+    try {
+      const listing = await fetch(base, { headers });
+      expect(listing.status).toBe(200);
+      expect(await listing.json()).toMatchObject({
+        items: [{ directoryId: "focus-board", packageRoot: "plugins/focus-board", manifest: { id: "focus-board" }, error: null }],
+      });
+
+      const firstSnapshot = await fetch(`${base}/focus-board`, { headers });
+      expect(firstSnapshot.status).toBe(200);
+      const firstPayload = await firstSnapshot.json();
+      expect(firstPayload).toMatchObject({
+        project: { manifest: { id: "focus-board" } },
+        ui: { resource: { id: "studio", path: "ui/studio.html" }, html: expect.stringContaining("Focus Board v1") },
+      });
+
+      await writeFile(uiPath, "<!doctype html><main>Focus Board v2 is live</main>\n", "utf8");
+      const secondPayload = await (await fetch(`${base}/focus-board`, { headers })).json();
+      expect(secondPayload.revision).not.toBe(firstPayload.revision);
+      expect(secondPayload.ui.html).toContain("Focus Board v2 is live");
+
+      const exported = await fetch(`${base}/focus-board/export`, { headers });
+      expect(exported.status).toBe(200);
+      const bundle = await exported.json();
+      expect(bundle).toMatchObject({ pluginId: "focus-board", version: "1.0.0" });
+      expect(bundle.files.map((file: { path: string }) => file.path)).toEqual([
+        "ipollowork.plugin.json",
+        "ui/studio.html",
+      ]);
+      expect(Buffer.from(bundle.files[1].contentBase64, "base64").toString("utf8")).toContain("Focus Board v2 is live");
+
+      const sourceExported = await fetch(`${base}/focus-board/export?format=source`, { headers });
+      expect(sourceExported.status).toBe(200);
+      expect(await sourceExported.json()).toMatchObject({
+        pluginId: "focus-board",
+        version: "1.0.0",
+        preparation: { localizedUrls: [], removedNetworkPermission: false },
+      });
+      const invalidExport = await fetch(`${base}/focus-board/export?format=archive`, { headers });
+      expect(invalidExport.status).toBe(400);
+      expect(await invalidExport.json()).toMatchObject({ code: "plugin_workshop_export_format_invalid" });
+
+      const importedManifest = {
+        schemaVersion: 2,
+        id: "imported-board",
+        name: "Imported Board",
+        description: "An imported Plugin Workshop project.",
+        source: { format: "ipollowork-extension-manifest", origin: "workspace", trusted: false },
+        package: { version: "1.0.0", updateId: "personal/imported-board" },
+        resources: [{
+          type: "ui",
+          id: "studio",
+          label: "Imported Board",
+          path: "ui/studio.html",
+          required: true,
+          ui: {
+            uri: "ui://imported-board/studio",
+            mimeType: "text/html;profile=mcp-app",
+            csp: { resourceDomains: ["https://cdn.jsdelivr.net"] },
+          },
+        }],
+        contributions: [{ type: "workspace-app", ref: "studio", label: "Imported Board" }],
+        permissions: [{ id: "network", reason: "Load the declared browser library." }],
+      };
+      const upload = {
+        archiveName: "imported-board-source.zip",
+        files: [
+          { path: "ipollowork.plugin.json", contentBase64: Buffer.from(JSON.stringify(importedManifest, null, 2)).toString("base64") },
+          { path: "ui/studio.html", contentBase64: Buffer.from("<!doctype html><main>Editable import</main>\n").toString("base64") },
+        ],
+      };
+      const imported = await fetch(base.replace("/projects", "/import"), {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(upload),
+      });
+      expect(imported.status).toBe(201);
+      expect(await imported.json()).toMatchObject({ project: { directoryId: "imported-board", manifest: { id: "imported-board" } } });
+      expect(await readFile(join(workspaceRoot, "plugins", "imported-board", "ui", "studio.html"), "utf8")).toContain("Editable import");
+
+      const installValidation = await fetch(base.replace("/plugin-workshop/projects", "/plugin-packages/import/validate"), {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ ...upload, archiveName: "imported-board.ipollowork-plugin" }),
+      });
+      expect(installValidation.status).toBe(400);
+      expect(await installValidation.json()).toMatchObject({
+        code: "plugin_package_import_unsafe",
+        details: { reasons: expect.arrayContaining([expect.stringContaining("network")]) },
+      });
+
+      const privilegedManifest = {
+        ...importedManifest,
+        id: "privileged-board",
+        package: { ...importedManifest.package, updateId: "personal/privileged-board" },
+        permissions: [...importedManifest.permissions, { id: "process", reason: "Run a local process." }],
+      };
+      const privilegedSource = await fetch(base.replace("/projects", "/import"), {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({
+          ...upload,
+          archiveName: "privileged-board-source.zip",
+          files: upload.files.map((file) => file.path === "ipollowork.plugin.json"
+            ? { ...file, contentBase64: Buffer.from(JSON.stringify(privilegedManifest, null, 2)).toString("base64") }
+            : file),
+        }),
+      });
+      expect(privilegedSource.status).toBe(400);
+      expect(await privilegedSource.json()).toMatchObject({
+        code: "plugin_package_import_unsafe",
+        details: { reasons: expect.arrayContaining([expect.stringContaining("process")]) },
+      });
+
+      const installPackageRejectedByWorkshop = await fetch(base.replace("/projects", "/import"), {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify({ ...upload, archiveName: "another-board.ipollowork-plugin" }),
+      });
+      expect(installPackageRejectedByWorkshop.status).toBe(400);
+      expect(await installPackageRejectedByWorkshop.json()).toMatchObject({
+        code: "plugin_package_archive_format_invalid",
+        details: { format: "source", expectedExtension: ".zip" },
+      });
+
+      const duplicate = await fetch(base.replace("/projects", "/import"), {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(upload),
+      });
+      expect(duplicate.status).toBe(409);
+      expect(await duplicate.json()).toMatchObject({
+        code: "plugin_workshop_project_exists",
+        details: { directoryId: "imported-board", packageRoot: "plugins/imported-board" },
+      });
+      expect(await readFile(join(workspaceRoot, "plugins", "imported-board", "ui", "studio.html"), "utf8")).toContain("Editable import");
+
+      const legacyPath = join(workspaceRoot, "plugins", "imported-board", "legacy.txt");
+      await writeFile(legacyPath, "remove me", "utf8");
+      const overwriteUpload = {
+        ...upload,
+        files: upload.files.map((file) => file.path === "ui/studio.html"
+          ? { ...file, contentBase64: Buffer.from("<!doctype html><main>Overwritten import</main>\n").toString("base64") }
+          : file),
+      };
+      const overwritten = await fetch(`${base.replace("/projects", "/import")}?overwrite=true`, {
+        method: "POST",
+        headers: { ...headers, "content-type": "application/json" },
+        body: JSON.stringify(overwriteUpload),
+      });
+      expect(overwritten.status).toBe(201);
+      expect(await overwritten.json()).toMatchObject({ project: { directoryId: "imported-board" } });
+      expect(await readFile(join(workspaceRoot, "plugins", "imported-board", "ui", "studio.html"), "utf8")).toContain("Overwritten import");
+      await expect(readFile(legacyPath, "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      await server.stop();
+    }
+  });
+  test("uninstall removes plugin-owned authorization without leaving an orphaned credential", async () => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-plugin-authorization-cleanup-workspace-");
+    const packageRoot = await createRoot("ipollowork-plugin-authorization-cleanup-package-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n");
+    const config = serverConfig(workspaceRoot);
+    await lifecycle.installPluginPackage({
+      serverConfig: config,
+      packageRoot,
+    });
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    try {
+      const authorization = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research/authorization/api-key/credentials`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ accountId: "school", values: { apiKey: "school-secret" } }),
+      });
+      expect(authorization.status).toBe(200);
+      expect(await authorization.json()).toMatchObject({ status: { accountId: "school", status: "connected" } });
+
+      const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
+      expect(removal.status).toBe(200);
+
+      await lifecycle.installPluginPackage({
+        serverConfig: config,
+        packageRoot,
+      });
+      const reinstalledAuthorization = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research/authorization`, { headers });
+      expect(reinstalledAuthorization.status).toBe(200);
+      expect(await reinstalledAuthorization.json()).toMatchObject({ connections: [], flows: [] });
+
     } finally {
       await server.stop();
     }
@@ -419,12 +1435,12 @@ describe("plugin package lifecycle", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     await writeDeclarativePackage(packageRoot);
     const manifest = await readFile(join(packageRoot, "ipollowork.plugin.json"));
-    const skill = await readFile(join(packageRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
+    const skill = await readFile(join(packageRoot, "skills", "acme-research", "SKILL.md"));
     const upload = {
-      archiveName: "acme-research.zip",
+      archiveName: "acme-research.ipollowork-plugin",
       files: [
         { path: "ipollowork.plugin.json", contentBase64: manifest.toString("base64") },
-        { path: ".opencode/skills/acme-research/SKILL.md", contentBase64: skill.toString("base64") },
+        { path: "skills/acme-research/SKILL.md", contentBase64: skill.toString("base64") },
       ],
     };
     const config = serverConfig(workspaceRoot);
@@ -432,6 +1448,17 @@ describe("plugin package lifecycle", () => {
     const base = `http://127.0.0.1:${server.port}`;
     const headers = { authorization: "Bearer token", "content-type": "application/json" };
     try {
+      const sourceArchiveRejectedByInstaller = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ ...upload, archiveName: "acme-research-source.zip" }),
+      });
+      expect(sourceArchiveRejectedByInstaller.status).toBe(400);
+      expect(await sourceArchiveRejectedByInstaller.json()).toMatchObject({
+        code: "plugin_package_archive_format_invalid",
+        details: { format: "install", expectedExtension: ".ipollowork-plugin" },
+      });
+
       const validation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
         method: "POST",
         headers,
@@ -443,6 +1470,8 @@ describe("plugin package lifecycle", () => {
           manifest: { id: "acme-research" },
           safety: { level: "declarative", localCode: false },
           writes: [{ path: ".opencode/skills/acme-research/SKILL.md" }],
+          installedVersion: null,
+          versionChange: "install",
         },
       });
 
@@ -460,13 +1489,54 @@ describe("plugin package lifecycle", () => {
         .toBe("# Acme Research\n");
       await expectMissing(join(workspaceRoot, ".opencode", "plugins", "acme-research.ts"));
 
+      const downgradedManifest = JSON.parse(manifest.toString("utf8"));
+      downgradedManifest.package.version = "0.9.0";
+      const downgradedUpload = {
+        ...upload,
+        files: upload.files.map((file) => file.path === "ipollowork.plugin.json"
+          ? { ...file, contentBase64: Buffer.from(JSON.stringify(downgradedManifest, null, 2)).toString("base64") }
+          : file),
+      };
+      const downgradeValidation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import/validate`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(downgradedUpload),
+      });
+      expect(downgradeValidation.status).toBe(200);
+      expect(await downgradeValidation.json()).toMatchObject({
+        preview: { installedVersion: "1.0.0", versionChange: "downgrade" },
+      });
+
+      const unconfirmedDowngrade = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(downgradedUpload),
+      });
+      expect(unconfirmedDowngrade.status).toBe(409);
+      expect(await unconfirmedDowngrade.json()).toMatchObject({
+        code: "plugin_package_downgrade_confirmation_required",
+        details: { installedVersion: "1.0.0", incomingVersion: "0.9.0" },
+      });
+
+      const downgradeInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/import?allowDowngrade=true`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(downgradedUpload),
+      });
+      expect(downgradeInstallation.status).toBe(200);
+      expect(await downgradeInstallation.json()).toMatchObject({
+        result: { status: "updated", pluginId: "acme-research", previousVersion: "1.0.0", version: "0.9.0" },
+      });
+
       const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/acme-research`, { method: "DELETE", headers });
       expect(removal.status).toBe(200);
-      expect(await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json()).toEqual({ items: [] });
+      const remaining = await (await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers })).json();
+      expect(remaining.items.map((item: { pluginId: string }) => item.pluginId)).not.toContain("acme-research");
     } finally {
       await server.stop();
     }
   });
+
 
   test("imports, runs, and uninstalls a trusted publisher-signed executable archive", async () => {
     const workspaceRoot = await createRoot("ipollowork-signed-plugin-workspace-");
@@ -477,8 +1547,8 @@ describe("plugin package lifecycle", () => {
       archiveName: "signed-research.ipollowork-plugin",
       files: await Promise.all([
         "ipollowork.plugin.json",
-        "service.mjs",
-        ".opencode/skills/signed-research/SKILL.md",
+        "service/signed-research.mjs",
+        "skills/signed-research/SKILL.md",
       ].map(async (path) => ({ path, contentBase64: (await readFile(join(packageRoot, path))).toString("base64") }))),
     };
     const config = serverConfig(workspaceRoot);
@@ -560,8 +1630,9 @@ describe("plugin package lifecycle", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
     const existingFigmaAgent = ".opencode/agents/design-parity-review-agent.md";
+    const packagedFigmaAgent = "agents/design-parity-review-agent.md";
     await mkdir(join(workspaceRoot, ".opencode", "agents"), { recursive: true });
-    await copyFile(join(figmaPackageRoot, existingFigmaAgent), join(workspaceRoot, existingFigmaAgent));
+    await copyFile(join(figmaPackageRoot, packagedFigmaAgent), join(workspaceRoot, existingFigmaAgent));
     const config = serverConfig(workspaceRoot);
     const server = await startServer(config);
     const base = `http://127.0.0.1:${server.port}`;
@@ -571,25 +1642,56 @@ describe("plugin package lifecycle", () => {
       expect(catalog.status).toBe(200);
       expect(await catalog.json()).toMatchObject({
         items: [
-          { pluginId: "figma", version: "2.0.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "notion", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "linear", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "sentry", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "stripe", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "context7", version: "1.0.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "github", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.1.1", installedVersion: null, updateAvailable: false },
-          { pluginId: "video-agent", version: "0.1.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "figma", version: "2.0.18", installedVersion: null, updateAvailable: false },
+          { pluginId: "notion", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "linear", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "sentry", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.8", installedVersion: "0.1.8", updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
+
+      const dshInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/deepseek-harness/install`, {
+        method: "POST",
+        headers,
+      });
+      expect(dshInstallation.status).toBe(200);
+      expect(await dshInstallation.json()).toMatchObject({
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.7" },
+      });
+      const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          extensionId: "deepseek-harness",
+          action: "capabilities",
+          args: {},
+          context: { directory: workspaceRoot },
+        }),
+      });
+      expect(dshCapabilities.status).toBe(200);
+      const dshDataDir = pluginServiceDataDirectory(config, WORKSPACE_ID, "deepseek-harness");
+      expect(await stat(dshDataDir).then(() => true)).toBe(true);
+      const dshRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/deepseek-harness`, {
+        method: "DELETE",
+        headers,
+      });
+      expect(dshRemoval.status).toBe(200);
+      await expectMissing(dshDataDir);
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "deepseek-harness", "SKILL.md"));
 
       const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/figma/install`, {
         method: "POST",
         headers,
       });
       expect(installation.status).toBe(200);
-      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.17" } });
+      expect(await installation.json()).toMatchObject({ result: { status: "installed", pluginId: "figma", version: "2.0.18" } });
       expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.figma).toEqual({
         type: "remote",
         url: "http://127.0.0.1:3845/mcp",
@@ -602,29 +1704,36 @@ describe("plugin package lifecycle", () => {
       await expectMissing(join(workspaceRoot, "assets"));
       await expectMissing(join(workspaceRoot, ".opencode", "mcps", "figma.json"));
 
-      const migratedServices = [
+      const mcpServices = [
         { id: "notion", url: "https://mcp.notion.com/mcp", oauth: {}, skill: "notion-knowledge", heading: "# Notion Knowledge" },
         { id: "linear", url: "https://mcp.linear.app/mcp", oauth: {}, skill: "linear-triage", heading: "# Linear Triage" },
         { id: "sentry", url: "https://mcp.sentry.dev/mcp", oauth: {}, skill: "sentry-issue-investigation", heading: "# Sentry Issue Investigation" },
         { id: "stripe", url: "https://mcp.stripe.com", oauth: {}, skill: "stripe-payment-investigation", heading: "# Stripe Payment Investigation" },
         { id: "context7", url: "https://mcp.context7.com/mcp", oauth: false, skill: "context7-docs-research", heading: "# Context7 Documentation Research" },
       ];
-      for (const service of migratedServices) {
+      for (const service of mcpServices) {
         const serviceInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
           method: "POST",
           headers,
         });
         expect(serviceInstallation.status).toBe(200);
         expect(await serviceInstallation.json()).toMatchObject({
-          result: { status: "installed", pluginId: service.id, version: "1.0.1" },
+          result: { status: "installed", pluginId: service.id, version: "1.0.2" },
           item: { pluginId: service.id, manifest: { source: { trusted: true } } },
         });
-        expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id]).toEqual({
-          type: "remote",
-          url: service.url,
-          enabled: true,
-          oauth: service.oauth,
-        });
+        const runtimeMcp = (await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.[service.id];
+        if (service.oauth === false) {
+          expect(runtimeMcp).toEqual({ type: "remote", url: service.url, enabled: true, oauth: false });
+        } else {
+          expect(runtimeMcp).toMatchObject({
+            type: "remote",
+            enabled: true,
+            oauth: false,
+          });
+          expect(runtimeMcp?.url).toMatch(new RegExp(`^${base}/mcp-proxy/${WORKSPACE_ID}/${service.id}\\?connection=mcp%3A`));
+          expect((runtimeMcp?.headers as Record<string, unknown> | undefined)?.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+          expect(runtimeMcp?.connectionId).toBeUndefined();
+        }
         expect(await readFile(join(workspaceRoot, ".opencode", "skills", service.skill, "SKILL.md"), "utf8"))
           .toContain(service.heading);
         await expectMissing(join(workspaceRoot, ".opencode", "mcps", `${service.id}.json`));
@@ -636,11 +1745,11 @@ describe("plugin package lifecycle", () => {
       });
       expect(githubInstallation.status).toBe(200);
       expect(await githubInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "github", version: "0.1.1" },
+        result: { status: "installed", pluginId: "github", version: "0.1.4" },
         item: {
           pluginId: "github",
           manifest: {
-            category: "开发者工具",
+            category: "开发与运维",
             authorization: { required: true },
           },
         },
@@ -666,7 +1775,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.1.1" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.1.4" },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -710,22 +1819,20 @@ describe("plugin package lifecycle", () => {
     } finally {
       await server.stop();
     }
-  });
+  }, 15_000);
 
-  test("manages creative Agent skills without touching projects or related global skills", async () => {
+  test("installs, toggles, removes, and restores complete creative workspace packages", async () => {
     const workspaceRoot = await createRoot("ipollowork-creative-agent-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const designDirectory = join(workspaceRoot, "design", "existing-session");
     const videoDirectory = join(workspaceRoot, "video", "existing-session");
     const designEntry = join(designDirectory, "entry.html");
     const videoEntry = join(videoDirectory, "index.html");
-    const relatedSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
+    const videoSupportSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
     await mkdir(designDirectory, { recursive: true });
     await mkdir(videoDirectory, { recursive: true });
-    await mkdir(dirname(relatedSkill), { recursive: true });
     await writeFile(designEntry, "<main>Existing design</main>\n", "utf8");
     await writeFile(videoEntry, "<div data-composition>Existing video</div>\n", "utf8");
-    await writeFile(relatedSkill, "# Existing HyperFrames CLI\n", "utf8");
 
     const config = serverConfig(workspaceRoot);
     const server = await startServer(config);
@@ -734,30 +1841,32 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.1.1",
+        version: "0.3.2",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.1.2",
+        version: "0.3.2",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },
     ];
 
     try {
+      const defaults = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
+      expect(defaults.status).toBe(200);
+      expect((await defaults.json()).items).toEqual(expect.arrayContaining(
+        packages.map((item) => expect.objectContaining({
+          pluginId: item.pluginId,
+          version: item.version,
+          enabled: true,
+        })),
+      ));
       for (const item of packages) {
-        const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
-          method: "POST",
-          headers,
-        });
-        expect(installation.status).toBe(200);
-        expect(await installation.json()).toMatchObject({
-          result: { status: "installed", pluginId: item.pluginId, version: item.version },
-        });
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
 
       const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/design-agent/resources/ipollowork-design-studio`, {
         method: "PATCH",
@@ -775,6 +1884,22 @@ describe("plugin package lifecycle", () => {
       expect(enabled.status).toBe(200);
       expect(await readFile(packages[0].skillPath, "utf8")).toContain(packages[0].heading);
 
+      const videoSkillDisabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/video-agent/resources/hyperframes-cli`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: false }),
+      });
+      expect(videoSkillDisabled.status).toBe(200);
+      await expectMissing(videoSupportSkill);
+
+      const videoSkillEnabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/video-agent/resources/hyperframes-cli`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify({ enabled: true }),
+      });
+      expect(videoSkillEnabled.status).toBe(200);
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
+
       for (const item of packages) {
         const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${item.pluginId}`, {
           method: "DELETE",
@@ -783,10 +1908,28 @@ describe("plugin package lifecycle", () => {
         expect(removal.status).toBe(200);
         await expectMissing(item.skillPath);
       }
+      await expectMissing(videoSupportSkill);
+
+      const afterRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers });
+      expect(afterRemoval.status).toBe(200);
+      expect((await afterRemoval.json()).items.map((item: { pluginId: string }) => item.pluginId))
+        .not.toEqual(expect.arrayContaining(packages.map((item) => item.pluginId)));
+
+      for (const item of packages) {
+        const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
+          method: "POST",
+          headers,
+        });
+        expect(installation.status).toBe(200);
+        expect(await installation.json()).toMatchObject({
+          result: { status: "installed", pluginId: item.pluginId, version: item.version },
+        });
+        expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
+      }
+      expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
 
       expect(await readFile(designEntry, "utf8")).toBe("<main>Existing design</main>\n");
       expect(await readFile(videoEntry, "utf8")).toBe("<div data-composition>Existing video</div>\n");
-      expect(await readFile(relatedSkill, "utf8")).toBe("# Existing HyperFrames CLI\n");
     } finally {
       await server.stop();
     }
@@ -800,7 +1943,7 @@ describe("plugin package lifecycle", () => {
     await writePackage(packageRoot, "1.0.0", "export default async () => ({})\n", "# Acme Research\n", { mcp: true });
     const config = serverConfig(workspaceRoot);
 
-    await lifecycle.installPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, packageRoot, workspaceRoot });
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toEqual({
       type: "remote",
       url: "https://mcp.acme.example/mcp",
@@ -808,33 +1951,29 @@ describe("plugin package lifecycle", () => {
 
     await lifecycle.setPluginPackageResourceEnabled({
       serverConfig: config,
-      workspaceId: WORKSPACE_ID,
       pluginId: "acme-research",
       resourceId: "acme-skill",
-      workspaceRoot,
       enabled: false,
     });
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
-    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config, workspaceId: WORKSPACE_ID }))[0]?.disabledResourceIds)
+    expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config }))[0]?.disabledResourceIds)
       .toEqual(["acme-skill"]);
 
-    await lifecycle.setPluginPackageEnabled({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot, enabled: false });
+    await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "acme-research", enabled: false });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();
-    await lifecycle.setPluginPackageEnabled({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot, enabled: true });
+    await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "acme-research", enabled: true });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeDefined();
     await expectMissing(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"));
 
     await lifecycle.setPluginPackageResourceEnabled({
       serverConfig: config,
-      workspaceId: WORKSPACE_ID,
       pluginId: "acme-research",
       resourceId: "acme-skill",
-      workspaceRoot,
       enabled: true,
     });
     expect(await readFile(join(workspaceRoot, ".opencode", "skills", "acme-research", "SKILL.md"), "utf8")).toBe("# Acme Research\n");
 
-    await lifecycle.uninstallPluginPackage({ serverConfig: config, workspaceId: WORKSPACE_ID, pluginId: "acme-research", workspaceRoot });
+    await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();
   });
 });

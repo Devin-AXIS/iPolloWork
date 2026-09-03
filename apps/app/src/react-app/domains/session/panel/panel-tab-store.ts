@@ -2,10 +2,12 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } from "../artifacts/open-target";
+import type { PluginUiSurface } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
 
-export type PanelTabType = "artifact" | "browser" | "design";
+export type PanelTabType = "artifact" | "browser" | "design" | "video" | "workspace-app" | "plugin-studio";
 
 export type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
 import type { BrowserPanelTab } from "../../../../app/lib/desktop-types";
@@ -26,7 +28,32 @@ export type DesignPanelTab = {
   path?: string;
 };
 
-export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab;
+export type VideoPanelTab = {
+  id: string;
+  type: "video";
+  label: string;
+  sessionId: string;
+};
+
+export type WorkspaceAppPanelTab = {
+  id: string;
+  type: "workspace-app";
+  label: string;
+  sessionId: string;
+  surface: PluginUiSurface;
+  launch?: PluginUiHostContextV1["launch"];
+};
+
+export type PluginStudioPanelTab = {
+  id: string;
+  type: "plugin-studio";
+  label: string;
+  sessionId: string;
+  pluginId?: string;
+  creationBaselinePluginIds?: string[];
+};
+
+export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab | VideoPanelTab | WorkspaceAppPanelTab | PluginStudioPanelTab;
 
 export type SessionPanelState = {
   tabs: PanelTab[];
@@ -36,6 +63,9 @@ export type SessionPanelState = {
 type PersistedPanelTabRef = {
   id: string;
   type: PanelTabType;
+  label?: string;
+  pluginId?: string;
+  creationBaselinePluginIds?: string[];
 };
 
 type PersistedSessionPanelState = {
@@ -164,6 +194,26 @@ function isSameTab(left: PanelTab, right: PanelTab) {
     return left.label === right.label && left.sessionId === right.sessionId && left.path === right.path;
   }
 
+  if (left.type === "video" && right.type === "video") {
+    return left.label === right.label && left.sessionId === right.sessionId;
+  }
+
+  if (left.type === "workspace-app" && right.type === "workspace-app") {
+    return left.label === right.label
+      && left.sessionId === right.sessionId
+      && left.surface.id === right.surface.id
+      && JSON.stringify(left.launch) === JSON.stringify(right.launch);
+  }
+
+  if (left.type === "plugin-studio" && right.type === "plugin-studio") {
+    return (
+      left.label === right.label
+      && left.sessionId === right.sessionId
+      && left.pluginId === right.pluginId
+      && JSON.stringify(left.creationBaselinePluginIds) === JSON.stringify(right.creationBaselinePluginIds)
+    );
+  }
+
   return false;
 }
 
@@ -201,7 +251,8 @@ function mergePersistedSessions(
 
   for (const [sessionId, session] of Object.entries(persisted.sessions)) {
     const tabs = session.tabs
-      .flatMap(({ id, type }): PanelTab[] => {
+      .flatMap((persistedTab): PanelTab[] => {
+        const { id, type } = persistedTab;
         if (type === "browser") {
           return [{
             id,
@@ -222,6 +273,16 @@ function mergePersistedSessions(
           const path = encodedPath ? decodeDesignPath(encodedPath) : undefined;
           const tabId = path ? id : `design:${sessionId}:entry`;
           return sessionId ? [{ id: tabId, type: "design", label: path ? path.split("/").pop() || path : "Design", sessionId, path }] : [];
+        }
+        if (type === "plugin-studio") {
+          return [{
+            id,
+            type: "plugin-studio",
+            label: persistedTab.label?.trim() || "插件工坊",
+            sessionId,
+            pluginId: persistedTab.pluginId,
+            creationBaselinePluginIds: persistedTab.creationBaselinePluginIds,
+          }];
         }
         return [];
       });
@@ -314,7 +375,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
         const mergedTabs: PanelTab[] = [];
 
         for (const tab of session.tabs) {
-          if (tab.type === "artifact" || tab.type === "design") {
+          if (tab.type === "artifact" || tab.type === "design" || tab.type === "video" || tab.type === "workspace-app" || tab.type === "plugin-studio") {
             mergedTabs.push(tab);
             continue;
           }
@@ -331,8 +392,11 @@ export const usePanelTabStore = create<PanelTabStore>()(
         }
 
         const currentActiveTab = session.tabs.find((tab) => tab.id === session.activeTabId);
+        const activeBrowserTabIsNew = Boolean(
+          activeBrowserTabId && !session.tabs.some((tab) => tab.id === activeBrowserTabId),
+        );
         const shouldSyncActiveFromElectron =
-          !session.activeTabId || currentActiveTab?.type === "browser";
+          !session.activeTabId || currentActiveTab?.type === "browser" || activeBrowserTabIsNew;
 
         const activeTabId = shouldSyncActiveFromElectron
           ? resolveActiveTabId(mergedTabs, activeBrowserTabId)
@@ -417,9 +481,19 @@ export const usePanelTabStore = create<PanelTabStore>()(
       partialize: (state) => ({
         sessions: Object.fromEntries(
           Object.entries(state.sessions).map(([sessionId, session]) => {
-            const tabs = session.tabs
-              .filter((tab) => tab.type === "browser")
-              .map(({ id, type }) => ({ id, type }));
+            const tabs = session.tabs.flatMap((tab): PersistedPanelTabRef[] => {
+              if (tab.type === "browser") return [{ id: tab.id, type: tab.type }];
+              if (tab.type === "plugin-studio") {
+                return [{
+                  id: tab.id,
+                  type: tab.type,
+                  label: tab.label,
+                  pluginId: tab.pluginId,
+                  creationBaselinePluginIds: tab.creationBaselinePluginIds,
+                }];
+              }
+              return [];
+            });
 
             return [
               sessionId,

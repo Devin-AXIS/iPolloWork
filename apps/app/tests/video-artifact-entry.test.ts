@@ -1,17 +1,30 @@
 import { describe, expect, test } from "bun:test";
+import type { UIMessage } from "ai";
 
 import {
   type ArtifactInteractionContext,
   type ArtifactItem,
+  assignArtifactRequestOwnership,
   artifactDirectoryPath,
   artifactPathMatchesTarget,
+  artifactRequestOwner,
   canOpenArtifactInContext,
+  getArtifactStudioTarget,
+  groupConversationOutputArtifacts,
+  getArtifactsFromMessages,
+  inferArtifactRequestOwnership,
   selectArtifactContextOutputs,
+  selectArtifactsForRequest,
+  selectSupplementalArtifactsForRequest,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
 import {
+  createVideoArtifactCompletionRequirement,
+  unchangedVideoArtifactIssue,
   videoProjectEntryPath,
+  videoProjectSessionIdFromEntryPath,
 } from "../src/react-app/domains/session/video/video-project";
+import { deriveOpenTargets, getAssistantFileMentionPaths } from "../src/react-app/domains/session/artifacts/open-target";
 
 function htmlArtifact(path: string): ArtifactItem {
   const name = path.split("/").pop() ?? path;
@@ -22,7 +35,7 @@ function htmlArtifact(path: string): ArtifactItem {
     type: "html",
     messageId: "message",
     messageIndex: 0,
-    legacy_target: {
+    target: {
       id: `file:${path}`,
       kind: "file",
       value: path,
@@ -40,16 +53,55 @@ function slidesArtifact(path: string): ArtifactItem {
   return {
     ...artifact,
     type: "slides",
-    legacy_target: {
-      ...artifact.legacy_target,
+    target: {
+      ...artifact.target,
       preview: "slides",
     },
   };
 }
 
+function textMessage(id: string, role: "user" | "assistant", text: string): UIMessage {
+  return { id, role, parts: [{ type: "text", text }] };
+}
+
 describe("video artifact entry routing", () => {
+  test("routes prepared Design and Video entries to their dedicated Studios", () => {
+    const slides = htmlArtifact("design/ses_bank-artifact-slides/entry.html");
+    const video = htmlArtifact("video/ses_bank-artifact-video/index.html");
+    expect(getArtifactStudioTarget(slides)).toEqual({
+      surface: "design",
+      sessionId: "ses_bank-artifact-slides",
+    });
+    expect(getArtifactStudioTarget(video)).toEqual({
+      surface: "video",
+      sessionId: "ses_bank-artifact-video",
+    });
+    expect(groupConversationOutputArtifacts([slides, video])).toHaveLength(2);
+    expect(getArtifactStudioTarget(htmlArtifact("reports/bank.html"))).toBeNull();
+    expect(videoProjectSessionIdFromEntryPath("video/ses_bank-artifact-video/index.html")).toBe("ses_bank-artifact-video");
+  });
+
   test("derives one session-owned video entry", () => {
     expect(videoProjectEntryPath("ses/video 1")).toBe("video/ses_video_1/index.html");
+  });
+
+  test("requires a template video source to change before completion", () => {
+    const requirement = createVideoArtifactCompletionRequirement(
+      "video/ses_video/index.html",
+      "<main>Template</main>",
+      2,
+      1,
+    );
+
+    expect(requirement).toMatchObject({
+      sourcePath: "video/ses_video/index.html",
+      assistantMessageBaseline: 2,
+      requestOrdinal: 1,
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Template</main>")).toMatchObject({
+      code: "artifact_unchanged",
+    });
+    expect(unchangedVideoArtifactIssue(requirement.baselineFingerprint, "<main>Finished video</main>")).toBeNull();
   });
 
   test("matches only the current video entry across workspace path prefixes", () => {
@@ -92,8 +144,8 @@ describe("video artifact entry routing", () => {
     const stylesheet: ArtifactItem = {
       ...htmlArtifact("video/ses_video/design-tokens.css"),
       type: "text",
-      legacy_target: {
-        ...htmlArtifact("video/ses_video/design-tokens.css").legacy_target,
+      target: {
+        ...htmlArtifact("video/ses_video/design-tokens.css").target,
         preview: "text",
       },
     };
@@ -147,5 +199,114 @@ describe("video artifact entry routing", () => {
       [entry, slides, supportFile],
       context,
     )).toEqual([entry, slides]);
+  });
+
+  test("ignores malformed engine tool inputs instead of crashing the conversation", () => {
+    const messages = [{
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [{
+        type: "dynamic-tool" as const,
+        toolName: "edit",
+        toolCallId: "edit-1",
+        state: "output-available" as const,
+        input: { file_path: "design/session/entry.html" },
+        output: "done",
+      }],
+    }];
+
+    expect(getArtifactsFromMessages(messages)).toEqual([]);
+  });
+
+  test("shows an assistant-mentioned Skill markdown file as an editable artifact", () => {
+    const skillPath = "C:\\Users\\31939\\Desktop\\dsh\\测试\\plugins\\equity-insight-studio\\skills\\equity-data-analyst\\SKILL.md";
+    const messages = [{
+      id: "assistant-skill",
+      role: "assistant" as const,
+      parts: [{ type: "text" as const, text: `Skill 文件路径：\n\`${skillPath}\`` }],
+    }];
+    const verifiedTarget = {
+      id: "file:plugins/equity-insight-studio/skills/equity-data-analyst/skill.md",
+      kind: "file" as const,
+      value: "plugins/equity-insight-studio/skills/equity-data-analyst/SKILL.md",
+      name: "SKILL.md",
+      preview: "markdown" as const,
+      confidence: 95,
+      reason: "resolved artifact",
+      exists: true,
+    };
+
+    expect(getAssistantFileMentionPaths(messages[0].parts[0].text)).toEqual([skillPath]);
+    expect(getAssistantFileMentionPaths(`技能文件路径：${skillPath}。`)).toEqual([skillPath]);
+    expect(deriveOpenTargets(messages)).toContainEqual(expect.objectContaining({
+      value: skillPath.replaceAll("\\", "/"),
+      name: "SKILL.md",
+      preview: "markdown",
+    }));
+    expect(getArtifactsFromMessages(messages, [verifiedTarget])).toContainEqual(expect.objectContaining({
+      name: "SKILL.md",
+      type: "markdown",
+      target: verifiedTarget,
+    }));
+  });
+
+  test("keeps validated artifacts with the request that produced them while a follow-up is queued", () => {
+    const presentationPath = "design/session-slides/entry.html";
+    const websitePath = "design/session-site/entry.html";
+    const ownership = assignArtifactRequestOwnership(
+      assignArtifactRequestOwnership([], 0, [presentationPath]),
+      1,
+      [websitePath],
+    );
+
+    expect(artifactRequestOwner(presentationPath, ownership)).toBe(0);
+    expect(artifactRequestOwner(websitePath, ownership)).toBe(1);
+    expect(selectSupplementalArtifactsForRequest(
+      [presentationPath, websitePath, "design/unreported/readme.md"],
+      0,
+      ownership,
+      false,
+    )).toEqual([presentationPath]);
+    expect(selectSupplementalArtifactsForRequest(
+      [presentationPath, websitePath, "design/unreported/readme.md"],
+      1,
+      ownership,
+      true,
+    )).toEqual([websitePath, "design/unreported/readme.md"]);
+    expect(selectArtifactsForRequest(
+      [htmlArtifact(presentationPath), htmlArtifact(websitePath)],
+      1,
+      ownership,
+    ).map((artifact) => artifact.path)).toEqual([websitePath]);
+  });
+
+  test("moves a reused artifact path only after a later request validates it", () => {
+    const path = "design/session/entry.html";
+    const firstDelivery = assignArtifactRequestOwnership([], 0, [path]);
+    const secondDelivery = assignArtifactRequestOwnership(firstDelivery, 1, [path]);
+
+    expect(firstDelivery).toEqual([{ requestOrdinal: 0, paths: [path] }]);
+    expect(secondDelivery).toEqual([{ requestOrdinal: 1, paths: [path] }]);
+  });
+
+  test("keeps a template directory with the turn that originally reported its entry", () => {
+    const entryPath = "video/session-template/index.html";
+    const assetPath = "video/session-template/assets/cover.png";
+    const messages = [
+      textMessage("user-1", "user", "生成一个产品视频"),
+      textMessage("assistant-1", "assistant", `已生成 ${entryPath}`),
+      textMessage("user-2", "user", "你是谁"),
+      textMessage("assistant-2", "assistant", "我是 Project Assistant。"),
+    ];
+    const ownership = inferArtifactRequestOwnership(messages, [entryPath, assetPath]);
+
+    expect(artifactRequestOwner(entryPath, ownership)).toBe(0);
+    expect(artifactRequestOwner(assetPath, ownership)).toBe(0);
+    expect(selectSupplementalArtifactsForRequest(
+      [entryPath, assetPath],
+      1,
+      ownership,
+      true,
+    )).toEqual([]);
   });
 });

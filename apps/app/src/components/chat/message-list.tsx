@@ -3,6 +3,7 @@
 import * as React from "react"
 import {
   AlertTriangle,
+  CalendarDays,
   Check,
   ChevronDown,
   Copy,
@@ -41,8 +42,20 @@ import { TodoWriteTool } from "@/components/tools/todowrite"
 import { WebfetchTool } from "@/components/tools/webfetch"
 import { WebsearchTool } from "@/components/tools/websearch"
 import { useMessageList, useSessionErrorMessage } from "@/components/chat/message-list-provider"
-import { ArtifactList } from "@/components/chat/artifact"
-import type { ArtifactInteractionContext } from "@/lib/artifacts"
+import {
+  ArtifactList,
+  artifactRequestNamingContext,
+  type ArtifactRequestNaming,
+} from "@/components/chat/artifact"
+import {
+  assignArtifactRequestOwnership,
+  getArtifactsFromMessages,
+  inferArtifactRequestOwnership,
+  selectArtifactsForRequest,
+  selectSupplementalArtifactsForRequest,
+  type ArtifactInteractionContext,
+  type ArtifactRequestOwnership,
+} from "@/lib/artifacts"
 import {
   DescriptiveButtonContent,
   DescriptiveButtonDescription,
@@ -86,7 +99,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, groupMessages, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileTitle, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 
@@ -114,6 +127,7 @@ function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>
         key={`reasoning-${index}`}
         className="text-muted-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
         markdown
+        isStreaming={group.isStreaming}
       >
         {group.text}
       </MessageContent>
@@ -149,6 +163,30 @@ function MessageTimestamp({ message, className }: { message: UIMessage; classNam
     >
       {formatMessageTimestamp(created)}
     </span>
+  )
+}
+
+function ScheduleApplyResultCard({ result }: { result: ScheduleApplyResult }) {
+  const { onOpenSchedule } = useMessageList()
+  if (!onOpenSchedule) return null
+
+  return (
+    <div
+      className="mx-auto flex w-full max-w-[800px] items-center gap-3 rounded-xl border border-teal-7/35 bg-teal-3/30 px-4 py-3"
+      data-testid="schedule-import-result"
+    >
+      <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-teal-5/45 text-teal-11">
+        <Check className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-foreground">{t("work.schedule_import.success")}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">{t("work.schedule_import.count", { count: result.itemCount })}</p>
+      </div>
+      <Button type="button" variant="outline" size="sm" className="shrink-0 rounded-lg" onClick={() => onOpenSchedule(result.focusAt)}>
+        <CalendarDays className="size-3.5" />
+        {t("work.schedule_import.view")}
+      </Button>
+    </div>
   )
 }
 
@@ -262,6 +300,14 @@ export function getAssistantGroupArtifactMessages(items: UIMessageWithIndex[]) {
   return items.map((item) => item.message)
 }
 
+export function getAssistantRequestOrdinal(messages: UIMessage[], assistantMessageIndex: number) {
+  const requestCount = messages
+    .slice(0, Math.max(0, assistantMessageIndex))
+    .filter((message) => message.role === "user" && !isInternalContinuationMessage(message))
+    .length
+  return requestCount > 0 ? requestCount - 1 : null
+}
+
 function retryDelaySeconds(status: RetryStatus) {
   return Math.max(0, Math.round((status.next - Date.now()) / 1000))
 }
@@ -275,12 +321,14 @@ interface FileMessageProps {
 function FileMessage({ part }: FileMessageProps) {
   const title = getFileTitle(part)
   const badge = getMediaBadge(part)
-  const isImage = part.mediaType.startsWith("image/") && part.url
+  const mediaType = getFileMediaType(part)
+  const url = getFileUrl(part)
+  const isImage = mediaType.startsWith("image/") && url.length > 0
 
   if (isImage) {
     return (
       <Image
-        src={part.url}
+        src={url}
         alt={title}
         loading="lazy"
         decoding="async"
@@ -408,6 +456,9 @@ type AssistantMessageProps = {
   isLastStep: boolean
   hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
+  requestNaming?: ArtifactRequestNaming
+  requestOrdinal?: number | null
+  artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
@@ -439,11 +490,12 @@ function assistantProcessSummary(groups: AssistantProcessRenderGroup[], duration
 function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  hasError?: boolean
   durationMs: number | null
   children: React.ReactNode
   contentClassName?: string
 }) {
-  const { groups, isStreaming, durationMs, children, contentClassName } = props
+  const { groups, isStreaming, hasError = false, durationMs, children, contentClassName } = props
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -456,19 +508,29 @@ function AssistantProcessDisclosure(props: {
     previousStreamingRef.current = isStreaming
   }, [isStreaming])
 
-  const label = isStreaming ? t("message.process_in_progress") : t("message.process_completed")
+  const processState = getAssistantProcessState(isStreaming, hasError)
+  const label = processState === "streaming"
+    ? t("message.process_in_progress")
+    : processState === "failed"
+      ? t("message.process_failed")
+      : t("message.process_completed")
 
   return (
     <div className="w-full">
       <button
         type="button"
-        className="text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors"
+        className={cn(
+          "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors",
+          processState === "failed" && "text-destructive hover:text-destructive",
+        )}
         aria-expanded={isOpen}
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
         onClick={() => setIsOpen((open) => !open)}
       >
-        {isStreaming ? (
+        {processState === "streaming" ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
+        ) : processState === "failed" ? (
+          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
         ) : (
           <Check className="size-3.5 shrink-0" aria-hidden />
         )}
@@ -506,8 +568,8 @@ function AssistantProcessSection(props: {
 }
 
 const AssistantMessage = React.memo(
-  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
-    const { showThinking, highlightQuery, sessionId, onOpenVideoStudio } = useMessageList()
+  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
+    const { showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
@@ -543,6 +605,10 @@ const AssistantMessage = React.memo(
             <ArtifactList
               messages={artifactMessages ?? [message]}
               sessionId={sessionId}
+              sessionTitle={sessionTitle}
+              requestNaming={requestNaming}
+              requestOrdinal={requestOrdinal}
+              artifactRequestOwnership={artifactRequestOwnership}
               title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}
               entryPath={templateEntryPath}
               supplementalFiles={artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined)}
@@ -588,11 +654,6 @@ type VoiceReferenceDataPart = UIMessage["parts"][number] & {
   data: { voiceId: string; model: string; label: string }
 }
 
-type IllustrationReferenceDataPart = UIMessage["parts"][number] & {
-  type: "data-illustration-reference"
-  data: { id: string; label: string; repository: string }
-}
-
 function isDesignSelectionDataPart(part: UIMessage["parts"][number]): part is DesignSelectionDataPart {
   if (part.type !== "data-design-selection" || !part.data || typeof part.data !== "object") return false
   const data = part.data as { contextId?: unknown; label?: unknown }
@@ -616,23 +677,14 @@ function isVoiceReferenceDataPart(part: UIMessage["parts"][number]): part is Voi
   return typeof data.voiceId === "string" && typeof data.model === "string" && typeof data.label === "string" && Boolean(data.label.trim())
 }
 
-function isIllustrationReferenceDataPart(part: UIMessage["parts"][number]): part is IllustrationReferenceDataPart {
-  if (part.type !== "data-illustration-reference" || !part.data || typeof part.data !== "object") return false
-  const data = part.data as { id?: unknown; label?: unknown; repository?: unknown }
-  return typeof data.id === "string" && Boolean(data.id.trim())
-    && typeof data.label === "string" && Boolean(data.label.trim())
-    && typeof data.repository === "string" && Boolean(data.repository.trim())
-}
-
-function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" | "illustration" }) {
+function UserReferenceChip(props: { label: string; kind: "design" | "animation" | "voice" }) {
   return (
     <span
       data-message-design-selection={props.kind === "design" ? "true" : undefined}
       data-message-animation-reference={props.kind === "animation" ? "true" : undefined}
       data-message-voice-reference={props.kind === "voice" ? "true" : undefined}
-      data-message-illustration-reference={props.kind === "illustration" ? "true" : undefined}
       className="inline-flex max-w-full items-center rounded-full border border-violet-6/35 bg-violet-3/20 px-2.5 py-1 text-xs font-medium text-violet-11"
-      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : props.kind === "voice" ? "Voice reference" : "Illustration reference"}: ${props.label}`}
+      title={`${props.kind === "design" ? "Design selection" : props.kind === "animation" ? "Animation reference" : "Voice reference"}: ${props.label}`}
     >
       <span className="truncate">{props.label}</span>
     </span>
@@ -708,7 +760,6 @@ const UserMessage = React.memo(
                   isDesignSelectionDataPart(part)
                   || isAnimationReferencesDataPart(part)
                   || isVoiceReferenceDataPart(part)
-                  || isIllustrationReferenceDataPart(part)
                 )) ? (
                   <div className="flex max-w-full flex-wrap justify-end gap-1">
                     {message.parts.flatMap((part) => {
@@ -722,9 +773,6 @@ const UserMessage = React.memo(
                       }
                       if (isVoiceReferenceDataPart(part)) {
                         return [<UserReferenceChip key={`voice:${part.data.voiceId}`} label={part.data.label} kind="voice" />]
-                      }
-                      if (isIllustrationReferenceDataPart(part)) {
-                        return [<UserReferenceChip key={`illustration:${part.data.id}`} label={`插画 · ${part.data.label}`} kind="illustration" />]
                       }
                       return []
                     })}
@@ -821,13 +869,16 @@ type MessageComponentProps = {
   isLastStep: boolean
   hideProcess?: boolean
   showLatestArtifactsTitle?: boolean
+  requestNaming?: ArtifactRequestNaming
+  requestOrdinal?: number | null
+  artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
 }
 
 const MessageComponent = React.memo(
-  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, templateEntryPath, artifactFiles, artifactContext }: MessageComponentProps) => {
+  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -851,6 +902,9 @@ const MessageComponent = React.memo(
           isLastStep={isLastStep}
           hideProcess={hideProcess}
           showLatestArtifactsTitle={showLatestArtifactsTitle}
+          requestNaming={requestNaming}
+          requestOrdinal={requestOrdinal}
+          artifactRequestOwnership={artifactRequestOwnership}
           templateEntryPath={templateEntryPath}
           artifactFiles={artifactFiles}
           artifactContext={artifactContext}
@@ -986,8 +1040,10 @@ interface AssistantMessageGroupProps {
   isStreaming: boolean
   templateEntryPath?: string
   artifactFiles?: readonly string[]
+  artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   artifactContext?: ArtifactInteractionContext
   latestAssistantMessageId?: string
+  activeAssistantMessageId?: string
 }
 
 function MessageGroup({
@@ -996,20 +1052,55 @@ function MessageGroup({
   isStreaming,
   templateEntryPath,
   artifactFiles,
+  artifactRequestOwnership = [],
   artifactContext,
   latestAssistantMessageId,
+  activeAssistantMessageId,
 }: AssistantMessageGroupProps) {
-  const { onRevertToUserMessage, onForkAtMessage, showThinking } = useMessageList()
+  const { onRevertToUserMessage, onForkAtMessage, sessionTitle, showThinking } = useMessageList()
   const lastItem = items[items.length - 1]
   // Branch/revert must target a real server-side message id. Synthetic
   // client-side messages (e.g. session errors) don't exist on the server and
   // silently corrupt fork/revert boundaries.
   const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message))
-  const isLiveGroup = isStreaming && lastItem !== undefined && lastItem.index === messages.length - 1
+  const isLatestAssistantGroup = items.some(
+    (item) => item.message.id === latestAssistantMessageId,
+  )
+  const isLiveGroup = isStreaming && items.some(
+    (item) => item.message.id === activeAssistantMessageId,
+  )
+  const previousLiveGroupRef = React.useRef(isLiveGroup)
+  const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current
   const stepsRef = React.useRef<HTMLDivElement>(null)
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
     [items],
+  )
+  const requestOrdinal = getAssistantRequestOrdinal(messages, items[0]?.index ?? 0)
+  const requestArtifactFiles = React.useMemo(
+    () => selectSupplementalArtifactsForRequest(
+      artifactFiles ?? [],
+      requestOrdinal,
+      artifactRequestOwnership,
+      isLatestAssistantGroup,
+    ),
+    [artifactFiles, artifactRequestOwnership, isLatestAssistantGroup, requestOrdinal],
+  )
+  const hasRequestArtifacts = React.useMemo(
+    () => selectArtifactsForRequest(
+      getArtifactsFromMessages(artifactMessages),
+      requestOrdinal,
+      artifactRequestOwnership,
+    ).length > 0,
+    [artifactMessages, artifactRequestOwnership, requestOrdinal],
+  )
+  const requestNaming = React.useMemo(
+    () => artifactRequestNamingContext(messages, items[0]?.index ?? 0, sessionTitle),
+    [items, messages, sessionTitle],
+  )
+  const scheduleApplyResult = React.useMemo(
+    () => getScheduleApplyResult(artifactMessages),
+    [artifactMessages],
   )
 
   // Keep the capped step run pinned to the latest step while streaming.
@@ -1020,12 +1111,12 @@ function MessageGroup({
     }
   })
 
-  if (!lastItem || isMessageEmptyGroup(items)) {
-    if (isStreaming) {
-      return null;
-    }
+  React.useEffect(() => {
+    previousLiveGroupRef.current = isLiveGroup
+  }, [isLiveGroup])
 
-    return <EmptyMessage />
+  if (!lastItem || (isMessageEmptyGroup(items) && requestArtifactFiles.length === 0)) {
+    return null
   }
 
   const renderableItems = getRenderableMessages(items)
@@ -1035,9 +1126,6 @@ function MessageGroup({
     const groups = getAssistantRenderGroups(item.message.parts, showThinking)
     return { item, groups, sections: splitAssistantRenderGroups(groups) }
   })
-  const isLatestAssistantGroup = items.some(
-    (item) => item.message.id === latestAssistantMessageId,
-  )
   const textResultItemIndex = itemRenderData.findLastIndex(({ groups }) =>
     groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
   )
@@ -1045,7 +1133,7 @@ function MessageGroup({
     ? -1
     : textResultItemIndex >= 0
       ? textResultItemIndex
-      : isLatestAssistantGroup && artifactFiles?.length
+      : hasRequestArtifacts || requestArtifactFiles.length > 0
         ? itemRenderData.length - 1
         : -1
   const resultData = resultItemIndex >= 0 ? itemRenderData[resultItemIndex] : null
@@ -1065,6 +1153,7 @@ function MessageGroup({
     && processCompletedAt >= processStartedAt
     ? processCompletedAt - processStartedAt
     : null
+  const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
 
   const renderProcessItem = (
     data: (typeof itemRenderData)[number],
@@ -1093,6 +1182,7 @@ function MessageGroup({
         <AssistantProcessDisclosure
           groups={processRenderGroups}
           isStreaming={isLiveGroup}
+          hasError={hasSessionError}
           durationMs={processDurationMs}
           contentClassName="max-h-[520px] overflow-y-auto"
         >
@@ -1102,19 +1192,31 @@ function MessageGroup({
         </AssistantProcessDisclosure>
       ) : null}
       {resultData ? (
-        <MessageComponent
-          message={resultData.item.message}
-          artifactMessages={artifactMessages}
-          isLastMessage={resultData.item.index === messages.length - 1}
-          isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
-          isLastStep
-          hideProcess
-          showLatestArtifactsTitle={isLatestAssistantGroup}
-          templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
-          artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}
-          artifactContext={artifactContext}
-        />
+        <div
+          data-assistant-result="true"
+          className={cn(
+            resultEnteredAfterLiveRun
+              && "animate-in fade-in-0 slide-in-from-left-2 duration-200 motion-reduce:animate-none",
+          )}
+        >
+          <MessageComponent
+            message={resultData.item.message}
+            artifactMessages={artifactMessages}
+            isLastMessage={resultData.item.index === messages.length - 1}
+            isStreaming={resultData.item.index === messages.length - 1 && isStreaming}
+            isLastStep
+            hideProcess
+            showLatestArtifactsTitle={isLatestAssistantGroup}
+            requestNaming={requestNaming}
+            requestOrdinal={requestOrdinal}
+            artifactRequestOwnership={artifactRequestOwnership}
+            templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
+            artifactFiles={requestArtifactFiles}
+            artifactContext={artifactContext}
+          />
+        </div>
       ) : null}
+      {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
         <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
           <MessageActions className="flex gap-0">
@@ -1150,7 +1252,6 @@ function MessageGroup({
           {/* <MessageSources messages={items.map((item) => item.message)} /> */}
         </div>
       )}
-      {renderableItems.length === 0 && !isStreaming ? <EmptyMessage /> : null}
       </div>
   )
 }
@@ -1161,15 +1262,41 @@ interface MessageListProps {
   retryStatus?: RetryStatus | null
   templateEntryPath?: string
   artifactFiles?: readonly string[]
+  artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   artifactContext?: ArtifactInteractionContext
+  activeMessageBaseline?: number | null
+  assistantWaitLabel?: string
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactContext }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
+  const { sessionTitle } = useMessageList()
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
-  const items = React.useMemo(() => groupMessages(messages, status), [messages, status]);
+  const items = React.useMemo(() => groupMessages(messages), [messages])
+  const supplementalArtifactFiles = React.useMemo(
+    () => [...new Set([
+      ...(artifactFiles ?? []),
+      ...artifactRequestOwnership.flatMap((entry) => entry.paths),
+    ])],
+    [artifactFiles, artifactRequestOwnership],
+  )
+  const resolvedArtifactRequestOwnership = React.useMemo(
+    () => artifactRequestOwnership.reduce(
+      (current, entry) => assignArtifactRequestOwnership(
+        current,
+        entry.requestOrdinal,
+        entry.paths,
+      ),
+      inferArtifactRequestOwnership(messages, supplementalArtifactFiles),
+    ),
+    [artifactRequestOwnership, messages, supplementalArtifactFiles],
+  )
   const latestAssistantMessageId = React.useMemo(
     () => getLatestArtifactAssistantMessageId(messages),
     [messages],
+  )
+  const activeAssistantMessageId = React.useMemo(
+    () => isStreaming ? getActiveAssistantMessageId(messages, activeMessageBaseline) : undefined,
+    [activeMessageBaseline, isStreaming, messages],
   )
   const error = useSessionErrorMessage();
   const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
@@ -1188,9 +1315,11 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               messages={messages}
               isStreaming={isStreaming}
               templateEntryPath={templateEntryPath}
-              artifactFiles={artifactFiles}
+              artifactFiles={supplementalArtifactFiles}
+              artifactRequestOwnership={resolvedArtifactRequestOwnership}
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
+              activeAssistantMessageId={activeAssistantMessageId}
             />
           )
         }
@@ -1198,6 +1327,17 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         const isLastMessage = item.index === messages.length - 1
         const isLastStep =
           !messages[item.index + 1] || messages[item.index + 1].role !== item.message.role
+        const requestOrdinal = item.message.role === "assistant"
+          ? getAssistantRequestOrdinal(messages, item.index)
+          : null
+        const requestArtifactFiles = item.message.role === "assistant"
+          ? selectSupplementalArtifactsForRequest(
+              supplementalArtifactFiles,
+              requestOrdinal,
+              resolvedArtifactRequestOwnership,
+              item.message.id === latestAssistantMessageId,
+            )
+          : undefined
 
         return (
           <div key={item.message.id}>
@@ -1207,15 +1347,22 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               isStreaming={isLastMessage && isStreaming}
               isLastStep={isLastStep}
               showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
+              requestNaming={item.message.role === "assistant"
+                ? artifactRequestNamingContext(messages, item.index, sessionTitle)
+                : undefined}
+              requestOrdinal={requestOrdinal}
+              artifactRequestOwnership={resolvedArtifactRequestOwnership}
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
-              artifactFiles={item.message.id === latestAssistantMessageId ? artifactFiles : undefined}
+              artifactFiles={requestArtifactFiles}
               artifactContext={artifactContext}
             />
           </div>
         )
       })}
 
-      {status === "streaming" && <LoadingMessage label={liveActionLabel ?? undefined} />}
+      {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
+        ? <LoadingMessage label={liveActionLabel ?? assistantWaitLabel ?? undefined} />
+        : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
     </div>

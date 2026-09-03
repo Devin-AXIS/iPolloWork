@@ -5,6 +5,7 @@ interface RegistryPreviewOptions {
   assetBaseUrl: string;
   autoplay: boolean;
   duration: number;
+  focus?: { x: number; y: number; zoom: number };
   seekTime: number;
   width: number;
   height: number;
@@ -31,10 +32,22 @@ function promoteStandaloneRegistryTemplate(html: string): string {
 
 export function buildRegistryPreviewHtml(
   html: string,
-  { assetBaseUrl, autoplay, duration, seekTime, width, height }: RegistryPreviewOptions,
+  { assetBaseUrl, autoplay, duration, focus, seekTime, width, height }: RegistryPreviewOptions,
 ): string {
   const safeDuration = Math.max(0.1, duration);
   const safeSeekTime = Math.max(0, Math.min(seekTime, safeDuration));
+  const safeFocus =
+    focus &&
+    Number.isFinite(focus.x) &&
+    Number.isFinite(focus.y) &&
+    Number.isFinite(focus.zoom) &&
+    focus.zoom > 0
+      ? {
+          x: Math.max(0, Math.min(1, focus.x)),
+          y: Math.max(0, Math.min(1, focus.y)),
+          zoom: Math.max(1, Math.min(4, focus.zoom)),
+        }
+      : null;
   const previewScript = `<script data-hf-registry-preview>
 (() => {
   const autoplay = ${JSON.stringify(autoplay)};
@@ -42,12 +55,20 @@ export function buildRegistryPreviewHtml(
   const seekTime = ${JSON.stringify(safeSeekTime)};
   const sourceWidth = ${JSON.stringify(Math.max(1, width))};
   const sourceHeight = ${JSON.stringify(Math.max(1, height))};
+  const previewFocus = ${JSON.stringify(safeFocus)};
   let animationFrame = 0;
 
   const fitComposition = () => {
-    const scale = Math.min(window.innerWidth / sourceWidth, window.innerHeight / sourceHeight);
-    const offsetX = (window.innerWidth - sourceWidth * scale) / 2;
-    const offsetY = (window.innerHeight - sourceHeight * scale) / 2;
+    const baseScale = Math.min(window.innerWidth / sourceWidth, window.innerHeight / sourceHeight);
+    const scale = previewFocus ? baseScale * previewFocus.zoom : baseScale;
+    const focusX = sourceWidth * (previewFocus ? previewFocus.x : 0.5);
+    const focusY = sourceHeight * (previewFocus ? previewFocus.y : 0.5);
+    const offsetX = previewFocus
+      ? window.innerWidth / 2 - focusX * scale
+      : (window.innerWidth - sourceWidth * scale) / 2;
+    const offsetY = previewFocus
+      ? window.innerHeight / 2 - focusY * scale
+      : (window.innerHeight - sourceHeight * scale) / 2;
     document.documentElement.style.width = "100%";
     document.documentElement.style.height = "100%";
     document.documentElement.style.overflow = "hidden";
@@ -122,6 +143,7 @@ export function registerRegistryRoutes(api: Hono, adapter: StudioApiAdapter): vo
         autoplay,
         duration,
         seekTime,
+        focus: preview.focus,
         width: preview.dimensions.width,
         height: preview.dimensions.height,
       }),

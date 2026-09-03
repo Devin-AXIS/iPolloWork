@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   ensureHtmlDesignSystemContract,
   readAppliedDesignSystemId,
@@ -22,8 +23,27 @@ const panelPath = new URL(
   "../src/react-app/domains/session/design/design-panel.tsx",
   import.meta.url,
 );
+const designSystemsRoot = fileURLToPath(new URL(
+  "../src/react-app/domains/session/design/design-systems/design-systems/",
+  import.meta.url,
+));
 
 describe("Design system theme contract", () => {
+  test("does not ship unused system or preview HTML", async () => {
+    const htmlFiles: string[] = [];
+    for await (const path of new Bun.Glob("**/*.html").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      htmlFiles.push(path.replaceAll("\\", "/"));
+    }
+    expect(htmlFiles.filter((path) => !path.endsWith("/components.html"))).toEqual([]);
+
+    const manifestsWithPreview: string[] = [];
+    for await (const path of new Bun.Glob("*/manifest.json").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      const manifest = await Bun.file(`${designSystemsRoot}/${path}`).json();
+      if (Object.hasOwn(manifest, "preview")) manifestsWithPreview.push(path);
+    }
+    expect(manifestsWithPreview).toEqual([]);
+  });
+
   test("emits persistent theme metadata and a high-priority compatibility layer", async () => {
     const source = await Bun.file(registryPath).text();
 
@@ -33,17 +53,26 @@ describe("Design system theme contract", () => {
     expect(source).toContain("--accent: var(--ipw-color-primary) !important");
     expect(source).toContain("background-color: var(--ipw-card-bg) !important");
     expect(source).toContain("color: var(--ipw-color-on-primary) !important");
-    expect(source).toContain(":where([data-ipw-slide], section.slide, .slide-frame) { background: var(--ipw-color-bg) !important");
+    expect(source).toContain("background-color: var(--ipw-bg-color, var(--ipw-color-bg)) !important");
     expect(source).not.toContain(".cover > *");
     expect(source).toContain("border-radius: var(--ipw-card-radius) !important");
     expect(source).toContain("box-shadow: var(--ipw-card-shadow) !important");
+    expect(source).not.toContain('[class*="-card"]');
+    expect(source).not.toContain(".scene, .hero, .section, .content, .media");
     expect(source).not.toContain(":where(button, [role=\"button\"], [class*=\"button\"], [class*=\"btn\"])");
     expect(source).toContain("html:root [data-ipw-brand-slot]");
     expect(source).toContain("width: 18px !important; height: 18px !important");
     expect(source).toContain("object-fit: contain !important");
     expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
     expect(source).not.toContain('as: "raw"');
-    expect(source.match(/query: "\?raw"/g)).toHaveLength(6);
+    expect(source.match(/query: "\?raw"/g)).toHaveLength(3);
+    expect(source).not.toContain("system/kit.html");
+    expect(source).not.toContain("system/index.html");
+    expect(source).not.toContain("preview/colors.html");
+    expect(source).not.toContain("previewHtml");
+    expect(source).not.toContain("buildDesignSystemPreviewDoc");
+    expect(source).not.toContain("buildThemeTokenHints");
+    expect(source).toContain("if (!tokensCss) return []");
     expect(source).toContain("buildDesignSystemPresetValues");
     expect(source).toContain('"--ipw-type-scale": themeTypeScale(tokens)');
   });
@@ -80,18 +109,15 @@ describe("Design system theme contract", () => {
     expect(next).toContain(".logo { width: 18px; }");
   });
 
-  test("scales typography from a stable original size instead of compounding from em", async () => {
+  test("uses template-owned sizes while applying global body and heading fonts", async () => {
     const source = await Bun.file(registryPath).text();
 
-    expect(source).toContain("--ipw-original-font-size");
-    expect(source).toContain("--ipw-original-font-size: var(--ipw-od-text-4xl, 2.5rem)");
-    expect(source).toContain("--ipw-original-font-size: var(--ipw-od-text-base, 1rem)");
-    expect(source).toContain(':where([data-ipw-theme-role="accent"], .eyebrow, .kicker, [class~="accent"]) { --ipw-original-font-size: var(--ipw-od-text-xs, .75rem);');
-    expect(source).toContain(':where([data-ipw-theme-role="muted"], .lede, .lead, .subtitle, .description) { --ipw-original-font-size: var(--ipw-od-text-lg, 1.125rem);');
-    expect(source).toContain("line-height: var(--leading-tight, 1.08) !important");
-    expect(source).toContain("letter-spacing: var(--tracking-display, 0) !important");
-    expect(source).toContain("font-size: calc(var(--ipw-original-font-size) * var(--ipw-type-scale)) !important");
-    expect(source).not.toContain("font-size: calc(1em * var(--ipw-type-scale)) !important");
+    expect(source).toContain("body :where(*):not(svg):not(svg *)");
+    expect(source).toContain('[data-ipw-preserve-font]');
+    expect(source).toContain('[role="heading"]');
+    expect(source).not.toContain("--ipw-original-font-size");
+    expect(source).not.toContain("line-height: var(--leading-tight, 1.08) !important");
+    expect(source).not.toContain("letter-spacing: var(--tracking-display, 0) !important");
   });
 
   test("migrates legacy variables without dropping structural rules", () => {
@@ -118,7 +144,7 @@ describe("Design system theme contract", () => {
     expect(drawer).toContain("preview_loading");
     expect(drawer).toContain("preview_failed");
     expect(drawer).toContain("buildDesignSystemTokenControls(selectedTheme)");
-    expect(drawer).toContain("selectedThemeControls.map");
+    expect(drawer).toContain("selectedThemeControls.forEach");
     expect(drawer).toContain('t("design_system.variables_footer")');
     expect(drawer).not.toContain(">Design system<");
     expect(drawer).not.toContain("Search themes...");

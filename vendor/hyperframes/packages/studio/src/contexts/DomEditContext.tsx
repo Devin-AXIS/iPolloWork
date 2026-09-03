@@ -83,6 +83,7 @@ export interface DomEditSelectionValue extends Pick<
   | "domEditGroupSelections"
   | "domEditHoverSelection"
   | "activeGroupElement"
+  | "previewSelectionInteraction"
   | "domEditSelectionRef"
   | "selectedGsapAnimations"
   | "gsapMultipleTimelines"
@@ -127,6 +128,7 @@ export function DomEditProvider({
     domEditSelection,
     domEditGroupSelections,
     domEditHoverSelection,
+    previewSelectionInteraction,
     agentModalOpen,
     agentModalAnchorPoint,
     copiedAgentPrompt,
@@ -370,6 +372,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      previewSelectionInteraction,
       activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,
@@ -384,6 +387,7 @@ export function DomEditProvider({
       domEditSelection,
       domEditGroupSelections,
       domEditHoverSelection,
+      previewSelectionInteraction,
       activeGroupElement,
       domEditSelectionRef,
       selectedGsapAnimations,

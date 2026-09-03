@@ -3,7 +3,9 @@ import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildMaskGeometry, inferMaskShape, parseMaskGeometry } from "./clipPathHelpers";
-import { FlatRow } from "./propertyPanelFlatPrimitives";
+import { GeometryStepper } from "./propertyPanelFlatLayoutSection";
+import { FlatMaskSection } from "./propertyPanelFlatMaskSection";
+import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatDropdown } from "./propertyPanelFlatSelectRow";
 
 describe("FlatDropdown", () => {
@@ -109,6 +111,55 @@ describe("mask geometry", () => {
   });
 });
 
+describe("FlatMaskSection", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    flushSync(() => root.unmount());
+    container.remove();
+  });
+
+  it("offers only rectangle and circle post-processing masks", () => {
+    const onSetStyle = vi.fn();
+    flushSync(() =>
+      root.render(
+        <FlatMaskSection
+          styles={{ width: "200px", height: "100px" }}
+          disabled={false}
+          onSetStyle={onSetStyle}
+        />,
+      ),
+    );
+
+    const trigger = container.querySelector('[aria-label="Style"]');
+    if (!(trigger instanceof HTMLButtonElement)) throw new Error("Mask dropdown missing");
+    expect(container.querySelectorAll("button")).toHaveLength(1);
+    expect(trigger.textContent).toContain("Mask rectangle");
+    flushSync(() => trigger.click());
+
+    const options = [...document.body.querySelectorAll('[role="option"]')];
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Mask rectangle",
+      "Mask circle",
+    ]);
+    const circle = options[1];
+    if (!(circle instanceof HTMLButtonElement)) throw new Error("Circle option missing");
+    flushSync(() => circle.click());
+
+    expect(onSetStyle).toHaveBeenCalledWith(
+      "clip-path",
+      "circle(50px at 100px 50px)",
+    );
+  });
+});
+
 describe("FlatRow responsive layout", () => {
   let container: HTMLDivElement;
   let root: Root;
@@ -146,4 +197,188 @@ describe("FlatRow responsive layout", () => {
     expect(trailingControls?.classList.contains("flex-1")).toBe(true);
     expect(trailingControls?.classList.contains("min-w-0")).toBe(true);
   });
+});
+
+describe("GeometryStepper", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    flushSync(() => root.unmount());
+    container.remove();
+  });
+
+  it("offers only decrement and increment actions and accumulates rapid clicks", () => {
+    const onStep = vi.fn();
+    flushSync(() => root.render(<GeometryStepper label="X" value={56} onStep={onStep} />));
+
+    const buttons = [...container.querySelectorAll("button")];
+    expect(buttons).toHaveLength(2);
+    expect(container.querySelector('[data-flat-kf-gutter="true"]')).toBeNull();
+
+    buttons[1]?.click();
+    buttons[1]?.click();
+    buttons[0]?.click();
+    expect(onStep.mock.calls.map(([value]) => value)).toEqual([57, 58, 57]);
+  });
+});
+
+describe("FlatSlider value surface", () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    flushSync(() => root.unmount());
+    container.remove();
+  });
+
+  it("lets a large slider use the full row without a value surface", () => {
+    flushSync(() =>
+      root.render(
+        <FlatSlider
+          label="Shadow"
+          value={50}
+          min={0}
+          max={100}
+          tier="explicitCustom"
+          displayValue="50%"
+          showValue={false}
+          onCommit={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.querySelector('[data-flat-slider-value="true"]')).toBeNull();
+    expect(container.querySelector('[data-flat-slider-track="true"]')?.classList).toContain(
+      "col-span-2",
+    );
+  });
+
+  it("commits the last visible value when pointer capture is lost", () => {
+    const onPreview = vi.fn();
+    const onPreviewCancel = vi.fn();
+    const onCommit = vi.fn();
+    flushSync(() =>
+      root.render(
+        <FlatSlider
+          label="Shadow"
+          value={20}
+          min={0}
+          max={100}
+          tier="explicitCustom"
+          displayValue="20%"
+          commitMode="release"
+          onPreview={onPreview}
+          onPreviewCancel={onPreviewCancel}
+          onCommit={onCommit}
+        />,
+      ),
+    );
+
+    const slider = container.querySelector('[data-flat-slider-track="true"]');
+    if (!(slider instanceof HTMLDivElement)) throw new Error("Shadow slider missing");
+    Object.defineProperty(slider, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, right: 100, top: 0, bottom: 34, width: 100, height: 34 }),
+    });
+    let capturedPointer: number | null = null;
+    slider.setPointerCapture = (pointerId) => {
+      capturedPointer = pointerId;
+    };
+    slider.hasPointerCapture = (pointerId) => capturedPointer === pointerId;
+    slider.releasePointerCapture = () => {
+      capturedPointer = null;
+    };
+
+    flushSync(() =>
+      slider.dispatchEvent(
+        new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
+      ),
+    );
+    flushSync(() =>
+      slider.dispatchEvent(
+        new PointerEvent("pointermove", { bubbles: true, clientX: 73, pointerId: 1 }),
+      ),
+    );
+    flushSync(() => slider.dispatchEvent(new PointerEvent("lostpointercapture", { bubbles: true })));
+
+    expect(onPreview).toHaveBeenLastCalledWith(73);
+    expect(onPreviewCancel).not.toHaveBeenCalled();
+    expect(onCommit).toHaveBeenCalledTimes(1);
+    expect(onCommit).toHaveBeenLastCalledWith(73);
+  });
+
+  it.each([0, 10_000])(
+    "keeps the last visible value when pointerup reports clientX %s",
+    (releaseClientX) => {
+      const onPreview = vi.fn();
+      const onCommit = vi.fn();
+      flushSync(() =>
+        root.render(
+          <FlatSlider
+            label="Shadow"
+            value={20}
+            min={0}
+            max={100}
+            tier="explicitCustom"
+            displayValue="20%"
+            commitMode="release"
+            onPreview={onPreview}
+            onCommit={onCommit}
+          />,
+        ),
+      );
+
+      const slider = container.querySelector('[data-flat-slider-track="true"]');
+      if (!(slider instanceof HTMLDivElement)) throw new Error("Shadow slider missing");
+      Object.defineProperty(slider, "getBoundingClientRect", {
+        configurable: true,
+        value: () => ({ left: 0, right: 100, top: 0, bottom: 34, width: 100, height: 34 }),
+      });
+      let capturedPointer: number | null = null;
+      slider.setPointerCapture = (pointerId) => {
+        capturedPointer = pointerId;
+      };
+      slider.hasPointerCapture = (pointerId) => capturedPointer === pointerId;
+      slider.releasePointerCapture = () => {
+        capturedPointer = null;
+      };
+
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointerdown", { bubbles: true, clientX: 30, pointerId: 1 }),
+        ),
+      );
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointermove", { bubbles: true, clientX: 73, pointerId: 1 }),
+        ),
+      );
+      flushSync(() =>
+        slider.dispatchEvent(
+          new PointerEvent("pointerup", {
+            bubbles: true,
+            clientX: releaseClientX,
+            pointerId: 1,
+          }),
+        ),
+      );
+
+      expect(onPreview).toHaveBeenLastCalledWith(73);
+      expect(onCommit).toHaveBeenCalledTimes(1);
+      expect(onCommit).toHaveBeenLastCalledWith(73);
+    },
+  );
 });

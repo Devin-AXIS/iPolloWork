@@ -8,15 +8,21 @@ import {
   ipolloworkRuntimeConfigFilePath,
   writeiPolloWorkRuntimeConfigFile,
 } from "./ipollowork-runtime-config.js";
-import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import {
+  disposeRuntimeOpencodeConfigStore,
+  writeRuntimeOpencodeConfig,
+  writeRuntimeProviderChannels,
+} from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
 const cleanups: Array<() => void> = [];
+const configs: ServerConfig[] = [];
 let previousDb: string | undefined;
 
 afterEach(async () => {
   while (cleanups.length) cleanups.pop()?.();
+  for (const config of configs.splice(0)) await disposeRuntimeOpencodeConfigStore(config);
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
   if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
@@ -45,6 +51,7 @@ async function setup() {
     logFormat: "pretty",
     logRequests: false,
   };
+  configs.push(config);
   return { root, config };
 }
 
@@ -69,6 +76,34 @@ describe("ipollowork runtime config file", () => {
     expect(mcp.posthog?.enabled).toBe(true);
     expect(parsed.default_agent).toBe("ipollowork");
     expect(Array.isArray(parsed.plugin)).toBe(true);
+    expect((parsed.plugin as string[]).join("\n")).not.toContain("chrome-devtools");
+    const providers = parsed.provider as Record<string, Record<string, unknown>>;
+    const openCode = providers.opencode;
+    const whitelist = Array.isArray(openCode?.whitelist)
+      ? openCode.whitelist.filter((modelId): modelId is string => typeof modelId === "string")
+      : [];
+    expect(whitelist).toEqual([
+      "big-pickle",
+      "hy3-free",
+      "mimo-v2.5-free",
+      "nemotron-3-ultra-free",
+      "nemotron-3.5-lightning-free",
+    ]);
+    expect(Object.keys(openCode?.models as Record<string, unknown>)).toEqual(whitelist);
+    const models = openCode?.models as Record<string, {
+      name?: string;
+      status?: string;
+      contextWindow?: number;
+      maxTokens?: number;
+      headers?: Record<string, string>;
+    }>;
+    expect(models["x-preview-f-free"]).toBeUndefined();
+    expect(models["big-pickle"]).toMatchObject({
+      contextWindow: 200_000,
+      maxTokens: 32_000,
+    });
+    expect(models["big-pickle"]?.headers).toBeUndefined();
+    expect(Object.values(models).every((model) => model.status === "active")).toBe(true);
   });
 
   test("ipollowork prompt has a static search-first Memory Bank section, distinct from ## Memory", async () => {
@@ -127,6 +162,32 @@ describe("ipollowork runtime config file", () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
     expect(mcp.stripe?.enabled).toBe(false);
+  });
+
+  test("keepiPolloWorkRuntimeConfigFileFresh projects global provider channel writes", async () => {
+    const { config } = await setup();
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    cleanups.push(keepiPolloWorkRuntimeConfigFileFresh(config, "ws_1"));
+
+    await writeRuntimeProviderChannels(config, (current) => ({
+      ...current,
+      shared: {
+        npm: "@ai-sdk/openai-compatible",
+        options: { baseURL: "https://models.example/v1" },
+        models: { shared: { name: "Shared model" } },
+      },
+    }));
+
+    let providers: Record<string, Record<string, unknown>> = {};
+    for (let attempt = 0; attempt < 50; attempt += 1) {
+      const parsed = await readConfigFile(config);
+      providers = (parsed.provider ?? {}) as Record<string, Record<string, unknown>>;
+      if (providers.shared) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    expect(providers.shared).toMatchObject({
+      options: { baseURL: "https://models.example/v1" },
+    });
   });
 
   test("writes for other workspaces do not rewrite the primary file", async () => {

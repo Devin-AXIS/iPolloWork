@@ -5,12 +5,21 @@
   "librarySection": "interface-animation",
   "title": "US Hex Grid Map",
   "description": "Animated hexagonal tile grid map — each state as an equal-weight hex with data fill and abbreviation label",
-  "tags": ["data", "map", "geography", "usa", "hexgrid", "tilegrid"],
+  "tags": ["component", "data", "map", "geography", "usa", "hexgrid", "tilegrid", "theme"],
+  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "US Hex Grid Map", "url": "https://www.hyperframes.dev/catalog/blocks/us-map-hex" },
+  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "region-value", "mode": "override", "rowId": "region", "binding": { "variable": "values", "encoding": "key-value-list" }, "columns": [{ "id": "region", "label": "State code", "labelZh": "州代码", "type": "string", "role": "id", "required": true }, { "id": "value", "label": "Median income", "labelZh": "家庭收入中位数", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 51, "highlightVariable": "highlight", "valueFormat": { "unit": "USD", "precision": 0, "notation": "currency", "currency": "USD" } }, "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace state values or annotate a highlighted state while preserving the equal-weight hex grid." } },
   "dimensions": {
     "width": 1920,
     "height": 1080
   },
   "duration": 10,
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Median Household Income by State", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "State data", "description": "State income overrides, edited as structured rows.", "type": "string", "default": "MD:106998,NJ:101778,MA:101079,CA:89648,TX:70813", "maxLength": 2000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "MD", "maxLength": 4, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source: American Community Survey 2024", "maxLength": 72, "update": "live" }
+  ],
   "files": [
     {
       "path": "us-map-hex.html",

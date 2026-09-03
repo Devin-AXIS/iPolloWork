@@ -136,6 +136,7 @@ describe("expanded timeline hierarchy", () => {
       expandedParentStart: 2,
       start: 2,
       duration: 6,
+      timingSource: "implicit",
     });
   });
 
@@ -438,6 +439,9 @@ describe("expanded timeline hierarchy", () => {
       "dot",
     ]);
     expect(expanded.at(-1)?.compositionAncestors).toEqual(["background", "panel", "badge"]);
+    expect(expanded.find((element) => element.id === "timed-title")?.timingSource).toBe("authored");
+    expect(expanded.find((element) => element.id === "panel")?.timingSource).toBe("implicit");
+    expect(expanded.find((element) => element.id === "badge")?.timingSource).toBe("implicit");
 
     const collapsedAtPanel = buildExpandedElementTree(
       [parent],

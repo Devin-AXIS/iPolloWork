@@ -35,7 +35,13 @@ import {
   SliderControl,
 } from "./propertyPanelPrimitives";
 import { ColorField } from "./propertyPanelColor";
-import { GradientField, ImageFillField } from "./propertyPanelFill";
+import {
+  commitElementBackgroundImage,
+  GradientField,
+  ImageFillField,
+  resolveEditableBackgroundImage,
+  syncLegacyThemeBackgroundPreview,
+} from "./propertyPanelFill";
 import { BorderRadiusEditor } from "./BorderRadiusEditor";
 
 // fallow-ignore-next-line complexity
@@ -105,7 +111,7 @@ export function StyleSections({
     radius: radiusValue,
   };
   const showClipInsetSides = clipPathPreset === "inset" || parsedClipInsets != null;
-  const backgroundImage = styles["background-image"] ?? "none";
+  const backgroundImage = resolveEditableBackgroundImage(element.element, styles);
   const hasTextControls = isTextEditableSelection(element);
 
   const fillMode =
@@ -121,15 +127,24 @@ export function StyleSections({
     setPreferredFillMode(fillMode);
   }, [fillMode, element.id, element.selector, backgroundImage]);
 
+
+  useEffect(() => {
+    if (syncLegacyThemeBackgroundPreview(element.element)) {
+      void Promise.resolve(onSetStyle("--ipw-bg-image", backgroundImage)).catch(() => undefined);
+    }
+  }, [element.element, backgroundImage, onSetStyle]);
+
+  const commitBackgroundImage = (nextValue: string) =>
+    commitElementBackgroundImage(element.element, nextValue, onSetStyle);
+
   const handleFillModeChange = (nextMode: string) => {
     setPreferredFillMode(nextMode);
     if (nextMode === "Solid") {
-      onSetStyle("background-image", "none");
+      void commitBackgroundImage("none");
       return;
     }
     if (nextMode === "Gradient" && !backgroundImage.includes("gradient")) {
-      onSetStyle(
-        "background-image",
+      void commitBackgroundImage(
         serializeGradient(buildDefaultGradientModel(styles["background-color"])),
       );
     }
@@ -464,7 +479,7 @@ export function StyleSections({
               }
               fallbackColor={styles["background-color"]}
               disabled={styleEditingDisabled}
-              onCommit={(next) => onSetStyle("background-image", next)}
+              onCommit={(next) => void commitBackgroundImage(next)}
             />
           ) : (
             <ImageFillField
@@ -473,7 +488,7 @@ export function StyleSections({
               value={imageUrl}
               assets={assets}
               disabled={styleEditingDisabled}
-              onCommit={(next) => onSetStyle("background-image", next)}
+              onCommit={(next) => void commitBackgroundImage(next)}
               onImportAssets={onImportAssets}
             />
           )}

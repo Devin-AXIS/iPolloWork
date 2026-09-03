@@ -1,4 +1,5 @@
 import { ApiError } from "../errors.js";
+import { createAuthorizationAccess } from "../authorization-center.js";
 import type { EnvService } from "../env-file.js";
 import {
   googleWorkspaceConnectGuidance,
@@ -83,13 +84,54 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   if (!registered) {
     return callPluginServiceAction({
       config,
+      env,
       workspaceId: workspaceIdForPluginContext(config, context),
       pluginId: extensionId,
       action,
       args,
       context,
+      callHostAction: async (reference, hostArgs) => {
+        const actionReference = reference.startsWith("action:") ? reference.slice("action:".length) : reference;
+        const separator = actionReference.indexOf("/");
+        if (separator <= 0 || separator === actionReference.length - 1) {
+          throw new ApiError(400, "plugin_host_action_invalid", `Invalid host action reference: ${reference}`);
+        }
+        const hostExtensionId = actionReference.slice(0, separator);
+        const hostAction = actionReference.slice(separator + 1);
+        const hostRegistered = IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS.find(
+          (item) => item.extensionId === hostExtensionId && item.action === hostAction,
+        );
+        if (!hostRegistered) {
+          throw new ApiError(404, "plugin_host_action_not_found", `Host action is not registered: ${reference}`);
+        }
+        const result = await callBuiltInExtensionAction(
+          config,
+          hostExtensionId,
+          hostAction,
+          hostArgs,
+          context,
+          connectSnapshot,
+        );
+        if (!result) throw new ApiError(501, "plugin_host_action_not_implemented", `Host action is not implemented: ${reference}`);
+        return result;
+      },
     });
   }
+
+  const builtInResult = await callBuiltInExtensionAction(config, extensionId, action, args, context, connectSnapshot);
+  if (builtInResult) return builtInResult;
+
+  throw new ApiError(501, "extension_action_not_implemented", `${registered.title} is registered but not implemented on ipollowork-server yet.`, { extensionId, action, args });
+}
+
+async function callBuiltInExtensionAction(
+  config: ServerConfig,
+  extensionId: string,
+  action: string,
+  args: Record<string, unknown>,
+  context: Record<string, unknown>,
+  connectSnapshot?: ConnectSnapshot,
+) {
 
   if (
     extensionId === GOOGLE_WORKSPACE_EXTENSION_ID &&
@@ -110,19 +152,19 @@ export async function callExperimentalExtensionAction(config: ServerConfig, env:
   }
 
   if (extensionId === OPENAI_IMAGE_GENERATION_EXTENSION_ID) {
-    const result = await callOpenAiImageGenerationExtensionAction(config, env, action, args, context);
+    const result = await callOpenAiImageGenerationExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 
   if (extensionId === MEDIA_EXTENSION_ID) {
-    const result = await callMediaExtensionAction(config, env, action, args, context);
+    const result = await callMediaExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 
   if (extensionId === STORAGE_EXTENSION_ID) {
-    const result = await callStorageExtensionAction(config, env, action, args, context);
+    const result = await callStorageExtensionAction(config, createAuthorizationAccess(config), action, args, context);
     if (result) return result;
   }
 
-  throw new ApiError(501, "extension_action_not_implemented", `${registered.title} is registered but not implemented on ipollowork-server yet.`, { extensionId, action, args });
+  return null;
 }

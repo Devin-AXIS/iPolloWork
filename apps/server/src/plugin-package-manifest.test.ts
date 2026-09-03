@@ -47,17 +47,8 @@ function expectCompleteEnglishLocalization(manifest: PluginPackageManifest): voi
   });
 }
 
-const legacyManifest = {
-  schemaVersion: 1,
-  id: "legacy-extension",
-  name: "Legacy Extension",
-  description: "An existing extension without package metadata.",
-  source: { format: "ipollowork-builtin", origin: "builtin", trusted: true },
-  resources: [],
-};
-
 const packageManifest = {
-  schemaVersion: 1,
+  schemaVersion: 2,
   id: "acme-research",
   name: "Acme Research",
   description: "Research with Acme's independent service.",
@@ -65,10 +56,15 @@ const packageManifest = {
   package: {
     version: "1.2.3",
     publisher: { id: "acme", name: "Acme" },
-    compatibility: { ipollowork: ">=0.17.0", opencode: ">=1.18.0" },
+    compatibility: { ipollowork: ">=0.17.0" },
+    engines: ["opencode"],
     updateId: "acme/research",
-    entrypoints: { opencode: ".opencode/plugins/acme-research.ts" },
   },
+  engineBindings: [{
+    engine: "opencode",
+    compatibility: ">=1.18.0",
+    capabilities: [{ id: "acme-runtime", kind: "plugin", path: "engines/opencode/plugins/acme-research.ts", required: true }],
+  }],
   permissions: [
     { id: "network", reason: "Connect to the Acme research API." },
     { id: "workspace-read", reason: "Read selected workspace files." },
@@ -77,16 +73,25 @@ const packageManifest = {
     required: true,
     methods: [{
       id: "api-key",
+      connectionId: "acme-research",
       kind: "secret-form",
       label: "API key",
       fields: [{ id: "apiKey", label: "API key", secret: true, required: true }],
     }],
   },
   resources: [
-    { type: "opencode-plugin", id: "acme-runtime", path: ".opencode/plugins/acme-research.ts", required: true },
-    { type: "skill", id: "acme-search", path: ".opencode/skills/acme-search/SKILL.md", required: true },
-    { type: "mcp", id: "acme-mcp", path: ".opencode/mcps/acme.json", required: false },
+    { type: "skill", id: "acme-search", path: "skills/acme-search/SKILL.md", required: true },
+    { type: "mcp", id: "acme-mcp", path: "mcp/acme.json", required: false },
   ],
+};
+
+const minimalManifest = {
+  schemaVersion: 2,
+  id: "minimal-plugin",
+  name: "Minimal Plugin",
+  description: "A minimal plugin package.",
+  source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
+  resources: [],
 };
 
 describe("plugin package manifest", () => {
@@ -168,7 +173,7 @@ describe("plugin package manifest", () => {
     expect(result.manifest.resources.some((resource) => resource.type === "mcp" && resource.mcpServerName === "figma")).toBe(true);
   });
 
-  test("accepts every migrated MCP service package with its managed skills", async () => {
+  test("accepts every bundled MCP service package with its managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const packages = [
       { id: "notion", skills: 4, oauth: true },
@@ -233,7 +238,7 @@ describe("plugin package manifest", () => {
     }]);
   });
 
-  test("accepts the official Design and Video Agent packages without owning related global skills", async () => {
+  test("accepts the official Design and Video workspace packages with managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const designManifest = await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json();
     const videoManifest = await Bun.file(new URL("../../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url)).json();
@@ -245,34 +250,123 @@ describe("plugin package manifest", () => {
     if (!design.success) throw new Error(JSON.stringify(design.issues));
     expect(video.success).toBe(true);
     if (!video.success) throw new Error(JSON.stringify(video.issues));
+    expect(design.manifest.name).toBe("iPollo Design");
+    expect(video.manifest.name).toBe("iPollo Video");
     expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.relatedSkills).toContain("hyperframes-cli");
-    expect(video.manifest.relatedSkills).toContain("media-use");
-    expect(video.manifest.resources.map((resource) => resource.id)).not.toContain("hyperframes-cli");
+    expect(video.manifest.resources).toHaveLength(11);
+    expect(video.manifest.resources.every((resource) => resource.type === "skill")).toBe(true);
+    expect(video.manifest.relatedSkills).toBeUndefined();
+    expect(video.manifest.resources.map((resource) => resource.id)).toEqual(expect.arrayContaining([
+      "hyperframes",
+      "hyperframes-animation",
+      "hyperframes-cli",
+      "hyperframes-core",
+      "hyperframes-creative",
+      "hyperframes-keyframes",
+      "hyperframes-registry",
+      "media-use",
+      "product-launch-video",
+    ]));
+    expect(design.manifest.defaultEnabled).toBe(true);
+    expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();
     expect(video.manifest.contributions).toBeUndefined();
     expect(design.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
     expect(video.manifest.source).toMatchObject({ origin: "builtin", trusted: true });
+
+    const legacyNativePanelManifest = {
+      ...designManifest,
+      contributions: [{
+        type: "session-side-panel",
+        ref: "ipollowork.design.panel",
+        label: "Design",
+        location: "session-right-pane",
+      }],
+    };
+    expect(validatePluginPackageManifest(legacyNativePanelManifest).success).toBe(true);
+
+    const untrustedNativePanel = validatePluginPackageManifest({
+      ...legacyNativePanelManifest,
+      id: "third-party-design",
+      source: { ...designManifest.source, origin: "local", trusted: false },
+    });
+    expect(untrustedNativePanel.success).toBe(false);
+    if (untrustedNativePanel.success) throw new Error("Expected native session panel trust diagnostics");
+    expect(untrustedNativePanel.issues).toContainEqual({
+      path: "contributions.0.type",
+      message: "native session panels are restricted to trusted built-in packages",
+    });
   });
 
-  test("accepts current extension manifests and additive self-contained packages", async () => {
+  test("accepts Image Studio as a self-contained workspace app with independently managed skills", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url)).json();
+    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.defaultEnabled).toBe(true);
+    expect(result.manifest.contributions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: "workspace-app", ref: "studio" }),
+    ]));
+    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "local-service")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id)).toEqual([
+      "image-generation",
+      "image-editing",
+    ]);
+    expect(result.manifest.package?.version).toBe("0.1.8");
+    expect(workspaceUi).toContain('data-tool="smart"');
+    expect(workspaceUi).toContain('data-tool="ellipse"');
+    expect(workspaceUi).toContain('data-operation="subtract"');
+    expect(workspaceUi).toContain('id="redo"');
+    expect(workspaceUi).toContain("normalizedSelectionBounds");
+    expect(workspaceUi).toContain("approximateSelection");
+  });
+
+  test("accepts version 2 packages and rejects obsolete manifests", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
 
-    const legacy = validatePluginPackageManifest(legacyManifest);
     const packaged = validatePluginPackageManifest(packageManifest);
+    const obsolete = validatePluginPackageManifest({
+      ...packageManifest,
+      schemaVersion: 1,
+    });
 
-    expect(legacy.success).toBe(true);
-    if (!legacy.success) throw new Error("Expected the legacy manifest to stay valid");
-    expect(legacy.manifest.id).toBe(legacyManifest.id);
-    expect(legacy.manifest.source.format).toBe("ipollowork-builtin");
-    expect(legacy.manifest.resources).toEqual([]);
-    expect(legacy.manifest.package).toBeUndefined();
     expect(packaged.success).toBe(true);
     if (!packaged.success) throw new Error("Expected the package manifest to be valid");
     expect(packaged.manifest.package?.version).toBe("1.2.3");
-    expect(packaged.manifest.resources.map((resource) => resource.type)).toEqual(["opencode-plugin", "skill", "mcp"]);
+    expect(packaged.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "mcp"]);
+    expect(packaged.manifest.engineBindings?.[0]?.capabilities.map((capability) => capability.kind)).toEqual(["plugin"]);
     expect(packaged.manifest.authorization?.methods.map((method) => method.kind)).toEqual(["secret-form"]);
+    expect(obsolete.success).toBe(false);
+    if (obsolete.success) throw new Error("Expected the obsolete manifest to be rejected");
+    expect(obsolete.issues).toContainEqual({ path: "schemaVersion", message: "Invalid input: expected 2" });
+  });
+
+  test("rejects engine-owned paths from portable resources", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const invalid = validatePluginPackageManifest({
+      ...packageManifest,
+      resources: [
+        { type: "skill", id: "legacy-skill", path: ".opencode/skills/legacy/SKILL.md" },
+        { type: "mcp", id: "legacy-mcp", path: ".opencode/mcps/legacy.json" },
+      ],
+      engineBindings: [{
+        engine: "opencode",
+        capabilities: [{ id: "legacy-runtime", kind: "plugin", path: ".opencode/plugins/legacy.ts" }],
+      }],
+    });
+
+    expect(invalid.success).toBe(false);
+    if (invalid.success) throw new Error("Expected engine-owned paths to be rejected");
+    expect(invalid.issues.map((issue) => issue.path)).toEqual([
+      "resources.0.path",
+      "resources.1.path",
+      "engineBindings.0.capabilities.0.path",
+    ]);
   });
 
   test("returns actionable issue paths for unsafe or malformed package metadata", async () => {
@@ -283,13 +377,14 @@ describe("plugin package manifest", () => {
         ...packageManifest.package,
         version: "latest",
         compatibility: { ipollowork: "eventually" },
-        entrypoints: { opencode: "../outside.ts" },
       },
+      engineBindings: [{ engine: "opencode", capabilities: [{ id: "runtime", kind: "plugin", path: "../outside.ts" }] }],
       permissions: [{ id: "read-everything", reason: "Too broad" }],
       authorization: {
         required: true,
         methods: [{
           id: "api-key",
+          connectionId: "acme-research",
           kind: "secret-form",
           label: "API key",
           envKey: "ACME_API_KEY",
@@ -298,7 +393,7 @@ describe("plugin package manifest", () => {
       },
       resources: [
         packageManifest.resources[0],
-        { ...packageManifest.resources[0], path: ".opencode/plugins/duplicate.ts" },
+        { ...packageManifest.resources[0], path: "skills/duplicate/SKILL.md" },
       ],
     };
 
@@ -309,7 +404,7 @@ describe("plugin package manifest", () => {
     expect(result.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
       "package.version",
       "package.compatibility.ipollowork",
-      "package.entrypoints.opencode",
+      "engineBindings.0.capabilities.0.path",
       "permissions.0.id",
       "authorization.methods.0.envKey",
       "authorization.methods.0.fields",
@@ -320,15 +415,14 @@ describe("plugin package manifest", () => {
   test("accepts a minimal package with no authorization", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const minimal = {
-      ...legacyManifest,
-      id: "minimal-plugin",
-      source: { format: "opencode-plugin", origin: "local", trusted: false },
+      ...minimalManifest,
+      source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
-        version: "0.1.0",
+        version: "0.1.1",
         updateId: "local/minimal-plugin",
-        entrypoints: { opencode: ".opencode/plugins/minimal.ts" },
       },
-      resources: [{ type: "opencode-plugin", id: "minimal-runtime", path: ".opencode/plugins/minimal.ts", required: true }],
+      engineBindings: [{ engine: "opencode", capabilities: [{ id: "minimal-runtime", kind: "plugin", path: "engines/opencode/plugins/minimal.ts", required: true }] }],
+      resources: [],
     };
 
     const result = validatePluginPackageManifest(minimal);
@@ -339,20 +433,19 @@ describe("plugin package manifest", () => {
   test("accepts a declarative package made only of MCP and skill resources", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const declarative = {
-      ...legacyManifest,
+      ...minimalManifest,
       id: "figma",
       source: { format: "ipollowork-extension-manifest", origin: "local", trusted: false },
       package: {
         version: "2.0.16",
         updateId: "figma/official-workflows",
-        entrypoints: {},
       },
       resources: [
-        { type: "mcp", id: "figma-mcp", path: ".opencode/mcps/figma.json", required: true },
+        { type: "mcp", id: "figma-mcp", path: "mcp/figma.json", required: true },
         {
           type: "skill",
           id: "figma-design-to-code",
-          path: ".opencode/skills/figma-design-to-code/SKILL.md",
+          path: "skills/figma-design-to-code/SKILL.md",
           requires: ["resource:figma-mcp"],
           required: true,
         },
@@ -378,7 +471,6 @@ describe("plugin package manifest", () => {
       ...packageManifest,
       package: {
         ...packageManifest.package,
-        entrypoints: { service: "service/research.ts" },
       },
       resources: [
         {
@@ -437,5 +529,53 @@ describe("plugin package manifest", () => {
       "relatedSkills.0",
       "relatedSkills.1",
     ]));
+  });
+
+  test("accepts standard MCP App UI resources and rejects incomplete UI declarations", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json();
+
+    const result = validatePluginPackageManifest(manifest);
+
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.resources[0]).toMatchObject({
+      type: "ui",
+      path: "ui/canvas.html",
+      ui: { uri: "ui://workspace-canvas/canvas", mimeType: "text/html;profile=mcp-app" },
+    });
+    expect(result.manifest.contributions?.map((contribution) => contribution.type)).toEqual([
+      "workspace-app",
+      "settings-page",
+      "conversation-template",
+    ]);
+
+    const invalid = validatePluginPackageManifest({
+      ...manifest,
+      resources: [{ type: "ui", id: "canvas", path: "ui/canvas.js" }],
+    });
+    expect(invalid.success).toBe(false);
+    if (invalid.success) throw new Error("Expected incomplete UI metadata to be rejected");
+    expect(invalid.issues.map((issue) => issue.path)).toEqual(expect.arrayContaining([
+      "resources.0.path",
+      "resources.0.ui",
+    ]));
+
+    const undeclaredNetwork = validatePluginPackageManifest({
+      ...manifest,
+      resources: [{
+        ...manifest.resources[0],
+        ui: {
+          ...manifest.resources[0].ui,
+          csp: { connectDomains: ["https://api.example.com"] },
+        },
+      }],
+    });
+    expect(undeclaredNetwork.success).toBe(false);
+    if (undeclaredNetwork.success) throw new Error("Expected undeclared UI network access to be rejected");
+    expect(undeclaredNetwork.issues).toContainEqual({
+      path: "resources.0.ui.csp",
+      message: "requires the network package permission",
+    });
   });
 });

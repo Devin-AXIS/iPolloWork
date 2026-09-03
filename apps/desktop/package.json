@@ -1,7 +1,7 @@
 {
   "name": "@ipollowork/desktop",
   "private": true,
-  "version": "0.20.0",
+  "version": "0.50.12",
   "description": "iPolloWork desktop shell",
   "author": {
     "name": "iPolloWork",
@@ -15,19 +15,22 @@
     "build": "node ./scripts/electron-build.mjs",
     "build:electron": "node ./scripts/electron-build.mjs",
     "icons": "node ./scripts/generate-icons.mjs",
-    "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
-    "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
+    "package:electron": "pnpm run package:engine-runtimes && pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
+    "package:electron:dir": "pnpm run package:engine-runtimes && pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
     "package:mac:release": "node ./scripts/package-mac-release.mjs",
     "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 node ./scripts/package-windows.mjs",
     "electron": "pnpm exec electron ./electron/main.mjs",
     "check:electron": "node ./scripts/check-electron-bridge.mjs",
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
-    "test": "node --test electron/brand-icon-windows.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
+    "package:engine-runtimes": "node ./scripts/package-engine-runtime.mjs --all --clean",
+    "test": "node --test electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs",
+    "coverage": "node --test --experimental-test-coverage electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "@opencode-ai/sdk": "^1.18.16",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
@@ -35,12 +38,14 @@
     "jsonc-parser": "^3.2.1",
     "minimatch": "^10.0.1",
     "node-pty": "npm:@lydell/node-pty@1.2.0-beta.12",
+    "oauth4webapi": "^3.8.7",
     "yaml": "^2.6.1",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
     "@ipollowork/types": "workspace:*",
+    "@opencode-ai/plugin": "1.18.16",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8",
     "electron-devtools-installer": "^4.0.0"

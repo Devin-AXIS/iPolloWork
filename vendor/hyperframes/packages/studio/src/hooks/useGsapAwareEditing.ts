@@ -11,6 +11,7 @@ import { useCallback } from "react";
 import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import type { DomEditSelection } from "../components/editor/domEditingTypes";
 import {
+  isolateSharedAnimationTargets,
   POSITION_CHANNELS,
   tryGsapDragIntercept,
   tryGsapRotationIntercept,
@@ -181,7 +182,30 @@ export function useGsapAwareEditing({
       offset?: { x: number; y: number },
       restore: () => void = () => undefined,
     ) => {
-      const scaleRoute = selectedGsapAnimations.some((anim) => anim.propertyGroup === "scale");
+      // Resize persists through a buffered gesture transaction. Shared-target
+      // isolation must land before that transaction starts because it needs to
+      // re-parse the newly split selectors to address the selected copy. If the
+      // isolation were buffered too, the re-fetch would still see the old class
+      // tween and the resize could update every sibling or require a second drag.
+      let resizeAnimations = selectedGsapAnimations;
+      let resizeCommitMutation: CommitMutation | null = gsapCommitMutation;
+      if (gsapCommitMutation) {
+        try {
+          const isolation = await isolateSharedAnimationTargets(
+            selection,
+            selectedGsapAnimations,
+            gsapCommitMutation,
+            makeFetchFallback(selection),
+          );
+          resizeAnimations = isolation.animations;
+          resizeCommitMutation = isolation.commitMutation;
+        } catch (error) {
+          restore();
+          trackGsapInteractionFailure(error, selection, "resize", "Resize animated layer");
+          throw error;
+        }
+      }
+      const scaleRoute = resizeAnimations.some((anim) => anim.propertyGroup === "scale");
       const selector = selectorFromSelection(selection);
       const hasLivePositionTween = selector
         ? hasNonHoldTweenForElement(
@@ -195,8 +219,8 @@ export function useGsapAwareEditing({
         next,
         offset: offset ?? null,
         scaleRoute,
-        animCount: selectedGsapAnimations.length,
-        animGroups: selectedGsapAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
+        animCount: resizeAnimations.length,
+        animGroups: resizeAnimations.map((a) => `${a.propertyGroup}:${a.method}`),
       });
       return runGestureTransaction({
         element: selection.element,
@@ -214,13 +238,13 @@ export function useGsapAwareEditing({
           setElementGsapPosition(selection.element, newX, newY);
         },
         persist: async (commit) => {
-          if (gsapCommitMutation) {
-            const commitMutation = commit(gsapCommitMutation);
+          if (resizeCommitMutation) {
+            const commitMutation = commit(resizeCommitMutation);
             try {
               const handled = await tryGsapResizeIntercept(
                 selection,
                 next,
-                selectedGsapAnimations,
+                resizeAnimations,
                 previewIframeRef.current,
                 commitMutation,
                 makeFetchFallback(selection),
@@ -236,7 +260,7 @@ export function useGsapAwareEditing({
                   await tryGsapDragIntercept(
                     selection,
                     offset,
-                    selectedGsapAnimations,
+                    resizeAnimations,
                     previewIframeRef.current,
                     commitMutation,
                     makeFetchFallback(selection),
@@ -253,7 +277,7 @@ export function useGsapAwareEditing({
           logResize("dom-route", {
             next,
             offset: offset ?? null,
-            hadGsapMutation: !!gsapCommitMutation,
+            hadGsapMutation: !!resizeCommitMutation,
           });
           logResizeSettle(selection.element, "dom-route");
           await handleDomBoxSizeCommit(selection, next, offset);
@@ -311,6 +335,7 @@ export function useGsapAwareEditing({
     convertToKeyframes: (sel, animId) => convertToKeyframes(sel, animId),
     previewIframeRef,
     bumpGsapCache,
+    makeFetchFallback,
   });
 
   // ── Arc path wrappers ──

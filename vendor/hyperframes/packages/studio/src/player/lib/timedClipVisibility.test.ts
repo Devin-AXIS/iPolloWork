@@ -2,6 +2,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  resolveElementVisibleTiming,
   syncLegacyFrameCarousel,
   syncTimedClipVisibility,
   wrapAdapterWithTimedClipVisibility,
@@ -35,6 +36,16 @@ describe("syncTimedClipVisibility", () => {
     expect(sceneState("cta").visibility).toBe("hidden");
   });
 
+  it("resolves an untimed child's real visibility from its timed ancestors", () => {
+    const scene = document.getElementById("ui")!;
+    scene.innerHTML = '<p id="lede">Lede</p>';
+
+    expect(resolveElementVisibleTiming(document.getElementById("lede")!)).toEqual({
+      start: 3.2,
+      duration: 3.8,
+    });
+  });
+
   it("switches adjacent scenes exactly at the authored boundary", () => {
     syncTimedClipVisibility(document, 3.2);
 
@@ -45,14 +56,14 @@ describe("syncTimedClipVisibility", () => {
   it("keeps compiled sub-compositions visible from preserved authored timing", () => {
     const root = document.getElementById("root")!;
     root.innerHTML = `
-      <div id="effect" data-composition-id="effect-ending" data-start="8"
+      <div id="outro" data-composition-id="outro-card" data-start="8"
         data-hf-authored-duration="3.4" data-track-index="0" style="position:absolute"></div>`;
 
     syncTimedClipVisibility(document, 9.7);
-    expect(sceneState("effect").visibility).toBe("visible");
+    expect(sceneState("outro").visibility).toBe("visible");
 
     syncTimedClipVisibility(document, 11.4);
-    expect(sceneState("effect").visibility).toBe("hidden");
+    expect(sceneState("outro").visibility).toBe("hidden");
   });
 
   it("shows only the newest overlapping scene even when scenes use different tracks", () => {

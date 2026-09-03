@@ -1,35 +1,47 @@
 import type { UIMessage } from "ai";
-import type { FilePart, Part, PermissionRequest, PermissionV2Request, QuestionRequest, Session, SessionStatus, Todo } from "@opencode-ai/sdk/v2/client";
 
 import { getReactQueryClient } from "../../../infra/query-client";
 import { captureAnalyticsEvent, takeTaskRunStart } from "@/app/lib/analytics";
 import { trackTaskCompleted, trackTaskFailed } from "@/app/lib/den-telemetry";
-import { createClient } from "@/app/lib/opencode";
-import { normalizeEvent } from "@/app/utils";
-import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX, type OpencodeEvent, type PendingPermission, type PendingQuestion } from "@/app/types";
-import { createSessionErrorUIMessage, describeOpencodeSessionError, snapshotToUIMessages } from "./usechat-adapter";
-import {
-  parseDynamicToolUIPart,
-  parseStructuredOutputUIPart,
-  STRUCTURED_OUTPUT_TOOL,
-} from "./parse-tool-parts";
-import type { iPolloWorkSessionSnapshot } from "@/app/lib/ipollowork-server";
+import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types";
 import { applyRevertCursor, reconcileTranscriptMessages } from "./transcript-reconcile";
 import {
+  type SessionActivityStatus,
   useSessionActivityStore,
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
-import { parseDesignAiSelectionDisplayMetadata } from "../design/design-ai-selection";
-import { parseHyperframesAnimationDisplayMetadata } from "@/app/lib/hyperframes-effect-params";
-import { parseVideoVoiceDisplayMetadata } from "../video/video-voice";
-import { parseVideoIllustrationDisplayMetadata } from "../video/video-illustration";
+import type {
+  ConversationEvent,
+  ConversationEngineConnection,
+  ConversationPermission,
+  ConversationQuestion,
+  ConversationSession,
+  ConversationSnapshot,
+  ConversationStatus,
+} from "../engine/conversation-engine";
+import {
+  completeConversationMessage,
+  conversationMessageCreatedAt,
+  conversationMessageMetadata,
+  conversationMessageParentUserMessageId,
+  mergeConversationSessionUpdate,
+} from "../engine/conversation-engine";
+import {
+  createSessionErrorUIMessage,
+  describeConversationSessionError,
+} from "../engine/opencode-message-adapter";
 
-type SyncOptions = {
+type SyncScope = {
   workspaceId: string;
-  baseUrl: string;
-  ipolloworkToken: string;
+  connectionKey: string;
+};
+
+type SyncOptions = SyncScope & {
+  connection: ConversationEngineConnection;
+  readSnapshot?: (sessionId: string) => Promise<ConversationSnapshot>;
   onSessionUpdated?: (update: { sessionId: string; info: Record<string, unknown> }) => void;
-  onSessionStatus?: (update: { sessionId: string; status: SessionStatus }) => void;
+  onSessionStatus?: (update: { sessionId: string; status: ConversationStatus }) => void;
+  onSessionError?: (update: { sessionId: string; errorText: string }) => void;
 };
 
 type PendingDelta = {
@@ -38,17 +50,20 @@ type PendingDelta = {
   partId: string;
   reasoning: boolean;
   delta: string;
+  parentUserMessageId?: string;
 };
 
 type SyncEntry = {
-  input: SyncOptions;
+  input: SyncScope;
   refs: number;
   dispose: () => void;
   disposeTimer: ReturnType<typeof setTimeout> | null;
   trackedSessionRefs: Map<string, number>;
   retainedSessionTimers: Map<string, ReturnType<typeof setTimeout>>;
+  readSnapshot?: SyncOptions["readSnapshot"];
   sessionUpdatedListeners: Set<NonNullable<SyncOptions["onSessionUpdated"]>>;
   sessionStatusListeners: Set<NonNullable<SyncOptions["onSessionStatus"]>>;
+  sessionErrorListeners: Set<NonNullable<SyncOptions["onSessionError"]>>;
   pendingDeltas: Map<string, { messageId: string; reasoning: boolean; text: string }>;
   // Coalesce rapid-fire delta events from the SSE stream into one cache
   // commit per animation frame. Without this, a long response produces a
@@ -59,10 +74,29 @@ type SyncEntry = {
   deltaFlushScheduled: boolean;
 };
 
-const idleStatus: SessionStatus = { type: "idle" };
+type InterruptedRun = {
+  interrupted: boolean;
+  blockedAssistantMessageIds: Set<string>;
+  blockedUserMessageIds: Set<string>;
+  hiddenAssistantMessageIds: Set<string>;
+  observedAssistantMessageIds: Set<string>;
+  preservedAssistantMessageIds: Set<string>;
+  observedUserMessageIds: Set<string>;
+  pendingBlockedUserTextCounts: Map<string, number>;
+  interruptedAt: number;
+  protectedOptimisticUserMessageIds: Set<string>;
+  resumeUserMessageId: string | null;
+  resumeUserText: string;
+  resumeStartedAt: number | null;
+};
+
+const idleStatus: ConversationStatus = { type: "idle" };
 const syncs = new Map<string, SyncEntry>();
+const interruptedRuns = new Map<string, InterruptedRun>();
 const retainedSessionTtlMs = 10 * 60_000;
 const idleRetainedSessionTtlMs = 10_000;
+const activeRetainedSessionPollMs = 5_000;
+const NO_FINAL_OUTPUT_ERROR = "引擎已结束处理，但没有返回最终结果。请重试这条需求。";
 
 export const snapshotKey = (workspaceId: string, sessionId: string) =>
   ["react-session-snapshot", workspaceId, sessionId] as const;
@@ -77,8 +111,124 @@ export const permissionKey = (workspaceId: string, sessionId: string) =>
 export const questionKey = (workspaceId: string, sessionId: string) =>
   ["react-session-questions", workspaceId, sessionId] as const;
 
-function syncKey(input: SyncOptions) {
-  return `${input.workspaceId}:${input.baseUrl}:${input.ipolloworkToken}`;
+function syncKey(input: SyncScope) {
+  return `${input.workspaceId}:${input.connectionKey}`;
+}
+
+function interruptedRunKey(workspaceId: string, sessionId: string) {
+  return `${workspaceId}\u0000${sessionId}`;
+}
+
+function interruptedRun(workspaceId: string, sessionId: string) {
+  return interruptedRuns.get(interruptedRunKey(workspaceId, sessionId));
+}
+
+function blockInterruptedAssistantMessage(
+  run: InterruptedRun,
+  messageId: string,
+  options: { hide?: boolean } = {},
+) {
+  const id = messageId.trim();
+  if (!id) return;
+  run.blockedAssistantMessageIds.add(id);
+  if (options.hide && !run.preservedAssistantMessageIds.has(id)) {
+    run.hiddenAssistantMessageIds.add(id);
+  }
+}
+
+function consumePendingBlockedUserText(run: InterruptedRun, text: string) {
+  const pending = run.pendingBlockedUserTextCounts.get(text) ?? 0;
+  if (pending <= 1) run.pendingBlockedUserTextCounts.delete(text);
+  else run.pendingBlockedUserTextCounts.set(text, pending - 1);
+}
+
+type InterruptedUserMessageDisposition = "normal" | "stopped" | "resumed" | "ignore";
+
+function observeInterruptedUserMessage(
+  run: InterruptedRun,
+  message: Pick<UIMessage, "id" | "role" | "parts" | "metadata">,
+): InterruptedUserMessageDisposition {
+  if (message.role !== "user") return "normal";
+  const text = messageVisibleText(message);
+  if (run.blockedUserMessageIds.has(message.id)) {
+    if (text) consumePendingBlockedUserText(run, text);
+    run.observedUserMessageIds.add(message.id);
+    return "stopped";
+  }
+  if (run.interrupted && run.resumeUserMessageId === message.id) {
+    run.observedUserMessageIds.add(message.id);
+    run.interrupted = false;
+    run.resumeUserMessageId = null;
+    run.resumeUserText = "";
+    run.resumeStartedAt = null;
+    return "resumed";
+  }
+  if (run.observedUserMessageIds.has(message.id)) return "normal";
+  if (text && (run.pendingBlockedUserTextCounts.get(text) ?? 0) > 0) {
+    const createdAt = conversationMessageCreatedAt(message);
+    if (run.interrupted && run.resumeUserMessageId && run.resumeStartedAt && createdAt !== null && createdAt >= run.resumeStartedAt) {
+      run.observedUserMessageIds.add(message.id);
+      run.interrupted = false;
+      run.resumeUserMessageId = null;
+      run.resumeUserText = "";
+      run.resumeStartedAt = null;
+      return "resumed";
+    }
+    if (run.interrupted || (createdAt !== null && createdAt <= run.interruptedAt)) {
+      run.blockedUserMessageIds.add(message.id);
+      run.observedUserMessageIds.add(message.id);
+      consumePendingBlockedUserText(run, text);
+      return "stopped";
+    }
+  }
+  if (run.interrupted && run.resumeUserMessageId && run.resumeUserText === text) {
+    run.observedUserMessageIds.add(message.id);
+    run.interrupted = false;
+    run.resumeUserMessageId = null;
+    run.resumeUserText = "";
+    run.resumeStartedAt = null;
+    return "resumed";
+  }
+  run.observedUserMessageIds.add(message.id);
+  return run.interrupted ? "ignore" : "normal";
+}
+
+function assistantMessageBelongsToStoppedRun(
+  run: InterruptedRun | undefined,
+  messageId: string,
+  parentUserMessageId?: string | null,
+) {
+  if (!run) return false;
+  return run.blockedAssistantMessageIds.has(messageId)
+    || run.hiddenAssistantMessageIds.has(messageId)
+    || Boolean(parentUserMessageId && run.blockedUserMessageIds.has(parentUserMessageId));
+}
+
+function shouldSuppressAssistantMessage(
+  run: InterruptedRun | undefined,
+  messageId: string,
+  parentUserMessageId?: string | null,
+) {
+  if (!run) return false;
+  if (parentUserMessageId && run.blockedUserMessageIds.has(parentUserMessageId)) {
+    blockInterruptedAssistantMessage(run, messageId, { hide: true });
+    return true;
+  }
+  if (assistantMessageBelongsToStoppedRun(run, messageId, parentUserMessageId)) return true;
+  if (run.interrupted && !run.observedAssistantMessageIds.has(messageId)) {
+    blockInterruptedAssistantMessage(run, messageId, { hide: true });
+    return true;
+  }
+  return false;
+}
+
+function removeHiddenAssistantMessage(workspaceId: string, sessionId: string, messageId: string) {
+  const run = interruptedRun(workspaceId, sessionId);
+  if (!run?.hiddenAssistantMessageIds.has(messageId)) return;
+  getReactQueryClient().setQueryData<UIMessage[]>(
+    transcriptKey(workspaceId, sessionId),
+    (current = []) => current.filter((message) => message.id !== messageId),
+  );
 }
 
 function getErrorStatus(error: unknown) {
@@ -101,23 +251,7 @@ function isTrackedSession(entry: SyncEntry, sessionId: string) {
   return (entry.trackedSessionRefs.get(sessionId) ?? 0) > 0 || entry.retainedSessionTimers.has(sessionId);
 }
 
-function getSessionUpdatedInfo(event: OpencodeEvent) {
-  if (event.type !== "session.updated") return null;
-  const props = event.properties;
-  if (!props || typeof props !== "object") return null;
-  const record = props as { sessionID?: unknown; info?: unknown };
-  const info = record.info;
-  if (!info || typeof info !== "object") return null;
-  const sessionId = typeof record.sessionID === "string"
-    ? record.sessionID
-    : typeof (info as { id?: unknown }).id === "string"
-      ? (info as { id: string }).id
-      : "";
-  if (!sessionId) return null;
-  return { sessionId, info: info as Record<string, unknown> };
-}
-
-function isLiveStatus(status: SessionStatus | null | undefined) {
+function isLiveStatus(status: ConversationStatus | null | undefined) {
   return status?.type === "busy" || status?.type === "retry";
 }
 
@@ -140,52 +274,92 @@ function assistantOutputAfterLatestUser(messages: UIMessage[]) {
   return messages.slice(lastUserIndex + 1).some(messageHasVisibleAssistantOutput);
 }
 
-function sessionIdFromProperties(properties: unknown) {
-  if (!properties || typeof properties !== "object") return "";
-  const sessionID = (properties as { sessionID?: unknown }).sessionID;
-  return typeof sessionID === "string" ? sessionID : "";
-}
-
-function sessionErrorFromProperties(properties: unknown) {
-  if (!properties || typeof properties !== "object") return undefined;
-  return (properties as { error?: unknown }).error;
-}
-
-function permissionNotificationDetail(permission: PermissionRequest | PermissionV2Request) {
-  if ("action" in permission) {
-    return `A session is waiting for permission to ${permission.action.replace(/[._-]/g, " ")}.`;
-  }
-  return `A session is waiting for ${permission.permission} permission.`;
-}
-
-function questionNotificationText(question: QuestionRequest) {
-  const prompt = question.questions.find((item) => item.question.trim())?.question.trim();
-  return prompt ? `Question: ${prompt}` : undefined;
-}
-
-function latestAssistantMessageId(messages: UIMessage[]) {
-  // The snapshot keys each error to its errored assistant message id, so the
-  // live event must resolve to that same id to dedupe on reload. Skipping
-  // synthetic error messages ensures a follow-up error keys off the real
-  // assistant turn rather than overwriting the previous error message.
+function finalAssistantOutputAfterLatestUser(messages: UIMessage[]) {
+  let lastUserIndex = -1;
   for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.role === "user") {
+      lastUserIndex = index;
+      break;
+    }
+  }
+  return messages.slice(lastUserIndex + 1).some((message) => (
+    message.role === "assistant" && message.parts.some((part) => (
+      part.type === "text" && part.text.trim().length > 0
+      || part.type === "dynamic-tool"
+      || part.type === "file"
+    ))
+  ));
+}
+
+function latestUserMessage(messages: UIMessage[]) {
+  return messages.findLast((message) => message.role === "user") ?? null;
+}
+
+function snapshotAcknowledgesLatestUser(current: UIMessage[], incoming: UIMessage[]) {
+  const latestCurrent = latestUserMessage(current);
+  if (!latestCurrent) return true;
+  if (incoming.some((message) => message.role === "user" && message.id === latestCurrent.id)) return true;
+
+  const text = messageVisibleText(latestCurrent);
+  if (!text) return false;
+  const currentCount = current.filter(
+    (message) => message.role === "user" && messageVisibleText(message) === text,
+  ).length;
+  const incomingCount = incoming.filter(
+    (message) => message.role === "user" && messageVisibleText(message) === text,
+  ).length;
+  return incomingCount >= currentCount;
+}
+
+function latestSnapshotErrorAfterLatestUser(messages: UIMessage[]) {
+  const lastUserIndex = messages.findLastIndex((message) => message.role === "user");
+  for (let index = messages.length - 1; index > lastUserIndex; index -= 1) {
     const message = messages[index];
-    if (!message || message.role !== "assistant") continue;
-    if (message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) continue;
-    return message.id;
+    if (!message?.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) continue;
+    const text = messageVisibleText(message);
+    if (text) return text;
   }
   return null;
 }
 
-function partHasVisibleAssistantOutput(part: Part) {
-  if (part.type === "text" && part.synthetic) return false;
-  if (part.type === "text" && part.ignored) return false;
-  const partType = String(part.type);
-  if ("text" in part && typeof part.text === "string" && part.text.trim().length > 0) return true;
-  return partType === "tool" || partType === "file" || partType === "agent";
+function permissionNotificationDetail(permission: ConversationPermission) {
+  return `A session is waiting for ${permission.kind.replace(/[._-]/g, " ")} permission.`;
 }
 
-function clearTrackedSession(input: SyncOptions, entry: SyncEntry, sessionId: string) {
+function questionNotificationText(question: ConversationQuestion) {
+  const prompt = question.questions.find((item) => item.question.trim())?.question.trim();
+  return prompt ? `Question: ${prompt}` : undefined;
+}
+
+function latestConversationTurnKey(messages: UIMessage[], parentUserMessageId?: string) {
+  const parentId = parentUserMessageId?.trim();
+  if (parentId) return { turnKey: parentId, parentUserMessageId: parentId };
+
+  // Some runtime-level errors do not carry a turn id. Associate those with
+  // the newest user row so a failed follow-up cannot overwrite an earlier
+  // error or appear beside the previous assistant response.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role === "user") {
+      return { turnKey: message.id, parentUserMessageId: message.id };
+    }
+  }
+
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "assistant") continue;
+    if (message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) continue;
+    const parentId = conversationMessageParentUserMessageId(message)?.trim();
+    return {
+      turnKey: parentId || message.id,
+      ...(parentId ? { parentUserMessageId: parentId } : {}),
+    };
+  }
+
+  return null;
+}
+
+function clearTrackedSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
   entry.trackedSessionRefs.delete(sessionId);
   const retainedTimer = entry.retainedSessionTimers.get(sessionId);
   if (retainedTimer) clearTimeout(retainedTimer);
@@ -200,12 +374,19 @@ function clearTrackedSession(input: SyncOptions, entry: SyncEntry, sessionId: st
   }
 }
 
-export function destroyWorkspaceSessionResources(input: SyncOptions, sessionId: string) {
+export function destroyWorkspaceSessionResources(
+  input: SyncScope,
+  sessionId: string,
+  options: { preserveInterruptedRun?: boolean } = {},
+) {
   const normalizedSessionId = sessionId.trim();
   if (!normalizedSessionId) return;
 
   const entry = syncs.get(syncKey(input));
   if (entry) clearTrackedSession(input, entry, normalizedSessionId);
+  if (!options.preserveInterruptedRun) {
+    interruptedRuns.delete(interruptedRunKey(input.workspaceId, normalizedSessionId));
+  }
 
   const queryClient = getReactQueryClient();
   for (const queryKey of [
@@ -220,12 +401,47 @@ export function destroyWorkspaceSessionResources(input: SyncOptions, sessionId: 
   }
 }
 
-function retainSession(input: SyncOptions, entry: SyncEntry, sessionId: string, ttlMs = retainedSessionTtlMs) {
+function activityIsLive(status: SessionActivityStatus) {
+  return status === "thinking" || status === "responding" || status === "compacting" || status === "waiting";
+}
+
+async function reconcileRetainedSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
+  const readSnapshot = entry.readSnapshot;
+  if (!readSnapshot) return;
+  try {
+    const snapshot = await readSnapshot(sessionId);
+    if (!entry.retainedSessionTimers.has(sessionId)) return;
+    // A terminal live event that arrived while the request was in flight is
+    // newer than this observational snapshot and must win.
+    if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
+    seedSessionState(input.workspaceId, snapshot);
+  } catch {
+    // Event streaming remains the primary path. A failed reconciliation is
+    // retried only while the background session is still active.
+  }
+}
+
+function retainSession(input: SyncScope, entry: SyncEntry, sessionId: string, ttlMs?: number) {
   const existing = entry.retainedSessionTimers.get(sessionId);
   if (existing) clearTimeout(existing);
-  entry.retainedSessionTimers.set(sessionId, setTimeout(() => {
+  const currentActivity = useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId);
+  const delay = ttlMs ?? (activityIsLive(currentActivity) && entry.readSnapshot
+    ? activeRetainedSessionPollMs
+    : retainedSessionTtlMs);
+  const timer = setTimeout(async () => {
+    if (entry.retainedSessionTimers.get(sessionId) !== timer) return;
+    if (activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) {
+      await reconcileRetainedSession(input, entry, sessionId);
+    }
+    if (entry.retainedSessionTimers.get(sessionId) !== timer) return;
+    const activity = useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId);
+    if (activityIsLive(activity)) {
+      retainSession(input, entry, sessionId, entry.readSnapshot ? activeRetainedSessionPollMs : retainedSessionTtlMs);
+      return;
+    }
     clearTrackedSession(input, entry, sessionId);
-  }, ttlMs));
+  }, delay);
+  entry.retainedSessionTimers.set(sessionId, timer);
 }
 
 function disposeWorkspaceSync(key: string, entry: SyncEntry) {
@@ -240,89 +456,39 @@ function disposeWorkspaceSync(key: string, entry: SyncEntry) {
   if (syncs.get(key) === entry) syncs.delete(key);
 }
 
-function releaseRetainedSessionSoon(input: SyncOptions, entry: SyncEntry, sessionId: string) {
+function releaseRetainedSessionSoon(input: SyncScope, entry: SyncEntry, sessionId: string) {
   if (!entry.retainedSessionTimers.has(sessionId)) return;
   retainSession(input, entry, sessionId, idleRetainedSessionTtlMs);
 }
 
-type PermissionSeed = PermissionRequest | PermissionV2Request;
-
-function isV2PermissionRequest(permission: PermissionSeed): permission is PermissionV2Request {
-  return "action" in permission;
-}
-
-function legacyPermissionWithReceivedAt(permission: PermissionRequest, receivedAt: number): PendingPermission {
-  return { ...permission, receivedAt, protocol: "legacy" };
-}
-
-function v2PermissionKind(action: string): string {
-  if (action === "external_directory") return "external_directory";
-  if (action.endsWith(".external_directory")) return "external_directory";
-  if (action === "file.read") return "read";
-  if (action === "file.edit" || action === "file.write") return "edit";
-  return action;
-}
-
-function v2PermissionWithReceivedAt(permission: PermissionV2Request, receivedAt: number): PendingPermission {
-  const metadata: Record<string, unknown> = {
-    ...(permission.metadata ?? {}),
-    action: permission.action,
-  };
-  if (permission.save?.length) metadata.save = permission.save.join(", ");
-  return {
-    id: permission.id,
-    sessionID: permission.sessionID,
-    permission: v2PermissionKind(permission.action),
-    patterns: permission.resources,
-    metadata,
-    always: permission.save ?? [],
-    ...(permission.source ? { tool: { messageID: permission.source.messageID, callID: permission.source.callID } } : {}),
-    receivedAt,
-    protocol: "v2",
-    v2: {
-      action: permission.action,
-      resources: permission.resources,
-      ...(permission.save ? { save: permission.save } : {}),
-    },
-  };
-}
-
-function permissionWithReceivedAt(permission: PermissionSeed, receivedAt: number): PendingPermission {
-  return isV2PermissionRequest(permission)
-    ? v2PermissionWithReceivedAt(permission, receivedAt)
-    : legacyPermissionWithReceivedAt(permission, receivedAt);
-}
-
-function questionWithReceivedAt(question: QuestionRequest, receivedAt: number): PendingQuestion {
-  return { ...question, receivedAt };
-}
-
-function sortPermissions(a: PendingPermission, b: PendingPermission) {
+function sortPermissions(a: ConversationPermission, b: ConversationPermission) {
   return a.receivedAt - b.receivedAt || a.id.localeCompare(b.id);
 }
 
-function sortQuestions(a: PendingQuestion, b: PendingQuestion) {
+function sortQuestions(a: ConversationQuestion, b: ConversationQuestion) {
   return a.receivedAt - b.receivedAt || a.id.localeCompare(b.id);
 }
 
 export function seedPermissionState(
   workspaceId: string,
   sessionId: string,
-  permissions: PermissionSeed[],
+  permissions: ConversationPermission[],
   options: { snapshotStartedAt?: number } = {},
 ) {
   useSessionActivityStore.getState().replaceWaitingRequests(
     workspaceId,
     sessionId,
     "permission",
-    permissions.flatMap((permission) => permission.sessionID === sessionId ? [permission.id] : []),
+    permissions.flatMap((permission) => permission.sessionId === sessionId ? [permission.id] : []),
   );
   const queryClient = getReactQueryClient();
   const now = Date.now();
-  queryClient.setQueryData<PendingPermission[]>(permissionKey(workspaceId, sessionId), (current = []) => {
+  queryClient.setQueryData<ConversationPermission[]>(permissionKey(workspaceId, sessionId), (current = []) => {
     const receivedAtById = new Map(current.map((permission) => [permission.id, permission.receivedAt]));
     const seeded = permissions.flatMap((permission) =>
-      permission.sessionID === sessionId ? [permissionWithReceivedAt(permission, receivedAtById.get(permission.id) ?? now)] : [],
+      permission.sessionId === sessionId
+        ? [{ ...permission, receivedAt: receivedAtById.get(permission.id) ?? now }]
+        : [],
     );
     const seededIds = new Set(seeded.map((permission) => permission.id));
     const snapshotStartedAt = options.snapshotStartedAt;
@@ -330,7 +496,7 @@ export function seedPermissionState(
       typeof snapshotStartedAt === "number"
         ? current.filter(
             (permission) =>
-              permission.sessionID === sessionId &&
+              permission.sessionId === sessionId &&
               permission.receivedAt > snapshotStartedAt &&
               !seededIds.has(permission.id),
           )
@@ -342,21 +508,23 @@ export function seedPermissionState(
 export function seedQuestionState(
   workspaceId: string,
   sessionId: string,
-  questions: QuestionRequest[],
+  questions: ConversationQuestion[],
   options: { snapshotStartedAt?: number } = {},
 ) {
   useSessionActivityStore.getState().replaceWaitingRequests(
     workspaceId,
     sessionId,
     "question",
-    questions.flatMap((question) => question.sessionID === sessionId ? [question.id] : []),
+    questions.flatMap((question) => question.sessionId === sessionId ? [question.id] : []),
   );
   const queryClient = getReactQueryClient();
   const now = Date.now();
-  queryClient.setQueryData<PendingQuestion[]>(questionKey(workspaceId, sessionId), (current = []) => {
+  queryClient.setQueryData<ConversationQuestion[]>(questionKey(workspaceId, sessionId), (current = []) => {
     const receivedAtById = new Map(current.map((question) => [question.id, question.receivedAt]));
     const seeded = questions.flatMap((question) =>
-      question.sessionID === sessionId ? [questionWithReceivedAt(question, receivedAtById.get(question.id) ?? now)] : [],
+      question.sessionId === sessionId
+        ? [{ ...question, receivedAt: receivedAtById.get(question.id) ?? now }]
+        : [],
     );
     const seededIds = new Set(seeded.map((question) => question.id));
     const snapshotStartedAt = options.snapshotStartedAt;
@@ -364,7 +532,7 @@ export function seedQuestionState(
       typeof snapshotStartedAt === "number"
         ? current.filter(
             (question) =>
-              question.sessionID === sessionId &&
+              question.sessionId === sessionId &&
               question.receivedAt > snapshotStartedAt &&
               !seededIds.has(question.id),
           )
@@ -373,158 +541,314 @@ export function seedQuestionState(
   });
 }
 
-function fileProviderMetadata(part: FilePart) {
-  if (part.source) {
-    return { opencode: { partId: part.id, source: part.source } };
-  }
-  return { opencode: { partId: part.id } };
-}
-
-function toFileUIPart(part: FilePart): UIMessage["parts"][number] {
-  return {
-    type: "file",
-    url: part.url,
-    filename: part.filename,
-    mediaType: part.mime,
-    providerMetadata: fileProviderMetadata(part),
-  };
-}
-
-function toFileSourceUIPart(part: FilePart): UIMessage["parts"][number] | null {
-  const source = part.source;
-  if (!source) return null;
-
-  const sourceId = `${part.id}:source`;
-  const providerMetadata = { opencode: { partId: sourceId, sourcePartId: part.id, source } };
-
-  if (source.type === "resource") {
-    if (source.uri.startsWith("http://")) {
-      return { type: "source-url", sourceId, url: source.uri, title: source.uri, providerMetadata };
-    }
-    if (source.uri.startsWith("https://")) {
-      return { type: "source-url", sourceId, url: source.uri, title: source.uri, providerMetadata };
-    }
-    return { type: "source-document", sourceId, mediaType: part.mime, title: source.uri, providerMetadata };
-  }
-
-  if (source.type === "symbol") {
-    return { type: "source-document", sourceId, mediaType: part.mime, title: source.name, filename: source.path, providerMetadata };
-  }
-
-  return { type: "source-document", sourceId, mediaType: part.mime, title: source.path, filename: source.path, providerMetadata };
-}
-
-function toFileUIParts(part: FilePart): UIMessage["parts"] {
-  const sourcePart = toFileSourceUIPart(part);
-  if (sourcePart) return [toFileUIPart(part), sourcePart];
-  return [toFileUIPart(part)];
-}
-
-function toUIPart(part: Part): UIMessage["parts"][number] | null {
-  if (part.type === "text") {
-    if (part.synthetic) return null;
-    if (part.ignored) return null;
-    return {
-      type: "text",
-      text: part.text,
-      state: "done",
-      providerMetadata: { opencode: { partId: part.id } },
-    };
-  }
-  if (part.type === "reasoning") {
-    return {
-      type: "reasoning",
-      text: part.text,
-      state: "done",
-      providerMetadata: { opencode: { partId: part.id } },
-    };
-  }
-  if (part.type === "file") {
-    return toFileUIPart(part);
-  }
-  if (part.type === "tool") {
-    if (part.tool === STRUCTURED_OUTPUT_TOOL) {
-      return parseStructuredOutputUIPart(part);
-    }
-    return parseDynamicToolUIPart(part);
-  }
-  if (part.type === "agent") {
-    return {
-      type: "text",
-      text: part.name ? `@${part.name}` : "@agent",
-      state: "done",
-      providerMetadata: { opencode: { partId: part.id } },
-    };
-  }
-  if (part.type === "step-start") return { type: "step-start" };
-  return null;
-}
-
-function toUIParts(part: Part): UIMessage["parts"] {
-  if (part.type === "file") return toFileUIParts(part);
-  if (part.type === "text" && part.synthetic) {
-    const metadataParts: UIMessage["parts"] = [];
-    const selection = parseDesignAiSelectionDisplayMetadata(part.text);
-    if (selection) metadataParts.push({
-      type: "data-design-selection" as const,
-      data: { ...selection, partId: `${part.id}:design-selection` },
-    });
-    const animations = parseHyperframesAnimationDisplayMetadata(part.text);
-    if (animations) metadataParts.push({
-      type: "data-animation-references" as const,
-      data: { items: animations, partId: `${part.id}:animation-references` },
-    });
-    const voice = parseVideoVoiceDisplayMetadata(part.text);
-    if (voice) metadataParts.push({
-      type: "data-voice-reference" as const,
-      data: { ...voice, partId: `${part.id}:voice-reference` },
-    });
-    const illustration = parseVideoIllustrationDisplayMetadata(part.text);
-    if (illustration) metadataParts.push({
-      type: "data-illustration-reference" as const,
-      data: { ...illustration, partId: `${part.id}:illustration-reference` },
-    });
-    return metadataParts;
-  }
-  const mapped = toUIPart(part);
-  if (!mapped) return [];
-  if (part.type === "tool" && part.tool === STRUCTURED_OUTPUT_TOOL) return [mapped];
-  if (part.type === "tool" && part.state.status === "completed" && part.state.attachments) {
-    return [mapped, ...part.state.attachments.flatMap(toFileUIParts)];
-  }
-  return [mapped];
-}
-
 function getPartMetadataId(part: UIMessage["parts"][number]) {
-  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference" || part.type === "data-illustration-reference") {
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
     const partId = part.data && typeof part.data === "object" && "partId" in part.data
       ? (part.data as { partId?: unknown }).partId
       : null;
     return typeof partId === "string" ? partId : null;
   }
   if (part.type === "dynamic-tool") {
-    const metadata = part.callProviderMetadata?.opencode;
+    const metadata = part.callProviderMetadata?.ipollowork;
     if (!metadata || typeof metadata !== "object") return null;
     return "partId" in metadata ? (metadata as { partId?: string }).partId ?? null : null;
   }
   if (part.type !== "text" && part.type !== "reasoning" && part.type !== "file" && part.type !== "source-url" && part.type !== "source-document") return null;
-  const metadata = part.providerMetadata?.opencode;
+  const metadata = part.providerMetadata?.ipollowork;
   if (!metadata || typeof metadata !== "object") return null;
   return "partId" in metadata ? (metadata as { partId?: string }).partId ?? null : null;
 }
 
 function upsertMessage(messages: UIMessage[], next: UIMessage) {
   const index = messages.findIndex((message) => message.id === next.id);
-  if (index === -1) return [...messages, next];
-  return messages.map((message, messageIndex) =>
-    messageIndex === index
-      ? {
-          ...message,
-          ...next,
-          parts: next.parts.length > 0 ? next.parts : message.parts,
-        }
-      : message,
+  if (index === -1) {
+    const optimisticIndex = findMatchingOptimisticUserMessageIndex(messages, next);
+    if (optimisticIndex !== -1) {
+      return messages.map((message, messageIndex) =>
+        messageIndex === optimisticIndex ? next : message,
+      );
+    }
+    return [...messages, next];
+  }
+  return messages.map((message, messageIndex) => {
+    if (messageIndex !== index) return message;
+    const acknowledgesOptimisticUser = isOptimisticUserMessage(message)
+      && next.role === "user"
+      && !isOptimisticUserMessage(next);
+    const merged = {
+      ...message,
+      ...next,
+      // An authoritative message shell with the same client id acknowledges
+      // the optimistic row. Drop its unkeyed text before provider parts land,
+      // otherwise the same prompt is appended a second time by part.updated.
+      parts: acknowledgesOptimisticUser
+        ? next.parts
+        : next.parts.length > 0
+          ? next.parts
+          : message.parts,
+    };
+    if (!acknowledgesOptimisticUser || next.metadata !== undefined) return merged;
+    const { metadata: _optimisticMetadata, ...authoritative } = merged;
+    return authoritative;
+  });
+}
+
+function isOptimisticUserMessage(message: UIMessage | undefined) {
+  if (message?.role !== "user" || !message.metadata || typeof message.metadata !== "object") return false;
+  const metadata = "ipollowork" in message.metadata ? message.metadata.ipollowork : null;
+  return Boolean(metadata && typeof metadata === "object" && "optimistic" in metadata && metadata.optimistic === true);
+}
+
+function messageVisibleText(message: Pick<UIMessage, "parts">) {
+  return message.parts
+    .map((part) => {
+      if (part.type === "text" || part.type === "reasoning") return part.text;
+      return "";
+    })
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findMatchingOptimisticUserMessageIndex(messages: UIMessage[], next: UIMessage) {
+  // A second immediately submitted prompt can legitimately have the same
+  // visible text while the first prompt is still optimistic (for example,
+  // send "123", stop during engine startup, then send "123" again). Only an
+  // authoritative engine message may acknowledge/replace an optimistic row;
+  // a new optimistic row always represents a distinct user action.
+  if (next.role !== "user" || isOptimisticUserMessage(next)) return -1;
+  const nextText = messageVisibleText(next);
+  if (!nextText) return -1;
+  return messages.findLastIndex((message) =>
+    message.id !== next.id &&
+    isOptimisticUserMessage(message) &&
+    messageVisibleText(message) === nextText
   );
+}
+
+function removeAcknowledgedOptimisticUserMessages(
+  messages: UIMessage[],
+  protectedMessageIds?: ReadonlySet<string>,
+) {
+  return messages.filter((message, index) => {
+    if (!isOptimisticUserMessage(message)) return true;
+    if (protectedMessageIds?.has(message.id)) return true;
+    const visibleText = messageVisibleText(message);
+    if (!visibleText) return true;
+    return !messages.slice(index + 1).some((candidate) =>
+      candidate.role === "user" &&
+      !isOptimisticUserMessage(candidate) &&
+      messageVisibleText(candidate) === visibleText
+    );
+  });
+}
+
+function removeSnapshotAcknowledgedOptimisticUserMessages(
+  current: UIMessage[],
+  incoming: UIMessage[],
+  protectedMessageIds?: ReadonlySet<string>,
+) {
+  const optimisticIds = new Set(current.filter(isOptimisticUserMessage).map((message) => message.id));
+  const authoritativeCurrentIds = new Set(
+    current
+      .filter((message) => message.role === "user" && !isOptimisticUserMessage(message))
+      .map((message) => message.id),
+  );
+  const currentCounts = new Map<string, number>();
+  const incomingCounts = new Map<string, number>();
+  const incomingCandidates = new Map<string, UIMessage[]>();
+  for (const message of current) {
+    if (message.role !== "user" || isOptimisticUserMessage(message)) continue;
+    const text = messageVisibleText(message);
+    if (text) currentCounts.set(text, (currentCounts.get(text) ?? 0) + 1);
+  }
+  for (const message of incoming) {
+    if (message.role !== "user" || isOptimisticUserMessage(message)) continue;
+    if (optimisticIds.has(message.id)) {
+      // Keep the exact-id optimistic row in the merge input. The normal
+      // message-id merge replaces it in place and preserves its chronology.
+      continue;
+    }
+    const text = messageVisibleText(message);
+    if (!text) continue;
+    incomingCounts.set(text, (incomingCounts.get(text) ?? 0) + 1);
+    if (!authoritativeCurrentIds.has(message.id)) {
+      const candidates = incomingCandidates.get(text);
+      if (candidates) candidates.push(message);
+      else incomingCandidates.set(text, [message]);
+    }
+  }
+  const remainingTextAcks = new Map<string, number>();
+  for (const [text, count] of incomingCounts) {
+    remainingTextAcks.set(text, Math.max(0, count - (currentCounts.get(text) ?? 0)));
+  }
+
+  const replacements = new Map<string, UIMessage>();
+  for (let index = current.length - 1; index >= 0; index -= 1) {
+    const message = current[index];
+    if (!isOptimisticUserMessage(message) || protectedMessageIds?.has(message.id)) continue;
+    const text = messageVisibleText(message);
+    const remaining = remainingTextAcks.get(text) ?? 0;
+    if (!text || remaining <= 0) continue;
+    const replacement = incomingCandidates.get(text)?.pop();
+    if (!replacement) continue;
+    remainingTextAcks.set(text, remaining - 1);
+    replacements.set(message.id, replacement);
+  }
+  return current.map((message) => replacements.get(message.id) ?? message);
+}
+
+function createClientUserMessageId() {
+  const randomUUID = globalThis.crypto?.randomUUID?.bind(globalThis.crypto);
+  return `msg_ipollowork_${randomUUID ? randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+}
+
+/**
+ * Publish the user's accepted prompt before engine preflight/runtime work.
+ * Codex echoes this id as `userMessage.clientId`, allowing the authoritative
+ * event or snapshot to replace the optimistic row without a duplicate.
+ */
+export function beginOptimisticSessionPrompt(
+  workspaceId: string,
+  sessionId: string,
+  visibleText: string,
+  clientUserMessageId = createClientUserMessageId(),
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  if (!workspace || !session) return clientUserMessageId;
+
+  const queryClient = getReactQueryClient();
+  const text = visibleText.trim();
+  const interrupted = interruptedRun(workspace, session);
+  if (interrupted?.interrupted) {
+    interrupted.resumeUserMessageId = clientUserMessageId;
+    interrupted.resumeUserText = text.replace(/\s+/g, " ").trim();
+    interrupted.resumeStartedAt = Date.now();
+  }
+  queryClient.setQueryData<UIMessage[]>(transcriptKey(workspace, session), (current = []) => upsertMessage(current, {
+    id: clientUserMessageId,
+    role: "user",
+    metadata: conversationMessageMetadata({ created: Date.now() }, { optimistic: true }),
+    parts: text ? [{ type: "text", text, state: "done" }] : [],
+  }));
+  queryClient.setQueryData(statusKey(workspace, session), { type: "busy" } satisfies ConversationStatus);
+  const activity = useSessionActivityStore.getState();
+  activity.markMessageRole(workspace, session, clientUserMessageId, "user");
+  activity.setRunStatus(workspace, session, { type: "busy" });
+  return clientUserMessageId;
+}
+
+/** Remove only a still-optimistic prompt; an acknowledged Codex item wins. */
+export function rollbackOptimisticSessionPrompt(
+  workspaceId: string,
+  sessionId: string,
+  clientUserMessageId: string | null | undefined,
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  const messageId = clientUserMessageId?.trim() ?? "";
+  if (!workspace || !session || !messageId) return false;
+
+  const queryClient = getReactQueryClient();
+  let removed = false;
+  queryClient.setQueryData<UIMessage[]>(transcriptKey(workspace, session), (current = []) => {
+    const message = current.find((item) => item.id === messageId);
+    if (!isOptimisticUserMessage(message)) return current;
+    removed = true;
+    return current.filter((item) => item.id !== messageId);
+  });
+  if (!removed) return false;
+  const interrupted = interruptedRun(workspace, session);
+  if (interrupted?.resumeUserMessageId === messageId) {
+    interrupted.resumeUserMessageId = null;
+    interrupted.resumeUserText = "";
+    interrupted.resumeStartedAt = null;
+  }
+  const idle = { type: "idle" } satisfies ConversationStatus;
+  queryClient.setQueryData(statusKey(workspace, session), idle);
+  useSessionActivityStore.getState().setRunStatus(workspace, session, idle);
+  return true;
+}
+
+/** Release the shared run latches after an engine accepts an interrupt. */
+export function settleInterruptedSessionRun(
+  workspaceId: string,
+  sessionId: string,
+  stoppedUserMessageId?: string | null,
+) {
+  const workspace = workspaceId.trim();
+  const session = sessionId.trim();
+  if (!workspace || !session) return;
+  const queryClient = getReactQueryClient();
+  const key = interruptedRunKey(workspace, session);
+  const existing = interruptedRuns.get(key);
+  const run: InterruptedRun = existing ?? {
+    interrupted: true,
+    blockedAssistantMessageIds: new Set<string>(),
+    blockedUserMessageIds: new Set<string>(),
+    hiddenAssistantMessageIds: new Set<string>(),
+    observedAssistantMessageIds: new Set<string>(),
+    preservedAssistantMessageIds: new Set<string>(),
+    observedUserMessageIds: new Set<string>(),
+    pendingBlockedUserTextCounts: new Map<string, number>(),
+    interruptedAt: Date.now(),
+    protectedOptimisticUserMessageIds: new Set<string>(),
+    resumeUserMessageId: null,
+    resumeUserText: "",
+    resumeStartedAt: null,
+  };
+  run.interrupted = true;
+  run.interruptedAt = Date.now();
+  run.resumeUserMessageId = null;
+  run.resumeUserText = "";
+  run.resumeStartedAt = null;
+  const messages = queryClient.getQueryData<UIMessage[]>(transcriptKey(workspace, session)) ?? [];
+  const requestedStoppedUserMessageId = stoppedUserMessageId?.trim() ?? "";
+  const requestedStoppedUserIndex = requestedStoppedUserMessageId
+    ? messages.findIndex((message) => message.role === "user" && message.id === requestedStoppedUserMessageId)
+    : -1;
+  const stoppedUserIndex = requestedStoppedUserIndex >= 0
+    ? requestedStoppedUserIndex
+    : messages.findLastIndex((message) => message.role === "user");
+  const stoppedUserMessage = stoppedUserIndex >= 0 ? messages[stoppedUserIndex] : undefined;
+  if (stoppedUserMessage?.role === "user") {
+    run.blockedUserMessageIds.add(stoppedUserMessage.id);
+    run.observedUserMessageIds.add(stoppedUserMessage.id);
+    if (isOptimisticUserMessage(stoppedUserMessage)) {
+      run.protectedOptimisticUserMessageIds.add(stoppedUserMessage.id);
+      const stoppedText = messageVisibleText(stoppedUserMessage);
+      if (stoppedText) {
+        run.pendingBlockedUserTextCounts.set(
+          stoppedText,
+          (run.pendingBlockedUserTextCounts.get(stoppedText) ?? 0) + 1,
+        );
+      }
+    }
+  }
+  for (let index = 0; index < messages.length; index += 1) {
+    const message = messages[index];
+    if (!message) continue;
+    if (message.role === "user") run.observedUserMessageIds.add(message.id);
+    if (message.role === "assistant") {
+      run.observedAssistantMessageIds.add(message.id);
+      if (index > stoppedUserIndex) {
+        run.preservedAssistantMessageIds.add(message.id);
+        blockInterruptedAssistantMessage(run, message.id);
+      }
+    }
+  }
+  interruptedRuns.set(key, run);
+  for (const entry of syncs.values()) {
+    if (entry.input.workspaceId !== workspace) continue;
+    entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter((item) => {
+      if (item.sessionId !== session) return true;
+      blockInterruptedAssistantMessage(run, item.messageId, { hide: true });
+      return false;
+    });
+  }
+  queryClient.setQueryData(statusKey(workspace, session), idleStatus);
+  useSessionActivityStore.getState().setRunStatus(workspace, session, idleStatus);
 }
 
 /**
@@ -602,13 +926,13 @@ function appendDelta(messages: UIMessage[], messageId: string, partId: string, d
           type: "reasoning",
           text: delta,
           state: "streaming" as const,
-          providerMetadata: { opencode: { partId } },
+          providerMetadata: { ipollowork: { partId } },
         }
       : {
           type: "text",
           text: delta,
           state: "streaming" as const,
-          providerMetadata: { opencode: { partId } },
+          providerMetadata: { ipollowork: { partId } },
         };
     nextParts = target.parts.slice();
     nextParts.push(newPart);
@@ -646,6 +970,7 @@ export function coalescePendingDeltas(items: PendingDelta[]) {
     if (existing) {
       existing.delta += item.delta;
       existing.reasoning = existing.reasoning || item.reasoning;
+      existing.parentUserMessageId ??= item.parentUserMessageId;
       continue;
     }
 
@@ -656,342 +981,305 @@ export function coalescePendingDeltas(items: PendingDelta[]) {
   return ordered;
 }
 
-function applyEvent(entry: SyncEntry, workspaceId: string, event: OpencodeEvent) {
+function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEvent) {
   const queryClient = getReactQueryClient();
   const input = entry.input;
+  const eventSessionId = event.type === "permission.asked"
+    ? event.permission.sessionId
+    : event.type === "question.asked"
+      ? event.question.sessionId
+      : event.sessionId;
+  const interrupted = interruptedRun(workspaceId, eventSessionId);
 
   if (event.type === "session.updated") {
-    const update = getSessionUpdatedInfo(event);
-    if (!update) return;
-    if (!isTrackedSession(entry, update.sessionId)) return;
-    // Keep the cached snapshot's revert cursor in sync with the server. The
-    // renderer derives the visible transcript from this cursor, so a revert
-    // (or its cleanup on the next prompt) must reach the snapshot cache or
-    // the transcript stays frozen on stale history.
-    queryClient.setQueryData<iPolloWorkSessionSnapshot>(
-      snapshotKey(workspaceId, update.sessionId),
-      (current) => {
-        if (!current) return current;
-        const revert = (update.info as { revert?: iPolloWorkSessionSnapshot["session"]["revert"] }).revert;
-        return { ...current, session: { ...current.session, revert } };
-      },
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<ConversationSnapshot>(
+      snapshotKey(workspaceId, event.sessionId),
+      (current) => current
+        ? { ...current, session: mergeConversationSessionUpdate(current.session, event.info) }
+        : current,
     );
-    for (const listener of entry.sessionUpdatedListeners) listener(update);
+    for (const listener of entry.sessionUpdatedListeners) listener({ sessionId: event.sessionId, info: event.info });
+    return;
+  }
+
+  if (event.type === "context.updated") {
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<ConversationSnapshot>(
+      snapshotKey(workspaceId, event.sessionId),
+      (current) => current ? { ...current, contextUsage: event.usage } : current,
+    );
     return;
   }
 
   if (event.type === "session.deleted") {
-    const props = (event.properties ?? {}) as { sessionID?: string; info?: { id?: string } };
-    const sessionId = props.sessionID ?? props.info?.id ?? "";
-    if (sessionId) useSessionActivityStore.getState().removeSession(workspaceId, sessionId);
+    interruptedRuns.delete(interruptedRunKey(workspaceId, event.sessionId));
+    useSessionActivityStore.getState().removeSession(workspaceId, event.sessionId);
     return;
   }
 
   if (event.type === "session.error") {
-    const sessionId = sessionIdFromProperties(event.properties);
-    if (sessionId) {
-      const errorText = describeOpencodeSessionError(sessionErrorFromProperties(event.properties));
-      const runStartedAt = takeTaskRunStart(sessionId);
-      if (runStartedAt !== null) {
-        captureAnalyticsEvent("task_run_errored", {
-          duration_ms: Date.now() - runStartedAt,
-        });
-        trackTaskFailed(sessionId, Date.now() - runStartedAt);
-      }
-      notifyDesktopEvent({ type: "task.failed", sessionId, errorText });
-      useSessionActivityStore.getState().setError(workspaceId, sessionId, errorText);
-      if (isTrackedSession(entry, sessionId)) {
-        queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, sessionId), (current = []) => {
-          // Key the error to the latest assistant turn so it lands beside the
-          // turn that failed and a later turn's error becomes its own message
-          // instead of overwriting this one. Falls back to the session id when
-          // no assistant turn exists yet (e.g. error before any output).
-          const turnKey = latestAssistantMessageId(current) ?? sessionId;
-          // Note: turnKey matches the snapshot's per-turn key (the errored
-          // assistant message id) so a reload reconciles instead of
-          // duplicating; the sessionId fallback only applies when the run
-          // errored before any assistant message existed.
-          return upsertMessage(current, createSessionErrorUIMessage(turnKey, errorText));
-        });
-      }
+    if (
+      interrupted?.interrupted
+      || Boolean(event.parentUserMessageId && interrupted?.blockedUserMessageIds.has(event.parentUserMessageId))
+    ) return;
+    const errorText = describeConversationSessionError(event.errorText);
+    const runStartedAt = takeTaskRunStart(event.sessionId);
+    if (runStartedAt !== null) {
+      captureAnalyticsEvent("task_run_errored", { duration_ms: Date.now() - runStartedAt });
+      trackTaskFailed(event.sessionId, Date.now() - runStartedAt);
     }
+    notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText });
+    useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText);
+    if (isTrackedSession(entry, event.sessionId)) {
+      if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+      queryClient.setQueryData(statusKey(workspaceId, event.sessionId), idleStatus);
+      queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
+        const turn = latestConversationTurnKey(current, event.parentUserMessageId);
+        return upsertMessage(current, createSessionErrorUIMessage(
+          turn?.turnKey ?? event.sessionId,
+          errorText,
+          {
+            created: Date.now(),
+            ...(turn?.parentUserMessageId ? { parentUserMessageId: turn.parentUserMessageId } : {}),
+          },
+        ));
+      });
+      releaseRetainedSessionSoon(input, entry, event.sessionId);
+    }
+    for (const listener of entry.sessionErrorListeners) listener({ sessionId: event.sessionId, errorText });
     return;
   }
 
-  if (event.type === "session.next.compaction.started") {
-    const sessionId = sessionIdFromProperties(event.properties);
-    if (sessionId) useSessionActivityStore.getState().setCompacting(workspaceId, sessionId, true);
-    return;
-  }
-
-  if (event.type === "session.next.compaction.ended" || event.type === "session.compacted") {
-    const sessionId = sessionIdFromProperties(event.properties);
-    if (sessionId) useSessionActivityStore.getState().setCompacting(workspaceId, sessionId, false);
+  if (event.type === "session.compaction") {
+    if (interrupted?.interrupted) return;
+    useSessionActivityStore.getState().setCompacting(workspaceId, event.sessionId, event.running);
     return;
   }
 
   if (event.type === "session.status") {
-    const props = (event.properties ?? {}) as { sessionID?: string; status?: SessionStatus };
-    if (!props.sessionID || !props.status) return;
-    useSessionActivityStore.getState().setRunStatus(workspaceId, props.sessionID, props.status);
-    const tracked = isTrackedSession(entry, props.sessionID);
-    if (tracked) queryClient.setQueryData(statusKey(workspaceId, props.sessionID), props.status);
-    for (const listener of entry.sessionStatusListeners) listener({ sessionId: props.sessionID, status: props.status });
-    if (input && tracked && !isLiveStatus(props.status)) releaseRetainedSessionSoon(input, entry, props.sessionID);
+    if (interrupted?.interrupted) return;
+    useSessionActivityStore.getState().setRunStatus(workspaceId, event.sessionId, event.status);
+    const tracked = isTrackedSession(entry, event.sessionId);
+    if (tracked) queryClient.setQueryData(statusKey(workspaceId, event.sessionId), event.status);
+    for (const listener of entry.sessionStatusListeners) listener({ sessionId: event.sessionId, status: event.status });
+    if (tracked && !isLiveStatus(event.status)) releaseRetainedSessionSoon(input, entry, event.sessionId);
     return;
   }
 
   if (event.type === "todo.updated") {
-    const props = (event.properties ?? {}) as { sessionID?: string; todos?: Todo[] };
-    if (!props.sessionID || !props.todos) return;
-    if (!isTrackedSession(entry, props.sessionID)) return;
-    queryClient.setQueryData(todoKey(workspaceId, props.sessionID), props.todos);
+    if (isTrackedSession(entry, event.sessionId)) {
+      queryClient.setQueryData(todoKey(workspaceId, event.sessionId), event.todos);
+    }
     return;
   }
 
   if (event.type === "permission.asked") {
-    const permission = event.properties as PermissionRequest;
-    if (!permission?.id || !permission.sessionID) return;
+    if (interrupted?.interrupted) return;
+    const permission = event.permission;
     notifyDesktopEvent({
       type: "permission.asked",
-      sessionId: permission.sessionID,
+      sessionId: permission.sessionId,
       detail: permissionNotificationDetail(permission),
     });
-    useSessionActivityStore.getState().setWaitingRequest(workspaceId, permission.sessionID, "permission", permission.id, true);
-    if (!isTrackedSession(entry, permission.sessionID)) return;
-    const receivedAt = Date.now();
-    queryClient.setQueryData<PendingPermission[]>(permissionKey(workspaceId, permission.sessionID), (current = []) => {
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, permission.sessionId, "permission", permission.id, true);
+    if (!isTrackedSession(entry, permission.sessionId)) return;
+    queryClient.setQueryData<ConversationPermission[]>(permissionKey(workspaceId, permission.sessionId), (current = []) => {
       const existing = current.find((item) => item.id === permission.id);
-      const next = permissionWithReceivedAt(permission, existing?.receivedAt ?? receivedAt);
-      if (existing) {
-        return current.map((item) => (item.id === permission.id ? next : item)).sort(sortPermissions);
-      }
-      return [...current, next].sort(sortPermissions);
+      const next = { ...permission, receivedAt: existing?.receivedAt ?? permission.receivedAt };
+      return existing
+        ? current.map((item) => item.id === permission.id ? next : item).sort(sortPermissions)
+        : [...current, next].sort(sortPermissions);
     });
     return;
   }
 
-  if (event.type === "permission.v2.asked") {
-    const permission = event.properties as PermissionV2Request;
-    if (!permission?.id || !permission.sessionID) return;
-    notifyDesktopEvent({
-      type: "permission.asked",
-      sessionId: permission.sessionID,
-      detail: permissionNotificationDetail(permission),
-    });
-    useSessionActivityStore.getState().setWaitingRequest(workspaceId, permission.sessionID, "permission", permission.id, true);
-    if (!isTrackedSession(entry, permission.sessionID)) return;
-    const receivedAt = Date.now();
-    queryClient.setQueryData<PendingPermission[]>(permissionKey(workspaceId, permission.sessionID), (current = []) => {
-      const existing = current.find((item) => item.id === permission.id);
-      const next = permissionWithReceivedAt(permission, existing?.receivedAt ?? receivedAt);
-      if (existing) {
-        return current.map((item) => (item.id === permission.id ? next : item)).sort(sortPermissions);
-      }
-      return [...current, next].sort(sortPermissions);
-    });
-    return;
-  }
-
-  if (event.type === "permission.replied" || event.type === "permission.v2.replied") {
-    const props = (event.properties ?? {}) as { sessionID?: string; requestID?: string };
-    if (!props.sessionID || !props.requestID) return;
-    useSessionActivityStore.getState().setWaitingRequest(workspaceId, props.sessionID, "permission", props.requestID, false);
-    if (!isTrackedSession(entry, props.sessionID)) return;
-    queryClient.setQueryData<PendingPermission[]>(permissionKey(workspaceId, props.sessionID), (current = []) =>
-      current.filter((permission) => permission.id !== props.requestID),
+  if (event.type === "permission.replied") {
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, event.sessionId, "permission", event.requestId, false);
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<ConversationPermission[]>(permissionKey(workspaceId, event.sessionId), (current = []) =>
+      current.filter((permission) => permission.id !== event.requestId),
     );
     return;
   }
 
   if (event.type === "question.asked") {
-    const question = event.properties as QuestionRequest;
-    if (!question?.id || !question.sessionID) return;
+    if (interrupted?.interrupted) return;
+    const question = event.question;
     notifyDesktopEvent({
       type: "question.asked",
-      sessionId: question.sessionID,
+      sessionId: question.sessionId,
       question: questionNotificationText(question),
     });
-    useSessionActivityStore.getState().setWaitingRequest(workspaceId, question.sessionID, "question", question.id, true);
-    if (!isTrackedSession(entry, question.sessionID)) return;
-    const receivedAt = Date.now();
-    queryClient.setQueryData<PendingQuestion[]>(questionKey(workspaceId, question.sessionID), (current = []) => {
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, question.sessionId, "question", question.id, true);
+    if (!isTrackedSession(entry, question.sessionId)) return;
+    queryClient.setQueryData<ConversationQuestion[]>(questionKey(workspaceId, question.sessionId), (current = []) => {
       const existing = current.find((item) => item.id === question.id);
-      const next = questionWithReceivedAt(question, existing?.receivedAt ?? receivedAt);
-      if (existing) {
-        return current.map((item) => (item.id === question.id ? next : item)).sort(sortQuestions);
-      }
-      return [...current, next].sort(sortQuestions);
+      const next = { ...question, receivedAt: existing?.receivedAt ?? question.receivedAt };
+      return existing
+        ? current.map((item) => item.id === question.id ? next : item).sort(sortQuestions)
+        : [...current, next].sort(sortQuestions);
     });
     return;
   }
 
-  if (event.type === "question.replied" || event.type === "question.rejected") {
-    const props = (event.properties ?? {}) as { sessionID?: string; requestID?: string };
-    if (!props.sessionID || !props.requestID) return;
-    useSessionActivityStore.getState().setWaitingRequest(workspaceId, props.sessionID, "question", props.requestID, false);
-    if (!isTrackedSession(entry, props.sessionID)) return;
-    queryClient.setQueryData<PendingQuestion[]>(questionKey(workspaceId, props.sessionID), (current = []) =>
-      current.filter((question) => question.id !== props.requestID),
+  if (event.type === "question.replied") {
+    useSessionActivityStore.getState().setWaitingRequest(workspaceId, event.sessionId, "question", event.requestId, false);
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<ConversationQuestion[]>(questionKey(workspaceId, event.sessionId), (current = []) =>
+      current.filter((question) => question.id !== event.requestId),
     );
     return;
   }
 
-  if (event.type === "message.updated") {
-    const props = (event.properties ?? {}) as {
-      info?: { id?: string; role?: UIMessage["role"] | string; sessionID?: string; time?: { created?: number; completed?: number } };
-    };
-    const info = props.info;
-    if (!info?.id || !info.sessionID || (info.role !== "user" && info.role !== "assistant" && info.role !== "system")) {
+  if (event.type === "message.upsert") {
+    if (event.message.role === "user" && interrupted) {
+      const disposition = observeInterruptedUserMessage(interrupted, event.message);
+      if (disposition === "ignore") return;
+    } else if (event.message.role === "assistant" && interrupted) {
+      const parentUserMessageId = conversationMessageParentUserMessageId(event.message);
+      if (shouldSuppressAssistantMessage(interrupted, event.message.id, parentUserMessageId)) {
+        removeHiddenAssistantMessage(workspaceId, event.sessionId, event.message.id);
+        return;
+      }
+      interrupted.observedAssistantMessageIds.add(event.message.id);
+    }
+    useSessionActivityStore.getState().markMessageRole(workspaceId, event.sessionId, event.message.id, event.message.role);
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    // Some engines publish their authoritative assistant message immediately
+    // after the last streamed chunks. Flush those queued deltas first so the
+    // final message replaces the stream instead of receiving it a second time.
+    if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
+      upsertMessage(current, event.message),
+    );
+    return;
+  }
+
+  if (event.type === "message.completed") {
+    if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+      removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
       return;
     }
-    useSessionActivityStore.getState().markMessageRole(workspaceId, info.sessionID, info.id, info.role);
-    if (!isTrackedSession(entry, info.sessionID)) return;
-    const created = info.time?.created;
-    const completed = info.time?.completed;
-    const next = {
-      id: info.id,
-      role: info.role,
-      ...(typeof created === "number" || typeof completed === "number"
-        ? { metadata: { opencode: {
-            ...(typeof created === "number" ? { created } : {}),
-            ...(typeof completed === "number" ? { completed } : {}),
-          } } }
-        : {}),
-      parts: [],
-    } satisfies UIMessage;
-    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, info.sessionID), (current = []) =>
-      upsertMessage(current, next),
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
+      current.map((message) =>
+        message.id === event.messageId
+          ? completeConversationMessage(message, event.completedAt)
+          : message,
+      ),
     );
     return;
   }
 
   if (event.type === "message.removed") {
-    // Revert cleanup (and explicit message deletion) removes messages
-    // server-side; drop them from both the live transcript cache and the
-    // cached snapshot so they can't be resurrected by later merges.
-    const props = (event.properties ?? {}) as { sessionID?: string; messageID?: string };
-    if (!props.sessionID || !props.messageID) return;
-    if (!isTrackedSession(entry, props.sessionID)) return;
-    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, props.sessionID), (current = []) =>
-      current.filter((message) => message.id !== props.messageID),
+    if (interrupted?.interrupted || interrupted?.blockedAssistantMessageIds.has(event.messageId)) return;
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
+      current.filter((message) => message.id !== event.messageId),
     );
-    queryClient.setQueryData<iPolloWorkSessionSnapshot>(
-      snapshotKey(workspaceId, props.sessionID),
-      (current) => {
-        if (!current) return current;
-        return { ...current, messages: current.messages.filter((message) => message.info.id !== props.messageID) };
-      },
+    queryClient.setQueryData<ConversationSnapshot>(
+      snapshotKey(workspaceId, event.sessionId),
+      (current) => current
+        ? { ...current, messages: current.messages.filter((message) => message.id !== event.messageId) }
+        : current,
     );
     return;
   }
 
-  if (event.type === "message.part.updated") {
-    const props = (event.properties ?? {}) as { part?: Part };
-    const part = props.part;
-    if (!part?.sessionID || !part.messageID) return;
-    if (partHasVisibleAssistantOutput(part)) {
-      useSessionActivityStore.getState().markAssistantOutput(workspaceId, part.sessionID, part.messageID);
+  if (event.type === "message.parts") {
+    if (interrupted) {
+      const eventRole = event.messageRole;
+      if (eventRole === "user") {
+        const disposition = observeInterruptedUserMessage(interrupted, {
+          id: event.messageId,
+          role: "user",
+          parts: event.parts,
+        });
+        if (disposition === "ignore") return;
+      } else {
+        if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+          removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
+          return;
+        }
+        interrupted.observedAssistantMessageIds.add(event.messageId);
+      }
     }
-    if (!isTrackedSession(entry, part.sessionID)) return;
-    const [mapped, ...attachments] = toUIParts(part);
+    if (event.visibleAssistantOutput) {
+      useSessionActivityStore.getState().markAssistantOutput(workspaceId, event.sessionId, event.messageId);
+    }
+    if (!isTrackedSession(entry, event.sessionId)) return;
+    const [mapped, ...attachments] = event.parts;
     if (!mapped) return;
-    const pending = entry.pendingDeltas.get(part.id);
-    // Seed the new part with any deltas that arrived before this
-    // declaration. We deliberately ignore `pending.reasoning` — it
-    // can't be trusted because opencode emits `field: "text"` for
-    // both text and reasoning streams. The part's actual kind
-    // (`mapped.type`) is the source of truth.
-    //
-    // Both `pending.text` and `mapped.text` are cumulative views of the
-    // same stream, so we keep whichever is longer instead of
-    // concatenating (concatenation double-counts the bytes that landed
-    // in both). Without this, reasoning text shows up duplicated in the
-    // streaming UI.
-    const seededPart =
-      pending && (mapped.type === "text" || mapped.type === "reasoning")
-        ? {
-            ...mapped,
-            text: pending.text.length > mapped.text.length ? pending.text : mapped.text,
-            state: "streaming" as const,
-          }
-        : mapped;
-    // Drop any deltas for this partID still queued in the rAF flush
-    // buffer — they've already been incorporated into `mapped.text`.
-    // Without this, the rAF flush would re-append them on top of the
-    // cumulative text we just wrote, duplicating bytes mid-stream.
+    const pending = entry.pendingDeltas.get(event.partId);
+    const seededPart = pending && (mapped.type === "text" || mapped.type === "reasoning")
+      ? {
+          ...mapped,
+          text: pending.text.length > mapped.text.length ? pending.text : mapped.text,
+          state: "streaming" as const,
+        }
+      : mapped;
     if (entry.deltaFlushBuffer.length > 0) {
-      entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter(
-        (item) => item.partId !== part.id,
-      );
+      entry.deltaFlushBuffer = entry.deltaFlushBuffer.filter((item) => item.partId !== event.partId);
     }
-    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, part.sessionID), (current = []) => {
-      // If we already have this message, keep its role; otherwise infer
-      // from the alternation pattern. Only the newly-stubbed case needs
-      // the inference — upsertMessage preserves existing role when the
-      // stub's role matches what we'd write anyway, and any subsequent
-      // message.updated will overwrite both.
-      const existing = current.find((m) => m.id === part.messageID);
-      const role = existing?.role ?? inferStubRole(current);
-      const withMessage = upsertMessage(current, { id: part.messageID, role, parts: [] });
-      const seededPartId = getPartMetadataId(seededPart) ?? part.id;
-      let next = upsertPart(withMessage, part.messageID, seededPartId, seededPart);
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
+      const existing = current.find((message) => message.id === event.messageId);
+      const role = event.messageRole ?? existing?.role ?? inferStubRole(current);
+      const withMessage = upsertMessage(current, { id: event.messageId, role, parts: [] });
+      const seededPartId = getPartMetadataId(seededPart) ?? event.partId;
+      let next = upsertPart(withMessage, event.messageId, seededPartId, seededPart);
       for (const attachment of attachments) {
         const attachmentId = getPartMetadataId(attachment);
-        if (attachmentId) next = upsertPart(next, part.messageID, attachmentId, attachment);
+        if (attachmentId) next = upsertPart(next, event.messageId, attachmentId, attachment);
       }
-      return next;
+      return removeAcknowledgedOptimisticUserMessages(
+        next,
+        interrupted?.protectedOptimisticUserMessageIds,
+      );
     });
-    if (pending) entry.pendingDeltas.delete(part.id);
+    if (pending) entry.pendingDeltas.delete(event.partId);
     return;
   }
 
-  if (event.type === "message.part.delta") {
-    const props = (event.properties ?? {}) as {
-      sessionID?: string;
-      messageID?: string;
-      partID?: string;
-      field?: string;
-      delta?: string;
-    };
-    if (!props.sessionID || !props.messageID || !props.partID || !props.delta) return;
-    useSessionActivityStore.getState().markAssistantOutput(workspaceId, props.sessionID, props.messageID, { allowUnknownMessageRole: true });
-    if (!isTrackedSession(entry, props.sessionID)) return;
-    // Note: we do NOT trust `props.field` to disambiguate reasoning vs
-    // text. Opencode emits `field: "text"` for both kinds; the actual
-    // distinction lives on the part's `type`, which we only see via
-    // `message.part.updated`. The flusher resolves the kind at apply
-    // time, falling back to `pendingDeltas` if the part hasn't been
-    // declared yet.
+  if (event.type === "message.chunk") {
+    if (shouldSuppressAssistantMessage(interrupted, event.messageId, event.parentUserMessageId)) {
+      removeHiddenAssistantMessage(workspaceId, event.sessionId, event.messageId);
+      return;
+    }
+    interrupted?.observedAssistantMessageIds.add(event.messageId);
+    useSessionActivityStore.getState().markAssistantOutput(
+      workspaceId,
+      event.sessionId,
+      event.messageId,
+      { allowUnknownMessageRole: true },
+    );
+    if (!isTrackedSession(entry, event.sessionId)) return;
     entry.deltaFlushBuffer.push({
-      sessionId: props.sessionID!,
-      messageId: props.messageID!,
-      partId: props.partID!,
-      reasoning: false,
-      delta: props.delta!,
+      sessionId: event.sessionId,
+      messageId: event.messageId,
+      partId: event.chunk.id,
+      reasoning: event.chunk.type === "reasoning-delta",
+      delta: event.chunk.delta,
+      ...(event.parentUserMessageId ? { parentUserMessageId: event.parentUserMessageId } : {}),
     });
     scheduleDeltaFlush(entry, workspaceId);
     return;
   }
 
   if (event.type === "session.idle") {
-    const props = (event.properties ?? {}) as { sessionID?: string };
-    if (!props.sessionID) return;
-    // Only emits for runs this client instrumented (markTaskRunStart in the
-    // send path); also dedupes idle events from multiple workspace syncs.
-    const runStartedAt = takeTaskRunStart(props.sessionID);
+    if (interrupted?.interrupted) return;
+    const runStartedAt = takeTaskRunStart(event.sessionId);
     if (runStartedAt !== null) {
-      captureAnalyticsEvent("task_run_completed", {
-        duration_ms: Date.now() - runStartedAt,
-      });
-      trackTaskCompleted(props.sessionID, Date.now() - runStartedAt);
-      notifyDesktopEvent({ type: "task.completed", sessionId: props.sessionID });
+      captureAnalyticsEvent("task_run_completed", { duration_ms: Date.now() - runStartedAt });
+      trackTaskCompleted(event.sessionId, Date.now() - runStartedAt);
+      notifyDesktopEvent({ type: "task.completed", sessionId: event.sessionId });
     }
-    useSessionActivityStore.getState().setRunStatus(workspaceId, props.sessionID, idleStatus);
-    const tracked = isTrackedSession(entry, props.sessionID);
-    if (tracked) queryClient.setQueryData(statusKey(workspaceId, props.sessionID), idleStatus);
-    for (const listener of entry.sessionStatusListeners) listener({ sessionId: props.sessionID, status: idleStatus });
-    if (input && tracked) releaseRetainedSessionSoon(input, entry, props.sessionID);
+    useSessionActivityStore.getState().setRunStatus(workspaceId, event.sessionId, idleStatus);
+    const tracked = isTrackedSession(entry, event.sessionId);
+    if (tracked) queryClient.setQueryData(statusKey(workspaceId, event.sessionId), idleStatus);
+    for (const listener of entry.sessionStatusListeners) listener({ sessionId: event.sessionId, status: idleStatus });
+    if (tracked) releaseRetainedSessionSoon(input, entry, event.sessionId);
   }
 }
 
@@ -1031,6 +1319,16 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
   }
 
   for (const [sessionId, items] of bySession) {
+    const interrupted = interruptedRun(workspaceId, sessionId);
+    const visibleItems = items.filter((item) => {
+      if (shouldSuppressAssistantMessage(interrupted, item.messageId, item.parentUserMessageId)) {
+        removeHiddenAssistantMessage(workspaceId, sessionId, item.messageId);
+        return false;
+      }
+      interrupted?.observedAssistantMessageIds.add(item.messageId);
+      return true;
+    });
+    if (visibleItems.length === 0) continue;
     queryClient.setQueryData<UIMessage[]>(
       transcriptKey(workspaceId, sessionId),
       (current = []) => {
@@ -1039,7 +1337,7 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
         // Track which message shells we've ensured exist this flush so we
         // don't call upsertMessage for the same message on every delta.
         const ensuredMessageIds = new Set<string>();
-        for (const item of items) {
+        for (const item of visibleItems) {
           if (!ensuredMessageIds.has(item.messageId)) {
             // Preserve the existing role if the message is already in
             // state; otherwise infer it from the alternation pattern
@@ -1052,15 +1350,9 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
             nextById.set(item.messageId, ensuredMessage);
             ensuredMessageIds.add(item.messageId);
           }
-          // Resolve the part kind from the transcript instead of trusting
-          // the inbound delta event (opencode emits `field: "text"` for
-          // both text and reasoning parts). If the part hasn't been
-          // declared yet via `message.part.updated`, defer the delta into
-          // `entry.pendingDeltas` so the part can be created with the
-          // correct kind later. Without this, every delta lands as a text
-          // part — and reasoning content leaks into the response markdown
-          // until the next reload reconstructs the transcript from the
-          // snapshot.
+          // Resolve the final part kind from the declared transcript part.
+          // Engines may stream a chunk before its part declaration, so hold
+          // early chunks until the matching part exists.
           const ownerMessage = nextById.get(item.messageId);
           const ownerPartsById = new Map(
             (ownerMessage?.parts ?? []).flatMap((part) => {
@@ -1091,7 +1383,6 @@ function flushDeltas(entry: SyncEntry, workspaceId: string) {
 }
 
 function startSync(input: SyncOptions) {
-  const client = createClient(input.baseUrl, undefined, { token: input.ipolloworkToken, mode: "ipollowork" });
   const controller = new AbortController();
   const entry = syncs.get(syncKey(input));
   let disposed = false;
@@ -1116,17 +1407,16 @@ function startSync(input: SyncOptions) {
     const connectionController = new AbortController();
     activeConnectionController = connectionController;
     try {
-      const sub = await client.event.subscribe(undefined, { signal: connectionController.signal });
       retryDelayMs = 1_000;
       lastEventAt = Date.now();
-      for await (const raw of sub.stream) {
-        if (controller.signal.aborted || connectionController.signal.aborted) return;
-        lastEventAt = Date.now();
-        const event = normalizeEvent(raw);
-        if (!event) continue;
-        if (!entry) continue;
-        applyEvent(entry, input.workspaceId, event);
-      }
+      await input.connection.subscribe({
+        signal: connectionController.signal,
+        onEvent: (event) => {
+          if (controller.signal.aborted || connectionController.signal.aborted || !entry) return;
+          lastEventAt = Date.now();
+          applyEvent(entry, input.workspaceId, event);
+        },
+      });
       if (!controller.signal.aborted && activeConnectionController === connectionController) scheduleRetry();
     } catch (error) {
       if (
@@ -1169,6 +1459,8 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     }
     if (input.onSessionUpdated) existing.sessionUpdatedListeners.add(input.onSessionUpdated);
     if (input.onSessionStatus) existing.sessionStatusListeners.add(input.onSessionStatus);
+    if (input.onSessionError) existing.sessionErrorListeners.add(input.onSessionError);
+    if (input.readSnapshot) existing.readSnapshot = input.readSnapshot;
     existing.refs += 1;
     return () => releaseWorkspaceSessionSync(input);
   }
@@ -1180,8 +1472,10 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     disposeTimer: null,
     trackedSessionRefs: new Map(),
     retainedSessionTimers: new Map(),
+    readSnapshot: input.readSnapshot,
     sessionUpdatedListeners: new Set(input.onSessionUpdated ? [input.onSessionUpdated] : []),
     sessionStatusListeners: new Set(input.onSessionStatus ? [input.onSessionStatus] : []),
+    sessionErrorListeners: new Set(input.onSessionError ? [input.onSessionError] : []),
     pendingDeltas: new Map(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,
@@ -1193,12 +1487,13 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
   return () => releaseWorkspaceSessionSync(input);
 }
 
-function releaseWorkspaceSessionSync(input: SyncOptions) {
+function releaseWorkspaceSessionSync(input: SyncScope & Pick<SyncOptions, "onSessionUpdated" | "onSessionStatus" | "onSessionError">) {
   const key = syncKey(input);
   const existing = syncs.get(key);
   if (!existing) return;
   if (input.onSessionUpdated) existing.sessionUpdatedListeners.delete(input.onSessionUpdated);
   if (input.onSessionStatus) existing.sessionStatusListeners.delete(input.onSessionStatus);
+  if (input.onSessionError) existing.sessionErrorListeners.delete(input.onSessionError);
   existing.refs -= 1;
   if (existing.refs > 0) return;
   if (existing.retainedSessionTimers.size === 0) {
@@ -1206,18 +1501,87 @@ function releaseWorkspaceSessionSync(input: SyncOptions) {
   }
 }
 
-export function seedSessionState(workspaceId: string, snapshot: iPolloWorkSessionSnapshot) {
-  const queryClient = getReactQueryClient();
-  const key = transcriptKey(workspaceId, snapshot.session.id);
-  const incoming = snapshotToUIMessages(snapshot);
-  const existing = queryClient.getQueryData<UIMessage[]>(key);
+export function sanitizeInterruptedSessionSnapshot(
+  workspaceId: string,
+  snapshot: ConversationSnapshot,
+): ConversationSnapshot {
+  const run = interruptedRun(workspaceId, snapshot.session.id);
+  if (!run) return snapshot;
+  let changed = false;
+  const messages: UIMessage[] = [];
+  for (const message of snapshot.messages) {
+    if (message.role === "user") {
+      const disposition = observeInterruptedUserMessage(run, message);
+      if (disposition === "ignore") {
+        changed = true;
+        continue;
+      }
+      messages.push(message);
+      continue;
+    }
+    if (message.role === "assistant") {
+      const parentUserMessageId = conversationMessageParentUserMessageId(message);
+      if (shouldSuppressAssistantMessage(run, message.id, parentUserMessageId)) {
+        changed = true;
+        continue;
+      }
+      run.observedAssistantMessageIds.add(message.id);
+    }
+    messages.push(message);
+  }
+  return changed ? { ...snapshot, messages } : snapshot;
+}
 
-  useSessionActivityStore.getState().seedSessionRun(
+export function seedSessionState(workspaceId: string, snapshot: ConversationSnapshot) {
+  const queryClient = getReactQueryClient();
+  const safeSnapshot = sanitizeInterruptedSessionSnapshot(workspaceId, snapshot);
+  const key = transcriptKey(workspaceId, safeSnapshot.session.id);
+  const interrupted = interruptedRun(workspaceId, safeSnapshot.session.id);
+  const existingRaw = queryClient.getQueryData<UIMessage[]>(key);
+  if (interrupted?.interrupted) {
+    queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
+    return;
+  }
+  const incoming = safeSnapshot.messages;
+  const activityBeforeSeed = useSessionActivityStore.getState().getStatus(
     workspaceId,
-    snapshot.session.id,
-    snapshot.status,
-    assistantOutputAfterLatestUser(incoming),
+    safeSnapshot.session.id,
   );
+  const liveActivityBeforeSeed = activityBeforeSeed === "thinking"
+    || activityBeforeSeed === "responding"
+    || activityBeforeSeed === "compacting"
+    || activityBeforeSeed === "waiting";
+  const snapshotAcknowledgesRun = snapshotAcknowledgesLatestUser(existingRaw ?? [], incoming);
+  const existing = existingRaw && incoming.length > 0
+    ? removeSnapshotAcknowledgedOptimisticUserMessages(
+        existingRaw,
+        incoming,
+        interrupted?.protectedOptimisticUserMessageIds,
+      )
+    : existingRaw;
+  const preserveOptimisticBusy = safeSnapshot.status.type === "idle"
+    && existingRaw?.some(isOptimisticUserMessage) === true;
+  const preserveLiveBusy = safeSnapshot.status.type === "idle"
+    && liveActivityBeforeSeed
+    && !snapshotAcknowledgesRun;
+  const preserveBusy = preserveOptimisticBusy || preserveLiveBusy;
+  const snapshotErrorText = latestSnapshotErrorAfterLatestUser(incoming);
+  const terminalWithoutOutput = safeSnapshot.status.type === "idle"
+    && !preserveBusy
+    && liveActivityBeforeSeed
+    && snapshotAcknowledgesRun
+    && latestUserMessage(incoming) !== null
+    && !snapshotErrorText
+    && !finalAssistantOutputAfterLatestUser(incoming);
+
+  if (!preserveBusy) {
+    useSessionActivityStore.getState().seedSessionRun(
+      workspaceId,
+      safeSnapshot.session.id,
+      safeSnapshot.status,
+      assistantOutputAfterLatestUser(incoming),
+    );
+  }
 
   // The snapshot's revert cursor is authoritative: messages at/after it are
   // reverted server-side, so the cache must not keep them alive (a later
@@ -1228,29 +1592,48 @@ export function seedSessionState(workspaceId: string, snapshot: iPolloWorkSessio
       snapshotMessages: incoming,
       reason: "snapshot",
     }),
-    snapshot.session.revert?.messageID ?? null,
+    safeSnapshot.session.revertMessageId ?? null,
+    { preserveOptimisticUserMessages: true },
   ));
 
-  queryClient.setQueryData(statusKey(workspaceId, snapshot.session.id), snapshot.status);
-  queryClient.setQueryData(todoKey(workspaceId, snapshot.session.id), snapshot.todos);
+  if (snapshotErrorText) {
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText);
+  } else if (terminalWithoutOutput) {
+    const latestUser = latestUserMessage(incoming);
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR);
+    queryClient.setQueryData<UIMessage[]>(key, (current = []) => upsertMessage(
+      current,
+      createSessionErrorUIMessage(latestUser?.id ?? safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR, {
+        created: Date.now(),
+        ...(latestUser ? { parentUserMessageId: latestUser.id } : {}),
+      }),
+    ));
+  }
+
+  if (!preserveBusy) {
+    queryClient.setQueryData(statusKey(workspaceId, safeSnapshot.session.id), safeSnapshot.status);
+  }
+  queryClient.setQueryData(todoKey(workspaceId, safeSnapshot.session.id), safeSnapshot.todos);
 }
 
 /**
  * Apply a server-confirmed revert to the local session caches.
  *
- * `session.revert` only reaches the renderer through the snapshot cache, so
- * after a successful `session.revert` call this stamps the returned revert
+ * The revert cursor only reaches the renderer through the snapshot cache, so
+ * after a successful revert this stamps the returned cursor
  * cursor into the cached snapshot, truncates the live transcript cache, and
  * refetches the snapshot to pick up the server's post-revert truth. Without
  * this the UI keeps rendering the old transcript until a full reload.
  */
-export function applySessionRevert(workspaceId: string, session: Session) {
+export function applySessionRevert(workspaceId: string, session: ConversationSession) {
   const queryClient = getReactQueryClient();
-  const revertMessageId = session.revert?.messageID ?? null;
+  const revertMessageId = session.revertMessageId ?? null;
 
-  queryClient.setQueryData<iPolloWorkSessionSnapshot>(
+  queryClient.setQueryData<ConversationSnapshot>(
     snapshotKey(workspaceId, session.id),
-    (current) => (current ? { ...current, session: { ...current.session, revert: session.revert } } : current),
+    (current) => (current
+      ? { ...current, session: { ...current.session, revertMessageId: session.revertMessageId } }
+      : current),
   );
   queryClient.setQueryData<UIMessage[]>(
     transcriptKey(workspaceId, session.id),
@@ -1259,7 +1642,7 @@ export function applySessionRevert(workspaceId: string, session: Session) {
   void queryClient.invalidateQueries({ queryKey: snapshotKey(workspaceId, session.id) });
 }
 
-export function trackWorkspaceSessionSync(input: SyncOptions, sessionId: string | null | undefined) {
+export function trackWorkspaceSessionSync(input: SyncScope, sessionId: string | null | undefined) {
   const normalizedSessionId = sessionId?.trim() ?? "";
   if (!normalizedSessionId) return () => {};
 
@@ -1288,7 +1671,7 @@ export function trackWorkspaceSessionSync(input: SyncOptions, sessionId: string 
   };
 }
 
-export function trackWorkspaceSessionsSync(input: SyncOptions, sessionIds: Array<string | null | undefined>) {
+export function trackWorkspaceSessionsSync(input: SyncScope, sessionIds: Array<string | null | undefined>) {
   const seen = new Set<string>();
   const releases = sessionIds.flatMap((sessionId) => {
     const id = sessionId?.trim() ?? "";
@@ -1301,7 +1684,7 @@ export function trackWorkspaceSessionsSync(input: SyncOptions, sessionIds: Array
   };
 }
 
-export function __createWorkspaceSessionSyncForTest(input: SyncOptions) {
+export function __createWorkspaceSessionSyncForTest(input: SyncScope) {
   const key = syncKey(input);
   syncs.set(key, {
     input,
@@ -1310,8 +1693,10 @@ export function __createWorkspaceSessionSyncForTest(input: SyncOptions) {
     disposeTimer: null,
     trackedSessionRefs: new Map(),
     retainedSessionTimers: new Map(),
+    readSnapshot: undefined,
     sessionUpdatedListeners: new Set(),
     sessionStatusListeners: new Set(),
+    sessionErrorListeners: new Set(),
     pendingDeltas: new Map(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,
@@ -1325,11 +1710,17 @@ export function __createWorkspaceSessionSyncForTest(input: SyncOptions) {
   };
 }
 
-export function __hasWorkspaceSessionSyncForTest(input: SyncOptions) {
+export function __hasWorkspaceSessionSyncForTest(input: SyncScope) {
   return syncs.has(syncKey(input));
 }
 
-export function __disposeWorkspaceSessionSyncForTest(input: SyncOptions) {
+export async function __reconcileRetainedSessionForTest(input: SyncScope, sessionId: string) {
+  const entry = syncs.get(syncKey(input));
+  if (!entry) return;
+  await reconcileRetainedSession(input, entry, sessionId);
+}
+
+export function __disposeWorkspaceSessionSyncForTest(input: SyncScope) {
   const key = syncKey(input);
   const entry = syncs.get(key);
   if (!entry) return;
@@ -1337,8 +1728,32 @@ export function __disposeWorkspaceSessionSyncForTest(input: SyncOptions) {
   disposeWorkspaceSync(key, entry);
 }
 
-export function __applySessionSyncEventForTest(input: SyncOptions, event: OpencodeEvent) {
+export function __applySessionSyncEventForTest(input: SyncScope, event: ConversationEvent) {
   const entry = syncs.get(syncKey(input));
   if (!entry) return;
   applyEvent(entry, input.workspaceId, event);
+}
+
+/** Dev-only deterministic error boundary used by focused UI proof flows. */
+export function publishSessionErrorForEvaluation(input: {
+  workspaceId: string;
+  sessionId: string;
+  parentUserMessageId: string;
+  errorText: string;
+}) {
+  if (!import.meta.env.DEV) return false;
+  const workspaceId = input.workspaceId.trim();
+  const sessionId = input.sessionId.trim();
+  if (!workspaceId || !sessionId) return false;
+  for (const entry of syncs.values()) {
+    if (entry.input.workspaceId !== workspaceId || !isTrackedSession(entry, sessionId)) continue;
+    applyEvent(entry, workspaceId, {
+      type: "session.error",
+      sessionId,
+      parentUserMessageId: input.parentUserMessageId,
+      errorText: input.errorText,
+    });
+    return true;
+  }
+  return false;
 }

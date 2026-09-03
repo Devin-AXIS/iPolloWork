@@ -64,6 +64,20 @@ export function shouldUseDirectTimelineAdapter(
   return !hasRuntimePlayer && timelineDuration > 0 && documentDuration <= timelineDuration;
 }
 
+/**
+ * A runtime adapter is safe to use directly only after it covers every duration
+ * Studio already knows about. During iframe bootstrap the runtime can briefly
+ * publish a child-timeline duration; treating that partial value as final makes
+ * the transport reach a false end and pause shortly after the user presses Play.
+ */
+export function shouldUseDirectRuntimeAdapter(
+  runtimeDuration: number,
+  requiredDuration: number,
+): boolean {
+  if (!isFinitePositive(runtimeDuration)) return false;
+  return !isFinitePositive(requiredDuration) || runtimeDuration >= requiredDuration;
+}
+
 const durationLimitAdapterCache = new WeakMap<PlaybackAdapter, Map<number, PlaybackAdapter>>();
 
 export function wrapAdapterWithDurationLimit(

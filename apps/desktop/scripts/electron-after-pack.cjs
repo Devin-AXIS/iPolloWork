@@ -3,9 +3,13 @@ const path = require("node:path");
 const { spawnSync } = require("node:child_process");
 
 const computerUseHelperAppName = "iPolloWork Computer Use.app";
-const requiredAsarEntries = [
-  "/server/dist/ipollowork-types/hyperframes.js",
-  "/server/dist/ipollowork-types/templates.js",
+const unresolvedRuntimeTypesImport = /(["'])@ipollowork\/types(?:\/[A-Za-z0-9._/-]+)?\1/g;
+const stagedRuntimeTypesImport = /(["'])((?:\.\.?\/)+ipollowork-types\/[A-Za-z0-9._/-]+\.js)\1/g;
+const requiredOpenCodeRuntimeEntries = [
+  "package.json",
+  "package-lock.json",
+  path.join("node_modules", "@opencode-ai", "plugin", "package.json"),
+  path.join("node_modules", "@opencode-ai", "plugin", "dist", "tool.js"),
 ];
 
 // Only native executables are copied to their canonical aliases. The server
@@ -113,16 +117,45 @@ function assertPackagedRuntimeTypes(context) {
     throw new Error(`Missing packaged Electron archive: ${asarPath}`);
   }
 
-  const { listPackage, uncache } = require("@electron/asar");
+  const { extractFile, listPackage, uncache } = require("@electron/asar");
   uncache(asarPath);
-  const entries = new Set(
-    listPackage(asarPath, { isPack: false }).map((entry) => entry.replaceAll("\\", "/")),
+  const rawEntries = listPackage(asarPath, { isPack: false });
+  const entries = new Map(
+    rawEntries.map((entry) => [entry.replaceAll("\\", "/"), entry.replace(/^[/\\]+/, "")]),
   );
-  const missing = requiredAsarEntries.filter((entry) => !entries.has(entry));
+  const failures = [];
+
+  for (const [entry, rawEntry] of entries) {
+    if (!entry.startsWith("/server/dist/") || !entry.endsWith(".js") || entry.includes("/ipollowork-types/")) {
+      continue;
+    }
+    const source = extractFile(asarPath, rawEntry).toString("utf8");
+    const unresolved = [...source.matchAll(unresolvedRuntimeTypesImport)].map((match) => match[0]);
+    if (unresolved.length > 0) {
+      failures.push(`${entry} contains unresolved imports: ${[...new Set(unresolved)].join(", ")}`);
+    }
+    for (const match of source.matchAll(stagedRuntimeTypesImport)) {
+      const importedEntry = path.posix.normalize(path.posix.join(path.posix.dirname(entry), match[2]));
+      if (!entries.has(importedEntry)) {
+        failures.push(`${entry} references missing runtime module ${importedEntry}`);
+      }
+    }
+  }
+  if (failures.length === 0) return;
+
+  throw new Error(
+    "Invalid @ipollowork/types runtime closure in app.asar: " + failures.join("; "),
+  );
+}
+
+function assertPackagedOpenCodeRuntime(context) {
+  const resourcesDir = resolveResourcesDir(context);
+  const runtimeDir = path.join(resourcesDir, "opencode-runtime");
+  const missing = requiredOpenCodeRuntimeEntries.filter((name) => !fs.existsSync(path.join(runtimeDir, name)));
   if (missing.length === 0) return;
 
   throw new Error(
-    "Missing @ipollowork/types runtime files in app.asar: " + missing.join(", "),
+    "Missing bundled OpenCode runtime in the packaged app: " + missing.join(", "),
   );
 }
 
@@ -202,6 +235,7 @@ async function afterPack(context) {
 
   assertPackagedNodePty(context);
   assertPackagedRuntimeTypes(context);
+  assertPackagedOpenCodeRuntime(context);
   signComputerUseHelper(context);
 }
 
@@ -209,3 +243,4 @@ module.exports = afterPack;
 module.exports.default = afterPack;
 module.exports.assertPackagedNodePty = assertPackagedNodePty;
 module.exports.assertPackagedRuntimeTypes = assertPackagedRuntimeTypes;
+module.exports.assertPackagedOpenCodeRuntime = assertPackagedOpenCodeRuntime;

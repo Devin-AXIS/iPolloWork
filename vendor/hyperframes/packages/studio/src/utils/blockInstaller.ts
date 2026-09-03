@@ -1,4 +1,9 @@
-import type { RegistryItem } from "@hyperframes/core/registry";
+import type {
+  BlockParam,
+  RegistryItem,
+  RegistryVariable,
+  RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
   insertTimelineAssetIntoSource,
@@ -11,23 +16,20 @@ import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
-import { applyPatchByTarget } from "./sourcePatcher";
+import { trackStudioEvent } from "./studioTelemetry";
+import { readAttributeByTarget } from "./sourcePatcher";
 
-export type EffectInsertIntent = "playhead" | "opening" | "ending" | "transition";
+export type BlockVariableValue = string | number | boolean;
 
-function getMaxZIndexFromIframe(iframe: HTMLIFrameElement | null): number {
-  try {
-    const doc = iframe?.contentDocument;
-    if (!doc) return 0;
-    let max = 0;
-    for (const el of doc.body.querySelectorAll("*")) {
-      const z = parseInt(getComputedStyle(el).zIndex, 10);
-      if (Number.isFinite(z) && z > max) max = z;
-    }
-    return max;
-  } catch {
-    return 0;
-  }
+export interface InstalledComponentParams {
+  blockTitle: string;
+  params: BlockParam[];
+  variables: RegistryVariable[];
+  variableValues: Record<string, BlockVariableValue>;
+  visualComponent?: RegistryVisualComponent;
+  hostCompositionPath: string;
+  insertedElementId: string;
+  returnTab: "components";
 }
 
 interface AddBlockOptions {
@@ -36,10 +38,7 @@ interface AddBlockOptions {
   activeCompPath: string | null;
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
-  previewIframe?: HTMLIFrameElement | null;
   currentTime?: number;
-  effectIntent?: EffectInsertIntent;
-  selectedElementId?: string | null;
   timelineElements: TimelineElement[];
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
@@ -53,147 +52,6 @@ interface AddBlockOptions {
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
   showToast: (msg: string) => void;
-}
-
-interface EffectPlacement {
-  start: number;
-  track: number;
-  shiftExistingBy: number;
-}
-
-function elementKey(element: TimelineElement): string {
-  return element.key ?? element.id;
-}
-
-function rootTimelineElements(elements: TimelineElement[], targetPath: string): TimelineElement[] {
-  return elements.filter(
-    (element) =>
-      (element.sourceFile || targetPath) === targetPath &&
-      element.expandedParentStart == null &&
-      Number.isFinite(element.start) &&
-      Number.isFinite(element.duration) &&
-      element.duration > 0,
-  );
-}
-
-function uniqueSortedStarts(elements: TimelineElement[]): number[] {
-  return [...new Set(elements.map((element) => Number(element.start.toFixed(4))))].sort(
-    (a, b) => a - b,
-  );
-}
-
-function buildElementPatchTarget(element: TimelineElement) {
-  if (element.domId) {
-    return {
-      id: element.domId,
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.hfId) {
-    return {
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.selector) {
-    return { selector: element.selector, selectorIndex: element.selectorIndex };
-  }
-  if (/^[A-Za-z][\w:-]*$/.test(element.id)) return { id: element.id };
-  return null;
-}
-
-export function resolveEffectPlacement(input: {
-  intent: EffectInsertIntent;
-  duration: number;
-  currentTime: number;
-  rootDuration: number;
-  targetPath: string;
-  timelineElements: TimelineElement[];
-  selectedElementId?: string | null;
-}): EffectPlacement | null {
-  const elements = rootTimelineElements(input.timelineElements, input.targetPath);
-  const highestTrack = elements.reduce(
-    (highest, element) => Math.max(highest, element.authoredTrack ?? element.track),
-    0,
-  );
-  const contentEnd = elements.reduce(
-    (end, element) => Math.max(end, element.start + element.duration),
-    input.rootDuration,
-  );
-
-  if (input.intent === "opening") {
-    return { start: 0, track: 0, shiftExistingBy: input.duration };
-  }
-  if (input.intent === "ending") {
-    return { start: contentEnd, track: 0, shiftExistingBy: 0 };
-  }
-  if (input.intent === "playhead") {
-    return { start: Math.max(0, input.currentTime), track: highestTrack + 1, shiftExistingBy: 0 };
-  }
-
-  if (elements.length < 2) return null;
-  const selected = input.selectedElementId
-    ? elements.find((element) => elementKey(element) === input.selectedElementId)
-    : undefined;
-  const starts = uniqueSortedStarts(elements).filter((start) => start > 0.001);
-  const selectedEnd = selected ? selected.start + selected.duration : undefined;
-  const selectedNextStart = selected
-    ? (starts.find((start) => start >= (selectedEnd ?? 0) - 0.05) ??
-      starts.find((start) => start > selected.start + 0.001))
-    : undefined;
-  const boundary =
-    selectedNextStart ??
-    starts.reduce<number | undefined>((closest, start) => {
-      if (closest == null) return start;
-      return Math.abs(start - input.currentTime) < Math.abs(closest - input.currentTime)
-        ? start
-        : closest;
-    }, undefined);
-  if (boundary == null) return null;
-  return {
-    start: Math.max(0, boundary - input.duration / 2),
-    track: highestTrack + 1,
-    shiftExistingBy: 0,
-  };
-}
-
-export function shiftTimelineContentInSource(
-  source: string,
-  elements: TimelineElement[],
-  targetPath: string,
-  amount: number,
-): string {
-  if (!(amount > 0)) return source;
-  let patched = source;
-  const visited = new Set<string>();
-  for (const element of rootTimelineElements(elements, targetPath)) {
-    const target = buildElementPatchTarget(element);
-    if (!target) continue;
-    const targetKey = JSON.stringify(target);
-    if (visited.has(targetKey)) continue;
-    visited.add(targetKey);
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: "start",
-      value: formatTimelineAttributeNumber(element.start + amount),
-    });
-    if (element.timingSource === "implicit") {
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "duration",
-        value: formatTimelineAttributeNumber(element.duration),
-      });
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "hf-preserve-flow",
-        value: "1",
-      });
-    }
-  }
-  return patched;
 }
 
 function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string>): string {
@@ -220,12 +78,122 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
   );
 }
 
+export function normalizeBlockVariableValue(
+  variable: RegistryVariable,
+  value: BlockVariableValue,
+): BlockVariableValue {
+  if (variable.type === "number") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    const finite = Number.isFinite(parsed) ? parsed : variable.default;
+    return Math.min(variable.max ?? finite, Math.max(variable.min ?? finite, finite));
+  }
+  if (variable.type === "boolean") {
+    return typeof value === "boolean" ? value : variable.default;
+  }
+  if (variable.type === "enum") {
+    return typeof value === "string" && variable.options.some((option) => option.value === value)
+      ? value
+      : variable.default;
+  }
+  if (typeof value !== "string") return variable.default;
+  if (variable.type === "color" && !/^#[0-9a-f]{6}$/i.test(value)) return variable.default;
+  return variable.type === "string" && variable.maxLength
+    ? value.slice(0, variable.maxLength)
+    : value;
+}
+
+function normalizeRegistryPath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
+function readComponentVariableValues(
+  hostSource: string,
+  insertedElementId: string,
+  variables: RegistryVariable[],
+): Record<string, BlockVariableValue> {
+  const raw = readAttributeByTarget(hostSource, { id: insertedElementId }, "variable-values");
+  if (!raw) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  const values: Record<string, BlockVariableValue> = {};
+  for (const variable of variables) {
+    const value: unknown = Reflect.get(parsed, variable.id);
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      continue;
+    }
+    values[variable.id] = normalizeBlockVariableValue(variable, value);
+  }
+  return values;
+}
+
+export function resolveInstalledComponentParams(input: {
+  catalog: RegistryItem[];
+  element: TimelineElement;
+  hostCompositionPath: string;
+  hostSource: string;
+}): InstalledComponentParams | null {
+  if (!input.element.compositionSrc) return null;
+  const compositionSrc = normalizeRegistryPath(input.element.compositionSrc);
+  const block = input.catalog.find(
+    (item) =>
+      item.visualComponent &&
+      item.files.some((file) => normalizeRegistryPath(file.target) === compositionSrc),
+  );
+  if (!block) return null;
+
+  const params = block.type === "hyperframes:block" ? (block.params ?? []) : [];
+  const variables = block.variables ?? [];
+  if (!params.length && !variables.length) return null;
+  const insertedElementId = input.element.domId ?? input.element.id;
+
+  return {
+    blockTitle: block.title,
+    params,
+    variables,
+    variableValues: readComponentVariableValues(input.hostSource, insertedElementId, variables),
+    visualComponent: block.visualComponent,
+    hostCompositionPath: input.hostCompositionPath,
+    insertedElementId,
+    returnTab: "components",
+  };
+}
+
+export function injectRegistryVariableDeclarations(
+  source: string,
+  variables: RegistryVariable[],
+): string {
+  if (!variables.length || /\bdata-composition-variables\s*=/.test(source)) return source;
+
+  const declarations = variables.map(({ update: _update, ...declaration }) => declaration);
+  const serialized = JSON.stringify(declarations)
+    .replaceAll("&", "&amp;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+
+  return source.replace(/<html(?=[\s>])[^>]*>/i, (openTag) =>
+    openTag.replace(/>$/, ` data-composition-variables='${serialized}'>`),
+  );
+}
+
 export async function addBlockToProject(opts: AddBlockOptions): Promise<{
   block: RegistryItem;
   compositionPath: string;
+  hostCompositionPath: string;
   insertedStart: number;
   insertedElementId: string;
 } | null> {
+  const startedAt = performance.now();
+  let registryInstallMs = 0;
+  let hostPatchMs = 0;
+  let persistMs = 0;
   const {
     projectId,
     blockName,
@@ -247,11 +215,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     // composition is patched. Mark both phases as one Studio-owned mutation so
     // the file watcher does not start a stale intermediate preview reload.
     markStudioWrite();
+    const registryInstallStartedAt = performance.now();
     const res = await fetch(`/api/projects/${projectId}/registry/install`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ blockName }),
     });
+    registryInstallMs = performance.now() - registryInstallStartedAt;
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: "Install failed" }));
@@ -270,17 +240,22 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       return null;
     }
 
-    if (block.type === "hyperframes:component") {
+    if (block.visualComponent) {
       const compContent = await readProjectFile(compositionFile);
-      const transparentContent = makeComponentDocumentBackgroundTransparent(compContent);
-      if (transparentContent !== compContent) {
-        await writeProjectFile(compositionFile, transparentContent);
+      const declaredContent = injectRegistryVariableDeclarations(
+        compContent,
+        block.variables ?? [],
+      );
+      const normalizedContent = makeComponentDocumentBackgroundTransparent(declaredContent);
+      if (normalizedContent !== compContent) {
+        await writeProjectFile(compositionFile, normalizedContent);
       }
     }
 
     let insertedStart = opts.currentTime ?? 0;
     let insertedElementId = block.name;
     {
+      const hostPatchStartedAt = performance.now();
       const targetPath = activeCompPath || "index.html";
       const originalContent = await readProjectFile(targetPath);
       const existingIds = collectHtmlIds(originalContent);
@@ -292,7 +267,6 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
       );
 
-      const isBlock = block.type === "hyperframes:block";
       const { width: hostWidth, height: hostHeight } =
         resolveTimelineAssetCompositionSize(originalContent);
       const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
@@ -307,43 +281,28 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           10,
         );
       const rootDuration = readRootCompositionDuration(originalContent) ?? 0;
-      const effectPlacement = placement
-        ? null
-        : resolveEffectPlacement({
-            intent: opts.effectIntent ?? "playhead",
-            duration,
-            currentTime,
-            rootDuration,
-            targetPath: resolvedTargetPath,
-            timelineElements: relevantElements,
-            selectedElementId: opts.selectedElementId,
-          });
-      if (!placement && !effectPlacement) {
-        showToast(
-          "Select a timeline clip that has another clip after it, then insert the transition",
-        );
-        return null;
-      }
       const start = Number(
-        formatTimelineAttributeNumber(placement?.start ?? effectPlacement?.start ?? currentTime),
+        formatTimelineAttributeNumber(placement?.start ?? Math.max(0, currentTime)),
       );
       insertedStart = start;
       const track =
         placement?.track ??
-        effectPlacement?.track ??
-        (isBlock
-          ? 0
-          : relevantElements.length > 0
-            ? Math.max(...relevantElements.map((te) => te.track)) + 1
-            : 1);
+        (relevantElements.length > 0 ? Math.max(...relevantElements.map((te) => te.track)) + 1 : 1);
 
-      const zIndex = getMaxZIndexFromIframe(opts.previewIframe ?? null) + 1;
+      // Timeline discovery already resolves authored and computed z-indexes.
+      // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
+      // every node in the preview iframe, which can force a full style/layout
+      // flush while the editor and catalog previews are busy.
+      const zIndex =
+        relevantElements.reduce((highest, element) => Math.max(highest, element.zIndex ?? 0), 0) +
+        1;
 
-      const width = hostDims.width;
-      const height = hostDims.height;
+      const geometry = hostDims;
+      const width = geometry.width;
+      const height = geometry.height;
 
-      const left = visualPosition ? Math.round(visualPosition.left) : 0;
-      const top = visualPosition ? Math.round(visualPosition.top) : 0;
+      const left = visualPosition ? Math.round(visualPosition.left) : geometry.left;
+      const top = visualPosition ? Math.round(visualPosition.top) : geometry.top;
 
       const subCompHtml = [
         `<div`,
@@ -363,40 +322,63 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `></div>`,
       ].join("\n");
 
-      const shiftExistingBy = effectPlacement?.shiftExistingBy ?? 0;
-      const shiftedContent = shiftTimelineContentInSource(
-        originalContent,
-        relevantElements,
-        resolvedTargetPath,
-        shiftExistingBy,
-      );
-      let patchedContent = insertTimelineAssetIntoSource(shiftedContent, subCompHtml);
+      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
       const originalContentEnd = relevantElements.reduce(
         (end, element) => Math.max(end, element.start + element.duration),
         rootDuration,
       );
       patchedContent = extendRootDurationInSource(
         patchedContent,
-        Math.max(start + duration, originalContentEnd + shiftExistingBy),
+        Math.max(start + duration, originalContentEnd),
       );
+      hostPatchMs = performance.now() - hostPatchStartedAt;
 
       markStudioWrite();
+      const persistStartedAt = performance.now();
       await saveProjectFilesWithHistory({
         projectId,
-        label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
+        label: `Add component: ${block.title}`,
         kind: "timeline",
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
         recordEdit,
       });
+      persistMs = performance.now() - persistStartedAt;
     }
 
     reloadPreview();
-    await refreshFileTree();
+    // The watcher also refreshes the tree. Keep this explicit fallback for
+    // environments where watching is unavailable, but do not hold insertion
+    // completion or preview selection behind a full project-tree scan.
+    void refreshFileTree().catch(() => {
+      trackStudioEvent("block_install_file_tree_refresh_failed", {
+        block_name: blockName,
+      });
+    });
 
-    return { block, compositionPath: compositionFile, insertedStart, insertedElementId };
+    trackStudioEvent("block_install_timing", {
+      block_name: blockName,
+      registry_install_ms: Math.round(registryInstallMs),
+      host_patch_ms: Math.round(hostPatchMs),
+      persist_ms: Math.round(persistMs),
+      total_ms: Math.round(performance.now() - startedAt),
+      timeline_element_count: timelineElements.length,
+    });
+
+    return {
+      block,
+      compositionPath: compositionFile,
+      hostCompositionPath: activeCompPath || "index.html",
+      insertedStart,
+      insertedElementId,
+    };
   } catch (error) {
+    trackStudioEvent("block_install_failed", {
+      block_name: blockName,
+      total_ms: Math.round(performance.now() - startedAt),
+      error_message: error instanceof Error ? error.message : String(error),
+    });
     const message = error instanceof Error ? error.message : "Failed to add block";
     showToast(message);
     return null;

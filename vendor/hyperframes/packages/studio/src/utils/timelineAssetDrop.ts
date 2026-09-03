@@ -1,20 +1,55 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, isHtmlIllustrationAsset } from "./mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT } from "./mediaTypes";
 import { roundToCenti } from "./rounding";
 import { COMPOSITION_ROOT_OPEN_TAG_RE } from "./compositionPatterns";
 import { patchRootCompositionDuration, readRootCompositionDuration } from "./rootDuration";
+import { isAudioTimelineElement } from "./timelineInspector";
+import { timeRangesOverlap } from "../player/components/timelineCollision";
 
 export const TIMELINE_ASSET_MIME = "application/x-hyperframes-asset";
 export const TIMELINE_BLOCK_MIME = "application/x-hyperframes-block";
 const FALLBACK_TIMELINE_FILE_DROP_DURATION = 5;
 
-export type TimelineAssetKind = "image" | "video" | "audio" | "html";
+export type TimelineAssetKind = "image" | "video" | "audio";
 
 export function getTimelineAssetKind(assetPath: string): TimelineAssetKind | null {
-  if (isHtmlIllustrationAsset(assetPath)) return "html";
   if (IMAGE_EXT.test(assetPath)) return "image";
   if (VIDEO_EXT.test(assetPath)) return "video";
   if (AUDIO_EXT.test(assetPath)) return "audio";
   return null;
+}
+
+export function resolveAvailableVisualTrack(
+  elements: Array<{
+    track: number;
+    start: number;
+    duration: number;
+    tag: string;
+    src?: string;
+  }>,
+  start: number,
+  duration: number,
+): number {
+  const visualElements = elements.filter((element) => !isAudioTimelineElement(element));
+  const visualTracks = Array.from(new Set(visualElements.map((element) => element.track))).sort(
+    (a, b) => a - b,
+  );
+  const normalizedStart = roundToCenti(start);
+  const end = roundToCenti(start + duration);
+  const available = visualTracks.find(
+    (track) =>
+      !visualElements.some(
+        (element) =>
+          element.track === track &&
+          timeRangesOverlap(
+            normalizedStart,
+            end,
+            roundToCenti(element.start),
+            roundToCenti(element.start + element.duration),
+          ),
+      ),
+  );
+  if (available != null) return available;
+  return elements.length > 0 ? Math.max(...elements.map((element) => element.track)) + 1 : 0;
 }
 
 export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<string>): string {
@@ -128,10 +163,6 @@ export function buildTimelineAssetInsertHtml(input: {
 
   if (input.kind === "video") {
     return `<video ${sharedAttrs} muted playsinline style="${visualStyles}"></video>`;
-  }
-
-  if (input.kind === "html") {
-    return `<div ${sharedAttrs} data-hf-asset-kind="html" data-hf-lock-aspect-ratio="16:9" style="${visualStyles}; overflow: hidden"><iframe src="${input.assetPath}" title="Illustration" sandbox="" width="1600" height="900" onload="var f=this,p=f.parentElement,r=function(){f.style.transform='scale('+(p.clientWidth/1600)+')'};r();if(f.__hfResizeObserver)f.__hfResizeObserver.disconnect();f.__hfResizeObserver=new ResizeObserver(r);f.__hfResizeObserver.observe(p)" style="pointer-events: none; position: absolute; inset: 0 auto auto 0; width: 1600px; height: 900px; max-width: none; border: 0; background: white; transform-origin: 0 0"></iframe></div>`;
   }
 
   return `<audio ${sharedAttrs} data-volume="1" style="z-index: ${input.zIndex}"></audio>`;

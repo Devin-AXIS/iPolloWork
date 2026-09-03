@@ -36,12 +36,14 @@ export interface ApplyDomSelectionOptions {
   revealPanel?: boolean;
   additive?: boolean;
   preserveGroup?: boolean;
+  previewInteraction?: "primary" | "context-menu";
   /** Clear only the canvas overlay while retaining the timeline/tree selection. */
   preserveTimelineSelection?: boolean;
 }
 
 export interface ResolveDomSelectionOptions {
   preferClipAncestor?: boolean;
+  exactTarget?: boolean;
   skipSourceProbe?: boolean;
   activeGroupElement?: HTMLElement | null;
 }
@@ -68,6 +70,7 @@ export interface UseDomSelectionReturn {
   domEditGroupSelections: DomEditSelection[];
   domEditHoverSelection: DomEditSelection | null;
   activeGroupElement: HTMLElement | null;
+  previewSelectionInteraction: "primary" | "context-menu" | null;
   // Refs
   domEditSelectionRef: React.MutableRefObject<DomEditSelection | null>;
   domEditGroupSelectionsRef: React.MutableRefObject<DomEditSelection[]>;
@@ -124,6 +127,9 @@ export function useDomSelection({
   const [domEditSelection, setDomEditSelection] = useState<DomEditSelection | null>(null);
   const [domEditGroupSelections, setDomEditGroupSelections] = useState<DomEditSelection[]>([]);
   const [domEditHoverSelection, setDomEditHoverSelection] = useState<DomEditSelection | null>(null);
+  const [previewSelectionInteraction, setPreviewSelectionInteraction] = useState<
+    "primary" | "context-menu" | null
+  >(null);
   // The data-hf-group wrapper the user has drilled into (null = top level).
   const [activeGroupElement, setActiveGroupElementState] = useState<HTMLElement | null>(null);
 
@@ -203,6 +209,7 @@ export function useDomSelection({
         domEditGroupSelectionsRef.current = [];
         setDomEditSelection(null);
         setDomEditGroupSelections([]);
+        setPreviewSelectionInteraction(null);
         if (!options?.preserveTimelineSelection) setSelectedTimelineElementId(null);
         return;
       }
@@ -242,6 +249,7 @@ export function useDomSelection({
       domEditGroupSelectionsRef.current = nextGroup;
       setDomEditSelection(nextSelection);
       setDomEditGroupSelections(nextGroup);
+      setPreviewSelectionInteraction(options?.previewInteraction ?? null);
 
       // Selecting something outside the drilled-into group exits the drill-in, so
       // a later click on the group selects it as a unit again (non-sticky drill-in).
@@ -292,20 +300,12 @@ export function useDomSelection({
   );
 
   const buildDomSelectionFromTarget = useCallback(
-    (
-      target: HTMLElement,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        // Override the drill-in scope (used by canvas double-click to resolve the
-        // child inside a group before the activeGroupElement state has re-rendered).
-        activeGroupElement?: HTMLElement | null;
-      },
-    ) => {
+    (target: HTMLElement, options?: ResolveDomSelectionOptions) => {
       return resolveDomEditSelection(target, {
         activeCompositionPath: activeCompPath,
         isMasterView,
         preferClipAncestor: options?.preferClipAncestor,
+        exactTarget: options?.exactTarget,
         skipSourceProbe: options?.skipSourceProbe,
         activeGroupElement:
           options && "activeGroupElement" in options
@@ -322,11 +322,7 @@ export function useDomSelection({
     async (
       clientX: number,
       clientY: number,
-      options?: {
-        preferClipAncestor?: boolean;
-        skipSourceProbe?: boolean;
-        activeGroupElement?: HTMLElement | null;
-      },
+      options?: ResolveDomSelectionOptions,
     ) => {
       const iframe = previewIframeRef.current;
       if (!iframe || captionEditMode) return null;
@@ -343,11 +339,13 @@ export function useDomSelection({
         options && "activeGroupElement" in options
           ? {
               preferClipAncestor: options.preferClipAncestor,
+              exactTarget: options.exactTarget,
               skipSourceProbe: options.skipSourceProbe,
               activeGroupElement: options.activeGroupElement,
             }
           : {
               preferClipAncestor: options?.preferClipAncestor,
+              exactTarget: options?.exactTarget,
               skipSourceProbe: options?.skipSourceProbe,
               activeGroupElement: owningGroup,
             },
@@ -393,6 +391,7 @@ export function useDomSelection({
       const owningGroup = targetElement.closest<HTMLElement>("[data-hf-group]");
       return buildDomSelectionFromTarget(targetElement, {
         preferClipAncestor: false,
+        exactTarget: true,
         skipSourceProbe: true,
         activeGroupElement: owningGroup,
       });
@@ -604,6 +603,7 @@ export function useDomSelection({
     domEditGroupSelections,
     domEditHoverSelection,
     activeGroupElement,
+    previewSelectionInteraction,
     // Refs
     domEditSelectionRef,
     domEditGroupSelectionsRef,

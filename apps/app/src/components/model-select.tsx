@@ -18,7 +18,14 @@ import {
 } from "@/components/ui/tooltip";
 import { useWorkspace } from "@/react-app/shell/workspace-provider";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
-import { getSelectableChatProviderItems, useProviderListQuery } from "@/react-app/infra/provider-list-query";
+import {
+  getChatModelCatalogEntries,
+  projectAccountProviderConnections,
+  resolveModelRuntime,
+  type ProviderListQueryInput,
+  useMergedProviderListQuery,
+  useProviderListQuery,
+} from "@/react-app/infra/provider-list-query";
 import {
   Command,
   CommandCollection,
@@ -32,7 +39,7 @@ import {
 } from "@/components/ui/command";
 import { isDesktopProviderBlocked } from "@/app/cloud/desktop-app-restrictions";
 import { openModelPickerEvent } from "@/react-app/shell/new-providers-listener";
-import { newProvidersEvent } from "@/app/lib/provider-events";
+import { ModelDirectoryLoadingStatus } from "@/components/model-directory-loading-status";
 
 function getProviderDisplayName(providerId: string) {
   return providerId
@@ -43,57 +50,90 @@ function getProviderDisplayName(providerId: string) {
 }
 
 function useModelOptions(open: boolean) {
-  const { client, opencodeBaseUrl, selectedWorkspaceRoot } = useWorkspace();
+  const {
+    client,
+    engineId,
+    modelCatalogSources,
+    opencodeBaseUrl,
+    connectedProviderIds,
+    hiddenProviderIds,
+    selectedWorkspaceRoot,
+  } = useWorkspace();
   const checkDesktopRestriction = useCheckDesktopRestriction();
 
-  const { data, refetch } = useProviderListQuery({
+  const catalogSources = React.useMemo<readonly ProviderListQueryInput[]>(() => {
+    if (modelCatalogSources.length) return modelCatalogSources;
+    return client
+      ? [{ client, engineId, baseUrl: opencodeBaseUrl, directory: selectedWorkspaceRoot }]
+      : [];
+  }, [client, engineId, modelCatalogSources, opencodeBaseUrl, selectedWorkspaceRoot]);
+
+  const catalogQuery = useMergedProviderListQuery({
+    sources: catalogSources,
+    enabled: open && catalogSources.length > 0,
+  });
+
+  // This query is prewarmed by SessionRoute and shares the same cache key.
+  // It refines known runtime failures in the background; the cached account
+  // catalog stays selectable while a cold engine is still starting.
+  const runtimeQuery = useProviderListQuery({
     client,
+    engineId,
     baseUrl: opencodeBaseUrl,
     directory: selectedWorkspaceRoot,
     enabled: Boolean(client),
   });
-
-  React.useEffect(() => {
-    if (!open || !client) return;
-    void refetch();
-  }, [client, open, refetch]);
-
-  React.useEffect(() => {
-    if (!client) return;
-    const handler = () => {
-      void refetch();
-    };
-    window.addEventListener(newProvidersEvent, handler);
-    return () => window.removeEventListener(newProvidersEvent, handler);
-  }, [client, refetch]);
 
   // Apply org-level restrictions (dev #1505) on top of the raw model list
   // so the picker never surfaces blocked options:
   //   - `allowZenModel` hides the built-in OpenCode provider entries when false
   //   - `allowCustomProviders` hides providers that OpenCode does not report
   //     as connected through the provider list endpoint.
-  return React.useMemo(() => {
+  const options = React.useMemo(() => {
     const restrictToCloud = checkDesktopRestriction({
       restriction: "allowCustomProviders",
     });
+    const hidden = new Set(
+      hiddenProviderIds.map((providerId) => providerId.trim().toLowerCase()),
+    );
 
-    const options = getSelectableChatProviderItems(data)
-      .flatMap((provider) =>
-        Object.entries(provider.models).map(([id, model]) => ({
-          providerID: provider.id,
-          modelID: id,
-          title: model.name,
-          description: provider.name,
-          behaviorTitle: t("model_behavior.title_reasoning_effort"),
-          behaviorLabel: t("settings.provider_default_label"),
-          behaviorDescription: "",
-          behaviorValue: null,
-          isFree: false,
-          isConnected: true,
-        })),
-      );
+    const catalogValue = projectAccountProviderConnections(
+      catalogQuery.data,
+      connectedProviderIds,
+    );
+    const entries = getChatModelCatalogEntries(catalogValue).map((entry) => ({
+      ...entry,
+      runtime: runtimeQuery.data
+        ? resolveModelRuntime(
+            runtimeQuery.data,
+            { providerID: entry.provider.id, modelID: entry.modelId },
+            engineId,
+          )
+        : null,
+    }));
+    const options = entries.map(({ provider, modelId, model, runtime }) => {
+      const runtimePending = runtime === null;
+      return {
+        providerID: provider.id,
+        modelID: modelId,
+        title: model.name,
+        description: provider.name,
+        behaviorTitle: t("model_behavior.title_reasoning_effort"),
+        behaviorLabel: t("settings.provider_default_label"),
+        behaviorDescription: "",
+        behaviorValue: null,
+        isFree: provider.id.trim().toLowerCase() === "opencode",
+        isConnected: true,
+        runtimePending,
+        disabled: false,
+        footer: undefined,
+        supportsVision: runtime?.capabilities?.vision === true
+          || model.capabilities.input?.image === true,
+      };
+    });
 
     return options.filter((option) => {
+      if (hidden.has(option.providerID.trim().toLowerCase())) return false;
       if (
         isDesktopProviderBlocked({
           providerId: option.providerID,
@@ -103,13 +143,20 @@ function useModelOptions(open: boolean) {
         return false;
       }
 
-      if (restrictToCloud && !option.isConnected) {
+      if (restrictToCloud && !option.isConnected && !option.runtimePending) {
         return false;
       }
 
       return true;
     });
-  }, [checkDesktopRestriction, data]);
+  }, [catalogQuery.data, checkDesktopRestriction, connectedProviderIds, engineId, hiddenProviderIds, runtimeQuery.data]);
+
+  return {
+    engineId,
+    options,
+    loading: (catalogQuery.isFetching || runtimeQuery.isFetching) && options.length === 0,
+    loadingMore: (catalogQuery.isFetching || runtimeQuery.isFetching) && options.length > 0,
+  };
 }
 
 type ModelSelectModelItem = {
@@ -118,16 +165,9 @@ type ModelSelectModelItem = {
   option: ModelOption;
 };
 
-type TokenStarEntry = {
-  kind: "tokenstar-connect";
-  id: "tokenstar-connect";
-};
-
-type ModelSelectItem = ModelSelectModelItem | TokenStarEntry;
-
 type ModelSelectGroup = {
   value: string;
-  items: ModelSelectItem[];
+  items: ModelSelectModelItem[];
 };
 
 function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
@@ -150,19 +190,12 @@ function groupByProvider(modelOptions: ModelOption[]): ModelSelectGroup[] {
     groups.set(providerLabel, [item]);
   }
 
-  const grouped: ModelSelectGroup[] = [...groups.entries()]
+  return [...groups.entries()]
     .map(([providerLabel, options]) => ({
       value: providerLabel,
       items: [...options].sort((a, b) => a.option.title.localeCompare(b.option.title)),
     }))
     .sort((a, b) => a.value.localeCompare(b.value));
-  if (!modelOptions.some((option) => option.providerID === "tokenstar")) {
-    const tokenStarEntry: TokenStarEntry = { kind: "tokenstar-connect", id: "tokenstar-connect" };
-    grouped.push({ value: "TokenStar", items: [tokenStarEntry] });
-    grouped.sort((a, b) => a.value.localeCompare(b.value));
-  }
-
-  return grouped;
 }
 
 function isSameModel(a: ModelRef, b: ModelRef) {
@@ -174,7 +207,7 @@ interface ModelSelectProps {
   value: ModelRef;
   onOpenChange: (open: boolean) => void;
   onChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   disabled?: boolean;
 }
@@ -182,7 +215,7 @@ interface ModelSelectProps {
 export type ModelListContentProps = {
   value: ModelRef;
   onChange: (model: ModelRef) => void;
-  onConfigureModels?: () => void;
+  onConfigureModels?: (providerId?: string) => void;
   onConfigureTokenStar?: () => void;
   autoFocus?: boolean;
 };
@@ -191,12 +224,11 @@ export function ModelListContent({
   value,
   onChange,
   onConfigureModels,
-  onConfigureTokenStar,
   autoFocus = true,
 }: ModelListContentProps) {
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
-  const modelOptions = useModelOptions(true);
+  const { engineId, loading, loadingMore, options: modelOptions } = useModelOptions(true);
 
   React.useEffect(() => {
     if (!autoFocus) return;
@@ -207,55 +239,80 @@ export function ModelListContent({
     return () => window.cancelAnimationFrame(frame);
   }, [autoFocus]);
 
-  const groups = React.useMemo(() => groupByProvider(modelOptions), [modelOptions]);
+  const groups = React.useMemo(
+    () => groupByProvider(modelOptions),
+    [modelOptions],
+  );
 
   const handleSelect = (option: ModelOption) => {
     onChange({ providerID: option.providerID, modelID: option.modelID });
     setSearch("");
   };
 
-  const handleTokenStarConnect = () => {
-    setSearch("");
-    onConfigureTokenStar?.();
-  };
-
   return (
     <Command items={groups} value={search} onValueChange={setSearch}>
       <CommandHeader>
         <CommandInput ref={searchInputRef} placeholder={t("model_picker.search_models")} />
+        {loadingMore ? (
+          <ModelDirectoryLoadingStatus
+            className="px-3 pb-1 text-xs"
+            engineId={engineId}
+            hasModels
+          />
+        ) : null}
       </CommandHeader>
-      <CommandEmpty>{t("model_picker.no_results")}</CommandEmpty>
+      <CommandEmpty>
+        {loading
+          ? (
+              <ModelDirectoryLoadingStatus
+                className="px-3 py-2 text-xs"
+                engineId={engineId}
+                hasModels={false}
+              />
+            )
+          : search.trim()
+            ? t("model_picker.no_results")
+            : t("model_picker.no_models_available")}
+      </CommandEmpty>
       <CommandList>
         {(group: ModelSelectGroup) => (
           <CommandGroup key={group.value} items={group.items}>
             <CommandGroupLabel>{group.value}</CommandGroupLabel>
             <CommandCollection>
-              {(item: ModelSelectItem) => {
-                if (item.kind === "tokenstar-connect") {
-                  return (
-                    <CommandItem className="gap-2" key={item.id} value="tokenstar connect" onClick={handleTokenStarConnect}>
-                      <ProviderIcon providerId="tokenstar" providerName="TokenStar" className="size-3.5 opacity-70" size={14} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-foreground">Connect TokenStar</span>
-                        <span className="block truncate text-xs text-muted-foreground">Configure API key</span>
-                      </span>
-                    </CommandItem>
-                  );
-                }
+              {(item: ModelSelectModelItem) => {
                 const option = item.option;
+                const visionBadgeLabel = option.supportsVision ? t("model_picker.badge_vision") : null;
                 return (
                   <CommandItem
-                    className="gap-2"
+                    className="gap-2 data-disabled:opacity-50"
                     key={item.id}
                     value={`${option.providerID}:${option.modelID} ${option.title} ${option.description ?? ""}`}
-                    onClick={() => handleSelect(option)}
+                    disabled={option.disabled && (option.isConnected || !onConfigureModels)}
+                    onClick={() => {
+                      if (option.disabled && !option.isConnected) {
+                        setSearch("");
+                        onConfigureModels?.(option.providerID);
+                        return;
+                      }
+                      if (option.disabled) return;
+                      handleSelect(option);
+                    }}
                     data-checked={isSameModel(value, option)}
                   >
                     <ProviderIcon providerId={option.providerID} providerName={option.description} className="size-3.5 opacity-70" size={14} />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-foreground">{option.title}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="truncate text-foreground">{option.title}</span>
+                        {visionBadgeLabel ? (
+                          <span className="shrink-0 rounded-md bg-emerald-3/40 px-1.5 py-0.5 text-[10px] font-medium text-emerald-11">
+                            {visionBadgeLabel}
+                          </span>
+                        ) : null}
+                      </span>
                       <span className="block truncate text-xs text-muted-foreground">
-                        {option.description ?? getProviderDisplayName(option.providerID)}
+                        {option.disabled
+                          ? option.footer
+                          : option.description ?? getProviderDisplayName(option.providerID)}
                       </span>
                     </span>
                   </CommandItem>
@@ -295,7 +352,7 @@ export function ModelSelect({
   onConfigureTokenStar,
   disabled = false,
 }: ModelSelectProps) {
-  const modelOptions = useModelOptions(open);
+  const { options: modelOptions } = useModelOptions(open);
   const selectedOption = modelOptions.find((option) => isSameModel(value, option));
 
   return (
@@ -337,9 +394,9 @@ export function ModelSelect({
             onChange(model);
             onOpenChange(false);
           }}
-          onConfigureModels={() => {
+          onConfigureModels={(providerId) => {
             onOpenChange(false);
-            onConfigureModels?.();
+            onConfigureModels?.(providerId);
           }}
           onConfigureTokenStar={() => {
             onOpenChange(false);

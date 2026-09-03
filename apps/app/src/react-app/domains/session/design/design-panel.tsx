@@ -1,12 +1,18 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
+import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import {
+  IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  type DesignAiSelectionContext,
+  type DesignStudioClient,
+  type DesignStudioFeatures,
+} from "@ipollowork/design-studio";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -20,9 +26,8 @@ import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
+import { isPptxCompatibleTemplate, type TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
-import type { DesignAiSelectionContext } from "./design-ai-selection";
 import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
@@ -56,6 +61,7 @@ import {
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
 import { DesignSystemDrawer } from "./design-system-drawer";
+import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
 import floatingToolbarDivider from "./assets/floating-toolbar-divider.svg";
 import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
@@ -118,11 +124,21 @@ import {
 
 type DesignPanelProps = {
   sessionId: string;
-  client: iPolloWorkServerClient | null;
+  client: DesignStudioClient | null;
   workspaceId: string | null;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
+  displayName?: string;
   expanded?: boolean;
+  features?: DesignStudioFeatures;
+  branding?: {
+    kind: "design" | "slides";
+    title: string;
+    byline: string;
+    bylineUrl: string;
+    repositoryUrl: string;
+    onAskAi: () => void;
+  };
   onAskAi: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
 };
@@ -221,7 +237,7 @@ function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | nu
 
 async function hydrateDesignPreviewAssets(
   source: string,
-  input: { client: iPolloWorkServerClient | null; workspaceId: string | null; activePagePath: string },
+  input: { client: DesignStudioClient | null; workspaceId: string | null; activePagePath: string },
 ): Promise<HydratedDesignPreview> {
   if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
     return { source, objectUrls: [] };
@@ -528,7 +544,10 @@ export function DesignPanel({
   workspaceId,
   isRemoteWorkspace = false,
   initialPath,
+  displayName,
   expanded = false,
+  features = IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  branding,
   onAskAi,
   onSaveAsTemplate,
 }: DesignPanelProps) {
@@ -538,6 +557,7 @@ export function DesignPanel({
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const imageInputIntentRef = React.useRef<"replacement" | "element-background" | "design-background">("replacement");
   const designTokenDraftRef = React.useRef("");
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const templateQuery = useQuery({
@@ -642,12 +662,40 @@ export function DesignPanel({
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
+  const templateCatalog = features.templates
+    && client?.listDesignStudioTemplates
+    && client.getDesignStudioTemplateCover
+    && client.applyDesignStudioTemplate
+    && workspaceId
+    ? features.templates
+    : null;
   const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
     const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
     const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
     return context?.workspaceId === workspaceId ? checkpoint : undefined;
   });
   const appliedAiCheckpointRef = React.useRef<string | null>(null);
+
+  const applyTemplateSnapshot = React.useCallback((snapshot: TemplateSessionSnapshot) => {
+    queryClient.setQueryData(["design-session-template", workspaceId, sessionId] as const, snapshot);
+    queryClient.removeQueries({ queryKey: ["design-html", workspaceId] });
+    setSelectedPath("");
+    setActivePagePath("");
+    setActivePageHash("");
+    setViewedVersionPath("current");
+    setViewedVersionUpdatedAt(null);
+    setHistory([]);
+    setDraft("");
+    draftRef.current = "";
+    setSavedSource("");
+    setPreviewSource("");
+    setHydratedPreviewSource("");
+    setSelectionState(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    setPreviewLoaded(false);
+  }, [queryClient, sessionId, setHistory, workspaceId]);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -1661,8 +1709,8 @@ export function DesignPanel({
   const fontSize = Math.max(1, Math.round(Number.parseFloat(selection?.styles.fontSize || "16") || 16));
   const setFontSize = (next: number, remember = false) => applyField("fontSize", `${Math.max(1, Math.min(240, next))}px`, remember);
 
-  const replaceImageFromFile = async (file: File | undefined) => {
-    if (!file || !selection || selection.tag !== "img") return;
+  const applyBrowserImage = async (file: File | undefined) => {
+    if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Choose an image file to replace this image.");
       return;
@@ -1673,9 +1721,25 @@ export function DesignPanel({
     }
     try {
       const result = await imageFileToPortableDataUrl(file);
-      rememberHistory();
-      applyField("src", result, false);
-      toast.success("Image replaced in the design.");
+      if (imageInputIntentRef.current === "replacement") {
+        if (!selection || selection.tag !== "img") return;
+        rememberHistory();
+        applyField("src", result, false);
+        toast.success("Image replaced in the design.");
+      } else if (imageInputIntentRef.current === "element-background") {
+        if (!selection || selection.tag === "img") return;
+        applyStyleFields({ backgroundColor: "transparent", backgroundImage: `url(\"${result}\")` });
+        toast.success("Image added as the fill.");
+      } else {
+        handleDesignTokenChange("--ipw-bg-image", `url(\"${result}\")`);
+        handleDesignTokenChange("--ipw-bg-gradient", "none");
+        handleDesignTokenChange("--ipw-bg-overlay", "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))");
+        handleDesignTokenChange("--ipw-bg-overlay-opacity", "0.45");
+        handleDesignTokenChange("--ipw-bg-mode", "image");
+        handleDesignTokenChange("--ipw-bg-size", "cover");
+        handleDesignTokenChange("--ipw-bg-position", "50% 50%");
+        toast.success("Background image applied.");
+      }
     } catch {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
     }
@@ -1696,6 +1760,7 @@ export function DesignPanel({
       return;
     }
     if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+    imageInputIntentRef.current = "replacement";
     imageInputRef.current?.click();
   };
 
@@ -1787,7 +1852,12 @@ export function DesignPanel({
   const chooseBackgroundImage = async () => {
     if (!selection || selection.tag === "img") return;
     const pickedPath = await pickLocalImageFile("选择填充图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "element-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1799,7 +1869,12 @@ export function DesignPanel({
 
   const chooseDesignSystemBackgroundImage = async () => {
     const pickedPath = await pickLocalImageFile("选择全局背景图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "design-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1934,6 +2009,39 @@ export function DesignPanel({
   const viewedVersionLabel = viewedVersionPath === "current"
     ? currentVersionLabel
     : `V${versionTargets.length - versionTargets.findIndex((version) => version.path === viewedVersionPath)}`;
+  const activePageDisplayName = activePagePath === lockedPath
+    ? displayName?.trim() || fileName(activePagePath)
+    : fileName(activePagePath);
+  const editControl = (
+    <Label className={cn("flex shrink-0 items-center gap-2 text-xs", !branding && "order-1")}>
+      <Switch
+        size="sm"
+        className="border-[#AEB2B9] bg-transparent shadow-none data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
+        checked={editing}
+        onCheckedChange={(checked) => {
+          setEditing(checked);
+          setSelectionState(null);
+          setQuickEdit(null);
+          setAdvancedOpen(false);
+        }}
+        aria-label="Edit"
+      />
+      Edit
+    </Label>
+  );
+  const templateControl = templateCatalog ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={cn(DESIGN_ACTION_BUTTON_CLASS, !branding && "order-1")}
+      onClick={() => setTemplateDialogOpen(true)}
+      aria-label={templateCatalog.title}
+      title={templateCatalog.title}
+      data-testid="design-template-market-button"
+    >
+      <TemplateIcon className="size-4" />
+    </Button>
+  ) : null;
 
   return (
     <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
@@ -1942,9 +2050,9 @@ export function DesignPanel({
         type="file"
         accept={LOCAL_IMAGE_ACCEPT}
         className="sr-only"
-        aria-label="Choose replacement image"
+        aria-label="Choose design image"
         onChange={(event) => {
-          replaceImageFromFile(event.currentTarget.files?.[0]);
+          void applyBrowserImage(event.currentTarget.files?.[0]);
           event.currentTarget.value = "";
         }}
       />
@@ -1967,12 +2075,33 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            "flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            branding
+              ? "relative z-30 h-14 flex-nowrap overflow-hidden border-white/60 bg-background/80 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl backdrop-saturate-150 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/90 before:to-transparent dark:border-white/10 dark:bg-background/72 dark:shadow-[0_10px_30px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.12)] dark:before:via-white/20"
+              : "flex-wrap",
             compactToolbar ? "gap-1" : "gap-2",
           )}>
+            {branding ? (
+              <div className="order-0 flex min-w-0 shrink-0 items-center gap-2.5 border-r border-border/70 pr-3">
+                <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/70 text-foreground shadow-[0_6px_18px_-12px_rgba(15,23,42,0.8),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/8 dark:shadow-none" aria-hidden="true">
+                  {branding.kind === "slides" ? <Presentation className="size-4" /> : <Layers3 className="size-4" />}
+                </span>
+                <div className="flex min-w-0 flex-col justify-center leading-none">
+                  <strong className="truncate text-sm font-semibold tracking-[-0.02em]">{branding.title}</strong>
+                  <a
+                    href={branding.bylineUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 w-fit truncate text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {branding.byline}
+                  </a>
+                </div>
+              </div>
+            ) : null}
             {hasSiteVersioning ? (
               <div className={cn("order-0 flex min-w-0 flex-1 items-center gap-2", veryCompactToolbar && "hidden")}>
-                <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
+                <p className="min-w-0 truncate text-sm font-medium">{activePageDisplayName}</p>
                 {versionTargets.length > 0 ? (
                   <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
                     <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-muted focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
@@ -1984,21 +2113,7 @@ export function DesignPanel({
                 ) : null}
               </div>
             ) : null}
-            <Label className="order-1 flex shrink-0 items-center gap-2 text-xs">
-              <Switch
-                size="sm"
-                className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
-                checked={editing}
-                onCheckedChange={(checked) => {
-                  setEditing(checked);
-                  setSelectionState(null);
-                  setQuickEdit(null);
-                  setAdvancedOpen(false);
-                }}
-                aria-label="Edit"
-              />
-              Edit
-            </Label>
+            {!branding ? <>{editControl}{templateControl}</> : null}
             {deck ? (
               <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
@@ -2039,6 +2154,23 @@ export function DesignPanel({
               )
             ) : null}
             <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
+              {branding ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 rounded-lg bg-foreground px-2.5 text-xs font-semibold text-background shadow-none hover:bg-foreground/90 hover:text-background"
+                    onClick={branding.onAskAi}
+                    aria-label="Ask AI about this document"
+                    title="Ask AI"
+                  >
+                    <Sparkles className="size-4" />
+                    <span className={cn(compactToolbar && "sr-only")}>Ask AI</span>
+                  </Button>
+                  {templateControl}
+                  {editControl}
+                </>
+              ) : null}
               {editing ? <Button
                 variant="ghost"
                 size="icon-sm"
@@ -2086,7 +2218,7 @@ export function DesignPanel({
               >
                 {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
               </Button>
-              {!compactToolbar ? (
+              {!compactToolbar && features.publish ? (
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -2118,11 +2250,23 @@ export function DesignPanel({
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   } : undefined}
-                  onPublish={() => publishMutation.mutate()}
+                  onPublish={features.publish ? () => publishMutation.mutate() : undefined}
                   onExportPdf={() => void exportDeckToPdf()}
                   onExportPptx={() => setPptxConfirmationOpen(true)}
                   onSaveAsTemplate={onSaveAsTemplate}
                 />
+              ) : null}
+              {branding ? (
+                <a
+                  href={branding.repositoryUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={cn(DESIGN_ACTION_BUTTON_CLASS, "inline-flex items-center justify-center border border-border/70 bg-background/65 shadow-sm hover:border-foreground/20 hover:bg-background")}
+                  aria-label="View DeepSeek Design on GitHub"
+                  title="DeepSeek Design on GitHub"
+                >
+                  <Github className="size-[18px]" />
+                </a>
               ) : null}
             </div>
           </div>
@@ -2152,7 +2296,7 @@ export function DesignPanel({
                       ref={iframeRef}
                       key={`${activePagePath}:${previewRevision}`}
                       srcDoc={preview}
-                      title={`Design preview: ${fileName(activePagePath)}`}
+                      title={`Design preview: ${activePageDisplayName}`}
                       className={cn(
                         "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
                         isPresentationTemplate
@@ -2168,7 +2312,7 @@ export function DesignPanel({
                           transform: `scale(${presentationScale})`,
                         }
                         : undefined}
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-same-origin"
                       data-preview-loaded={previewLoaded ? "true" : "false"}
                       onLoad={() => {
                         setPreviewLoaded(true);
@@ -2385,7 +2529,7 @@ export function DesignPanel({
                 <DesignSystemDrawer
                   embedded
                   open={propertiesTab === "design-system"}
-                  templateName={designTemplate?.title ?? fileName(activePagePath)}
+                  templateName={designTemplate?.title ?? activePageDisplayName}
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}
                   onClose={() => setAdvancedOpen(false)}
@@ -2428,6 +2572,17 @@ export function DesignPanel({
           void exportDeckToPptx();
         }}
       />
+      {templateCatalog && client && workspaceId ? (
+        <DesignTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          client={client}
+          workspaceId={workspaceId}
+          sessionId={sessionId}
+          copy={templateCatalog}
+          onApplied={applyTemplateSnapshot}
+        />
+      ) : null}
     </div>
   );
 }

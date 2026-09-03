@@ -1,0 +1,31 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "decision-flow",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Decision Flow",
+  "description": "A focused decision path that turns a complex process into three connected steps.",
+  "tags": ["component", "diagram", "flowchart", "process", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "diagrams",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": ["title", "start", "decision", "outcome"],
+      "instructions": "AI may rewrite or expand the three step labels, but should preserve a single left-to-right decision path and one emphasized decision node."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 9,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "decision-flow.html", "target": "compositions/decision-flow.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "From signal to decision", "maxLength": 72, "update": "live" },
+    { "id": "start", "label": "Starting point", "type": "string", "default": "Read the context", "maxLength": 44, "update": "live" },
+    { "id": "decision", "label": "Decision", "type": "string", "default": "Choose the signal", "maxLength": 44, "update": "live" },
+    { "id": "outcome", "label": "Outcome", "type": "string", "default": "Move with confidence", "maxLength": 48, "update": "live" }
+  ]
+}

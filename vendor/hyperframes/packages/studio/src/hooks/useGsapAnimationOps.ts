@@ -15,20 +15,20 @@ import {
   assignGsapTargetAutoIdIfNeeded,
   ensureElementAddressable,
 } from "./gsapScriptCommitHelpers";
-import type {
-  CommitMutation,
-  CommitMutationOptions,
-  SafeGsapCommitMutation,
-} from "./gsapScriptCommitTypes";
+import type { CommitMutation, SafeGsapCommitMutation } from "./gsapScriptCommitTypes";
 import {
-  compileMotionInstance,
-  createMotionInstance,
   defaultMotionDuration,
   getMotionPreset,
   type MotionMutationInput,
   type MotionTargetKind,
 } from "@hyperframes/core/motion-presets";
-import { resolveMotionPresetTiming, resolveSemanticMotionTiming } from "../utils/motionPreset";
+import {
+  rebaseMotionPresetKeyframes,
+  resolveMotionPresetTiming,
+  resolveSemanticMotionTiming,
+  resolveStructuredTextMotionTiming,
+} from "../utils/motionPreset";
+import { readGsapPositionFromIframe } from "./gsapPositionDetection";
 
 interface SdkAnimationDeps {
   sdkSession?: Composition | null;
@@ -37,48 +37,16 @@ interface SdkAnimationDeps {
 
 interface GsapAnimationOpsParams extends SdkAnimationDeps {
   projectIdRef: React.MutableRefObject<string | null>;
+  previewIframeRef: React.RefObject<HTMLIFrameElement | null>;
   activeCompPath: string | null;
   commitMutation: CommitMutation;
   commitMutationSafely: SafeGsapCommitMutation;
   showToast: (message: string, tone?: "error" | "info") => void;
 }
 
-function buildMotionInstantPatch(
-  selector: string,
-  targetKind: MotionTargetKind,
-  mutation: MotionMutationInput,
-  locator: { elementId?: string; hfId?: string },
-): CommitMutationOptions["instantPatch"] | undefined {
-  if (
-    mutation.operation !== "upsert" ||
-    !mutation.presetId ||
-    mutation.start === undefined ||
-    mutation.duration === undefined
-  ) {
-    return undefined;
-  }
-  try {
-    const instance = createMotionInstance({
-      presetId: mutation.presetId,
-      target: { selector, ...locator },
-      targetKind,
-      start: mutation.start,
-      duration: mutation.duration,
-      loop: mutation.loop,
-      parameters: mutation.parameters,
-    });
-    const compiled = compileMotionInstance(instance);
-    return {
-      selector: compiled.targetSelector,
-      change: { kind: "motion", motionId: instance.id, compiled },
-    };
-  } catch {
-    return undefined;
-  }
-}
-
 export function useGsapAnimationOps({
   projectIdRef,
+  previewIframeRef,
   activeCompPath,
   commitMutation,
   commitMutationSafely,
@@ -92,11 +60,11 @@ export function useGsapAnimationOps({
       targetKind: MotionTargetKind,
       mutation: MotionMutationInput,
     ) => {
+      const projectId = projectIdRef.current;
+      if (!projectId) return false;
       const { selector, autoId } = ensureElementAddressable(selection);
       if (autoId) {
-        const projectId = projectIdRef.current;
         const targetPath = selection.sourceFile || activeCompPath || "index.html";
-        if (!projectId) return;
         const assigned = await assignGsapTargetAutoIdIfNeeded({
           projectId,
           targetPath,
@@ -104,7 +72,7 @@ export function useGsapAnimationOps({
           autoId,
           showToast,
         });
-        if (!assigned) return;
+        if (!assigned) return false;
       }
       const locator = {
         ...(selection.id || autoId ? { elementId: selection.id ?? autoId } : {}),
@@ -116,12 +84,20 @@ export function useGsapAnimationOps({
           : undefined;
       const normalizedMutation = preset
         ? (() => {
-            const timing = resolveSemanticMotionTiming(
-              selection,
-              preset.phase,
-              mutation.duration ?? defaultMotionDuration(preset),
-              mutation.start,
-            );
+            const requestedDuration = mutation.duration ?? defaultMotionDuration(preset);
+            const timing = preset.structuredText
+              ? resolveStructuredTextMotionTiming(
+                  selection,
+                  preset.phase,
+                  requestedDuration,
+                  mutation.start,
+                )
+              : resolveSemanticMotionTiming(
+                  selection,
+                  preset.phase,
+                  requestedDuration,
+                  mutation.start,
+                );
             return {
               ...mutation,
               start: timing.position,
@@ -129,12 +105,6 @@ export function useGsapAnimationOps({
             };
           })()
         : mutation;
-      const instantPatch = buildMotionInstantPatch(
-        selector,
-        targetKind,
-        normalizedMutation,
-        locator,
-      );
       await commitMutation(
         selection,
         {
@@ -149,10 +119,15 @@ export function useGsapAnimationOps({
             normalizedMutation.operation === "remove"
               ? "Remove motion preset"
               : "Apply motion preset",
-          softReload: true,
-          ...(instantPatch ? { instantPatch } : {}),
+          // A semantic upsert removes/recreates a tween and receives its stable
+          // motion id on the server. A client-side patch is built from a different
+          // provisional id and can leave the iframe playing the old timeline even
+          // though persistence succeeded. Rebuild the preview for upserts; removal
+          // remains safe on the existing scoped soft-reload path.
+          softReload: normalizedMutation.operation !== "upsert",
         },
       );
+      return true;
     },
     [activeCompPath, commitMutation, projectIdRef, showToast],
   );
@@ -254,11 +229,15 @@ export function useGsapAnimationOps({
       const elDuration = Number.parseFloat(selection.dataAttributes?.duration ?? "1") || 1;
       const position = roundTo3(elStart);
       const duration = roundTo3(elDuration);
+      const basePosition = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+        x: 0,
+        y: 0,
+      };
       const toDefaults: Record<string, Record<string, number>> = {
         from: { opacity: 0 },
-        to: { x: 0, y: 0, opacity: 1 },
+        to: { x: basePosition.x, y: basePosition.y, opacity: 1 },
         set: { opacity: 1 },
-        fromTo: { x: 0, y: 0, opacity: 1 },
+        fromTo: { x: basePosition.x, y: basePosition.y, opacity: 1 },
       };
 
       // Skip SDK path when an id was just assigned server-side (autoId): the
@@ -299,7 +278,15 @@ export function useGsapAnimationOps({
         { label: `Add GSAP ${method} animation` },
       );
     },
-    [activeCompPath, commitMutation, projectIdRef, showToast, sdkSession, sdkDeps],
+    [
+      activeCompPath,
+      commitMutation,
+      previewIframeRef,
+      projectIdRef,
+      showToast,
+      sdkSession,
+      sdkDeps,
+    ],
   );
 
   type KeyframeEntry = {
@@ -417,12 +404,17 @@ export function useGsapAnimationOps({
       }
 
       const { position, duration } = resolveMotionPresetTiming(selection, preset, currentTime);
+      const basePosition = readGsapPositionFromIframe(previewIframeRef.current, selector) ?? {
+        x: 0,
+        y: 0,
+      };
+      const keyframes = rebaseMotionPresetKeyframes(preset.keyframes, basePosition);
       const mutation = {
         type: "add-with-keyframes",
         targetSelector: selector,
         position,
         duration,
-        keyframes: preset.keyframes,
+        keyframes,
         ease: preset.ease,
       };
       const commitOptions = { label: `Apply ${label} motion preset`, softReload: true };
@@ -434,7 +426,7 @@ export function useGsapAnimationOps({
           selector,
           position,
           duration,
-          preset.keyframes,
+          keyframes,
           preset.ease,
           sdkSession,
           sdkDeps,
@@ -445,7 +437,15 @@ export function useGsapAnimationOps({
 
       await commitMutation(selection, mutation, commitOptions);
     },
-    [activeCompPath, commitMutation, projectIdRef, sdkDeps, sdkSession, showToast],
+    [
+      activeCompPath,
+      commitMutation,
+      previewIframeRef,
+      projectIdRef,
+      sdkDeps,
+      sdkSession,
+      showToast,
+    ],
   );
 
   return {

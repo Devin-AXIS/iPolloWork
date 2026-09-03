@@ -10,18 +10,14 @@ import {
   type MouseEvent,
 } from "react";
 import { CaretDown, CaretRight, FunnelSimple } from "@phosphor-icons/react";
+import { formatVisualComponentDataForAi } from "@hyperframes/core/registry";
 import {
   useBlockCatalog,
   type CatalogItem,
-  type CatalogPage,
   type CatalogSection,
-  type AnimationLibrarySection,
+  type CatalogSectionId,
 } from "../../hooks/useBlockCatalog";
-import {
-  getCategoryColors,
-  getCategoryLabel,
-  type BlockCategory,
-} from "../../utils/blockCategories";
+import { getCategoryColors, getCategoryLabel } from "../../utils/blockCategories";
 import { usePlayerStore } from "../../player";
 import { formatTime } from "../../player/lib/time";
 import { useStudioShellContext } from "../../contexts/StudioContext";
@@ -34,17 +30,23 @@ import {
 } from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
-import type { EffectInsertIntent } from "../../utils/blockInstaller";
 
 interface BlocksTabProps {
-  page?: CatalogPage;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string) => Promise<boolean>;
 }
 
-const SECTION_TITLES: Record<AnimationLibrarySection, { en: string; zh: string }> = {
-  "opening-effect": { en: "Opening effects", zh: "开头特效" },
-  "ending-effect": { en: "Ending effects", zh: "结尾特效" },
-  "transition-effect": { en: "Transition effects", zh: "转场特效" },
+const SECTION_TITLES: Record<CatalogSectionId, { en: string; zh: string }> = {
+  intro: { en: "Intro", zh: "开场" },
+  product: { en: "Product", zh: "产品" },
+  data: { en: "Data", zh: "数据" },
+  diagrams: { en: "Diagrams", zh: "图解" },
+  flow: { en: "Flow", zh: "流程" },
+  maps: { en: "Maps", zh: "地图" },
+  compare: { en: "Compare", zh: "对比" },
+  knowledge: { en: "Knowledge", zh: "知识" },
+  people: { en: "People", zh: "人物" },
+  proof: { en: "Proof", zh: "佐证" },
+  outro: { en: "Outro", zh: "结尾" },
 };
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -56,7 +58,7 @@ const CATALOG_GRID_COLUMNS: Record<CatalogColumnCount, string> = {
   4: "grid-cols-4",
 };
 const ALL_SECTIONS_FILTER = "all" as const;
-type CatalogSectionFilter = AnimationLibrarySection | typeof ALL_SECTIONS_FILTER;
+export type ComponentCatalogSection = CatalogSectionId | typeof ALL_SECTIONS_FILTER;
 
 function nextCatalogColumnCount(current: CatalogColumnCount, deltaY: number): CatalogColumnCount {
   if (deltaY > 0) {
@@ -83,11 +85,11 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
-export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock }: BlocksTabProps) {
+export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps) {
   const { locale } = useStudioI18n();
-  const { loading, error, search, setSearch, sections } = useBlockCatalog(page);
+  const { loading, error, search, setSearch, sections } = useBlockCatalog();
   const [previewController] = useState(() => new PreviewController());
-  const [activeSection, setActiveSection] = useState<CatalogSectionFilter>(ALL_SECTIONS_FILTER);
+  const [activeSection, setActiveSection] = useState<ComponentCatalogSection>(ALL_SECTIONS_FILTER);
   const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
     () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
   );
@@ -109,7 +111,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
   }, [columnCount]);
   useEffect(() => {
     previewController.stop();
-  }, [page, previewController, reducedMotion, search]);
+  }, [previewController, reducedMotion, search]);
 
   const handleDensityWheel = useCallback((deltaY: number) => {
     const now = performance.now();
@@ -121,13 +123,12 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
     () => sections.reduce((total, section) => total + section.items.length, 0),
     [sections],
   );
-  const visibleSections = useMemo(
-    () =>
-      activeSection === ALL_SECTIONS_FILTER
-        ? sections
-        : sections.filter((section) => section.id === activeSection),
-    [activeSection, sections],
-  );
+  const visibleSections = useMemo(() => {
+    if (activeSection === ALL_SECTIONS_FILTER) {
+      return sections.filter((section) => section.items.length > 0);
+    }
+    return sections.filter((section) => section.id === activeSection);
+  }, [activeSection, sections]);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
       <div className="flex-shrink-0 space-y-[10px] border-b border-panel-border px-4 pb-[14px] pt-3">
@@ -141,10 +142,10 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={locale === "zh" ? "搜索特效片段…" : "Search effect clips…"}
-            aria-label={locale === "zh" ? "搜索特效片段" : "Search effect clips"}
+            placeholder={locale === "zh" ? "搜索组件…" : "Search components…"}
+            aria-label={locale === "zh" ? "搜索组件" : "Search components"}
             data-testid="block-catalog-search"
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#20bbc0]/50"
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
           />
         </div>
         <label className="grid gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
@@ -160,11 +161,11 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
               const match = sections.find((section) => section.id === nextSection);
               if (match) setActiveSection(match.id);
             }}
-            aria-label={locale === "zh" ? "特效分类" : "Effect category"}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#20bbc0]/50"
+            aria-label={locale === "zh" ? "组件分类" : "Component category"}
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#1FBAC0]/50"
           >
             <option value={ALL_SECTIONS_FILTER}>
-              {locale === "zh" ? "全部特效" : "All effects"} · {totalCount}
+              {locale === "zh" ? "全部组件" : "All components"} · {totalCount}
             </option>
             {sections.map((section) => (
               <option key={section.id} value={section.id}>
@@ -175,11 +176,11 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
         </label>
         <div
           className="rounded-lg bg-panel-input px-3 py-2 text-[10px] leading-4 text-panel-text-3"
-          data-testid="effect-clip-placement-help"
+          data-testid="components-catalog-help"
         >
           {locale === "zh"
-            ? "特效会作为独立片段插入时间线：开头自动顺延内容，结尾追加到末尾，转场落在相邻片段交界处。"
-            : "Effects are inserted as timeline clips: openings shift content, endings append, and transitions use adjacent clip boundaries."}
+            ? "组件会继承当前主题，插入时间线后可继续调整变量，也可以交给 AI 做受控修改。"
+            : "Components inherit the active theme, expose safe variables after insertion, and remain available to AI for controlled edits."}
         </div>
       </div>
 
@@ -204,7 +205,7 @@ export const BlocksTab = memo(function BlocksTab({ page = "effects", onAddBlock 
           previewController={previewController}
           onAddBlock={onAddBlock}
           showSectionHeaders
-          testId={`block-catalog-${page}`}
+          testId="block-catalog-components"
         />
       )}
     </div>
@@ -230,17 +231,26 @@ function CatalogSectionGrid({
   columnCount: CatalogColumnCount;
   onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string) => Promise<boolean>;
   showSectionHeaders: boolean;
   testId: string;
 }) {
   const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
   const [visibleNames, setVisibleNames] = useState<Set<string>>(() => new Set());
-  const [collapsedSections, setCollapsedSections] = useState<Set<AnimationLibrarySection>>(
+  const [collapsedSections, setCollapsedSections] = useState<Set<CatalogSectionId>>(
     () => new Set(),
   );
   const observerRef = useRef<IntersectionObserver | null>(null);
   const cardElementsRef = useRef<Map<string, HTMLElement>>(new Map());
+
+  const toggleSection = useCallback((section: CatalogSectionId) => {
+    setCollapsedSections((current) => {
+      const next = new Set(current);
+      if (next.has(section)) next.delete(section);
+      else next.add(section);
+      return next;
+    });
+  }, []);
 
   const registerCard = useCallback((name: string, element: HTMLElement | null) => {
     const previous = cardElementsRef.current.get(name);
@@ -283,7 +293,7 @@ function CatalogSectionGrid({
           return changed ? next : current;
         });
       },
-      { root: scrollRoot, rootMargin: "80px 0px", threshold: 0 },
+      { root: scrollRoot, rootMargin: "240px 0px", threshold: 0 },
     );
     observerRef.current = observer;
     for (const element of cardElementsRef.current.values()) observer.observe(element);
@@ -318,11 +328,11 @@ function CatalogSectionGrid({
       data-testid={testId}
       data-catalog-columns={columnCount}
       tabIndex={0}
-      aria-label={locale === "zh" ? "特效片段列表" : "Effect clip list"}
+      aria-label={locale === "zh" ? "组件列表" : "Component list"}
     >
       {itemCount === 0 ? (
         <div className="flex h-full min-h-16 items-center justify-center px-3 text-center text-[10px] text-neutral-600">
-          {locale === "zh" ? "没有匹配的特效片段" : "No matching effect clips"}
+          {locale === "zh" ? "此分类暂无组件" : "No components in this category yet"}
         </div>
       ) : (
         <div>
@@ -333,49 +343,12 @@ function CatalogSectionGrid({
               data-testid={`catalog-section-${section.id}`}
             >
               {showSectionHeaders ? (
-                <button
-                  type="button"
-                  aria-expanded={!collapsedSections.has(section.id)}
-                  onClick={() => {
-                    setCollapsedSections((current) => {
-                      const next = new Set(current);
-                      if (next.has(section.id)) next.delete(section.id);
-                      else next.add(section.id);
-                      return next;
-                    });
-                  }}
-                  className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsedSections.has(section.id) ? "" : "mb-[14px]"}`}
-                >
-                  <span
-                    className="absolute inset-y-0 left-0 w-[3px] bg-[#20bbc0]"
-                    aria-hidden="true"
-                  />
-                  {collapsedSections.has(section.id) ? (
-                    <CaretRight
-                      aria-hidden="true"
-                      size={10}
-                      weight="regular"
-                      className="flex-none text-[#a2a6af]"
-                    />
-                  ) : (
-                    <CaretDown
-                      aria-hidden="true"
-                      size={10}
-                      weight="regular"
-                      className="flex-none text-[#a2a6af]"
-                    />
-                  )}
-                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                    {SECTION_TITLES[section.id][locale]}
-                  </span>
-                  <span className="text-xs tabular-nums text-panel-text-3">
-                    {section.items.length}
-                  </span>
-                  <FunnelSimple
-                    aria-hidden="true"
-                    className="h-4 w-4 flex-none text-panel-text-3"
-                  />
-                </button>
+                <CatalogSectionHeader
+                  title={SECTION_TITLES[section.id][locale]}
+                  count={section.items.length}
+                  collapsed={collapsedSections.has(section.id)}
+                  onToggle={() => toggleSection(section.id)}
+                />
               ) : null}
               {!collapsedSections.has(section.id) ? (
                 <div
@@ -401,6 +374,47 @@ function CatalogSectionGrid({
         </div>
       )}
     </div>
+  );
+}
+
+function CatalogSectionHeader({
+  title,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  title: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={!collapsed}
+      onClick={onToggle}
+      className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsed ? "" : "mb-[14px]"}`}
+    >
+      <span className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]" aria-hidden="true" />
+      {collapsed ? (
+        <CaretRight
+          aria-hidden="true"
+          size={10}
+          weight="regular"
+          className="flex-none text-[#a2a6af]"
+        />
+      ) : (
+        <CaretDown
+          aria-hidden="true"
+          size={10}
+          weight="regular"
+          className="flex-none text-[#a2a6af]"
+        />
+      )}
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
+      <span className="text-xs tabular-nums text-panel-text-3">{count}</span>
+      <FunnelSimple aria-hidden="true" className="h-4 w-4 flex-none text-panel-text-3" />
+    </button>
   );
 }
 
@@ -446,63 +460,45 @@ function formatCompositionContext(ctx: CompositionContext): string {
   return lines.join("\n");
 }
 
-function buildAgentPrompt(
-  title: string,
-  name: string,
-  description: string,
-  category: BlockCategory,
-  blockType: string,
-  context: CompositionContext,
-): string {
-  const isComponent = blockType === "hyperframes:component";
-  const kind = isComponent ? "component" : "block";
+function buildAgentPrompt(block: CatalogItem, context: CompositionContext): string {
+  const { title, name, description } = block;
   const compositionInfo = formatCompositionContext(context);
 
-  const categoryPrompts: Record<string, string> = {
-    captions: [
-      `Using /hyperframes, add the "${title}" caption style (registry: ${name}) to my composition.`,
+  if (block.visualComponent) {
+    const slots = block.visualComponent.ai?.slots.join(", ") ?? "declared component slots";
+    const dataContract = block.visualComponent.data;
+    const dataVariable = dataContract
+      ? block.variables?.find((variable) => variable.id === dataContract.binding.variable)
+      : undefined;
+    const aiReadableData =
+      dataContract && dataVariable?.type === "string"
+        ? formatVisualComponentDataForAi(dataContract, dataVariable.default)
+        : undefined;
+    return [
+      `Using /hyperframes, add the reusable visual component "${title}" (registry: ${name}) to my composition.`,
       description,
-      "Transcribe the audio with /media-use, then wire the transcript into this caption component. Match the font colors and animation timing to my composition's design tokens. Place it as an overlay above the main content with the highest z-index.",
-    ].join("\n\n"),
-    vfx: [
-      `Using /hyperframes, add the "${title}" VFX (registry: ${name}) as a full-screen overlay on my composition.`,
-      description,
-      "This is a WebGL effect that requires chrome://flags/#html-in-canvas. Layer it on top of all content, adjust the shader uniforms and color palette to complement my scene, and set the duration to match the composition length.",
-    ].join("\n\n"),
-    transitions: [
-      `Using /hyperframes, add the "${title}" transition (registry: ${name}) between my scenes.`,
-      description,
-      "Place this transition at the cut point between the current scene and the next. Set the duration to 0.5-1s, position it at the scene boundary on the timeline, and make sure the z-index is above both scenes. Adjust colors to match my palette.",
-    ].join("\n\n"),
-    effects: [
-      `Using /hyperframes, add the "${title}" effect (registry: ${name}) as an overlay on my composition.`,
-      description,
-      "Layer this on top of the current content. Adjust the opacity, colors, and animation timing to enhance the scene without overwhelming the main content.",
-    ].join("\n\n"),
-    social: [
-      `Using /hyperframes, add the "${title}" template (registry: ${name}) to my composition.`,
-      description,
-      "Replace the placeholder text, handle, and avatar with my actual content. Match the typography and colors to my brand. Adjust timing so the elements animate in sync with the voiceover.",
-    ].join("\n\n"),
-    data: [
-      `Using /hyperframes, add the "${title}" visualization (registry: ${name}) to my composition.`,
-      description,
-      "Replace the placeholder data with my actual values and labels. Adjust the color scale, animation stagger timing, and typography to match my composition's design system. Size it to fit the current viewport.",
-    ].join("\n\n"),
-    scenes: [
-      `Using /hyperframes, add the "${title}" scene (registry: ${name}) to my composition.`,
-      description,
-      "Replace all placeholder text, images, and content with my actual material. Match fonts, colors, and layout to my existing design tokens. Set the timeline position and duration to fit the narrative flow.",
-    ].join("\n\n"),
-  };
-
-  const instruction =
-    categoryPrompts[category] ??
-    [
-      `Using /hyperframes, add the "${title}" ${kind} (registry: ${name}) to my composition.`,
-      description,
-      "Customize it to match my composition's design and timeline.",
+      `Keep its theme mode as ${block.visualComponent.themeMode}. Prefer its declared variables for routine changes. AI-editable slots: ${slots}.`,
+      block.visualComponent.ai?.instructions ??
+        "Preserve its registered timeline and only make bounded layout or content adjustments.",
+      ...(aiReadableData
+        ? [
+            "## AI-readable component data",
+            "Use this semantic contract instead of guessing or editing the compact storage syntax. Respect column types, units, row limits, mode, and allowed operations.",
+            `\`\`\`json\n${aiReadableData}\n\`\`\``,
+          ]
+        : []),
+      "",
+      "## Current composition state",
+      "",
+      compositionInfo,
     ].join("\n\n");
+  }
+
+  const instruction = [
+    `Using /hyperframes, add the reusable visual component "${title}" (registry: ${name}) to my composition.`,
+    description,
+    "Preserve the registered component contract, inherit the active theme, and prefer its declared variables for routine changes.",
+  ].join("\n\n");
 
   return [instruction, "", "## Current composition state", "", compositionInfo].join("\n");
 }
@@ -521,7 +517,7 @@ const BlockCard = memo(function BlockCard({
   reducedMotion: boolean;
   registerCard: (name: string, element: HTMLElement | null) => void;
   previewController: PreviewController;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
+  onAddBlock?: (blockName: string) => Promise<boolean>;
   locale: "en" | "zh";
 }) {
   const [posterFailed, setPosterFailed] = useState(false);
@@ -530,7 +526,6 @@ const BlockCard = memo(function BlockCard({
   const [previewing, setPreviewing] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
   const colors = getCategoryColors(block.category);
   const duration = block.type === "hyperframes:component" ? undefined : block.duration;
@@ -539,14 +534,22 @@ const BlockCard = memo(function BlockCard({
   const registryPreviewUrl = `/api/registry/blocks/${encodeURIComponent(block.name)}/preview`;
   const compositionPosterUrl = `${registryPreviewUrl}?time=${Math.min((duration ?? 4) / 2, 2).toFixed(2)}`;
   const compositionPlaybackUrl = `${registryPreviewUrl}?autoplay=1`;
-  const canShowPoster = visible && Boolean(posterUrl) && !posterFailed;
+  const prefersCompositionPreview =
+    block.type === "hyperframes:component" && block.librarySection === "caption-animation";
+  const canShowPoster =
+    visible && !prefersCompositionPreview && Boolean(posterUrl) && !posterFailed;
   const canShowVideoThumbnail =
-    visible && Boolean(videoUrl) && (!posterUrl || posterFailed) && !videoThumbnailFailed;
+    visible &&
+    !prefersCompositionPreview &&
+    Boolean(videoUrl) &&
+    (!posterUrl || posterFailed) &&
+    !videoThumbnailFailed;
   const canShowCompositionThumbnail =
     visible &&
+    !block.visualComponent &&
     Boolean(compositionPosterUrl) &&
-    (!videoUrl || videoThumbnailFailed) &&
-    (!posterUrl || posterFailed);
+    (prefersCompositionPreview ||
+      ((!videoUrl || videoThumbnailFailed) && (!posterUrl || posterFailed)));
   const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
 
   const setCardRef = useCallback(
@@ -606,7 +609,6 @@ const BlockCard = memo(function BlockCard({
     return () => {
       mountedRef.current = false;
       clearHoverTimer();
-      if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
       previewController.stop(block.name);
       registerCard(block.name, null);
     };
@@ -615,18 +617,10 @@ const BlockCard = memo(function BlockCard({
   const handleAdd = useCallback(() => {
     if (adding || !onAddBlock) return;
     setAdding(true);
-    const intent: EffectInsertIntent =
-      block.librarySection === "opening-effect"
-        ? "opening"
-        : block.librarySection === "ending-effect"
-          ? "ending"
-          : "transition";
-    onAddBlock(block.name, intent);
-    if (addedTimerRef.current) clearTimeout(addedTimerRef.current);
-    addedTimerRef.current = setTimeout(() => {
+    void onAddBlock(block.name).finally(() => {
       if (mountedRef.current) setAdding(false);
-    }, 1000);
-  }, [adding, block.librarySection, block.name, onAddBlock]);
+    });
+  }, [adding, block.name, onAddBlock]);
 
   const handleCardKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -656,14 +650,7 @@ const BlockCard = memo(function BlockCard({
         })),
         compositionDimensions: compositionDimensions ?? undefined,
       };
-      const prompt = buildAgentPrompt(
-        block.title,
-        block.name,
-        block.description,
-        block.category,
-        block.type,
-        context,
-      );
+      const prompt = buildAgentPrompt(block, context);
       window.parent.postMessage(
         {
           type: "ipollowork:hyperframes:animation-reference",
@@ -673,6 +660,7 @@ const BlockCard = memo(function BlockCard({
             description: block.description,
             type: block.type,
             category: block.category,
+            visualComponent: block.visualComponent,
             tags: block.tags ?? [],
             duration,
             preview: { poster: posterUrl, video: videoUrl },
@@ -690,7 +678,7 @@ const BlockCard = memo(function BlockCard({
       ref={setCardRef}
       role="button"
       tabIndex={0}
-      className="group/card min-w-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/60"
+      className="group/card min-w-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60"
       style={{ contentVisibility: "auto", containIntrinsicSize: "160px" }}
       data-testid="block-catalog-card"
       data-block-name={block.name}
@@ -699,7 +687,10 @@ const BlockCard = memo(function BlockCard({
       onKeyDown={handleCardKeyDown}
       onDragStart={(event) => {
         event.dataTransfer.effectAllowed = "copy";
-        event.dataTransfer.setData(TIMELINE_BLOCK_MIME, JSON.stringify({ name: block.name }));
+        event.dataTransfer.setData(
+          TIMELINE_BLOCK_MIME,
+          JSON.stringify({ name: block.name, dimensions: block.dimensions }),
+        );
         event.dataTransfer.setData("text/plain", block.name);
         handleLeave();
       }}
@@ -738,14 +729,14 @@ const BlockCard = memo(function BlockCard({
           <div className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}>
             <div className="flex min-w-0 flex-col items-center gap-1 px-2 text-center">
               <span className={`max-w-full truncate text-[7px] font-medium ${colors.text}`}>
-                {getCategoryLabel(block.category, locale)}
+                {block.visualComponent ? block.title : getCategoryLabel(block.category, locale)}
               </span>
             </div>
           </div>
         )}
 
         {previewing ? (
-          videoUrl && !videoThumbnailFailed ? (
+          !prefersCompositionPreview && videoUrl && !videoThumbnailFailed ? (
             <video
               src={videoUrl}
               aria-label={`${block.title} preview`}
@@ -805,7 +796,9 @@ const BlockCard = memo(function BlockCard({
             {block.title}
           </div>
           <span className="flex-none text-[9px] leading-4 text-panel-text-3">
-            {getCategoryLabel(block.category, locale)}
+            {block.visualComponent
+              ? SECTION_TITLES[block.visualComponent.category][locale]
+              : getCategoryLabel(block.category, locale)}
           </span>
         </div>
         {block.engine?.plugins?.[0] ? (
@@ -820,27 +813,19 @@ const BlockCard = memo(function BlockCard({
             }}
             title={
               locale === "zh"
-                ? block.librarySection === "opening-effect"
-                  ? "插入到视频开头并顺延现有内容"
-                  : block.librarySection === "ending-effect"
-                    ? "追加到视频末尾"
-                    : "插入到选中片段与下一片段之间"
-                : block.librarySection === "opening-effect"
-                  ? "Insert at the start and shift existing content"
-                  : block.librarySection === "ending-effect"
-                    ? "Append to the end of the video"
-                    : "Insert between the selected clip and the next clip"
+                ? "插入到当前播放位置并打开组件变量"
+                : "Insert at the playhead and open component variables"
             }
             className="flex h-7 min-w-0 items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors hover:bg-panel-input"
           >
             <span className="truncate">
               {adding
                 ? locale === "zh"
-                  ? "已插入"
-                  : "Added"
+                  ? "插入中…"
+                  : "Inserting…"
                 : locale === "zh"
-                  ? "插入片段"
-                  : "Insert clip"}
+                  ? "添加组件"
+                  : "Add component"}
             </span>
           </button>
           <button
@@ -848,10 +833,10 @@ const BlockCard = memo(function BlockCard({
             onClick={handleShowPrompt}
             title={
               locale === "zh"
-                ? "\u8ba9 AI \u6309\u5f53\u524d\u573a\u666f\u96c6\u6210"
-                : "Ask AI to integrate this effect"
+                ? "让 AI 在组件变量与可编辑槽位内调整"
+                : "Ask AI to adapt this component within its declared slots"
             }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors hover:bg-[#20bbc0]/12 hover:text-[#168e92]"
+            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors hover:bg-[#1FBAC0]/12 hover:text-[#168e92]"
           >
             <span className="truncate">{locale === "zh" ? "\u4ea4\u7ed9 AI" : "Ask AI"}</span>
           </button>

@@ -1,4 +1,9 @@
-import type { TemplateCategory, TemplateManifestV1 } from "@ipollowork/types/templates";
+import {
+  isArtifactDeliveryManifest,
+  type TemplateCatalogItem,
+  type TemplateCategory,
+  type TemplateManifestV1,
+} from "@ipollowork/types/templates";
 import { t } from "@/i18n";
 
 export type TemplateBrief = {
@@ -6,28 +11,6 @@ export type TemplateBrief = {
   audience: string;
   details: string;
 };
-
-export const TEMPLATE_BRIEF_REFERENCE_ACCEPT = [
-  ".pdf",
-  ".docx",
-  ".md",
-  ".txt",
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".webp",
-  ".csv",
-  ".json",
-  "application/pdf",
-  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "text/markdown",
-  "text/plain",
-  "text/csv",
-  "application/json",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
-].join(",");
 
 export type TemplateBriefFields = TemplateBrief;
 
@@ -48,6 +31,201 @@ export type TemplateBriefConfig = {
 
 export function isVideoStudioReady(hasTemplateSession: boolean, hasBrief: boolean): boolean {
   return hasTemplateSession && hasBrief;
+}
+
+export type ConversationTemplateIntent = {
+  category: TemplateCategory;
+  prompt: string;
+};
+
+const CREATIVE_DELIVERABLE_ACTION = /(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写(?:一份|一个|一套|一篇)?|做(?:一份|一个|一套|一张|一段|个)?|\b(?:create|build|develop|make|generate|design|produce|draft|write)\b)/i;
+const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
+const PLAN_ONLY_REQUEST = /(?:视频|动画|宣传片|短片)\s*(?:脚本|文案|创意方案)|(?:ppt|幻灯片|演示文稿)\s*(?:大纲|提纲)|(?:网页|网站)\s*(?:需求文档|策划方案)/i;
+const EXISTING_TEMPLATE_EDIT_ACTION = /(?:修改|编辑|调整|优化|更新|完善|修复|改进|改成|改为|换成|换为|替换|重做|重新制作|继续(?:做|改|编辑|调整|优化|完善)|增加|添加|加上|插入|删除|移除|去掉|缩短|延长|放大|缩小|导出|渲染|\b(?:edit|change|update|revise|adjust|optimize|improve|fix|replace|restyle|rewrite|continue|add|insert|remove|delete|shorten|extend|resize|export|render)\b)/i;
+const EXISTING_TEMPLATE_EDIT_QUESTION = /^(?:请)?(?:告诉我)?\s*(?:怎么|如何)|^(?:can you explain\s+)?how\s+(?:do|can|should|would|to)\b/i;
+const CUSTOM_TEMPLATE_REQUEST = /(?:自定义(?:模板|模版|样式|设计)?|空白(?:模板|模版|骨架)?)(?:.{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|卡片|报告|文章))?|(?:不用|不要|不使用|别用)(?:任何)?(?:系统|市场|现有|预设)?\s*(?:模板|模版)|\b(?:custom|blank|from scratch|without (?:a |the )?template|no template)\b/i;
+
+const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
+  category: TemplateCategory;
+  pattern: RegExp;
+}> = [
+  { category: "slides", pattern: /\bpptx?\b|幻灯片|演示文稿|路演稿|演示稿|\b(?:slide deck|slides|presentation|pitch deck|deck)\b/i },
+  { category: "video", pattern: /视频|动画|短片|宣传片|片头|片尾|竖屏短视频|\b(?:video|animation|motion graphics?|reel|promo film)\b/i },
+  { category: "cards", pattern: /社交卡片|轮播卡片|小红书卡片|信息卡片|\b(?:social cards?|carousel)\b/i },
+  { category: "poster", pattern: /海报|横幅|主视觉|\b(?:poster|banner|key visual)\b/i },
+  { category: "app", pattern: /应用原型|产品原型|交互原型|管理后台|控制台|仪表盘|\b(?:app|application|prototype|dashboard|admin console)\b/i },
+  { category: "report", pattern: /分析报告|研究报告|数据报告|实验报告|周报|年报|\b(?:report|readout|weekly update)\b/i },
+  { category: "article", pattern: /公众号文章|博客文章|长文|推文|文章|\b(?:article|blog post|editorial)\b/i },
+  { category: "site", pattern: /落地页|着陆页|官网|网页|网站|页面|\bhtml\b|\b(?:landing page|website|webpage|web page|site)\b/i },
+  { category: "other", pattern: /简历|履历|\b(?:resume|curriculum vitae|cv)\b/i },
+];
+
+const DEFAULT_TEMPLATE_IDS: Partial<Record<TemplateCategory, readonly string[]>> = {
+  site: ["ipollowork.html-anything.prototype-web", "ipollowork.html-anything.web-proto-soft"],
+  video: ["ipollowork.html-anything.motion-frames", "ipollowork.hyperframes.release-spotlight"],
+  slides: ["ipollowork.pptx-brand-narrative", "ipollowork.html-anything.deck-blueprint"],
+  app: ["ipollowork.app-creator-studio"],
+  poster: ["ipollowork.html-anything.poster-hero"],
+  cards: ["ipollowork.html-anything.social-carousel"],
+  report: ["ipollowork.html-anything.data-report"],
+  article: ["ipollowork.html-anything.article-magazine"],
+};
+
+const TEMPLATE_SEMANTIC_SIGNALS: ReadonlyArray<{
+  request: RegExp;
+  template: RegExp;
+  score: number;
+}> = [
+  { request: /融资|路演|投资人|\b(?:fundrais|investor|pitch)\w*\b/i, template: /pitch|fundrais|investor/i, score: 36 },
+  { request: /品牌|品牌故事|\bbrand\w*\b/i, template: /brand|narrative/i, score: 28 },
+  { request: /产品发布|新品|上线|\b(?:product launch|release|launch)\b/i, template: /product|launch|release|spotlight/i, score: 28 },
+  { request: /课程|教学|培训|\b(?:course|lesson|training|education)\b/i, template: /course|lesson|training|education/i, score: 28 },
+  { request: /代码|编程|技术讲解|\b(?:code|coding|developer|technical)\b/i, template: /code|developer|technical|tech/i, score: 26 },
+  { request: /竖屏|短视频|社交媒体|小红书|抖音|\b(?:vertical|social|reel|tiktok)\b/i, template: /vertical|social|reel|xhs/i, score: 32 },
+  { request: /财务|金融|股票|投资|\b(?:finance|financial|stock|equity)\b/i, template: /finance|financial|stock|equity/i, score: 28 },
+  { request: /数据|图表|分析|仪表盘|\b(?:data|chart|analytics|dashboard)\b/i, template: /data|chart|analytics|dashboard|report/i, score: 22 },
+  { request: /建筑|作品集|\b(?:architecture|portfolio|atelier)\b/i, template: /architecture|portfolio|atelier/i, score: 28 },
+  { request: /极简|简约|\bminimal\b/i, template: /minimal/i, score: 16 },
+  { request: /柔和|圆润|\bsoft\b/i, template: /soft/i, score: 16 },
+  { request: /粉彩|小清新|\bpastel\b/i, template: /pastel/i, score: 16 },
+  { request: /暗色|深色|黑色|\b(?:dark|obsidian)\b/i, template: /dark|obsidian/i, score: 16 },
+  { request: /赛博|科技感|\bcyber\b/i, template: /cyber/i, score: 16 },
+  { request: /编辑部|杂志|\b(?:editorial|magazine)\b/i, template: /editorial|magazine/i, score: 16 },
+  { request: /手绘|线框|草图|\b(?:sketch|wireframe)\b/i, template: /sketch|wireframe/i, score: 16 },
+];
+
+function templateSearchText(item: TemplateCatalogItem): string {
+  const { manifest } = item;
+  return [
+    manifest.id,
+    manifest.title,
+    manifest.description,
+    manifest.subcategory,
+    manifest.style,
+    ...manifest.tags,
+  ].join(" ").toLowerCase();
+}
+
+function promptSearchTerms(prompt: string): string[] {
+  const latinTerms = prompt.toLowerCase().match(/[a-z][a-z0-9-]{1,}/g) ?? [];
+  const cjkTerms = prompt.match(/[\u3400-\u9fff]{2,6}/g) ?? [];
+  return [...new Set([...latinTerms, ...cjkTerms])];
+}
+
+export function inferConversationTemplateIntent(prompt: string): ConversationTemplateIntent | null {
+  return inferConversationTemplateIntents(prompt)[0] ?? null;
+}
+
+export function inferConversationTemplateIntents(prompt: string): ConversationTemplateIntent[] {
+  const normalized = prompt.trim();
+  if (!normalized || !CREATIVE_DELIVERABLE_ACTION.test(normalized)) return [];
+  if (EXPLANATION_ONLY_REQUEST.test(normalized) || PLAN_ONLY_REQUEST.test(normalized)) return [];
+  return CATEGORY_INTENT_PATTERNS
+    .filter(({ pattern }) => pattern.test(normalized))
+    .map(({ category }) => ({ category, prompt: normalized }));
+}
+
+export function shouldUseExistingTemplateContext(prompt: string) {
+  const normalized = prompt.trim();
+  if (!normalized
+    || EXPLANATION_ONLY_REQUEST.test(normalized)
+    || EXISTING_TEMPLATE_EDIT_QUESTION.test(normalized)) return false;
+  return EXISTING_TEMPLATE_EDIT_ACTION.test(normalized);
+}
+
+export function conversationArtifactSessionId(sessionId: string, category: TemplateCategory) {
+  const suffix = `-artifact-${category}`;
+  return `${sessionId.slice(0, 256 - suffix.length)}${suffix}`;
+}
+
+const CONVERSATION_ARTIFACT_SESSION_PATTERN = /^(.*)-artifact-(site|video|app|slides|poster|cards|report|article|other)(?:-(\d+))?$/;
+
+/**
+ * Template instances use their own runtime session and artifact directory,
+ * while remaining owned by the conversation that created them. Exact matches
+ * preserve sessions created before multi-template conversations were added.
+ */
+export function isConversationTemplateSessionId(conversationId: string, templateSessionId: string) {
+  if (templateSessionId === conversationId) return true;
+  const match = CONVERSATION_ARTIFACT_SESSION_PATTERN.exec(templateSessionId);
+  if (!match) return false;
+  const embeddedConversationId = match[1] ?? "";
+  return embeddedConversationId === conversationId.slice(0, embeddedConversationId.length);
+}
+
+export function nextConversationArtifactSessionId(
+  conversationId: string,
+  category: TemplateCategory,
+  existingSessionIds: readonly string[],
+) {
+  const occupied = new Set(existingSessionIds);
+  const first = conversationArtifactSessionId(conversationId, category);
+  if (!occupied.has(first)) return first;
+
+  for (let instance = 2; instance < 10_000; instance += 1) {
+    const instanceSuffix = `-artifact-${category}-${instance}`;
+    const candidate = `${conversationId.slice(0, 256 - instanceSuffix.length)}${instanceSuffix}`;
+    if (!occupied.has(candidate)) return candidate;
+  }
+
+  throw new Error("This conversation has too many template instances.");
+}
+
+export function conversationTemplateBrief(prompt: string): TemplateBrief {
+  const normalized = prompt.trim().replace(/\s+/g, " ");
+  const title = normalized
+    .replace(/^(?:请|麻烦)?\s*(?:帮我|给我|我要|我需要|我想要)?\s*/i, "")
+    .replace(/^(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写|做)\s*/i, "")
+    .slice(0, 96)
+    .trim() || "对话生成内容";
+  return {
+    title,
+    audience: "根据当前对话推断目标受众；如需求中已明确受众，以明确内容为准。",
+    details: prompt.trim(),
+  };
+}
+
+export function requestsCustomTemplate(prompt: string): boolean {
+  return CUSTOM_TEMPLATE_REQUEST.test(prompt.trim());
+}
+
+export function selectConversationTemplate(
+  prompt: string,
+  catalog: readonly TemplateCatalogItem[],
+  requestedCategory?: TemplateCategory,
+): TemplateCatalogItem | null {
+  const intent = requestedCategory
+    ? { category: requestedCategory, prompt: prompt.trim() }
+    : inferConversationTemplateIntent(prompt);
+  if (!intent) return null;
+  if (requestsCustomTemplate(intent.prompt)) return null;
+  const candidates = catalog.filter((item) => item.installed && item.manifest.category === intent.category);
+  if (candidates.length === 0) return null;
+  const terms = promptSearchTerms(intent.prompt);
+  const defaults = DEFAULT_TEMPLATE_IDS[intent.category] ?? [];
+  const requestsNativeSlides = intent.category === "slides" && /\bpptx?\b|可编辑|导出.{0,5}ppt/i.test(intent.prompt);
+  const requestsHtmlSlides = intent.category === "slides" && /\bhtml\b|网页演示/i.test(intent.prompt);
+
+  return [...candidates].sort((left, right) => {
+    const score = (item: TemplateCatalogItem) => {
+      const searchText = templateSearchText(item);
+      let value = item.sourceType === "local" || item.sourceType === "market" ? 2 : 0;
+      for (const term of terms) {
+        if (searchText.includes(term.toLowerCase())) value += term.length > 4 ? 4 : 2;
+      }
+      for (const signal of TEMPLATE_SEMANTIC_SIGNALS) {
+        if (signal.request.test(intent.prompt) && signal.template.test(searchText)) value += signal.score;
+      }
+      if (requestsNativeSlides && item.manifest.pptxCompatibility === "native-editable") value += 24;
+      if (requestsHtmlSlides && item.manifest.pptxCompatibility !== "native-editable") value += 18;
+      const defaultIndex = defaults.indexOf(item.manifest.id);
+      if (defaultIndex >= 0) value += Math.max(1, 8 - defaultIndex);
+      return value;
+    };
+    return score(right) - score(left)
+      || left.manifest.title.localeCompare(right.manifest.title)
+      || left.manifest.id.localeCompare(right.manifest.id);
+  })[0] ?? null;
 }
 
 function briefField(key: keyof TemplateBriefFields, label: string, placeholder: string, optional = false): TemplateBriefField {
@@ -214,40 +392,62 @@ export function templateBriefConfigFor(template: Pick<TemplateManifestV1, "categ
   return briefConfig(BRIEF_CONFIG_KEYS[template.category]);
 }
 
+export function templateBriefUserMessage(input: {
+  template: Pick<TemplateManifestV1, "category" | "title"> & Partial<Pick<TemplateManifestV1, "subcategory">>;
+  brief: TemplateBrief;
+}): string {
+  const fields = templateBriefConfigFor(input.template).fields
+    .map((field) => {
+      const value = input.brief[field.key].trim();
+      return value ? `${field.label}: ${value}` : null;
+    })
+    .filter((line): line is string => Boolean(line));
+  return [t("templates.applied", { title: input.template.title }), ...fields].join("\n");
+}
+
 export function templateBriefPrompt(input: {
   template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "id" | "subcategory" | "pptxCompatibility">>;
   entryPath: string;
   briefPath: string;
 }): string {
-  const base = `Read \`${input.briefPath}\` and apply it to the selected \`${input.template.title}\` template at \`${input.entryPath}\`. Keep the template's visual language and update every applicable item in this checklist: ${input.template.applyChecklist.join("; ")}.`;
-  if (input.template.id === "ipollowork.wechat-article") {
-    return `${base} This template has locked brand colors and fixed brand images. Update only the article copy and non-fixed middle article images. Preserve every data-ipw-fixed="true" node exactly, keep fixed-hero.jpg and fixed-footer-cta.jpg unchanged, and only edit the href on a.fixed-footer-cta when a CTA link is provided. Do not write instruction conflicts or process notes into the HTML.`;
+  const checklist = input.template.applyChecklist.join("; ");
+  if (input.template.id && isArtifactDeliveryManifest({ id: input.template.id })) {
+    const categoryContract = input.template.category === "slides" && input.template.pptxCompatibility === "native-editable"
+      ? "Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation; do not add scripts, custom keyboard handlers, slide counters, navigation buttons, speaker notes, responsive slide reflow, or breakpoint-specific slide layouts."
+      : input.template.category === "video"
+        ? "Build a complete deterministic HyperFrames composition with the duration, scenes, motion, and editable variables required by the brief."
+        : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
+    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}.`;
   }
-  const colorInstruction = "Keep the template's final design-tokens.css link and preserve its current theme as the visual source of truth. During this initial brief application, do not change the managed theme block, existing --ipw-* token values, palette, fonts, radii, shadows, or background treatment. Do not introduce higher-priority inline styles or hardcoded colors that override the template theme. Theme changes belong to the Design System panel after initialization. Preserve the DOM skeleton, dimensions, layout, animation, and timing.";
+  const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. Checklist items guide quality/export, not sample count, order, subject, copy, or assets.`;
+  if (input.template.id === "ipollowork.wechat-article") {
+    return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. Update only article copy, non-fixed middle images, and the CTA href when provided.`;
+  }
+  const visualSystemInstruction = "Keep design-tokens.css and preserve its current theme as the visual source of truth; do not change the managed theme block, --ipw-* tokens, palette, fonts, radii, shadows, or background treatment. Reuse typography hierarchy, component patterns, artwork language, and motion vocabulary. Preserve editor/export/runtime hooks.";
   switch (input.template.category) {
     case "video":
-      return `${base} ${colorInstruction} Build this exact video template, not a blank or unrelated project. Decide whether narration materially helps the stated goal; do not ask a separate narration question. Preserve the editable composition, variables, and scene structure while making the content fit the brief.`;
+      return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as an editable seed. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while inheriting composition, motion, typography, and transitions. Preserve the root composition contract, editable variables, editor hooks, and deterministic timeline. Decide whether narration materially helps; do not ask a separate narration question.`;
     case "slides":
-      const compositionInstruction = "The existing HTML and CSS are the layout source of truth. Update existing elements in place: retain the selected template's slide count, section order, containers, class names, positioning, typography hierarchy, and visual rhythm. Do not replace the template with a generic deck, generic white background, generic cards, or a newly invented slide skeleton. Keep the template's colored blocks, artwork, decorative elements, and template-specific components; adapt their copy and declared theme tokens only when needed for the brief.";
+      const compositionInstruction = "Use existing HTML/CSS, slide patterns, artwork, and components as a reusable layout system rather than a finished deck. First plan a coherent narrative and page count from the brief, then select, repeat, recombine, adapt, remove, or reorder patterns. Do not inherit the sample slide count, section order, copy, or assets unless they fit. Keep it recognizable through distinctive typography hierarchy, colored blocks, artwork, component geometry, and rhythm; avoid a generic deck.";
       if (input.template.pptxCompatibility === "native-editable") {
-        return `${base} ${colorInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Preserve the existing fixed 16:9 stage and every data-pptx-text, data-pptx-shape, and data-pptx-image marker. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts; narrow previews scale the same 16:9 stage. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Do not add or remove slides unless the existing template already has that exact structure, and keep every visible slide element within the native PPTX marker contract.`;
+        return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts. Never invent metrics; mark missing evidence.`;
       }
-      return `${base} ${colorInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Keep the existing 16:9 slide system, keyboard navigation, controls, theme tokens, and separate speaker notes. Build a coherent decision-oriented narrative from the brief. Never invent metrics; clearly mark missing evidence for the user to replace. Do not add or remove slides unless the existing template already has that exact structure, and keep every slide editable in the Design panel.`;
+      return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content. Keep 16:9 runtime, keyboard navigation, controls, theme tokens, and speaker notes. Never invent metrics; mark missing evidence and keep slides editable.`;
     case "site":
-      return `${base} ${colorInstruction} The existing website HTML and CSS are the layout source of truth. Update existing elements in place and retain the current header and navigation composition, section hierarchy and order, containers, template-specific class names, artwork, component geometry, visual rhythm, and responsive behavior. Replace content inside that structure; do not rebuild it as a generic split hero, statistics strip, feature-card grid, project grid, or standard landing-page scaffold. Update the complete website, not a partial copy edit. Replace inherited names, navigation labels, links, headings, calls to action, cards, metadata, and footer content with information consistent with the brief. Keep it responsive on desktop and mobile, and keep every part editable in the Design panel.`;
+      return `${base} ${visualSystemInstruction} Plan the information architecture and section order from the brief, then reuse, add, remove, or reorder the template's header, navigation, containers, artwork, and component patterns. Do not retain inherited sections merely because they exist, and do not rebuild the result as a generic split hero, statistics strip, feature-card grid, or unrelated scaffold. Replace inherited labels, links, headings, CTAs, cards, metadata, and footer content. Keep it responsive and editable.`;
     case "app":
-      return `${base} ${colorInstruction} Update the complete App prototype, including the key screens and flows implied by the brief. Keep the interface coherent, realistic, and editable in the Design panel; do not turn it into a marketing website.`;
+      return `${base} ${visualSystemInstruction} Derive screens and flows from the brief, reuse interface patterns to build the complete prototype, keep it realistic/editable, and do not retain irrelevant sample screens or turn it into a marketing website.`;
     case "report":
-      return `${base} ${colorInstruction} Build a clear report narrative with decision-ready sections and visual hierarchy. Do not invent data; mark unknown values for the user to replace.`;
+      return `${base} ${visualSystemInstruction} Build a new report structure from the brief with decision-ready sections and hierarchy. Do not inherit irrelevant sample sections or invent data; mark unknown values.`;
     case "article":
-      return `${base} ${colorInstruction} Write the complete article in the template's editorial style, with a coherent hierarchy and readable body copy; do not leave inherited placeholder content.`;
+      return `${base} ${visualSystemInstruction} Write the complete article from the brief in the editorial style, with content-led hierarchy and readable body copy; remove sample sections/placeholders.`;
     case "poster":
     case "cards":
-      return `${base} ${colorInstruction} Update all visible copy and art direction so the visual message is immediately clear. Preserve the template's composition and make every text element editable.`;
+      return `${base} ${visualSystemInstruction} Recompose visual primitives around the new message, update visible copy and art direction, and keep text editable.`;
     default:
       if (isResumeTemplate(input.template)) {
-        return `${base} ${colorInstruction} Build a complete professional resume from the brief. Structure experience, skills, and outcomes clearly, and remove inherited placeholder identity and employment details.`;
+        return `${base} ${visualSystemInstruction} Build a complete professional resume from the brief. Structure experience, skills, and outcomes clearly; remove inherited placeholder identity and employment details.`;
       }
-      return `${base} ${colorInstruction} Update the complete artifact rather than only one section, and do not leave inherited placeholder content.`;
+      return `${base} ${visualSystemInstruction} Rebuild the complete artifact from the brief and remove sample or placeholder content.`;
   }
 }

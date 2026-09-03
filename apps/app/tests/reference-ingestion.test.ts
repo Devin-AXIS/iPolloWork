@@ -25,6 +25,7 @@ import type { ReferenceIngestionResult } from "../src/react-app/domains/session/
 import { extractTextReference } from "../src/react-app/domains/session/references/extractors/text";
 import { extractTableReference } from "../src/react-app/domains/session/references/extractors/table";
 import { extractDocxReference } from "../src/react-app/domains/session/references/extractors/docx";
+import { extractPptxReference } from "../src/react-app/domains/session/references/extractors/pptx";
 import { ensurePdfTypedArrayHexSupport, extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
 import {
   ingestReferenceFile,
@@ -182,6 +183,9 @@ describe("reference ingestion core", () => {
 
     expect(pack.promptText).toContain("product-plan.pdf");
     expect(pack.promptText).not.toContain("bad.pdf");
+    expect(pack.promptText).toContain("visual and technical system, not a finished artifact to copy");
+    expect(pack.promptText).toContain("Derive the content structure from the current brief");
+    expect(pack.promptText).toContain("Preserve the template's design tokens");
     expect(pack.totalChars).toBeLessThanOrEqual(1800);
     expect(pack.warnings).toContain("Excluded 1 low-quality reference file.");
   });
@@ -454,6 +458,32 @@ describe("reference extractors", () => {
     expect(second?.text).toContain("Beta body detail.");
     expect(second?.text).not.toContain("Alpha body detail.");
   });
+
+  test("extracts PPTX slide text as page-aware chunks", async () => {
+    const zip = new JSZip();
+    zip.file("ppt/slides/slide1.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:cSld><p:spTree><p:sp><p:txBody>
+          <a:p><a:r><a:t>Investor Briefing</a:t></a:r></a:p>
+          <a:p><a:r><a:t>Audience: enterprise buyers.</a:t></a:r></a:p>
+        </p:txBody></p:sp></p:spTree></p:cSld>
+      </p:sld>`);
+    zip.file("ppt/slides/slide2.xml", `<?xml version="1.0" encoding="UTF-8"?>
+      <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">
+        <p:cSld><p:spTree><p:sp><p:txBody>
+          <a:p><a:r><a:t>Requirements: explain security posture and migration plan.</a:t></a:r></a:p>
+        </p:txBody></p:sp></p:spTree></p:cSld>
+      </p:sld>`);
+    const buffer = await zip.generateAsync({ type: "arraybuffer" });
+    const file = new File([buffer], "briefing.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" });
+    const extracted = await extractPptxReference(file);
+
+    expect(extracted.metadata).toMatchObject({ pages: 2 });
+    expect(extracted.text).toContain("Investor Briefing");
+    expect(extracted.text).toContain("Audience: enterprise buyers.");
+    expect(extracted.text).toContain("Requirements: explain security posture and migration plan.");
+    expect(extracted.chunks?.map((chunk) => chunk.page)).toEqual([1, 2]);
+  });
 });
 
 describe("reference ingestion router", () => {
@@ -506,6 +536,7 @@ describe("reference ingestion router", () => {
   test("accepts existing reference file types", () => {
     expect(isReferenceFile(new File(["x"], "brief.pdf", { type: "application/pdf" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.docx", { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }))).toBe(true);
+    expect(isReferenceFile(new File(["x"], "brief.pptx", { type: "application/vnd.openxmlformats-officedocument.presentationml.presentation" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.md", { type: "text/markdown" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.csv", { type: "text/csv" }))).toBe(true);
     expect(isReferenceFile(new File(["x"], "brief.json", { type: "application/json" }))).toBe(true);

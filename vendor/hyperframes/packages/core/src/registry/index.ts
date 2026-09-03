@@ -7,6 +7,10 @@ export type {
   RegistryItemEngine,
   RegistryItemKind,
   RegistryItemLibrarySection,
+  RegistryVisualComponent,
+  RegistryVisualComponentAi,
+  RegistryVisualComponentCategory,
+  RegistryVisualComponentSurface,
   RegistryMotionPreset,
   RegistryMotionPresetAnchor,
   RegistryMotionPresetCategory,
@@ -26,10 +30,34 @@ export type {
   BlockParam,
 } from "./types.js";
 
+export type {
+  ParsedVisualComponentData,
+  RegistryVisualComponentDataBinding,
+  RegistryVisualComponentDataColumn,
+  RegistryVisualComponentDataColumnRole,
+  RegistryVisualComponentDataColumnType,
+  RegistryVisualComponentDataContract,
+  RegistryVisualComponentDataEncoding,
+  RegistryVisualComponentDataKind,
+  RegistryVisualComponentValueFormat,
+  VisualComponentDataCell,
+  VisualComponentDataDocument,
+  VisualComponentDataIssue,
+  VisualComponentDataRow,
+} from "./componentData.js";
+
+export {
+  createVisualComponentDataRow,
+  formatVisualComponentDataForAi,
+  parseVisualComponentData,
+  serializeVisualComponentData,
+} from "./componentData.js";
+
 export {
   ITEM_TYPES,
   FILE_TYPES,
   ITEM_TYPE_DIRS,
+  VISUAL_COMPONENT_CATEGORIES,
   BLOCK_CATEGORIES,
   resolveBlockCategory,
   resolveRegistryItemKind,

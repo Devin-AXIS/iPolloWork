@@ -33,6 +33,15 @@ function motionColor(
   return String(params[parameterId] ?? fallback);
 }
 
+function readableEnabled(params: MotionParameters): boolean {
+  return params.preserveReadable !== "false";
+}
+
+function secondColor(params: MotionParameters, fallback: string): string {
+  if (params.colorSource === "theme") return "var(--ipw-color-primary, #20BBC0)";
+  return String(params.accentColor ?? fallback);
+}
+
 export function buildPresetKeyframes(presetId: string, params: MotionParameters): MotionKeyframe[] {
   const intensity = Number(params.intensity ?? 1);
   const direction = String(params.direction ?? "up");
@@ -298,6 +307,316 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
         frame(65, { x: -2 * intensity, skewX: 0, textShadow: `${2 * intensity}px 0 ${color}` }),
         frame(100, { x: 0, skewX: 0, textShadow: "0 0 0 transparent" }),
       ];
+    case "text.emphasis.highlight-sweep":
+      // The structured recipe supplies the layered word backgrounds and text.
+      return [frame(0, { opacity: 1 }), frame(100, { opacity: 1 })];
+    case "text.enter.editorial-emphasis": {
+      const offset = directionOffset(direction, 28 * intensity);
+      return [
+        frame(0, {
+          opacity: 0,
+          x: offset.x,
+          y: offset.y,
+          scale: 0.74,
+          filter: `blur(${Number(params.blur ?? 7)}px)`,
+        }),
+        frame(68, { opacity: 1, x: -offset.x * 0.08, y: -offset.y * 0.08, scale: 1.065, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.karaoke-flow":
+      return [
+        frame(0, { opacity: 1, y: 0, scale: 1, color: "currentColor" }),
+        frame(34, { opacity: 1, y: -Number(params.lift ?? 7) * intensity, scale: 1.055, color }),
+        frame(100, { opacity: 1, y: 0, scale: 1, color: "currentColor" }),
+      ];
+    case "text.enter.camera-track": {
+      const offset = directionOffset(direction, Number(params.distance ?? 54) * intensity);
+      return [
+        frame(0, {
+          opacity: 0.12,
+          x: offset.x,
+          y: offset.y,
+          scale: 0.62,
+          filter: `blur(${Number(params.blur ?? 12)}px)`,
+        }),
+        frame(72, { opacity: 1, x: -offset.x * 0.055, y: -offset.y * 0.055, scale: 1.035, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.enter.visual-layers":
+      return [
+        frame(0, { opacity: 0, scale: 0.9, textShadow: `${-Number(params.distance ?? 18)}px 5px ${color}, ${Number(params.distance ?? 18)}px -5px ${secondColor(params, "#20BBC0")}` }),
+        frame(58, { opacity: 1, scale: 1.045, textShadow: `-2px 0 ${color}, 2px 0 ${secondColor(params, "#20BBC0")}` }),
+        frame(100, { opacity: 1, scale: 1, textShadow: "0 0 0 transparent" }),
+      ];
+    case "text.enter.matrix-decode": {
+      const density = Number(params.density ?? 1);
+      const blur = Number(params.blur ?? 5);
+      return [
+        frame(0, {
+          opacity: 0,
+          color,
+          x: -10 * intensity * density,
+          filter: `blur(${Math.max(2, blur)}px) contrast(${1 + 0.5 * density})`,
+          letterSpacing: `${0.12 * density}em`,
+          textShadow: `0 0 ${Math.round(12 * density)}px ${color}`,
+        }),
+        frame(28, {
+          opacity: 0.44,
+          color: "#baffd5",
+          x: 5 * intensity,
+          filter: `blur(${Math.max(1, blur * 0.55)}px) contrast(${1 + 0.65 * density})`,
+          letterSpacing: `${0.16 * density}em`,
+          textShadow: `0 0 ${Math.round(18 * density)}px ${color}`,
+        }),
+        frame(58, {
+          opacity: 0.9,
+          color,
+          x: 2 * intensity,
+          filter: `blur(${Math.max(0.5, blur * 0.14)}px) contrast(${1 + 0.25 * density})`,
+          letterSpacing: `${0.04 * density}em`,
+          textShadow: `0 0 ${Math.round(10 * density)}px ${color}`,
+        }),
+        frame(100, {
+          opacity: 1,
+          color: "currentColor",
+          x: 0,
+          filter: "blur(0px) contrast(1)",
+          letterSpacing: "0em",
+          textShadow: "0 0 0 transparent",
+        }),
+      ];
+    }
+    case "text.emphasis.gradient-fill": {
+      const accent = secondColor(params, "#FF4FD8");
+      const angle = direction === "left" ? 270 : direction === "up" ? 0 : direction === "down" ? 180 : 90;
+      const startPosition = direction === "left" ? "100% 50%" : direction === "up" ? "50% 100%" : "0% 50%";
+      const endPosition = direction === "left" ? "0% 50%" : direction === "up" ? "50% 0%" : direction === "down" ? "50% 100%" : "100% 50%";
+      const gradient = `linear-gradient(${angle}deg, ${color} 0%, ${accent} 50%, ${color} 100%)`;
+      return [
+        frame(0, {
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: startPosition,
+          filter: "brightness(0.9) saturate(1)",
+          scale: 0.86,
+          y: 18 * intensity,
+        }),
+        frame(48, {
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: endPosition,
+          filter: `brightness(${1 + 0.28 * intensity}) saturate(${1 + 0.35 * intensity})`,
+          scale: 1.12,
+          y: -4 * intensity,
+        }),
+        frame(100, {
+          color: "transparent",
+          backgroundImage: gradient,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: "220% 220%",
+          backgroundPosition: startPosition,
+          filter: "brightness(1) saturate(1)",
+          scale: 1,
+          y: 0,
+        }),
+      ];
+    }
+    case "text.emphasis.neon-glow":
+    case "text.emphasis.neon-accent": {
+      const glow = Number(params.glow ?? 1);
+      const drift = presetId === "text.emphasis.neon-accent" ? 6 * intensity : 0;
+      const accent = presetId === "text.emphasis.neon-accent" ? secondColor(params, "#00fff0") : "#ff4fd8";
+      return [
+        frame(0, { x: 0, color: "currentColor", textShadow: "0 0 0 transparent" }),
+        frame(36, {
+          x: drift,
+          color,
+          textShadow: `0 0 ${Math.round(10 * glow)}px ${color}, 0 0 ${Math.round(28 * glow)}px ${color}, ${Math.round(3 * intensity)}px 0 ${accent}`,
+          filter: `brightness(${1 + 0.38 * glow}) saturate(${1 + 0.35 * glow})`,
+        }),
+        frame(64, {
+          x: -drift * 0.5,
+          color: accent,
+          textShadow: `0 0 ${Math.round(12 * glow)}px ${accent}, 0 0 ${Math.round(34 * glow)}px ${color}, ${-Math.round(3 * intensity)}px 0 ${color}`,
+          filter: `brightness(${1 + 0.28 * glow}) saturate(${1 + 0.45 * glow})`,
+        }),
+        frame(100, {
+          x: 0,
+          color: "currentColor",
+          textShadow: `0 0 ${Math.round(6 * glow)}px ${color}`,
+          filter: "brightness(1)",
+        }),
+      ];
+    }
+    case "text.emphasis.rgb-glitch": {
+      const density = Number(params.density ?? 1);
+      const blur = Number(params.blur ?? 0);
+      const readable = readableEnabled(params);
+      return [
+        frame(0, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
+        frame(12, {
+          opacity: readable ? 1 : 0.72,
+          x: 10 * intensity * density,
+          skewX: 7 * intensity,
+          filter: `blur(${Math.max(0.5, blur * 0.34)}px) contrast(1.25)`,
+          textShadow: `${-7 * density}px 0 #ff1745, ${7 * density}px 0 #00fff0, 0 3px rgba(255,255,255,0.45)`,
+        }),
+        frame(25, {
+          opacity: readable ? 1 : 0.78,
+          x: -12 * intensity * density,
+          skewX: -8 * intensity,
+          filter: `blur(${blur * 0.2}px) contrast(1.4)`,
+          textShadow: `${8 * density}px 0 ${color}, ${-8 * density}px 0 #22d3ee`,
+        }),
+        frame(46, {
+          opacity: 1,
+          x: 7 * intensity * density,
+          skewX: 5 * intensity,
+          filter: `blur(${blur * 0.1}px) contrast(1.18)`,
+          textShadow: `${-5 * density}px 0 ${color}, ${5 * density}px 0 #22d3ee`,
+        }),
+        frame(64, {
+          opacity: 1,
+          x: -3 * intensity * density,
+          skewX: -2 * intensity,
+          filter: "blur(0px) contrast(1)",
+          textShadow: `${2 * density}px 0 #ff1745, ${-2 * density}px 0 #00fff0`,
+        }),
+        frame(100, { opacity: 1, x: 0, skewX: 0, filter: "blur(0px)", textShadow: "0 0 0 transparent" }),
+      ];
+    }
+    case "text.enter.clip-wipe": {
+      const wipeOffset = directionOffset(direction, 18 * intensity);
+      const wipeBlur = Math.max(0.5, 1 + 1.2 * intensity);
+      return [
+        frame(0, {
+          opacity: 0,
+          x: -wipeOffset.x,
+          y: -wipeOffset.y,
+          clipPath: wipeInset(direction, true),
+          filter: `blur(${wipeBlur}px)`,
+        }),
+        frame(38, {
+          opacity: 1,
+          x: 0,
+          y: 0,
+          clipPath: wipeInset(direction, false),
+          filter: "blur(0px)",
+        }),
+        frame(100, { opacity: 1, x: 0, y: 0, clipPath: wipeInset(direction, false), filter: "blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.blend-difference": {
+      const blur = Number(params.blur ?? 0);
+      return [
+        frame(0, { opacity: 1, mixBlendMode: "normal", filter: "invert(0) blur(0px)" }),
+        frame(45, {
+          opacity: readableEnabled(params) ? 1 : 0.86,
+          mixBlendMode: "difference",
+          filter: `invert(${0.65 * intensity}) blur(${blur * 0.1}px)`,
+        }),
+        frame(100, { opacity: 1, mixBlendMode: "normal", filter: "invert(0) blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.weight-shift": {
+      const minWeight = Number(params.minWeight ?? 400);
+      const maxWeight = Number(params.maxWeight ?? 800);
+      return [
+        frame(0, { fontWeight: minWeight, scale: 1 }),
+        frame(48, { fontWeight: maxWeight, scale: 1 + 0.025 * intensity }),
+        frame(100, { fontWeight: minWeight, scale: 1 }),
+      ];
+    }
+    case "text.emphasis.texture-fill": {
+      const density = Number(params.density ?? 1);
+      const angle = direction === "left" ? 270 : direction === "up" ? 0 : direction === "down" ? 180 : 90;
+      const textureSize = Math.max(6, Math.round(28 / Math.max(0.2, density)));
+      const texturePosition = direction === "left" ? "100% 50%" : direction === "up" ? "50% 100%" : direction === "down" ? "50% 0%" : "0% 50%";
+      const textureEndPosition = direction === "left" ? "0% 50%" : direction === "up" ? "50% 0%" : direction === "down" ? "50% 100%" : "100% 50%";
+      const texture = `repeating-linear-gradient(${angle}deg, rgba(255, 255, 255, 0.48) 0 1px, transparent 1px ${textureSize}px), radial-gradient(circle at 25% 25%, rgba(255, 255, 255, 0.38) 0 1px, transparent 1px), linear-gradient(${angle}deg, ${color}, ${secondColor(params, "#20BBC0")})`;
+      return [
+        frame(0, {
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: texturePosition,
+          filter: "contrast(1) brightness(1)",
+          letterSpacing: "0em",
+        }),
+        frame(52, {
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: textureEndPosition,
+          filter: `contrast(${1 + 0.45 * density}) brightness(${1 + 0.18 * intensity})`,
+          letterSpacing: `${0.02 * density}em`,
+        }),
+        frame(100, {
+          color: "transparent",
+          backgroundImage: texture,
+          backgroundClip: "text",
+          WebkitBackgroundClip: "text",
+          WebkitTextFillColor: "transparent",
+          backgroundSize: `${textureSize}px ${textureSize}px, ${textureSize * 2}px ${textureSize * 2}px, 180% 180%`,
+          backgroundPosition: texturePosition,
+          filter: "contrast(1) brightness(1)",
+          letterSpacing: "0em",
+        }),
+      ];
+    }
+    case "text.emphasis.kinetic-slam": {
+      const distance = Number(params.distance ?? 56);
+      const slamOffset = directionOffset(direction, distance * intensity);
+      const readable = readableEnabled(params);
+      const launchOpacity = readable ? 0.86 : 0.38;
+      const launchBlur = readable ? 5 : Math.max(9, 7 * intensity);
+      const impactScale = readable ? 1.2 + 0.05 * intensity : 1.28 + 0.1 * intensity;
+      const settleDistance = readable ? 0.14 : 0.26;
+      return [
+        frame(0, { opacity: launchOpacity, x: -slamOffset.x, y: -slamOffset.y, scale: 0.78, filter: `blur(${launchBlur}px)` }),
+        frame(34, { opacity: readable ? 1 : 0.88, x: 0, y: 0, scale: impactScale, filter: readable ? "blur(0px)" : "blur(1px)" }),
+        frame(48, { opacity: 1, x: -slamOffset.x * 0.07, y: -slamOffset.y * 0.07, scale: 0.94, filter: "blur(0px)" }),
+        frame(72, { opacity: readable ? 1 : 0.94, x: slamOffset.x * settleDistance, y: slamOffset.y * settleDistance, scale: readable ? 1.03 : 0.97, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, x: 0, y: 0, scale: 1, filter: "blur(0px)" }),
+      ];
+    }
+    case "text.emphasis.emoji-pop":
+      return [
+        frame(0, { scale: 1, rotation: 0 }),
+        frame(36, { scale: 1 + 0.18 * intensity, rotation: -6 * intensity }),
+        frame(68, { scale: 0.98, rotation: 3 * intensity }),
+        frame(100, { scale: 1, rotation: 0 }),
+      ];
+    case "text.emphasis.particle-burst": {
+      const density = Number(params.density ?? 1);
+      return [
+        frame(0, { scale: 1, textShadow: "0 0 0 transparent", filter: "brightness(1)" }),
+        frame(44, {
+          scale: 1 + 0.08 * intensity,
+          textShadow: `0 -${Math.round(10 * density)}px ${color}, ${Math.round(8 * density)}px ${Math.round(6 * density)}px ${color}, -${Math.round(8 * density)}px ${Math.round(6 * density)}px ${color}`,
+          filter: `brightness(${1 + 0.22 * intensity})`,
+        }),
+        frame(100, { scale: 1, textShadow: "0 0 0 transparent", filter: "brightness(1)" }),
+      ];
+    }
     case "text.emphasis.prism-glow":
       return [
         frame(0, { color, filter: "brightness(1) saturate(1)", letterSpacing: "0em" }),

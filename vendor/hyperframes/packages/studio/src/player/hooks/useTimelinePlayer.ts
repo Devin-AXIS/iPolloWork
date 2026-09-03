@@ -30,6 +30,7 @@ import {
   getDefaultStaticSeekPlaybackClock,
   releaseStaticSeekCache,
   resolveStaticSeekFallback,
+  shouldUseDirectRuntimeAdapter,
   shouldUseDirectTimelineAdapter,
   wrapAdapterWithDurationLimit,
   type StaticSeekCacheEntry,
@@ -79,7 +80,6 @@ export function useTimelinePlayer() {
   const pendingSeekRef = useRef<number | null>(null);
   const isRefreshingRef = useRef(false);
   const reverseRafRef = useRef<number>(0);
-  const rangePreviewRafRef = useRef<number>(0);
   const shuttleDirectionRef = useRef<"forward" | "backward" | null>(null);
   const shuttleSpeedIndexRef = useRef(0);
   const iframeShortcutCleanupRef = useRef<(() => void) | null>(null);
@@ -152,6 +152,7 @@ export function useTimelinePlayer() {
         win.__player && typeof win.__player.play === "function" ? win.__player : null;
       const docDuration = readTimelineDurationFromDocument(iframe.contentDocument);
       const adapterDur = getAdapterDuration(playerAdapter);
+      const requiredDuration = Math.max(docDuration, usePlayerStore.getState().duration);
       const withTimedVisibility = (adapter: PlaybackAdapter) =>
         wrapAdapterWithTimedClipVisibility(
           docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
@@ -173,7 +174,7 @@ export function useTimelinePlayer() {
         );
       }
 
-      if (adapterDur > 0 && docDuration <= adapterDur) {
+      if (shouldUseDirectRuntimeAdapter(adapterDur, requiredDuration)) {
         releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
         return withTimedVisibility(playerAdapter!);
       }
@@ -212,11 +213,7 @@ export function useTimelinePlayer() {
       // Wrap the best available adapter with the effective duration so the
       // seek slider, seek clamping, and duration display cover the full range.
       const bestAdapter = playerAdapter ?? timelineAdapter;
-      const effectiveDuration = Math.max(
-        usePlayerStore.getState().duration,
-        docDuration,
-        adapterDur,
-      );
+      const effectiveDuration = Math.max(requiredDuration, adapterDur);
       if (
         bestAdapter &&
         effectiveDuration > 0 &&
@@ -366,11 +363,19 @@ export function useTimelinePlayer() {
   );
   const pause = useCallback(() => {
     stopReverseLoop();
-    stopPreviewMedia();
     const adapter = getAdapter();
+    const pausedAt = adapter?.getTime();
+    // Freeze generated requestAnimationFrame loops before pausing their audio.
+    // Some generated caption systems derive the active caption from the only
+    // playing voiceover; letting one more frame run after audio.pause() makes
+    // them render an empty/zero-time caption state.
+    stopPreviewMedia();
     if (adapter) {
       adapter.pause();
-      setCurrentTime(adapter.getTime()); // sync store so Split/Delete have accurate time
+      // A deterministic seek after pause paints the exact held frame and also
+      // re-applies Studio's timed-clip visibility for captions and scenes.
+      adapter.seek(pausedAt ?? 0);
+      setCurrentTime(pausedAt ?? 0); // sync store so Split/Delete have accurate time
     }
     setIsPlaying(false);
     shuttleDirectionRef.current = null;
@@ -454,34 +459,6 @@ export function useTimelinePlayer() {
       seek,
     });
 
-  const previewRange = useCallback(
-    (start: number, duration: number) => {
-      cancelAnimationFrame(rangePreviewRafRef.current);
-      if (!Number.isFinite(start) || !Number.isFinite(duration) || start < 0 || duration <= 0) {
-        return;
-      }
-      pause();
-      if (!seek(start)) return;
-      play();
-      const adapter = getAdapter();
-      const end = Math.min(start + duration, adapter?.getDuration() ?? start + duration);
-      const monitor = () => {
-        const activeAdapter = getAdapter();
-        if (!activeAdapter?.isPlaying()) return;
-        const time = activeAdapter.getTime();
-        if (time < start - 0.05 || time > end + 0.1) return;
-        if (time >= end - 0.01) {
-          pause();
-          seek(end);
-          return;
-        }
-        rangePreviewRafRef.current = requestAnimationFrame(monitor);
-      };
-      rangePreviewRafRef.current = requestAnimationFrame(monitor);
-    },
-    [getAdapter, pause, play, seek],
-  );
-
   const { processTimelineMessageRef, enrichMissingCompositionsRef, onIframeLoad } =
     useTimelineSyncCallbacks({
       iframeRef,
@@ -497,6 +474,7 @@ export function useTimelinePlayer() {
       attachIframeShortcutListeners,
       applyPreviewAudioState,
       stopPreviewMedia,
+      resumePlayback: play,
     });
   const saveSeekPosition = useCallback(() => {
     // Never DEGRADE the saved position. Overlapping reloads (e.g. an external
@@ -520,8 +498,11 @@ export function useTimelinePlayer() {
     isRefreshingRef.current = true;
     stopRAFLoop();
     stopReverseLoop();
-    setIsPlaying(false);
-  }, [getAdapter, stopRAFLoop, setIsPlaying, stopReverseLoop]);
+    // Keep the store's playback intent intact. The visible player is paused by
+    // refreshPlayer below, and initializeAdapter resumes the staged replacement
+    // only when the user had actually been playing. Clearing the flag here made
+    // any delayed file-change refresh look like a spontaneous user pause.
+  }, [getAdapter, stopRAFLoop, stopReverseLoop]);
   const refreshPlayer = useCallback(() => {
     const iframe = iframeRef.current;
     if (!iframe) return;
@@ -611,7 +592,6 @@ export function useTimelinePlayer() {
       stopReverseLoop();
       stopScrubPreviewAudio();
       stopPreviewMedia();
-      cancelAnimationFrame(rangePreviewRafRef.current);
       releaseStaticSeekCache(staticSeekAdapterRef, staticSeekWarnedRef);
       if (probeIntervalRef.current) clearInterval(probeIntervalRef.current);
     };
@@ -642,7 +622,6 @@ export function useTimelinePlayer() {
     play,
     pause,
     togglePlay,
-    previewRange,
     seek,
     onIframeLoad,
     refreshPlayer,

@@ -12,6 +12,7 @@ import {
   type OverlayRect,
   type ResolvedElementRef,
   groupOverlayItemsEqual,
+  isElementLaidOutForSelectionOverlay,
   isElementVisibleForOverlay,
   groupAwareOverlayRect,
   orientedGroupAwareOverlayRect,
@@ -30,6 +31,14 @@ function childRectsEqual(a: OverlayRect[], b: OverlayRect[]): boolean {
     if (!rectsEqual(a[i]!, b[i]!)) return false;
   }
   return true;
+}
+
+export function shouldMeasureDomEditChildRect(root: HTMLElement, child: HTMLElement): boolean {
+  const generatedMotionText =
+    root.getAttribute("data-ipw-motion-structure") === "v1" ||
+    root.getAttribute("data-ipw-motion-split") === "v1";
+  if (!generatedMotionText) return true;
+  return !child.closest("[data-ipw-motion-role], [data-ipw-motion-word], [data-ipw-motion-char]");
 }
 
 interface UseDomEditOverlayRectsOptions {
@@ -221,12 +230,15 @@ export function useDomEditOverlayRects({
           resolvedElementRef as ResolvedElementRef,
         );
         // An explicitly-selected element's overlay must track it whenever it's laid
-        // out and not display:none/visibility:hidden/opacity:0 — use basic visibility,
+        // out and not display:none/visibility:hidden. Opacity may be zero on the
+        // boundary frame of an entrance/exit animation, but the selected authored
+        // node still needs visible canvas chrome so timeline selection stays synced.
+        // Use basic selection visibility,
         // NOT the occlusion heuristic. Occlusion (isElementVisibleInPreview) treats any
         // opacity:1 ancestor as an opaque cover even when it paints nothing (e.g. a
         // backgroundless full-bleed scene above a subcomposition), which would wrongly
         // hide the selection box. Occlusion stays for hover, where a false hide is cheap.
-        if (el && isElementVisibleForOverlay(el)) {
+        if (el && isElementLaidOutForSelectionOverlay(el)) {
           // Groups render as an AABB union of their members (a group OBB is out of
           // scope); a single element renders as an oriented box that co-rotates
           // with its transform. orientedOverlayRect gates on rotation internally
@@ -241,6 +253,7 @@ export function useDomEditOverlayRects({
             const nextChildRects: OverlayRect[] = [];
             for (let i = 0; i < descendants.length; i++) {
               const child = descendants[i] as HTMLElement;
+              if (!shouldMeasureDomEditChildRect(el, child)) continue;
               if (!child.getBoundingClientRect) continue;
               const r = toVisibleOverlayRect(overlayEl, iframe, child);
               if (r && r.width > 2 && r.height > 2) nextChildRects.push(r);

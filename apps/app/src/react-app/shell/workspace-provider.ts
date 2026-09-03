@@ -1,31 +1,51 @@
 import * as React from "react";
 
-import type { Client } from "@/app/types";
+import type { ProviderListQueryInput } from "@/react-app/infra/provider-list-query";
 
 type WorkspaceContextValue = {
-  client: Client | null;
+  client: unknown | null;
+  engineId?: string | null;
   opencodeBaseUrl: string;
   selectedWorkspaceRoot: string;
+  modelCatalogSources: readonly ProviderListQueryInput[];
+  connectedProviderIds: readonly string[];
+  hiddenProviderIds: readonly string[];
 };
 
 const WorkspaceContext = React.createContext<WorkspaceContextValue | null>(null);
 
 type WorkspaceProviderProps = {
-  client: Client | null;
+  client: unknown | null;
+  engineId?: string | null;
   opencodeBaseUrl?: string;
   selectedWorkspaceRoot: string;
+  modelCatalogSources?: readonly ProviderListQueryInput[];
+  connectedProviderIds?: readonly string[];
+  hiddenProviderIds?: readonly string[];
   children: React.ReactNode;
 };
 
 export function WorkspaceProvider({
   client,
+  engineId,
   opencodeBaseUrl = "",
   selectedWorkspaceRoot,
+  modelCatalogSources = [],
+  connectedProviderIds = [],
+  hiddenProviderIds = [],
   children,
 }: WorkspaceProviderProps) {
   const value = React.useMemo(
-    () => ({ client, opencodeBaseUrl, selectedWorkspaceRoot }),
-    [client, opencodeBaseUrl, selectedWorkspaceRoot],
+    () => ({
+      client,
+      engineId,
+      opencodeBaseUrl,
+      selectedWorkspaceRoot,
+      modelCatalogSources,
+      connectedProviderIds,
+      hiddenProviderIds,
+    }),
+    [client, connectedProviderIds, engineId, hiddenProviderIds, modelCatalogSources, opencodeBaseUrl, selectedWorkspaceRoot],
   );
 
   return React.createElement(WorkspaceContext.Provider, { value }, children);

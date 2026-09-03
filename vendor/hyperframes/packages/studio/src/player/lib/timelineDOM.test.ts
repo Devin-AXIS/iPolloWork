@@ -7,9 +7,14 @@ import {
   findTimelineDomNodeForClip,
 } from "./timelineDOM";
 import { resolveDomEditSelection } from "../../components/editor/domEditing";
-import { buildStableSelector } from "../../components/editor/domEditingDom";
+import {
+  buildStableSelector,
+  setCompositionSourceMap,
+} from "../../components/editor/domEditingDom";
 import {
   findElementForTimelineElement,
+  getDomLayerPatchTarget,
+  getSelectionCandidate,
   resolveAllVisualDomEditTargets,
 } from "../../components/editor/domEditingElement";
 
@@ -83,6 +88,41 @@ describe("timeline manifest translation", () => {
     expect(findTimelineDomNodeForClip(document, sceneClip, 1, used)?.id).toBe("scene-intro");
   });
 
+  test("binds a composition clip to its timed host instead of a same-id inner root", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <div
+          data-composition-id="opening-editorial-rise"
+          data-start="10"
+          data-duration="4.6"
+          data-track-index="0"
+        >
+          <main
+            id="opening-editorial-rise"
+            data-composition-id="opening-editorial-rise"
+            data-start="0"
+            data-duration="4.6"
+          ></main>
+        </div>
+      </main>
+    `;
+    const clip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "opening-editorial-rise",
+      label: "Opening Editorial Rise",
+      start: 10,
+      duration: 4.6,
+      kind: "composition",
+      tagName: "div",
+      compositionId: "opening-editorial-rise",
+      compositionSrc: "compositions/opening-editorial-rise.html",
+    };
+
+    const host = findTimelineDomNodeForClip(document, clip, 0);
+    expect(host?.tagName).toBe("DIV");
+    expect(host?.getAttribute("data-start")).toBe("10");
+  });
+
   test("keeps fallback bindings in DOM order after an earlier host was claimed", () => {
     document.body.innerHTML = `
       <main data-composition-id="main" data-composition-file="index.html">
@@ -124,11 +164,7 @@ describe("timeline manifest translation", () => {
       kind: "element",
       tagName: "section",
     };
-    const hierarchy = collectDomClipChildren(
-      document,
-      [clip],
-      new Map([[clip, scene!]]),
-    );
+    const hierarchy = collectDomClipChildren(document, [clip], new Map([[clip, scene!]]));
     const hero = hierarchy.children.find((child) => child.selector === ".hero-copy");
     const title = hierarchy.children.find((child) => child.selector === "h1");
 
@@ -185,6 +221,62 @@ describe("timeline manifest translation", () => {
     expect(file).toMatchObject({ hostId: "lfc-stream", parentId: "lfc-stream" });
     expect(small).toMatchObject({ hostId: "lfc-stream", parentId: file?.id });
     expect(hierarchy.children.some((child) => child.selector === ".lfc-stream")).toBe(false);
+  });
+
+  test("namespaces an effect child whose hf id collides with its manifest root", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html">
+        <section data-composition-id="animated-card" data-start="0" data-duration="4">
+          <article class="card" data-hf-id="animated-card">Card</article>
+        </section>
+      </main>
+    `;
+    const host = document.querySelector("section");
+    expect(host).not.toBeNull();
+    const clip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "animated-card",
+      label: "Animated card",
+      start: 0,
+      duration: 4,
+      kind: "composition",
+      compositionId: "animated-card",
+      compositionSrc: "compositions/effects/animated-card.html",
+      tagName: "section",
+    };
+
+    const hierarchy = collectDomClipChildren(document, [clip], new Map([[clip, host!]]));
+    const card = hierarchy.children.find((child) => child.selector === ".card");
+
+    expect(card).toMatchObject({
+      hfId: "animated-card",
+      parentId: "animated-card",
+      hostId: "animated-card",
+      sourceFile: "compositions/effects/animated-card.html",
+    });
+    expect(card?.id).not.toBe("animated-card");
+    expect(hierarchy.parentMap.get(card!.id)).toBe("animated-card");
+
+    const sourceFile = card!.sourceFile!;
+    setCompositionSourceMap(new Map([["animated-card", sourceFile]]));
+    try {
+      expect(
+        findElementForTimelineElement(
+          document,
+          {
+            id: card!.id,
+            hfId: card!.hfId,
+            selector: card!.selector,
+            selectorIndex: card!.selectorIndex,
+            sourceFile,
+            previewHostId: card!.hostId,
+          },
+          { activeCompositionPath: "index.html", isMasterView: true },
+        ),
+      ).toBe(document.querySelector(".card"));
+    } finally {
+      setCompositionSourceMap(new Map());
+    }
   });
 
   test("keeps plain text children inside a group directly inspectable", async () => {
@@ -267,12 +359,107 @@ describe("timeline manifest translation", () => {
       element.getBoundingClientRect = () => box;
     }
 
-    expect(resolveAllVisualDomEditTargets([label, screen, stage], { activeCompositionPath: "index.html" })).toEqual([
-      label,
-    ]);
-    expect(resolveAllVisualDomEditTargets([stage, screen, label], { activeCompositionPath: "index.html" })).toEqual([
-      label,
-    ]);
+    expect(
+      resolveAllVisualDomEditTargets([label, screen, stage], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([label]);
+    expect(
+      resolveAllVisualDomEditTargets([stage, screen, label], {
+        activeCompositionPath: "index.html",
+      }),
+    ).toEqual([label]);
+  });
+
+  test("treats structured motion spans as one selectable text layer", async () => {
+    document.body.innerHTML = `
+      <section id="caption-text" data-ipw-motion-structure="v1">
+        <span data-ipw-motion-word data-ipw-motion-role="unit">
+          <span id="animated-word" data-ipw-motion-role="text">Caption</span>
+        </span>
+      </section>`;
+    const root = document.getElementById("caption-text") as HTMLElement;
+    const word = document.getElementById("animated-word") as HTMLElement;
+    const box = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 100,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      toJSON: () => ({}),
+    };
+    root.getBoundingClientRect = () => box;
+    word.getBoundingClientRect = () => box;
+
+    expect(getDomLayerPatchTarget(word, "index.html")).toBeNull();
+    expect(
+      getSelectionCandidate(word, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+      }),
+    ).toBe(root);
+    expect(
+      resolveAllVisualDomEditTargets([word, root], { activeCompositionPath: "index.html" }),
+    ).toEqual([root]);
+    await expect(
+      resolveDomEditSelection(word, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        exactTarget: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({ element: root, id: "caption-text" });
+  });
+
+  test("treats legacy split motion characters as one selectable text layer", async () => {
+    document.body.innerHTML = `
+      <h1 id="split-title" data-ipw-motion-split="v1" data-ipw-motion-source='"Motion"'>
+        <span data-ipw-motion-word>
+          <span id="animated-character" data-ipw-motion-char>M</span>
+          <span data-ipw-motion-char>o</span>
+        </span>
+      </h1>`;
+    const root = document.getElementById("split-title") as HTMLElement;
+    const character = document.getElementById("animated-character") as HTMLElement;
+    const box = {
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 100,
+      bottom: 30,
+      width: 100,
+      height: 30,
+      toJSON: () => ({}),
+    };
+    root.getBoundingClientRect = () => box;
+    character.getBoundingClientRect = () => box;
+
+    expect(getDomLayerPatchTarget(character, "index.html")).toBeNull();
+    expect(
+      getSelectionCandidate(character, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+      }),
+    ).toBe(root);
+    expect(
+      resolveAllVisualDomEditTargets([character, root], { activeCompositionPath: "index.html" }),
+    ).toEqual([root]);
+    await expect(
+      resolveDomEditSelection(character, {
+        activeCompositionPath: "index.html",
+        isMasterView: true,
+        exactTarget: true,
+        skipSourceProbe: true,
+      }),
+    ).resolves.toMatchObject({
+      element: root,
+      id: "split-title",
+      textFields: [{ source: "self", value: "Motion" }],
+    });
   });
 
   test("resolves a repeated authored selector inside the requested preview host", () => {

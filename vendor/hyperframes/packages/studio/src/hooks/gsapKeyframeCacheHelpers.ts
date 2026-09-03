@@ -6,6 +6,10 @@ import type { GsapAnimation } from "@hyperframes/core/gsap-parser";
 import { usePlayerStore, type KeyframeCacheEntry } from "../player/store/playerStore";
 import { toAbsoluteTime } from "./gsapShared";
 import { buildTimelineAnimationSegments } from "../utils/timelineAnimationSegments";
+import {
+  buildTimelineCacheUpdates,
+  resolveGsapTimelineTargetKeys,
+} from "./gsapTimelineSegmentCache";
 
 export function updateKeyframeCacheFromParsed(
   animations: GsapAnimation[],
@@ -21,75 +25,76 @@ export function updateKeyframeCacheFromParsed(
     NonNullable<KeyframeCacheEntry["animationSegments"]>
   >();
   for (const anim of animations) {
-    const id = anim.targetSelector.match(/^#([\w-]+)/)?.[1];
-    if (!id) continue;
-
-    // Convert tween-relative percentages to clip-relative so diamonds
-    // render at the correct position within the timeline clip.
-    const timelineEl = elements.find(
-      (el) => el.domId === id || (el.key ?? el.id) === `${targetPath}#${id}`,
-    );
-    const elStart = timelineEl?.start ?? 0;
-    const elDuration = timelineEl?.duration ?? 1;
-    const segments = buildTimelineAnimationSegments([anim], {
-      start: elStart,
-      duration: elDuration,
-    });
-    if (segments.length > 0) {
-      idsWithTimelineData.add(id);
-      segmentsByElement.set(id, [...(segmentsByElement.get(id) ?? []), ...segments]);
-    }
-    if (!anim.keyframes) continue;
-    idsWithTimelineData.add(id);
-    const tweenPos = anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
-    const tweenDur = anim.duration ?? 1;
-    const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
-      const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
-      const clipPct =
-        elDuration > 0 ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10 : kf.percentage;
-      return {
-        ...kf,
-        percentage: clipPct,
-        tweenPercentage: kf.percentage,
-        propertyGroup: anim.propertyGroup,
-      };
-    });
-
-    const existing = merged.get(id);
-    if (existing) {
-      const byPct = new Map<number, (typeof existing.keyframes)[0]>();
-      for (const kf of [...existing.keyframes, ...clipKeyframes]) {
-        const prev = byPct.get(kf.percentage);
-        if (prev) {
-          prev.properties = { ...prev.properties, ...kf.properties };
-          if (kf.ease) prev.ease = kf.ease;
-        } else {
-          byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
-        }
+    const targetKeys = resolveGsapTimelineTargetKeys(anim.targetSelector, targetPath, elements);
+    for (const id of targetKeys) {
+      // Convert tween-relative percentages to clip-relative so diamonds
+      // render at the correct position within the timeline clip.
+      const timelineEl = elements.find(
+        (el) =>
+          el.domId === id ||
+          (el.key ?? el.id) === id ||
+          (el.key ?? el.id) === `${targetPath}#${id}`,
+      );
+      const elStart = timelineEl?.start ?? 0;
+      const elDuration = timelineEl?.duration ?? 1;
+      const segments = buildTimelineAnimationSegments([anim], {
+        start: elStart,
+        duration: elDuration,
+      });
+      if (segments.length > 0) {
+        idsWithTimelineData.add(id);
+        segmentsByElement.set(id, [...(segmentsByElement.get(id) ?? []), ...segments]);
       }
-      existing.keyframes = Array.from(byPct.values()).sort((a, b) => a.percentage - b.percentage);
-    } else {
-      merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
+      if (!anim.keyframes) continue;
+      idsWithTimelineData.add(id);
+      const tweenPos =
+        anim.resolvedStart ?? (typeof anim.position === "number" ? anim.position : 0);
+      const tweenDur = anim.duration ?? 1;
+      const clipKeyframes = anim.keyframes.keyframes.map((kf) => {
+        const absTime = toAbsoluteTime(tweenPos, tweenDur, kf.percentage);
+        const clipPct =
+          elDuration > 0
+            ? Math.round(((absTime - elStart) / elDuration) * 1000) / 10
+            : kf.percentage;
+        return {
+          ...kf,
+          percentage: clipPct,
+          tweenPercentage: kf.percentage,
+          propertyGroup: anim.propertyGroup,
+        };
+      });
+
+      const existing = merged.get(id);
+      if (existing) {
+        const byPct = new Map<number, (typeof existing.keyframes)[0]>();
+        for (const kf of [...existing.keyframes, ...clipKeyframes]) {
+          const prev = byPct.get(kf.percentage);
+          if (prev) {
+            prev.properties = { ...prev.properties, ...kf.properties };
+            if (kf.ease) prev.ease = kf.ease;
+          } else {
+            byPct.set(kf.percentage, { ...kf, properties: { ...kf.properties } });
+          }
+        }
+        existing.keyframes = Array.from(byPct.values()).sort(
+          (a, b) => a.percentage - b.percentage,
+        );
+      } else {
+        merged.set(id, { ...anim.keyframes, keyframes: clipKeyframes });
+      }
     }
   }
   const elementIds = new Set([...merged.keys(), ...segmentsByElement.keys()]);
-  const cacheUpdates: Array<{
-    elementId: string;
-    data: KeyframeCacheEntry | undefined;
-  }> = [];
+  const cacheEntries = new Map<string, KeyframeCacheEntry>();
   for (const id of elementIds) {
     const entry = merged.get(id) ?? { format: "percentage", keyframes: [] };
     const animationSegments = segmentsByElement.get(id);
     if (animationSegments) entry.animationSegments = animationSegments;
-    cacheUpdates.push(
-      { elementId: `${targetPath}#${id}`, data: entry },
-      { elementId: id, data: entry },
-      ...(targetPath !== "index.html"
-        ? [{ elementId: `index.html#${id}`, data: entry }]
-        : []),
-    );
+    cacheEntries.set(id, entry);
   }
-  if (cacheUpdates.length > 0) setKeyframeCacheEntries(cacheUpdates);
+  if (cacheEntries.size > 0) {
+    setKeyframeCacheEntries(buildTimelineCacheUpdates(targetPath, cacheEntries));
+  }
   const targetId =
     (mutation as { targetSelector?: string }).targetSelector?.match(/^#([\w-]+)/)?.[1] ??
     selectionId;

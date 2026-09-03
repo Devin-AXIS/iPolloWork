@@ -1,23 +1,17 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-  type MutableRefObject,
-} from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject } from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
-import type { BlockParam } from "@hyperframes/core/registry";
-import { readMotionInstanceFromExtras } from "@hyperframes/core/motion-presets";
+import {
+  formatVisualComponentDataForAi,
+  type BlockParam,
+  type RegistryVariable,
+  type RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "./editor/manualEditingAvailability";
 import type { Composition } from "@hyperframes/sdk";
 import type { EditHistoryKind } from "../utils/editHistory";
 import type { UseSlideshowPersistParams } from "../hooks/useSlideshowPersist";
-import type { EffectInsertIntent } from "../utils/blockInstaller";
-import type { AnimationTemplateDraft } from "./sidebar/AnimationTemplatesTab";
 
 import { useStudioPlaybackContext, useStudioShellContext } from "../contexts/StudioContext";
 import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
@@ -61,38 +55,33 @@ const RenderQueue = lazy(() =>
 const loadBlocksTab = () =>
   import("./sidebar/BlocksTab").then((module) => ({ default: module.BlocksTab }));
 const BlocksTab = lazy(loadBlocksTab);
-export const preloadStudioEffectsPanel = async (): Promise<void> => {
+export const preloadStudioComponentsPanel = async (): Promise<void> => {
   await Promise.all([
     loadBlocksTab(),
     import("../hooks/useBlockCatalog").then((module) => module.preloadBlockCatalog()),
   ]);
 };
-const AnimationTemplatesTab = lazy(() =>
+const loadAnimationTemplatesTab = () =>
   import("./sidebar/AnimationTemplatesTab").then((module) => ({
     default: module.AnimationTemplatesTab,
-  })),
-);
-const AnimationPropertiesPanel = lazy(() =>
-  import("./editor/SemanticMotionPanel").then((module) => ({
-    default: module.AnimationPropertiesPanel,
-  })),
-);
+  }));
+const AnimationTemplatesTab = lazy(loadAnimationTemplatesTab);
+export const preloadStudioAnimationPanel = () => loadAnimationTemplatesTab();
 const AssetsTab = lazy(() =>
   import("./sidebar/AssetsTab").then((module) => ({ default: module.AssetsTab })),
 );
-const IllustrationTab = lazy(() =>
-  import("./sidebar/IllustrationTab").then((module) => ({ default: module.IllustrationTab })),
-);
-
 export interface StudioRightPanelProps {
   designPanelActive: boolean;
   activeBlockParams?: {
-    blockName: string;
     blockTitle: string;
     params: BlockParam[];
-    compositionPath: string;
+    variables: RegistryVariable[];
+    variableValues: Record<string, string | number | boolean>;
+    visualComponent?: RegistryVisualComponent;
+    insertedElementId: string;
   } | null;
   onCloseBlockParams?: () => void;
+  onBlockVariableChange?: (variableId: string, value: string | number | boolean) => Promise<void>;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
   onToggleRecording?: () => void;
@@ -120,15 +109,7 @@ export interface StudioRightPanelProps {
     files: Record<string, { before: string; after: string }>;
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
-  onAddBlock?: (blockName: string, intent?: EffectInsertIntent) => void;
-}
-
-function animationSelectionKey(
-  selection: AnimationTemplateDraft["selection"] | null | undefined,
-): string | null {
-  if (!selection) return null;
-  const locator = selection.hfId ?? selection.id ?? selection.selector;
-  return locator ? `${selection.compositionPath}:${selection.sourceFile}:${locator}` : null;
+  onAddBlock?: (blockName: string) => Promise<boolean>;
 }
 
 // fallow-ignore-next-line complexity
@@ -136,6 +117,7 @@ export function StudioRightPanel({
   designPanelActive,
   activeBlockParams,
   onCloseBlockParams,
+  onBlockVariableChange,
   recordingState,
   recordingDuration,
   onToggleRecording,
@@ -230,7 +212,6 @@ export function StudioRightPanel({
   } = useFileManagerContext();
 
   const backgroundRemovalAbortRef = useRef<AbortController | null>(null);
-  const [pendingMotionDraft, setPendingMotionDraft] = useState<AnimationTemplateDraft | null>(null);
 
   useEffect(
     () => () => {
@@ -341,8 +322,8 @@ export function StudioRightPanel({
       projectDir={projectDir}
       assets={assets}
       element={singleDomEditSelection}
-      inspectorMode={rightPanelTab === "animation-properties" ? "animation" : "properties"}
-      showInspectorChrome={rightPanelTab !== "animation-properties"}
+      inspectorMode="properties"
+      showInspectorChrome
       multiSelectCount={domEditGroupSelections.length}
       multiSelectedElements={domEditGroupSelections}
       onGroupSelection={handleGroupSelection}
@@ -367,7 +348,11 @@ export function StudioRightPanel({
       onRemoveTextField={handleDomRemoveTextField}
       onAskAgent={
         singleDomEditSelection
-          ? () => postVideoAiSelectionToHost(singleDomEditSelection)
+          ? () =>
+              postVideoAiSelectionToHost(
+                singleDomEditSelection,
+                componentSemanticContext(activeBlockParams, singleDomEditSelection.id),
+              )
           : undefined
       }
       onImportAssets={handleImportFiles}
@@ -425,44 +410,26 @@ export function StudioRightPanel({
   );
   const animationPanelActive =
     rightPanelTab === "animation" || rightPanelTab === "animation-properties";
-  const hasSelectedSemanticMotion = selectedGsapAnimations.some(
-    (animation) => readMotionInstanceFromExtras(animation.extras) !== null,
-  );
-  const showAnimationProperties =
-    rightPanelTab === "animation-properties" &&
-    (pendingMotionDraft !== null || hasSelectedSemanticMotion);
-  const selectAnimationTemplate = useCallback(
-    (draft: AnimationTemplateDraft) => {
-      setPendingMotionDraft(draft);
-      setRightPanelTab("animation-properties");
-    },
-    [setRightPanelTab],
-  );
-  const currentAnimationSelectionKey = animationSelectionKey(domEditSelection);
-  const pendingAnimationSelectionKey = animationSelectionKey(pendingMotionDraft?.selection);
-  useEffect(() => {
-    if (
-      pendingMotionDraft &&
-      currentAnimationSelectionKey &&
-      currentAnimationSelectionKey !== pendingAnimationSelectionKey
-    ) {
-      setPendingMotionDraft(null);
-    }
-  }, [currentAnimationSelectionKey, pendingAnimationSelectionKey, pendingMotionDraft]);
 
   const animationPanel = (
     <div className="h-full min-h-0 overflow-hidden">
-      {showAnimationProperties ? (
-        <AnimationPropertiesPanel
-          draft={pendingMotionDraft}
-          element={singleDomEditSelection}
-          animations={selectedGsapAnimations}
-          onMutate={handleMotionMutation}
-          onApplied={() => setPendingMotionDraft(null)}
-        />
-      ) : (
-        <AnimationTemplatesTab onSelectTemplate={selectAnimationTemplate} />
-      )}
+      <AnimationTemplatesTab
+        onMutate={handleMotionMutation}
+        onStatus={(status) =>
+          showToast(
+            t(
+              status === "applied"
+                ? "animation.applied"
+                : status === "selection-required"
+                  ? "animation.selectElement"
+                  : status === "updated"
+                    ? "animation.updated"
+                    : "animation.removed",
+            ),
+            "notice",
+          )
+        }
+      />
     </div>
   );
 
@@ -551,20 +518,14 @@ export function StudioRightPanel({
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
   const selectStudioPanel = (
-    panel:
-      | "design"
-      | "animation"
-      | "animation-properties"
-      | "illustration"
-      | "assets"
-      | "catalog"
-      | "effects",
+    panel: "design" | "animation" | "animation-properties" | "assets" | "components",
   ) => {
     closeHostPanel();
     setRightPanelTab(panel);
   };
 
   const exportDrawer = rightPanelTab === "renders";
+  const componentsPanelActive = rightPanelTab === "components";
 
   return (
     <>
@@ -628,31 +589,24 @@ export function StudioRightPanel({
                       onClick={() => openHostPanel("style")}
                     />
                     <PanelTabButton
+                      label={t("right.components")}
+                      tooltip={t("right.componentsTooltip")}
+                      active={componentsPanelActive}
+                      onClick={() => selectStudioPanel("components")}
+                    />
+                    <PanelTabButton
                       label={t("right.animation")}
                       tooltip={t("right.animationTooltip")}
                       active={animationPanelActive}
                       onClick={() => {
-                        setPendingMotionDraft(null);
                         selectStudioPanel("animation");
                       }}
-                    />
-                    <PanelTabButton
-                      label={t("right.catalog")}
-                      tooltip={t("right.catalogTooltip")}
-                      active={rightPanelTab === "catalog" || rightPanelTab === "effects"}
-                      onClick={() => selectStudioPanel("catalog")}
                     />
                     <PanelTabButton
                       label={t("right.voice")}
                       tooltip={t("right.voiceTooltip")}
                       active={rightPanelTab === "voice"}
                       onClick={() => openHostPanel("voice")}
-                    />
-                    <PanelTabButton
-                      label={t("right.illustration")}
-                      tooltip={t("right.illustrationTooltip")}
-                      active={rightPanelTab === "illustration"}
-                      onClick={() => selectStudioPanel("illustration")}
                     />
                     <PanelTabButton
                       label={t("right.assets")}
@@ -685,18 +639,18 @@ export function StudioRightPanel({
                 <div key={rightPanelTab} className="h-full min-h-0 min-w-0 overflow-hidden">
                   {rightPanelTab === "block-params" && activeBlockParams ? (
                     <BlockParamsPanel
-                      blockName={activeBlockParams.blockName}
                       blockTitle={activeBlockParams.blockTitle}
                       params={activeBlockParams.params}
-                      compositionPath={activeBlockParams.compositionPath}
+                      variables={activeBlockParams.variables}
+                      variableValues={activeBlockParams.variableValues}
+                      visualComponent={activeBlockParams.visualComponent}
+                      onVariableChange={onBlockVariableChange ?? (async () => {})}
                       onClose={onCloseBlockParams ?? (() => {})}
                     />
-                  ) : rightPanelTab === "catalog" || rightPanelTab === "effects" ? (
-                    <BlocksTab page="effects" onAddBlock={onAddBlock} />
+                  ) : componentsPanelActive ? (
+                    <BlocksTab onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
-                  ) : rightPanelTab === "illustration" ? (
-                    <IllustrationTab />
                   ) : rightPanelTab === "assets" ? (
                     <AssetsTab
                       projectId={projectId}
@@ -725,4 +679,21 @@ export function StudioRightPanel({
       </div>
     </>
   );
+}
+
+function componentSemanticContext(
+  activeBlockParams: StudioRightPanelProps["activeBlockParams"],
+  selectedElementId: string | null | undefined,
+): string | undefined {
+  if (!activeBlockParams || activeBlockParams.insertedElementId !== selectedElementId) {
+    return undefined;
+  }
+  const contract = activeBlockParams.visualComponent?.data;
+  if (!contract) return undefined;
+  const variable = activeBlockParams.variables.find(
+    (candidate) => candidate.id === contract.binding.variable,
+  );
+  if (!variable || variable.type !== "string") return undefined;
+  const value = activeBlockParams.variableValues[variable.id] ?? variable.default;
+  return formatVisualComponentDataForAi(contract, String(value));
 }
