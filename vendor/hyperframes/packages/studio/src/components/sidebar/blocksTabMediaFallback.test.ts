@@ -20,7 +20,7 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).not.toContain("onPreviewBlock");
   });
 
-  it("reuses registry compositions when catalog media is missing or fails", () => {
+  it("reuses real registry compositions for every card whose catalog media is missing or fails", () => {
     expect(source).toContain("/api/registry/blocks/${encodeURIComponent(block.name)}/preview");
     expect(source).toContain("compositionPosterUrl");
     expect(source).toContain('sandbox="allow-scripts"');
@@ -29,6 +29,7 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).toContain('rootMargin: "240px 0px"');
     expect(source).toContain('contentVisibility: "auto"');
     expect(source).not.toContain("setThumbnailEnabled(true)");
+    expect(source).not.toContain("visible &&\n    !block.visualComponent");
     expect(source).toContain("const BlockCard = memo(function BlockCard");
     expect(source).toContain("onAddBlock={onAddBlock}");
     expect(source).toContain("setVideoThumbnailFailed(true)");
@@ -41,5 +42,25 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).toContain("!prefersCompositionPreview && Boolean(posterUrl)");
     expect(source).toMatch(/!prefersCompositionPreview\s+&&\s+Boolean\(videoUrl\)/);
     expect(source).toContain("prefersCompositionPreview ||");
+  });
+
+  it("names the catalog action as a component insert", () => {
+    expect(source).toContain('"插入组件"');
+    expect(source).toContain('"Insert component"');
+    expect(source).toContain('"在当前播放位置插入组件，并将后续片段顺延"');
+    expect(source).not.toContain('"插入动画"');
+    expect(source).not.toContain('"添加组件"');
+    expect(source).not.toContain('"Add component"');
+  });
+
+  it("locks every catalog insertion entry while one component is inserting", () => {
+    expect(source).toContain("const insertingBlockNameRef = useRef<string | null>(null)");
+    expect(source).toContain("if (!onAddBlock || insertingBlockNameRef.current) return false");
+    expect(source).toContain("const insertionBusy = insertingBlockName !== null");
+    expect(source).toContain("disabled={insertionBusy}");
+    expect(source.match(/^\s+disabled=\{insertionBusy\}/gm)).toHaveLength(2);
+    expect(source).toContain("draggable={!insertionBusy}");
+    expect(source).toContain("aria-disabled={insertionBusy}");
+    expect(source).not.toContain("const [adding, setAdding] = useState(false)");
   });
 });

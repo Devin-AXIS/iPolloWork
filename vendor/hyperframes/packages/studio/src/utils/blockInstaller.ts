@@ -18,6 +18,10 @@ import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
 import { trackStudioEvent } from "./studioTelemetry";
 import { readAttributeByTarget } from "./sourcePatcher";
+import {
+  buildTimelineMoveTimingPatch,
+  resolveTimelinePatch,
+} from "../hooks/timelineEditingHelpers";
 
 export type BlockVariableValue = string | number | boolean;
 
@@ -39,7 +43,13 @@ interface AddBlockOptions {
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
   currentTime?: number;
+  insertionMode?: "overlay" | "ripple";
   timelineElements: TimelineElement[];
+  syncRippleGsap?: (input: {
+    changes: Array<{ element: TimelineElement; start: number }>;
+    coalesceKey: string;
+    label: string;
+  }) => Promise<void>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
@@ -52,6 +62,58 @@ interface AddBlockOptions {
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
   showToast: (msg: string) => void;
+}
+
+const INSERT_BOUNDARY_EPSILON = 0.0005;
+
+function authoredTrack(element: TimelineElement): number {
+  return element.authoredTrack ?? element.track;
+}
+
+function resolveIndependentInsertTrack(elements: readonly TimelineElement[]): number {
+  return elements.length > 0
+    ? Math.max(...elements.map((element) => authoredTrack(element))) + 1
+    : 1;
+}
+
+export function resolveBlockRippleChanges(
+  elements: readonly TimelineElement[],
+  start: number,
+  duration: number,
+): Array<{ element: TimelineElement; start: number }> {
+  return elements
+    .filter((element) => element.start + INSERT_BOUNDARY_EPSILON >= start)
+    .map((element) => ({
+      element,
+      start: Number(formatTimelineAttributeNumber(element.start + duration)),
+    }));
+}
+
+function applyBlockRippleChanges(
+  source: string,
+  changes: readonly { element: TimelineElement; start: number }[],
+): string {
+  let patched = source;
+  for (const change of changes) {
+    const resolution = resolveTimelinePatch(patched, change.element, (current, target) =>
+      buildTimelineMoveTimingPatch(
+        current,
+        target,
+        change.start,
+        change.element.duration,
+        undefined,
+        change.element.timingSource === "implicit",
+      ),
+    );
+    if (resolution.status === "missing-target") {
+      throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
+    }
+    if (resolution.status === "target-not-found") {
+      throw new Error(`Unable to ripple timeline element ${change.element.id}`);
+    }
+    if (resolution.status === "changed") patched = resolution.content;
+  }
+  return patched;
 }
 
 function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string>): string {
@@ -201,6 +263,8 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     placement,
     visualPosition,
     timelineElements,
+    insertionMode = "overlay",
+    syncRippleGsap,
     readProjectFile,
     writeProjectFile,
     recordEdit,
@@ -287,7 +351,15 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       insertedStart = start;
       const track =
         placement?.track ??
-        (relevantElements.length > 0 ? Math.max(...relevantElements.map((te) => te.track)) + 1 : 1);
+        (insertionMode === "ripple"
+          ? resolveIndependentInsertTrack(relevantElements)
+          : relevantElements.length > 0
+            ? Math.max(...relevantElements.map((te) => te.track)) + 1
+            : 1);
+      const rippleChanges =
+        insertionMode === "ripple"
+          ? resolveBlockRippleChanges(relevantElements, start, duration)
+          : [];
 
       // Timeline discovery already resolves authored and computed z-indexes.
       // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
@@ -322,28 +394,49 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `></div>`,
       ].join("\n");
 
-      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
+      let patchedContent = applyBlockRippleChanges(originalContent, rippleChanges);
+      patchedContent = insertTimelineAssetIntoSource(patchedContent, subCompHtml);
       const originalContentEnd = relevantElements.reduce(
         (end, element) => Math.max(end, element.start + element.duration),
         rootDuration,
       );
       patchedContent = extendRootDurationInSource(
         patchedContent,
-        Math.max(start + duration, originalContentEnd),
+        Math.max(
+          start + duration,
+          insertionMode === "ripple" ? originalContentEnd + duration : originalContentEnd,
+        ),
       );
       hostPatchMs = performance.now() - hostPatchStartedAt;
 
       markStudioWrite();
       const persistStartedAt = performance.now();
+      const label =
+        insertionMode === "ripple"
+          ? `Insert animation: ${block.title}`
+          : `Add component: ${block.title}`;
+      const coalesceKey =
+        insertionMode === "ripple" && rippleChanges.length > 0
+          ? `insert-animation:${compId}:${start}`
+          : undefined;
       await saveProjectFilesWithHistory({
         projectId,
-        label: `Add component: ${block.title}`,
+        label,
         kind: "timeline",
+        coalesceKey,
+        coalesceMs: coalesceKey ? 10_000 : undefined,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
         recordEdit,
       });
+      if (coalesceKey && syncRippleGsap) {
+        try {
+          await syncRippleGsap({ changes: rippleChanges, coalesceKey, label });
+        } catch (error) {
+          console.error("[Components] Failed to ripple GSAP positions", error);
+        }
+      }
       persistMs = performance.now() - persistStartedAt;
     }
 
@@ -364,6 +457,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       persist_ms: Math.round(persistMs),
       total_ms: Math.round(performance.now() - startedAt),
       timeline_element_count: timelineElements.length,
+      insertion_mode: insertionMode,
     });
 
     return {

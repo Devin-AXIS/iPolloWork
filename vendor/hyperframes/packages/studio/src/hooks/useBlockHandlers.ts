@@ -17,6 +17,7 @@ import { resolveTimelineSelectionSeekTime, type RightPanelTab } from "../utils/s
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { preloadBlockCatalog } from "./useBlockCatalog";
+import { foldRippleGsapShiftsIntoHistory } from "./timelineTimingSync";
 
 interface BlockCtxDeps {
   activeCompPath: string | null;
@@ -196,6 +197,16 @@ export function useBlockHandlers({
           blockName,
           ...blockCtx,
           currentTime: usePlayerStore.getState().currentTime,
+          insertionMode: "ripple",
+          syncRippleGsap: ({ changes, coalesceKey, label }) =>
+            foldRippleGsapShiftsIntoHistory({
+              projectId,
+              activeCompPath: blockCtx.activeCompPath,
+              label,
+              coalesceKey,
+              recordEdit: blockCtx.recordEdit,
+              changes,
+            }),
         }),
       );
       if (result === null) return false;

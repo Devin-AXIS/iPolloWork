@@ -90,6 +90,8 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
   const { loading, error, search, setSearch, sections } = useBlockCatalog();
   const [previewController] = useState(() => new PreviewController());
   const [activeSection, setActiveSection] = useState<ComponentCatalogSection>(ALL_SECTIONS_FILTER);
+  const [insertingBlockName, setInsertingBlockName] = useState<string | null>(null);
+  const insertingBlockNameRef = useRef<string | null>(null);
   const [columnCount, setColumnCount] = useState<CatalogColumnCount>(
     () => readStudioUiPreferences().catalogColumnCount ?? DEFAULT_CATALOG_COLUMN_COUNT,
   );
@@ -119,6 +121,23 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
     lastDensityWheelAtRef.current = now;
     setColumnCount((current) => nextCatalogColumnCount(current, deltaY));
   }, []);
+  const handleInsertBlock = useCallback(
+    async (blockName: string): Promise<boolean> => {
+      if (!onAddBlock || insertingBlockNameRef.current) return false;
+
+      insertingBlockNameRef.current = blockName;
+      setInsertingBlockName(blockName);
+      try {
+        return await onAddBlock(blockName);
+      } finally {
+        if (insertingBlockNameRef.current === blockName) {
+          insertingBlockNameRef.current = null;
+          setInsertingBlockName(null);
+        }
+      }
+    },
+    [onAddBlock],
+  );
   const totalCount = useMemo(
     () => sections.reduce((total, section) => total + section.items.length, 0),
     [sections],
@@ -203,7 +222,8 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
           columnCount={columnCount}
           onDensityWheel={handleDensityWheel}
           previewController={previewController}
-          onAddBlock={onAddBlock}
+          onAddBlock={onAddBlock ? handleInsertBlock : undefined}
+          insertingBlockName={insertingBlockName}
           showSectionHeaders
           testId="block-catalog-components"
         />
@@ -221,6 +241,7 @@ function CatalogSectionGrid({
   onDensityWheel,
   previewController,
   onAddBlock,
+  insertingBlockName,
   showSectionHeaders,
   testId,
 }: {
@@ -232,6 +253,7 @@ function CatalogSectionGrid({
   onDensityWheel: (deltaY: number) => void;
   previewController: PreviewController;
   onAddBlock?: (blockName: string) => Promise<boolean>;
+  insertingBlockName: string | null;
   showSectionHeaders: boolean;
   testId: string;
 }) {
@@ -365,6 +387,7 @@ function CatalogSectionGrid({
                       previewController={previewController}
                       locale={locale}
                       onAddBlock={onAddBlock}
+                      insertingBlockName={insertingBlockName}
                     />
                   ))}
                 </div>
@@ -510,6 +533,7 @@ const BlockCard = memo(function BlockCard({
   registerCard,
   previewController,
   onAddBlock,
+  insertingBlockName,
   locale,
 }: {
   block: CatalogItem;
@@ -518,11 +542,11 @@ const BlockCard = memo(function BlockCard({
   registerCard: (name: string, element: HTMLElement | null) => void;
   previewController: PreviewController;
   onAddBlock?: (blockName: string) => Promise<boolean>;
+  insertingBlockName: string | null;
   locale: "en" | "zh";
 }) {
   const [posterFailed, setPosterFailed] = useState(false);
   const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
-  const [adding, setAdding] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -546,11 +570,12 @@ const BlockCard = memo(function BlockCard({
     !videoThumbnailFailed;
   const canShowCompositionThumbnail =
     visible &&
-    !block.visualComponent &&
     Boolean(compositionPosterUrl) &&
     (prefersCompositionPreview ||
       ((!videoUrl || videoThumbnailFailed) && (!posterUrl || posterFailed)));
   const needsWebGL = block.tags?.includes("html-in-canvas") || block.tags?.includes("webgl");
+  const insertionBusy = insertingBlockName !== null;
+  const adding = insertingBlockName === block.name;
 
   const setCardRef = useCallback(
     (element: HTMLDivElement | null) => registerCard(block.name, element),
@@ -615,12 +640,9 @@ const BlockCard = memo(function BlockCard({
   }, [block.name, clearHoverTimer, previewController, registerCard]);
 
   const handleAdd = useCallback(() => {
-    if (adding || !onAddBlock) return;
-    setAdding(true);
-    void onAddBlock(block.name).finally(() => {
-      if (mountedRef.current) setAdding(false);
-    });
-  }, [adding, block.name, onAddBlock]);
+    if (insertionBusy || !onAddBlock) return;
+    void onAddBlock(block.name);
+  }, [block.name, insertionBusy, onAddBlock]);
 
   const handleCardKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>) => {
@@ -677,15 +699,21 @@ const BlockCard = memo(function BlockCard({
     <div
       ref={setCardRef}
       role="button"
-      tabIndex={0}
-      className="group/card min-w-0 cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60"
+      tabIndex={insertionBusy ? -1 : 0}
+      aria-disabled={insertionBusy}
+      aria-busy={adding || undefined}
+      className={`group/card min-w-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/60 ${insertionBusy ? "cursor-not-allowed" : "cursor-pointer"}`}
       style={{ contentVisibility: "auto", containIntrinsicSize: "160px" }}
       data-testid="block-catalog-card"
       data-block-name={block.name}
-      draggable
+      draggable={!insertionBusy}
       onClick={handleAdd}
       onKeyDown={handleCardKeyDown}
       onDragStart={(event) => {
+        if (insertionBusy) {
+          event.preventDefault();
+          return;
+        }
         event.dataTransfer.effectAllowed = "copy";
         event.dataTransfer.setData(
           TIMELINE_BLOCK_MIME,
@@ -807,16 +835,18 @@ const BlockCard = memo(function BlockCard({
         <div className="mt-1.5 grid grid-cols-2 gap-1.5">
           <button
             type="button"
+            disabled={insertionBusy}
+            aria-busy={adding || undefined}
             onClick={(event) => {
               event.stopPropagation();
               handleAdd();
             }}
             title={
               locale === "zh"
-                ? "插入到当前播放位置并打开组件变量"
-                : "Insert at the playhead and open component variables"
+                ? "在当前播放位置插入组件，并将后续片段顺延"
+                : "Insert component at the playhead and ripple later clips"
             }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors hover:bg-panel-input"
+            className="flex h-7 min-w-0 items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors enabled:hover:bg-panel-input disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="truncate">
               {adding
@@ -824,19 +854,20 @@ const BlockCard = memo(function BlockCard({
                   ? "插入中…"
                   : "Inserting…"
                 : locale === "zh"
-                  ? "添加组件"
-                  : "Add component"}
+                  ? "插入组件"
+                  : "Insert component"}
             </span>
           </button>
           <button
             type="button"
+            disabled={insertionBusy}
             onClick={handleShowPrompt}
             title={
               locale === "zh"
                 ? "让 AI 在组件变量与可编辑槽位内调整"
                 : "Ask AI to adapt this component within its declared slots"
             }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors hover:bg-[#1FBAC0]/12 hover:text-[#168e92]"
+            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors enabled:hover:bg-[#1FBAC0]/12 enabled:hover:text-[#168e92] disabled:cursor-not-allowed disabled:opacity-50"
           >
             <span className="truncate">{locale === "zh" ? "\u4ea4\u7ed9 AI" : "Ask AI"}</span>
           </button>

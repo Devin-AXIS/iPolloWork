@@ -33,7 +33,25 @@ import {
   mapCodexHarnessEvent,
 } from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
 
-function permissionMemoryTestAdapter(id: string) {
+function permissionMemoryTestStorage() {
+  const values = new Map<string, string>();
+  return {
+    getItem(key: string) {
+      return values.get(key) ?? null;
+    },
+    setItem(key: string, value: string) {
+      values.set(key, value);
+    },
+    removeItem(key: string) {
+      values.delete(key);
+    },
+  };
+}
+
+function permissionMemoryTestAdapter(
+  id: string,
+  storage?: ReturnType<typeof permissionMemoryTestStorage>,
+) {
   const listeners: Array<(event: ConversationEvent) => void> = [];
   const replies: Array<{ permission: ConversationPermission; reply: "once" | "always" | "reject" }> = [];
   const adapter = withSessionPermissionMemory({
@@ -93,7 +111,7 @@ function permissionMemoryTestAdapter(id: string) {
       };
       return connection;
     },
-  });
+  }, storage);
   return { adapter, listeners, replies };
 }
 
@@ -202,6 +220,79 @@ describe("conversation engine adapters", () => {
         { permission: repeated, reply: "once" },
       ]);
     }
+  });
+
+  test("restores always-allow after an app reload for all three engines without crossing workspaces", async () => {
+    for (const engineId of [DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, CODEX_HARNESS_ENGINE_ID]) {
+      const storage = permissionMemoryTestStorage();
+      const connectInput = {
+        baseUrl: `http://${engineId}.test`,
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: `workspace-${engineId}`,
+      };
+      const beforeReload = permissionMemoryTestAdapter(engineId, storage);
+      const firstConnection = beforeReload.adapter.connect(connectInput);
+      const first = testPermission(`${engineId}-first`, "session-always");
+      await firstConnection.replyPermission({ permission: first, reply: "always" });
+
+      const afterReload = permissionMemoryTestAdapter(engineId, storage);
+      const restoredConnection = afterReload.adapter.connect({
+        ...connectInput,
+        baseUrl: `http://${engineId}-restarted.test`,
+      });
+      const restoredVisible: ConversationEvent[] = [];
+      await restoredConnection.subscribe({
+        signal: new AbortController().signal,
+        onEvent: (event) => restoredVisible.push(event),
+      });
+      const repeated = testPermission(`${engineId}-repeated`, "session-always");
+      afterReload.listeners[0]?.({ type: "permission.asked", permission: repeated });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      const otherWorkspace = afterReload.adapter.connect({
+        ...connectInput,
+        workspaceId: `${connectInput.workspaceId}-other`,
+      });
+      const otherWorkspaceVisible: ConversationEvent[] = [];
+      await otherWorkspace.subscribe({
+        signal: new AbortController().signal,
+        onEvent: (event) => otherWorkspaceVisible.push(event),
+      });
+      const isolated = testPermission(`${engineId}-isolated`, "session-always");
+      afterReload.listeners[1]?.({ type: "permission.asked", permission: isolated });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(restoredVisible).toEqual([]);
+      expect(afterReload.replies).toEqual([{ permission: repeated, reply: "once" }]);
+      expect(otherWorkspaceVisible).toEqual([{ type: "permission.asked", permission: isolated }]);
+    }
+  });
+
+  test("clears persisted always-allow when its task is archived", async () => {
+    const storage = permissionMemoryTestStorage();
+    const connectInput = {
+      baseUrl: "http://opencode.test",
+      workspaceId: "workspace-archive",
+    };
+    const beforeArchive = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
+    const connection = beforeArchive.adapter.connect(connectInput);
+    const first = testPermission("first", "session-archive");
+    await connection.replyPermission({ permission: first, reply: "always" });
+    await connection.setArchived(first.sessionId, true);
+
+    const afterReload = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
+    const restoredConnection = afterReload.adapter.connect(connectInput);
+    const visible: ConversationEvent[] = [];
+    await restoredConnection.subscribe({
+      signal: new AbortController().signal,
+      onEvent: (event) => visible.push(event),
+    });
+    const repeated = testPermission("repeated", first.sessionId);
+    afterReload.listeners[0]?.({ type: "permission.asked", permission: repeated });
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(visible).toEqual([{ type: "permission.asked", permission: repeated }]);
+    expect(afterReload.replies).toEqual([]);
   });
 
   test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
