@@ -9,7 +9,10 @@ import {
 import {
   ConversationEngineAdapterRegistry,
   type ConversationEngineAdapter,
+  type ConversationEngineConnection,
+  type ConversationEvent,
   type ConversationPermission,
+  withSessionPermissionMemory,
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import {
   openCodeConversationEngineAdapter,
@@ -29,6 +32,83 @@ import {
   createCodexLiveState,
   mapCodexHarnessEvent,
 } from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
+
+function permissionMemoryTestAdapter(id: string) {
+  const listeners: Array<(event: ConversationEvent) => void> = [];
+  const replies: Array<{ permission: ConversationPermission; reply: "once" | "always" | "reject" }> = [];
+  const adapter = withSessionPermissionMemory({
+    id,
+    connect: () => {
+      const connection: ConversationEngineConnection = {
+        mapSnapshot: () => ({
+          session: { id: "unused", title: "Unused" },
+          messages: [],
+          todos: [],
+          status: { type: "idle" },
+        }),
+        async subscribe(input) {
+          listeners.push(input.onEvent);
+        },
+        async listPermissions() {
+          return [];
+        },
+        async replyPermission(input) {
+          replies.push({ permission: input.permission, reply: input.reply });
+        },
+        async listQuestions() {
+          return [];
+        },
+        async replyQuestion() {},
+        async create() {
+          return { id: "created", title: "Created" };
+        },
+        async abort() {
+          return true;
+        },
+        async revert(sessionId) {
+          return { id: sessionId, title: "Reverted" };
+        },
+        async fork(input) {
+          return { id: `${input.sessionId}-fork`, title: "Fork" };
+        },
+        async rename() {},
+        async setArchived() {},
+        async shell() {},
+        async runCommand() {},
+        async sendPrompt(input) {
+          return { sessionId: input.sessionId };
+        },
+        async listCommands() {
+          return [];
+        },
+        async listModes() {
+          return [];
+        },
+        async listAgents() {
+          return [];
+        },
+        async searchFiles() {
+          return [];
+        },
+      };
+      return connection;
+    },
+  });
+  return { adapter, listeners, replies };
+}
+
+function testPermission(id: string, sessionId: string, kind = "edit"): ConversationPermission {
+  return {
+    id,
+    sessionId,
+    kind,
+    resources: [],
+    remember: [],
+    metadata: {},
+    receivedAt: Date.now(),
+    native: null,
+  };
+}
 
 describe("conversation engine adapters", () => {
   test("keeps OpenCode as default while registering Harness engines as peers", () => {
@@ -80,6 +160,48 @@ describe("conversation engine adapters", () => {
     }
 
     expect(requestCount).toBe(0);
+  });
+
+  test("keeps always-allow effective across reconnects for all three engines", async () => {
+    for (const engineId of [DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, CODEX_HARNESS_ENGINE_ID]) {
+      const harness = permissionMemoryTestAdapter(engineId);
+      const connectInput = {
+        baseUrl: `http://${engineId}.test`,
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: `workspace-${engineId}`,
+      };
+      const firstConnection = harness.adapter.connect(connectInput);
+      const firstVisible: ConversationEvent[] = [];
+      await firstConnection.subscribe({
+        signal: new AbortController().signal,
+        onEvent: (event) => firstVisible.push(event),
+      });
+      const first = testPermission(`${engineId}-first`, "session-always");
+      harness.listeners[0]?.({ type: "permission.asked", permission: first });
+      await firstConnection.replyPermission({ permission: first, reply: "always" });
+
+      const reconnected = harness.adapter.connect({
+        ...connectInput,
+        baseUrl: `http://${engineId}-restarted.test`,
+      });
+      const laterVisible: ConversationEvent[] = [];
+      await reconnected.subscribe({
+        signal: new AbortController().signal,
+        onEvent: (event) => laterVisible.push(event),
+      });
+      const repeated = testPermission(`${engineId}-repeated`, "session-always");
+      const differentKind = testPermission(`${engineId}-shell`, "session-always", "bash");
+      harness.listeners[1]?.({ type: "permission.asked", permission: repeated });
+      harness.listeners[1]?.({ type: "permission.asked", permission: differentKind });
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+      expect(firstVisible).toEqual([{ type: "permission.asked", permission: first }]);
+      expect(laterVisible).toEqual([{ type: "permission.asked", permission: differentKind }]);
+      expect(harness.replies).toEqual([
+        { permission: first, reply: "always" },
+        { permission: repeated, reply: "once" },
+      ]);
+    }
   });
 
   test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
@@ -764,7 +886,7 @@ describe("conversation engine adapters", () => {
     }, state)).toContainEqual({ type: "session.idle", sessionId: "codex-thread" });
   });
 
-  test("keeps Codex always-allow effective for later shell requests in the same task", async () => {
+  test("keeps Codex always-allow effective after its client reconnects to the same task", async () => {
     const originalFetch = globalThis.fetch;
     const responses: Array<Record<string, unknown>> = [];
     const events: Array<{ type: string }> = [];
@@ -826,6 +948,23 @@ describe("conversation engine adapters", () => {
       if (!firstPermission) throw new Error("Codex permission was not emitted");
       await connection.replyPermission({ permission: firstPermission, reply: "always" });
 
+      eventController?.close();
+      await subscribe;
+      eventController = null;
+      const reconnected = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      const reconnectedSubscribe = reconnected.subscribe({
+        signal: new AbortController().signal,
+        onEvent(event) {
+          events.push(event);
+        },
+      });
+      await Promise.resolve();
+
       eventController?.enqueue(encoder.encode(`data: ${JSON.stringify({
         type: "request",
         id: 42,
@@ -837,7 +976,7 @@ describe("conversation engine adapters", () => {
         },
       })}\n\n`));
       eventController?.close();
-      await subscribe;
+      await reconnectedSubscribe;
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -1309,7 +1448,7 @@ describe("conversation engine adapters", () => {
     ]);
   });
 
-  test("maps DeepSeek Harness approvals without offering unsupported persistent grants", () => {
+  test("maps DeepSeek Harness approvals without relying on native persistent grants", () => {
     expect(mapDeepSeekHarnessEnvelope({
       type: "server-notification",
       rpcId: "rpc-usage",

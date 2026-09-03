@@ -411,13 +411,114 @@ export interface ConversationEngineConnection {
 
 export interface ConversationEngineAdapter {
   readonly id: string;
-  connect(input: {
-    baseUrl: string;
-    token?: string;
-    directory?: string;
-    serverBaseUrl?: string;
-    workspaceId?: string;
-  }): ConversationEngineConnection;
+  connect(input: ConversationEngineConnectInput): ConversationEngineConnection;
+}
+
+export type ConversationEngineConnectInput = {
+  baseUrl: string;
+  token?: string;
+  directory?: string;
+  serverBaseUrl?: string;
+  workspaceId?: string;
+};
+
+function permissionMemoryScope(permission: ConversationPermission): string {
+  return permission.kind.trim().toLowerCase();
+}
+
+/**
+ * Preserve an explicit "always" decision for the lifetime of its task even
+ * when an engine only supports one-shot approvals or its client reconnects.
+ * Native engines still receive the original decision first; this layer is the
+ * shared compatibility fallback for subsequent requests of the same kind.
+ */
+export function withSessionPermissionMemory(adapter: ConversationEngineAdapter): ConversationEngineAdapter {
+  const scopesBySession = new Map<string, Set<string>>();
+
+  return {
+    id: adapter.id,
+    connect(input) {
+      const connection = adapter.connect(input);
+      const automaticReplies = new Map<string, Promise<boolean>>();
+      const isRemembered = (permission: ConversationPermission) => {
+        const scope = permissionMemoryScope(permission);
+        return Boolean(scope && scopesBySession.get(permission.sessionId)?.has(scope));
+      };
+      const remember = (permission: ConversationPermission) => {
+        const scope = permissionMemoryScope(permission);
+        if (!scope) return () => {};
+        const key = permission.sessionId;
+        const scopes = scopesBySession.get(key) ?? new Set<string>();
+        const existed = scopes.has(scope);
+        scopes.add(scope);
+        scopesBySession.set(key, scopes);
+        return () => {
+          if (existed) return;
+          scopes.delete(scope);
+          if (scopes.size === 0) scopesBySession.delete(key);
+        };
+      };
+      const automaticallyReply = (permission: ConversationPermission, directory?: string) => {
+        const key = `${permission.sessionId}\u0000${permission.id}`;
+        const existing = automaticReplies.get(key);
+        if (existing) return existing;
+        const reply = (async () => {
+          try {
+            await connection.replyPermission({ permission, reply: "once", directory });
+            return true;
+          } catch {
+            return false;
+          } finally {
+            automaticReplies.delete(key);
+          }
+        })();
+        automaticReplies.set(key, reply);
+        return reply;
+      };
+
+      return {
+        ...connection,
+        async subscribe(subscription) {
+          await connection.subscribe({
+            ...subscription,
+            onEvent(event) {
+              if (event.type === "session.deleted") {
+                scopesBySession.delete(event.sessionId);
+              }
+              if (event.type !== "permission.asked" || !isRemembered(event.permission)) {
+                subscription.onEvent(event);
+                return;
+              }
+              void automaticallyReply(event.permission, input.directory).then((approved) => {
+                if (!approved && !subscription.signal.aborted) subscription.onEvent(event);
+              });
+            },
+          });
+        },
+        async listPermissions(request) {
+          const pending = await connection.listPermissions(request);
+          const visible = await Promise.all(pending.map(async (permission) => {
+            if (!isRemembered(permission)) return permission;
+            return await automaticallyReply(permission, request.directory) ? null : permission;
+          }));
+          return visible.filter((permission): permission is ConversationPermission => permission !== null);
+        },
+        async replyPermission(request) {
+          const rollback = request.reply === "always" ? remember(request.permission) : null;
+          try {
+            await connection.replyPermission(request);
+          } catch (error) {
+            rollback?.();
+            throw error;
+          }
+        },
+        async setArchived(sessionId, archived, directory) {
+          await connection.setArchived(sessionId, archived, directory);
+          if (archived) scopesBySession.delete(sessionId);
+        },
+      };
+    },
+  };
 }
 
 export class ConversationEngineAdapterRegistry {

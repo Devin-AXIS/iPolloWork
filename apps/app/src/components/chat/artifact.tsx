@@ -460,9 +460,10 @@ export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming,
     requestOrdinal,
     artifactRequestOwnership,
   );
-  const displayedArtifacts = entryPath
+  const displayedArtifacts = (entryPath
     ? selectTemplateEntryArtifacts(requestArtifacts, entryPath)
-    : requestArtifacts;
+    : requestArtifacts
+  ).filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));
   const displayNames = artifactDisplayNames(
     displayedArtifacts,
     () => requestNaming ?? { title: sessionTitle?.trim() ?? "", occurrence: 1 },

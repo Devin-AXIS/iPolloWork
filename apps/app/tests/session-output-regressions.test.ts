@@ -317,6 +317,29 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain("snap-proximity");
   });
 
+  test("generated file cards keep only openable files while the output panel retains all outputs", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const artifactListSource = source.slice(
+      source.indexOf("export function ArtifactList"),
+      source.indexOf("interface ConversationOutputPanelProps"),
+    );
+    const outputPanelSource = source.slice(
+      source.indexOf("function ConversationOutputPanelContent"),
+      source.indexOf("export function ConversationOutputTrigger"),
+    );
+
+    expect(artifactListSource).toContain(
+      ").filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));",
+    );
+    expect(outputPanelSource).toContain("artifacts.filter(isConversationOutputArtifact)");
+    expect(outputPanelSource).not.toContain(
+      ").filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));",
+    );
+  });
+
   test("generated file links open in the internal right panel by default", () => {
     const source = readFileSync(
       new URL("../src/components/markdown/markdown.tsx", import.meta.url),
