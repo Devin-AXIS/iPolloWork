@@ -120,6 +120,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('grid-cols-[1fr_auto_1fr]');
     expect(artifactSource).toContain('w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)]');
     expect(artifactSource).toContain('onClose={() => onOpenChange(false)}');
+    expect(artifactSource).toContain("tile={!popover}");
     expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
     expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
     expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');

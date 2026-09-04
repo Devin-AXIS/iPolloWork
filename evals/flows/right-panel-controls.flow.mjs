@@ -120,6 +120,14 @@ export default {
               timeoutMs: 10_000,
               label: "output files popover",
             });
+            const fileCardCenter = await ctx.eval(`(() => {
+              const card = document.querySelector(${JSON.stringify(OUTPUT_POPOVER)} + ' [data-testid="conversation-files-outputs-view"] button');
+              if (!card) return null;
+              const rect = card.getBoundingClientRect();
+              return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+            })()`);
+            ctx.assert(fileCardCenter, "The output overlay did not render a file card.");
+            await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: fileCardCenter.x, y: fileCardCenter.y });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => {
@@ -140,12 +148,15 @@ export default {
                 modeIconCount: modeButtons.reduce((count, button) => count + button.querySelectorAll("svg").length, 0),
                 closeButton: Boolean(popover?.querySelector('button[aria-label="Close"], button[aria-label="关闭"]')),
                 singleColumnFillsWidth: Boolean(outputViewRect && outputCardRect && outputCardRect.width >= outputViewRect.width - 1),
+                fileCardShadow: outputCard ? getComputedStyle(outputCard.querySelector("button")).boxShadow : null,
+                fileCardTransform: outputCard ? getComputedStyle(outputCard.querySelector("button")).transform : null,
               };
             })()`);
             ctx.assert(state.popover && state.panelOpen && state.selectedTab, `The output overlay replaced current work: ${JSON.stringify(state)}`);
             ctx.assert(state.compactWidth && state.contentSizedHeight && state.opaqueSurface, `The output overlay is not a compact opaque surface: ${JSON.stringify(state)}`);
             ctx.assert(state.modeIconCount === 0 && state.closeButton, `The output overlay header is not using the text-only mode control and close action: ${JSON.stringify(state)}`);
             ctx.assert(state.singleColumnFillsWidth, `A single output does not fill the compact list: ${JSON.stringify(state)}`);
+            ctx.assert(state.fileCardShadow === "none" && state.fileCardTransform === "none", `The reused conversation file card adds lift or shadow on hover: ${JSON.stringify(state)}`);
           },
           screenshot: { name: "output-files-over-current-panel", rejectText: ["Something went wrong"] },
         });

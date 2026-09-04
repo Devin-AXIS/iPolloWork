@@ -641,7 +641,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                   sessionId={sessionId}
                   artifactContext={artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
-                  tile
+                  tile={!popover}
                 />
                 {group.artifacts.length > 1 ? (
                   <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
