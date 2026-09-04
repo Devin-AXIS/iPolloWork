@@ -5,6 +5,7 @@ import {
   type RegistryItemKind,
   type RegistryVisualComponentCategory,
   resolveRegistryItemKind,
+  resolveVisualComponentCategory,
 } from "@hyperframes/core/registry";
 import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
 
@@ -23,22 +24,27 @@ export interface CatalogSection {
 export const COMPONENT_CATALOG_SECTIONS = VISUAL_COMPONENT_CATEGORIES;
 
 const SECTION_SEARCH_TERMS: Record<CatalogSectionId, string> = {
-  intro: "intro opening 开场 片头",
-  product: "product demo showcase 产品 展示",
-  data: "data chart metrics 数据 图表 指标",
-  diagrams: "diagram architecture pyramid framework 图解 架构 金字塔",
-  flow: "flow process timeline 流程 路径 时间线",
-  maps: "map route location geography 地图 路线 地理",
-  compare: "compare before after versus 对比 前后",
+  scene: "scene intro opening outro ending title cta 开场 片头 收尾 结尾 片尾 行动",
+  product: "product feature spotlight demo showcase 产品 功能 亮点 展示",
+  data:
+    "data chart metrics structured ranking matrix dashboard table 数据 图表 指标 结构 排名 矩阵 仪表盘 表格",
+  diagrams:
+    "diagram architecture framework flow process timeline roadmap cycle 图解 架构 流程 时间线 路线图 循环",
+  maps: "map route location geography flow 地图 路径 路线 地理 流向",
+  proof:
+    "proof evidence source testimonial compare before after rating 证据 背书 评价 对比 前后 评分",
   knowledge: "knowledge education explain 知识 教育 讲解",
-  people: "people profile quote team 人物 团队 观点",
-  proof: "proof evidence source testimonial 佐证 证据 来源",
-  outro: "outro ending cta 结尾 片尾 行动",
+  people: "people profile quote team 人物 团队 观点 引用",
+  typography:
+    "typography text lower third chapter bullet quote label 文字 标注 字幕 章节 列表 引语",
+  media:
+    "media image video split screen device mockup interface ui browser mobile walkthrough cursor 媒体 图片 视频 分屏 样机 界面 浏览器 手机 演示",
+  social:
+    "social media post comment follow creator instagram x douyin xiaohongshu 社交媒体 帖子 评论 关注 创作者 抖音 小红书",
+  developer: "developer code terminal diff api demo 代码演示 代码 终端 差异 接口",
+  brand:
+    "brand marketing commerce logo palette campaign identity pricing offer sale 品牌 营销 商业 标志 色板 活动 定价 报价 促销",
 };
-
-function isVisualComponentCategory(value: unknown): value is RegistryVisualComponentCategory {
-  return VISUAL_COMPONENT_CATEGORIES.some((category) => category === value);
-}
 
 let catalogCache: CatalogItem[] | null = null;
 let catalogRequest: Promise<CatalogItem[]> | null = null;
@@ -71,9 +77,10 @@ export function preloadBlockCatalog(): Promise<CatalogItem[]> {
   return catalogRequest;
 }
 
-export function resolveCatalogSection(item: CatalogItem): CatalogSectionId | null {
-  const category = item.visualComponent?.category;
-  return isVisualComponentCategory(category) ? category : null;
+export function resolveCatalogSection(item: {
+  visualComponent?: { category?: unknown };
+}): CatalogSectionId | null {
+  return resolveVisualComponentCategory(item.visualComponent?.category);
 }
 
 export function useBlockCatalog() {

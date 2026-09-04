@@ -13,6 +13,7 @@ import { CaretDown, CaretRight, FunnelSimple } from "@phosphor-icons/react";
 import { formatVisualComponentDataForAi } from "@hyperframes/core/registry";
 import {
   useBlockCatalog,
+  resolveCatalogSection,
   type CatalogItem,
   type CatalogSection,
   type CatalogSectionId,
@@ -36,17 +37,19 @@ interface BlocksTabProps {
 }
 
 const SECTION_TITLES: Record<CatalogSectionId, { en: string; zh: string }> = {
-  intro: { en: "Intro", zh: "开场" },
-  product: { en: "Product", zh: "产品" },
-  data: { en: "Data", zh: "数据" },
-  diagrams: { en: "Diagrams", zh: "图解" },
-  flow: { en: "Flow", zh: "流程" },
-  maps: { en: "Maps", zh: "地图" },
-  compare: { en: "Compare", zh: "对比" },
-  knowledge: { en: "Knowledge", zh: "知识" },
-  people: { en: "People", zh: "人物" },
-  proof: { en: "Proof", zh: "佐证" },
-  outro: { en: "Outro", zh: "结尾" },
+  scene: { en: "Openers & Endings", zh: "开场与收尾" },
+  product: { en: "Product Showcase", zh: "产品展示" },
+  data: { en: "Data & Charts", zh: "数据与图表" },
+  diagrams: { en: "Flows & Diagrams", zh: "流程与图解" },
+  maps: { en: "Maps & Routes", zh: "地图与路径" },
+  proof: { en: "Comparison & Proof", zh: "对比与背书" },
+  knowledge: { en: "Knowledge", zh: "知识讲解" },
+  people: { en: "People & Quotes", zh: "人物与观点" },
+  typography: { en: "Text & Labels", zh: "文字与标注" },
+  media: { en: "Media & UI", zh: "媒体与界面" },
+  social: { en: "Social Media", zh: "社交媒体" },
+  developer: { en: "Code Demos", zh: "代码演示" },
+  brand: { en: "Brand & Marketing", zh: "品牌与营销" },
 };
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
@@ -545,6 +548,7 @@ const BlockCard = memo(function BlockCard({
   insertingBlockName: string | null;
   locale: "en" | "zh";
 }) {
+  const visualSection = resolveCatalogSection(block);
   const [posterFailed, setPosterFailed] = useState(false);
   const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
   const [previewing, setPreviewing] = useState(false);
@@ -589,7 +593,7 @@ const BlockCard = memo(function BlockCard({
   }, []);
 
   const startPreview = useCallback(() => {
-    if (!visible || reducedMotion) return;
+    if (reducedMotion) return;
     previewController.start(block.name, async ({ isCurrent }) => {
       if (!isCurrent()) return undefined;
       if (mountedRef.current) {
@@ -604,13 +608,13 @@ const BlockCard = memo(function BlockCard({
         }
       };
     });
-  }, [block.name, previewController, reducedMotion, visible]);
+  }, [block.name, previewController, reducedMotion]);
 
   const handleEnter = useCallback(() => {
     clearHoverTimer();
-    if (!visible || reducedMotion) return;
+    if (reducedMotion) return;
     hoverTimerRef.current = setTimeout(startPreview, 60);
-  }, [clearHoverTimer, reducedMotion, startPreview, visible]);
+  }, [clearHoverTimer, reducedMotion, startPreview]);
 
   const handleLeave = useCallback(() => {
     clearHoverTimer();
@@ -764,33 +768,16 @@ const BlockCard = memo(function BlockCard({
         )}
 
         {previewing ? (
-          !prefersCompositionPreview && videoUrl && !videoThumbnailFailed ? (
-            <video
-              src={videoUrl}
-              aria-label={`${block.title} preview`}
-              autoPlay
-              loop
-              muted
-              playsInline
-              preload="auto"
-              onCanPlay={() => setPreviewReady(true)}
-              onError={() => setVideoThumbnailFailed(true)}
-              className={`pointer-events-none absolute inset-0 z-[1] size-full object-cover transition-opacity duration-150 ${
-                previewReady ? "opacity-100" : "opacity-0"
-              }`}
-            />
-          ) : (
-            <iframe
-              src={compositionPlaybackUrl}
-              title={`${block.title} preview`}
-              tabIndex={-1}
-              sandbox="allow-scripts"
-              onLoad={() => setPreviewReady(true)}
-              className={`pointer-events-none absolute inset-0 z-[1] size-full border-0 bg-transparent transition-opacity duration-150 ${
-                previewReady ? "opacity-100" : "opacity-0"
-              }`}
-            />
-          )
+          <iframe
+            src={compositionPlaybackUrl}
+            title={`${block.title} preview`}
+            tabIndex={-1}
+            sandbox="allow-scripts"
+            onLoad={() => setPreviewReady(true)}
+            className={`pointer-events-none absolute inset-0 z-[1] size-full border-0 bg-transparent transition-opacity duration-150 ${
+              previewReady ? "opacity-100" : "opacity-0"
+            }`}
+          />
         ) : null}
 
         <div className="pointer-events-none absolute left-1 top-1 z-[2] flex items-center gap-0.5">
@@ -824,8 +811,8 @@ const BlockCard = memo(function BlockCard({
             {block.title}
           </div>
           <span className="flex-none text-[9px] leading-4 text-panel-text-3">
-            {block.visualComponent
-              ? SECTION_TITLES[block.visualComponent.category][locale]
+            {visualSection
+              ? SECTION_TITLES[visualSection][locale]
               : getCategoryLabel(block.category, locale)}
           </span>
         </div>

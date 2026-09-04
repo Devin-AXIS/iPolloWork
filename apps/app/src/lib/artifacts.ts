@@ -189,6 +189,20 @@ export function selectArtifactContextOutputs(
   return outputs.filter((artifact) => canOpenArtifactInContext(artifact, context));
 }
 
+/** Inline cards highlight deliverables; editable support files stay in the output panel. */
+export function selectConversationArtifactCards(
+  artifacts: ArtifactItem[],
+  context?: ArtifactInteractionContext,
+) {
+  return selectArtifactContextOutputs(artifacts, context).filter((artifact) => {
+    if (context) return canOpenArtifactInContext(artifact, context);
+    // Studio entries remain actionable even while their workspace-catalog
+    // existence check is catching up with the assistant's final response.
+    if (getArtifactStudioTarget(artifact)) return true;
+    return artifact.type !== "text" && canPreviewArtifact(artifact);
+  });
+}
+
 /** A template-backed turn keeps its canonical editor entry plus verified exported deliverables. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
   const templateDirectory = artifactDirectoryPath(templateEntryPath);

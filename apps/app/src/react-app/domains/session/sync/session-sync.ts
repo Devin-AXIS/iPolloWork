@@ -65,6 +65,7 @@ type SyncEntry = {
   sessionStatusListeners: Set<NonNullable<SyncOptions["onSessionStatus"]>>;
   sessionErrorListeners: Set<NonNullable<SyncOptions["onSessionError"]>>;
   pendingDeltas: Map<string, { messageId: string; reasoning: boolean; text: string }>;
+  reconcilingSessionIds: Set<string>;
   // Coalesce rapid-fire delta events from the SSE stream into one cache
   // commit per animation frame. Without this, a long response produces a
   // setQueryData per token; each triggers a full transcript re-render
@@ -406,19 +407,35 @@ function activityIsLive(status: SessionActivityStatus) {
 }
 
 async function reconcileRetainedSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
+  if (!entry.retainedSessionTimers.has(sessionId)) return;
+  await reconcileLiveSession(input, entry, sessionId);
+}
+
+async function reconcileLiveSession(input: SyncScope, entry: SyncEntry, sessionId: string) {
   const readSnapshot = entry.readSnapshot;
-  if (!readSnapshot) return;
+  if (!readSnapshot || entry.reconcilingSessionIds.has(sessionId)) return;
+  if (!isTrackedSession(entry, sessionId)) return;
+  if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
+  entry.reconcilingSessionIds.add(sessionId);
   try {
     const snapshot = await readSnapshot(sessionId);
-    if (!entry.retainedSessionTimers.has(sessionId)) return;
+    if (!isTrackedSession(entry, sessionId)) return;
     // A terminal live event that arrived while the request was in flight is
     // newer than this observational snapshot and must win.
     if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
     seedSessionState(input.workspaceId, snapshot);
   } catch {
     // Event streaming remains the primary path. A failed reconciliation is
-    // retried only while the background session is still active.
+    // retried only while the session is still active.
+  } finally {
+    entry.reconcilingSessionIds.delete(sessionId);
   }
+}
+
+async function reconcileTrackedLiveSessions(input: SyncScope, entry: SyncEntry) {
+  await Promise.all(
+    [...entry.trackedSessionRefs.keys()].map((sessionId) => reconcileLiveSession(input, entry, sessionId)),
+  );
 }
 
 function retainSession(input: SyncScope, entry: SyncEntry, sessionId: string, ttlMs?: number) {
@@ -1387,15 +1404,19 @@ function startSync(input: SyncOptions) {
   const entry = syncs.get(syncKey(input));
   let disposed = false;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
-  let watchdogTimer: ReturnType<typeof setInterval> | null = null;
+  let silentStreamReconcileTimer: ReturnType<typeof setInterval> | null = null;
   let activeConnectionController: AbortController | null = null;
   let lastEventAt = Date.now();
   let retryDelayMs = 1_000;
-  const staleStreamMs = 30_000;
+  const silentStreamReconcileMs = 30_000;
 
   const scheduleRetry = () => {
     if (disposed || controller.signal.aborted || retryTimer) return;
     activeConnectionController = null;
+    // Event streams are live-only. If a terminal event arrived while the
+    // transport was disconnected, recover it from the authoritative snapshot
+    // before waiting for the next live event.
+    if (entry) void reconcileTrackedLiveSessions(input, entry);
     retryTimer = setTimeout(() => {
       retryTimer = null;
       void connect();
@@ -1431,19 +1452,20 @@ function startSync(input: SyncOptions) {
   };
 
   void connect();
-  watchdogTimer = setInterval(() => {
+  silentStreamReconcileTimer = setInterval(() => {
     if (disposed || controller.signal.aborted || retryTimer) return;
-    const active = activeConnectionController;
-    if (!active || active.signal.aborted) return;
-    if (Date.now() - lastEventAt < staleStreamMs) return;
-    active.abort();
-    scheduleRetry();
+    if (Date.now() - lastEventAt < silentStreamReconcileMs) return;
+    // Long reasoning and render commands can legitimately produce no domain
+    // events for more than 30 seconds. Do not tear down a healthy stream;
+    // reconcile the selected live sessions instead so a missed terminal event
+    // cannot leave the UI permanently busy.
+    if (entry) void reconcileTrackedLiveSessions(input, entry);
   }, 10_000);
 
   return () => {
     disposed = true;
     if (retryTimer) clearTimeout(retryTimer);
-    if (watchdogTimer) clearInterval(watchdogTimer);
+    if (silentStreamReconcileTimer) clearInterval(silentStreamReconcileTimer);
     activeConnectionController?.abort();
     controller.abort();
   };
@@ -1477,6 +1499,7 @@ export function ensureWorkspaceSessionSync(input: SyncOptions) {
     sessionStatusListeners: new Set(input.onSessionStatus ? [input.onSessionStatus] : []),
     sessionErrorListeners: new Set(input.onSessionError ? [input.onSessionError] : []),
     pendingDeltas: new Map(),
+    reconcilingSessionIds: new Set(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,
   });
@@ -1698,6 +1721,7 @@ export function __createWorkspaceSessionSyncForTest(input: SyncScope) {
     sessionStatusListeners: new Set(),
     sessionErrorListeners: new Set(),
     pendingDeltas: new Map(),
+    reconcilingSessionIds: new Set(),
     deltaFlushBuffer: [],
     deltaFlushScheduled: false,
   });
@@ -1718,6 +1742,12 @@ export async function __reconcileRetainedSessionForTest(input: SyncScope, sessio
   const entry = syncs.get(syncKey(input));
   if (!entry) return;
   await reconcileRetainedSession(input, entry, sessionId);
+}
+
+export async function __reconcileTrackedSessionsForTest(input: SyncScope) {
+  const entry = syncs.get(syncKey(input));
+  if (!entry) return;
+  await reconcileTrackedLiveSessions(input, entry);
 }
 
 export function __disposeWorkspaceSessionSyncForTest(input: SyncScope) {

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"creator","label":"创作者","type":"string","default":"纸飞机研究所","maxLength":36},{"id":"caption","label":"视频文案","type":"string","default":"把复杂信息变成一眼就懂的视觉节奏。","maxLength":100},{"id":"sound","label":"声音","type":"string","default":"原声 · 纸飞机研究所","maxLength":52},{"id":"metrics","label":"互动数据","type":"string","default":"12.6万赞 · 8,420评论 · 3.1万收藏","maxLength":72}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Douyin Video</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.dy-wrap{width:1380px;margin:auto;display:grid;grid-template-columns:52% 48%;overflow:hidden;border-radius:42px;background:#0d0d10;color:#fff;box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.22))}.dy-video{position:relative;height:850px;overflow:hidden;background:radial-gradient(circle at 70% 30%,rgba(37,244,238,.9),transparent 22%),radial-gradient(circle at 28% 68%,rgba(254,44,85,.82),transparent 24%),linear-gradient(145deg,#272834,#09090b)}.dy-video::before{content:"";position:absolute;inset:130px 110px;border:2px solid rgba(255,255,255,.22);border-radius:180px 40px 180px 40px;transform:rotate(-12deg)}.dy-note{position:absolute;left:55px;bottom:58px;font-size:18px;font-weight:900;letter-spacing:.16em}.dy-copy{display:flex;flex-direction:column;padding:62px}.dy-logo{font-size:28px;font-weight:950}.dy-caption{margin:auto 0 34px;font-size:48px;line-height:1.13;letter-spacing:-.035em}.dy-creator{font-size:24px;font-weight:850}.dy-sound{margin-top:18px;color:#b9bec8;font-size:19px}.dy-metrics{margin-top:42px;padding-top:26px;border-top:1px solid #34363e;color:#d9dce2;font-size:19px}
+</style></head>
+<body><main id="root" data-composition-id="douyin-video" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"creator":"纸飞机研究所","caption":"把复杂信息变成一眼就懂的视觉节奏。","sound":"原声 · 纸飞机研究所","metrics":"12.6万赞 · 8,420评论 · 3.1万收藏"}'><section class="dy-wrap sm-animate"><div class="dy-video"><span class="dy-note sm-pop">15s · FOR YOU</span></div><div class="dy-copy"><div class="dy-logo">♪ 抖音</div><h1 class="dy-caption" data-ipw-variable="caption" data-ipw-ai-slot="caption"></h1><div class="dy-creator" data-ipw-variable="creator" data-ipw-ai-slot="creator"></div><div class="dy-sound" data-ipw-variable="sound" data-ipw-ai-slot="sound"></div><footer class="dy-metrics" data-ipw-variable="metrics" data-ipw-ai-slot="metrics"></footer></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="douyin-video";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("scale"==="slide-left")Object.assign(initial,{x:-58,opacity:0});else if("scale"==="slide-right")Object.assign(initial,{x:58,opacity:0});else if("scale"==="scale")Object.assign(initial,{scale:.88,opacity:0});else if("scale"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08).fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38).fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

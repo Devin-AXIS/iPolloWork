@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"creator","label":"Creator","type":"string","default":"Mira Studio","maxLength":40},{"id":"headline","label":"Headline","type":"string","default":"A tiny ritual for better creative mornings.","maxLength":90},{"id":"sticker","label":"Sticker","type":"string","default":"Tap for the full routine","maxLength":48},{"id":"progress","label":"Story progress","type":"string","default":"3 / 5","maxLength":16}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Instagram Story</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.story-stage{width:100%;display:grid;place-items:center}.story-phone{position:relative;width:500px;height:900px;overflow:hidden;border-radius:48px;background:linear-gradient(165deg,#2b153e 0%,#ba2d65 50%,#ffb44c 100%);box-shadow:0 35px 100px rgba(59,24,74,.28);color:#fff}.story-bars{display:grid;grid-template-columns:repeat(5,1fr);gap:7px;padding:24px}.story-bars span{height:5px;border-radius:9px;background:rgba(255,255,255,.35)}.story-bars span:nth-child(-n+3){background:#fff}.story-head{display:flex;align-items:center;gap:14px;padding:4px 28px}.story-avatar{display:grid;place-items:center;width:48px;height:48px;border:2px solid #fff;border-radius:50%;font-size:14px;font-weight:900}.story-creator{font-size:18px;font-weight:800}.story-art{position:absolute;inset:140px 42px 220px;border-radius:38px;background:rgba(255,255,255,.14);backdrop-filter:blur(18px)}.story-art::before{content:"";position:absolute;inset:86px;border:22px solid rgba(255,255,255,.82);border-radius:50%}.story-art::after{content:"";position:absolute;width:126px;height:126px;left:50%;top:50%;border-radius:34px;background:#fff;transform:translate(-50%,-50%) rotate(18deg)}.story-headline{position:absolute;left:44px;right:44px;bottom:128px;margin:0;font-size:38px;line-height:1.04;letter-spacing:-.04em}.story-sticker{position:absolute;left:50%;bottom:50px;transform:translateX(-50%);min-width:310px;padding:18px 24px;border-radius:999px;background:#fff;color:#171319;text-align:center;font-size:18px;font-weight:850}.story-progress{position:absolute;right:28px;top:82px;font-size:14px;font-weight:750}
+</style></head>
+<body><main id="root" data-composition-id="instagram-story" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"creator":"Mira Studio","headline":"A tiny ritual for better creative mornings.","sticker":"Tap for the full routine","progress":"3 / 5"}'><section class="story-stage"><article class="story-phone sm-animate"><div class="story-bars sm-draw"><span></span><span></span><span></span><span></span><span></span></div><header class="story-head"><div class="story-avatar sm-pop">MS</div><div class="story-creator" data-ipw-variable="creator" data-ipw-ai-slot="creator"></div></header><div class="story-progress" data-ipw-variable="progress" data-ipw-ai-slot="progress"></div><div class="story-art"></div><h1 class="story-headline sm-animate" data-ipw-variable="headline" data-ipw-ai-slot="headline"></h1><div class="story-sticker sm-pop" data-ipw-variable="sticker" data-ipw-ai-slot="sticker"></div></article></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="instagram-story";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("slide-right"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("slide-right"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("slide-right"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("slide-right"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

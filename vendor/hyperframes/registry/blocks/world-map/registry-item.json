@@ -1,34 +1,48 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "world-map",
+  "version": "1.3.1",
   "type": "hyperframes:block",
   "librarySection": "interface-animation",
   "title": "World Map",
-  "description": "Animated world choropleth with country-by-country reveal, tooltip labels, and rotating globe inset — D3 Natural Earth projection",
-  "tags": ["component", "data", "map", "geography", "world", "choropleth", "theme"],
-  "version": "1.0.0", "author": "iPolloWork", "license": "Apache-2.0",
-  "source": { "provider": "HyperFrames", "label": "World Map", "url": "https://www.hyperframes.dev/catalog/blocks/world-map" },
-  "visualComponent": { "version": 1, "category": "maps", "surfaces": ["video"], "themeMode": "inherit", "data": { "version": 1, "kind": "region-value", "mode": "override", "rowId": "region", "binding": { "variable": "values", "encoding": "key-value-list" }, "columns": [{ "id": "region", "label": "Country", "labelZh": "国家或地区", "type": "string", "role": "id", "required": true }, { "id": "value", "label": "GDP per capita", "labelZh": "人均 GDP", "type": "number", "role": "value", "required": true }], "minRows": 1, "maxRows": 250, "highlightVariable": "highlight", "valueFormat": { "unit": "USD", "precision": 0, "notation": "currency", "currency": "USD" } }, "ai": { "slots": ["title", "values", "highlight", "source"], "instructions": "AI may replace country values or annotate a highlighted country while preserving recognizable geography and map legibility." } },
-  "dimensions": {
-    "width": 1920,
-    "height": 1080
-  },
-  "duration": 14,
-  "variables": [
-    { "id": "title", "label": "Title", "type": "string", "default": "Global GDP per Capita", "maxLength": 72, "update": "live" },
-    { "id": "values", "label": "Country data", "description": "Country GDP overrides, edited as structured rows.", "type": "string", "default": "United States:85373,China:13136,India:2731,Germany:54291,Japan:33950", "maxLength": 2000, "update": "live" },
-    { "id": "highlight", "label": "Highlight", "type": "string", "default": "United States", "maxLength": 40, "update": "live" },
-    { "id": "source", "label": "Source", "type": "string", "default": "Source: International Monetary Fund", "maxLength": 72, "update": "live" }
-  ],
-  "files": [
-    {
-      "path": "world-map.html",
-      "target": "compositions/world-map.html",
-      "type": "hyperframes:composition"
+  "description": "A theme-aware world map with Natural Earth country boundaries, adjustable values, proportional markers, a selected market callout, and a compact ranking panel.",
+  "tags": ["component", "data", "map", "geography", "world", "ranking", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "source": { "provider": "Natural Earth", "label": "Admin 0 country boundaries", "url": "https://www.naturalearthdata.com/downloads/110m-cultural-vectors/110m-admin-0-countries/" },
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "region-value",
+      "mode": "replace",
+      "rowId": "region",
+      "binding": { "variable": "values", "encoding": "key-value-list" },
+      "columns": [
+        { "id": "region", "label": "Country or region", "labelZh": "国家或地区", "type": "string", "role": "id", "required": true },
+        { "id": "value", "label": "Index", "labelZh": "指标值", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 1,
+      "maxRows": 18,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "values", "highlight", "source"],
+      "instructions": "Provide one to eighteen supported countries with numeric values and one highlighted country. Preserve the recognizable world silhouette and the theme-token color system."
     }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Global market momentum", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "Country data", "description": "Country or region names and numeric index values.", "type": "string", "default": "United States:92,Brazil:68,United Kingdom:74,Germany:81,Nigeria:56,India:88,China:96,Japan:77,Australia:63", "maxLength": 2000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "China", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Illustrative market index · 2026", "maxLength": 72, "update": "live" }
   ],
-  "preview": {
-    "video": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.mp4",
-    "poster": "https://static.heygen.ai/hyperframes-oss/docs/images/catalog/blocks/world-map.png"
-  }
+  "files": [{ "path": "world-map.html", "target": "compositions/world-map.html", "type": "hyperframes:composition" }]
 }

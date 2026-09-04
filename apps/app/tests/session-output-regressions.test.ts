@@ -331,13 +331,9 @@ describe("session output issue regressions", () => {
       source.indexOf("export function ConversationOutputTrigger"),
     );
 
-    expect(artifactListSource).toContain(
-      ").filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));",
-    );
-    expect(outputPanelSource).toContain("artifacts.filter(isConversationOutputArtifact)");
-    expect(outputPanelSource).not.toContain(
-      ").filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));",
-    );
+    expect(artifactListSource).toContain("selectConversationArtifactCards(");
+    expect(outputPanelSource).toContain("const outputs = artifacts.filter(isConversationOutputArtifact);");
+    expect(outputPanelSource).not.toContain("selectConversationArtifactCards(");
   });
 
   test("generated file links open in the internal right panel by default", () => {
@@ -483,7 +479,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(artifactSource).toContain("canOpenArtifactInContext(artifact, artifactContext)");
-    expect(artifactSource).toContain("selectArtifactContextOutputs(artifacts, artifactContext)");
+    expect(artifactSource).toContain("selectConversationArtifactCards(");
     expect(messageListSource).toContain("artifactFiles={artifactFiles}");
     expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
     expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');

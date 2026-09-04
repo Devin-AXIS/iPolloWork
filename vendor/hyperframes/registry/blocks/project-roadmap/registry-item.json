@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "project-roadmap",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Project Roadmap",
+  "description": "A four-phase horizontal roadmap with a time horizon and one highlighted milestone.",
+  "tags": [
+    "component",
+    "flow",
+    "roadmap",
+    "milestones",
+    "planning",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "diagrams",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "milestones",
+        "horizon",
+        "highlight"
+      ],
+      "instructions": "Separate up to four milestones with bars, make highlight match one milestone, and use a compact horizon label."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "project-roadmap.html",
+      "target": "compositions/project-roadmap.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "A roadmap people can act on",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "milestones",
+      "label": "Milestones",
+      "type": "string",
+      "default": "Discover|Prototype|Pilot|Scale",
+      "maxLength": 200,
+      "update": "live"
+    },
+    {
+      "id": "horizon",
+      "label": "Horizon",
+      "type": "string",
+      "default": "Q3 → Q4 2026",
+      "maxLength": 32,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlight",
+      "type": "string",
+      "default": "Pilot",
+      "maxLength": 40,
+      "update": "live"
+    }
+  ]
+}

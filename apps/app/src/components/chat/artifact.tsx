@@ -41,8 +41,8 @@ import {
   getArtifactTypeLabel,
   groupConversationOutputArtifacts,
   isConversationOutputArtifact,
-  selectArtifactContextOutputs,
   selectArtifactsForRequest,
+  selectConversationArtifactCards,
   selectTemplateEntryArtifacts,
   useArtifacts,
   usePreviewArtifact,
@@ -454,16 +454,17 @@ interface ArtifactListProps {
 
 export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
-  const visibleArtifacts = selectArtifactContextOutputs(artifacts, artifactContext);
   const requestArtifacts = selectArtifactsForRequest(
-    visibleArtifacts,
+    artifacts,
     requestOrdinal,
     artifactRequestOwnership,
   );
-  const displayedArtifacts = (entryPath
-    ? selectTemplateEntryArtifacts(requestArtifacts, entryPath)
-    : requestArtifacts
-  ).filter((artifact) => canOpenArtifactInContext(artifact, artifactContext));
+  const displayedArtifacts = selectConversationArtifactCards(
+    entryPath
+      ? selectTemplateEntryArtifacts(requestArtifacts, entryPath)
+      : requestArtifacts,
+    artifactContext,
+  );
   const displayNames = artifactDisplayNames(
     displayedArtifacts,
     () => requestNaming ?? { title: sessionTitle?.trim() ?? "", occurrence: 1 },
@@ -522,10 +523,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   const artifacts = templateEntryPath
     ? selectTemplateEntryArtifacts(discoveredArtifacts, templateEntryPath)
     : discoveredArtifacts;
-  const outputs = selectArtifactContextOutputs(
-    artifacts.filter(isConversationOutputArtifact),
-    artifactContext,
-  );
+  const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
   const outputDisplayNames = artifactDisplayNames(
     outputGroups.map((group) => group.primary),

@@ -15,6 +15,7 @@ import {
   inferArtifactRequestOwnership,
   selectArtifactContextOutputs,
   selectArtifactsForRequest,
+  selectConversationArtifactCards,
   selectSupplementalArtifactsForRequest,
   selectTemplateEntryArtifacts,
 } from "../src/lib/artifacts";
@@ -161,6 +162,38 @@ describe("video artifact entry routing", () => {
     expect(selectArtifactContextOutputs(
       [currentEntry, unrelatedHtml, stylesheet],
     )).toEqual([currentEntry, unrelatedHtml, stylesheet]);
+  });
+
+  test("keeps an assistant-reported Video Studio entry instead of a temporary write script", () => {
+    const entryPath = videoProjectEntryPath("session-template");
+    const messages: UIMessage[] = [{
+      id: "assistant-video",
+      role: "assistant",
+      parts: [
+        {
+          type: "dynamic-tool",
+          toolName: "write",
+          toolCallId: "write-helper",
+          state: "output-available",
+          input: { path: "apply-brief-content.js" },
+          output: "written",
+        },
+        {
+          type: "text",
+          text: `生成/更新文件： ${entryPath}`,
+        },
+      ],
+    }];
+    const artifacts = getArtifactsFromMessages(messages);
+
+    expect(artifacts.map((artifact) => artifact.path).sort()).toEqual([
+      "apply-brief-content.js",
+      entryPath,
+    ].sort());
+    expect(selectConversationArtifactCards(artifacts).map((artifact) => artifact.path)).toEqual([
+      entryPath,
+    ]);
+    expect(artifacts.filter((artifact) => artifact.type !== "unknown")).toHaveLength(2);
   });
 
   test("shows one newest video entry when the same file is discovered through multiple paths", () => {

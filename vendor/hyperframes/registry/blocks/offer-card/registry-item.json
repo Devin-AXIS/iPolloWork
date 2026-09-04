@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "offer-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Offer Card",
+  "description": "A high-contrast promotional offer with supporting detail and a focused call to action.",
+  "tags": [
+    "component",
+    "commerce",
+    "offer",
+    "promotion",
+    "cta",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "brand",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "eyebrow",
+        "offer",
+        "detail",
+        "action"
+      ],
+      "instructions": "Use one specific offer, include the condition in detail, and keep the action short and concrete."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "offer-card.html",
+      "target": "compositions/offer-card.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "type": "string",
+      "default": "LIMITED RELEASE",
+      "maxLength": 32,
+      "update": "live"
+    },
+    {
+      "id": "offer",
+      "label": "Offer",
+      "type": "string",
+      "default": "Save 30%",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "detail",
+      "label": "Details",
+      "type": "string",
+      "default": "Annual Studio Pro plans through Friday.",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "action",
+      "label": "Action",
+      "type": "string",
+      "default": "Unlock the offer",
+      "maxLength": 40,
+      "update": "live"
+    }
+  ]
+}

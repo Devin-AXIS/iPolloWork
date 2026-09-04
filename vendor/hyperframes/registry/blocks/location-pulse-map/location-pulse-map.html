@@ -1,0 +1,276 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Activity across key locations","maxLength":72},{"id":"locations","label":"Locations","description":"Named locations and activity values.","type":"string","default":"Central:98,Harbor:74,Airport:61,North:52,West:43","maxLength":1200},{"id":"highlight","label":"Highlight","type":"string","default":"Central","maxLength":40},{"id":"source","label":"Source","type":"string","default":"Live location activity","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Location Pulse Map</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #lp-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 92px 132px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .lp-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+      }
+      .lp-kicker {
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 780 15px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .lp-title {
+        margin: 0;
+        font-size: 72px;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+      .lp-source {
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .lp-map {
+        position: absolute;
+        left: 132px;
+        right: 132px;
+        top: 270px;
+        bottom: 76px;
+        overflow: hidden;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 32px);
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: var(--ipw-card-shadow, 0 26px 70px rgba(20, 30, 40, 0.11));
+      }
+      .lp-map::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(
+            color-mix(in srgb, var(--ipw-color-border, #d8dde3) 55%, transparent) 1px,
+            transparent 1px
+          ),
+          linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--ipw-color-border, #d8dde3) 55%, transparent) 1px,
+            transparent 1px
+          );
+        background-size: 72px 72px;
+        opacity: 0.32;
+      }
+      .lp-roads {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .lp-road {
+        fill: none;
+        stroke: var(--ipw-color-border, #d8dde3);
+        stroke-width: 10;
+        stroke-linecap: round;
+      }
+      .lp-road.major {
+        stroke: color-mix(
+          in srgb,
+          var(--ipw-color-muted, #68717c) 36%,
+          var(--ipw-color-border, #d8dde3)
+        );
+        stroke-width: 18;
+      }
+      .lp-pin {
+        position: absolute;
+        z-index: 2;
+        width: 30px;
+        height: 30px;
+        margin: -15px 0 0 -15px;
+      }
+      .lp-dot {
+        position: absolute;
+        inset: 0;
+        border: 7px solid var(--ipw-color-surface, #fff);
+        border-radius: 50%;
+        background: var(--ipw-color-primary, #20bbc0);
+        box-shadow: 0 10px 24px rgba(20, 30, 40, 0.18);
+      }
+      .lp-pulse {
+        position: absolute;
+        inset: -12px;
+        border: 4px solid var(--ipw-color-primary, #20bbc0);
+        border-radius: 50%;
+        opacity: 0;
+      }
+      .lp-card {
+        position: absolute;
+        left: 24px;
+        top: 20px;
+        min-width: 190px;
+        padding: 14px 17px;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: 17px;
+        background: color-mix(in srgb, var(--ipw-color-surface, #fff) 92%, transparent);
+        box-shadow: 0 14px 34px rgba(20, 30, 40, 0.11);
+      }
+      .lp-pin.flip .lp-card {
+        left: auto;
+        right: 24px;
+        text-align: right;
+      }
+      .lp-name {
+        display: block;
+        font-size: 21px;
+      }
+      .lp-value {
+        display: block;
+        margin-top: 7px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 800 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .lp-pin.is-highlight .lp-dot {
+        background: var(--ipw-color-text, #15171a);
+        box-shadow:
+          0 0 0 10px color-mix(in srgb, var(--ipw-color-primary, #20bbc0) 28%, transparent),
+          0 12px 30px rgba(20, 30, 40, 0.2);
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="lp-root"
+      data-composition-id="location-pulse-map"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <header class="lp-head">
+        <div>
+          <div class="lp-kicker">Location signals</div>
+          <h1 class="lp-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="lp-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="lp-map" data-ipw-ai-slot="locations">
+        <svg class="lp-roads" viewBox="0 0 1656 734" preserveAspectRatio="none">
+          <path class="lp-road major" d="M-60 590 C320 400 610 480 890 270 S1430 80 1740 190" />
+          <path class="lp-road" d="M110 40 C300 190 430 340 510 760" />
+          <path class="lp-road" d="M680 -20 C720 170 910 450 1190 760" />
+          <path class="lp-road" d="M1540 -30 C1410 220 1270 500 1320 760" />
+          <path class="lp-road" d="M-20 210 C300 270 540 180 760 40" />
+        </svg>
+      </section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("lp-root"),
+          id = root.dataset.compositionId,
+          values = {
+            title: "Activity across key locations",
+            locations: "Central:98,Harbor:74,Airport:61,North:52,West:43",
+            highlight: "Central",
+            source: "Live location activity",
+            ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+          };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        const rows = String(values.locations)
+            .split(/[,|]/)
+            .map((part) => {
+              const split = part.lastIndexOf(":");
+              return split > 0
+                ? { label: part.slice(0, split).trim(), value: Number(part.slice(split + 1)) }
+                : null;
+            })
+            .filter((row) => row && Number.isFinite(row.value))
+            .slice(0, 6),
+          positions = [
+            [48, 46],
+            [72, 28],
+            [80, 68],
+            [30, 24],
+            [20, 66],
+            [58, 78],
+          ],
+          map = root.querySelector(".lp-map");
+        rows.forEach((row, index) => {
+          const pin = document.createElement("article");
+          pin.className =
+            "lp-pin" +
+            (index % 3 === 1 ? " flip" : "") +
+            (row.label === String(values.highlight) ? " is-highlight" : "");
+          pin.style.left = `${positions[index][0]}%`;
+          pin.style.top = `${positions[index][1]}%`;
+          pin.innerHTML =
+            '<i class="lp-pulse"></i><i class="lp-dot"></i><div class="lp-card"><strong class="lp-name"></strong><span class="lp-value"></span></div>';
+          pin.querySelector(".lp-name").textContent = row.label;
+          pin.querySelector(".lp-value").textContent = String(Math.round(row.value));
+          map.append(pin);
+        });
+        const roads = root.querySelectorAll(".lp-road");
+        roads.forEach((path) => {
+          const length = path.getTotalLength();
+          path.style.strokeDasharray = String(length);
+          path.style.strokeDashoffset = String(length);
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".lp-head>*"),
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.45, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            map,
+            { scale: 0.985, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0.16,
+          )
+          .to(
+            roads,
+            { strokeDashoffset: 0, duration: 0.9, stagger: 0.08, ease: "power2.out" },
+            0.28,
+          )
+          .fromTo(
+            root.querySelectorAll(".lp-pin"),
+            { scale: 0, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.42, stagger: 0.08, ease: "power3.out" },
+            0.58,
+          )
+          .fromTo(
+            root.querySelectorAll(".lp-pulse"),
+            { scale: 0.25, opacity: 0.6 },
+            { scale: 2.4, opacity: 0, duration: 0.75, stagger: 0.1, ease: "power2.out" },
+            0.9,
+          );
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

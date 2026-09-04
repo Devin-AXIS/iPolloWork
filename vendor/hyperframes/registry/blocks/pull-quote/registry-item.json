@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pull-quote",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Pull Quote",
+  "description": "A full-frame editorial quotation without the portrait treatment of a profile card.",
+  "tags": ["component", "typography", "quote", "editorial", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "typography", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["quote", "attribution", "context", "style"], "instructions": "Preserve the meaning of the source quotation, keep attribution explicit, and choose solid or outline styling." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "pull-quote.html", "target": "compositions/pull-quote.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "quote", "label": "Quote", "type": "string", "default": "Clarity is not decoration. It is part of the decision.", "maxLength": 150, "update": "live" },
+    { "id": "attribution", "label": "Attribution", "type": "string", "default": "Maya Chen", "maxLength": 48, "update": "live" },
+    { "id": "context", "label": "Context", "type": "string", "default": "Design systems lead", "maxLength": 64, "update": "live" },
+    { "id": "style", "label": "Style", "type": "enum", "default": "solid", "options": [{ "value": "solid", "label": "Solid" }, { "value": "outline", "label": "Outline" }], "update": "live" }
+  ]
+}

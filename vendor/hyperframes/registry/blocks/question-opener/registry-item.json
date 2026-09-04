@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "question-opener",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Question Opener",
+  "description": "A curiosity-led opening card built around one strong question and compact context.",
+  "tags": [
+    "component",
+    "intro",
+    "question",
+    "opening",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "scene",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "eyebrow",
+        "question",
+        "context",
+        "chapter"
+      ],
+      "instructions": "Write one direct question, keep context to one sentence, and use a short eyebrow and chapter marker."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "question-opener.html",
+      "target": "compositions/question-opener.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "eyebrow",
+      "label": "Eyebrow",
+      "type": "string",
+      "default": "THE QUESTION",
+      "maxLength": 32,
+      "update": "live"
+    },
+    {
+      "id": "question",
+      "label": "Question",
+      "type": "string",
+      "default": "What changes when every idea becomes visible?",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "context",
+      "label": "Context",
+      "type": "string",
+      "default": "A practical look at turning intent into shared momentum.",
+      "maxLength": 110,
+      "update": "live"
+    },
+    {
+      "id": "chapter",
+      "label": "Chapter",
+      "type": "string",
+      "default": "01 / OPEN",
+      "maxLength": 24,
+      "update": "live"
+    }
+  ]
+}

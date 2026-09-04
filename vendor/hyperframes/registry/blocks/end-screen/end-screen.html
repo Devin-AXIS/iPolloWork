@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"brand","label":"Brand","type":"string","default":"iPolloWork","maxLength":40},{"id":"headline","label":"Headline","type":"string","default":"Keep the next idea moving.","maxLength":72},{"id":"action","label":"Primary action","type":"string","default":"Start a new sequence","maxLength":40},{"id":"secondary","label":"Secondary destination","type":"string","default":"ipollowork.com / studio","maxLength":64}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>End Screen</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.end{display:grid;grid-template-columns:1fr 520px;gap:90px;align-items:center;width:1560px;min-height:700px;margin:auto}.end-brand{font-size:20px;font-weight:850;letter-spacing:.18em;color:var(--ipw-color-primary,#20bbc0)}.end-headline{max-width:900px;margin:42px 0 0;font-size:90px;line-height:.94;letter-spacing:-.07em}.end-actions{display:grid;gap:20px}.end-primary,.end-secondary{padding:34px 38px;border-radius:26px;font-size:23px;font-weight:800}.end-primary{background:var(--ipw-color-primary,#20bbc0);color:#fff}.end-secondary{border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff);color:var(--ipw-color-muted,#68717c)}.end-mark{display:grid;place-items:center;width:180px;height:180px;margin:0 0 42px auto;border-radius:50%;border:2px solid var(--ipw-color-primary,#20bbc0);color:var(--ipw-color-primary,#20bbc0);font-size:58px;font-weight:850}</style></head>
+<body><main id="root" data-composition-id="end-screen" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"brand":"iPolloWork","headline":"Keep the next idea moving.","action":"Start a new sequence","secondary":"ipollowork.com / studio"}'><section class="end"><div class="vc-animate"><div class="end-brand" data-ipw-variable="brand" data-ipw-ai-slot="brand"></div><h1 class="end-headline" data-ipw-variable="headline" data-ipw-ai-slot="headline"></h1></div><aside class="end-actions"><div class="end-mark vc-animate">→</div><div class="end-primary vc-animate" data-ipw-variable="action" data-ipw-ai-slot="action"></div><div class="end-secondary vc-animate" data-ipw-variable="secondary" data-ipw-ai-slot="secondary"></div></aside></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="end-screen";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+const initial={};const motion="scale";
+if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
+else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
+else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
+else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
+else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:54,opacity:0});
+const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
+  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
+  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"author","label":"Author","type":"string","default":"Aria Chen · @ariaframes","maxLength":52},{"id":"posts","label":"Thread Posts","type":"string","default":"01:Start with the tension, not the context.|02:Show the proof in one clean visual.|03:End with the next useful action.","maxLength":320},{"id":"highlight","label":"Highlight Post","type":"string","default":"02","maxLength":16},{"id":"footer","label":"Footer","type":"string","default":"A practical thread on communicating product value.","maxLength":96}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>X Thread</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.thread{width:1400px;margin:auto;padding:56px 64px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:34px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.thread-head{display:flex;align-items:center;gap:18px}.thread-avatar{display:grid;place-items:center;width:70px;height:70px;border-radius:50%;background:#111;color:#fff;font-weight:900}.thread-author{font-size:27px;font-weight:820}.thread-x{margin-left:auto;font-size:40px;font-weight:950}.thread-list{display:grid;gap:15px;margin:36px 0}.social-list-item{display:grid;grid-template-columns:88px 1fr;gap:24px;padding:22px 26px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:22px;background:color-mix(in srgb,var(--ipw-color-surface,#fff) 92%,var(--ipw-color-primary,#4f46e5))}.social-list-item.is-highlight{border-color:#111;box-shadow:inset 7px 0 0 #111}.social-list-label{font-size:18px;font-weight:900}.social-list-value{font-size:24px;line-height:1.35}.thread-footer{color:var(--ipw-color-muted,#68717c);font-size:20px}
+</style></head>
+<body><main id="root" data-composition-id="x-thread" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"author":"Aria Chen · @ariaframes","posts":"01:Start with the tension, not the context.|02:Show the proof in one clean visual.|03:End with the next useful action.","highlight":"02","footer":"A practical thread on communicating product value."}'><section class="thread sm-animate"><header class="thread-head"><div class="thread-avatar sm-pop">A</div><div class="thread-author" data-ipw-variable="author" data-ipw-ai-slot="author"></div><div class="thread-x">𝕏</div></header><div class="thread-list" data-ipw-list="posts" data-list-mode="pair" data-highlight-key="highlight" data-ipw-ai-slot="posts"></div><span hidden data-ipw-variable="highlight" data-ipw-ai-slot="highlight"></span><footer class="thread-footer" data-ipw-variable="footer" data-ipw-ai-slot="footer"></footer></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="x-thread";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("rise"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("rise"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("rise"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("rise"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

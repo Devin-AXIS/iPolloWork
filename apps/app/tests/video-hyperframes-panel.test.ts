@@ -1082,7 +1082,8 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(surfaceSource).toContain("const STALLED_SESSION_WARNING_MS = 90_000");
-    expect(surfaceSource).toContain("if (!chatStreaming || activeToolLabel) return");
+    expect(surfaceSource).toContain("if (!chatStreaming) return");
+    expect(surfaceSource).not.toContain("if (!chatStreaming || activeToolLabel) return");
     expect(surfaceSource).toContain('kind: "stalled"');
     expect(surfaceSource).toContain('t("session.run_stalled")');
     expect(surfaceSource).toContain("latestAssistantMessageCompleted");

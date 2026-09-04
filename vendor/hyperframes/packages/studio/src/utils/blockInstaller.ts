@@ -66,8 +66,40 @@ interface AddBlockOptions {
 
 const INSERT_BOUNDARY_EPSILON = 0.0005;
 
+const INHERITED_COMPONENT_THEME_STYLE = [
+  "--component-accent: var(--ipw-color-primary, #20bbc0)",
+  "--component-text: var(--ipw-color-text, #15171a)",
+  "--component-surface: var(--ipw-color-surface, #ffffff)",
+  "--component-muted: var(--ipw-color-muted, #68717c)",
+  "--component-border: var(--ipw-color-border, #d8dde3)",
+].join("; ");
+
+const INHERITED_COMPONENT_THEME_MARKER = "data-ipw-component-theme-aliases";
+
 function authoredTrack(element: TimelineElement): number {
   return element.authoredTrack ?? element.track;
+}
+
+function readRootCompositionId(source: string): string | null {
+  return new DOMParser()
+    .parseFromString(source, "text/html")
+    .querySelector("[data-composition-id]")
+    ?.getAttribute("data-composition-id") ?? null;
+}
+
+function isRootTimelineComposition(
+  element: TimelineElement,
+  rootCompositionId?: string | null,
+): boolean {
+  if (element.compositionAncestors != null && element.compositionAncestors.length === 0) {
+    return true;
+  }
+  return Boolean(
+    rootCompositionId &&
+      element.parentCompositionId == null &&
+      !element.compositionSrc &&
+      (element.id === rootCompositionId || element.domId === rootCompositionId),
+  );
 }
 
 function resolveIndependentInsertTrack(elements: readonly TimelineElement[]): number {
@@ -82,7 +114,11 @@ export function resolveBlockRippleChanges(
   duration: number,
 ): Array<{ element: TimelineElement; start: number }> {
   return elements
-    .filter((element) => element.start + INSERT_BOUNDARY_EPSILON >= start)
+    .filter(
+      (element) =>
+        !isRootTimelineComposition(element) &&
+        element.start + INSERT_BOUNDARY_EPSILON >= start,
+    )
     .map((element) => ({
       element,
       start: Number(formatTimelineAttributeNumber(element.start + duration)),
@@ -138,6 +174,15 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
       return `${open}${transparentBody}${close}`;
     },
   );
+}
+
+export function injectInheritedComponentThemeAliases(source: string): string {
+  if (source.includes(INHERITED_COMPONENT_THEME_MARKER)) return source;
+
+  const style = `<style ${INHERITED_COMPONENT_THEME_MARKER}>:root{${INHERITED_COMPONENT_THEME_STYLE}}</style>`;
+  return /<\/head>/i.test(source)
+    ? source.replace(/<\/head>/i, `${style}</head>`)
+    : `${style}\n${source}`;
 }
 
 export function normalizeBlockVariableValue(
@@ -310,7 +355,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         compContent,
         block.variables ?? [],
       );
-      const normalizedContent = makeComponentDocumentBackgroundTransparent(declaredContent);
+      const themedContent =
+        block.visualComponent.themeMode === "inherit"
+          ? injectInheritedComponentThemeAliases(declaredContent)
+          : declaredContent;
+      const normalizedContent = makeComponentDocumentBackgroundTransparent(themedContent);
       if (normalizedContent !== compContent) {
         await writeProjectFile(compositionFile, normalizedContent);
       }
@@ -327,8 +376,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       insertedElementId = compId;
 
       const resolvedTargetPath = targetPath || "index.html";
+      const rootCompositionId = readRootCompositionId(originalContent);
       const relevantElements = timelineElements.filter(
-        (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        (te) =>
+          !isRootTimelineComposition(te, rootCompositionId) &&
+          (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
       );
 
       const { width: hostWidth, height: hostHeight } =
@@ -376,6 +428,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       const left = visualPosition ? Math.round(visualPosition.left) : geometry.left;
       const top = visualPosition ? Math.round(visualPosition.top) : geometry.top;
 
+      const inheritedThemeStyle =
+        block.visualComponent?.themeMode === "inherit"
+          ? `; ${INHERITED_COMPONENT_THEME_STYLE}`
+          : "";
+
       const subCompHtml = [
         `<div`,
         // A stable id (+ hf-id) is what authored sub-comps carry; without it the
@@ -385,12 +442,15 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  data-hf-id="hf-${generateId()}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
+        block.visualComponent
+          ? `  data-ipw-theme-mode="${block.visualComponent.themeMode}"`
+          : "",
         `  data-start="${formatTimelineAttributeNumber(start)}"`,
         `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
         `  data-track-index="${track}"`,
         `  data-width="${width}"`,
         `  data-height="${height}"`,
-        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
+        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}${inheritedThemeStyle}"`,
         `></div>`,
       ].join("\n");
 

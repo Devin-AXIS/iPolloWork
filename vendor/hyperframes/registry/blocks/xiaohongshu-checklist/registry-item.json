@@ -1,0 +1,118 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "xiaohongshu-checklist",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Xiaohongshu Checklist",
+  "description": "A Xiaohongshu-style saveable checklist with structured rows and an emphasized action.",
+  "tags": [
+    "component",
+    "social",
+    "xiaohongshu",
+    "checklist",
+    "tips",
+    "data",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "item",
+      "binding": {
+        "variable": "items",
+        "encoding": "key-value-list"
+      },
+      "columns": [
+        {
+          "id": "item",
+          "label": "项目",
+          "labelZh": "项目",
+          "type": "string",
+          "role": "id",
+          "required": true
+        },
+        {
+          "id": "detail",
+          "label": "说明",
+          "labelZh": "说明",
+          "type": "string",
+          "role": "label",
+          "required": true
+        }
+      ],
+      "highlightVariable": "active",
+      "minRows": 2,
+      "maxRows": 4
+    },
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "active",
+        "footer"
+      ],
+      "instructions": "写两到四个清单项目和简短说明，指定一个重点项目；每项应可单独执行。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "xiaohongshu-checklist.html",
+      "target": "compositions/xiaohongshu-checklist.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "清单标题",
+      "type": "string",
+      "default": "高效拍摄前的 4 项检查",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "清单项目",
+      "type": "string",
+      "default": "光线:主光方向是否稳定,画面:主体与背景是否分离,声音:环境噪声是否可控,节奏:前三秒是否足够清楚",
+      "maxLength": 300,
+      "update": "live"
+    },
+    {
+      "id": "active",
+      "label": "重点项目",
+      "type": "string",
+      "default": "节奏",
+      "maxLength": 28,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "底部文案",
+      "type": "string",
+      "default": "保存这张清单，下次拍摄前快速过一遍。",
+      "maxLength": 80,
+      "update": "live"
+    }
+  ]
+}

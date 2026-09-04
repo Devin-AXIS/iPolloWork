@@ -92,6 +92,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "china-map",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "route-map",
       "type": "hyperframes:block"
     },
@@ -145,6 +149,18 @@
     },
     {
       "name": "map-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "location-pulse-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "metro-network-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "territory-heat-map",
       "type": "hyperframes:block"
     },
     {
@@ -221,6 +237,206 @@
     },
     {
       "name": "lt-clean-bar",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "chapter-divider",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "bullet-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "pull-quote",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "media-hero",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "split-screen",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "device-mockup",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "browser-walkthrough",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "mobile-walkthrough",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "ranking-list",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "podium-ranking",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "live-leaderboard",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "medal-table",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "comparison-matrix",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "kpi-dashboard",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "social-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "comment-thread",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "follow-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "instagram-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "instagram-story",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "instagram-reel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "instagram-carousel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-status-post",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-thread",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-poll",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "x-space",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "douyin-video",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "douyin-product-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "douyin-live-room",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "douyin-comment-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "xiaohongshu-note",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "xiaohongshu-cover",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "xiaohongshu-checklist",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "xiaohongshu-review",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-walkthrough",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-diff-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "terminal-run",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "product-spotlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "pricing-plans",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "offer-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "logo-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "brand-palette",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "campaign-lockup",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "question-opener",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "product-steps",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "process-cycle",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "project-roadmap",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "definition-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "team-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "testimonial-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "end-screen",
       "type": "hyperframes:block"
     },
     {

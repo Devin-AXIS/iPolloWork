@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-status-post",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "X Post",
+  "description": "A focused X-style post card for concise statements, launch updates and social proof.",
+  "tags": [
+    "component",
+    "social",
+    "x",
+    "post",
+    "microblog",
+    "statement",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "name",
+        "handle",
+        "post",
+        "metrics"
+      ],
+      "instructions": "Write one crisp post and realistic compact engagement metrics. Avoid fabricated endorsements."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "x-status-post.html",
+      "target": "compositions/x-status-post.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "name",
+      "label": "Display Name",
+      "type": "string",
+      "default": "Northstar Labs",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "handle",
+      "label": "Handle",
+      "type": "string",
+      "default": "@northstarlabs",
+      "maxLength": 36,
+      "update": "live"
+    },
+    {
+      "id": "post",
+      "label": "Post",
+      "type": "string",
+      "default": "Clarity compounds. Ship the smallest useful idea, then let the signal guide the next move.",
+      "maxLength": 220,
+      "update": "live"
+    },
+    {
+      "id": "metrics",
+      "label": "Metrics",
+      "type": "string",
+      "default": "184 replies · 1.8K reposts · 12K likes",
+      "maxLength": 78,
+      "update": "live"
+    }
+  ]
+}

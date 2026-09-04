@@ -93,9 +93,19 @@ export function buildRegistryPreviewHtml(
       seek(seekTime);
       return;
     }
+    const timelineDurations = Object.values(window.__timelines || {})
+      .map((timeline) => {
+        if (timeline && typeof timeline.totalDuration === "function") {
+          return timeline.totalDuration();
+        }
+        return timeline && typeof timeline.duration === "function" ? timeline.duration() : 0;
+      })
+      .filter((value) => Number.isFinite(value) && value > 0);
+    const motionDuration = timelineDurations.length ? Math.max(...timelineDurations) : duration;
+    const previewDuration = Math.min(duration, Math.max(1.25, motionDuration + 0.45));
     const startedAt = performance.now();
     const tick = (now) => {
-      seek(((now - startedAt) / 1000) % duration);
+      seek(((now - startedAt) / 1000) % previewDuration);
       animationFrame = requestAnimationFrame(tick);
     };
     animationFrame = requestAnimationFrame(tick);

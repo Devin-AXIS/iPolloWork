@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-diff-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Code Diff Card",
+  "description": "A before-and-after code diff card that makes one implementation change easy to explain.",
+  "tags": [
+    "component",
+    "developer",
+    "code",
+    "diff",
+    "review",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "developer",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "filename",
+        "before",
+        "after",
+        "summary"
+      ],
+      "instructions": "Use short before and after snippets and a plain-language summary of why the change matters."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "code-diff-card.html",
+      "target": "compositions/code-diff-card.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "filename",
+      "label": "File name",
+      "type": "string",
+      "default": "player.ts",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "before",
+      "label": "Removed code",
+      "type": "string",
+      "default": "- pauseOnUpdate();",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "after",
+      "label": "Added code",
+      "type": "string",
+      "default": "+ preservePlaybackState();",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "summary",
+      "label": "Summary",
+      "type": "string",
+      "default": "Keep preview playback stable while edits arrive.",
+      "maxLength": 100,
+      "update": "live"
+    }
+  ]
+}
+

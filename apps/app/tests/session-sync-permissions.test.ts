@@ -19,6 +19,7 @@ import {
   __disposeWorkspaceSessionSyncForTest,
   __hasWorkspaceSessionSyncForTest,
   __reconcileRetainedSessionForTest,
+  __reconcileTrackedSessionsForTest,
   beginOptimisticSessionPrompt,
   coalescePendingDeltas,
   destroyWorkspaceSessionResources,
@@ -1001,6 +1002,54 @@ describe("session transcript sync", () => {
           }),
         ]));
     } finally {
+      releaseWorkspace();
+      __disposeWorkspaceSessionSyncForTest(liveSyncInput);
+    }
+  });
+
+  test("reconciles a selected run when its terminal stream event was missed", async () => {
+    const completedSnapshot = snapshotWithMessages([
+      { id: "user-selected", role: "user", text: "生成视频" },
+      {
+        id: "assistant-selected",
+        role: "assistant",
+        text: "视频已经生成",
+        parentUserMessageId: "user-selected",
+      },
+    ]);
+    const liveSyncInput = {
+      ...syncInput,
+      connection: testConnection,
+      readSnapshot: async () => completedSnapshot,
+    };
+    const releaseWorkspace = ensureWorkspaceSessionSync(liveSyncInput);
+    const releaseSession = trackWorkspaceSessionSync(liveSyncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "生成视频", "user-selected");
+    __applySessionSyncEventForTest(liveSyncInput, {
+      type: "message.upsert",
+      sessionId: "session-a",
+      message: uiMessage("user-selected", "user", "生成视频"),
+    });
+    __applySessionSyncEventForTest(liveSyncInput, {
+      type: "session.status",
+      sessionId: "session-a",
+      status: { type: "busy" },
+    });
+
+    try {
+      await __reconcileTrackedSessionsForTest(liveSyncInput);
+
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
+      expect(getReactQueryClient().getQueryData(statusKey("workspace-a", "session-a"))).toEqual({ type: "idle" });
+      expect(getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            id: "assistant-selected",
+            parts: [expect.objectContaining({ text: "视频已经生成" })],
+          }),
+        ]));
+    } finally {
+      releaseSession();
       releaseWorkspace();
       __disposeWorkspaceSessionSyncForTest(liveSyncInput);
     }

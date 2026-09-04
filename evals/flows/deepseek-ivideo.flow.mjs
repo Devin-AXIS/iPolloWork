@@ -135,7 +135,7 @@ export default {
     {
       name: "Video-only template market",
       run: async (ctx) => {
-        await ctx.prove("The iVideo template market contains exactly the 27 bundled Video templates", {
+        await ctx.prove("The iVideo template market contains exactly the 28 bundled Video templates", {
           voiceover: vo[1],
           action: async () => {
             await hyperframesEval(ctx, `(() => {
@@ -143,9 +143,9 @@ export default {
                 .find((button) => button.textContent?.includes('模板') || button.textContent?.includes('Templates'))?.click();
               return true;
             })()`);
-            await ctx.waitFor(`${shellDocument}?.querySelectorAll('[data-testid="template-catalog-item"]').length === 27`, {
+            await ctx.waitFor(`${shellDocument}?.querySelectorAll('[data-testid="template-catalog-item"]').length === 28`, {
               timeoutMs: 30_000,
-              label: "27 iVideo templates",
+              label: "28 iVideo templates",
             });
             await ctx.waitFor(`[...${shellDocument}?.querySelectorAll('[data-testid="template-catalog-cover"] img') ?? []].filter((image) => image.complete && image.naturalWidth > 0).length >= 6`, {
               timeoutMs: 30_000,
@@ -161,7 +161,7 @@ export default {
                 description: doc.querySelector('[data-testid="template-catalog-dialog"] p')?.textContent,
               };
             })()`);
-            ctx.assert(catalog.count === 27, `Expected 27 Video templates: ${JSON.stringify(catalog)}`);
+            ctx.assert(catalog.count === 28, `Expected 28 Video templates: ${JSON.stringify(catalog)}`);
             ctx.assert(catalog.heading === "Video 模板" && catalog.description.includes("可编辑") && catalog.description.includes("安全替换"), `Unexpected catalog identity: ${JSON.stringify(catalog)}`);
           },
           screenshot: { name: "ivideo-video-template-market", requireText: ["Video"] },

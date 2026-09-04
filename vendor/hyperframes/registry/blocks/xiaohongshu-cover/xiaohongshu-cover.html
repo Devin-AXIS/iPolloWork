@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"category","label":"分类","type":"string","default":"效率灵感","maxLength":24},{"id":"title","label":"封面标题","type":"string","default":"让复杂信息一眼变清楚","maxLength":56},{"id":"subtitle","label":"副标题","type":"string","default":"4 个任何内容都能复用的视觉整理方法","maxLength":82},{"id":"issue","label":"期号","type":"string","default":"VOL. 08 · 收藏级指南","maxLength":42}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Xiaohongshu Cover</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.cover{position:relative;width:1400px;height:820px;margin:auto;overflow:hidden;border-radius:44px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.cover::before{content:"";position:absolute;width:700px;height:700px;right:-80px;top:-180px;border-radius:50%;background:#ff2442}.cover::after{content:"";position:absolute;width:460px;height:460px;right:130px;bottom:-190px;border-radius:50%;border:70px solid #f7d65c}.cover-grid{position:absolute;inset:0;background:linear-gradient(90deg,var(--ipw-color-border,#d8dde3) 1px,transparent 1px),linear-gradient(var(--ipw-color-border,#d8dde3) 1px,transparent 1px);background-size:70px 70px;opacity:.17}.cover-copy{position:relative;z-index:1;display:flex;height:100%;flex-direction:column;padding:72px}.cover-category{display:inline-flex;align-self:flex-start;padding:10px 16px;border-radius:999px;background:#111;color:#fff;font-size:17px;font-weight:900;letter-spacing:.08em}.cover-title{max-width:900px;margin:auto 0 26px;font-size:92px;line-height:.98;letter-spacing:-.065em}.cover-subtitle{max-width:740px;font-size:27px;line-height:1.4}.cover-issue{margin-top:auto;font-size:18px;font-weight:850;letter-spacing:.12em}
+</style></head>
+<body><main id="root" data-composition-id="xiaohongshu-cover" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"category":"效率灵感","title":"让复杂信息一眼变清楚","subtitle":"4 个任何内容都能复用的视觉整理方法","issue":"VOL. 08 · 收藏级指南"}'><section class="cover sm-animate"><div class="cover-grid"></div><div class="cover-copy"><div class="cover-category sm-pop" data-ipw-variable="category" data-ipw-ai-slot="category"></div><h1 class="cover-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1><div class="cover-subtitle" data-ipw-variable="subtitle" data-ipw-ai-slot="subtitle"></div><footer class="cover-issue" data-ipw-variable="issue" data-ipw-ai-slot="issue"></footer></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="xiaohongshu-cover";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("scale"==="slide-left")Object.assign(initial,{x:-58,opacity:0});else if("scale"==="slide-right")Object.assign(initial,{x:58,opacity:0});else if("scale"==="scale")Object.assign(initial,{scale:.88,opacity:0});else if("scale"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08).fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38).fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

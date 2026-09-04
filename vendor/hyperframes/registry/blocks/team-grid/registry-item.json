@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "team-grid",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Team Grid",
+  "description": "A four-person team grid with names, roles, one highlighted member and a context note.",
+  "tags": [
+    "component",
+    "people",
+    "team",
+    "profiles",
+    "organization",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "people",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "people",
+        "focus",
+        "note"
+      ],
+      "instructions": "Write people as Name:Role separated by bars, keep roles short, and make focus exactly match one name."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "team-grid.html",
+      "target": "compositions/team-grid.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "The team behind the next move",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "people",
+      "label": "People",
+      "type": "string",
+      "default": "Maya:Product|Jon:Engineering|Noa:Design|Sam:Research",
+      "maxLength": 320,
+      "update": "live"
+    },
+    {
+      "id": "focus",
+      "label": "Highlighted person",
+      "type": "string",
+      "default": "Noa",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Note",
+      "type": "string",
+      "default": "Four disciplines, one shared review loop.",
+      "maxLength": 80,
+      "update": "live"
+    }
+  ]
+}
+

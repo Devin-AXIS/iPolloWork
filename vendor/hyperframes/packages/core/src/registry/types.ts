@@ -51,20 +51,52 @@ export type RegistryItemKind = "animation" | "effect";
 
 /** Product-facing visual component categories shared by Studio and registries. */
 export const VISUAL_COMPONENT_CATEGORIES = [
-  "intro",
+  "scene",
   "product",
   "data",
   "diagrams",
-  "flow",
   "maps",
-  "compare",
+  "proof",
   "knowledge",
   "people",
-  "proof",
-  "outro",
+  "typography",
+  "media",
+  "social",
+  "developer",
+  "brand",
 ] as const;
 
 export type RegistryVisualComponentCategory = (typeof VISUAL_COMPONENT_CATEGORIES)[number];
+
+/**
+ * Normalizes category ids from the version-1 catalog into the smaller canonical taxonomy.
+ * Keep these aliases while version-1 registry manifests remain supported.
+ */
+export function resolveVisualComponentCategory(
+  value: unknown,
+): RegistryVisualComponentCategory | null {
+  if (typeof value !== "string") return null;
+  const canonical = VISUAL_COMPONENT_CATEGORIES.find((category) => category === value);
+  if (canonical) return canonical;
+
+  switch (value) {
+    case "intro":
+    case "outro":
+      return "scene";
+    case "flow":
+      return "diagrams";
+    case "compare":
+      return "proof";
+    case "interface":
+      return "media";
+    case "structured":
+      return "data";
+    case "commerce":
+      return "brand";
+    default:
+      return null;
+  }
+}
 
 export type RegistryVisualComponentSurface = "video" | "slides" | "web";
 

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "comparison-matrix",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Comparison Matrix",
+  "description": "A compact multi-criterion matrix for comparing two options without replacing the before-and-after component.",
+  "tags": ["component", "structured", "comparison", "matrix", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "options", "rows", "winner"], "instructions": "Separate option names with |. Format each row as Criterion|Left value|Right value and separate rows with semicolons." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "comparison-matrix.html", "target": "compositions/comparison-matrix.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Choose for the work ahead", "maxLength": 72, "update": "live" },
+    { "id": "options", "label": "Options", "description": "Left | Right", "type": "string", "default": "Managed flow|Manual flow", "maxLength": 96, "update": "live" },
+    { "id": "rows", "label": "Comparison rows", "description": "Criterion|Left|Right; Criterion|Left|Right", "type": "string", "default": "Setup|Guided|Manual;Handoffs|Visible|Scattered;Review|In context|Separate;Scale|Repeatable|Fragile", "maxLength": 700, "update": "live" },
+    { "id": "winner", "label": "Featured option", "type": "enum", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "none", "label": "None" }], "update": "live" }
+  ]
+}

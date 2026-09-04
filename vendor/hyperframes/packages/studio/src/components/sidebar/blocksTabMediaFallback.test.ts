@@ -15,12 +15,15 @@ describe("BlocksTab lazy preview media", () => {
   it("plays one hover preview inside its own card without taking over the canvas", () => {
     expect(source).toContain("previewController.start(block.name");
     expect(source).toContain("setPreviewing(true)");
+    expect(source).not.toContain("if (!visible || reducedMotion) return;");
     expect(source).toContain("src={compositionPlaybackUrl}");
-    expect(source).toContain("onCanPlay={() => setPreviewReady(true)}");
+    expect(source).toContain("onLoad={() => setPreviewReady(true)}");
+    expect(source).not.toContain("aria-label={`${block.title} preview`}");
+    expect(source).not.toContain("autoPlay");
     expect(source).not.toContain("onPreviewBlock");
   });
 
-  it("reuses real registry compositions for every card whose catalog media is missing or fails", () => {
+  it("reuses real registry compositions for every hover preview and missing catalog media", () => {
     expect(source).toContain("/api/registry/blocks/${encodeURIComponent(block.name)}/preview");
     expect(source).toContain("compositionPosterUrl");
     expect(source).toContain('sandbox="allow-scripts"');

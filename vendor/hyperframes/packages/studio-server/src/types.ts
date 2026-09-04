@@ -107,6 +107,13 @@ export interface StudioApiAdapter {
   /** Optional: cached signature for project files that should invalidate preview frame caches. */
   getProjectSignature?: (projectDir: string) => string;
 
+  /**
+   * Synchronously invalidate a host-owned project signature after a successful
+   * mutation. File watchers remain a fallback for out-of-process edits, but an
+   * API write must not race the preview request that immediately follows it.
+   */
+  invalidateProjectSignature?: (projectDir: string) => void;
+
   /** Lint a single HTML string. */
   lint(html: string, opts?: { filePath?: string }): Promise<LintResult> | LintResult;
 

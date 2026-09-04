@@ -316,6 +316,7 @@ export {
   FILE_TYPES,
   ITEM_TYPE_DIRS,
   VISUAL_COMPONENT_CATEGORIES,
+  resolveVisualComponentCategory,
   createVisualComponentDataRow,
   formatVisualComponentDataForAi,
   parseVisualComponentData,
