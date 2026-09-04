@@ -74,7 +74,7 @@ describe("Design deck navigation", () => {
   test("orders editing actions before sharing and export", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('{saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}');
+    expect(source).toContain("<DesignSaveMenu");
     expect(source).not.toContain('dirty ? <Save /> : <Check />');
     expect(source.indexOf('data-testid="design-mode-controls"')).toBeLessThan(source.indexOf('data-testid="design-history-controls"'));
     expect(source.indexOf('data-testid="design-history-controls"')).toBeLessThan(source.indexOf('data-testid="design-sharing-controls"'));
@@ -82,17 +82,30 @@ describe("Design deck navigation", () => {
     expect(source.indexOf('aria-label={t("design.toolbar.publish")}')).toBeLessThan(source.indexOf("<DesignExportMenu"));
   });
 
-  test("uses a localized preview-edit segment and keeps properties beside it", async () => {
+  test("centers a localized browse-edit segment and keeps properties available while editing", async () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground');
     expect(source).toContain('[&_svg]:!size-[18px] [&_svg]:stroke-[1.5]');
     expect(source).not.toContain("<Switch");
     expect(source).toContain('data-testid="design-mode-toggle"');
+    expect(source).toContain('className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"');
     expect(source).toContain('value={[editing ? "edit" : "preview"]}');
     expect(source).toContain('t("design.toolbar.preview")');
     expect(source).toContain('t("design.toolbar.edit")');
+    expect(source).toContain('aria-pressed:bg-white');
+    expect(source).toContain('aria-pressed:shadow-none');
     expect(source.indexOf('data-testid="design-mode-toggle"')).toBeLessThan(source.indexOf('data-testid="design-properties-button"'));
+  });
+
+  test("groups save-as-template with the existing save action", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("{onSaveAsTemplate ? (");
+    expect(source).toContain("<DesignSaveMenu");
+    expect(source).toContain("onSave={() => saveMutation.mutate()}");
+    expect(source).toContain("onSaveAsTemplate={onSaveAsTemplate}");
+    expect(source).toContain("{deck || compactToolbar ? (");
   });
 
   test("offers selected-element deletion only from the floating toolbar", async () => {

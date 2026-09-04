@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import { Check, Download, Ellipsis, Loader2, Monitor, Presentation, Share2, Smartphone } from "lucide-react";
 
-import { TemplateIcon } from "@/components/template-icon";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,7 +27,6 @@ type DesignExportMenuProps = {
   onPublish?: () => void;
   onExportPdf: () => void;
   onExportPptx: () => void;
-  onSaveAsTemplate?: () => void;
 };
 
 export function DesignExportMenu({
@@ -47,11 +45,11 @@ export function DesignExportMenu({
   onPublish,
   onExportPdf,
   onExportPptx,
-  onSaveAsTemplate,
 }: DesignExportMenuProps) {
+  const triggerLabel = compact ? t("design.toolbar.more") : t("design.export.download");
   const triggerDisabled = compact
     ? publishDisabled && !onPreviewDeviceChange && (!showExports || (exportingPdf && exportingPptx) || !exportReady)
-    : !onSaveAsTemplate && exportingPdf && exportingPptx;
+    : exportingPdf && exportingPptx;
   const disabledReason = exportDisabledReason || "Preview is still preparing.";
 
   return (
@@ -63,10 +61,10 @@ export function DesignExportMenu({
             size="icon-sm"
             className={triggerClassName}
             disabled={triggerDisabled}
-            aria-label={t("design.toolbar.more")}
-            title={triggerDisabled && !exportReady ? disabledReason : t("design.toolbar.more")}
+            aria-label={triggerLabel}
+            title={triggerDisabled && !exportReady ? disabledReason : triggerLabel}
           >
-            <Ellipsis />
+            {compact ? <Ellipsis /> : <Download />}
           </Button>
         )}
       />
@@ -108,15 +106,6 @@ export function DesignExportMenu({
             <DropdownMenuItem disabled={exportingPptx || !exportReady} onClick={onExportPptx}>
               {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
               {t("design.export.download_pptx")}
-            </DropdownMenuItem>
-          </>
-        ) : null}
-        {onSaveAsTemplate ? (
-          <>
-            {showExports ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem onClick={onSaveAsTemplate}>
-              <TemplateIcon className="size-4" />
-              {t("template_authoring.save_as_template")}
             </DropdownMenuItem>
           </>
         ) : null}

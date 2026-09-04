@@ -59,6 +59,7 @@ import {
 } from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
+import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
 import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
@@ -2026,13 +2027,13 @@ export function DesignPanel({
       }}
       spacing={0.5}
       aria-label={t("design.toolbar.mode")}
-      className="h-8 shrink-0 rounded-lg bg-muted/70 p-0.5"
+      className="flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
       data-testid="design-mode-toggle"
     >
-      <ToggleGroupItem value="preview" className="h-7 min-w-0 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">
+      <ToggleGroupItem value="preview" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
         {t("design.toolbar.preview")}
       </ToggleGroupItem>
-      <ToggleGroupItem value="edit" className="h-7 min-w-0 rounded-md px-3 text-xs text-muted-foreground hover:bg-background/70 hover:text-foreground data-[state=on]:bg-background data-[state=on]:text-foreground data-[state=on]:shadow-sm">
+      <ToggleGroupItem value="edit" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
         {t("design.toolbar.edit")}
       </ToggleGroupItem>
     </ToggleGroup>
@@ -2083,7 +2084,7 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            "relative flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
             branding
               ? "relative z-30 h-14 flex-nowrap overflow-hidden border-white/60 bg-background/80 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl backdrop-saturate-150 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/90 before:to-transparent dark:border-white/10 dark:bg-background/72 dark:shadow-[0_10px_30px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.12)] dark:before:via-white/20"
               : "flex-wrap",
@@ -2160,6 +2161,9 @@ export function DesignPanel({
                 </ToggleGroup>
               )
             ) : null}
+            <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2" data-testid="design-mode-controls">
+              {editControl}
+            </div>
             <div className={cn("ml-auto flex shrink-0 items-center gap-1", isPresentationTemplate ? "order-3" : "order-2")}>
               {branding ? (
                 <>
@@ -2177,21 +2181,18 @@ export function DesignPanel({
                 </>
               ) : null}
               {templateControl}
-              <div className="flex shrink-0 items-center gap-1" data-testid="design-mode-controls">
-                {editControl}
-                {editing ? <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
-                  onClick={toggleElementProperties}
-                  aria-label={t("design.toolbar.properties")}
-                  title={t("design.toolbar.properties")}
-                  aria-pressed={elementPropertiesOpen}
-                  data-testid="design-properties-button"
-                >
-                  <SlidersHorizontal />
-                </Button> : null}
-              </div>
+              {editing ? <Button
+                variant="ghost"
+                size="icon-sm"
+                className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
+                onClick={toggleElementProperties}
+                aria-label={t("design.toolbar.properties")}
+                title={t("design.toolbar.properties")}
+                aria-pressed={elementPropertiesOpen}
+                data-testid="design-properties-button"
+              >
+                <SlidersHorizontal />
+              </Button> : null}
               <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
               <div className="flex shrink-0 items-center gap-1" data-testid="design-history-controls">
                 <Button
@@ -2218,17 +2219,28 @@ export function DesignPanel({
                     <Focus />
                   </Button>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => saveMutation.mutate()}
-                  disabled={saveMutation.isPending || (!editing && !dirty)}
-                  aria-label={t("design.toolbar.save")}
-                  title={t("design.toolbar.save")}
-                >
-                  {saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
-                </Button>
+                {onSaveAsTemplate ? (
+                  <DesignSaveMenu
+                    triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                    expanded={expanded}
+                    saving={saveMutation.isPending}
+                    saveDisabled={!editing && !dirty}
+                    onSave={() => saveMutation.mutate()}
+                    onSaveAsTemplate={onSaveAsTemplate}
+                  />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending || (!editing && !dirty)}
+                    aria-label={t("design.toolbar.save")}
+                    title={t("design.toolbar.save")}
+                  >
+                    {saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                  </Button>
+                )}
               </div>
               <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
               <div className="flex shrink-0 items-center gap-1" data-testid="design-sharing-controls">
@@ -2245,7 +2257,7 @@ export function DesignPanel({
                     {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
                   </Button>
                 ) : null}
-                {deck || compactToolbar || onSaveAsTemplate ? (
+                {deck || compactToolbar ? (
                   <DesignExportMenu
                     triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
                     compact={compactToolbar}
@@ -2267,7 +2279,6 @@ export function DesignPanel({
                     onPublish={features.publish ? () => publishMutation.mutate() : undefined}
                     onExportPdf={() => void exportDeckToPdf()}
                     onExportPptx={() => setPptxConfirmationOpen(true)}
-                    onSaveAsTemplate={onSaveAsTemplate}
                   />
                 ) : null}
                 {branding ? (
