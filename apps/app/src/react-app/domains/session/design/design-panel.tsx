@@ -2147,15 +2147,14 @@ export function DesignPanel({
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   }}
-                  variant="outline"
-                  size="sm"
+                  spacing={0.5}
                   aria-label={t("design.toolbar.preview_device")}
-                  className="order-3 shrink-0 rounded-lg"
+                  className="order-3 flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
                 >
-                  <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label={t("design.toolbar.desktop")} title={t("design.toolbar.desktop")}>
+                  <ToggleGroupItem value="desktop" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.desktop")} title={t("design.toolbar.desktop")}>
                     <Monitor className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label={t("design.toolbar.mobile")} title={t("design.toolbar.mobile")}>
+                  <ToggleGroupItem value="mobile" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.mobile")} title={t("design.toolbar.mobile")}>
                     <Smartphone className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
                 </ToggleGroup>

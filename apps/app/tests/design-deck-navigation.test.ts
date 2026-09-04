@@ -38,7 +38,7 @@ describe("Design deck navigation", () => {
 
     expect(source).not.toContain('>Current design</p>');
     expect(source).not.toContain("Edit page");
-    expect(source).toContain('className="order-3 shrink-0 rounded-lg"');
+    expect(source).toContain('className="order-3 flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"');
     expect(source).toContain("panelWidth < 360");
     expect(source).toContain('className="w-14 shrink-0 rounded-lg border-0 bg-transparent');
     expect(source).toContain("const currentVersionLabel = `V${versionTargets.length + 1}`");
@@ -95,6 +95,8 @@ describe("Design deck navigation", () => {
     expect(source).toContain('t("design.toolbar.edit")');
     expect(source).toContain('aria-pressed:bg-white');
     expect(source).toContain('aria-pressed:shadow-none');
+    expect(source).toContain('value="desktop" className="h-[26px] min-w-0 w-[30px] rounded-md');
+    expect(source).toContain('value="mobile" className="h-[26px] min-w-0 w-[30px] rounded-md');
     expect(source).toContain("disabled={!editing}");
     expect(source).toContain("aria-pressed={editing && elementPropertiesOpen}");
     expect(source).not.toContain("{editing ? <Button");
