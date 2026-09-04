@@ -1,6 +1,6 @@
 export default {
   id: "work-schedule-header-responsive",
-  title: "Schedule header actions stay separated in a narrow window",
+  title: "Schedule header restores the sidebar without a redundant close action",
   kind: "user-facing",
   preserveTheme: true,
   precondition: async (ctx) => {
@@ -12,10 +12,10 @@ export default {
   },
   steps: [
     {
-      name: "Keep the schedule actions apart",
+      name: "Restore the collapsed sidebar from Schedule",
       run: async (ctx) => {
-        await ctx.prove("The new-schedule and close actions align on one centerline in a narrow window", {
-          voiceover: "窗口变窄时，新建日程按钮会给关闭按钮留出空间，两个操作保持同排，中心线也完全对齐。",
+        await ctx.prove("The Schedule header keeps the sidebar restore and new-schedule actions accessible without a close button", {
+          voiceover: "左侧栏收起时，日程页在左上角提供展开侧栏入口；页面不再需要右上角关闭按钮，新建日程仍保持清晰可用。",
           action: async () => {
             await ctx.eval(`(() => {
               localStorage.setItem("ipollowork.language", "zh");
@@ -36,12 +36,30 @@ export default {
             });
             const sessions = await ctx.control("session.list_sessions");
             const sessionId = sessions[0]?.sessionId ?? null;
-            ctx.assert(Boolean(sessionId), "Expected an existing session for the floating close action.");
+            ctx.assert(Boolean(sessionId), "Expected an existing session for schedule navigation.");
             await ctx.control("session.open", { sessionId });
             await ctx.waitFor(`location.hash.includes("/session/${sessionId}")`, {
               timeoutMs: 30_000,
               label: "selected session",
             });
+            if (await ctx.eval(`Boolean(document.querySelector('[role="dialog"]'))`)) {
+              await ctx.client.send("Input.dispatchKeyEvent", {
+                type: "keyDown",
+                key: "Escape",
+                code: "Escape",
+                windowsVirtualKeyCode: 27,
+              });
+              await ctx.client.send("Input.dispatchKeyEvent", {
+                type: "keyUp",
+                key: "Escape",
+                code: "Escape",
+                windowsVirtualKeyCode: 27,
+              });
+              await ctx.waitFor(`!document.querySelector('[role="dialog"]')`, {
+                timeoutMs: 10_000,
+                label: "dismissed unrelated session dialog",
+              });
+            }
             await ctx.waitFor(`(() => {
               if (document.querySelector('[data-testid=startup-logo-animation]')) return false;
               return [...document.querySelectorAll("button")]
@@ -73,6 +91,17 @@ export default {
               timeoutMs: 30_000,
               label: "global schedule header",
             });
+            await ctx.eval(`(() => {
+              const collapse = [...document.querySelectorAll('button')]
+                .find((button) => button.getAttribute('aria-label') === '收起');
+              if (!collapse) throw new Error('Sidebar collapse action was not found');
+              collapse.click();
+              return true;
+            })()`);
+            await ctx.waitFor(`Boolean(document.querySelector('[data-testid="work-center-sidebar-restore"]'))`, {
+              timeoutMs: 10_000,
+              label: "schedule sidebar restore action",
+            });
           },
           assert: async () => {
             const geometry = await ctx.eval(`(() => {
@@ -81,25 +110,27 @@ export default {
               const create = header && [...header.querySelectorAll("button")]
                 .find((button) => button.textContent?.trim() === "新建日程")
                 ?.getBoundingClientRect();
-              const close = [...document.querySelectorAll("button")]
-                .find((button) => button.querySelector("svg.lucide-x") && getComputedStyle(button).position === "absolute")
+              const restore = header?.querySelector('[data-testid="work-center-sidebar-restore"]')
                 ?.getBoundingClientRect();
-              if (!create || !close) return null;
+              if (!create || !restore) return null;
               return {
                 create: { right: create.right, centerY: create.top + create.height / 2 },
-                close: { left: close.left, centerY: close.top + close.height / 2 },
-                gap: close.left - create.right,
+                restore: { right: restore.right, centerY: restore.top + restore.height / 2 },
+                overlap: restore.right > create.left,
                 centerDelta: Math.abs(
-                  create.top + create.height / 2 - (close.top + close.height / 2)
+                  create.top + create.height / 2 - (restore.top + restore.height / 2)
                 ),
+                hasFloatingClose: [...document.querySelectorAll("button")]
+                  .some((button) => button.querySelector("svg.lucide-x") && getComputedStyle(button).position === "absolute"),
               };
             })()`);
-            ctx.assert(Boolean(geometry), "Expected both schedule header actions to be visible.");
+            ctx.assert(Boolean(geometry), "Expected the schedule restore and create actions to be visible.");
             ctx.assert(geometry.centerDelta <= 1, `Expected both actions on the same centerline: ${JSON.stringify(geometry)}`);
-            ctx.assert(geometry.gap >= 8, `Expected at least 8px between the actions: ${JSON.stringify(geometry)}`);
+            ctx.assert(!geometry.overlap, `Expected schedule header actions not to overlap: ${JSON.stringify(geometry)}`);
+            ctx.assert(!geometry.hasFloatingClose, "Schedule should not render a floating close action.");
           },
           screenshot: {
-            name: "schedule-header-actions-separated",
+            name: "schedule-header-sidebar-restore",
             requireText: ["日程", "新建日程"],
             rejectText: ["正在加载", "出了点问题"],
           },

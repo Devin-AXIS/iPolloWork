@@ -185,7 +185,6 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('toggleTestId="projects-section-toggle"');
     expect(sidebarSource).toContain('data-testid="project-row"');
     expect(sidebarSource).toContain('data-selected={isSelectedProject ? "true" : "false"}');
-    expect(sidebarSource).toContain('aria-pressed={isSelectedProject}');
     expect(sidebarSource).toContain('aria-expanded={projectExpanded}');
     expect(sidebarSource).toContain("const isSelectedProject = isCurrentProject && !ctx.selectedSessionId;");
     expect(sidebarSource).toContain("if (isCurrentProject) setProjectExpanded(true);");
@@ -196,6 +195,7 @@ describe("sidebar projects", () => {
     expect(sessionRouteSource).not.toContain("?? rememberedSessionId");
     expect(sessionRouteSource).toContain("navigateToWorkspaceSession(workspaceId, targetSessionId);");
     expect(sidebarSource).not.toContain("onSelectProject(workspace.id)");
+    expect(sidebarSource).toContain("onClick={() => setProjectExpanded((expanded) => !expanded)}");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
     expect(sidebarSource).toContain('"relative size-4 shrink-0 text-muted-foreground');
@@ -372,6 +372,12 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain("props.sidebar.onCreateProject({ name, folderPath, engineId: createProjectEngineId })");
     expect(sidebarSource).not.toContain("WorkspaceHeader");
     expect(sidebarSource).not.toContain("WorkspaceActionsMenu");
+  });
+
+  test("opens a conversation directly from full workspace views", () => {
+    expect(sessionPageSource).toMatch(
+      /const handleSidebarOpenSession = useCallback[\s\S]*closeExpandedWorkSurface\(\);[\s\S]*setMainWorkspaceView\(null\);[\s\S]*props\.sidebar\.onOpenSession\(workspaceId, sessionId\);/,
+    );
   });
 
   test("rejects an existing project folder with a visible message", () => {

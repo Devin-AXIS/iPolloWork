@@ -1099,7 +1099,6 @@ function ProjectSidebarContent({
                 data-testid="project-row"
                 data-project-id={workspace.id}
                 data-selected={isSelectedProject ? "true" : "false"}
-                aria-pressed={isSelectedProject}
                 aria-expanded={projectExpanded}
               >
                 <span
