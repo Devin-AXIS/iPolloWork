@@ -14,7 +14,6 @@ import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
 import { TemplateIcon } from "@/components/template-icon";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -22,9 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { isPptxCompatibleTemplate, type TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
@@ -60,6 +59,7 @@ import {
 } from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
+import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
 import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
@@ -155,7 +155,7 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
-const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none hover:bg-muted hover:text-foreground [&_svg]:!size-[18px]";
+const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground [&_svg]:!size-[18px] [&_svg]:stroke-[1.5]";
 const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
@@ -2012,28 +2012,37 @@ export function DesignPanel({
   const activePageDisplayName = activePagePath === lockedPath
     ? displayName?.trim() || fileName(activePagePath)
     : fileName(activePagePath);
+  const selectEditingMode = (nextEditing: boolean) => {
+    setEditing(nextEditing);
+    setSelectionState(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+  };
   const editControl = (
-    <Label className={cn("flex shrink-0 items-center gap-2 text-xs", !branding && "order-1")}>
-      <Switch
-        size="sm"
-        className="border-[#AEB2B9] bg-transparent shadow-none data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
-        checked={editing}
-        onCheckedChange={(checked) => {
-          setEditing(checked);
-          setSelectionState(null);
-          setQuickEdit(null);
-          setAdvancedOpen(false);
-        }}
-        aria-label="Edit"
-      />
-      Edit
-    </Label>
+    <ToggleGroup
+      value={[editing ? "edit" : "preview"]}
+      onValueChange={(value) => {
+        const nextMode = value[0];
+        if (nextMode === "edit" || nextMode === "preview") selectEditingMode(nextMode === "edit");
+      }}
+      spacing={0.5}
+      aria-label={t("design.toolbar.mode")}
+      className="flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
+      data-testid="design-mode-toggle"
+    >
+      <ToggleGroupItem value="preview" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
+        {t("design.toolbar.preview")}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="edit" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
+        {t("design.toolbar.edit")}
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
   const templateControl = templateCatalog ? (
     <Button
       variant="ghost"
       size="icon-sm"
-      className={cn(DESIGN_ACTION_BUTTON_CLASS, !branding && "order-1")}
+      className={DESIGN_ACTION_BUTTON_CLASS}
       onClick={() => setTemplateDialogOpen(true)}
       aria-label={templateCatalog.title}
       title={templateCatalog.title}
@@ -2075,7 +2084,7 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            "relative flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
             branding
               ? "relative z-30 h-14 flex-nowrap overflow-hidden border-white/60 bg-background/80 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl backdrop-saturate-150 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/90 before:to-transparent dark:border-white/10 dark:bg-background/72 dark:shadow-[0_10px_30px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.12)] dark:before:via-white/20"
               : "flex-wrap",
@@ -2113,7 +2122,6 @@ export function DesignPanel({
                 ) : null}
               </div>
             ) : null}
-            {!branding ? <>{editControl}{templateControl}</> : null}
             {deck ? (
               <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
@@ -2139,21 +2147,23 @@ export function DesignPanel({
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   }}
-                  variant="outline"
-                  size="sm"
-                  aria-label="Preview device"
-                  className="order-3 shrink-0 rounded-lg"
+                  spacing={0.5}
+                  aria-label={t("design.toolbar.preview_device")}
+                  className="order-3 flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
                 >
-                  <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
-                    <Monitor className="size-3.5" />
+                  <ToggleGroupItem value="desktop" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.desktop")} title={t("design.toolbar.desktop")}>
+                    <Monitor className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
-                    <Smartphone className="size-3.5" />
+                  <ToggleGroupItem value="mobile" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.mobile")} title={t("design.toolbar.mobile")}>
+                    <Smartphone className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
                 </ToggleGroup>
               )
             ) : null}
-            <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
+            <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2" data-testid="design-mode-controls">
+              {editControl}
+            </div>
+            <div className={cn("ml-auto flex shrink-0 items-center gap-1", isPresentationTemplate ? "order-3" : "order-2")}>
               {branding ? (
                 <>
                   <Button
@@ -2167,107 +2177,123 @@ export function DesignPanel({
                     <Sparkles className="size-4" />
                     <span className={cn(compactToolbar && "sr-only")}>Ask AI</span>
                   </Button>
-                  {templateControl}
-                  {editControl}
                 </>
               ) : null}
-              {editing ? <Button
+              {templateControl}
+              <Button
                 variant="ghost"
                 size="icon-sm"
                 className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
                 onClick={toggleElementProperties}
-                aria-label="Toggle design properties"
-                title="Design properties"
-                aria-pressed={elementPropertiesOpen}
+                disabled={!editing}
+                aria-label={t("design.toolbar.properties")}
+                title={t("design.toolbar.properties")}
+                aria-pressed={editing && elementPropertiesOpen}
                 data-testid="design-properties-button"
               >
                 <SlidersHorizontal />
-              </Button> : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={DESIGN_ACTION_BUTTON_CLASS}
-                onClick={() => void undo()}
-                disabled={history.length === 0 && !aiUndoCheckpoint}
-                aria-label="Undo design change"
-                title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}
-              >
-                <Undo2 />
               </Button>
-              {isPresentationTemplate ? (
+              <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+              <div className="flex shrink-0 items-center gap-1" data-testid="design-history-controls">
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => setPresentationZoom(1)}
-                  disabled={presentationZoom === 1}
-                  aria-label="Fit canvas to view"
-                  title="Fit canvas to view"
+                  onClick={() => void undo()}
+                  disabled={history.length === 0 && !aiUndoCheckpoint}
+                  aria-label={t("design.toolbar.undo")}
+                  title={history.length === 0 && !aiUndoCheckpoint ? t("design.toolbar.undo_empty") : t("design.toolbar.undo")}
                 >
-                  <Focus />
+                  <Undo2 />
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={DESIGN_ACTION_BUTTON_CLASS}
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || (!editing && !dirty)}
-                aria-label="Save design"
-                title="Save"
-              >
-                {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
-              </Button>
-              {!compactToolbar && features.publish ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => publishMutation.mutate()}
-                  disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-                  aria-label="Publish to object storage"
-                  title="Publish to object storage"
-                >
-                  {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
-                </Button>
-              ) : null}
-              {deck || compactToolbar || onSaveAsTemplate ? (
-                <DesignExportMenu
-                  triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
-                  compact={compactToolbar}
-                  expanded={expanded}
-                  showExports={Boolean(deck)}
-                  publishing={publishMutation.isPending}
-                  publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-                  exportingPdf={exportingPdf}
-                  exportingPptx={exportingPptx}
-                  exportReady={previewLoaded}
-                  exportDisabledReason="Preview is still preparing."
-                  previewDevice={!isPresentationTemplate ? previewDevice : undefined}
-                  onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
-                    setPreviewDevice(device);
-                    setSelectionState(null);
-                    setQuickEdit(null);
-                    setAdvancedOpen(false);
-                  } : undefined}
-                  onPublish={features.publish ? () => publishMutation.mutate() : undefined}
-                  onExportPdf={() => void exportDeckToPdf()}
-                  onExportPptx={() => setPptxConfirmationOpen(true)}
-                  onSaveAsTemplate={onSaveAsTemplate}
-                />
-              ) : null}
-              {branding ? (
-                <a
-                  href={branding.repositoryUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={cn(DESIGN_ACTION_BUTTON_CLASS, "inline-flex items-center justify-center border border-border/70 bg-background/65 shadow-sm hover:border-foreground/20 hover:bg-background")}
-                  aria-label="View DeepSeek Design on GitHub"
-                  title="DeepSeek Design on GitHub"
-                >
-                  <Github className="size-[18px]" />
-                </a>
-              ) : null}
+                {isPresentationTemplate ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => setPresentationZoom(1)}
+                    disabled={presentationZoom === 1}
+                    aria-label="Fit canvas to view"
+                    title="Fit canvas to view"
+                  >
+                    <Focus />
+                  </Button>
+                ) : null}
+                {onSaveAsTemplate ? (
+                  <DesignSaveMenu
+                    triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                    expanded={expanded}
+                    saving={saveMutation.isPending}
+                    saveDisabled={!editing && !dirty}
+                    onSave={() => saveMutation.mutate()}
+                    onSaveAsTemplate={onSaveAsTemplate}
+                  />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending || (!editing && !dirty)}
+                    aria-label={t("design.toolbar.save")}
+                    title={t("design.toolbar.save")}
+                  >
+                    {saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                  </Button>
+                )}
+              </div>
+              <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+              <div className="flex shrink-0 items-center gap-1" data-testid="design-sharing-controls">
+                {!compactToolbar && features.publish ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => publishMutation.mutate()}
+                    disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                    aria-label={t("design.toolbar.publish")}
+                    title={t("design.toolbar.publish")}
+                  >
+                    {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
+                  </Button>
+                ) : null}
+                {deck || compactToolbar ? (
+                  <DesignExportMenu
+                    triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                    compact={compactToolbar}
+                    expanded={expanded}
+                    showExports={Boolean(deck)}
+                    publishing={publishMutation.isPending}
+                    publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                    exportingPdf={exportingPdf}
+                    exportingPptx={exportingPptx}
+                    exportReady={previewLoaded}
+                    exportDisabledReason="Preview is still preparing."
+                    previewDevice={!isPresentationTemplate ? previewDevice : undefined}
+                    onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
+                      setPreviewDevice(device);
+                      setSelectionState(null);
+                      setQuickEdit(null);
+                      setAdvancedOpen(false);
+                    } : undefined}
+                    onPublish={features.publish ? () => publishMutation.mutate() : undefined}
+                    onExportPdf={() => void exportDeckToPdf()}
+                    onExportPptx={() => setPptxConfirmationOpen(true)}
+                  />
+                ) : null}
+                {branding ? (
+                  <a
+                    href={branding.repositoryUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, "inline-flex items-center justify-center border border-border/70 bg-background/65 shadow-sm hover:border-foreground/20 hover:bg-background")}
+                    aria-label="View DeepSeek Design on GitHub"
+                    title="DeepSeek Design on GitHub"
+                  >
+                    <Github className="size-[18px]" />
+                  </a>
+                ) : null}
+              </div>
             </div>
           </div>
 

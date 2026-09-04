@@ -2,6 +2,11 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 
+import {
+  menuDensityClassNames,
+  menuInteractionClassName,
+  menuSurfaceClassName,
+} from "@/components/ui/menu-styles";
 import { cn } from "@/lib/utils";
 import panelSelectChevron from "./assets/panel-select-chevron.svg";
 
@@ -85,7 +90,7 @@ export function DesignPanelSelect<T extends string>({
       {open && menuRect ? createPortal(
         <div
           ref={menuRef}
-          className={cn("fixed z-[70] min-w-[120px] overflow-hidden rounded-xl border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_18px_rgba(37,41,49,0.11)]", menuClassName)}
+          className={cn("fixed z-[70] min-w-[120px] overflow-hidden", menuSurfaceClassName, menuInteractionClassName, menuDensityClassNames.compact.content, menuClassName)}
           style={{
             left: menuRect.left,
             top: openAbove ? undefined : menuRect.bottom + 12,
@@ -102,7 +107,7 @@ export function DesignPanelSelect<T extends string>({
               role="option"
               aria-selected={option.value === value}
               disabled={option.disabled}
-              className={cn("flex h-[34px] w-full items-center rounded-lg px-2.5 text-left text-[12px] text-foreground transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40", option.value === value && "bg-muted")}
+              className={cn("flex w-full items-center text-left text-foreground transition-colors hover:bg-foreground/10 focus-visible:bg-foreground/10 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-40", menuDensityClassNames.compact.item, option.value === value && "bg-foreground/10")}
               onClick={() => {
                 onChange(option.value);
                 setOpen(false);

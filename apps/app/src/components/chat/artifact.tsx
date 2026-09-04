@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRight, FilesIcon, Folder, FolderOpen, ListTree, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRight, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -13,6 +13,7 @@ import {
 } from "@/app/lib/session-title";
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
 import { buildReviseFilePrompt } from "@/components/chat/utils";
+import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { t } from "@/i18n";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import { createWorkspaceFileOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -28,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
@@ -55,7 +57,6 @@ interface ArtifactButtonProps {
   artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: (displayName?: string) => void
   compact?: boolean
-  tile?: boolean
 }
 
 const MAX_ARTIFACT_TITLE_LENGTH = 32;
@@ -233,7 +234,7 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onOpenVideoStudio, compact = false, tile = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
   const canOpen = canOpenArtifactInContext(artifact, artifactContext);
@@ -257,26 +258,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
     ? t("link_action.open_video_studio")
     : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit");
 
-  const content = tile ? (
-    <>
-      <DescriptiveButtonIcon className="size-11 rounded-xl bg-muted/60 ring-1 ring-border/40">
-        <ArtifactIcon className="size-5 shrink-0" type={artifact.type} />
-      </DescriptiveButtonIcon>
-      <DescriptiveButtonContent className="min-w-0 flex-1 items-start">
-        <DescriptiveButtonTitle className="block max-w-full text-sm font-medium" title={presentedName}>{title}</DescriptiveButtonTitle>
-        <DescriptiveButtonDescription className="mt-1 flex max-w-full items-center gap-1.5 text-[11px] leading-4">
-          <span>{typeLabel}</span>
-          {canActivate ? <span aria-hidden="true" className="text-border">•</span> : null}
-          {canActivate ? <span className="truncate">{actionLabel}</span> : null}
-        </DescriptiveButtonDescription>
-      </DescriptiveButtonContent>
-      {canActivate ? (
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors group-hover/button:bg-background group-hover/button:text-foreground">
-          <ArrowUpRightIcon className="size-3.5" />
-        </span>
-      ) : null}
-    </>
-  ) : (
+  const content = (
     <>
       <DescriptiveButtonIcon className={cn(compact ? "size-5" : "size-12 rounded-2xl bg-muted/55")}>
         <ArtifactIcon className={cn("shrink-0", compact ? "size-4" : "size-5")} type={artifact.type} />
@@ -290,9 +272,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
         </div>
         {(!compact || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
-            {canOpenVideoStudio
-              ? t("link_action.open_video_studio")
-              : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit")}
+            {actionLabel}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>
@@ -306,16 +286,17 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
 
   if (!canActivate) {
     return (
-      <div className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", tile ? "min-h-[76px] w-full gap-3 border-border/70 bg-card p-3" : compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
+      <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", tile ? "w-full" : compact ? "w-full" : "h-20 w-full min-w-0")}>
+    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")}>
       <DescriptiveButton
-        className={cn("max-w-full items-center whitespace-nowrap", tile ? "min-h-[76px] w-full justify-start gap-3 rounded-2xl border border-border/70 bg-card p-3 text-left shadow-[0_1px_2px_rgb(0_0_0/0.03)] hover:-translate-y-px hover:border-border hover:bg-muted/30 hover:shadow-sm" : compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
+        data-testid="artifact-file-card"
+        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -333,7 +314,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
         <Button
           variant="ghost"
           size="icon-sm"
-          className={cn("absolute right-1 top-1 size-7 rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity hover:bg-background group-hover/output:opacity-100 focus:opacity-100", compact && "right-8 top-1/2 -translate-y-1/2", tile && "right-2 top-1/2 -translate-y-1/2")}
+          className={cn("absolute right-1 top-1 size-7 rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity hover:bg-background group-hover/output:opacity-100 focus:opacity-100", compact && "right-8 top-1/2 -translate-y-1/2")}
           aria-label={t("session.outputs.revise_file")}
           title={t("session.outputs.revise_file")}
           onClick={(event) => {
@@ -513,7 +494,7 @@ interface ConversationOutputPanelProps {
 
 type ConversationFilesMode = "directory" | "outputs";
 
-function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets">) {
+function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio, popover = false, onClose }: Omit<ConversationOutputPanelProps, "openTargets"> & { popover?: boolean; onClose?: () => void }) {
   const [mode, setMode] = useState<ConversationFilesMode>("outputs");
   const [fileQuery, setFileQuery] = useState("");
   const discoveredArtifacts = useArtifacts(messages, {
@@ -552,10 +533,10 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
         : t("session.files.file_count", { count: workspaceFiles.length });
 
   return (
-    <div className="flex h-full min-h-0 flex-col" aria-label={t("session.files.title")}>
-      <div className="shrink-0 border-b border-border/60 px-4 pb-3 pt-4">
-        <div className="flex items-center justify-between gap-3">
-        <div>
+    <div className={cn("flex min-h-0 flex-col", popover ? "max-h-[min(70vh,560px)]" : "h-full")} aria-label={t("session.files.title")}>
+      <div className={cn("shrink-0 border-b border-border/60 px-4", popover ? "py-3" : "pb-3 pt-4")}>
+        <div className={cn("items-center gap-3", popover ? "grid grid-cols-[1fr_auto_1fr]" : "flex justify-between")}>
+          <div className="min-w-0">
             <div className="text-base font-medium">{t("session.files.title")}</div>
             <div className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">{subtitle}</div>
           </div>
@@ -565,32 +546,41 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
               const next = value[0];
               if (next === "directory" || next === "outputs") setMode(next);
             }}
-            variant="outline"
-            size="sm"
+            spacing={0.5}
             aria-label={t("session.files.mode_label")}
-            className="shrink-0 rounded-xl"
+            className="h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
           >
             <ToggleGroupItem
               value="directory"
               data-testid="conversation-files-mode-directory"
-              className="h-8 gap-1.5 rounded-l-xl px-2.5 text-xs"
+              className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-foreground aria-pressed:shadow-none"
               aria-label={t("session.files.mode_directory")}
               title={t("session.files.mode_directory")}
             >
-              <ListTree className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_directory")}</span>
             </ToggleGroupItem>
             <ToggleGroupItem
               value="outputs"
               data-testid="conversation-files-mode-outputs"
-              className="h-8 gap-1.5 rounded-r-xl px-2.5 text-xs"
+              className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-foreground aria-pressed:shadow-none"
               aria-label={t("session.files.mode_outputs")}
               title={t("session.files.mode_outputs")}
             >
-              <Sparkles className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_outputs")}</span>
             </ToggleGroupItem>
           </ToggleGroup>
+          {popover ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-8 justify-self-end rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("common.close")}
+              title={t("common.close")}
+              onClick={onClose}
+            >
+              <X className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+            </Button>
+          ) : null}
         </div>
         {mode === "directory" ? (
           <div className="mt-3 flex items-center gap-2" data-testid="conversation-files-directory-toolbar">
@@ -620,7 +610,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {mode === "outputs" ? outputs.length ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5" data-testid="conversation-files-outputs-view">
+          <div className={cn("grid gap-2.5", popover ? "grid-cols-1" : "grid-cols-[repeat(auto-fill,minmax(220px,1fr))]")} data-testid="conversation-files-outputs-view">
             {outputGroups.map((group) => (
               <div key={group.id} className="relative min-w-0">
                 <ArtifactButton
@@ -629,7 +619,6 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                   sessionId={sessionId}
                   artifactContext={artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
-                  tile
                 />
                 {group.artifacts.length > 1 ? (
                   <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
@@ -667,38 +656,79 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   );
 }
 
-/** Small header control for the mutually-exclusive conversation output panel. */
-export function ConversationOutputTrigger({ active, disabled, onClick }: { active: boolean; disabled: boolean; onClick: () => void }) {
+/** Small header control for task files, either as a panel or a popover. */
+export function ConversationOutputTrigger({ active, disabled, onClick, popover = false }: { active: boolean; disabled: boolean; onClick?: () => void; popover?: boolean }) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      aria-label={t("session.files.open")}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <FileOutput className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+    </Button>
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger
-        render={(
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={t("session.files.open")}
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={onClick}
-          >
-            <FilesIcon className="size-4" strokeWidth={1.75} />
-          </Button>
-        )}
+        render={popover ? <PopoverTrigger render={button} /> : button}
       />
       <TooltipContent>{t("session.files.open")}</TooltipContent>
     </Tooltip>
   );
 }
 
-/** Right-side conversation output surface. It looks like a floating card but never covers chat content. */
+type ConversationOutputPopoverProps = ConversationOutputPanelProps & {
+  disabled: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+};
+
+/** Temporary file picker shown without replacing an already-open work panel. */
+export function ConversationOutputPopover({ disabled, open, onOpenChange, openTargets = [], onOpenTarget, onOpenVideoStudio, ...props }: ConversationOutputPopoverProps) {
+  const handleOpenTarget = (target: OpenTarget, options?: OpenTargetOptions) => {
+    onOpenChange(false);
+    onOpenTarget?.(target, options);
+  };
+  const handleOpenVideoStudio = (displayName?: string) => {
+    onOpenChange(false);
+    onOpenVideoStudio?.(displayName);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <ConversationOutputTrigger active={open} disabled={disabled} popover />
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        initialFocus={false}
+        className="w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)] gap-0 overflow-hidden rounded-xl! bg-background p-0 shadow-xl backdrop-blur-none"
+        data-testid="conversation-files-popover"
+      >
+        <OpenTargetProvider openTargets={openTargets} onOpenTarget={handleOpenTarget}>
+          <ConversationOutputPanelContent
+            {...props}
+            onOpenTarget={handleOpenTarget}
+            onOpenVideoStudio={handleOpenVideoStudio}
+            popover
+            onClose={() => onOpenChange(false)}
+          />
+        </OpenTargetProvider>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Persistent task-file surface inside the right panel. */
 export function ConversationOutputPanel({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, openTargets = [], templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
   return (
     <OpenTargetProvider openTargets={openTargets} onOpenTarget={onOpenTarget}>
-      <div className="h-full min-h-0 bg-background p-3">
-        <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm">
-          <ConversationOutputPanelContent messages={messages} sessionId={sessionId} sessionTitle={sessionTitle} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} templateEntryPath={templateEntryPath} supplementalFiles={supplementalFiles} artifactContext={artifactContext} onOpenTarget={onOpenTarget} onOpenVideoStudio={onOpenVideoStudio} />
-        </div>
+      <div className="h-full min-h-0 overflow-hidden bg-background" data-testid="conversation-files-panel">
+        <ConversationOutputPanelContent messages={messages} sessionId={sessionId} sessionTitle={sessionTitle} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} templateEntryPath={templateEntryPath} supplementalFiles={supplementalFiles} artifactContext={artifactContext} onOpenTarget={onOpenTarget} onOpenVideoStudio={onOpenVideoStudio} />
       </div>
     </OpenTargetProvider>
   );

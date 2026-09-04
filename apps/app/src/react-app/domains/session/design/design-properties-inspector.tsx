@@ -13,6 +13,7 @@ import {
   Bold,
   Check,
   ChevronDown,
+  Copy,
   FlipHorizontal2,
   Grip,
   Image,
@@ -108,6 +109,8 @@ function ElementPropertiesContent({
   const [linkOpen, setLinkOpen] = React.useState(Boolean(selection.href));
   const [linkDraft, setLinkDraft] = React.useState(selection.href);
   const [aspectRatioLocked, setAspectRatioLocked] = React.useState(false);
+  const [htmlCopied, setHtmlCopied] = React.useState(false);
+  const htmlCopyFeedbackTimer = React.useRef<number | null>(null);
   const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
   const isMixed = (field: DesignStyleField) => mixedStyleFields.includes(field);
 
@@ -117,6 +120,30 @@ function ElementPropertiesContent({
   }, [selection.id, selection.href]);
 
   React.useEffect(() => setAspectRatioLocked(false), [selection.id]);
+
+  React.useEffect(() => {
+    setHtmlCopied(false);
+    if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+    htmlCopyFeedbackTimer.current = null;
+  }, [selection.id]);
+
+  React.useEffect(() => () => {
+    if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+  }, []);
+
+  const copySelectedHtml = async () => {
+    try {
+      await navigator.clipboard.writeText(selection.html);
+      setHtmlCopied(true);
+      if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current);
+      htmlCopyFeedbackTimer.current = window.setTimeout(() => {
+        setHtmlCopied(false);
+        htmlCopyFeedbackTimer.current = null;
+      }, 2_000);
+    } catch {
+      // Clipboard access can be denied by the host; keep the action available for retry.
+    }
+  };
 
   const width = numericValue(selection.styles.width, selection.rect.width);
   const height = numericValue(selection.styles.height, selection.rect.height);
@@ -352,7 +379,22 @@ function ElementPropertiesContent({
       </InspectorSection>
       </fieldset>
 
-      <InspectorSection title="HTML" last>
+      <InspectorSection
+        title="HTML"
+        action={
+          <button
+            type="button"
+            className="flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:bg-foreground active:text-background [&_svg]:size-3.5"
+            aria-label={htmlCopied ? t("message.copied") : t("message.copy")}
+            title={htmlCopied ? t("message.copied") : t("message.copy")}
+            data-testid="copy-selected-html"
+            onClick={() => void copySelectedHtml()}
+          >
+            {htmlCopied ? <><Check /><span aria-live="polite">{t("message.copied")}</span></> : <Copy />}
+          </button>
+        }
+        last
+      >
         <textarea
           readOnly
           value={selection.html}
@@ -496,10 +538,13 @@ function ShadowIntensityControl({ value, shadow, onChange }: { value: number; sh
   );
 }
 
-function InspectorSection({ title, children, last = false }: { title: string; children: React.ReactNode; last?: boolean }) {
+function InspectorSection({ title, action, children, last = false }: { title: string; action?: React.ReactNode; children: React.ReactNode; last?: boolean }) {
   return (
     <section className={cn("px-4 py-3.5", !last && "border-b border-border")}>
-      <h3 className="mb-3 text-[14px] font-medium text-foreground">{title}</h3>
+      <div className="mb-3 flex min-h-7 items-center justify-between gap-2">
+        <h3 className="text-[14px] font-medium text-foreground">{title}</h3>
+        {action}
+      </div>
       {children}
     </section>
   );

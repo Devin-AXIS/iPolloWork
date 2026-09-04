@@ -14,7 +14,7 @@ const EXACT_BOTTOM_GAP_PX = 1;
 // Widened from 250ms so a single wheel or trackpad flick isn't missed between
 // two rapid programmatic scroll-to-bottom frames during streaming.
 const SCROLL_GESTURE_WINDOW_MS = 600;
-const SMOOTH_SCROLL_RESET_MS = 700;
+const PROGRAMMATIC_SCROLL_SETTLE_MS = 1_000;
 // Threshold (px) that counts as a meaningful "scroll upward" gesture. Anything
 // smaller is treated as anchoring jitter and ignored so we don't trip out of
 // sticky bottom mode for pixel-level content growth.
@@ -86,7 +86,7 @@ function syncProgrammaticScrollTop(container: HTMLElement, top: number, behavior
   container.append(anchor);
   anchor.scrollIntoView({ block: "start", inline: "nearest", behavior });
   anchor.remove();
-  return clampedTop;
+  return container.scrollTop;
 }
 
 export function useSessionScrollController(
@@ -99,10 +99,14 @@ export function useSessionScrollController(
 
   const lastKnownScrollTopRef = useRef(0);
   const programmaticScrollRef = useRef(false);
+  const programmaticScrollDirectionRef = useRef<"up" | "down" | null>(null);
   const programmaticScrollResetRafARef = useRef<number | undefined>(undefined);
   const programmaticScrollResetRafBRef = useRef<number | undefined>(undefined);
+  const programmaticScrollResetTimeoutRef = useRef<number | undefined>(undefined);
   const observedContentHeightRef = useRef(0);
   const lastGestureAtRef = useRef(0);
+  const scrollGestureVersionRef = useRef(0);
+  const programmaticScrollGestureVersionRef = useRef(0);
   const previousSessionIdRef = useRef<string | null>(null);
 
   const hasScrollGesture = useCallback(
@@ -126,6 +130,7 @@ export function useSessionScrollController(
       if (nested && nested !== container) return;
 
       lastGestureAtRef.current = Date.now();
+      scrollGestureVersionRef.current += 1;
     },
     [options.containerRef],
   );
@@ -139,6 +144,10 @@ export function useSessionScrollController(
       window.cancelAnimationFrame(programmaticScrollResetRafBRef.current);
       programmaticScrollResetRafBRef.current = undefined;
     }
+    if (programmaticScrollResetTimeoutRef.current !== undefined) {
+      window.clearTimeout(programmaticScrollResetTimeoutRef.current);
+      programmaticScrollResetTimeoutRef.current = undefined;
+    }
   }, []);
 
   const releaseProgrammaticScrollSoon = useCallback(() => {
@@ -148,6 +157,7 @@ export function useSessionScrollController(
       programmaticScrollResetRafBRef.current = window.requestAnimationFrame(() => {
         programmaticScrollResetRafBRef.current = undefined;
         programmaticScrollRef.current = false;
+        programmaticScrollDirectionRef.current = null;
       });
     });
   }, [clearProgrammaticScrollReset]);
@@ -168,21 +178,32 @@ export function useSessionScrollController(
       const container = options.containerRef.current;
       if (!container) return;
 
+      clearProgrammaticScrollReset();
       setStickyBottom(selectedSessionId, null);
       lastGestureAtRef.current = 0;
       programmaticScrollRef.current = true;
+      programmaticScrollDirectionRef.current = "down";
+      programmaticScrollGestureVersionRef.current = scrollGestureVersionRef.current;
 
-      // Keep Electron compatibility but simplify state management
+      // Smooth scrolling updates scrollTop over time, so keep the observed
+      // position rather than recording the final target before we get there.
       lastKnownScrollTopRef.current = syncProgrammaticScrollTop(container, container.scrollHeight, behavior);
 
-      // Simplified: use single timeout instead of double RAF
-      const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50;
-      setTimeout(() => {
+      const resetDelay = behavior === "smooth" ? PROGRAMMATIC_SCROLL_SETTLE_MS : 50;
+      programmaticScrollResetTimeoutRef.current = window.setTimeout(() => {
+        programmaticScrollResetTimeoutRef.current = undefined;
+        if (!programmaticScrollRef.current) return;
+
+        const next = options.containerRef.current;
+        if (behavior === "smooth" && next === container && !isExactlyAtBottom(next)) {
+          lastKnownScrollTopRef.current = syncProgrammaticScrollTop(next, next.scrollHeight);
+        }
         programmaticScrollRef.current = false;
+        programmaticScrollDirectionRef.current = null;
         refreshTopClippedMessage();
       }, resetDelay);
     },
-    [options.containerRef, refreshTopClippedMessage, selectedSessionId, setStickyBottom],
+    [clearProgrammaticScrollReset, options.containerRef, refreshTopClippedMessage, selectedSessionId, setStickyBottom],
   );
 
   const saveScrollPosition = useCallback(
@@ -206,14 +227,22 @@ export function useSessionScrollController(
       const delta = currentTop - previousTop;
       const scrolledUp = delta <= -MANUAL_BROWSE_UPWARD_THRESHOLD_PX;
       const userGestured = hasScrollGesture();
+      const programmaticDirection = programmaticScrollDirectionRef.current;
+      const scrolledAgainstProgrammaticDirection = programmaticDirection === "down"
+        ? scrolledUp
+        : programmaticDirection === "up" && delta >= MANUAL_BROWSE_UPWARD_THRESHOLD_PX;
+      const userInterruptedProgrammaticScroll = scrollGestureVersionRef.current !== programmaticScrollGestureVersionRef.current;
 
-      // A programmatic jump to an earlier message also produces upward scroll
-      // events. Only a real wheel, touch, or scrollbar gesture should cancel
-      // that jump; treating its own negative delta as manual input freezes a
-      // smooth scroll after the first few pixels.
-      if (programmaticScrollRef.current && userGestured) {
+      // If the user scrolls up meaningfully while a programmatic scroll is
+      // in flight, abandon the programmatic state and switch to manual browse
+      // immediately. Without this the ResizeObserver's auto-scroll during
+      // streaming keeps re-anchoring us to the bottom and the user can never
+      // actually get away from the tail of the transcript.
+      if (programmaticScrollRef.current && (userInterruptedProgrammaticScroll || scrolledAgainstProgrammaticDirection)) {
         programmaticScrollRef.current = false;
+        programmaticScrollDirectionRef.current = null;
         clearProgrammaticScrollReset();
+        syncCurrentScrollPosition(container);
         saveScrollPosition(container);
         lastKnownScrollTopRef.current = currentTop;
         return;
@@ -269,20 +298,24 @@ export function useSessionScrollController(
       const target = messageElementById(container, messageId);
       if (!target) return;
 
-      // Set programmatic scroll state first
-      lastGestureAtRef.current = 0;
+      clearProgrammaticScrollReset();
       programmaticScrollRef.current = true;
+      programmaticScrollDirectionRef.current = target.getBoundingClientRect().top < container.getBoundingClientRect().top
+        ? "up"
+        : "down";
+      programmaticScrollGestureVersionRef.current = scrollGestureVersionRef.current;
+      lastKnownScrollTopRef.current = container.scrollTop;
       setManualScroll(selectedSessionId, container.scrollTop, messageId);
       target.scrollIntoView({ behavior, block: "start" });
 
-      // Reset programmatic state after animation
-      const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50;
-      setTimeout(() => {
+      const resetDelay = behavior === "smooth" ? PROGRAMMATIC_SCROLL_SETTLE_MS : 50;
+      programmaticScrollResetTimeoutRef.current = window.setTimeout(() => {
+        programmaticScrollResetTimeoutRef.current = undefined;
         programmaticScrollRef.current = false;
-        refreshTopClippedMessage();
+        programmaticScrollDirectionRef.current = null;
       }, resetDelay);
     },
-    [options.containerRef, refreshTopClippedMessage, selectedSessionId, setManualScroll],
+    [clearProgrammaticScrollReset, options.containerRef, selectedSessionId, setManualScroll],
   );
 
   useEffect(() => {

@@ -189,12 +189,24 @@ describe("Design property number fields", () => {
 
   test("shows the selected element HTML at the bottom of the Element inspector", async () => {
     const source = await Bun.file(inspectorUrl).text();
-    const htmlSection = '<InspectorSection title="HTML" last>';
+    const htmlSection = 'title="HTML"';
 
     expect(source).toContain(htmlSection);
     expect(source).toContain('value={selection.html}');
     expect(source).toContain('aria-label="Selected element HTML code"');
     expect(source).toContain('h-[220px]');
     expect(source.indexOf(htmlSection)).toBeGreaterThan(source.indexOf('<InspectorSection title={t("design.properties.section.appearance")}>'));
+  });
+
+  test("copies the selected element HTML from a repeatable title action", async () => {
+    const source = await Bun.file(inspectorUrl).text();
+
+    expect(source).toContain("await navigator.clipboard.writeText(selection.html)");
+    expect(source).toContain('data-testid="copy-selected-html"');
+    expect(source).toContain('aria-label={htmlCopied ? t("message.copied") : t("message.copy")}');
+    expect(source).toContain('{htmlCopied ? <><Check /><span aria-live="polite">{t("message.copied")}</span></> : <Copy />}');
+    expect(source).toContain("if (htmlCopyFeedbackTimer.current !== null) window.clearTimeout(htmlCopyFeedbackTimer.current)");
+    expect(source).toContain("}, 2_000)");
+    expect(source).not.toContain("disabled={htmlCopied}");
   });
 });

@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import { Check, Download, Ellipsis, Loader2, Monitor, Presentation, Share2, Smartphone } from "lucide-react";
 
-import { TemplateIcon } from "@/components/template-icon";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -28,7 +27,6 @@ type DesignExportMenuProps = {
   onPublish?: () => void;
   onExportPdf: () => void;
   onExportPptx: () => void;
-  onSaveAsTemplate?: () => void;
 };
 
 export function DesignExportMenu({
@@ -47,9 +45,8 @@ export function DesignExportMenu({
   onPublish,
   onExportPdf,
   onExportPptx,
-  onSaveAsTemplate,
 }: DesignExportMenuProps) {
-  const downloadLabel = t("design.export.download");
+  const triggerLabel = compact ? t("design.toolbar.more") : t("design.export.download");
   const triggerDisabled = compact
     ? publishDisabled && !onPreviewDeviceChange && (!showExports || (exportingPdf && exportingPptx) || !exportReady)
     : exportingPdf && exportingPptx;
@@ -64,10 +61,10 @@ export function DesignExportMenu({
             size="icon-sm"
             className={triggerClassName}
             disabled={triggerDisabled}
-            aria-label={compact || !showExports ? "More design actions" : downloadLabel}
-            title={compact || !showExports ? "More" : triggerDisabled && !exportReady ? disabledReason : downloadLabel}
+            aria-label={triggerLabel}
+            title={triggerDisabled && !exportReady ? disabledReason : triggerLabel}
           >
-            {compact || !showExports ? <Ellipsis /> : <Download />}
+            {compact ? <Ellipsis /> : <Download />}
           </Button>
         )}
       />
@@ -80,12 +77,12 @@ export function DesignExportMenu({
           <>
             <DropdownMenuItem onClick={() => onPreviewDeviceChange("desktop")}>
               <Monitor />
-              Desktop
+              {t("design.toolbar.desktop")}
               {previewDevice === "desktop" ? <Check className="ml-auto" /> : null}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onPreviewDeviceChange("mobile")}>
               <Smartphone />
-              Mobile
+              {t("design.toolbar.mobile")}
               {previewDevice === "mobile" ? <Check className="ml-auto" /> : null}
             </DropdownMenuItem>
             {onPublish || showExports ? <DropdownMenuSeparator /> : null}
@@ -95,7 +92,7 @@ export function DesignExportMenu({
           <>
             <DropdownMenuItem disabled={publishDisabled} onClick={onPublish}>
               {publishing ? <Loader2 className="animate-spin" /> : <Share2 />}
-              Publish
+              {t("design.toolbar.publish")}
             </DropdownMenuItem>
             {showExports ? <DropdownMenuSeparator /> : null}
           </>
@@ -109,15 +106,6 @@ export function DesignExportMenu({
             <DropdownMenuItem disabled={exportingPptx || !exportReady} onClick={onExportPptx}>
               {exportingPptx ? <Loader2 className="animate-spin" /> : <Presentation />}
               {t("design.export.download_pptx")}
-            </DropdownMenuItem>
-          </>
-        ) : null}
-        {onSaveAsTemplate ? (
-          <>
-            {showExports ? <DropdownMenuSeparator /> : null}
-            <DropdownMenuItem onClick={onSaveAsTemplate}>
-              <TemplateIcon className="size-4" />
-              {t("template_authoring.save_as_template")}
             </DropdownMenuItem>
           </>
         ) : null}

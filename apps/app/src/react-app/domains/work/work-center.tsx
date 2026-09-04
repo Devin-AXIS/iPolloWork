@@ -18,8 +18,10 @@ import {
 import type { WorkspaceInfo } from "@/app/lib/desktop";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import type { ProviderListItem } from "@/app/types";
+import { publicAssetUrl } from "@/app/lib/public-asset";
 import { isRemoteWorkspace } from "@/app/lib/workspace-endpoint";
 import { Button } from "@/components/ui/button";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
 import { cn } from "@/lib/utils";
 import { t } from "@/i18n";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
@@ -194,6 +196,7 @@ function GlobalWorkSummary(props: {
 }
 
 export function WorkCenter(props: WorkCenterProps) {
+  const { state: sidebarState } = useSidebar();
   const queryClient = useQueryClient();
   const [projectView, setProjectView] = React.useState<ProjectView>("board");
   const [boardPanEnabled, setBoardPanEnabled] = React.useState(false);
@@ -499,6 +502,15 @@ export function WorkCenter(props: WorkCenterProps) {
           props.mode === "global" ? "ps-4 pe-12 sm:ps-6 sm:pe-14" : "px-4 sm:px-6",
         )}
       >
+        {props.mode === "global" && sidebarState === "collapsed" ? (
+          <SidebarTrigger
+            data-testid="work-center-sidebar-restore"
+            className="size-8 shrink-0 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:ml-16 mac:titlebar-no-drag"
+            icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />}
+            aria-label={t("sidebar.expand")}
+            title={t("sidebar.expand")}
+          />
+        ) : null}
         <div className="min-w-0 flex-1">
           <h1 className="truncate text-[24px] font-semibold leading-8 tracking-[-0.35px] text-dls-text">{title}</h1>
           <p className="mt-0.5 truncate text-[13px] leading-5 text-dls-secondary">{subtitle}</p>

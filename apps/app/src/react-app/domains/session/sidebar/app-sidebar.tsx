@@ -5,21 +5,28 @@ import {
   Archive,
   ArchiveRestore,
   CalendarDays,
+  ChevronDown,
   ChevronRight,
   Cpu,
   Ellipsis,
   FolderOpen,
+  LayoutTemplate,
   Loader2,
   Languages,
   Pencil,
   Pin,
   PinOff,
+  Plus,
+  Search,
+  SquarePen,
   Trash2,
   RefreshCw,
   RotateCcw,
   Settings,
   HelpCircle,
   Sparkles,
+  ToolCase,
+  ToyBrick,
   UserRound,
 } from "lucide-react";
 import { LazyMotion, domMax, m } from "motion/react";
@@ -30,7 +37,6 @@ import {
 } from "@ipollowork/types/workspace";
 
 import { getDisplaySessionTitle } from "../../../../app/lib/session-title";
-import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import type { WorkContextId } from "../../../../app/lib/work-context";
 import { IPolloWorkDenHelpLink } from "../../workspace/ipollowork-den-help-link";
 import type {
@@ -88,7 +94,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { TemplateIcon } from "@/components/template-icon";
 
 import { SidebarContext, useSidebarContext } from "./app-sidebar-provider";
 import type {
@@ -122,6 +127,9 @@ import { getSessionActivityStatusLabel, type SessionActivityStatus } from "../st
 import { NotificationBell } from "../../../shell/notification-center";
 import { useShellConfig } from "../../../shell/shell-config";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
+import { NAVIGATION_ICON_STROKE_WIDTH, ProjectFolderIcon } from "@/components/navigation-icons";
+
+const SIDEBAR_ICON_STROKE_WIDTH = NAVIGATION_ICON_STROKE_WIDTH;
 
 interface SessionStatusIndicatorProps {
   className?: string;
@@ -282,7 +290,7 @@ function SessionActions({ className, sessionId, workspaceId, isPinned, isArchive
               onDragStart={(event) => event.stopPropagation()}
           >
             <span className="flex size-4 items-center justify-center" aria-hidden="true">
-              <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
+              <Ellipsis className="size-3.5" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
             </span>
           </Button>
         }
@@ -491,17 +499,16 @@ function SidebarSectionHeader({
       <button
         type="button"
         onClick={onToggle}
-        className="flex h-8 min-w-0 flex-1 select-none items-center gap-2 rounded-md text-left text-sm font-medium text-[#858a94] transition-colors hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
+        className="flex h-8 min-w-0 flex-1 select-none items-center gap-2 rounded-md text-left text-sm font-medium text-muted-foreground transition-colors hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
         aria-label={label}
         aria-expanded={expanded}
         data-testid={toggleTestId}
       >
         <span className="min-w-0 truncate">{label}</span>
         <span className="inline-flex size-4 shrink-0 items-center justify-center rounded-sm opacity-0 transition-[opacity,transform] group-hover/section:opacity-100 group-focus-within/section:opacity-100">
-          <img
-            src={publicAssetUrl("sidebar-icon/figma-section-chevron-down.svg")}
-            alt=""
-            className={cn("size-4 transition-transform duration-200", !expanded && "-rotate-90")}
+          <ChevronDown
+            className={cn("size-3.5 transition-transform duration-200", !expanded && "-rotate-90")}
+            strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
           />
         </span>
       </button>
@@ -509,19 +516,19 @@ function SidebarSectionHeader({
         <button
           type="button"
           onClick={onAdd}
-          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-sidebar-accent focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
+          className="inline-flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:ring-1 focus-visible:ring-sidebar-ring focus-visible:outline-hidden"
           aria-label={addLabel}
           title={addLabel}
           data-testid={addTestId}
         >
-          <img src={publicAssetUrl("sidebar-icon/figma-section-plus.svg")} alt="" className="size-[10.3333px]" />
+          <Plus className="size-3.5" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} aria-hidden="true" />
         </button>
       ) : null}
     </div>
   );
 }
 
-const primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground focus-visible:ring-1";
+const primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2 py-0 text-sm font-normal leading-4 text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground disabled:opacity-40 focus-visible:ring-1 [&_[data-sidebar-primary-icon]]:text-muted-foreground [&_[data-sidebar-primary-icon]]:transition-colors hover:[&_[data-sidebar-primary-icon]]:text-sidebar-accent-foreground data-active:[&_[data-sidebar-primary-icon]]:text-sidebar-accent-foreground";
 
 function useSessionTree(
   sessions: ProjectSessionList["sessions"],
@@ -743,8 +750,7 @@ export function AppSidebar(props: AppSidebarProps) {
         <SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag">
           <div className="flex w-full justify-end px-3">
             <SidebarTrigger
-              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
-              icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />}
+              className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-muted active:bg-muted"
               aria-label={t("sidebar.collapse")}
               title={t("sidebar.collapse")}
             />
@@ -771,9 +777,9 @@ export function AppSidebar(props: AppSidebarProps) {
                 onClick={props.onOpenSessionSearch}
                 aria-label={t("workspace_list.search_sessions")}
                 aria-keyshortcuts={isMacPlatform() ? "Meta+Shift+F" : "Control+Shift+F"}
-                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-sidebar-accent active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground active:bg-sidebar-accent mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
               >
-                <img src={publicAssetUrl("sidebar-icon/search.svg")} alt="" className="size-6 dark:invert" />
+                <Search className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} aria-hidden="true" />
               </button>
             ) : null}
           </div>
@@ -787,8 +793,8 @@ export function AppSidebar(props: AppSidebarProps) {
                   aria-keyshortcuts={isMacPlatform() ? "Meta+N" : "Control+N"}
                   onClick={() => void createConversationInSelectedProject()}
                 >
-                  <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                    <img src={publicAssetUrl("sidebar-icon/figma-square-pen.svg")} alt="" className="size-3.5 dark:invert" />
+                  <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
+                    <SquarePen className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                   </span>
                   <span className="flex-1 truncate">{t("session.new_task")}</span>
                 </SidebarMenuButton>
@@ -800,8 +806,8 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "template-market"}
                 className={primarySidebarActionClass}
               >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <TemplateIcon className="size-3.5" />
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <LayoutTemplate className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("template_market.title")}</span>
               </SidebarMenuButton>
@@ -812,8 +818,8 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "schedule"}
                 className={primarySidebarActionClass}
               >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <CalendarDays className="!size-3.5" strokeWidth={1.7} />
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <CalendarDays className="!size-[15px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("work.global_title")}</span>
               </SidebarMenuButton>
@@ -824,8 +830,8 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "extensions"}
                 className={primarySidebarActionClass}
               >
-                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/toy-brick.svg")} alt="" className="size-3.5 dark:invert" />
+                <span className="flex size-4 shrink-0 items-center justify-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <ToyBrick className="!size-[17px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("settings.tab_extensions")}</span>
               </SidebarMenuButton>
@@ -836,8 +842,8 @@ export function AppSidebar(props: AppSidebarProps) {
                 isActive={props.activePrimaryItem === "plugin-workshop"}
                 className={primarySidebarActionClass}
               >
-                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true">
-                  <img src={publicAssetUrl("sidebar-icon/tool-case.svg")} alt="" className="size-3.5 dark:invert" />
+                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>
               </SidebarMenuButton>
@@ -921,11 +927,11 @@ export function AppSidebar(props: AppSidebarProps) {
               </div>
               <DropdownMenu>
                 <DropdownMenuTrigger
-                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground/65 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
+                  className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground active:bg-sidebar-accent active:text-sidebar-accent-foreground focus-visible:ring-2 focus-visible:ring-sidebar-ring focus-visible:outline-hidden mac:hover:bg-black/5 mac:active:bg-black/5 dark:mac:hover:bg-white/10 dark:mac:active:bg-white/10"
                   aria-label={t("status.settings")}
                   title={t("status.settings")}
                 >
-                  <Ellipsis className="size-4" strokeWidth={1.75} />
+                  <Ellipsis className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="top" align="end" className="w-44 min-w-44">
                   <DropdownMenuItem onClick={() => props.onOpenSettings("/settings/general")}>
@@ -956,7 +962,7 @@ export function AppSidebar(props: AppSidebarProps) {
                   </DropdownMenuSub>
                 </DropdownMenuContent>
               </DropdownMenu>
-              <NotificationBell className="shrink-0 rounded-lg text-sidebar-foreground/65 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
+              <NotificationBell className="shrink-0 rounded-lg text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground" />
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarFooter>
@@ -1093,18 +1099,19 @@ function ProjectSidebarContent({
                 data-testid="project-row"
                 data-project-id={workspace.id}
                 data-selected={isSelectedProject ? "true" : "false"}
-                aria-pressed={isSelectedProject}
                 aria-expanded={projectExpanded}
               >
-                <span className="relative size-4 shrink-0" aria-hidden="true">
+                <span
+                  className={cn(
+                    "relative size-4 shrink-0 text-muted-foreground transition-colors group-hover/project-row:text-sidebar-accent-foreground",
+                    isSelectedProject && "text-sidebar-accent-foreground",
+                  )}
+                  aria-hidden="true"
+                >
                   {projectExpanded ? (
-                    <FolderOpen className="absolute -bottom-0.5 left-[-0.7px] size-[15.5px]" strokeWidth={1.75} />
+                    <FolderOpen className="!size-[15.5px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                   ) : (
-                    <img
-                      src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
-                      alt=""
-                      className="absolute bottom-0 left-0 h-auto w-3.5 dark:invert"
-                    />
+                    <ProjectFolderIcon />
                   )}
                 </span>
                 <span className="min-w-0 flex-1 truncate">{workspaceLabel(workspace)}</span>
@@ -1122,7 +1129,7 @@ function ProjectSidebarContent({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="size-7 rounded-md"
+                  className="size-7 rounded-md text-muted-foreground hover:text-sidebar-foreground"
                   onClick={() => void createConversationInProject()}
                   disabled={isConnectionActionBusy || creatingConversation}
                   aria-busy={creatingConversation}
@@ -1135,7 +1142,7 @@ function ProjectSidebarContent({
                     <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
                   ) : (
                     <span className="flex size-4 items-center justify-center" aria-hidden="true">
-                      <img src={publicAssetUrl("sidebar-icon/figma-section-plus.svg")} alt="" className="size-[10.3333px]" />
+                      <Plus className="size-3.5" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                     </span>
                   )}
                 </Button>
@@ -1145,7 +1152,7 @@ function ProjectSidebarContent({
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="size-7 rounded-md data-popup-open:bg-sidebar-accent"
+                        className="size-7 rounded-md text-muted-foreground hover:text-sidebar-foreground data-popup-open:bg-sidebar-accent data-popup-open:text-sidebar-foreground"
                         aria-label={t("projects.actions")}
                         title={t("projects.actions")}
                         data-testid="project-actions-menu"
@@ -1154,7 +1161,7 @@ function ProjectSidebarContent({
                         onDragStart={(event) => event.stopPropagation()}
                       >
                         <span className="flex size-4 items-center justify-center" aria-hidden="true">
-                          <img src={publicAssetUrl("sidebar-icon/figma-section-ellipsis.svg")} alt="" className="h-[2.33333px] w-[11.6667px]" />
+                          <Ellipsis className="size-3.5" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                         </span>
                       </Button>
                     }
