@@ -122,7 +122,11 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('grid-cols-[1fr_auto_1fr]');
     expect(artifactSource).toContain('w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)]');
     expect(artifactSource).toContain('onClose={() => onOpenChange(false)}');
-    expect(artifactSource).toContain("tile={!popover}");
+    expect(artifactSource).not.toContain("tile?: boolean");
+    expect(artifactSource).not.toContain("tile={!popover}");
+    expect(artifactSource).not.toContain("hover:-translate-y-px");
+    expect(artifactSource).not.toContain("hover:shadow-sm");
+    expect(artifactSource).toContain('data-testid="artifact-file-card"');
     expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
     expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
     expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
@@ -132,7 +136,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
-    expect(artifactSource).toContain("min-h-[76px]");
+    expect(artifactSource).toContain('"h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4"');
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");

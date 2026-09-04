@@ -57,7 +57,6 @@ interface ArtifactButtonProps {
   artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: (displayName?: string) => void
   compact?: boolean
-  tile?: boolean
 }
 
 const MAX_ARTIFACT_TITLE_LENGTH = 32;
@@ -235,7 +234,7 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onOpenVideoStudio, compact = false, tile = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
   const canOpen = canOpenArtifactInContext(artifact, artifactContext);
@@ -259,26 +258,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
     ? t("link_action.open_video_studio")
     : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit");
 
-  const content = tile ? (
-    <>
-      <DescriptiveButtonIcon className="size-11 rounded-xl bg-muted/60 ring-1 ring-border/40">
-        <ArtifactIcon className="size-5 shrink-0" type={artifact.type} />
-      </DescriptiveButtonIcon>
-      <DescriptiveButtonContent className="min-w-0 flex-1 items-start">
-        <DescriptiveButtonTitle className="block max-w-full text-sm font-medium" title={presentedName}>{title}</DescriptiveButtonTitle>
-        <DescriptiveButtonDescription className="mt-1 flex max-w-full items-center gap-1.5 text-[11px] leading-4">
-          <span>{typeLabel}</span>
-          {canActivate ? <span aria-hidden="true" className="text-border">•</span> : null}
-          {canActivate ? <span className="truncate">{actionLabel}</span> : null}
-        </DescriptiveButtonDescription>
-      </DescriptiveButtonContent>
-      {canActivate ? (
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors group-hover/button:bg-background group-hover/button:text-foreground">
-          <ArrowUpRightIcon className="size-3.5" />
-        </span>
-      ) : null}
-    </>
-  ) : (
+  const content = (
     <>
       <DescriptiveButtonIcon className={cn(compact ? "size-5" : "size-12 rounded-2xl bg-muted/55")}>
         <ArtifactIcon className={cn("shrink-0", compact ? "size-4" : "size-5")} type={artifact.type} />
@@ -292,9 +272,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
         </div>
         {(!compact || canOpenVideoStudio) && canActivate ? (
           <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
-            {canOpenVideoStudio
-              ? t("link_action.open_video_studio")
-              : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit")}
+            {actionLabel}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>
@@ -308,16 +286,17 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
 
   if (!canActivate) {
     return (
-      <div className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", tile ? "min-h-[76px] w-full gap-3 border-border/70 bg-card p-3" : compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
+      <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", tile ? "w-full" : compact ? "w-full" : "h-20 w-full min-w-0")}>
+    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")}>
       <DescriptiveButton
-        className={cn("max-w-full items-center whitespace-nowrap", tile ? "min-h-[76px] w-full justify-start gap-3 rounded-2xl border border-border/70 bg-card p-3 text-left shadow-[0_1px_2px_rgb(0_0_0/0.03)] hover:-translate-y-px hover:border-border hover:bg-muted/30 hover:shadow-sm" : compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
+        data-testid="artifact-file-card"
+        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -335,7 +314,7 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
         <Button
           variant="ghost"
           size="icon-sm"
-          className={cn("absolute right-1 top-1 size-7 rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity hover:bg-background group-hover/output:opacity-100 focus:opacity-100", compact && "right-8 top-1/2 -translate-y-1/2", tile && "right-2 top-1/2 -translate-y-1/2")}
+          className={cn("absolute right-1 top-1 size-7 rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity hover:bg-background group-hover/output:opacity-100 focus:opacity-100", compact && "right-8 top-1/2 -translate-y-1/2")}
           aria-label={t("session.outputs.revise_file")}
           title={t("session.outputs.revise_file")}
           onClick={(event) => {
@@ -641,7 +620,6 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                   sessionId={sessionId}
                   artifactContext={artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
-                  tile={!popover}
                 />
                 {group.artifacts.length > 1 ? (
                   <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
