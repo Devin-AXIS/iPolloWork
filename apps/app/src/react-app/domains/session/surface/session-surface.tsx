@@ -134,7 +134,6 @@ import { NewConversationStarter, newConversationPlaceholder, type NewConversatio
 import { MessageListProvider, type DispatchAction } from "@/components/chat/message-list-provider";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import type { ThreadStatus } from "@/lib/messages";
-import { collectToolParts, getActiveToolLabel } from "@/lib/tool-activity";
 
 import {
   EnvironmentVariableProvider,
@@ -980,16 +979,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => latestAssistantMessageCompleted(renderedMessages),
     [renderedMessages],
   );
-  const activeToolLabel = useMemo(
-    () => getActiveToolLabel(collectToolParts(renderedMessages)),
-    [renderedMessages],
-  );
   useEffect(() => {
     if (stalledAtProgressRef.current && stalledAtProgressRef.current !== progressFingerprint) {
       stalledAtProgressRef.current = null;
       setError((current) => current?.kind === "stalled" ? null : current);
     }
-    if (!chatStreaming || activeToolLabel) return;
+    if (!chatStreaming) return;
     const timeout = window.setTimeout(() => {
       stalledAtProgressRef.current = progressFingerprint;
       setError((current) => current ?? {
@@ -998,7 +993,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       });
     }, STALLED_SESSION_WARNING_MS);
     return () => window.clearTimeout(timeout);
-  }, [activeToolLabel, chatStreaming, progressFingerprint]);
+  }, [chatStreaming, progressFingerprint]);
   useEffect(() => {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);

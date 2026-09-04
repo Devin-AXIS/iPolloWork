@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { projectWorkspaceConfigSchema } from "@ipollowork/types/project-workspace";
+import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
 import type { iPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import en from "../src/i18n/locales/en";
 import zh from "../src/i18n/locales/zh";
 import { loadProjectRuntimeMetrics } from "../src/react-app/domains/work/project-runtime-metrics";
 import { scopeProjectBuilderDraft } from "../src/react-app/domains/work/project-builder-session";
-import { projectExecutionSystemContext } from "../src/react-app/domains/work/project-execution";
 import {
   formatWorkCalendarTime,
   formatWorkCalendarRange,

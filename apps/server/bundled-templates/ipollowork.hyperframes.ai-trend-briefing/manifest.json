@@ -1,0 +1,163 @@
+{
+  "schemaVersion": 1,
+  "id": "ipollowork.hyperframes.ai-trend-briefing",
+  "version": "1.1.1",
+  "kind": "design",
+  "category": "video",
+  "subcategory": "ai-explainer",
+  "style": "editorial",
+  "tags": [
+    "video",
+    "ai",
+    "news",
+    "explainer",
+    "analysis",
+    "timeline",
+    "hot-topic"
+  ],
+  "surface": "video",
+  "title": "AI 热点拆解",
+  "description": "一套适合 AI 热点科普与事件复盘的 60 秒 iPollo VI 视频模板，以干净背景和 10 个清晰分区的快速页面串联事件钩子、事实、成因、影响、机会、风险与判断。",
+  "cover": "cover.png",
+  "entry": "index.html",
+  "source": {
+    "name": "iPolloWork · HyperFrames",
+    "repository": "https://github.com/heygen-com/hyperframes",
+    "license": "Apache-2.0",
+    "attribution": "Original iPolloWork composition using the iPollo VI light system and HyperFrames editorial reveal, path-draw, and stat-fill patterns."
+  },
+  "designSystem": {
+    "tokenVersion": 1,
+    "editableGroups": [
+      "theme",
+      "background",
+      "typography",
+      "components"
+    ],
+    "variables": [
+      {
+        "id": "headline",
+        "label": "热点标题",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "deck",
+        "label": "一句话摘要",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "eventDate",
+        "label": "事件日期或期号",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "context",
+        "label": "事件背景",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "trigger",
+        "label": "关键变化",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "signalA",
+        "label": "事件信号一",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "signalB",
+        "label": "事件信号二",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "signalC",
+        "label": "事件信号三",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "cause",
+        "label": "核心成因",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "impact",
+        "label": "主要影响",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "beforeState",
+        "label": "变化前状态",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "afterState",
+        "label": "变化后状态",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "opportunity",
+        "label": "机会判断",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "risk",
+        "label": "关键风险",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "watchpoint",
+        "label": "后续观察点",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "verdict",
+        "label": "最终判断",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "source",
+        "label": "资料来源",
+        "type": "text",
+        "group": "content"
+      },
+      {
+        "id": "brandName",
+        "label": "品牌名称",
+        "type": "text",
+        "group": "brand"
+      },
+      {
+        "id": "logoUrl",
+        "label": "品牌标识",
+        "type": "image",
+        "group": "brand"
+      }
+    ],
+    "tokens": "design-tokens.css"
+  },
+  "applyChecklist": [
+    "用已经核实的事件事实替换标题、背景、三条信号与资料来源，避免把视觉示意当成事实证据。",
+    "保留 10 个页面的“结论—事实—变化—成因—对比—影响—机会—风险—判断”分析链，删减内容时不要只留下结论。",
+    "每张信号卡只表达一个要点，长句应先压缩再替换，确保移动端预览仍能快速阅读。",
+    "影响与风险需要来自同一事件语境，最终判断应明确区分事实、推断与观点。",
+    "发布前核对品牌标识、日期、来源和全部数字，并完整预览快速切换但总时长固定为 60 秒的时间线。"
+  ],
+  "minimumAppVersion": "0.17.24"
+}

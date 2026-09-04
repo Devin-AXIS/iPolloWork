@@ -112,6 +112,12 @@ export function useTimelinePlayerLoop({
           cancelAnimationFrame(rafRef.current);
           return;
         }
+        // getAdapter() can promote a seek-driven bootstrap adapter to the
+        // native runtime adapter while playback is already in progress. The
+        // promotion pauses the old adapter; carry the still-active store intent
+        // onto the replacement so the picture and transport button cannot
+        // silently diverge.
+        if (state.isPlaying && !adapter.isPlaying()) adapter.play();
       }
       rafRef.current = requestAnimationFrame(tick);
     };

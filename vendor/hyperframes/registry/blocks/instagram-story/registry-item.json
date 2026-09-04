@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "instagram-story",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Instagram Story",
+  "description": "A vertical Instagram-style story with progress, creator context, headline and sticker.",
+  "tags": [
+    "component",
+    "social",
+    "instagram",
+    "story",
+    "vertical",
+    "sticker",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "creator",
+        "headline",
+        "sticker",
+        "progress"
+      ],
+      "instructions": "Keep the headline short and make the sticker a direct, friendly action."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "instagram-story.html",
+      "target": "compositions/instagram-story.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "creator",
+      "label": "Creator",
+      "type": "string",
+      "default": "Mira Studio",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "A tiny ritual for better creative mornings.",
+      "maxLength": 90,
+      "update": "live"
+    },
+    {
+      "id": "sticker",
+      "label": "Sticker",
+      "type": "string",
+      "default": "Tap for the full routine",
+      "maxLength": 48,
+      "update": "live"
+    },
+    {
+      "id": "progress",
+      "label": "Story progress",
+      "type": "string",
+      "default": "3 / 5",
+      "maxLength": 16,
+      "update": "live"
+    }
+  ]
+}
+

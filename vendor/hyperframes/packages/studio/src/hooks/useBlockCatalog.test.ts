@@ -27,24 +27,36 @@ function item(name: string, category?: "maps"): CatalogItem {
 }
 
 describe("component catalog contract", () => {
-  it("keeps the eleven short component categories in one ordered contract", () => {
+  it("keeps the thirteen clear component categories in one ordered contract", () => {
     expect(COMPONENT_CATALOG_SECTIONS).toEqual([
-      "intro",
+      "scene",
       "product",
       "data",
       "diagrams",
-      "flow",
       "maps",
-      "compare",
+      "proof",
       "knowledge",
       "people",
-      "proof",
-      "outro",
+      "typography",
+      "media",
+      "social",
+      "developer",
+      "brand",
     ]);
   });
 
   it("only admits registry items with an explicit visual component category", () => {
     expect(resolveCatalogSection(item("route-map", "maps"))).toBe("maps");
     expect(resolveCatalogSection(item("ordinary-block"))).toBeNull();
+  });
+
+  it("maps legacy version-one categories into the canonical taxonomy", () => {
+    expect(resolveCatalogSection({ visualComponent: { category: "intro" } })).toBe("scene");
+    expect(resolveCatalogSection({ visualComponent: { category: "outro" } })).toBe("scene");
+    expect(resolveCatalogSection({ visualComponent: { category: "flow" } })).toBe("diagrams");
+    expect(resolveCatalogSection({ visualComponent: { category: "compare" } })).toBe("proof");
+    expect(resolveCatalogSection({ visualComponent: { category: "interface" } })).toBe("media");
+    expect(resolveCatalogSection({ visualComponent: { category: "structured" } })).toBe("data");
+    expect(resolveCatalogSection({ visualComponent: { category: "commerce" } })).toBe("brand");
   });
 });

@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"host","label":"主播","type":"string","default":"小满的创意间","maxLength":40},{"id":"topic","label":"直播主题","type":"string","default":"桌面拍摄布光实战：三步做出高级质感","maxLength":96},{"id":"viewers","label":"观看人数","type":"string","default":"8,426 人正在观看","maxLength":42},{"id":"offer","label":"直播福利","type":"string","default":"今晚 20:00 · 直播间专属素材包","maxLength":62}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Douyin Live Room</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.live{width:1450px;margin:auto;min-height:760px;display:grid;grid-template-columns:1fr 560px;overflow:hidden;border-radius:42px;background:linear-gradient(125deg,#0d0e12 0 57%,#fe2c55 57%);color:#fff;box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.22))}.live-copy{display:flex;flex-direction:column;padding:72px}.live-badge{display:inline-flex;align-self:flex-start;padding:10px 15px;border-radius:999px;background:#fe2c55;font-size:16px;font-weight:900;letter-spacing:.1em}.live-topic{max-width:760px;margin:auto 0 34px;font-size:60px;line-height:1.08;letter-spacing:-.045em}.live-host{font-size:26px;font-weight:850}.live-viewers{margin-top:15px;color:#bac0cb;font-size:19px}.live-offer{align-self:center;width:400px;padding:46px;border:2px solid rgba(255,255,255,.6);border-radius:32px;background:rgba(0,0,0,.18);font-size:34px;font-weight:850;line-height:1.25}.live-offer::before{content:"LIVE BENEFIT";display:block;margin-bottom:34px;font-size:15px;letter-spacing:.16em}
+</style></head>
+<body><main id="root" data-composition-id="douyin-live-room" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"host":"小满的创意间","topic":"桌面拍摄布光实战：三步做出高级质感","viewers":"8,426 人正在观看","offer":"今晚 20:00 · 直播间专属素材包"}'><section class="live sm-animate"><div class="live-copy"><span class="live-badge sm-pop">● 正在直播</span><h1 class="live-topic" data-ipw-variable="topic" data-ipw-ai-slot="topic"></h1><div class="live-host" data-ipw-variable="host" data-ipw-ai-slot="host"></div><div class="live-viewers" data-ipw-variable="viewers" data-ipw-ai-slot="viewers"></div></div><aside class="live-offer sm-animate" data-ipw-variable="offer" data-ipw-ai-slot="offer"></aside></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="douyin-live-room";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("clip"==="slide-left")Object.assign(initial,{x:-58,opacity:0});else if("clip"==="slide-right")Object.assign(initial,{x:58,opacity:0});else if("clip"==="scale")Object.assign(initial,{scale:.88,opacity:0});else if("clip"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08).fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38).fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

@@ -1,0 +1,282 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"How the network connects","maxLength":72},{"id":"routes","label":"Routes","description":"Connections and traffic values.","type":"string","default":"Central>Market:92,Market>River:78,River>Airport:68,Central>University:61,University>Tech Park:84","maxLength":1800},{"id":"highlight","label":"Highlight route","type":"string","default":"Central>Market","maxLength":80},{"id":"source","label":"Source","type":"string","default":"Illustrative network load","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Metro Network Map</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #mn-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 94px 136px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .mn-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+      }
+      .mn-kicker {
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 780 15px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .mn-title {
+        margin: 0;
+        font-size: 72px;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+      .mn-source {
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .mn-map {
+        position: absolute;
+        left: 136px;
+        right: 136px;
+        top: 274px;
+        bottom: 78px;
+        overflow: hidden;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 32px);
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: var(--ipw-card-shadow, 0 26px 70px rgba(20, 30, 40, 0.11));
+      }
+      .mn-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .mn-route {
+        fill: none;
+        stroke: color-mix(
+          in srgb,
+          var(--ipw-color-primary, #20bbc0) 62%,
+          var(--ipw-color-muted, #68717c)
+        );
+        stroke-linecap: round;
+      }
+      .mn-route.is-highlight {
+        stroke: var(--ipw-color-primary, #20bbc0);
+        filter: drop-shadow(
+          0 0 9px color-mix(in srgb, var(--ipw-color-primary, #20bbc0) 38%, transparent)
+        );
+      }
+      .mn-station {
+        position: absolute;
+        z-index: 2;
+        width: 24px;
+        height: 24px;
+        margin: -12px 0 0 -12px;
+        border: 6px solid var(--ipw-color-surface, #fff);
+        border-radius: 50%;
+        background: var(--ipw-color-text, #15171a);
+        box-shadow: 0 0 0 5px var(--ipw-color-border, #d8dde3);
+      }
+      .mn-label {
+        position: absolute;
+        left: 20px;
+        top: 18px;
+        min-width: 160px;
+        padding: 11px 14px;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: 14px;
+        background: color-mix(in srgb, var(--ipw-color-surface, #fff) 92%, transparent);
+        font: 740 17px/1 var(--ipw-font-body, Inter, sans-serif);
+        white-space: nowrap;
+      }
+      .mn-station.flip .mn-label {
+        left: auto;
+        right: 20px;
+        text-align: right;
+      }
+      .mn-train {
+        position: absolute;
+        z-index: 4;
+        left: 0;
+        top: 0;
+        display: grid;
+        width: 42px;
+        height: 42px;
+        place-items: center;
+        border: 5px solid var(--ipw-color-surface, #fff);
+        border-radius: 14px;
+        background: var(--ipw-color-primary, #20bbc0);
+        color: var(--ipw-color-on-primary, #102f31);
+        box-shadow: 0 12px 30px rgba(20, 30, 40, 0.2);
+        font: 900 16px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="mn-root"
+      data-composition-id="metro-network-map"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="8"
+    >
+      <header class="mn-head">
+        <div>
+          <div class="mn-kicker">Route network</div>
+          <h1 class="mn-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="mn-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="mn-map" data-ipw-ai-slot="routes">
+        <svg class="mn-svg" viewBox="0 0 1648 728" preserveAspectRatio="none"></svg>
+        <div class="mn-train">›</div>
+      </section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("mn-root"),
+          id = root.dataset.compositionId,
+          values = {
+            title: "How the network connects",
+            routes:
+              "Central>Market:92,Market>River:78,River>Airport:68,Central>University:61,University>Tech Park:84",
+            highlight: "Central>Market",
+            source: "Illustrative network load",
+            ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+          };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        const routes = String(values.routes)
+            .split(",")
+            .map((entry) => {
+              const valueAt = entry.lastIndexOf(":"),
+                names = entry.slice(0, valueAt).split(">");
+              return {
+                from: (names[0] ?? "").trim(),
+                to: (names[1] ?? "").trim(),
+                value: Number(entry.slice(valueAt + 1)),
+              };
+            })
+            .filter((route) => route.from && route.to && Number.isFinite(route.value))
+            .slice(0, 8),
+          names = [...new Set(routes.flatMap((route) => [route.from, route.to]))].slice(0, 6),
+          positions = [
+            [18, 58],
+            [38, 34],
+            [58, 56],
+            [82, 28],
+            [36, 78],
+            [76, 76],
+          ],
+          pointByName = new Map(
+            names.map((name, index) => [
+              name,
+              { x: positions[index][0] * 16.48, y: positions[index][1] * 7.28, index },
+            ]),
+          ),
+          svg = root.querySelector(".mn-svg"),
+          map = root.querySelector(".mn-map"),
+          paths = [];
+        routes.forEach((route) => {
+          const from = pointByName.get(route.from),
+            to = pointByName.get(route.to);
+          if (!from || !to) return;
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path"),
+            midX = (from.x + to.x) / 2,
+            midY = Math.min(from.y, to.y) - Math.min(90, Math.abs(to.x - from.x) * 0.12);
+          path.setAttribute("d", `M ${from.x} ${from.y} Q ${midX} ${midY} ${to.x} ${to.y}`);
+          path.setAttribute(
+            "class",
+            "mn-route" +
+              (`${route.from}>${route.to}` === String(values.highlight) ? " is-highlight" : ""),
+          );
+          path.setAttribute("stroke-width", String(5 + Math.min(8, Math.max(0, route.value) / 18)));
+          svg.append(path);
+          const length = path.getTotalLength();
+          path.style.strokeDasharray = String(length);
+          path.style.strokeDashoffset = String(length);
+          paths.push(path);
+        });
+        names.forEach((name, index) => {
+          const point = pointByName.get(name),
+            station = document.createElement("article");
+          station.className = "mn-station" + (index % 3 === 2 ? " flip" : "");
+          station.style.left = `${point.x / 16.48}%`;
+          station.style.top = `${point.y / 7.28}%`;
+          station.innerHTML = '<strong class="mn-label"></strong>';
+          station.querySelector(".mn-label").textContent = name;
+          map.append(station);
+        });
+        const train = root.querySelector(".mn-train"),
+          leadPath = paths[0],
+          travel = { progress: 0 };
+        function placeTrain() {
+          if (!leadPath) return;
+          const point = leadPath.getPointAtLength(leadPath.getTotalLength() * travel.progress);
+          gsap.set(train, { x: point.x - 21, y: point.y - 21 });
+        }
+        placeTrain();
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".mn-head>*"),
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.45, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            map,
+            { scale: 0.985, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0.16,
+          )
+          .to(
+            paths,
+            { strokeDashoffset: 0, duration: 0.95, stagger: 0.08, ease: "power2.out" },
+            0.35,
+          )
+          .fromTo(
+            root.querySelectorAll(".mn-station"),
+            { scale: 0, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.4, stagger: 0.07, ease: "power3.out" },
+            0.56,
+          )
+          .fromTo(
+            train,
+            { scale: 0, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.28, ease: "power3.out" },
+            0.72,
+          )
+          .to(
+            travel,
+            { progress: 1, duration: 1.55, ease: "sine.inOut", onUpdate: placeTrain },
+            0.8,
+          );
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

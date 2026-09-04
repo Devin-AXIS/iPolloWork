@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "media-hero",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Media Hero",
+  "description": "A cinematic media-first hero with a readable headline and optional image source.",
+  "tags": ["component", "media", "hero", "image", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "media", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "supporting", "mediaUrl", "label"], "instructions": "Use a high-contrast image URL when available. Keep the headline under two lines and the supporting line concise." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "media-hero.html", "target": "compositions/media-hero.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Put the story in the frame", "maxLength": 72, "update": "live" },
+    { "id": "supporting", "label": "Supporting line", "type": "string", "default": "One strong image. One unmistakable point.", "maxLength": 96, "update": "live" },
+    { "id": "mediaUrl", "label": "Image URL", "type": "string", "default": "", "placeholder": "https://example.com/image.jpg", "maxLength": 2048, "update": "live" },
+    { "id": "label", "label": "Label", "type": "string", "default": "FEATURE / 01", "maxLength": 32, "update": "live" }
+  ]
+}

@@ -1,5 +1,6 @@
 import { Window } from "happy-dom";
 import { describe, expect, test, vi } from "vitest";
+import type { TimelineElement } from "../player/store/playerStore";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import {
   buildTimelineMoveTimingPatch,
@@ -12,6 +13,7 @@ import { getEditableUnitSelectionTarget } from "../components/editor/domEditingE
 import { resolveDomEditSelection } from "../components/editor/domEditingLayers";
 import {
   buildOptimisticTimelineSplit,
+  canSplitElementAt,
   rollbackOptimisticTimelineSplit,
 } from "../utils/timelineElementSplit";
 
@@ -140,6 +142,39 @@ describe("timeline edit patch resolution", () => {
     expect(rollbackOptimisticTimelineSplit(withConcurrentLabelEdit, split!)).toEqual([
       { ...unrelated, label: "Updated title" },
       original,
+    ]);
+  });
+
+  test("allows an authored component clip to split at the playhead", () => {
+    const component: TimelineElement = {
+      id: "feature-grid",
+      key: "index.html::feature-grid",
+      domId: "feature-grid",
+      hfId: "hf-feature-grid",
+      tag: "div",
+      start: 6,
+      duration: 10,
+      track: 3,
+      timingSource: "authored",
+      compositionSrc: "compositions/components/feature-grid.html",
+    };
+
+    expect(canSplitElementAt(component, 9)).toBe(true);
+    expect(
+      buildOptimisticTimelineSplit(
+        [component],
+        component,
+        9,
+        "index.html::feature-grid::pending-split-1",
+      )?.elements,
+    ).toMatchObject([
+      { id: "feature-grid", start: 6, duration: 3, compositionSrc: component.compositionSrc },
+      {
+        id: "index.html::feature-grid::pending-split-1",
+        start: 9,
+        duration: 7,
+        compositionSrc: component.compositionSrc,
+      },
     ]);
   });
 

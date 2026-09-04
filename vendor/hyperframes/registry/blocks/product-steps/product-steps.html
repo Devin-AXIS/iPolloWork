@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"From prompt to polished sequence","maxLength":72},{"id":"steps","label":"Steps","type":"string","default":"Frame the idea|Choose a component|Tune the properties|Review the motion","maxLength":280},{"id":"outcome","label":"Outcome","type":"string","default":"A reusable scene, ready to insert.","maxLength":80},{"id":"activeStep","label":"Active step","type":"number","default":3,"min":1,"max":4,"step":1}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Product Steps</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.steps{width:1580px;margin:auto}.steps-title{max-width:1050px;margin:0 0 60px;font-size:68px;line-height:1;letter-spacing:-.05em}.steps-list{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.steps-list .vc-item{position:relative;min-height:360px;padding:34px;border-radius:26px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.steps-list .vc-item.is-highlight{background:var(--ipw-color-text,#15171a);color:var(--ipw-color-bg,#f4f6f8);transform:translateY(-16px)}.steps-list .vc-index{font-size:16px;font-weight:850;color:var(--ipw-color-primary,#20bbc0)}.steps-list .vc-value{position:absolute;left:34px;right:34px;bottom:38px;font-size:29px;font-weight:750;line-height:1.18}.steps-outcome{margin-top:38px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}</style></head>
+<body><main id="root" data-composition-id="product-steps" data-width="1920" data-height="1080" data-start="0" data-duration="9" data-defaults='{"title":"From prompt to polished sequence","steps":"Frame the idea|Choose a component|Tune the properties|Review the motion","outcome":"A reusable scene, ready to insert.","activeStep":3}'><section class="steps"><h1 class="steps-title vc-animate" data-ipw-variable="title" data-ipw-ai-slot="title"></h1><div class="steps-list" data-ipw-list="steps" data-list-mode="steps" data-active-key="activeStep" data-ipw-ai-slot="steps"></div><p class="steps-outcome vc-animate" data-ipw-variable="outcome" data-ipw-ai-slot="outcome"></p><span hidden data-ipw-ai-slot="activeStep"></span></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="product-steps";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+const initial={};const motion="slide-left";
+if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
+else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
+else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
+else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
+else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:54,opacity:0});
+const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
+  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
+  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

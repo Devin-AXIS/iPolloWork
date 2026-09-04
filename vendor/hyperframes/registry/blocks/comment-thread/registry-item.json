@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "comment-thread",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Comment Thread",
+  "description": "A compact discussion thread for showing reactions, questions and a highlighted reply.",
+  "tags": [
+    "component",
+    "social",
+    "comments",
+    "conversation",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "comments",
+        "highlight",
+        "footer"
+      ],
+      "instructions": "Separate comments with vertical bars and write each as Name:Comment. Make highlight match one author exactly."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "comment-thread.html",
+      "target": "compositions/comment-thread.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Thread title",
+      "type": "string",
+      "default": "What changed after launch?",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "comments",
+      "label": "Comments",
+      "type": "string",
+      "default": "Mina:The handoff finally feels obvious.|Leo:Can we reuse this in onboarding?|Sam:Yes, the pattern is now shared.",
+      "maxLength": 500,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted author",
+      "type": "string",
+      "default": "Sam",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "Footer",
+      "type": "string",
+      "default": "3 replies · Product community",
+      "maxLength": 64,
+      "update": "live"
+    }
+  ]
+}
+

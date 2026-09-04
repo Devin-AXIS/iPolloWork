@@ -1,0 +1,47 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "live-leaderboard",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Live Leaderboard",
+  "description": "A live ranking board whose rows change position as start and finish scores update.",
+  "tags": ["component", "data", "ranking", "leaderboard", "reorder", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "series-value",
+      "mode": "replace",
+      "rowId": "name",
+      "binding": { "variable": "standings", "encoding": "json" },
+      "columns": [
+        { "id": "name", "label": "Entry", "labelZh": "排行项", "type": "string", "role": "id", "required": true },
+        { "id": "start", "label": "Start score", "labelZh": "起始分数", "type": "number", "role": "value", "required": true },
+        { "id": "finish", "label": "Finish score", "labelZh": "最终分数", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 2,
+      "maxRows": 6,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "standings", "highlight", "source"],
+      "instructions": "Provide two to six entries with numeric start and finish scores. Keep names unique so row reordering remains deterministic."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 7,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "live-leaderboard.html", "target": "compositions/live-leaderboard.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Live campaign leaderboard", "maxLength": 72, "update": "live" },
+    { "id": "standings", "label": "Standings", "description": "Start and finish scores as structured rows.", "type": "string", "default": "{\"version\":1,\"kind\":\"series-value\",\"rows\":[{\"name\":\"Atlas\",\"start\":72,\"finish\":96},{\"name\":\"Nova\",\"start\":88,\"finish\":91},{\"name\":\"Pulse\",\"start\":81,\"finish\":89},{\"name\":\"Orbit\",\"start\":76,\"finish\":84}]}", "maxLength": 1800, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "Atlas", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Updated moments ago", "maxLength": 72, "update": "live" }
+  ]
+}

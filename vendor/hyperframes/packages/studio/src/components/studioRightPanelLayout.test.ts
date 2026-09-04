@@ -673,7 +673,9 @@ describe("Studio right panel layout", () => {
     expect(header).toContain("hf-studio-header-actions");
     expect(header).toContain("hf-studio-header-utilities");
     expect(header).toContain("hf-studio-header-action-label");
-    expect(header).toContain('aria-label={isRendering ? t("header.rendering") : t("header.export")}');
+    expect(header).toContain(
+      'aria-label={isRendering ? t("header.rendering") : t("header.export")}',
+    );
     expect(styles).toContain(".hf-studio-header-export {");
     expect(styles).toContain(".hf-studio-properties-action:hover");
     expect(styles).toContain("background-color: var(--hf-studio-header-hover) !important;");
@@ -1075,6 +1077,23 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain("Search components…");
     expect(catalog).toContain('locale === "zh" ? "组件分类" : "Component category"');
     expect(catalog).toContain('locale === "zh" ? "全部组件" : "All components"');
+    for (const [en, zh] of [
+      ["Openers & Endings", "开场与收尾"],
+      ["Product Showcase", "产品展示"],
+      ["Data & Charts", "数据与图表"],
+      ["Flows & Diagrams", "流程与图解"],
+      ["Maps & Routes", "地图与路径"],
+      ["Comparison & Proof", "对比与背书"],
+      ["Knowledge", "知识讲解"],
+      ["People & Quotes", "人物与观点"],
+      ["Text & Labels", "文字与标注"],
+      ["Media & UI", "媒体与界面"],
+      ["Social Media", "社交媒体"],
+      ["Code Demos", "代码演示"],
+      ["Brand & Marketing", "品牌与营销"],
+    ]) {
+      expect(catalog).toContain(`en: "${en}", zh: "${zh}"`);
+    }
     expect(catalog).toContain('const ALL_SECTIONS_FILTER = "all" as const');
     expect(catalog).toContain("<CatalogSectionHeader");
     expect(catalog).toContain("showSectionHeaders");
@@ -1094,7 +1113,7 @@ describe("Studio right panel layout", () => {
     expect(catalog).not.toContain('data-testid="apply-motion-preset"');
     expect(catalog).toContain("src={compositionPlaybackUrl}");
     expect(catalog).toContain('preload="auto"');
-    expect(catalog).toContain("onCanPlay={() => setPreviewReady(true)}");
+    expect(catalog).toContain("onLoad={() => setPreviewReady(true)}");
     expect(catalog).not.toContain("onPreviewBlock");
     expect(overlay).not.toContain("BlockPreviewOverlay");
     expect(catalog).toContain("tabIndex={0}");

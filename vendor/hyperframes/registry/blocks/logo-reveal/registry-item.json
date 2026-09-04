@@ -1,0 +1,96 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "logo-reveal",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Logo Reveal",
+  "description": "A restrained monogram reveal that resolves into a brand name and tagline.",
+  "tags": [
+    "component",
+    "brand",
+    "logo",
+    "reveal",
+    "identity",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "brand",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "brand",
+        "monogram",
+        "tagline",
+        "style"
+      ],
+      "instructions": "Use a one-to-three character monogram, a short brand name, a concise tagline and solid or outline style."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "logo-reveal.html",
+      "target": "compositions/logo-reveal.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "brand",
+      "label": "Brand name",
+      "type": "string",
+      "default": "NORTHSTAR",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "monogram",
+      "label": "Monogram",
+      "type": "string",
+      "default": "NS",
+      "maxLength": 3,
+      "update": "live"
+    },
+    {
+      "id": "tagline",
+      "label": "Tagline",
+      "type": "string",
+      "default": "Make the signal visible.",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "style",
+      "label": "Mark style",
+      "type": "enum",
+      "default": "solid",
+      "options": [
+        {
+          "value": "solid",
+          "label": "Solid"
+        },
+        {
+          "value": "outline",
+          "label": "Outline"
+        }
+      ],
+      "update": "live"
+    }
+  ]
+}
+

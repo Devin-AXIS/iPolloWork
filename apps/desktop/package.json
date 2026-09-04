@@ -47,7 +47,6 @@
     "@ipollowork/types": "workspace:*",
     "@opencode-ai/plugin": "1.18.16",
     "electron": "^35.0.0",
-    "electron-builder": "^25.1.8",
-    "electron-devtools-installer": "^4.0.0"
+    "electron-builder": "^25.1.8"
   }
 }

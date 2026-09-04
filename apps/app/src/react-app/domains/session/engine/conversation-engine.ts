@@ -411,13 +411,223 @@ export interface ConversationEngineConnection {
 
 export interface ConversationEngineAdapter {
   readonly id: string;
-  connect(input: {
-    baseUrl: string;
-    token?: string;
-    directory?: string;
-    serverBaseUrl?: string;
-    workspaceId?: string;
-  }): ConversationEngineConnection;
+  connect(input: ConversationEngineConnectInput): ConversationEngineConnection;
+}
+
+export type ConversationEngineConnectInput = {
+  baseUrl: string;
+  token?: string;
+  directory?: string;
+  serverBaseUrl?: string;
+  workspaceId?: string;
+};
+
+function permissionMemoryScope(permission: ConversationPermission): string {
+  return permission.kind.trim().toLowerCase();
+}
+
+type PermissionMemoryStorage = {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+};
+
+const SESSION_PERMISSION_MEMORY_STORAGE_KEY = "ipollowork.session-permission-memory.v1";
+const MAX_PERSISTED_PERMISSION_SESSIONS = 250;
+
+function browserPermissionMemoryStorage(): PermissionMemoryStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+function readPersistedPermissionMemory(
+  storage: PermissionMemoryStorage,
+): Map<string, Set<string>> {
+  const entries = new Map<string, Set<string>>();
+  try {
+    const raw = storage.getItem(SESSION_PERMISSION_MEMORY_STORAGE_KEY);
+    if (!raw) return entries;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return entries;
+    for (const [key, value] of Object.entries(parsed)) {
+      if (!key || !Array.isArray(value)) continue;
+      const scopes = value.filter((scope): scope is string => (
+        typeof scope === "string" && Boolean(scope.trim())
+      ));
+      if (scopes.length > 0) entries.set(key, new Set(scopes));
+    }
+  } catch {
+    return entries;
+  }
+  return entries;
+}
+
+function writePersistedPermissionMemory(
+  storage: PermissionMemoryStorage,
+  entries: Map<string, Set<string>>,
+): void {
+  try {
+    if (entries.size === 0) {
+      storage.removeItem(SESSION_PERMISSION_MEMORY_STORAGE_KEY);
+      return;
+    }
+    storage.setItem(
+      SESSION_PERMISSION_MEMORY_STORAGE_KEY,
+      JSON.stringify(Object.fromEntries(
+        [...entries].map(([key, scopes]) => [key, [...scopes]]),
+      )),
+    );
+  } catch {
+    // Keep the in-memory fallback working if storage is unavailable or full.
+  }
+}
+
+function updatePersistedPermissionMemory(
+  storage: PermissionMemoryStorage | null,
+  key: string,
+  scopes: Set<string> | null,
+): void {
+  if (!storage) return;
+  const entries = readPersistedPermissionMemory(storage);
+  entries.delete(key);
+  if (scopes?.size) entries.set(key, new Set(scopes));
+  while (entries.size > MAX_PERSISTED_PERMISSION_SESSIONS) {
+    const oldest = entries.keys().next();
+    if (oldest.done) break;
+    entries.delete(oldest.value);
+  }
+  writePersistedPermissionMemory(storage, entries);
+}
+
+function permissionMemorySessionKey(
+  adapterId: string,
+  input: ConversationEngineConnectInput,
+  sessionId: string,
+): string {
+  const workspaceScope = input.workspaceId?.trim()
+    || input.directory?.trim()
+    || input.baseUrl.trim();
+  return JSON.stringify([adapterId.trim(), workspaceScope, sessionId.trim()]);
+}
+
+/**
+ * Preserve an explicit "always" decision for the lifetime of its task even
+ * when an engine only supports one-shot approvals or its client reconnects.
+ * Native engines still receive the original decision first; this layer is the
+ * shared compatibility fallback for subsequent requests of the same kind.
+ */
+export function withSessionPermissionMemory(
+  adapter: ConversationEngineAdapter,
+  storageOverride?: PermissionMemoryStorage,
+): ConversationEngineAdapter {
+  const scopesBySession = new Map<string, Set<string>>();
+
+  return {
+    id: adapter.id,
+    connect(input) {
+      const connection = adapter.connect(input);
+      const storage = storageOverride ?? browserPermissionMemoryStorage();
+      const automaticReplies = new Map<string, Promise<boolean>>();
+      const sessionKey = (sessionId: string) => permissionMemorySessionKey(adapter.id, input, sessionId);
+      const scopesForSession = (sessionId: string) => {
+        const key = sessionKey(sessionId);
+        const current = scopesBySession.get(key);
+        if (current) return current;
+        const persisted = storage ? readPersistedPermissionMemory(storage).get(key) : null;
+        if (!persisted) return null;
+        scopesBySession.set(key, persisted);
+        return persisted;
+      };
+      const forgetSession = (sessionId: string) => {
+        const key = sessionKey(sessionId);
+        scopesBySession.delete(key);
+        updatePersistedPermissionMemory(storage, key, null);
+      };
+      const isRemembered = (permission: ConversationPermission) => {
+        const scope = permissionMemoryScope(permission);
+        return Boolean(scope && scopesForSession(permission.sessionId)?.has(scope));
+      };
+      const remember = (permission: ConversationPermission) => {
+        const scope = permissionMemoryScope(permission);
+        if (!scope) return () => {};
+        const key = sessionKey(permission.sessionId);
+        const scopes = scopesForSession(permission.sessionId) ?? new Set<string>();
+        const existed = scopes.has(scope);
+        scopes.add(scope);
+        scopesBySession.set(key, scopes);
+        updatePersistedPermissionMemory(storage, key, scopes);
+        return () => {
+          if (existed) return;
+          scopes.delete(scope);
+          if (scopes.size === 0) scopesBySession.delete(key);
+          updatePersistedPermissionMemory(storage, key, scopes.size > 0 ? scopes : null);
+        };
+      };
+      const automaticallyReply = (permission: ConversationPermission, directory?: string) => {
+        const key = `${permission.sessionId}\u0000${permission.id}`;
+        const existing = automaticReplies.get(key);
+        if (existing) return existing;
+        const reply = (async () => {
+          try {
+            await connection.replyPermission({ permission, reply: "once", directory });
+            return true;
+          } catch {
+            return false;
+          } finally {
+            automaticReplies.delete(key);
+          }
+        })();
+        automaticReplies.set(key, reply);
+        return reply;
+      };
+
+      return {
+        ...connection,
+        async subscribe(subscription) {
+          await connection.subscribe({
+            ...subscription,
+            onEvent(event) {
+              if (event.type === "session.deleted") {
+                forgetSession(event.sessionId);
+              }
+              if (event.type !== "permission.asked" || !isRemembered(event.permission)) {
+                subscription.onEvent(event);
+                return;
+              }
+              void automaticallyReply(event.permission, input.directory).then((approved) => {
+                if (!approved && !subscription.signal.aborted) subscription.onEvent(event);
+              });
+            },
+          });
+        },
+        async listPermissions(request) {
+          const pending = await connection.listPermissions(request);
+          const visible = await Promise.all(pending.map(async (permission) => {
+            if (!isRemembered(permission)) return permission;
+            return await automaticallyReply(permission, request.directory) ? null : permission;
+          }));
+          return visible.filter((permission): permission is ConversationPermission => permission !== null);
+        },
+        async replyPermission(request) {
+          const rollback = request.reply === "always" ? remember(request.permission) : null;
+          try {
+            await connection.replyPermission(request);
+          } catch (error) {
+            rollback?.();
+            throw error;
+          }
+        },
+        async setArchived(sessionId, archived, directory) {
+          await connection.setArchived(sessionId, archived, directory);
+          if (archived) forgetSession(sessionId);
+        },
+      };
+    },
+  };
 }
 
 export class ConversationEngineAdapterRegistry {

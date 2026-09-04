@@ -343,6 +343,25 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain("snap-proximity");
   });
 
+  test("generated file cards keep only openable files while the output panel retains all outputs", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const artifactListSource = source.slice(
+      source.indexOf("export function ArtifactList"),
+      source.indexOf("interface ConversationOutputPanelProps"),
+    );
+    const outputPanelSource = source.slice(
+      source.indexOf("function ConversationOutputPanelContent"),
+      source.indexOf("export function ConversationOutputTrigger"),
+    );
+
+    expect(artifactListSource).toContain("selectConversationArtifactCards(");
+    expect(outputPanelSource).toContain("const outputs = artifacts.filter(isConversationOutputArtifact);");
+    expect(outputPanelSource).not.toContain("selectConversationArtifactCards(");
+  });
+
   test("generated file links open in the internal right panel by default", () => {
     const source = readFileSync(
       new URL("../src/components/markdown/markdown.tsx", import.meta.url),
@@ -527,7 +546,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(artifactSource).toContain("canOpenArtifactInContext(artifact, artifactContext)");
-    expect(artifactSource).toContain("selectArtifactContextOutputs(artifacts, artifactContext)");
+    expect(artifactSource).toContain("selectConversationArtifactCards(");
     expect(messageListSource).toContain("artifactFiles={artifactFiles}");
     expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
     expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');

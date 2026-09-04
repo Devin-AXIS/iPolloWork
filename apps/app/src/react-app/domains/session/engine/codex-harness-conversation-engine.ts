@@ -3,16 +3,17 @@ import { CODEX_HARNESS_ENGINE_ID } from "@ipollowork/types/workspace";
 import { CodexHarnessClient } from "@/app/lib/codex-harness-client";
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
 import { t } from "@/i18n";
-import type {
-  ConversationAccessMode,
-  ConversationEngineAdapter,
-  ConversationEngineConnection,
-  ConversationMode,
-  ConversationPermission,
-  ConversationPromptPart,
-  ConversationQuestion,
+import {
+  withSessionPermissionMemory,
+  waitForConversationIdle,
+  type ConversationAccessMode,
+  type ConversationEngineAdapter,
+  type ConversationEngineConnection,
+  type ConversationMode,
+  type ConversationPermission,
+  type ConversationPromptPart,
+  type ConversationQuestion,
 } from "./conversation-engine";
-import { waitForConversationIdle } from "./conversation-engine";
 import {
   codexNativeRequest,
   createCodexLiveState,
@@ -157,12 +158,6 @@ function eventParams(event: WorkspaceEngineEvent): Record<string, unknown> | nul
 
 type PermissionReply = "once" | "always" | "reject";
 
-function permissionScope(method: string): string {
-  if (method === "item/commandExecution/requestApproval" || method === "execCommandApproval") return "shell";
-  if (method === "item/fileChange/requestApproval" || method === "applyPatchApproval") return "edit";
-  return method;
-}
-
 function permissionResponse(
   native: NonNullable<ReturnType<typeof codexNativeRequest>>,
   reply: PermissionReply,
@@ -207,7 +202,6 @@ function codexHarnessConnection(input: {
   });
   const permissions = new Map<string, ConversationPermission>();
   const questions = new Map<string, ConversationQuestion>();
-  const sessionPermissionScopes = new Map<string, Set<string>>();
   const activeTurns = new Map<string, string>();
   const selectedModes = new Map<string, CodexModeId>();
   const selectedAccessModes = new Map<string, CodexAccessModeId>();
@@ -304,23 +298,7 @@ function codexHarnessConnection(input: {
           }
         }
         for (const event of mapCodexHarnessEvent(envelope, liveState)) {
-          if (event.type === "session.deleted") sessionPermissionScopes.delete(event.sessionId);
-          if (event.type === "permission.asked") {
-            const native = codexNativeRequest(event.permission.native);
-            const remembered = native
-              ? sessionPermissionScopes.get(event.permission.sessionId)?.has(permissionScope(native.method)) === true
-              : false;
-            if (remembered) {
-              try {
-                await replyNativePermission(event.permission, "once");
-                continue;
-              } catch {
-                // If the automatic response fails, preserve the request and
-                // let the user review it instead of blocking the running turn.
-              }
-            }
-            permissions.set(event.permission.id, event.permission);
-          }
+          if (event.type === "permission.asked") permissions.set(event.permission.id, event.permission);
           if (event.type === "permission.replied") permissions.delete(event.requestId);
           if (event.type === "question.asked") questions.set(event.question.id, event.question);
           if (event.type === "question.replied") questions.delete(event.requestId);
@@ -335,11 +313,6 @@ function codexHarnessConnection(input: {
       const native = codexNativeRequest(request.permission.native);
       if (!native) throw new Error("Codex permission response is no longer available");
       await replyNativePermission(request.permission, request.reply);
-      if (request.reply === "always") {
-        const scopes = sessionPermissionScopes.get(request.permission.sessionId) ?? new Set<string>();
-        scopes.add(permissionScope(native.method));
-        sessionPermissionScopes.set(request.permission.sessionId, scopes);
-      }
       permissions.delete(request.permission.id);
     },
     async listQuestions(request) {
@@ -411,7 +384,6 @@ function codexHarnessConnection(input: {
     async setArchived(sessionId, archived) {
       await client.call(archived ? "thread/archive" : "thread/unarchive", { threadId: sessionId });
       if (archived) {
-        sessionPermissionScopes.delete(sessionId);
         selectedModes.delete(sessionId);
         selectedAccessModes.delete(sessionId);
       }
@@ -519,7 +491,7 @@ function codexHarnessConnection(input: {
   };
 }
 
-export const codexHarnessConversationEngineAdapter: ConversationEngineAdapter = {
+export const codexHarnessConversationEngineAdapter: ConversationEngineAdapter = withSessionPermissionMemory({
   id: CODEX_HARNESS_ENGINE_ID,
   connect: codexHarnessConnection,
-};
+});

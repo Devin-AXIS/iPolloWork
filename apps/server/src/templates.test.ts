@@ -99,6 +99,7 @@ const pptxCompatibleTemplateIds = [
 ];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
+  "ipollowork.hyperframes.ai-trend-briefing",
   "ipollowork.hyperframes.automation-day-planner",
   "ipollowork.hyperframes.agent-command-center",
   "ipollowork.hyperframes.cost-saving-waterfall",
@@ -121,6 +122,7 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.vertical-social-story",
 ];
 const novelVideoTemplates = [
+  { id: "ipollowork.hyperframes.ai-trend-briefing", composition: "ai-trend-briefing", duration: "60", scenes: 10 },
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
   { id: "ipollowork.hyperframes.research-evidence-wall", composition: "research-evidence-wall", duration: "14", scenes: 5 },
   { id: "ipollowork.hyperframes.permission-vault", composition: "permission-vault", duration: "10", scenes: 3 },
@@ -437,7 +439,9 @@ describe("template installations", () => {
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
-      expect(manifest.version).toBe("1.0.1");
+      expect(manifest.version).toBe(
+        templateId === "ipollowork.hyperframes.ai-trend-briefing" ? "1.1.1" : "1.0.1",
+      );
       expect(manifest.entry).toBe("index.html");
       expect(manifest.designSystem.tokens).toBe("design-tokens.css");
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
@@ -520,7 +524,7 @@ describe("template installations", () => {
     }
   }, 20_000);
 
-  test("keeps the ten new HyperFrames compositions structurally distinct", async () => {
+  test("keeps the eleven new HyperFrames compositions structurally distinct", async () => {
     const durations = new Set<string>();
     const compositions = new Set<string>();
     for (const template of novelVideoTemplates) {
@@ -810,6 +814,7 @@ describe("template installations", () => {
     expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
     expect(first.some((item) => item.manifest.id === "ipollowork.pptx-ipollo-vi-enterprise")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.hyperframes.ai-trend-briefing")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.hyperframes.vertical-social-story")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
     expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);

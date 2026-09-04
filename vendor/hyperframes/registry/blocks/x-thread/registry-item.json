@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "x-thread",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "X Thread",
+  "description": "A compact X-style thread that turns a short sequence of posts into a clear narrative.",
+  "tags": [
+    "component",
+    "social",
+    "x",
+    "thread",
+    "microblog",
+    "sequence",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "author",
+        "posts",
+        "highlight",
+        "footer"
+      ],
+      "instructions": "Write two to four short thread beats as label and message pairs, then name one beat to emphasize."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "x-thread.html",
+      "target": "compositions/x-thread.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "author",
+      "label": "Author",
+      "type": "string",
+      "default": "Aria Chen · @ariaframes",
+      "maxLength": 52,
+      "update": "live"
+    },
+    {
+      "id": "posts",
+      "label": "Thread Posts",
+      "type": "string",
+      "default": "01:Start with the tension, not the context.|02:Show the proof in one clean visual.|03:End with the next useful action.",
+      "maxLength": 320,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlight Post",
+      "type": "string",
+      "default": "02",
+      "maxLength": 16,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "Footer",
+      "type": "string",
+      "default": "A practical thread on communicating product value.",
+      "maxLength": 96,
+      "update": "live"
+    }
+  ]
+}
+

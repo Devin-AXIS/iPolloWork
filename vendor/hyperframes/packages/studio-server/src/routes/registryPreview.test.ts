@@ -41,6 +41,9 @@ describe("buildRegistryPreviewHtml", () => {
     expect(html).toContain("const duration = 0.1");
     expect(html).toContain("const seekTime = 0.1");
     expect(html).toContain("const sourceWidth = 1");
+    expect(html).toContain("const motionDuration = timelineDurations.length");
+    expect(html).toContain("motionDuration + 0.45");
+    expect(html).toContain("% previewDuration");
     expect(html).toContain("requestAnimationFrame(tick)");
   });
 

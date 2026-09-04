@@ -1,0 +1,47 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "metro-network-map",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Metro Network Map",
+  "description": "A multi-stop network map that draws weighted routes, reveals stations and moves a signal along the leading connection.",
+  "tags": ["component", "map", "route", "metro", "network", "stations", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "route-value",
+      "mode": "replace",
+      "rowId": "routeId",
+      "binding": { "variable": "routes", "encoding": "route-value-list" },
+      "columns": [
+        { "id": "from", "label": "From", "labelZh": "起点", "type": "string", "role": "source", "required": true },
+        { "id": "to", "label": "To", "labelZh": "终点", "type": "string", "role": "target", "required": true },
+        { "id": "value", "label": "Traffic", "labelZh": "流量", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 1,
+      "maxRows": 8,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "routes", "highlight", "source"],
+      "instructions": "Provide one to eight named connections. Reuse station names across routes to form a legible network and keep the highlight formatted as From>To."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "metro-network-map.html", "target": "compositions/metro-network-map.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "How the network connects", "maxLength": 72, "update": "live" },
+    { "id": "routes", "label": "Routes", "description": "Connections and traffic values.", "type": "string", "default": "Central>Market:92,Market>River:78,River>Airport:68,Central>University:61,University>Tech Park:84", "maxLength": 1800, "update": "live" },
+    { "id": "highlight", "label": "Highlight route", "type": "string", "default": "Central>Market", "maxLength": 80, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Illustrative network load", "maxLength": 72, "update": "live" }
+  ]
+}

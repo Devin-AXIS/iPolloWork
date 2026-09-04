@@ -19,6 +19,7 @@ import { ColorField } from "./propertyPanelColor";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatSelectRow } from "./propertyPanelFlatSelectRow";
 import { FlatToggle } from "./propertyPanelFlatToggle";
+import { PROPERTY_INPUT_DEBOUNCE_MS } from "./propertyPanelPrimitives";
 
 type BlockVariableValue = string | number | boolean;
 
@@ -120,6 +121,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
                     key={variable.id}
                     contract={dataContract}
                     value={String(variableValues[variable.id] ?? variable.default)}
+                    liveCommit={variable.update === "live"}
                     saving={savingVariable === variable.id}
                     locale={locale}
                     onCommit={(value) => handleVariableCommit(variable.id, value)}
@@ -189,12 +191,14 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
 function ComponentDataFormField({
   contract,
   value,
+  liveCommit,
   saving,
   locale,
   onCommit,
 }: {
   contract: RegistryVisualComponentDataContract;
   value: string;
+  liveCommit: boolean;
   saving: boolean;
   locale: "en" | "zh";
   onCommit: (value: string) => void;
@@ -202,11 +206,26 @@ function ComponentDataFormField({
   const parsed = useMemo(() => parseVisualComponentData(contract, value), [contract, value]);
   const [rows, setRows] = useState<VisualComponentDataRow[]>(parsed.document.rows);
   const rowsRef = useRef(parsed.document.rows);
+  const sectionRef = useRef<HTMLElement>(null);
+  const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const valueRef = useRef(value);
+  const lastSubmittedValueRef = useRef(value);
+
+  valueRef.current = value;
 
   useEffect(() => {
+    lastSubmittedValueRef.current = value;
+    if (sectionRef.current?.contains(document.activeElement)) return;
     rowsRef.current = parsed.document.rows;
     setRows(parsed.document.rows);
   }, [parsed.document.rows]);
+
+  useEffect(
+    () => () => {
+      if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    },
+    [],
+  );
 
   const currentDocument: VisualComponentDataDocument = {
     version: 1,
@@ -216,16 +235,37 @@ function ComponentDataFormField({
   const currentValue = serializeVisualComponentData(contract, currentDocument);
   const issues = parseVisualComponentData(contract, currentValue).issues;
 
+  const serializeRows = (nextRows: VisualComponentDataRow[]) =>
+    serializeVisualComponentData(contract, {
+      version: 1,
+      kind: contract.kind,
+      rows: nextRows,
+    });
+
+  const submitRows = (nextRows: VisualComponentDataRow[]) => {
+    commitTimerRef.current = null;
+    const nextValue = serializeRows(nextRows);
+    if (nextValue === valueRef.current || nextValue === lastSubmittedValueRef.current) return;
+    lastSubmittedValueRef.current = nextValue;
+    onCommit(nextValue);
+  };
+
   const commitRows = (nextRows: VisualComponentDataRow[]) => {
+    if (commitTimerRef.current) {
+      clearTimeout(commitTimerRef.current);
+      commitTimerRef.current = null;
+    }
     rowsRef.current = nextRows;
     setRows(nextRows);
-    onCommit(
-      serializeVisualComponentData(contract, {
-        version: 1,
-        kind: contract.kind,
-        rows: nextRows,
-      }),
-    );
+    submitRows(nextRows);
+  };
+
+  const scheduleCommit = (nextRows: VisualComponentDataRow[]) => {
+    if (!liveCommit) return;
+    if (commitTimerRef.current) clearTimeout(commitTimerRef.current);
+    commitTimerRef.current = setTimeout(() => {
+      submitRows(nextRows);
+    }, PROPERTY_INPUT_DEBOUNCE_MS);
   };
 
   const updateCell = (
@@ -246,14 +286,21 @@ function ComponentDataFormField({
           : row,
       );
       rowsRef.current = nextRows;
+      scheduleCommit(nextRows);
       return nextRows;
     });
   };
 
   return (
     <section
+      ref={sectionRef}
       className="space-y-2 rounded-lg border border-panel-border bg-panel-input/35 p-2.5"
       data-component-data-contract={contract.kind}
+      onBlurCapture={(event) => {
+        const nextTarget = event.relatedTarget;
+        if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+        commitRows(rowsRef.current);
+      }}
     >
       <div className="flex items-center justify-between gap-2">
         <div>
@@ -291,10 +338,9 @@ function ComponentDataFormField({
                   <input
                     type={column.type === "number" ? "number" : "text"}
                     value={row[column.id] ?? ""}
-                    disabled={saving}
+                    disabled={saving && !liveCommit}
                     aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
                     onChange={(event) => updateCell(rowIndex, column, event.target.value)}
-                    onBlur={() => commitRows(rowsRef.current)}
                     className="h-7 min-w-0 rounded-md border border-panel-border bg-panel-input px-2 text-[10px] text-panel-text-1 outline-none transition-colors focus:border-[#1FBAC0]/60 disabled:opacity-60"
                   />
                 </label>

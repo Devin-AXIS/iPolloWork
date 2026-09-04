@@ -8,6 +8,7 @@ import {
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationPermission,
+  withSessionPermissionMemory,
   waitForConversationIdle,
 } from "./conversation-engine";
 import {
@@ -346,7 +347,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
   };
 }
 
-export const openCodeConversationEngineAdapter: ConversationEngineAdapter = {
+export const openCodeConversationEngineAdapter: ConversationEngineAdapter = withSessionPermissionMemory({
   id: DEFAULT_ENGINE_ID,
   connect: openCodeConnection,
-};
+});

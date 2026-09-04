@@ -1,0 +1,96 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "brand-palette",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Brand Palette",
+  "description": "A brand color system with labeled swatches, usage note and light or dark presentation.",
+  "tags": [
+    "component",
+    "brand",
+    "palette",
+    "colors",
+    "guidelines",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "brand",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "colors",
+        "note",
+        "mode"
+      ],
+      "instructions": "Write colors as Label:#HEX separated by bars, keep the note practical, and choose light or dark presentation."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "brand-palette.html",
+      "target": "compositions/brand-palette.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "A palette built for clear decisions",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "colors",
+      "label": "Colors",
+      "type": "string",
+      "default": "Signal:#20BBC0|Ink:#15171A|Warmth:#FD684C|Paper:#F4F6F8",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Usage note",
+      "type": "string",
+      "default": "Signal leads interaction. Warmth marks emphasis.",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "mode",
+      "label": "Presentation",
+      "type": "enum",
+      "default": "light",
+      "options": [
+        {
+          "value": "light",
+          "label": "Light"
+        },
+        {
+          "value": "dark",
+          "label": "Dark"
+        }
+      ],
+      "update": "live"
+    }
+  ]
+}
+

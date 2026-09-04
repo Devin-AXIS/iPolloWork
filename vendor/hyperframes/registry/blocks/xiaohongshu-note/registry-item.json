@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "xiaohongshu-note",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Xiaohongshu Note",
+  "description": "A Xiaohongshu-style lifestyle note with author context, editorial copy and engagement.",
+  "tags": [
+    "component",
+    "social",
+    "xiaohongshu",
+    "note",
+    "lifestyle",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "author",
+        "title",
+        "body",
+        "metrics"
+      ],
+      "instructions": "写一个自然的笔记标题、两三句正文和克制的互动数据，保持真实分享语气。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "xiaohongshu-note.html",
+      "target": "compositions/xiaohongshu-note.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "author",
+      "label": "作者",
+      "type": "string",
+      "default": "木木的灵感簿",
+      "maxLength": 36,
+      "update": "live"
+    },
+    {
+      "id": "title",
+      "label": "笔记标题",
+      "type": "string",
+      "default": "把工作桌整理成真正想坐下来的地方",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "body",
+      "label": "正文",
+      "type": "string",
+      "default": "没有一次性买齐所有东西，只先解决光线、收纳和随手记录。空间变简单之后，注意力也慢慢回来了。",
+      "maxLength": 190,
+      "update": "live"
+    },
+    {
+      "id": "metrics",
+      "label": "互动数据",
+      "type": "string",
+      "default": "2.6万赞 · 4,812收藏 · 629评论",
+      "maxLength": 68,
+      "update": "live"
+    }
+  ]
+}
+

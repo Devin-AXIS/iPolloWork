@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "location-pulse-map",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Location Pulse Map",
+  "description": "A local-area map that reveals multiple named locations with proportional values and sequential signal pulses.",
+  "tags": ["component", "map", "locations", "points", "pulse", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "point-value",
+      "mode": "replace",
+      "rowId": "location",
+      "binding": { "variable": "locations", "encoding": "key-value-list" },
+      "columns": [
+        { "id": "location", "label": "Location", "labelZh": "地点", "type": "string", "role": "id", "required": true },
+        { "id": "value", "label": "Activity", "labelZh": "活跃度", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 1,
+      "maxRows": 6,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "locations", "highlight", "source"],
+      "instructions": "Provide one to six named locations with numeric activity values. Positions communicate a local-area overview rather than precise geographic coordinates."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 7,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "location-pulse-map.html", "target": "compositions/location-pulse-map.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Activity across key locations", "maxLength": 72, "update": "live" },
+    { "id": "locations", "label": "Locations", "description": "Named locations and activity values.", "type": "string", "default": "Central:98,Harbor:74,Airport:61,North:52,West:43", "maxLength": 1200, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "Central", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Live location activity", "maxLength": 72, "update": "live" }
+  ]
+}

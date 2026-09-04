@@ -81,7 +81,7 @@ describe("addBlockToProject", () => {
           type: "hyperframes:component",
           visualComponent: {
             version: 1,
-            category: "intro",
+            category: "scene",
             surfaces: ["video"],
             themeMode: "inherit",
           },
@@ -111,13 +111,24 @@ describe("addBlockToProject", () => {
     expect(files["compositions/components/morph-text.html"]).toContain("background: transparent;");
     expect(files["compositions/components/morph-text.html"]).not.toContain("background: #fff;");
     expect(files["compositions/components/morph-text.html"]).toContain("background: #e7e5e7;");
+    expect(files["compositions/components/morph-text.html"]).toContain(
+      "data-ipw-component-theme-aliases",
+    );
+    expect(files["compositions/components/morph-text.html"]).toContain(
+      "--component-text: var(--ipw-color-text, #15171a)",
+    );
     const writtenIndex = writes["index.html"]?.at(-1);
     expect(writtenIndex).toContain(
-      'style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; z-index: 1"',
+      'style="position: absolute; left: 0px; top: 0px; width: 1920px; height: 1080px; z-index: 1; --component-accent: var(--ipw-color-primary, #20bbc0)',
     );
+    expect(writtenIndex).toContain("--component-text: var(--ipw-color-text, #15171a)");
+    expect(writtenIndex).toContain("--component-surface: var(--ipw-color-surface, #ffffff)");
+    expect(writtenIndex).toContain("--component-muted: var(--ipw-color-muted, #68717c)");
+    expect(writtenIndex).toContain("--component-border: var(--ipw-color-border, #d8dde3)");
     expect(writtenIndex).toContain(
       'data-composition-src="compositions/components/morph-text.html"',
     );
+    expect(writtenIndex).toContain('data-ipw-theme-mode="inherit"');
     expect(writtenIndex).not.toContain("data-hf-edit-as-unit");
   });
 
@@ -154,6 +165,198 @@ describe("addBlockToProject", () => {
     });
 
     expect(writtenIndex).toContain("z-index: 13");
+  });
+
+  it("ripple-inserts a catalog animation at the playhead on an independent effect track", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/components/route-map.html"],
+        block: {
+          name: "route-map",
+          title: "Route Map",
+          type: "hyperframes:block",
+          duration: 3.2,
+        },
+      }),
+    } as Response);
+
+    const files: Record<string, string> = {
+      "index.html": [
+        '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="9">',
+        '  <div id="scene-a" data-start="0" data-duration="4" data-track-index="0"></div>',
+        '  <div id="scene-b" data-start="4" data-duration="5" data-track-index="0"></div>',
+        '  <div id="overlay" data-start="1.4" data-duration="1" data-track-index="5"></div>',
+        "</main>",
+      ].join("\n"),
+    };
+    const syncRippleGsap = vi.fn().mockResolvedValue(undefined);
+
+    await addBlockToProject({
+      projectId: "project-1",
+      blockName: "route-map",
+      activeCompPath: "index.html",
+      currentTime: 4,
+      insertionMode: "ripple",
+      timelineElements: clips,
+      readProjectFile: async (path) => files[path] ?? "",
+      writeProjectFile: async (path, content) => {
+        files[path] = content;
+      },
+      recordEdit: vi.fn(),
+      markStudioWrite: vi.fn(),
+      refreshFileTree: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+      syncRippleGsap,
+    });
+
+    expect(files["index.html"]).toContain(
+      'id="scene-a" data-start="0" data-duration="4" data-track-index="0"',
+    );
+    expect(files["index.html"]).toContain(
+      'id="scene-b" data-start="7.2" data-duration="5" data-track-index="0"',
+    );
+    expect(files["index.html"]).toContain(
+      'id="overlay" data-start="1.4" data-duration="1" data-track-index="5"',
+    );
+    expect(files["index.html"]).toContain('data-composition-id="route-map"');
+    expect(files["index.html"]).toContain('data-start="4"');
+    expect(files["index.html"]).toContain('data-duration="3.2"');
+    expect(files["index.html"]).toContain('data-track-index="6"');
+    expect(files["index.html"]).toContain('data-duration="12.2"');
+    expect(syncRippleGsap).toHaveBeenCalledWith(
+      expect.objectContaining({
+        changes: [{ element: clips[1], start: 7.2 }],
+        label: "Insert animation: Route Map",
+      }),
+    );
+  });
+
+  it("does not ripple the runtime root composition in an otherwise empty project", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/components/route-map.html"],
+        block: {
+          name: "route-map",
+          title: "Route Map",
+          type: "hyperframes:block",
+          duration: 3.2,
+        },
+      }),
+    } as Response);
+
+    const files: Record<string, string> = {
+      "index.html":
+        '<main id="root" data-composition-id="main" data-width="1920" data-height="1080" data-duration="10"></main>',
+    };
+    const rootComposition: TimelineElement = {
+      id: "main",
+      tag: "main",
+      start: 0,
+      duration: 10,
+      track: 0,
+      parentCompositionId: null,
+    };
+    const syncRippleGsap = vi.fn().mockResolvedValue(undefined);
+
+    await addBlockToProject({
+      projectId: "project-1",
+      blockName: "route-map",
+      activeCompPath: "index.html",
+      currentTime: 2,
+      insertionMode: "ripple",
+      timelineElements: [rootComposition],
+      readProjectFile: async (path) => files[path] ?? "",
+      writeProjectFile: async (path, content) => {
+        files[path] = content;
+      },
+      recordEdit: vi.fn(),
+      markStudioWrite: vi.fn(),
+      refreshFileTree: vi.fn(),
+      reloadPreview: vi.fn(),
+      showToast: vi.fn(),
+      syncRippleGsap,
+    });
+
+    expect(files["index.html"]).toContain('id="root" data-composition-id="main"');
+    expect(files["index.html"]).not.toContain('id="root" data-start=');
+    expect(files["index.html"]).toContain('data-composition-id="route-map"');
+    expect(files["index.html"]).toContain('data-start="2"');
+    expect(syncRippleGsap).not.toHaveBeenCalled();
+  });
+
+  it("gives each repeatedly inserted catalog animation its own effect track", async () => {
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        written: ["compositions/components/route-map.html"],
+        block: {
+          name: "route-map",
+          title: "Route Map",
+          type: "hyperframes:block",
+          duration: 3,
+        },
+      }),
+    } as Response);
+
+    const files: Record<string, string> = {
+      "index.html": [
+        '<main data-composition-id="root" data-width="1920" data-height="1080" data-duration="12">',
+        '  <div id="background" data-start="0" data-duration="12" data-track-index="0"></div>',
+        "</main>",
+      ].join("\n"),
+    };
+    const background: TimelineElement = {
+      id: "background",
+      domId: "background",
+      tag: "div",
+      start: 0,
+      duration: 12,
+      track: 0,
+      sourceFile: "index.html",
+    };
+    const install = (timelineElements: TimelineElement[], currentTime: number) =>
+      addBlockToProject({
+        projectId: "project-1",
+        blockName: "route-map",
+        activeCompPath: "index.html",
+        currentTime,
+        insertionMode: "ripple",
+        timelineElements,
+        readProjectFile: async (path) => files[path] ?? "",
+        writeProjectFile: async (path, content) => {
+          files[path] = content;
+        },
+        recordEdit: vi.fn(),
+        markStudioWrite: vi.fn(),
+        refreshFileTree: vi.fn(),
+        reloadPreview: vi.fn(),
+        showToast: vi.fn(),
+      });
+
+    await install([background], 2);
+    await install([
+      background,
+      {
+        id: "route-map",
+        domId: "route-map",
+        tag: "div",
+        start: 2,
+        duration: 3,
+        track: 1,
+        authoredTrack: 1,
+        sourceFile: "index.html",
+      },
+    ], 5);
+
+    expect(files["index.html"]).toMatch(
+      /id="route-map"[\s\S]*?data-track-index="1"/,
+    );
+    expect(files["index.html"]).toMatch(
+      /id="route-map_2"[\s\S]*?data-track-index="2"/,
+    );
   });
 
   it("starts the preview reload before refreshing the file tree", async () => {

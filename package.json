@@ -38,7 +38,6 @@
     "test:events": "pnpm --filter @ipollowork/app test:events",
     "test:todos": "pnpm --filter @ipollowork/app test:todos",
     "test:permissions": "pnpm --filter @ipollowork/app test:permissions",
-    "test:session-error-recovery": "pnpm --filter @ipollowork/app test:session-error-recovery",
     "test:session-scope": "pnpm --filter @ipollowork/app test:session-scope",
     "test:session-switch": "pnpm --filter @ipollowork/app test:session-switch",
     "test:fs-engine": "pnpm --filter @ipollowork/app test:fs-engine",

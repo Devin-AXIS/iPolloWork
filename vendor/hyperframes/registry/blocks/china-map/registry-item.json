@@ -1,0 +1,48 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "china-map",
+  "version": "1.2.1",
+  "type": "hyperframes:block",
+  "librarySection": "interface-animation",
+  "title": "China Map",
+  "description": "A theme-aware China map with accurate province-level boundaries, a South China Sea islands inset, editable values, proportional markers, and a regional ranking panel.",
+  "tags": ["component", "data", "map", "geography", "china", "province", "ranking", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "source": { "provider": "Supeset/China-GeoData", "label": "China province-level GeoJSON (MIT)", "url": "https://github.com/Supeset/China-GeoData" },
+  "visualComponent": {
+    "version": 1,
+    "category": "maps",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "region-value",
+      "mode": "replace",
+      "rowId": "region",
+      "binding": { "variable": "values", "encoding": "key-value-list" },
+      "columns": [
+        { "id": "region", "label": "Province or region", "labelZh": "省份或地区", "type": "string", "role": "id", "required": true },
+        { "id": "value", "label": "Index", "labelZh": "指标值", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 1,
+      "maxRows": 20,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "values", "highlight", "source"],
+      "instructions": "Provide one to twenty Chinese provinces or regions with numeric values and one highlighted region. Chinese and common English province names are supported. Preserve the theme-token color system."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "中国区域增长指数", "maxLength": 72, "update": "live" },
+    { "id": "values", "label": "Province data", "description": "Province or region names and numeric index values.", "type": "string", "default": "广东:96,江苏:89,浙江:91,山东:82,四川:78,湖北:76,北京:88,上海:93,陕西:69,福建:84", "maxLength": 2000, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "广东", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "示例区域指数 · 2026", "maxLength": 72, "update": "live" }
+  ],
+  "files": [{ "path": "china-map.html", "target": "compositions/china-map.html", "type": "hyperframes:composition" }]
+}

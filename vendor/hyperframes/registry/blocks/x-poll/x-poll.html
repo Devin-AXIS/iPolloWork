@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"question","label":"Question","type":"string","default":"What makes a product story easiest to remember?","maxLength":120},{"id":"choices","label":"Poll Choices","type":"string","default":"One sharp idea:46,A vivid visual:31,A surprising proof:15,A clear next step:8","maxLength":260},{"id":"leading","label":"Leading Choice","type":"string","default":"One sharp idea","maxLength":48},{"id":"footer","label":"Footer","type":"string","default":"4,820 votes · 18 hours left","maxLength":64}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>X Poll</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.poll{width:1320px;margin:auto;padding:60px 66px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:36px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.poll-top{display:flex;align-items:center}.poll-kicker{font-size:22px;font-weight:900;letter-spacing:.12em;text-transform:uppercase}.poll-x{margin-left:auto;font-size:42px;font-weight:950}.poll-question{max-width:1100px;margin:34px 0 36px;font-size:46px;line-height:1.13;letter-spacing:-.03em}.poll-list{display:grid;gap:14px}.social-list-item{position:relative;display:grid;grid-template-columns:1fr auto;gap:20px;padding:20px 24px;overflow:hidden;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:18px}.social-list-item.is-highlight{border-color:#111}.social-list-label,.social-list-value{position:relative;z-index:1;font-size:22px;font-weight:760}.social-meter{position:absolute;inset:0;background:color-mix(in srgb,var(--ipw-color-border,#d8dde3) 32%,transparent)}.social-meter span{display:block;height:100%;background:color-mix(in srgb,var(--ipw-color-primary,#4f46e5) 25%,transparent)}.poll-footer{margin-top:26px;color:var(--ipw-color-muted,#68717c);font-size:19px}
+</style></head>
+<body><main id="root" data-composition-id="x-poll" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"question":"What makes a product story easiest to remember?","choices":"One sharp idea:46,A vivid visual:31,A surprising proof:15,A clear next step:8","leading":"One sharp idea","footer":"4,820 votes · 18 hours left"}'><section class="poll sm-animate"><header class="poll-top"><span class="poll-kicker">Community poll</span><span class="poll-x">𝕏</span></header><h1 class="poll-question" data-ipw-variable="question" data-ipw-ai-slot="question"></h1><div class="poll-list" data-ipw-list="choices" data-list-mode="meter" data-highlight-key="leading" data-ipw-ai-slot="choices"></div><span hidden data-ipw-variable="leading" data-ipw-ai-slot="leading"></span><footer class="poll-footer" data-ipw-variable="footer" data-ipw-ai-slot="footer"></footer></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="x-poll";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("scale"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("scale"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("scale"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("scale"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

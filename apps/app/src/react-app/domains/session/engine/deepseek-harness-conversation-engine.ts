@@ -15,6 +15,7 @@ import {
   type ConversationPermission,
   type ConversationPromptPart,
   type ConversationQuestion,
+  withSessionPermissionMemory,
   waitForConversationIdle,
 } from "./conversation-engine";
 import {
@@ -608,7 +609,7 @@ function deepSeekHarnessConnection(input: {
   };
 }
 
-export const deepSeekHarnessConversationEngineAdapter: ConversationEngineAdapter = {
+export const deepSeekHarnessConversationEngineAdapter: ConversationEngineAdapter = withSessionPermissionMemory({
   id: DEEPSEEK_HARNESS_ENGINE_ID,
   connect: deepSeekHarnessConnection,
-};
+});

@@ -18,6 +18,10 @@ import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
 import { trackStudioEvent } from "./studioTelemetry";
 import { readAttributeByTarget } from "./sourcePatcher";
+import {
+  buildTimelineMoveTimingPatch,
+  resolveTimelinePatch,
+} from "../hooks/timelineEditingHelpers";
 
 export type BlockVariableValue = string | number | boolean;
 
@@ -39,7 +43,13 @@ interface AddBlockOptions {
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
   currentTime?: number;
+  insertionMode?: "overlay" | "ripple";
   timelineElements: TimelineElement[];
+  syncRippleGsap?: (input: {
+    changes: Array<{ element: TimelineElement; start: number }>;
+    coalesceKey: string;
+    label: string;
+  }) => Promise<void>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
@@ -52,6 +62,94 @@ interface AddBlockOptions {
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
   showToast: (msg: string) => void;
+}
+
+const INSERT_BOUNDARY_EPSILON = 0.0005;
+
+const INHERITED_COMPONENT_THEME_STYLE = [
+  "--component-accent: var(--ipw-color-primary, #20bbc0)",
+  "--component-text: var(--ipw-color-text, #15171a)",
+  "--component-surface: var(--ipw-color-surface, #ffffff)",
+  "--component-muted: var(--ipw-color-muted, #68717c)",
+  "--component-border: var(--ipw-color-border, #d8dde3)",
+].join("; ");
+
+const INHERITED_COMPONENT_THEME_MARKER = "data-ipw-component-theme-aliases";
+
+function authoredTrack(element: TimelineElement): number {
+  return element.authoredTrack ?? element.track;
+}
+
+function readRootCompositionId(source: string): string | null {
+  return new DOMParser()
+    .parseFromString(source, "text/html")
+    .querySelector("[data-composition-id]")
+    ?.getAttribute("data-composition-id") ?? null;
+}
+
+function isRootTimelineComposition(
+  element: TimelineElement,
+  rootCompositionId?: string | null,
+): boolean {
+  if (element.compositionAncestors != null && element.compositionAncestors.length === 0) {
+    return true;
+  }
+  return Boolean(
+    rootCompositionId &&
+      element.parentCompositionId == null &&
+      !element.compositionSrc &&
+      (element.id === rootCompositionId || element.domId === rootCompositionId),
+  );
+}
+
+function resolveIndependentInsertTrack(elements: readonly TimelineElement[]): number {
+  return elements.length > 0
+    ? Math.max(...elements.map((element) => authoredTrack(element))) + 1
+    : 1;
+}
+
+export function resolveBlockRippleChanges(
+  elements: readonly TimelineElement[],
+  start: number,
+  duration: number,
+): Array<{ element: TimelineElement; start: number }> {
+  return elements
+    .filter(
+      (element) =>
+        !isRootTimelineComposition(element) &&
+        element.start + INSERT_BOUNDARY_EPSILON >= start,
+    )
+    .map((element) => ({
+      element,
+      start: Number(formatTimelineAttributeNumber(element.start + duration)),
+    }));
+}
+
+function applyBlockRippleChanges(
+  source: string,
+  changes: readonly { element: TimelineElement; start: number }[],
+): string {
+  let patched = source;
+  for (const change of changes) {
+    const resolution = resolveTimelinePatch(patched, change.element, (current, target) =>
+      buildTimelineMoveTimingPatch(
+        current,
+        target,
+        change.start,
+        change.element.duration,
+        undefined,
+        change.element.timingSource === "implicit",
+      ),
+    );
+    if (resolution.status === "missing-target") {
+      throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
+    }
+    if (resolution.status === "target-not-found") {
+      throw new Error(`Unable to ripple timeline element ${change.element.id}`);
+    }
+    if (resolution.status === "changed") patched = resolution.content;
+  }
+  return patched;
 }
 
 function buildUniqueCompositionId(baseName: string, existingIds: Iterable<string>): string {
@@ -76,6 +174,15 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
       return `${open}${transparentBody}${close}`;
     },
   );
+}
+
+export function injectInheritedComponentThemeAliases(source: string): string {
+  if (source.includes(INHERITED_COMPONENT_THEME_MARKER)) return source;
+
+  const style = `<style ${INHERITED_COMPONENT_THEME_MARKER}>:root{${INHERITED_COMPONENT_THEME_STYLE}}</style>`;
+  return /<\/head>/i.test(source)
+    ? source.replace(/<\/head>/i, `${style}</head>`)
+    : `${style}\n${source}`;
 }
 
 export function normalizeBlockVariableValue(
@@ -201,6 +308,8 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     placement,
     visualPosition,
     timelineElements,
+    insertionMode = "overlay",
+    syncRippleGsap,
     readProjectFile,
     writeProjectFile,
     recordEdit,
@@ -246,7 +355,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         compContent,
         block.variables ?? [],
       );
-      const normalizedContent = makeComponentDocumentBackgroundTransparent(declaredContent);
+      const themedContent =
+        block.visualComponent.themeMode === "inherit"
+          ? injectInheritedComponentThemeAliases(declaredContent)
+          : declaredContent;
+      const normalizedContent = makeComponentDocumentBackgroundTransparent(themedContent);
       if (normalizedContent !== compContent) {
         await writeProjectFile(compositionFile, normalizedContent);
       }
@@ -263,8 +376,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       insertedElementId = compId;
 
       const resolvedTargetPath = targetPath || "index.html";
+      const rootCompositionId = readRootCompositionId(originalContent);
       const relevantElements = timelineElements.filter(
-        (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        (te) =>
+          !isRootTimelineComposition(te, rootCompositionId) &&
+          (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
       );
 
       const { width: hostWidth, height: hostHeight } =
@@ -287,7 +403,15 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       insertedStart = start;
       const track =
         placement?.track ??
-        (relevantElements.length > 0 ? Math.max(...relevantElements.map((te) => te.track)) + 1 : 1);
+        (insertionMode === "ripple"
+          ? resolveIndependentInsertTrack(relevantElements)
+          : relevantElements.length > 0
+            ? Math.max(...relevantElements.map((te) => te.track)) + 1
+            : 1);
+      const rippleChanges =
+        insertionMode === "ripple"
+          ? resolveBlockRippleChanges(relevantElements, start, duration)
+          : [];
 
       // Timeline discovery already resolves authored and computed z-indexes.
       // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
@@ -304,6 +428,11 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       const left = visualPosition ? Math.round(visualPosition.left) : geometry.left;
       const top = visualPosition ? Math.round(visualPosition.top) : geometry.top;
 
+      const inheritedThemeStyle =
+        block.visualComponent?.themeMode === "inherit"
+          ? `; ${INHERITED_COMPONENT_THEME_STYLE}`
+          : "";
+
       const subCompHtml = [
         `<div`,
         // A stable id (+ hf-id) is what authored sub-comps carry; without it the
@@ -313,37 +442,61 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  data-hf-id="hf-${generateId()}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
+        block.visualComponent
+          ? `  data-ipw-theme-mode="${block.visualComponent.themeMode}"`
+          : "",
         `  data-start="${formatTimelineAttributeNumber(start)}"`,
         `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
         `  data-track-index="${track}"`,
         `  data-width="${width}"`,
         `  data-height="${height}"`,
-        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
+        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}${inheritedThemeStyle}"`,
         `></div>`,
       ].join("\n");
 
-      let patchedContent = insertTimelineAssetIntoSource(originalContent, subCompHtml);
+      let patchedContent = applyBlockRippleChanges(originalContent, rippleChanges);
+      patchedContent = insertTimelineAssetIntoSource(patchedContent, subCompHtml);
       const originalContentEnd = relevantElements.reduce(
         (end, element) => Math.max(end, element.start + element.duration),
         rootDuration,
       );
       patchedContent = extendRootDurationInSource(
         patchedContent,
-        Math.max(start + duration, originalContentEnd),
+        Math.max(
+          start + duration,
+          insertionMode === "ripple" ? originalContentEnd + duration : originalContentEnd,
+        ),
       );
       hostPatchMs = performance.now() - hostPatchStartedAt;
 
       markStudioWrite();
       const persistStartedAt = performance.now();
+      const label =
+        insertionMode === "ripple"
+          ? `Insert animation: ${block.title}`
+          : `Add component: ${block.title}`;
+      const coalesceKey =
+        insertionMode === "ripple" && rippleChanges.length > 0
+          ? `insert-animation:${compId}:${start}`
+          : undefined;
       await saveProjectFilesWithHistory({
         projectId,
-        label: `Add component: ${block.title}`,
+        label,
         kind: "timeline",
+        coalesceKey,
+        coalesceMs: coalesceKey ? 10_000 : undefined,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
         recordEdit,
       });
+      if (coalesceKey && syncRippleGsap) {
+        try {
+          await syncRippleGsap({ changes: rippleChanges, coalesceKey, label });
+        } catch (error) {
+          console.error("[Components] Failed to ripple GSAP positions", error);
+        }
+      }
       persistMs = performance.now() - persistStartedAt;
     }
 
@@ -364,6 +517,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       persist_ms: Math.round(persistMs),
       total_ms: Math.round(performance.now() - startedAt),
       timeline_element_count: timelineElements.length,
+      insertion_mode: insertionMode,
     });
 
     return {
