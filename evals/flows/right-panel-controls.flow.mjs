@@ -122,12 +122,30 @@ export default {
             });
           },
           assert: async () => {
-            const state = await ctx.eval(`(() => ({
-              popover: Boolean(document.querySelector(${JSON.stringify(OUTPUT_POPOVER)})),
-              panelOpen: Boolean(document.querySelector(${JSON.stringify(ADD_ENTRY)})),
-              selectedTab: Boolean(document.querySelector('button[aria-label^="Select tab:"][aria-selected="true"]')),
-            }))()`);
+            const state = await ctx.eval(`(() => {
+              const popover = document.querySelector(${JSON.stringify(OUTPUT_POPOVER)});
+              const outputView = popover?.querySelector('[data-testid="conversation-files-outputs-view"]');
+              const outputCard = outputView?.firstElementChild;
+              const popoverRect = popover?.getBoundingClientRect();
+              const outputViewRect = outputView?.getBoundingClientRect();
+              const outputCardRect = outputCard?.getBoundingClientRect();
+              const modeButtons = Array.from(popover?.querySelectorAll('[data-testid^="conversation-files-mode-"]') ?? []);
+              return {
+                popover: Boolean(popover),
+                panelOpen: Boolean(document.querySelector(${JSON.stringify(ADD_ENTRY)})),
+                selectedTab: Boolean(document.querySelector('button[aria-label^="Select tab:"][aria-selected="true"]')),
+                compactWidth: Boolean(popoverRect && popoverRect.width <= 440.5),
+                contentSizedHeight: Boolean(popoverRect && popoverRect.height < 360),
+                opaqueSurface: Boolean(popover && !getComputedStyle(popover).backgroundColor.startsWith("rgba")),
+                modeIconCount: modeButtons.reduce((count, button) => count + button.querySelectorAll("svg").length, 0),
+                closeButton: Boolean(popover?.querySelector('button[aria-label="Close"], button[aria-label="关闭"]')),
+                singleColumnFillsWidth: Boolean(outputViewRect && outputCardRect && outputCardRect.width >= outputViewRect.width - 1),
+              };
+            })()`);
             ctx.assert(state.popover && state.panelOpen && state.selectedTab, `The output overlay replaced current work: ${JSON.stringify(state)}`);
+            ctx.assert(state.compactWidth && state.contentSizedHeight && state.opaqueSurface, `The output overlay is not a compact opaque surface: ${JSON.stringify(state)}`);
+            ctx.assert(state.modeIconCount === 0 && state.closeButton, `The output overlay header is not using the text-only mode control and close action: ${JSON.stringify(state)}`);
+            ctx.assert(state.singleColumnFillsWidth, `A single output does not fill the compact list: ${JSON.stringify(state)}`);
           },
           screenshot: { name: "output-files-over-current-panel", rejectText: ["Something went wrong"] },
         });

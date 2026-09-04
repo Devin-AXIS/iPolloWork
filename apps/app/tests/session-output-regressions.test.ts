@@ -114,8 +114,12 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('data-testid="conversation-files-popover"');
     expect(artifactSource).toContain("onOpenChange(false);");
     expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
-    expect(artifactSource).toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
-    expect(artifactSource).toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('className="h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"');
+    expect(artifactSource).toContain('grid-cols-[1fr_auto_1fr]');
+    expect(artifactSource).toContain('w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)]');
+    expect(artifactSource).toContain('onClose={() => onOpenChange(false)}');
     expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
     expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
     expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');

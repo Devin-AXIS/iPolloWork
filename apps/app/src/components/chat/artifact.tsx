@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRight, FileOutput, Folder, FolderOpen, ListTree, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRight, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -513,7 +513,7 @@ interface ConversationOutputPanelProps {
 
 type ConversationFilesMode = "directory" | "outputs";
 
-function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio }: Omit<ConversationOutputPanelProps, "openTargets">) {
+function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio, popover = false, onClose }: Omit<ConversationOutputPanelProps, "openTargets"> & { popover?: boolean; onClose?: () => void }) {
   const [mode, setMode] = useState<ConversationFilesMode>("outputs");
   const [fileQuery, setFileQuery] = useState("");
   const discoveredArtifacts = useArtifacts(messages, {
@@ -555,10 +555,10 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
         : t("session.files.file_count", { count: workspaceFiles.length });
 
   return (
-    <div className="flex h-full min-h-0 flex-col" aria-label={t("session.files.title")}>
-      <div className="shrink-0 border-b border-border/60 px-4 pb-3 pt-4">
-        <div className="flex items-center justify-between gap-3">
-        <div>
+    <div className={cn("flex min-h-0 flex-col", popover ? "max-h-[min(70vh,560px)]" : "h-full")} aria-label={t("session.files.title")}>
+      <div className={cn("shrink-0 border-b border-border/60 px-4", popover ? "py-3" : "pb-3 pt-4")}>
+        <div className={cn("items-center gap-3", popover ? "grid grid-cols-[1fr_auto_1fr]" : "flex justify-between")}>
+          <div className="min-w-0">
             <div className="text-base font-medium">{t("session.files.title")}</div>
             <div className="mt-0.5 text-xs text-muted-foreground" aria-live="polite">{subtitle}</div>
           </div>
@@ -568,32 +568,41 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
               const next = value[0];
               if (next === "directory" || next === "outputs") setMode(next);
             }}
-            variant="outline"
-            size="sm"
+            spacing={0.5}
             aria-label={t("session.files.mode_label")}
-            className="shrink-0 rounded-xl"
+            className="h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
           >
             <ToggleGroupItem
               value="directory"
               data-testid="conversation-files-mode-directory"
-              className="h-8 gap-1.5 rounded-l-xl px-2.5 text-xs"
+              className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-foreground aria-pressed:shadow-none"
               aria-label={t("session.files.mode_directory")}
               title={t("session.files.mode_directory")}
             >
-              <ListTree className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_directory")}</span>
             </ToggleGroupItem>
             <ToggleGroupItem
               value="outputs"
               data-testid="conversation-files-mode-outputs"
-              className="h-8 gap-1.5 rounded-r-xl px-2.5 text-xs"
+              className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-foreground aria-pressed:shadow-none"
               aria-label={t("session.files.mode_outputs")}
               title={t("session.files.mode_outputs")}
             >
-              <Sparkles className="size-4 text-current" strokeWidth={1.75} />
               <span>{t("session.files.mode_outputs")}</span>
             </ToggleGroupItem>
           </ToggleGroup>
+          {popover ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-8 justify-self-end rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("common.close")}
+              title={t("common.close")}
+              onClick={onClose}
+            >
+              <X className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+            </Button>
+          ) : null}
         </div>
         {mode === "directory" ? (
           <div className="mt-3 flex items-center gap-2" data-testid="conversation-files-directory-toolbar">
@@ -623,7 +632,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
         {mode === "outputs" ? outputs.length ? (
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-2.5" data-testid="conversation-files-outputs-view">
+          <div className={cn("grid gap-2.5", popover ? "grid-cols-1" : "grid-cols-[repeat(auto-fill,minmax(220px,1fr))]")} data-testid="conversation-files-outputs-view">
             {outputGroups.map((group) => (
               <div key={group.id} className="relative min-w-0">
                 <ArtifactButton
@@ -720,7 +729,7 @@ export function ConversationOutputPopover({ disabled, open, onOpenChange, openTa
         align="end"
         sideOffset={8}
         initialFocus={false}
-        className="h-[min(70vh,640px)] w-[min(520px,calc(100vw-2rem))] gap-0 overflow-hidden rounded-3xl p-0"
+        className="w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)] gap-0 overflow-hidden rounded-xl! bg-background p-0 shadow-xl backdrop-blur-none"
         data-testid="conversation-files-popover"
       >
         <OpenTargetProvider openTargets={openTargets} onOpenTarget={handleOpenTarget}>
@@ -728,6 +737,8 @@ export function ConversationOutputPopover({ disabled, open, onOpenChange, openTa
             {...props}
             onOpenTarget={handleOpenTarget}
             onOpenVideoStudio={handleOpenVideoStudio}
+            popover
+            onClose={() => onOpenChange(false)}
           />
         </OpenTargetProvider>
       </PopoverContent>
