@@ -59,7 +59,7 @@
     "postcss": "^8.5.26"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",

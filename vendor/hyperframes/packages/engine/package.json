@@ -48,14 +48,14 @@
     "@hono/node-server": "^2.1.1",
     "@hyperframes/core": "workspace:^",
     "@hyperframes/parsers": "workspace:^",
-    "hono": "^4.13.2",
+    "hono": "^4.13.5",
     "linkedom": "^0.18.12",
     "puppeteer": "^25.2.1",
     "puppeteer-core": "^25.2.1"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "@webgpu/types": "^0.1.71",
+    "@types/node": "^26.4.0",
+    "@webgpu/types": "^0.1.72",
     "typescript": "^7.0.2",
     "vitest": "^4.1.10"
   },

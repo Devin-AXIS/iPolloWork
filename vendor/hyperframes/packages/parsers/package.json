@@ -187,12 +187,12 @@
     "acorn": "^8.18.0",
     "acorn-walk": "^8.3.5",
     "linkedom": "^0.18.12",
-    "magic-string": "^1.2.0",
+    "magic-string": "^1.2.3",
     "recast": "^0.24.0"
   },
   "devDependencies": {
     "@hyperframes/core": "workspace:*",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
