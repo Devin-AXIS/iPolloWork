@@ -607,6 +607,12 @@ describe("project overview", () => {
     expect(runtimeDataSource).not.toContain('shadow-[');
   });
 
+  test("restores the main sidebar from the global schedule header", () => {
+    expect(workCenterSource).toContain('data-testid="work-center-sidebar-restore"');
+    expect(workCenterSource).toContain('sidebarState === "collapsed"');
+    expect(workCenterSource).toContain('aria-label={t("sidebar.expand")}');
+  });
+
   test("opens the same plugin authorization dialog in place instead of navigating to settings", () => {
     expect(inspectorSource).toContain("onAuthorizePlugin: (pluginId: string) => void");
     expect(inspectorSource).toContain("props.onAuthorizePlugin(id)");

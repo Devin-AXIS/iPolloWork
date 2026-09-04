@@ -13,9 +13,9 @@ describe("session scroll controller", () => {
     expect(controllerSource).toContain('behavior: ScrollBehavior = "auto"');
     expect(controllerSource).toContain('anchor.scrollIntoView({ block: "start", inline: "nearest", behavior })');
     expect(controllerSource).toContain("anchor.remove()");
+    expect(controllerSource).toContain("return container.scrollTop");
     expect(controllerSource).toContain("syncProgrammaticScrollTop(container, container.scrollHeight, behavior)");
-    expect(controllerSource).toContain("const SMOOTH_SCROLL_RESET_MS = 700");
-    expect(controllerSource).toContain('const resetDelay = behavior === "smooth" ? SMOOTH_SCROLL_RESET_MS : 50');
+    expect(controllerSource).toContain('const resetDelay = behavior === "smooth" ? PROGRAMMATIC_SCROLL_SETTLE_MS : 50');
     expect(controllerSource).not.toContain('container.scrollTo({ top: clampedTop, behavior: "auto" })');
   });
 
@@ -39,12 +39,14 @@ describe("session scroll controller", () => {
     expect(manualSync).toBeGreaterThan(programmaticReturn);
   });
 
-  test("does not mistake an upward programmatic jump for a manual scroll", () => {
-    const start = controllerSource.indexOf("if (programmaticScrollRef.current && userGestured)");
-    const end = controllerSource.indexOf("if (programmaticScrollRef.current)", start + 1);
-    expect(start).toBeGreaterThan(-1);
-    expect(end).toBeGreaterThan(start);
-    expect(controllerSource.slice(start, end)).not.toContain("scrolledUp");
-    expect(controllerSource.match(/lastGestureAtRef\.current = 0;/g)).toHaveLength(2);
+  test("only a new manual gesture interrupts a programmatic scroll", () => {
+    expect(controllerSource).toContain("programmaticScrollGestureVersionRef.current = scrollGestureVersionRef.current");
+    expect(controllerSource).toContain("scrollGestureVersionRef.current += 1");
+    expect(controllerSource).toContain("userInterruptedProgrammaticScroll || scrolledAgainstProgrammaticDirection");
+    expect(controllerSource).not.toContain("programmaticScrollRef.current && (userGestured || scrolledUp)");
+
+    const interruptionBranch = controllerSource.indexOf("if (programmaticScrollRef.current && (userInterruptedProgrammaticScroll");
+    const interruptionEnd = controllerSource.indexOf("if (programmaticScrollRef.current)", interruptionBranch + 1);
+    expect(controllerSource.slice(interruptionBranch, interruptionEnd)).toContain("syncCurrentScrollPosition(container)");
   });
 });
