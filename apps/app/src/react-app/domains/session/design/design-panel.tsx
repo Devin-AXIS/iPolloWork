@@ -2181,18 +2181,19 @@ export function DesignPanel({
                 </>
               ) : null}
               {templateControl}
-              {editing ? <Button
+              <Button
                 variant="ghost"
                 size="icon-sm"
                 className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
                 onClick={toggleElementProperties}
+                disabled={!editing}
                 aria-label={t("design.toolbar.properties")}
                 title={t("design.toolbar.properties")}
-                aria-pressed={elementPropertiesOpen}
+                aria-pressed={editing && elementPropertiesOpen}
                 data-testid="design-properties-button"
               >
                 <SlidersHorizontal />
-              </Button> : null}
+              </Button>
               <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
               <div className="flex shrink-0 items-center gap-1" data-testid="design-history-controls">
                 <Button

@@ -82,7 +82,7 @@ describe("Design deck navigation", () => {
     expect(source.indexOf('aria-label={t("design.toolbar.publish")}')).toBeLessThan(source.indexOf("<DesignExportMenu"));
   });
 
-  test("centers a localized browse-edit segment and keeps properties available while editing", async () => {
+  test("centers a localized browse-edit segment and disables properties while browsing", async () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground');
@@ -95,6 +95,9 @@ describe("Design deck navigation", () => {
     expect(source).toContain('t("design.toolbar.edit")');
     expect(source).toContain('aria-pressed:bg-white');
     expect(source).toContain('aria-pressed:shadow-none');
+    expect(source).toContain("disabled={!editing}");
+    expect(source).toContain("aria-pressed={editing && elementPropertiesOpen}");
+    expect(source).not.toContain("{editing ? <Button");
     expect(source.indexOf('data-testid="design-mode-toggle"')).toBeLessThan(source.indexOf('data-testid="design-properties-button"'));
   });
 
