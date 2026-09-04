@@ -54,18 +54,18 @@ function menu(overrides: Partial<React.ComponentProps<typeof DesignExportMenu>> 
 
 afterEach(() => setLocale("en"));
 
-describe("design export download menu", () => {
-  test("uses a language-independent icon trigger and localized format labels", () => {
+describe("design more-actions menu", () => {
+  test("uses a localized more-actions trigger and localized format labels", () => {
     setLocale("en");
     const englishMenu = menu();
-    const englishTrigger = findByAriaLabel(englishMenu, "Download");
+    const englishTrigger = findByAriaLabel(englishMenu, "More design actions");
     expect(textContent(englishTrigger).trim()).toBe("");
     expect(textContent(englishMenu)).toContain("Download PDF");
     expect(textContent(englishMenu)).toContain("Download PPTX");
 
     setLocale("zh");
     const chineseMenu = menu();
-    const chineseTrigger = findByAriaLabel(chineseMenu, "下载");
+    const chineseTrigger = findByAriaLabel(chineseMenu, "更多设计操作");
     expect(textContent(chineseTrigger).trim()).toBe("");
     expect(textContent(chineseMenu)).toContain("下载 PDF");
     expect(textContent(chineseMenu)).toContain("下载 PPTX");
@@ -107,16 +107,16 @@ describe("design export download menu", () => {
     expect(Reflect.get(findByText(pptxBusy, "Download PPTX").props, "disabled")).toBe(true);
   });
 
-  test("disables the download trigger only when both formats are busy", () => {
-    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true }), "Download").props, "disabled")).toBe(false);
-    expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
-    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);
+  test("disables the more trigger only when both formats are busy", () => {
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true }), "More design actions").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "More design actions").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "More design actions").props, "disabled")).toBe(true);
   });
 
   test("keeps the menu available while the preview is preparing", () => {
     const preparing = menu({ exportReady: false });
 
-    expect(Reflect.get(findByAriaLabel(preparing, "Download").props, "disabled")).toBe(false);
+    expect(Reflect.get(findByAriaLabel(preparing, "More design actions").props, "disabled")).toBe(false);
     expect(Reflect.get(findByText(preparing, "Download PDF").props, "disabled")).toBe(true);
     expect(Reflect.get(findByText(preparing, "Download PPTX").props, "disabled")).toBe(true);
   });

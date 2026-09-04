@@ -16,10 +16,10 @@ import {
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarToggleIcon,
   SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { publicAssetUrl } from "@/app/lib/public-asset";
 import { t } from "../../../../i18n";
 import { NotificationBell } from "../../../shell/notification-center";
 import type { SettingsTab } from "../../../../app/types";
@@ -69,7 +69,7 @@ function EmbeddedSidebarRestoreTrigger() {
     <SidebarTrigger
       data-testid="embedded-sidebar-restore"
       className="size-8 shrink-0 rounded-lg border-none text-muted-foreground hover:bg-muted hover:text-foreground mac:ml-16 mac:titlebar-no-drag"
-      icon={<img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />}
+      icon={<SidebarToggleIcon />}
       aria-label={t("sidebar.expand")}
       title={t("sidebar.expand")}
     />

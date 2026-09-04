@@ -12,14 +12,16 @@ import {
   PanelsTopLeft,
   Plus,
   RotateCw,
+  ToolCase,
   X,
 } from "lucide-react";
 import { motion, useDragControls } from "motion/react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { publicAssetUrl } from "@/app/lib/public-asset";
+import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
+import { SidebarRightToggleIcon } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -143,6 +145,19 @@ class DesignPanelErrorBoundary extends React.Component<
   }
 }
 
+function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
+  if (tab.type === "browser") {
+    if (tab.favicon) return <img src={tab.favicon} alt="" className="size-3.5 shrink-0 rounded-[2px]" />;
+    if (tab.status === "loading") return <Loader2 className="size-4 animate-spin" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+    return <Globe className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  }
+  if (tab.type === "design") return <Code2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "video") return <Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "workspace-app") return <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
+}
+
 function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
   const dragControls = useDragControls();
   const tabRef = React.useRef<HTMLDivElement>(null);
@@ -194,17 +209,7 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
           aria-label={`Select tab: ${tab.label}`}
           aria-selected={active}
         >
-          {tab.type === "browser" ? (
-            tab.favicon ? (
-              <img src={tab.favicon} alt="" className="size-3.5 shrink-0 rounded-[2px]" />
-            ) : tab.status === "loading" ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Globe />
-            )
-          ) : (
-            tab.type === "design" ? <Code2 /> : tab.type === "video" ? <Film /> : tab.type === "workspace-app" ? <PanelsTopLeft /> : tab.type === "plugin-studio" ? <img src={publicAssetUrl("sidebar-icon/tool-case.svg")} alt="" className="size-4 dark:invert" /> : <ArtifactIcon type={tab.preview} />
-          )}
+          <SidePanelTabIcon tab={tab} />
           <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
         </PanelTab>
         <PanelTabClose
@@ -717,7 +722,7 @@ export function SidePanel({
     <TooltipProvider delay={1000}>
       <div className="flex h-full flex-col">
         <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-          <div className={cn("flex h-10 items-center gap-1 px-2 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
+          <div className={cn("flex h-10 items-center gap-1 pl-2 pr-3 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
               <div className="flex min-w-max items-center gap-1">
                 <PanelTabList
@@ -744,9 +749,10 @@ export function SidePanel({
                               <Button
                                 variant="ghost"
                                 size="icon-sm"
+                                className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                                 aria-label={t("side_panel.add_entry")}
                               >
-                                <Plus />
+                                <Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
                               </Button>
                             )}
                           />
@@ -796,27 +802,25 @@ export function SidePanel({
                 <Button
                   variant={expanded ? "secondary" : "ghost"}
                   size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                   onClick={() => onExpandedChange(!expanded)}
                   aria-label={expanded ? "Restore panel width" : "Expand panel"}
                   aria-pressed={expanded}
                 >
-                  {expanded ? <Minimize2 /> : <Maximize2 />}
+                  {expanded ? <Minimize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />}
                 </Button>
               ) : null}
               <motion.div layoutId="right-panel-toggle" transition={{ duration: 0.2, ease: "easeOut" }}>
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
                   onClick={onClose}
                   aria-label={t("session.right_panel_close")}
                   title={t("session.right_panel_close")}
                   data-testid="right-panel-toggle"
                 >
-                  <img
-                    src={publicAssetUrl("sidebar-right-open.svg")}
-                    alt=""
-                    className="h-3 w-4 shrink-0 dark:invert"
-                  />
+                  <SidebarRightToggleIcon panelOpen />
                 </Button>
               </motion.div>
             </div>

@@ -424,7 +424,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-host-action"');
     expect(studioHeaderSource).toContain('className="hf-studio-header-utilities flex items-center gap-1"');
     expect(studioHeaderSource).toContain('t("header.saveAsTemplate")');
-    expect(studioHeaderSource).toContain('<FloppyDisk className="h-4 w-4" aria-hidden="true" />');
+    expect(studioHeaderSource).toContain('<FloppyDisk className="h-4 w-4" weight="regular" aria-hidden="true" />');
     expect(studioHeaderSource.indexOf('t("header.saveAsTemplate")')).toBeLessThan(
       studioHeaderSource.indexOf('t("header.inspector")'),
     );

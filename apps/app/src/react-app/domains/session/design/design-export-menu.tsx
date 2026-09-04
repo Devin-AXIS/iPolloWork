@@ -49,10 +49,9 @@ export function DesignExportMenu({
   onExportPptx,
   onSaveAsTemplate,
 }: DesignExportMenuProps) {
-  const downloadLabel = t("design.export.download");
   const triggerDisabled = compact
     ? publishDisabled && !onPreviewDeviceChange && (!showExports || (exportingPdf && exportingPptx) || !exportReady)
-    : exportingPdf && exportingPptx;
+    : !onSaveAsTemplate && exportingPdf && exportingPptx;
   const disabledReason = exportDisabledReason || "Preview is still preparing.";
 
   return (
@@ -64,10 +63,10 @@ export function DesignExportMenu({
             size="icon-sm"
             className={triggerClassName}
             disabled={triggerDisabled}
-            aria-label={compact || !showExports ? "More design actions" : downloadLabel}
-            title={compact || !showExports ? "More" : triggerDisabled && !exportReady ? disabledReason : downloadLabel}
+            aria-label={t("design.toolbar.more")}
+            title={triggerDisabled && !exportReady ? disabledReason : t("design.toolbar.more")}
           >
-            {compact || !showExports ? <Ellipsis /> : <Download />}
+            <Ellipsis />
           </Button>
         )}
       />
@@ -80,12 +79,12 @@ export function DesignExportMenu({
           <>
             <DropdownMenuItem onClick={() => onPreviewDeviceChange("desktop")}>
               <Monitor />
-              Desktop
+              {t("design.toolbar.desktop")}
               {previewDevice === "desktop" ? <Check className="ml-auto" /> : null}
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onPreviewDeviceChange("mobile")}>
               <Smartphone />
-              Mobile
+              {t("design.toolbar.mobile")}
               {previewDevice === "mobile" ? <Check className="ml-auto" /> : null}
             </DropdownMenuItem>
             {onPublish || showExports ? <DropdownMenuSeparator /> : null}
@@ -95,7 +94,7 @@ export function DesignExportMenu({
           <>
             <DropdownMenuItem disabled={publishDisabled} onClick={onPublish}>
               {publishing ? <Loader2 className="animate-spin" /> : <Share2 />}
-              Publish
+              {t("design.toolbar.publish")}
             </DropdownMenuItem>
             {showExports ? <DropdownMenuSeparator /> : null}
           </>

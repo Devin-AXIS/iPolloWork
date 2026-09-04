@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRight, FilesIcon, Folder, FolderOpen, ListTree, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, Sparkles } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRight, FileOutput, Folder, FolderOpen, ListTree, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
@@ -13,6 +13,7 @@ import {
 } from "@/app/lib/session-title";
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
 import { buildReviseFilePrompt } from "@/components/chat/utils";
+import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { t } from "@/i18n";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import { createWorkspaceFileOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -681,7 +682,7 @@ export function ConversationOutputTrigger({ active, disabled, onClick, popover =
       disabled={disabled}
       onClick={onClick}
     >
-      <FilesIcon className="size-4" strokeWidth={1.75} />
+      <FileOutput className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
     </Button>
   );
 

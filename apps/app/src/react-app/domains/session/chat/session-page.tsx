@@ -100,7 +100,10 @@ import { getComposerDraft, useComposerStateStore } from "../surface/composer-sta
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarRightToggleIcon,
+  SidebarToggleIcon,
 } from "@/components/ui/sidebar";
+import { NAVIGATION_ICON_STROKE_WIDTH, ProjectFolderIcon } from "@/components/navigation-icons";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -278,15 +281,11 @@ function ProjectHeaderButton({ projectName, onClick }: { projectName: string; on
             type="button"
             data-testid="session-header-project"
             aria-label={projectName}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
             onClick={onClick}
           >
-            <span className="flex size-4 items-center justify-center" aria-hidden="true">
-              <img
-                src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
-                alt=""
-                className="h-auto w-3.5 dark:invert"
-              />
+            <span className="flex size-4 items-center justify-center">
+              <ProjectFolderIcon />
             </span>
           </button>
         )}
@@ -373,7 +372,7 @@ function ProjectWorkNavigation({
               aria-label={`${t("work.navigation")} · ${activeLabel}`}
             >
               <span>{activeLabel}</span>
-              <ChevronDown className="size-3.5 text-[#5a6774] dark:text-dls-secondary" aria-hidden />
+              <ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
             </button>
           )}
         />
@@ -4543,7 +4542,7 @@ export function SessionPage(props: SessionPageProps) {
                 onClick={openLeftSidebar}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
-                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
+                <SidebarToggleIcon />
               </Button>
             ) : null}
             <div className={cn(
@@ -4574,12 +4573,12 @@ export function SessionPage(props: SessionPageProps) {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="shrink-0 rounded-lg text-[#8A8A8A] hover:bg-muted hover:text-[#8A8A8A] mac:titlebar-no-drag"
+                        className="shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
                         data-testid="session-header-more-actions"
                         aria-label={t("session.palette_title_actions")}
                         title={t("session.palette_title_actions")}
                       >
-                        <Ellipsis className="size-4" />
+                        <Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
                       </Button>
                     }
                   />
@@ -4695,11 +4694,7 @@ export function SessionPage(props: SessionPageProps) {
                           onClick={toggleRightPanel}
                           data-testid="right-panel-toggle"
                         >
-                          <img
-                            src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                            alt=""
-                            className="h-3 w-4 shrink-0 dark:invert"
-                          />
+                          <SidebarRightToggleIcon panelOpen={sidePanelOpen} />
                         </Button>
                       }
                     />

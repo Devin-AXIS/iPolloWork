@@ -30,7 +30,7 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('setEditing(isPresentationTemplate);');
-    expect(source).toContain("Edit");
+    expect(source).toContain('t("design.toolbar.edit")');
   });
 
   test("keeps the website toolbar compact and ordered", async () => {
@@ -74,9 +74,25 @@ describe("Design deck navigation", () => {
   test("orders editing actions before sharing and export", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source.indexOf('aria-label="Fit canvas to view"')).toBeLessThan(source.indexOf('aria-label="Save design"'));
-    expect(source.indexOf('aria-label="Save design"')).toBeLessThan(source.indexOf('aria-label="Publish to object storage"'));
-    expect(source.indexOf('aria-label="Publish to object storage"')).toBeLessThan(source.indexOf("<DesignExportMenu"));
+    expect(source).toContain('{saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}');
+    expect(source).not.toContain('dirty ? <Save /> : <Check />');
+    expect(source.indexOf('data-testid="design-mode-controls"')).toBeLessThan(source.indexOf('data-testid="design-history-controls"'));
+    expect(source.indexOf('data-testid="design-history-controls"')).toBeLessThan(source.indexOf('data-testid="design-sharing-controls"'));
+    expect(source.indexOf('aria-label="Fit canvas to view"')).toBeLessThan(source.indexOf('aria-label={t("design.toolbar.save")}'));
+    expect(source.indexOf('aria-label={t("design.toolbar.publish")}')).toBeLessThan(source.indexOf("<DesignExportMenu"));
+  });
+
+  test("uses a localized preview-edit segment and keeps properties beside it", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground');
+    expect(source).toContain('[&_svg]:!size-[18px] [&_svg]:stroke-[1.5]');
+    expect(source).not.toContain("<Switch");
+    expect(source).toContain('data-testid="design-mode-toggle"');
+    expect(source).toContain('value={[editing ? "edit" : "preview"]}');
+    expect(source).toContain('t("design.toolbar.preview")');
+    expect(source).toContain('t("design.toolbar.edit")');
+    expect(source.indexOf('data-testid="design-mode-toggle"')).toBeLessThan(source.indexOf('data-testid="design-properties-button"'));
   });
 
   test("offers selected-element deletion only from the floating toolbar", async () => {
@@ -200,7 +216,7 @@ describe("Design deck navigation", () => {
   test("explains why Undo is disabled before the first change", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}');
+    expect(source).toContain('title={history.length === 0 && !aiUndoCheckpoint ? t("design.toolbar.undo_empty") : t("design.toolbar.undo")}');
   });
 
   test("dismisses the floating selection toolbar when the editor deselects", async () => {
