@@ -49,7 +49,7 @@ import type {
   ProjectSessionList,
 } from "../../../../app/types";
 import type { ConversationPermission, ConversationQuestion } from "../engine/conversation-engine";
-import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
+import { ConversationOutputPanel, ConversationOutputPopover, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import {
   type ArtifactInteractionContext,
@@ -2589,11 +2589,15 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
+  const [outputFilesPopoverOpen, setOutputFilesPopoverOpen] = useState(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = panelRailActive && activePanelTab?.type === "video";
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
+  useEffect(() => {
+    setOutputFilesPopoverOpen(false);
+  }, [effectiveSidePanelView, props.selectedSessionId]);
   useEffect(() => {
     if (activeSidePanel === "video") openCurrentVideoStudio({ auto: true });
   }, [activeSidePanel, openCurrentVideoStudio]);
@@ -4650,34 +4654,59 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
 
             <div data-testid="session-header-actions" className="relative z-10 col-start-3 flex items-center gap-1.5 justify-self-end text-gray-10 mac:titlebar-no-drag">
-              <ConversationOutputTrigger
-                active={activeSidePanel === "outputs"}
-                disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
-                onClick={() => toggleCurrentSidePanel("outputs")}
-              />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId && !sidePanelOpen}
-                      onClick={toggleRightPanel}
-                    >
-                      <img
-                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                        alt=""
-                        className="h-3 w-4 shrink-0 dark:invert"
-                      />
-                    </Button>
-                  }
+              {sidePanelOpen && activeSidePanel !== "outputs" ? (
+                <ConversationOutputPopover
+                  open={outputFilesPopoverOpen}
+                  onOpenChange={setOutputFilesPopoverOpen}
+                  disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
+                  messages={conversationMessages}
+                  sessionId={props.selectedSessionId ?? undefined}
+                  sessionTitle={selectedSessionTitle}
+                  client={props.ipolloworkServerClient}
+                  workspaceId={props.runtimeWorkspaceId}
+                  workspaceRoot={props.selectedWorkspaceRoot}
+                  openTargets={accessibleTargets}
+                  templateEntryPath={templateEntryPathForArtifacts}
+                  supplementalFiles={artifactFiles}
+                  artifactContext={artifactContext}
+                  onOpenTarget={openTarget}
+                  onOpenVideoStudio={openCurrentVideoArtifactStudio}
                 />
-                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
-              </Tooltip>
+              ) : (
+                <ConversationOutputTrigger
+                  active={activeSidePanel === "outputs"}
+                  disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
+                  onClick={() => toggleCurrentSidePanel("outputs")}
+                />
+              )}
+              {!panelRailActive ? (
+                <motion.div layoutId="right-panel-toggle" transition={{ duration: 0.2, ease: "easeOut" }}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          aria-pressed={sidePanelOpen}
+                          disabled={!props.selectedSessionId && !sidePanelOpen}
+                          onClick={toggleRightPanel}
+                          data-testid="right-panel-toggle"
+                        >
+                          <img
+                            src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
+                            alt=""
+                            className="h-3 w-4 shrink-0 dark:invert"
+                          />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+                  </Tooltip>
+                </motion.div>
+              ) : null}
 
             </div>
           </header>

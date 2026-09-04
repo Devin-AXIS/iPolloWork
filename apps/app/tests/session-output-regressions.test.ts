@@ -111,10 +111,14 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
     expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
     expect(artifactSource).toContain('<FilesIcon className="size-4" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('data-testid="conversation-files-popover"');
+    expect(artifactSource).toContain("onOpenChange(false);");
     expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
     expect(artifactSource).toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
     expect(artifactSource).toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
     expect(sessionPageSource).toContain('publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")');
+    expect(sessionPageSource).toContain('sidePanelOpen && activeSidePanel !== "outputs"');
+    expect(sessionPageSource).toContain('<ConversationOutputPopover');
     expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
@@ -126,6 +130,9 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain("onOpenVideoStudio?.(presentedName)");
     expect(sessionPageSource).toContain("openDesignTab(target.value, target.name)");
     expect(sidePanelSource).toContain("displayName={activeTab.label}");
+    expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
+    expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
+    expect(sidePanelSource).not.toContain('aria-label="Close panel"');
     expect(designPanelSource).toContain("const activePageDisplayName = activePagePath === lockedPath");
   });
 

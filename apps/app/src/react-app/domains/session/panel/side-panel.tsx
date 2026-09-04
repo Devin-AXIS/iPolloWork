@@ -14,7 +14,7 @@ import {
   RotateCw,
   X,
 } from "lucide-react";
-import { useDragControls } from "motion/react";
+import { motion, useDragControls } from "motion/react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { publicAssetUrl } from "@/app/lib/public-asset";
@@ -719,96 +719,107 @@ export function SidePanel({
         <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
           <div className={cn("flex h-10 items-center gap-1 px-2 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-              <PanelTabList
-                values={tabs.map((tab) => tab.id)}
-                onReorder={reorderTabs}
-              >
-                {tabs.map((tab) => (
-                  <SidePanelTab
-                    key={tab.id}
-                    tab={tab}
-                    active={tab.id === activeTab?.id}
-                    onSelect={selectTab}
-                    onClose={closeTab}
-                  />
-                ))}
-              </PanelTabList>
-            </div>
-            {isBrowserAvailable || launcherItems.length > 0 ? (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={(
-                      <DropdownMenuTrigger
+              <div className="flex min-w-max items-center gap-1">
+                <PanelTabList
+                  values={tabs.map((tab) => tab.id)}
+                  onReorder={reorderTabs}
+                >
+                  {tabs.map((tab) => (
+                    <SidePanelTab
+                      key={tab.id}
+                      tab={tab}
+                      active={tab.id === activeTab?.id}
+                      onSelect={selectTab}
+                      onClose={closeTab}
+                    />
+                  ))}
+                </PanelTabList>
+                {isBrowserAvailable || launcherItems.length > 0 ? (
+                  <DropdownMenu>
+                    <Tooltip>
+                      <TooltipTrigger
                         render={(
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t("side_panel.add_entry")}
-                          >
-                            <Plus />
-                          </Button>
+                          <DropdownMenuTrigger
+                            render={(
+                              <Button
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("side_panel.add_entry")}
+                              >
+                                <Plus />
+                              </Button>
+                            )}
+                          />
                         )}
                       />
-                    )}
-                  />
-                  <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent
-                  align="end"
-                  positionerClassName={expanded ? "z-[70]" : undefined}
-                  className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
-                >
-                  {launcherItems.map((item) => {
-                    return (
-                      <DropdownMenuItem
-                        key={item.id}
-                        disabled={item.disabled}
-                        onClick={item.onClick}
-                        className={[
-                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
-                        ].join(" ")}
-                      >
-                        <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
-                        <span className="flex-1">{item.label}</span>
-                        {item.shortcut ? (
-                          <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
-                        ) : null}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  {launcherItems.length === 0 && isBrowserAvailable ? (
-                    <DropdownMenuItem
-                      onClick={() => createTab()}
-                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-foreground focus:bg-muted focus:text-foreground"
+                      <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
+                    </Tooltip>
+                    <DropdownMenuContent
+                      align="end"
+                      positionerClassName={expanded ? "z-[70]" : undefined}
+                      className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
                     >
-                      <Globe className="size-6 stroke-[1.8] text-[#666666]" />
-                      <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            {onExpandedChange ? (
-              <Button
-                variant={expanded ? "secondary" : "ghost"}
-                size="icon-sm"
-                onClick={() => onExpandedChange(!expanded)}
-                aria-label={expanded ? "Restore panel width" : "Expand panel"}
-                aria-pressed={expanded}
-              >
-                {expanded ? <Minimize2 /> : <Maximize2 />}
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onClose}
-              aria-label="Close panel"
-              title="Close panel"
-            >
-              <X />
-            </Button>
+                      {launcherItems.map((item) => {
+                        return (
+                          <DropdownMenuItem
+                            key={item.id}
+                            disabled={item.disabled}
+                            onClick={item.onClick}
+                            className={[
+                              "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
+                            ].join(" ")}
+                          >
+                            <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
+                            <span className="flex-1">{item.label}</span>
+                            {item.shortcut ? (
+                              <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
+                            ) : null}
+                          </DropdownMenuItem>
+                        );
+                      })}
+                      {launcherItems.length === 0 && isBrowserAvailable ? (
+                        <DropdownMenuItem
+                          onClick={() => createTab()}
+                          className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-foreground focus:bg-muted focus:text-foreground"
+                        >
+                          <Globe className="size-6 stroke-[1.8] text-[#666666]" />
+                          <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
+                        </DropdownMenuItem>
+                      ) : null}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {onExpandedChange ? (
+                <Button
+                  variant={expanded ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  onClick={() => onExpandedChange(!expanded)}
+                  aria-label={expanded ? "Restore panel width" : "Expand panel"}
+                  aria-pressed={expanded}
+                >
+                  {expanded ? <Minimize2 /> : <Maximize2 />}
+                </Button>
+              ) : null}
+              <motion.div layoutId="right-panel-toggle" transition={{ duration: 0.2, ease: "easeOut" }}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={onClose}
+                  aria-label={t("session.right_panel_close")}
+                  title={t("session.right_panel_close")}
+                  data-testid="right-panel-toggle"
+                >
+                  <img
+                    src={publicAssetUrl("sidebar-right-open.svg")}
+                    alt=""
+                    className="h-3 w-4 shrink-0 dark:invert"
+                  />
+                </Button>
+              </motion.div>
+            </div>
           </div>
         </div>
         {!activeTab ? (

@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import {
   type ArtifactInteractionContext,
@@ -668,27 +669,68 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   );
 }
 
-/** Small header control for the mutually-exclusive conversation output panel. */
-export function ConversationOutputTrigger({ active, disabled, onClick }: { active: boolean; disabled: boolean; onClick: () => void }) {
+/** Small header control for task files, either as a panel or a popover. */
+export function ConversationOutputTrigger({ active, disabled, onClick, popover = false }: { active: boolean; disabled: boolean; onClick?: () => void; popover?: boolean }) {
+  const button = (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+      aria-label={t("session.files.open")}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      <FilesIcon className="size-4" strokeWidth={1.75} />
+    </Button>
+  );
+
   return (
     <Tooltip>
       <TooltipTrigger
-        render={(
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-            aria-label={t("session.files.open")}
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={onClick}
-          >
-            <FilesIcon className="size-4" strokeWidth={1.75} />
-          </Button>
-        )}
+        render={popover ? <PopoverTrigger render={button} /> : button}
       />
       <TooltipContent>{t("session.files.open")}</TooltipContent>
     </Tooltip>
+  );
+}
+
+type ConversationOutputPopoverProps = ConversationOutputPanelProps & {
+  disabled: boolean
+  open: boolean
+  onOpenChange: (open: boolean) => void
+};
+
+/** Temporary file picker shown without replacing an already-open work panel. */
+export function ConversationOutputPopover({ disabled, open, onOpenChange, openTargets = [], onOpenTarget, onOpenVideoStudio, ...props }: ConversationOutputPopoverProps) {
+  const handleOpenTarget = (target: OpenTarget, options?: OpenTargetOptions) => {
+    onOpenChange(false);
+    onOpenTarget?.(target, options);
+  };
+  const handleOpenVideoStudio = (displayName?: string) => {
+    onOpenChange(false);
+    onOpenVideoStudio?.(displayName);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <ConversationOutputTrigger active={open} disabled={disabled} popover />
+      <PopoverContent
+        align="end"
+        sideOffset={8}
+        initialFocus={false}
+        className="h-[min(70vh,640px)] w-[min(520px,calc(100vw-2rem))] gap-0 overflow-hidden rounded-3xl p-0"
+        data-testid="conversation-files-popover"
+      >
+        <OpenTargetProvider openTargets={openTargets} onOpenTarget={handleOpenTarget}>
+          <ConversationOutputPanelContent
+            {...props}
+            onOpenTarget={handleOpenTarget}
+            onOpenVideoStudio={handleOpenVideoStudio}
+          />
+        </OpenTargetProvider>
+      </PopoverContent>
+    </Popover>
   );
 }
 
