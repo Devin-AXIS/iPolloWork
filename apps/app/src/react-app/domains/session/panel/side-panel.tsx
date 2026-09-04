@@ -94,7 +94,6 @@ export type SidePanelLauncherItem = {
   group: "content" | "studio";
   shortcut?: string;
   icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "workspace-app";
-  active?: boolean;
   disabled?: boolean;
   onClick: () => void;
 };
@@ -800,13 +799,10 @@ export function SidePanel({
                           <React.Fragment key={item.id}>
                             {index > 0 && launcherItems[index - 1]?.group !== item.group ? <DropdownMenuSeparator className="my-1" /> : null}
                             <DropdownMenuItem
+                              data-testid={`side-panel-launcher-${item.id}`}
                               disabled={item.disabled}
                               onClick={item.onClick}
-                              aria-current={item.active ? "page" : undefined}
-                              className={cn(
-                                "h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!",
-                                item.active && "bg-foreground/10",
-                              )}
+                              className="h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!"
                             >
                               <SidePanelLauncherIcon item={item} />
                               <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{item.label}</span>

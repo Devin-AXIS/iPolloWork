@@ -3967,6 +3967,17 @@ export function SessionPage(props: SessionPageProps) {
     }, props.selectedSessionId);
     return outcome ? promptWasDispatched(outcome) : false;
   }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
+  const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
+  const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
+    ? `design:${props.selectedSessionId}:${encodeURIComponent(launcherDesignPath)}`
+    : null;
+  const launcherVideoSessionId = currentTemplateSessionData?.manifest.surface === "video"
+    ? currentTemplateSessionData.sessionId
+    : props.selectedSessionId;
+  const launcherArtifactTargetIds = new Set(artifactFileTargets.map((target) => target.id));
+  const designOpen = Boolean(launcherDesignTabId && sessionPanelState.tabs.some((tab) => tab.id === launcherDesignTabId));
+  const videoOpen = Boolean(launcherVideoSessionId && sessionPanelState.tabs.some((tab) => tab.id === `video:${launcherVideoSessionId}`));
+  const filesOpen = sessionPanelState.tabs.some((tab) => tab.type === "artifact" && launcherArtifactTargetIds.has(tab.id));
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
@@ -3974,7 +3985,6 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       shortcut: "⌘T",
       icon: "web",
-      active: panelRailActive && activePanelTab?.type === "browser",
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
     },
@@ -3983,9 +3993,8 @@ export function SessionPage(props: SessionPageProps) {
       label: t("session.side_panel.design"),
       group: "content",
       icon: "design",
-      active: panelRailActive && activePanelTab?.type === "design",
       onClick: showDesignRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
     },
     {
       id: "files",
@@ -3993,25 +4002,22 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       shortcut: "⌘P",
       icon: "files",
-      active: panelRailActive && activePanelTab?.type === "artifact",
       onClick: showArtifactRailPane,
-      disabled: !hasArtifactTargets,
+      disabled: !hasArtifactTargets || filesOpen,
     },
     {
       id: "video",
       label: t("session.side_panel.video"),
       group: "content",
       icon: "video",
-      active: videoRailActive,
       onClick: showVideoRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
     {
       id: "plugin-workshop",
       label: t("plugin_workshop.title"),
       group: "studio",
       icon: "plugin-workshop",
-      active: panelRailActive && activePanelTab?.type === "plugin-studio",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
@@ -4020,13 +4026,10 @@ export function SessionPage(props: SessionPageProps) {
       label: surface.label,
       group: "studio",
       icon: surface.pluginId === "image-studio" ? "image-studio" : "workspace-app",
-      active: panelRailActive
-        && activePanelTab?.type === "workspace-app"
-        && activePanelTab.surface.id === surface.id,
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedSessionId,
+      disabled: !props.selectedSessionId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
     })),
-  ], [activePanelTab, addBrowserPanelTab, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, workspaceApps]);
+  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -5110,10 +5113,7 @@ export function SessionPage(props: SessionPageProps) {
                             <button
                               key={item.id}
                               type="button"
-                              className={cn(
-                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
-                                item.active && "bg-muted text-foreground",
-                              )}
+                              className="flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                               onClick={item.onClick}
                               disabled={item.disabled}
                             >

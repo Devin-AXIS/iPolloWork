@@ -55,13 +55,21 @@ export default {
       run: async (ctx) => {
         await ctx.prove("The add action belongs to the tab strip", {
           voiceover: vo[0],
-          action: async () => ensureDesignPanel(ctx),
+          action: async () => {
+            await ensureDesignPanel(ctx);
+            await ctx.trustedClick(ADD_ENTRY);
+            await ctx.waitFor(`Boolean(document.querySelector('[data-slot="dropdown-menu-content"]'))`, {
+              timeoutMs: 10_000,
+              label: "side-panel launcher menu",
+            });
+          },
           assert: async () => {
             const metrics = await ctx.eval(`(() => {
               const add = document.querySelector(${JSON.stringify(ADD_ENTRY)});
               const tabs = Array.from(document.querySelectorAll('button[aria-label^="Select tab:"]'));
               const lastTab = tabs.at(-1);
               const expand = document.querySelector('button[aria-label="Expand panel"]');
+              const menu = document.querySelector('[data-slot="dropdown-menu-content"]');
               if (!add || !lastTab || !expand) return null;
               const addRect = add.getBoundingClientRect();
               const tabRect = lastTab.getBoundingClientRect();
@@ -69,10 +77,17 @@ export default {
               return {
                 addAfterTab: addRect.left >= tabRect.right - 1,
                 addBeforeControls: addRect.right <= expandRect.left + 1,
+                menuOpen: Boolean(menu),
+                selectedLauncherItems: menu?.querySelectorAll('[aria-current="page"]').length ?? -1,
+                highlightedLauncherItems: menu?.querySelectorAll('[data-highlighted]').length ?? -1,
+                designDisabled: document.querySelector('[data-testid="side-panel-launcher-design"]')?.hasAttribute("data-disabled") ?? false,
+                webDisabled: document.querySelector('[data-testid="side-panel-launcher-web"]')?.hasAttribute("data-disabled") ?? true,
               };
             })()`);
             ctx.assert(metrics?.addAfterTab, "The add action does not follow the final tab.");
             ctx.assert(metrics?.addBeforeControls, "The add action is still grouped with the panel controls.");
+            ctx.assert(metrics?.menuOpen && metrics.selectedLauncherItems === 0 && metrics.highlightedLauncherItems === 0, `The launcher menu starts with an active or highlighted item: ${JSON.stringify(metrics)}`);
+            ctx.assert(metrics?.designDisabled && !metrics.webDisabled, `Singleton and repeatable launchers do not expose the correct availability: ${JSON.stringify(metrics)}`);
           },
           screenshot: { name: "add-action-follows-tabs", rejectText: ["Something went wrong"] },
         });
@@ -84,6 +99,7 @@ export default {
         await ctx.prove("The panel control moves to the open panel and preserves its tab", {
           voiceover: vo[1],
           action: async () => {
+            if (await ctx.eval(`Boolean(document.querySelector('[data-slot="dropdown-menu-content"]'))`)) await pressEscape(ctx);
             const before = await ctx.eval(`(() => {
               const panelToggle = document.querySelector(${JSON.stringify(PANEL_TOGGLE)});
               const mainToggle = document.querySelector('[data-testid="session-header-actions"] ${PANEL_TOGGLE}');

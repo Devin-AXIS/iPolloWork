@@ -446,7 +446,16 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).not.toContain("WebkitMaskImage");
     expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
     expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
-    expect(sidePanelSource).not.toContain('item.active && "bg-foreground/10 font-medium"');
+    expect(sidePanelSource).not.toContain("item.active");
+    expect(sidePanelSource).not.toContain("aria-current={item.active");
+    expect(sidePanelSource).toContain('data-testid={`side-panel-launcher-${item.id}`}');
+    expect(sessionPageSource).not.toContain("active: panelRailActive && activePanelTab");
+    expect(sessionPageSource).not.toContain("active: videoRailActive");
+    expect(sessionPageSource).not.toContain("item.active");
+    expect(sessionPageSource).toContain("designOpen");
+    expect(sessionPageSource).toContain("filesOpen");
+    expect(sessionPageSource).toContain("videoOpen");
+    expect(sessionPageSource).toContain('tab.type === "workspace-app" && tab.surface.id === surface.id');
     expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
     expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
     expect(sidePanelSource).not.toContain('text-[#666666]');
