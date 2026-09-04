@@ -110,22 +110,48 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
     expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
     expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
-    expect(artifactSource).toContain('<FilesIcon className="size-4" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('<FileOutput className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(artifactSource).toContain('data-testid="conversation-files-popover"');
+    expect(artifactSource).toContain('data-testid="conversation-files-panel"');
+    expect(artifactSource).not.toContain("rounded-3xl border border-border/80 bg-card shadow-sm");
+    expect(artifactSource).toContain("onOpenChange(false);");
     expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
-    expect(artifactSource).toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
-    expect(artifactSource).toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
-    expect(sessionPageSource).toContain('publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")');
+    expect(artifactSource).not.toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('className="h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"');
+    expect(artifactSource).toContain('grid-cols-[1fr_auto_1fr]');
+    expect(artifactSource).toContain('w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)]');
+    expect(artifactSource).toContain('onClose={() => onOpenChange(false)}');
+    expect(artifactSource).not.toContain("tile?: boolean");
+    expect(artifactSource).not.toContain("tile={!popover}");
+    expect(artifactSource).not.toContain("hover:-translate-y-px");
+    expect(artifactSource).not.toContain("hover:shadow-sm");
+    expect(artifactSource).toContain('data-testid="artifact-file-card"');
+    expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
+    expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
+    expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sessionPageSource).toContain('sidePanelOpen && activeSidePanel !== "outputs"');
+    expect(sessionPageSource).toContain('<ConversationOutputPopover');
     expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
-    expect(artifactSource).toContain("min-h-[76px]");
+    expect(artifactSource).toContain('"h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4"');
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
     expect(artifactSource).toContain("onOpenVideoStudio?.(presentedName)");
     expect(sessionPageSource).toContain("openDesignTab(target.value, target.name)");
     expect(sidePanelSource).toContain("displayName={activeTab.label}");
+    expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
+    expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
+    expect(sidePanelSource).toContain('<Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<SidebarRightToggleIcon panelOpen />');
+    expect(sidePanelSource).toContain('className={cn("flex h-10 items-center gap-1 pl-2 pr-3 mac:titlebar-drag"');
+    expect(sidePanelSource.match(/className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"/g)?.length).toBe(3);
+    expect(sidePanelSource).not.toContain('aria-label="Close panel"');
     expect(designPanelSource).toContain("const activePageDisplayName = activePagePath === lockedPath");
   });
 
@@ -402,6 +428,47 @@ describe("session output issue regressions", () => {
       "titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}",
     );
     expect(sidePanelSource).toContain('titlebarInset && "mac:pl-20"');
+  });
+
+  test("uses the shared menu hierarchy and semantic icon color in the panel launcher", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sidePanelSource).toContain('className="w-56"');
+    expect(sidePanelSource).toContain("launcherItems[index - 1]?.group !== item.group");
+    expect(sidePanelSource).toContain("<DropdownMenuSeparator");
+    expect(sidePanelSource).toContain('className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"');
+    expect(sidePanelSource).toContain("strokeWidth: NAVIGATION_ICON_STROKE_WIDTH");
+    expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
+    expect(sidePanelSource).not.toContain("WebkitMaskImage");
+    expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
+    expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
+    expect(sidePanelSource).not.toContain("item.active");
+    expect(sidePanelSource).not.toContain("aria-current={item.active");
+    expect(sidePanelSource).toContain('data-testid={`side-panel-launcher-${item.id}`}');
+    expect(sessionPageSource).not.toContain("active: panelRailActive && activePanelTab");
+    expect(sessionPageSource).not.toContain("active: videoRailActive");
+    expect(sessionPageSource).not.toContain("item.active");
+    expect(sessionPageSource).toContain("designOpen");
+    expect(sessionPageSource).toContain("filesOpen");
+    expect(sessionPageSource).toContain("videoOpen");
+    expect(sessionPageSource).toContain('tab.type === "workspace-app" && tab.surface.id === surface.id');
+    expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
+    expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
+    expect(sidePanelSource).not.toContain('text-[#666666]');
+    expect(sessionPageSource).toContain('group: "content"');
+    expect(sessionPageSource).toContain('group: "studio"');
+    expect(sessionPageSource).toContain('label: t("session.side_panel.design")');
+    expect(sessionPageSource).not.toContain('label: "Design"');
   });
 
   test("latest-turn output label only renders for the latest artifact assistant message", () => {

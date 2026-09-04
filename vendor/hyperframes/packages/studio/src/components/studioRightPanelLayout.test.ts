@@ -661,12 +661,11 @@ describe("Studio right panel layout", () => {
     expect(shell).toContain("previewOnly ? (");
     expect(shell).toContain("<PreviewPane editingEnabled={false} />");
     expect(shell).toContain("!previewOnly && <StudioFeedbackBar />");
-    expect(header).toContain(
-      'import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url"',
-    );
-    expect(header).toContain('import exportIconSrc from "../icons/studioHeaderExport.svg?url"');
+    expect(header).toContain('<SlidersHorizontal className="hf-studio-properties-icon h-4 w-4 shrink-0" weight="regular"');
+    expect(header).toContain('<DownloadSimple className="h-4 w-4 shrink-0" weight="regular"');
+    expect(header).toContain('text-[var(--hf-panel-text-2)]');
     expect(header).toContain("hover:border-[var(--hf-panel-text-3)]");
-    expect(header).toContain("hover:bg-[var(--hf-panel-hover)]");
+    expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
     expect(header).toContain("hf-studio-header-export");
     expect(header).toContain("hf-studio-properties-action");
     expect(header).toContain("hf-studio-header-title-text");
@@ -677,6 +676,7 @@ describe("Studio right panel layout", () => {
     expect(header).toContain('aria-label={isRendering ? t("header.rendering") : t("header.export")}');
     expect(styles).toContain(".hf-studio-header-export {");
     expect(styles).toContain(".hf-studio-properties-action:hover");
+    expect(styles).toContain("background-color: var(--hf-studio-header-hover) !important;");
     expect(styles).toContain("color: #ffffff !important;");
     expect(styles).toContain("@media (max-width: 720px)");
     expect(styles).toContain("width: 36px;");

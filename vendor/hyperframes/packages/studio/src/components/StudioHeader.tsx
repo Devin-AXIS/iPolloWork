@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FilmSlate, FloppyDisk, GithubLogo, Sparkle, SquaresFour } from "@phosphor-icons/react";
+import { DownloadSimple, FilmSlate, FloppyDisk, GithubLogo, SlidersHorizontal, Sparkle, SquaresFour } from "@phosphor-icons/react";
 import {
   STUDIO_INSPECTOR_PANELS_ENABLED,
   STUDIO_MANUAL_EDITING_DISABLED_TITLE,
@@ -10,8 +10,6 @@ import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
 import { RotateCw } from "../icons/SystemIcons";
-import propertiesIconSrc from "../icons/studioHeaderProperties.svg?url";
-import exportIconSrc from "../icons/studioHeaderExport.svg?url";
 
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
@@ -144,7 +142,7 @@ export function StudioHeader({
               <a className="mt-1 truncate text-[9px] font-medium text-[var(--hf-panel-text-3)] transition-colors hover:text-[var(--hf-panel-text-1)]" href={hostContext.branding.bylineUrl} target="_blank" rel="noreferrer">{hostContext.branding.byline}</a>
             </span>
             {hostContext.actions.openTemplates ? (
-              <button type="button" onClick={() => requestHostAction("open-templates")} className="ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)]">
+              <button type="button" onClick={() => requestHostAction("open-templates")} className="ml-2 flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)]">
                 <SquaresFour className="h-4 w-4" />{t("header.templates")}
               </button>
             ) : null}
@@ -194,7 +192,7 @@ export function StudioHeader({
           <>
             {hostContext?.branding && hostContext.actions.askAi ? (
               <div className="flex items-center gap-1">
-                <a href={hostContext.branding.repositoryUrl} target="_blank" rel="noreferrer" aria-label={t("header.openRepository")} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)]">
+                <a href={hostContext.branding.repositoryUrl} target="_blank" rel="noreferrer" aria-label={t("header.openRepository")} className="grid h-8 w-8 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)]">
                   <GithubLogo className="h-[17px] w-[17px]" />
                 </a>
                 <button type="button" onClick={() => requestHostAction("ask-ai")} className="flex h-8 items-center gap-1.5 rounded-lg bg-[var(--hf-panel-text-0)] px-3 text-xs font-semibold text-[var(--hf-panel-bg)] shadow-sm transition-[opacity,transform] hover:opacity-90 active:scale-[0.98]">
@@ -209,10 +207,10 @@ export function StudioHeader({
                     <button
                       type="button"
                       onClick={() => requestHostAction("save-as-template")}
-                      className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
                       aria-label={t("header.saveAsTemplate")}
                     >
-                      <FloppyDisk className="h-4 w-4" aria-hidden="true" />
+                      <FloppyDisk className="h-4 w-4" weight="regular" aria-hidden="true" />
                     </button>
                   </Tooltip>
                 ) : null}
@@ -221,10 +219,10 @@ export function StudioHeader({
                     <button
                       type="button"
                       onClick={() => requestHostAction("reload")}
-                      className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
+                      className="hf-studio-header-action grid h-8 w-8 shrink-0 place-items-center rounded-lg text-[var(--hf-panel-text-2)] transition-[background-color,color,transform] outline-none hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)] focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.96]"
                       aria-label={t("header.reloadStudio")}
                     >
-                      <RotateCw className="h-4 w-4" />
+                      <RotateCw className="h-4 w-4" weight="regular" />
                     </button>
                   </Tooltip>
                 ) : null}
@@ -245,14 +243,14 @@ export function StudioHeader({
                   inspectorButtonActive
                     ? "border-[var(--hf-panel-text-3)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-0)]"
                     : STUDIO_INSPECTOR_PANELS_ENABLED
-                      ? "border-[var(--hf-panel-border-input)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-1)] hover:border-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
+                      ? "border-[var(--hf-panel-border-input)] bg-[var(--hf-studio-button-bg)] text-[var(--hf-panel-text-2)] hover:border-[var(--hf-panel-text-3)] hover:bg-[var(--hf-studio-header-hover)] hover:text-[var(--hf-panel-text-0)]"
                       : "cursor-not-allowed border-[#d9dad7] text-[#92948f]"
                 }`}
                 aria-label={
                   STUDIO_INSPECTOR_PANELS_ENABLED ? t("header.inspector") : STUDIO_MANUAL_EDITING_DISABLED_TITLE
                 }
               >
-                <img className="hf-studio-properties-icon h-4 w-4 shrink-0" src={propertiesIconSrc} alt="" aria-hidden="true" />
+                <SlidersHorizontal className="hf-studio-properties-icon h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
                 <span className="hf-studio-header-action-label">{t("header.inspector")}</span>
               </button>
             </Tooltip>
@@ -263,7 +261,7 @@ export function StudioHeader({
                 className="hf-studio-header-action hf-studio-header-export flex h-8 items-center gap-1 overflow-hidden rounded-lg px-2 text-xs font-medium leading-normal transition-[background-color,transform] outline-none focus-visible:ring-2 focus-visible:ring-black/25 focus-visible:ring-offset-2 active:scale-[0.98]"
                 aria-label={isRendering ? t("header.rendering") : t("header.export")}
               >
-                <img className="h-4 w-4 shrink-0" src={exportIconSrc} alt="" aria-hidden="true" />
+                <DownloadSimple className="h-4 w-4 shrink-0" weight="regular" aria-hidden="true" />
                 <span className="hf-studio-header-action-label">{isRendering ? t("header.rendering") : t("header.export")}</span>
               </button>
             </Tooltip>

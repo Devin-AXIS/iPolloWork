@@ -92,12 +92,12 @@ export function DesignGradientPicker({ value, recommendationColors, onChange }: 
         side="left"
         sideOffset={12}
         initialFocus={false}
-        className="w-[280px] gap-0 overflow-hidden rounded-2xl border border-[#dedede] bg-white p-0 text-[#171717] shadow-[0_16px_40px_rgba(0,0,0,0.14),0_2px_8px_rgba(0,0,0,0.06)] before:hidden"
+        className="w-[280px] gap-0 overflow-hidden p-0"
         aria-label="Gradient editor"
       >
-        <div className="flex h-12 items-center justify-between border-b border-[#e5e5e5] px-4">
+        <div className="flex h-12 items-center justify-between border-b border-foreground/5 px-4">
           <span className="text-[14px] font-semibold tracking-[-0.3px]">Gradient</span>
-          <PopoverClose className="grid size-7 place-items-center rounded-lg transition-colors hover:bg-[#f5f5f5] active:bg-[#e9e9e9]" aria-label="Close gradient editor">
+          <PopoverClose className="grid size-7 place-items-center rounded-lg transition-colors hover:bg-foreground/10 active:bg-foreground/15" aria-label="Close gradient editor">
             <X className="size-4" strokeWidth={1.5} />
           </PopoverClose>
         </div>
@@ -110,8 +110,8 @@ export function DesignGradientPicker({ value, recommendationColors, onChange }: 
                   key={index}
                   type="button"
                   className={cn(
-                    "absolute top-[-7px] grid size-[26px] place-items-center rounded-[7px] rounded-bl-[2px] border bg-white p-px shadow-[0_2px_6px_rgba(0,0,0,0.12)]",
-                    selectedStop === index ? "border-black" : "border-[#dedede]",
+                    "absolute top-[-7px] grid size-[26px] place-items-center rounded-[7px] rounded-bl-[2px] border bg-background p-px shadow-[0_2px_6px_rgba(0,0,0,0.12)]",
+                    selectedStop === index ? "border-foreground" : "border-border",
                   )}
                   style={index === 0 ? { left: -2 } : { right: -13 }}
                   onClick={() => setSelectedStop(index)}
@@ -124,7 +124,7 @@ export function DesignGradientPicker({ value, recommendationColors, onChange }: 
             </div>
             <button
               type="button"
-              className="grid size-6 place-items-center rounded-md transition-colors hover:bg-[#f5f5f5] active:bg-[#e9e9e9]"
+              className="grid size-6 place-items-center rounded-md transition-colors hover:bg-foreground/10 active:bg-foreground/15"
               onClick={() => commit({
                 ...gradient,
                 stops: [
@@ -148,7 +148,7 @@ export function DesignGradientPicker({ value, recommendationColors, onChange }: 
           <div className="mt-2 flex items-center gap-4">
             <button
               type="button"
-              className="grid size-6 place-items-center rounded-md transition-colors hover:bg-[#f5f5f5] active:bg-[#e9e9e9] disabled:cursor-not-allowed disabled:opacity-40"
+              className="grid size-6 place-items-center rounded-md transition-colors hover:bg-foreground/10 active:bg-foreground/15 disabled:cursor-not-allowed disabled:opacity-40"
               onClick={() => void pickColorFromScreen()}
               disabled={typeof window === "undefined" || !window.EyeDropper || pickingColor}
               aria-label="Pick color from screen"
@@ -190,8 +190,8 @@ export function DesignGradientPicker({ value, recommendationColors, onChange }: 
                 key={`${index}-${serializeLinearGradient(preset)}`}
                 type="button"
                 className={cn(
-                  "size-7 rounded-[7px] border border-[#dedede] transition-transform hover:scale-105 active:scale-95",
-                  sameGradient(gradient, preset) && "ring-2 ring-black ring-offset-1",
+                  "size-7 rounded-[7px] border border-border transition-transform hover:scale-105 active:scale-95",
+                  sameGradient(gradient, preset) && "ring-2 ring-foreground ring-offset-1",
                 )}
                 style={{ backgroundImage: serializeLinearGradient(preset) }}
                 onClick={() => commit(preset, true)}

@@ -59,6 +59,7 @@
   --hf-studio-controls-bg: #111216;
   --hf-studio-toolbar-bg: #131419;
   --hf-studio-button-bg: #202127;
+  --hf-studio-header-hover: #27272a;
   --hf-timeline-clip-bg: #18181b;
   --hf-timeline-clip-active: #202126;
   --hf-timeline-clip-hover: #24252b;
@@ -92,6 +93,7 @@
   --hf-panel-text-3: #52525b;
   --hf-panel-text-4: #71717a;
   --hf-panel-text-5: #a1a1aa;
+  --hf-studio-header-hover: color(display-p3 0.94 0.941 0.953);
   --hf-workspace-bg: #eef1f4;
   --hf-workspace-surface: #f8fafb;
   --hf-workspace-inset: #e7ebef;
@@ -204,10 +206,13 @@ body {
   background-color: #444440 !important;
 }
 
-.hf-studio-properties-action,
+.hf-studio-properties-action {
+  background-color: transparent !important;
+}
+
 .hf-studio-properties-action:hover,
 .hf-studio-properties-action:active {
-  background-color: transparent !important;
+  background-color: var(--hf-studio-header-hover) !important;
 }
 
 .hf-studio-header-title,

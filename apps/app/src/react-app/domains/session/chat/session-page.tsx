@@ -49,7 +49,7 @@ import type {
   ProjectSessionList,
 } from "../../../../app/types";
 import type { ConversationPermission, ConversationQuestion } from "../engine/conversation-engine";
-import { ConversationOutputPanel, ConversationOutputTrigger } from "@/components/chat/artifact";
+import { ConversationOutputPanel, ConversationOutputPopover, ConversationOutputTrigger } from "@/components/chat/artifact";
 import { buildSessionMarkdown, sessionMarkdownFilename } from "@/components/chat/utils";
 import {
   type ArtifactInteractionContext,
@@ -100,7 +100,10 @@ import { getComposerDraft, useComposerStateStore } from "../surface/composer-sta
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarRightToggleIcon,
+  SidebarToggleIcon,
 } from "@/components/ui/sidebar";
+import { NAVIGATION_ICON_STROKE_WIDTH, ProjectFolderIcon } from "@/components/navigation-icons";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -163,7 +166,7 @@ import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
-import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
+import { SidePanel, SidePanelLauncherIcon, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -278,15 +281,11 @@ function ProjectHeaderButton({ projectName, onClick }: { projectName: string; on
             type="button"
             data-testid="session-header-project"
             aria-label={projectName}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-dls-canvas text-dls-text transition-colors hover:bg-muted focus-visible:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none mac:titlebar-no-drag"
             onClick={onClick}
           >
-            <span className="flex size-4 items-center justify-center" aria-hidden="true">
-              <img
-                src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}
-                alt=""
-                className="h-auto w-3.5 dark:invert"
-              />
+            <span className="flex size-4 items-center justify-center">
+              <ProjectFolderIcon />
             </span>
           </button>
         )}
@@ -373,7 +372,7 @@ function ProjectWorkNavigation({
               aria-label={`${t("work.navigation")} · ${activeLabel}`}
             >
               <span>{activeLabel}</span>
-              <ChevronDown className="size-3.5 text-[#5a6774] dark:text-dls-secondary" aria-hidden />
+              <ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
             </button>
           )}
         />
@@ -2589,11 +2588,15 @@ export function SessionPage(props: SessionPageProps) {
   const [sessionPanelView, setSessionPanelView] = useState<SessionPanelView | null>(null);
   const effectiveSidePanelView = activeSidePanel ?? sessionPanelView;
   const sidePanelOpen = effectiveSidePanelView !== null;
+  const [outputFilesPopoverOpen, setOutputFilesPopoverOpen] = useState(false);
   const panelRailActive = activeSidePanel === "panel";
   const designRailActive = activeSidePanel === "design";
   const videoRailActive = panelRailActive && activePanelTab?.type === "video";
   const extensionsRailActive = activeSidePanel === "extensions";
   const voiceRailActive = activeSidePanel === "voice";
+  useEffect(() => {
+    setOutputFilesPopoverOpen(false);
+  }, [effectiveSidePanelView, props.selectedSessionId]);
   useEffect(() => {
     if (activeSidePanel === "video") openCurrentVideoStudio({ auto: true });
   }, [activeSidePanel, openCurrentVideoStudio]);
@@ -3964,60 +3967,69 @@ export function SessionPage(props: SessionPageProps) {
     }, props.selectedSessionId);
     return outcome ? promptWasDispatched(outcome) : false;
   }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
+  const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
+  const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
+    ? `design:${props.selectedSessionId}:${encodeURIComponent(launcherDesignPath)}`
+    : null;
+  const launcherVideoSessionId = currentTemplateSessionData?.manifest.surface === "video"
+    ? currentTemplateSessionData.sessionId
+    : props.selectedSessionId;
+  const launcherArtifactTargetIds = new Set(artifactFileTargets.map((target) => target.id));
+  const designOpen = Boolean(launcherDesignTabId && sessionPanelState.tabs.some((tab) => tab.id === launcherDesignTabId));
+  const videoOpen = Boolean(launcherVideoSessionId && sessionPanelState.tabs.some((tab) => tab.id === `video:${launcherVideoSessionId}`));
+  const filesOpen = sessionPanelState.tabs.some((tab) => tab.type === "artifact" && launcherArtifactTargetIds.has(tab.id));
   const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
       label: t("session.side_panel.web"),
+      group: "content",
       shortcut: "⌘T",
-      iconSrc: publicAssetUrl("sidebar-entry-web.svg"),
-      active: panelRailActive && activePanelTab?.type === "browser",
+      icon: "web",
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
     },
     {
       id: "design",
-      label: "Design",
-      iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
-      active: panelRailActive && activePanelTab?.type === "design",
+      label: t("session.side_panel.design"),
+      group: "content",
+      icon: "design",
       onClick: showDesignRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
     },
     {
       id: "files",
       label: t("session.side_panel.files"),
+      group: "content",
       shortcut: "⌘P",
-      iconSrc: publicAssetUrl("sidebar-entry-file.svg"),
-      active: panelRailActive && activePanelTab?.type === "artifact",
+      icon: "files",
       onClick: showArtifactRailPane,
-      disabled: !hasArtifactTargets,
+      disabled: !hasArtifactTargets || filesOpen,
     },
     {
       id: "video",
       label: t("session.side_panel.video"),
-      iconSrc: publicAssetUrl("sidebar-entry-video.svg"),
-      active: videoRailActive,
+      group: "content",
+      icon: "video",
       onClick: showVideoRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
+      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
     {
       id: "plugin-workshop",
       label: t("plugin_workshop.title"),
-      iconSrc: publicAssetUrl("sidebar-icon/tool-case.svg"),
-      active: panelRailActive && activePanelTab?.type === "plugin-studio",
+      group: "studio",
+      icon: "plugin-workshop",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
-    ...workspaceApps.map((surface) => ({
+    ...workspaceApps.map<SidePanelLauncherItem>((surface) => ({
       id: `workspace-app:${surface.id}`,
       label: surface.label,
-      iconSrc: surface.iconSrc ?? publicAssetUrl("ipollowork-mark.svg"),
-      active: panelRailActive
-        && activePanelTab?.type === "workspace-app"
-        && activePanelTab.surface.id === surface.id,
+      group: "studio",
+      icon: surface.pluginId === "image-studio" ? "image-studio" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedSessionId,
+      disabled: !props.selectedSessionId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
     })),
-  ], [activePanelTab, addBrowserPanelTab, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, panelRailActive, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoRailActive, workspaceApps]);
+  ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -4539,7 +4551,7 @@ export function SessionPage(props: SessionPageProps) {
                 onClick={openLeftSidebar}
                 style={{ WebkitAppRegion: "no-drag", pointerEvents: "auto" } as CSSProperties}
               >
-                <img src={publicAssetUrl("sidebar-left-expand.svg")} alt="" className="h-3 w-4 shrink-0 dark:invert" />
+                <SidebarToggleIcon />
               </Button>
             ) : null}
             <div className={cn(
@@ -4570,12 +4582,12 @@ export function SessionPage(props: SessionPageProps) {
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="shrink-0 rounded-lg text-[#8A8A8A] hover:bg-muted hover:text-[#8A8A8A] mac:titlebar-no-drag"
+                        className="shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"
                         data-testid="session-header-more-actions"
                         aria-label={t("session.palette_title_actions")}
                         title={t("session.palette_title_actions")}
                       >
-                        <Ellipsis className="size-4" />
+                        <Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
                       </Button>
                     }
                   />
@@ -4650,34 +4662,55 @@ export function SessionPage(props: SessionPageProps) {
             ) : null}
 
             <div data-testid="session-header-actions" className="relative z-10 col-start-3 flex items-center gap-1.5 justify-self-end text-gray-10 mac:titlebar-no-drag">
-              <ConversationOutputTrigger
-                active={activeSidePanel === "outputs"}
-                disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
-                onClick={() => toggleCurrentSidePanel("outputs")}
-              />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
-                      aria-pressed={sidePanelOpen}
-                      disabled={!props.selectedSessionId && !sidePanelOpen}
-                      onClick={toggleRightPanel}
-                    >
-                      <img
-                        src={publicAssetUrl(sidePanelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")}
-                        alt=""
-                        className="h-3 w-4 shrink-0 dark:invert"
-                      />
-                    </Button>
-                  }
+              {sidePanelOpen && activeSidePanel !== "outputs" ? (
+                <ConversationOutputPopover
+                  open={outputFilesPopoverOpen}
+                  onOpenChange={setOutputFilesPopoverOpen}
+                  disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
+                  messages={conversationMessages}
+                  sessionId={props.selectedSessionId ?? undefined}
+                  sessionTitle={selectedSessionTitle}
+                  client={props.ipolloworkServerClient}
+                  workspaceId={props.runtimeWorkspaceId}
+                  workspaceRoot={props.selectedWorkspaceRoot}
+                  openTargets={accessibleTargets}
+                  templateEntryPath={templateEntryPathForArtifacts}
+                  supplementalFiles={artifactFiles}
+                  artifactContext={artifactContext}
+                  onOpenTarget={openTarget}
+                  onOpenVideoStudio={openCurrentVideoArtifactStudio}
                 />
-                <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
-              </Tooltip>
+              ) : (
+                <ConversationOutputTrigger
+                  active={activeSidePanel === "outputs"}
+                  disabled={!props.selectedSessionId || !props.ipolloworkServerClient || !props.runtimeWorkspaceId}
+                  onClick={() => toggleCurrentSidePanel("outputs")}
+                />
+              )}
+              {!panelRailActive ? (
+                <motion.div layoutId="right-panel-toggle" transition={{ duration: 0.2, ease: "easeOut" }}>
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="size-8 rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                          aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
+                          aria-pressed={sidePanelOpen}
+                          disabled={!props.selectedSessionId && !sidePanelOpen}
+                          onClick={toggleRightPanel}
+                          data-testid="right-panel-toggle"
+                        >
+                          <SidebarRightToggleIcon panelOpen={sidePanelOpen} />
+                        </Button>
+                      }
+                    />
+                    <TooltipContent>{sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}</TooltipContent>
+                  </Tooltip>
+                </motion.div>
+              ) : null}
 
             </div>
           </header>
@@ -5080,14 +5113,11 @@ export function SessionPage(props: SessionPageProps) {
                             <button
                               key={item.id}
                               type="button"
-                              className={cn(
-                                "flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40",
-                                item.active && "bg-muted text-foreground",
-                              )}
+                              className="flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
                               onClick={item.onClick}
                               disabled={item.disabled}
                             >
-                              <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
+                              <SidePanelLauncherIcon item={item} />
                               <span className="min-w-0 flex-1 truncate">{item.label}</span>
                             </button>
                           );

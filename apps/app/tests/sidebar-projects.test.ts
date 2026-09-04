@@ -19,6 +19,22 @@ const sidebarSource = readFileSync(
   new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
   "utf8",
 );
+const sidebarUiSource = readFileSync(
+  new URL("../src/components/ui/sidebar.tsx", import.meta.url),
+  "utf8",
+);
+const navigationIconSource = readFileSync(
+  new URL("../src/components/navigation-icons.tsx", import.meta.url),
+  "utf8",
+);
+const settingsShellSource = readFileSync(
+  new URL("../src/react-app/domains/settings/shell/settings-shell.tsx", import.meta.url),
+  "utf8",
+);
+const collapsedProjectIconSource = readFileSync(
+  new URL("../public/sidebar-icon/figma-folder-closed.svg", import.meta.url),
+  "utf8",
+);
 const pinStoreSource = readFileSync(
   new URL("../src/react-app/domains/session/sidebar/session-pin-store.ts", import.meta.url),
   "utf8",
@@ -182,11 +198,16 @@ describe("sidebar projects", () => {
     expect(sidebarSource).not.toContain("onSelectProject(workspace.id)");
     expect(sidebarSource).toContain("<ConversationList");
     expect(sidebarSource).not.toContain("group-data-open/project:rotate-90");
-    expect(sidebarSource).toContain('className="relative size-4 shrink-0"');
-    expect(sidebarSource).toContain('<FolderOpen className="absolute -bottom-0.5 left-[-0.7px] size-[15.5px]" strokeWidth={1.75} />');
-    expect(sidebarSource).toContain('src={publicAssetUrl("sidebar-icon/figma-folder-closed.svg")}');
-    expect(sidebarSource).toContain('className="absolute bottom-0 left-0 h-auto w-3.5 dark:invert"');
-    expect(sidebarSource).toContain('<Ellipsis className="size-4" strokeWidth={1.75} />');
+    expect(sidebarSource).toContain('"relative size-4 shrink-0 text-muted-foreground');
+    expect(sidebarSource).toContain('<FolderOpen className="!size-[15.5px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource).toContain("<ProjectFolderIcon />");
+    expect(navigationIconSource).toContain('publicAssetUrl("sidebar-icon/figma-folder-closed.svg")');
+    expect(navigationIconSource).toContain('className={cn("block h-3 w-3.5 shrink-0 bg-current"');
+    expect(collapsedProjectIconSource).toContain('stroke-width="1"');
+    expect(collapsedProjectIconSource).toContain('vector-effect="non-scaling-stroke"');
+    expect(sidebarSource).not.toContain("SidebarAssetIcon");
+    expect(sidebarSource).not.toContain("dark:invert");
+    expect(sidebarSource).toContain('<Ellipsis className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
   });
 
   test("keeps new conversation primary and moves project creation to the projects header", () => {
@@ -196,6 +217,17 @@ describe("sidebar projects", () => {
     expect(sidebarSource).toContain('t("projects.create")');
     expect(sidebarSource.match(/className="flex size-4 shrink-0 items-center justify-center"/g)).toHaveLength(4);
     expect(sidebarSource).toContain('primarySidebarActionClassName = "h-8 gap-2 rounded-[8px] px-2');
+    expect(navigationIconSource).toContain("NAVIGATION_ICON_STROKE_WIDTH = 1.5;");
+    expect(sidebarSource).toContain("const SIDEBAR_ICON_STROKE_WIDTH = NAVIGATION_ICON_STROKE_WIDTH;");
+    expect(sidebarSource).toContain('<SquarePen className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource).toContain('<LayoutTemplate className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource).toContain('<CalendarDays className="!size-[15px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource).toContain('<ToyBrick className="!size-[17px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource).toContain('<ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarUiSource).toContain('publicAssetUrl("sidebar-left-expand.svg")');
+    expect(sidebarUiSource).toContain("{icon ?? <SidebarToggleIcon />}");
+    expect(sessionPageSource).toContain("<SidebarToggleIcon />");
+    expect(settingsShellSource).toContain("icon={<SidebarToggleIcon />}");
     expect(sidebarSource).toContain('<SidebarMenu className="gap-1">');
   });
 
@@ -424,7 +456,7 @@ describe("sidebar projects", () => {
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[19px] dark:invert"');
     expect(sessionPageSource).toContain('iconClassName: "h-6 w-[33px]"');
     expect(sessionPageSource).toContain("hover:bg-dls-canvas");
-    expect(sessionPageSource).toContain("hover:bg-dls-surface-muted focus-visible:bg-dls-surface-muted");
+    expect(sessionPageSource).toContain("hover:bg-muted focus-visible:bg-muted");
     expect(sessionPageSource).not.toContain('t("projects.engine_running")');
     expect(sessionPageSource).toContain("has-focus-visible:ring-3 has-focus-visible:ring-ring/30");
     expect(sessionPageSource).not.toContain("focus-within:ring-3");
@@ -460,8 +492,9 @@ describe("sidebar projects", () => {
 
     expect(sessionPageSource).toContain('data-testid="session-header-project"');
     expect(sessionPageSource).toContain("<ProjectHeaderButton projectName={selectedProjectName} onClick={openProjectOverview} />");
-    expect(sessionPageSource).toContain('publicAssetUrl("sidebar-icon/figma-folder-closed.svg")');
-    expect(sessionPageSource).toContain('className="h-auto w-3.5 dark:invert"');
+    expect(sessionPageSource).toContain("<ProjectFolderIcon />");
+    expect(sessionPageSource).toContain('className="shrink-0 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground mac:titlebar-no-drag"');
+    expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sessionPageSource).toContain('<TooltipContent side="bottom" align="start">{projectName}</TooltipContent>');
     expect(sessionPageSource).toContain("(showWorkspaceSetupEmptyState || props.selectedSessionId || showSelectedProjectNavigation)");
     expect(sessionPageSource).toContain('data-testid="session-header-actions"');
