@@ -42,7 +42,7 @@ test("describes workspace speech synthesis as an installed iPolloWork capability
   const speechActions = MEDIA_EXTENSION_ACTIONS.filter((action) => action.action.startsWith("speech_synthesize"));
   expect(speechActions).toHaveLength(3);
   for (const action of speechActions) {
-    expect(action.description).toContain("Built-in iPolloWork CosyVoice action");
+    expect(action.description).toContain("Built-in iPolloWork");
     expect(action.description.toLowerCase()).toContain("without");
     expect(action.description.toLowerCase()).toContain("external cli");
   }
@@ -799,6 +799,160 @@ describe("Media Center extension", () => {
       status: 422,
       code: "bailian_voice_incompatible",
       message: expect.stringContaining("compatible v3 voice"),
+    });
+  });
+
+  test("requires the MiniMax key before synthesizing speech", async () => {
+    await expect(callMediaExtensionAction(config, env({}), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({ code: "minimax_api_key_missing" });
+  });
+
+  test("keeps the MiniMax key server-side while synthesizing speech", async () => {
+    globalThis.fetch = ((input, init) => {
+      expect(String(input)).toBe("https://api.minimax.io/v1/t2a_v2");
+      expect(init?.headers).toMatchObject({ Authorization: "Bearer mm-test-key-0000" });
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "speech-2.8-hd",
+        text: "hello",
+        stream: false,
+        output_format: "hex",
+        voice_setting: { voice_id: "female-qn-qingse" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0, status_msg: "success" },
+        data: { audio: "aabb", status: 2 },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+      voice: "female-qn-qingse",
+    }, {});
+
+    expect(result).toMatchObject({
+      ok: true,
+      extensionId: MEDIA_EXTENSION_ID,
+      action: "speech_synthesize",
+      result: {
+        provider: "minimax",
+        operation: "speech_synthesize",
+        output: {
+          base_resp: { status_code: 0, status_msg: "success" },
+          data: { audio: "aabb", status: 2 },
+        },
+      },
+    });
+    expect(JSON.stringify(result)).not.toContain("mm-test-key-0000");
+  });
+
+  test("routes MiniMax TTS to the China regional endpoint when requested", async () => {
+    globalThis.fetch = ((input) => {
+      expect(String(input)).toBe("https://api.minimaxi.com/v1/t2a_v2");
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0 },
+        data: { audio: "aabb" },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      region: "cn_zh",
+      text: "hello",
+    }, {});
+
+    expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
+  });
+
+  test("passes MiniMax voice, audio, and pronunciation settings", async () => {
+    globalThis.fetch = ((_input, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).toMatchObject({
+        model: "speech-2.6-hd",
+        language_boost: "auto",
+        output_format: "url",
+        voice_setting: { voice_id: "English_expressive_narrator", speed: 1.1, emotion: "happy" },
+        audio_setting: { sample_rate: 32000, bitrate: 128000, format: "mp3", channel: 1 },
+        pronunciation_dict: { tone: ["Omg/Oh my god"] },
+        voice_modify: { pitch: 1, intensity: 2, timbre: -1 },
+        subtitle_enable: true,
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 0 },
+        data: { audio: "aabb" },
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+      model: "speech-2.6-hd",
+      format: "mp3",
+      outputFormat: "url",
+      languageBoost: "auto",
+      voiceSetting: { voice_id: "English_expressive_narrator", speed: 1.1, emotion: "happy" },
+      audioSetting: { sample_rate: 32000, bitrate: 128000, channel: 1 },
+      pronunciationDict: { tone: ["Omg/Oh my god"] },
+      voiceModify: { pitch: 1, intensity: 2, timbre: -1 },
+      subtitleEnable: true,
+    }, {});
+
+    expect(result).toMatchObject({ ok: true, result: { provider: "minimax" } });
+  });
+
+  test("explains MiniMax non-zero status codes", async () => {
+    globalThis.fetch = ((_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+      return Promise.resolve(new Response(JSON.stringify({
+        base_resp: { status_code: 2004, status_msg: "Invalid parameter" },
+        data: {},
+      }), { status: 200, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({
+      status: 502,
+      code: "minimax_request_failed",
+      message: "Invalid parameter",
+    });
+  });
+
+  test("rejects unsupported MiniMax speech options before requesting audio", async () => {
+    let requested = false;
+    globalThis.fetch = ((_input: Parameters<typeof fetch>[0], _init?: Parameters<typeof fetch>[1]) => {
+      requested = true;
+      throw new Error("MiniMax must not be called");
+    }) as unknown as typeof fetch;
+
+    for (const [options, code] of [
+      [{ model: "unsupported-model" }, "invalid_minimax_model"],
+      [{ format: "aac" }, "invalid_minimax_audio_format"],
+      [{ outputFormat: "binary" }, "invalid_minimax_output_format"],
+    ] as const) {
+      await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+        provider: "minimax",
+        text: "hello",
+        ...options,
+      }, {})).rejects.toMatchObject({ code });
+    }
+    expect(requested).toBe(false);
+  });
+
+  test("rejects a successful MiniMax response without audio data", async () => {
+    globalThis.fetch = ((_input, _init) => Promise.resolve(new Response(JSON.stringify({
+      base_resp: { status_code: 0, status_msg: "success" },
+      data: { status: 2 },
+    }), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ MINIMAX_API_KEY: "mm-test-key-0000" }), "speech_synthesize", {
+      provider: "minimax",
+      text: "hello",
+    }, {})).rejects.toMatchObject({
+      status: 502,
+      code: "minimax_response_invalid",
     });
   });
 

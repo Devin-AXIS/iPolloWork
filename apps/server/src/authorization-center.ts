@@ -7,6 +7,7 @@ import type { ServerConfig } from "./types.js";
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
   "aliyun-bailian",
+  "minimax-media",
   "volcengine-video",
   "aliyun-oss",
   "wasabi",
@@ -68,6 +69,17 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       capability: "Alibaba Cloud Model Studio media",
       useWhen: "Use when the user asks for speech, voice cloning, transcription, translation, video generation, video editing, or a digital human.",
       instruction: "Use the iPolloWork media extension actions. iPolloWork keeps the connection private and exposes only bounded media operations.",
+    },
+  },
+  {
+    id: "minimax-media",
+    keys: ["MINIMAX_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "MiniMax speech TTS",
+      useWhen: "Use when the user asks to synthesize speech or create narration audio with a MiniMax account.",
+      instruction:
+        "Use the iPolloWork media extension speech_synthesize action from trusted runtime code. It keeps MINIMAX_API_KEY on this device and calls the MiniMax Text to Audio v2 endpoint without modifying OpenCode.",
     },
   },
   {
@@ -241,6 +253,8 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
       return fetchAuthorizationTest("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${resolved.values.OPENAI_API_KEY}` } });
     case "aliyun-bailian":
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", { headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` } });
+    case "minimax-media":
+      return { ok: true, detail: "MiniMax API key saved. Speech synthesis verifies it when used." };
     case "volcengine-video":
       return fetchAuthorizationTest("https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1", { headers: { Authorization: `Bearer ${resolved.values.ARK_API_KEY}` } });
     case "aliyun-oss": {
