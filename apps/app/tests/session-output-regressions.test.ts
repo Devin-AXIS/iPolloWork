@@ -419,6 +419,38 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain('titlebarInset && "mac:pl-20"');
   });
 
+  test("uses the shared menu hierarchy and semantic icon color in the panel launcher", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sidePanelSource).toContain('className="w-56"');
+    expect(sidePanelSource).toContain("launcherItems[index - 1]?.group !== item.group");
+    expect(sidePanelSource).toContain("<DropdownMenuSeparator");
+    expect(sidePanelSource).toContain('className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"');
+    expect(sidePanelSource).toContain("strokeWidth: NAVIGATION_ICON_STROKE_WIDTH");
+    expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
+    expect(sidePanelSource).not.toContain("WebkitMaskImage");
+    expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
+    expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
+    expect(sidePanelSource).not.toContain('item.active && "bg-foreground/10 font-medium"');
+    expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
+    expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
+    expect(sidePanelSource).not.toContain('text-[#666666]');
+    expect(sessionPageSource).toContain('group: "content"');
+    expect(sessionPageSource).toContain('group: "studio"');
+    expect(sessionPageSource).toContain('label: t("session.side_panel.design")');
+    expect(sessionPageSource).not.toContain('label: "Design"');
+  });
+
   test("latest-turn output label only renders for the latest artifact assistant message", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),

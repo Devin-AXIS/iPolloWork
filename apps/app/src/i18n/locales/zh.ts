@@ -1948,6 +1948,7 @@ export default {
   "session.right_panel_open": "打开右侧面板",
   "session.side_panel.web": "网页",
   "session.side_panel.code": "代码",
+  "session.side_panel.design": "设计",
   "session.side_panel.files": "文件",
   "session.side_panel.video": "视频",
   "session.resize_workspace_column": "调整工作区列宽",

@@ -4,14 +4,17 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  FileText,
   Film,
   Globe,
+  Image,
   Loader2,
   Maximize2,
   Minimize2,
   PanelsTopLeft,
   Plus,
   RotateCw,
+  SquarePlay,
   ToolCase,
   X,
 } from "lucide-react";
@@ -29,6 +32,7 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -87,12 +91,38 @@ type SidePanelProps = {
 export type SidePanelLauncherItem = {
   id: string;
   label: string;
+  group: "content" | "studio";
   shortcut?: string;
-  iconSrc: string;
+  icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "workspace-app";
   active?: boolean;
   disabled?: boolean;
   onClick: () => void;
 };
+
+export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem }) {
+  const icon = item.icon === "web"
+    ? <Globe className="size-[18px]" />
+    : item.icon === "design"
+      ? <Code2 className="size-[18px]" />
+      : item.icon === "files"
+        ? <FileText className="size-[17px]" />
+        : item.icon === "video"
+          ? <SquarePlay className="size-[18px]" />
+          : item.icon === "plugin-workshop"
+            ? <ToolCase className="size-[18px]" />
+            : item.icon === "image-studio"
+              ? <Image className="size-[18px]" />
+              : <PanelsTopLeft className="size-[18px]" />;
+
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"
+    >
+      {React.cloneElement(icon, { strokeWidth: NAVIGATION_ICON_STROKE_WIDTH })}
+    </span>
+  );
+}
 
 // HMR can remount this module without unmounting BrowserPanelContent, leaving
 // the native Electron browser overlay visible — hide it before the module reloads.
@@ -763,32 +793,34 @@ export function SidePanel({
                     <DropdownMenuContent
                       align="end"
                       positionerClassName={expanded ? "z-[70]" : undefined}
-                      className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+                      className="w-56"
                     >
-                      {launcherItems.map((item) => {
+                      {launcherItems.map((item, index) => {
                         return (
-                          <DropdownMenuItem
-                            key={item.id}
-                            disabled={item.disabled}
-                            onClick={item.onClick}
-                            className={[
-                              "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
-                            ].join(" ")}
-                          >
-                            <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
-                            <span className="flex-1">{item.label}</span>
-                            {item.shortcut ? (
-                              <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
-                            ) : null}
-                          </DropdownMenuItem>
+                          <React.Fragment key={item.id}>
+                            {index > 0 && launcherItems[index - 1]?.group !== item.group ? <DropdownMenuSeparator className="my-1" /> : null}
+                            <DropdownMenuItem
+                              disabled={item.disabled}
+                              onClick={item.onClick}
+                              aria-current={item.active ? "page" : undefined}
+                              className={cn(
+                                "h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!",
+                                item.active && "bg-foreground/10",
+                              )}
+                            >
+                              <SidePanelLauncherIcon item={item} />
+                              <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{item.label}</span>
+                              {item.shortcut ? <span className="text-xs font-normal text-muted-foreground">{item.shortcut}</span> : null}
+                            </DropdownMenuItem>
+                          </React.Fragment>
                         );
                       })}
                       {launcherItems.length === 0 && isBrowserAvailable ? (
                         <DropdownMenuItem
                           onClick={() => createTab()}
-                          className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-foreground focus:bg-muted focus:text-foreground"
+                          className="h-9 gap-3 px-2.5 py-0 text-sm font-normal text-foreground"
                         >
-                          <Globe className="size-6 stroke-[1.8] text-[#666666]" />
+                          <Globe className="size-[18px] text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
                           <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
                         </DropdownMenuItem>
                       ) : null}

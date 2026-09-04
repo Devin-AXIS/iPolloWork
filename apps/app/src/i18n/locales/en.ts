@@ -2189,6 +2189,7 @@ export default {
   "session.right_panel_add": "Add panel",
   "session.side_panel.web": "Web",
   "session.side_panel.code": "Code",
+  "session.side_panel.design": "Design",
   "session.side_panel.files": "Files",
   "session.side_panel.video": "Video",
   "session.new_task": "New task",

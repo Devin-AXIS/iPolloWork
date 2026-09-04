@@ -166,7 +166,7 @@ import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
-import { SidePanel, type SidePanelLauncherItem } from "../panel/side-panel";
+import { SidePanel, SidePanelLauncherIcon, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -3971,16 +3971,18 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "web",
       label: t("session.side_panel.web"),
+      group: "content",
       shortcut: "⌘T",
-      iconSrc: publicAssetUrl("sidebar-entry-web.svg"),
+      icon: "web",
       active: panelRailActive && activePanelTab?.type === "browser",
       onClick: addBrowserPanelTab,
       disabled: !isElectronRuntime(),
     },
     {
       id: "design",
-      label: "Design",
-      iconSrc: publicAssetUrl("sidebar-entry-code.svg"),
+      label: t("session.side_panel.design"),
+      group: "content",
+      icon: "design",
       active: panelRailActive && activePanelTab?.type === "design",
       onClick: showDesignRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
@@ -3988,8 +3990,9 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "files",
       label: t("session.side_panel.files"),
+      group: "content",
       shortcut: "⌘P",
-      iconSrc: publicAssetUrl("sidebar-entry-file.svg"),
+      icon: "files",
       active: panelRailActive && activePanelTab?.type === "artifact",
       onClick: showArtifactRailPane,
       disabled: !hasArtifactTargets,
@@ -3997,7 +4000,8 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "video",
       label: t("session.side_panel.video"),
-      iconSrc: publicAssetUrl("sidebar-entry-video.svg"),
+      group: "content",
+      icon: "video",
       active: videoRailActive,
       onClick: showVideoRailPane,
       disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote",
@@ -4005,15 +4009,17 @@ export function SessionPage(props: SessionPageProps) {
     {
       id: "plugin-workshop",
       label: t("plugin_workshop.title"),
-      iconSrc: publicAssetUrl("sidebar-icon/tool-case.svg"),
+      group: "studio",
+      icon: "plugin-workshop",
       active: panelRailActive && activePanelTab?.type === "plugin-studio",
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
-    ...workspaceApps.map((surface) => ({
+    ...workspaceApps.map<SidePanelLauncherItem>((surface) => ({
       id: `workspace-app:${surface.id}`,
       label: surface.label,
-      iconSrc: surface.iconSrc ?? publicAssetUrl("ipollowork-mark.svg"),
+      group: "studio",
+      icon: surface.pluginId === "image-studio" ? "image-studio" : "workspace-app",
       active: panelRailActive
         && activePanelTab?.type === "workspace-app"
         && activePanelTab.surface.id === surface.id,
@@ -5111,7 +5117,7 @@ export function SessionPage(props: SessionPageProps) {
                               onClick={item.onClick}
                               disabled={item.disabled}
                             >
-                              <img src={item.iconSrc} alt="" className={cn("size-4 shrink-0", item.id === "plugin-workshop" && "dark:invert")} />
+                              <SidePanelLauncherIcon item={item} />
                               <span className="min-w-0 flex-1 truncate">{item.label}</span>
                             </button>
                           );
