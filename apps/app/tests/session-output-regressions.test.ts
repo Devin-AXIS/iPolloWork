@@ -112,6 +112,8 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
     expect(artifactSource).toContain('<FileOutput className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(artifactSource).toContain('data-testid="conversation-files-popover"');
+    expect(artifactSource).toContain('data-testid="conversation-files-panel"');
+    expect(artifactSource).not.toContain("rounded-3xl border border-border/80 bg-card shadow-sm");
     expect(artifactSource).toContain("onOpenChange(false);");
     expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
     expect(artifactSource).not.toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');

@@ -746,14 +746,12 @@ export function ConversationOutputPopover({ disabled, open, onOpenChange, openTa
   );
 }
 
-/** Right-side conversation output surface. It looks like a floating card but never covers chat content. */
+/** Persistent task-file surface inside the right panel. */
 export function ConversationOutputPanel({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, openTargets = [], templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio }: ConversationOutputPanelProps) {
   return (
     <OpenTargetProvider openTargets={openTargets} onOpenTarget={onOpenTarget}>
-      <div className="h-full min-h-0 bg-background p-3">
-        <div className="h-full min-h-0 overflow-hidden rounded-3xl border border-border/80 bg-card shadow-sm">
-          <ConversationOutputPanelContent messages={messages} sessionId={sessionId} sessionTitle={sessionTitle} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} templateEntryPath={templateEntryPath} supplementalFiles={supplementalFiles} artifactContext={artifactContext} onOpenTarget={onOpenTarget} onOpenVideoStudio={onOpenVideoStudio} />
-        </div>
+      <div className="h-full min-h-0 overflow-hidden bg-background" data-testid="conversation-files-panel">
+        <ConversationOutputPanelContent messages={messages} sessionId={sessionId} sessionTitle={sessionTitle} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} templateEntryPath={templateEntryPath} supplementalFiles={supplementalFiles} artifactContext={artifactContext} onOpenTarget={onOpenTarget} onOpenVideoStudio={onOpenVideoStudio} />
       </div>
     </OpenTargetProvider>
   );
