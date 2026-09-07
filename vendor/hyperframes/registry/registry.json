@@ -982,6 +982,270 @@
     {
       "name": "caption-editorial-snap",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "agenda-opener",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "feature-spotlight-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "donut-breakdown",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "swimlane-workflow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "case-study-result",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "concept-layers",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "speaker-intro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "kinetic-keyword",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "screenshot-zoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "creator-profile-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "agent-tool-trace",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "brand-manifesto",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "narrative-hook",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "product-benefit-orbit",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "gauge-scorecard",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "feedback-loop",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "benchmark-scorecard",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "cause-effect-chain",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "expert-panel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "editorial-number",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "browser-feature-tour",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "social-comment-highlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "api-request-flow",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "campaign-metric-hero",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "chapter-countdown",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "workflow-demo-cards",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "waterfall-impact",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "dependency-graph",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "source-citation-card",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "myth-fact-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "team-spotlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "definition-highlight",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "device-carousel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "social-metrics-pulse",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "code-file-tree",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "offer-countdown",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "summary-resolve",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "release-highlights",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "sparkline-grid",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "decision-branch-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "customer-quote-wall",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "faq-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "founder-story",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "checklist-reveal",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "picture-in-picture",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "terminal-command-sequence",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "partner-logo-feature",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "integration-showcase",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "next-step-outro",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "product-comparison-stage",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "cohort-retention",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "sequence-diagram",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "validation-stamp",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "formula-breakdown",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "process-handoff-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "quote-pullout",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "media-before-after",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "deployment-pipeline",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "brand-system-board",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "anomaly-monitor",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "feature-adoption-ladder",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "conversion-funnel",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "capability-map",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "learning-path",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "section-marker",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "interface-state-board",
+      "type": "hyperframes:block"
     }
   ]
 }

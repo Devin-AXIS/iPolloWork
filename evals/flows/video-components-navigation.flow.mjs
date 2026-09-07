@@ -4,36 +4,36 @@ const vo = await loadVoiceoverParagraphs("video-components-navigation");
 const EXPECTED_ENGLISH_TABS = ["Layers", "Style", "Components", "Animation", "Voice", "Assets"];
 const EXPECTED_CHINESE_TABS = ["图层", "主题", "组件", "动画", "配音", "素材"];
 const EXPECTED_ENGLISH_CATEGORIES = [
-  "All components · 84",
-  "Openers & Endings · 4",
-  "Product Showcase · 3",
-  "Data & Charts · 15",
-  "Flows & Diagrams · 5",
+  "All components · 150",
+  "Openers & Endings · 9",
+  "Product Showcase · 10",
+  "Data & Charts · 22",
+  "Flows & Diagrams · 12",
   "Maps & Routes · 12",
-  "Comparison & Proof · 5",
-  "Knowledge · 2",
-  "People & Quotes · 2",
-  "Text & Labels · 4",
-  "Media & UI · 5",
-  "Social Media · 19",
-  "Code Demos · 3",
-  "Brand & Marketing · 5",
+  "Comparison & Proof · 10",
+  "Knowledge · 8",
+  "People & Quotes · 6",
+  "Text & Labels · 10",
+  "Media & UI · 11",
+  "Social Media · 22",
+  "Code Demos · 8",
+  "Brand & Marketing · 10",
 ];
 const EXPECTED_CHINESE_CATEGORIES = [
-  "全部组件 · 84",
-  "开场与收尾 · 4",
-  "产品展示 · 3",
-  "数据与图表 · 15",
-  "流程与图解 · 5",
+  "全部组件 · 150",
+  "开场与收尾 · 9",
+  "产品展示 · 10",
+  "数据与图表 · 22",
+  "流程与图解 · 12",
   "地图与路径 · 12",
-  "对比与背书 · 5",
-  "知识讲解 · 2",
-  "人物与观点 · 2",
-  "文字与标注 · 4",
-  "媒体与界面 · 5",
-  "社交媒体 · 19",
-  "代码演示 · 3",
-  "品牌与营销 · 5",
+  "对比与背书 · 10",
+  "知识讲解 · 8",
+  "人物与观点 · 6",
+  "文字与标注 · 10",
+  "媒体与界面 · 11",
+  "社交媒体 · 22",
+  "代码演示 · 8",
+  "品牌与营销 · 10",
 ];
 
 async function expectCategoryOptions(ctx, expected, ariaLabel) {
@@ -86,15 +86,12 @@ export default {
               `Unexpected Video Studio tabs: ${JSON.stringify(labels)}`,
             );
             await expectCategoryOptions(ctx, EXPECTED_ENGLISH_CATEGORIES, "Component category");
-            await ctx.expectText("All components · 84");
+            await ctx.expectText("All components · 150");
             await ctx.expectText("Brand Headline");
           },
           screenshot: {
             name: "component-taxonomy-english",
-            // Electron's GPU surface intermittently hangs this CDP method;
-            // capture the actual browser view instead of the compositor surface.
-            fromSurface: false,
-            requireText: [...EXPECTED_ENGLISH_TABS, "All components · 84", "Brand Headline"],
+            requireText: [...EXPECTED_ENGLISH_TABS, "All components · 150", "Brand Headline"],
           },
         });
       },
@@ -121,13 +118,12 @@ export default {
               `Unexpected Video Studio tabs: ${JSON.stringify(labels)}`,
             );
             await expectCategoryOptions(ctx, EXPECTED_CHINESE_CATEGORIES, "组件分类");
-            await ctx.expectText("全部组件 · 84");
+            await ctx.expectText("全部组件 · 150");
             await ctx.expectText("Brand Headline");
           },
           screenshot: {
             name: "component-taxonomy-chinese",
-            fromSurface: false,
-            requireText: [...EXPECTED_CHINESE_TABS, "全部组件 · 84", "Brand Headline"],
+            requireText: [...EXPECTED_CHINESE_TABS, "全部组件 · 150", "Brand Headline"],
           },
         });
       },

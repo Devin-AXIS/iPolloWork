@@ -51,30 +51,30 @@ export default {
               };
             })()`);
             ctx.assert(
-              state.options.includes("All components · 84"),
-              "The component total is not 84.",
+              state.options.includes("All components · 150"),
+              "The component total is not 150.",
             );
             ctx.assert(
-              state.options.includes("Social Media · 19"),
+              state.options.includes("Social Media · 22"),
               "Social category count is missing.",
             );
-            ctx.assert(state.options.includes("Code Demos · 3"), "Code category count is missing.");
+            ctx.assert(state.options.includes("Code Demos · 8"), "Code category count is missing.");
             ctx.assert(
-              state.options.includes("Product Showcase · 3"),
+              state.options.includes("Product Showcase · 10"),
               "Product category count is missing.",
             );
             ctx.assert(
-              state.options.includes("Brand & Marketing · 5"),
+              state.options.includes("Brand & Marketing · 10"),
               "Brand category count is missing.",
             );
-            ctx.assert(state.brandCards === 5, "The brand and marketing category is incomplete.");
+            ctx.assert(state.brandCards === 10, "The brand and marketing category is incomplete.");
             ctx.assert(state.commerceCards === 2, "The migrated commerce components are missing.");
           },
           screenshot: {
             name: "second-batch-categories",
             fromSurface: false,
             requireText: [
-              "Brand & Marketing · 5",
+              "Brand & Marketing · 10",
               "Brand Palette",
               "Campaign Lockup",
               "Offer Card",

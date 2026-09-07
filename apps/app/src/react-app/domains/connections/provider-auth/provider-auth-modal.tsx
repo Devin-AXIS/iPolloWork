@@ -464,6 +464,13 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       return;
     }
 
+    // OpenAI OAuth methods arrive asynchronously after the API-key placeholder.
+    // Keep its method chooser live instead of prematurely opening the API form.
+    if (entry.id === "openai") {
+      setView("method");
+      return;
+    }
+
     if (entry.methods.length === 1) {
       void handleMethodSelect(entry.methods[0], entry);
       return;

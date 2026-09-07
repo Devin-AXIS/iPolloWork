@@ -18,6 +18,7 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).not.toContain("if (!visible || reducedMotion) return;");
     expect(source).toContain("src={compositionPlaybackUrl}");
     expect(source).toContain("onLoad={() => setPreviewReady(true)}");
+    expect(source).toContain('data-preview-active={previewing ? "true" : "false"}');
     expect(source).not.toContain("aria-label={`${block.title} preview`}");
     expect(source).not.toContain("autoPlay");
     expect(source).not.toContain("onPreviewBlock");

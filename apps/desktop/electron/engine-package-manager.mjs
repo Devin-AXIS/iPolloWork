@@ -16,6 +16,7 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { compareVersions } from "./updater.mjs";
 
 const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
@@ -226,11 +227,14 @@ async function codexClientCandidates(platform, env, homeDir) {
 function probeRuntimeExecutable(executablePath, env) {
   return new Promise((resolve) => {
     let settled = false;
+    let stdout = "";
     const child = spawn(executablePath, ["--version"], {
       env,
       windowsHide: true,
-      stdio: "ignore",
+      stdio: ["ignore", "pipe", "ignore"],
     });
+    child.stdout.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(0, 1024); });
     const finish = (result) => {
       if (settled) return;
       settled = true;
@@ -242,15 +246,17 @@ function probeRuntimeExecutable(executablePath, env) {
       finish(false);
     }, 5_000);
     child.once("error", () => finish(false));
-    child.once("exit", (code) => finish(code === 0));
+    child.once("close", (code) => finish(code === 0
+      ? stdout.trim().match(/^codex-cli\s+(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?:\s|$)/)?.[1] || true
+      : false));
   });
 }
 
-async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, canLaunch }) {
+async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, probeRuntime }) {
   const resolveCandidate = async (candidate) => {
     const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
     if (!normalized || !looksLikeOfficialRuntime(descriptor, normalized)) return null;
-    return await canLaunch(normalized) ? normalized : null;
+    return await probeRuntime(normalized) ? normalized : null;
   };
   const commandPath = commandOnPath(descriptor.command, {
     env,
@@ -267,12 +273,21 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, canL
     if (resolved) return resolved;
   }
   if (descriptor.id !== CODEX_ENGINE_ID) return null;
+  const clients = [];
   for (const candidate of await codexClientCandidates(platform, env, homeDir)) {
     if (!await pathExists(candidate)) continue;
     const resolved = await resolveCandidate(candidate);
-    if (resolved) return resolved;
+    if (resolved) clients.push({ path: resolved, version: await probeRuntime(resolved) });
   }
-  return null;
+  // Desktop updates leave multiple hash-named builds behind. Directory order
+  // (and copy time) does not identify the newest compatible CLI. Probes are cached.
+  clients.sort((left, right) => {
+    const leftKnown = typeof left.version === "string";
+    const rightKnown = typeof right.version === "string";
+    if (leftKnown && rightKnown) return compareVersions(right.version, left.version) ?? 0;
+    return Number(rightKnown) - Number(leftKnown);
+  });
+  return clients[0]?.path ?? null;
 }
 
 function run(command, args, options = {}) {
@@ -527,7 +542,7 @@ export function createEnginePackageManager(options) {
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
   }
 
-  async function canLaunchRuntime(descriptor, executablePath) {
+  async function probeRuntime(descriptor, executablePath) {
     if (descriptor.id !== CODEX_ENGINE_ID) return true;
     const key = platform === "win32" ? executablePath.toLowerCase() : executablePath;
     let pending = runtimeProbeCache.get(key);
@@ -535,7 +550,6 @@ export function createEnginePackageManager(options) {
       pending = Promise.resolve(options.probeRuntime
         ? options.probeRuntime({ engineId: descriptor.id, executablePath })
         : probeRuntimeExecutable(executablePath, environment))
-        .then(Boolean)
         .catch(() => false);
       runtimeProbeCache.set(key, pending);
     }
@@ -633,7 +647,7 @@ export function createEnginePackageManager(options) {
   /** @returns {Promise<{ path: string; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
   async function resolveRuntimeSource(descriptor) {
     const override = externalOverrides.get(descriptor.id);
-    if (override && existsSync(override) && await canLaunchRuntime(descriptor, override)) {
+    if (override && existsSync(override) && await probeRuntime(descriptor, override)) {
       return {
         path: override,
         source: await externalEngineSource(descriptor, override, "custom"),
@@ -648,7 +662,7 @@ export function createEnginePackageManager(options) {
       platform,
       env: environment,
       homeDir,
-      canLaunch: (candidate) => canLaunchRuntime(descriptor, candidate),
+      probeRuntime: (candidate) => probeRuntime(descriptor, candidate),
     });
     if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime)) {
       return { path: officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };

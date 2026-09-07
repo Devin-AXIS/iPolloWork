@@ -23,6 +23,8 @@
     "gsap:check": "bun scripts/gsap-catalog.ts check",
     "gsap:check-updates": "bun scripts/gsap-catalog.ts upstream",
     "gsap:sync": "bun scripts/gsap-catalog.ts sync",
+    "visual-components:generate": "bun scripts/visual-component-catalog.ts generate",
+    "visual-components:check": "bun scripts/visual-component-catalog.ts check",
     "lint": "oxlint packages/cli packages/core packages/engine packages/lint packages/parsers packages/player packages/producer packages/sdk packages/shader-transitions packages/studio packages/studio-server",
     "lint:fix": "oxlint --fix .",
     "format": "oxfmt .",

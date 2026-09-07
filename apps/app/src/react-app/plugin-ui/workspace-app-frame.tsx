@@ -8,6 +8,7 @@ import {
   type McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
 import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 
 import type {
@@ -505,8 +506,10 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const callWorkspaceAppTool = useCallback(async (name: string, args: Record<string, unknown>) => {
     const bridge = bridgeRef.current;
     if (!bridge) return toolError("Workspace App is not ready");
-    return bridge.callTool({ name, arguments: args });
-  }, []);
+    return bridge.callTool({ name, arguments: args }, props.surface.pluginId === "image-studio" && name === "generate_or_edit"
+      ? { timeout: IMAGE_GENERATION_REQUEST_TIMEOUT_MS }
+      : undefined);
+  }, [props.surface.pluginId]);
 
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.placement !== "workspace" ? [] : [
     {
@@ -548,13 +551,10 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         }
         const bridge = bridgeRef.current;
         if (!bridge) throw new Error("Workspace App is not ready");
-        return bridge.callTool({
-          name: args.name,
-          arguments: isRecord(args.arguments) ? args.arguments : {},
-        });
+        return callWorkspaceAppTool(args.name, isRecord(args.arguments) ? args.arguments : {});
       },
     },
-  ], [bridgeReady, developmentPreviewActive, props.placement, props.sessionId, props.surface.label]);
+  ], [bridgeReady, callWorkspaceAppTool, developmentPreviewActive, props.placement, props.sessionId, props.surface.label]);
   useControlActions(controlActions);
 
   if (loading) {

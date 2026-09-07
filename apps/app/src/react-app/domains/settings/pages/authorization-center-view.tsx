@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Cloud,
   FolderCog,
+  Globe,
   Image,
   KeyRound,
   Loader2,
@@ -38,6 +39,8 @@ type AuthorizationCenterViewProps = {
   client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;
   runtimeKey?: string | null;
+  onOpenOpenAiLogin: () => void;
+  providerAuthOpen: boolean;
 };
 
 type ServicePresentation = {
@@ -154,6 +157,12 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
     if (!canEdit) setEditor(null);
   }, [canEdit]);
 
+  useEffect(() => {
+    if (!props.providerAuthOpen && canEdit) {
+      void queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    }
+  }, [props.providerAuthOpen, props.runtimeKey, canEdit, queryClient]);
+
   const saveMutation = useMutation({
     mutationFn: async (draft: EditorState) => {
       if (!props.client) throw new Error(t("app.unknown_error"));
@@ -239,6 +248,7 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
                 testing={testMutation.isPending && testMutation.variables === service.id}
                 onConfigure={() => openEditor(service)}
                 onTest={() => testMutation.mutate(service.id)}
+                onOpenBrowserLogin={service.id === "openai-images" ? props.onOpenOpenAiLogin : undefined}
               />
             ))}
           </div>
@@ -266,6 +276,7 @@ function AuthorizationServiceCard(props: {
   testResult?: iPolloWorkAuthorizationServiceTestResult;
   onConfigure: () => void;
   onTest: () => void;
+  onOpenBrowserLogin?: () => void;
 }) {
   const presentation = SERVICES[props.service.id];
   const Icon = presentation.icon;
@@ -282,8 +293,8 @@ function AuthorizationServiceCard(props: {
             <Icon className="size-4" />
           </span>
           <SettingsStatusBadge
-            tone={props.service.configured ? "ready" : "neutral"}
-            label={props.service.configured ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
+            tone={props.service.configured || props.service.browserLogin?.connected ? "ready" : "neutral"}
+            label={props.service.configured || props.service.browserLogin?.connected ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
             className="min-h-7 px-0 text-[11px]"
           />
         </div>
@@ -295,7 +306,23 @@ function AuthorizationServiceCard(props: {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
+        {props.onOpenBrowserLogin ? (
+          <div className="mb-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SettingsStatusBadge
+                tone={props.service.browserLogin?.connected ? "ready" : "neutral"}
+                label={t(props.service.browserLogin?.connected ? "settings.authorization.browser_connected" : "settings.authorization.browser_disconnected")}
+              />
+              <Button variant="outline" size="sm" onClick={props.onOpenBrowserLogin} disabled={!props.canEdit}>
+                <Globe className="size-3.5" />
+                {t("settings.authorization.browser_login")}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{t("settings.authorization.browser_hint")}</p>
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">
+          {props.onOpenBrowserLogin ? "API Key · " : null}
           {t("settings.authorization.fields_configured", {
             configured: configuredFields,
             total: requiredFields,
@@ -311,7 +338,7 @@ function AuthorizationServiceCard(props: {
       <CardFooter className="justify-between gap-2 border-t border-border">
         <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
           <KeyRound className="size-3.5" />
-          {props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
+          {props.onOpenBrowserLogin ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
         </Button>
         <Button
           variant="outline"
@@ -320,7 +347,7 @@ function AuthorizationServiceCard(props: {
           disabled={!props.canEdit || !props.service.configured || props.testing}
         >
           {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
-          {props.testing ? t("settings.authorization.testing") : t("settings.authorization.test")}
+          {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}
         </Button>
       </CardFooter>
     </Card>

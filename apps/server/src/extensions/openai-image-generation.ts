@@ -1,16 +1,19 @@
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { basename, dirname, extname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
 import type { AuthorizationAccess, AuthorizationServiceId } from "../authorization-center.js";
 import { resolveWithinRoot } from "../paths.js";
+import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { generateCodexImage } from "./codex-image-generation.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
 const IMAGE_API_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
 
-type ImageModelAdapterId = "openai" | "volcengine-ark" | "unavailable";
+type ImageModelAdapterId = "openai" | "openai-codex" | "volcengine-ark" | "unavailable";
 
 type ImageModelDefinition = {
   id: string;
@@ -43,7 +46,7 @@ type NormalizedSelectionBounds = {
 const IMAGE_MODELS: readonly ImageModelDefinition[] = [
   {
     id: "openai/gpt-image-2",
-    label: "GPT Image 2",
+    label: "GPT Image 2 · API",
     provider: "openai",
     providerLabel: "OpenAI",
     adapter: "openai",
@@ -52,6 +55,18 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     credentialKey: "OPENAI_API_KEY",
     available: true,
     capabilities: { generate: true, edit: true, mask: true, region: true },
+  },
+  {
+    id: "openai/gpt-image-2-codex",
+    label: "GPT Image 2 · ChatGPT 登录",
+    provider: "openai",
+    providerLabel: "ChatGPT / Codex",
+    adapter: "openai-codex",
+    upstreamModel: "gpt-image-2",
+    authorizationService: "openai-images",
+    credentialKey: null,
+    available: true,
+    capabilities: { generate: true, edit: true, mask: false, region: true },
   },
   {
     id: "volcengine/seedream-5",
@@ -94,7 +109,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_generate",
     title: "Generate image artifact",
-    description: "Generate a PNG image artifact using a registered image model.",
+    description: "Generate and save a PNG workspace artifact without opening Image Studio. If model is omitted, use the first available connected image model.",
     inputSchema: {
       type: "object",
       properties: {
@@ -112,7 +127,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit",
     title: "Edit image artifact",
-    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact.",
+    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. Works without opening Image Studio; omit model to use an available connected image model.",
     effect: "write" as const,
     inputSchema: {
       type: "object",
@@ -186,8 +201,8 @@ function slugifyImageArtifactName(value: string) {
     .slice(0, 48) || "ipollowork-image";
 }
 
-function modelForId(value: string): ImageModelDefinition {
-  const requested = value || DEFAULT_IMAGE_MODEL_ID;
+async function modelForId(value: string, authorization: AuthorizationAccess): Promise<ImageModelDefinition> {
+  const requested = value || (await openAiImageGenerationStatus(authorization)).defaultModel;
   const model = IMAGE_MODELS.find((entry) => entry.id === requested);
   if (!model) throw new ApiError(400, "image_model_unknown", `Unknown image model: ${requested}`);
   if (!model.available) {
@@ -214,13 +229,16 @@ export async function openAiImageGenerationStatus(authorization: AuthorizationAc
     await Promise.all([...services].map(async (service) => {
       credentials.set(service, await authorization.read(service));
     }));
+    const browserSession = await authorization.openAiBrowserSession?.();
     const models = IMAGE_MODELS.map((model) => ({
       id: model.id,
       label: model.label,
       provider: model.provider,
       providerLabel: model.providerLabel,
       available: model.available,
-      configured: Boolean(model.authorizationService && model.credentialKey && credentials.get(model.authorizationService)?.[model.credentialKey]?.trim()),
+      configured: model.adapter === "openai-codex"
+        ? Boolean(browserSession?.accountId)
+        : Boolean(model.authorizationService && model.credentialKey && credentials.get(model.authorizationService)?.[model.credentialKey]?.trim()),
       authorizationService: model.authorizationService,
       unavailableReason: model.unavailableReason ?? null,
       capabilities: model.capabilities,
@@ -277,12 +295,33 @@ function resolveSafeChildPath(root: string, child: string): string {
   return candidate;
 }
 
+function providerRequestError(error: unknown, input: {
+  providerLabel: string;
+  operation: string;
+  timeoutCode: string;
+  unavailableCode: string;
+}): ApiError {
+  if (error instanceof ApiError) return error;
+  if (error instanceof Error && error.name === "AbortError") {
+    return new ApiError(
+      504,
+      input.timeoutCode,
+      `${input.providerLabel} ${input.operation} timed out. Check your connection or system proxy and try again.`,
+    );
+  }
+  return new ApiError(
+    502,
+    input.unavailableCode,
+    `Could not reach ${input.providerLabel} for ${input.operation}. Check your connection or system proxy and try again.`,
+  );
+}
+
 async function fetchOpenAiImage(input: { apiKey: string; model: string; prompt: string; quality: string; size: string }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_API_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch("https://api.openai.com/v1/images/generations", {
+    response = await providerFetch("https://api.openai.com/v1/images/generations", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -292,10 +331,12 @@ async function fetchOpenAiImage(input: { apiKey: string; model: string; prompt: 
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("OpenAI image generation timed out. Check your connection and try again.");
-    }
-    throw error;
+    throw providerRequestError(error, {
+      providerLabel: "OpenAI",
+      operation: "image generation",
+      timeoutCode: "openai_image_generation_timeout",
+      unavailableCode: "openai_image_generation_unreachable",
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -325,13 +366,20 @@ async function imageDataFromPayload(payload: unknown, providerLabel: string): Pr
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), IMAGE_API_TIMEOUT_MS);
     try {
-      const response = await fetch(parsed, { signal: controller.signal });
+      const response = await providerFetch(parsed, { signal: controller.signal });
       if (!response.ok) throw new ApiError(502, "image_download_failed", `${providerLabel} image download failed.`);
       const bytes = Buffer.from(await response.arrayBuffer());
       if (!bytes.length || bytes.byteLength > MAX_IMAGE_INPUT_BYTES) {
         throw new ApiError(502, "image_invalid_response", `${providerLabel} returned an empty or oversized image.`);
       }
       return bytes;
+    } catch (error) {
+      throw providerRequestError(error, {
+        providerLabel,
+        operation: "image download",
+        timeoutCode: "image_download_timeout",
+        unavailableCode: "image_download_failed",
+      });
     } finally {
       clearTimeout(timeout);
     }
@@ -393,17 +441,19 @@ async function fetchOpenAiImageEdit(input: {
   const timeout = setTimeout(() => controller.abort(), IMAGE_API_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await fetch("https://api.openai.com/v1/images/edits", {
+    response = await providerFetch("https://api.openai.com/v1/images/edits", {
       method: "POST",
       headers: { Authorization: `Bearer ${input.apiKey}` },
       body: form,
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("OpenAI image editing timed out. Check your connection and try again.");
-    }
-    throw error;
+    throw providerRequestError(error, {
+      providerLabel: "OpenAI",
+      operation: "image editing",
+      timeoutCode: "openai_image_edit_timeout",
+      unavailableCode: "openai_image_edit_unreachable",
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -444,7 +494,7 @@ async function fetchArkImage(input: {
 
   let response: Response;
   try {
-    response = await fetch("https://ark.cn-beijing.volces.com/api/v3/images/generations", {
+    response = await providerFetch("https://ark.cn-beijing.volces.com/api/v3/images/generations", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -454,10 +504,12 @@ async function fetchArkImage(input: {
       signal: controller.signal,
     });
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") {
-      throw new Error("Volcengine Ark image generation timed out. Check your connection and try again.");
-    }
-    throw error;
+    throw providerRequestError(error, {
+      providerLabel: "Volcengine Ark",
+      operation: "image generation",
+      timeoutCode: "ark_image_generation_timeout",
+      unavailableCode: "ark_image_generation_unreachable",
+    });
   } finally {
     clearTimeout(timeout);
   }
@@ -469,8 +521,12 @@ async function fetchArkImage(input: {
   return payload;
 }
 
-async function generateWithModel(model: ImageModelDefinition, apiKey: string, args: Record<string, unknown>, prompt: string) {
+async function generateWithModel(model: ImageModelDefinition, apiKey: string, args: Record<string, unknown>, prompt: string, authorization: AuthorizationAccess) {
   const size = imageOption(readStringField(args, "size"), ["1024x1024", "1024x1536", "1536x1024", "auto"], "auto");
+  if (model.adapter === "openai-codex") {
+    const bytes = await generateCodexImage(authorization, { prompt, size, quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto") });
+    return { data: [{ b64_json: bytes.toString("base64") }] };
+  }
   if (model.adapter === "openai") {
     return fetchOpenAiImage({
       apiKey,
@@ -493,7 +549,7 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
   mask: Buffer | null;
   selectionBounds: NormalizedSelectionBounds | null;
   prompt: string;
-}) {
+}, authorization: AuthorizationAccess) {
   const size = imageOption(readStringField(args, "size"), ["1024x1024", "1024x1536", "1536x1024", "auto"], "auto");
   if (input.mask && !model.capabilities.mask) {
     if (!model.capabilities.region) {
@@ -502,6 +558,15 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
     if (!input.selectionBounds) {
       throw new ApiError(400, "image_selection_bounds_required", `${model.label} requires selectionBounds for approximate selected-region editing.`);
     }
+  }
+  if (model.adapter === "openai-codex") {
+    const bytes = await generateCodexImage(authorization, {
+      prompt: input.selectionBounds ? promptWithApproximateRegion(input.prompt, input.selectionBounds) : input.prompt,
+      size,
+      quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto"),
+      image: { bytes: input.image, mimeType: input.imageType },
+    });
+    return { data: [{ b64_json: bytes.toString("base64") }] };
   }
   if (model.adapter === "openai") {
     return fetchOpenAiImageEdit({
@@ -529,16 +594,19 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
 async function generateImageArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
   const prompt = readStringField(args, "prompt");
   if (!prompt) throw new ApiError(400, "invalid_payload", "prompt is required");
-  const model = modelForId(readStringField(args, "model"));
+  const model = await modelForId(readStringField(args, "model"), authorization);
   if (!model.capabilities.generate) throw new ApiError(400, "image_model_capability_unavailable", `${model.label} does not support image generation.`);
   const apiKey = await modelCredential(authorization, model);
-  if (!apiKey) throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
+  if (!apiKey && model.adapter !== "openai-codex") throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
 
   const workspace = workspaceForContext(config, context);
-  const fileName = `${slugifyImageArtifactName(readStringField(args, "filename") || prompt)}.png`;
+  const requestedName = readStringField(args, "filename");
+  const fileName = requestedName
+    ? `${slugifyImageArtifactName(requestedName)}.png`
+    : `${slugifyImageArtifactName(prompt)}-${randomUUID()}.png`;
   const relativePath = `artifacts/${fileName}`;
   const outputPath = resolveSafeChildPath(workspace.path, relativePath);
-  const payload = await generateWithModel(model, apiKey, args, prompt);
+  const payload = await generateWithModel(model, apiKey, args, prompt, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
 
   await mkdir(dirname(outputPath), { recursive: true });
@@ -558,10 +626,10 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   const prompt = readStringField(args, "prompt");
   if (!sourcePath || !prompt) throw new ApiError(400, "invalid_payload", "sourcePath and prompt are required");
 
-  const model = modelForId(readStringField(args, "model"));
+  const model = await modelForId(readStringField(args, "model"), authorization);
   if (!model.capabilities.edit) throw new ApiError(400, "image_model_capability_unavailable", `${model.label} does not support image editing.`);
   const apiKey = await modelCredential(authorization, model);
-  if (!apiKey) throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
+  if (!apiKey && model.adapter !== "openai-codex") throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
 
   const workspace = workspaceForContext(config, context);
   const sourceCandidate = resolveSafeChildPath(workspace.path, sourcePath);
@@ -586,7 +654,7 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
     mask: decodedPngDataUrl(readStringField(args, "maskDataUrl")),
     selectionBounds: readSelectionBounds(args.selectionBounds),
     prompt,
-  });
+  }, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, bytes);

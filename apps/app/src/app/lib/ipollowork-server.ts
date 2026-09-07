@@ -647,6 +647,7 @@ export type iPolloWorkAuthorizationServiceId =
 export type iPolloWorkAuthorizationService = {
   id: iPolloWorkAuthorizationServiceId;
   configured: boolean;
+  browserLogin?: import("@ipollowork/types/provider-credentials").SharedProviderBrowserLogin;
   fields: Array<{ key: string; configured: boolean }>;
   category: "media" | "storage";
   kind: "credentials" | "routing";
@@ -1027,6 +1028,7 @@ const resolveFetch = (url?: string) => {
 };
 
 const DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS = 10_000;
+export const IMAGE_GENERATION_REQUEST_TIMEOUT_MS = 420_000;
 const ENGINE_RELOAD_TIMEOUT_MS = 60_000;
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -1228,7 +1230,10 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "POST",
         body: payload,
-        timeoutMs: timeouts.binary,
+        timeoutMs: (payload.extensionId === "openai-image-generation" && payload.action !== "status")
+          || (payload.extensionId === "image-studio" && ["generate-image", "edit-image"].includes(payload.action))
+          ? Math.max(timeouts.binary, IMAGE_GENERATION_REQUEST_TIMEOUT_MS)
+          : timeouts.binary,
       }),
     callMedia: (action: iPolloWorkMediaAction, args: Record<string, unknown>, context?: Record<string, unknown>) =>
       requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {

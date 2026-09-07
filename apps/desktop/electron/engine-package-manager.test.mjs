@@ -659,6 +659,56 @@ test("discovers an official Codex client outside the inherited PATH", async () =
   }
 });
 
+test("selects the newest runnable cached Codex version, keeps explicit overrides, and probes each path once", { skip: process.platform !== "win32" }, async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-cache-version-test-"));
+  const environment = {
+    PATH: path.join(root, "empty-bin"),
+    APPDATA: path.join(root, "AppData", "Roaming"),
+    LOCALAPPDATA: path.join(root, "AppData", "Local"),
+    ProgramFiles: path.join(root, "program-files"),
+  };
+  const builds = [
+    ["000-old", "0.148.0-alpha.15"],
+    ["111-alpha", "0.153.0-alpha.15"],
+    ["222-stable", "0.153.0"],
+    ["333-unknown", true],
+    ["444-broken", false],
+  ];
+  const versions = new Map();
+  try {
+    for (const [hash, version] of builds) {
+      const cli = path.join(environment.LOCALAPPDATA, "OpenAI", "Codex", "bin", String(hash), "codex.exe");
+      await mkdir(path.dirname(cli), { recursive: true });
+      await writeFile(cli, "fixture\n");
+      versions.set(await realpath(cli), version);
+    }
+    const probes = new Map();
+    const options = {
+      app: { getPath: () => path.join(root, "user-data"), getVersion: () => "1.0.0", isPackaged: true },
+      desktopRoot: path.join(root, "desktop"),
+      versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
+      env: environment,
+      homeDir: path.join(root, "home"),
+      probeRuntime: async ({ executablePath }) => {
+        probes.set(executablePath, (probes.get(executablePath) ?? 0) + 1);
+        return versions.get(executablePath) ?? false;
+      },
+      fetch: async () => { throw new Error("fixture must not use the network"); },
+    };
+    const manager = createEnginePackageManager(options);
+    await manager.applyEnvironment();
+    await manager.list();
+    assert.match(environment.IPOLLOWORK_CODEX_CLI, /222-stable[\\/]codex\.exe$/);
+    assert.deepEqual([...probes.values()], [1, 1, 1, 1, 1]);
+    const explicit = [...versions.keys()][0];
+    const overrideEnv = { ...environment, IPOLLOWORK_CODEX_CLI: explicit };
+    await createEnginePackageManager({ ...options, env: overrideEnv }).applyEnvironment();
+    assert.equal(overrideEnv.IPOLLOWORK_CODEX_CLI, explicit);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("uses an official DeepSeek Harness installation without offering another download", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-dsh-official-test-"));
   const homeDir = path.join(temporaryRoot, "home");

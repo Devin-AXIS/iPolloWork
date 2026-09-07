@@ -162,6 +162,13 @@ function permissionResponse(
   native: NonNullable<ReturnType<typeof codexNativeRequest>>,
   reply: PermissionReply,
 ): Record<string, unknown> {
+  if (native.method === "mcpServer/elicitation/request") {
+    return {
+      action: reply === "reject" ? "decline" : "accept",
+      content: reply === "reject" ? null : {},
+      _meta: null,
+    };
+  }
   if (native.method === "execCommandApproval" || native.method === "applyPatchApproval") {
     return {
       decision: reply === "reject"

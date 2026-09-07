@@ -245,6 +245,25 @@ function requestEvent(event: WorkspaceEngineEvent): ConversationEvent | null {
   if (!method || !params || !threadId) return null;
   const id = String(event.id);
   const native = { rpcId: event.id, method, params };
+  // Codex uses an MCP elicitation for tool-call consent, not requestApproval.
+  // Keep this separate from arbitrary MCP forms, which require user input.
+  const meta = isRecord(params._meta) ? params._meta : null;
+  if (method === "mcpServer/elicitation/request" && meta?.codex_approval_kind === "mcp_tool_call") {
+    const message = stringValue(params.message) ?? stringValue(params.serverName) ?? "MCP tool";
+    return {
+      type: "permission.asked",
+      permission: {
+        id,
+        sessionId: threadId,
+        kind: "mcp",
+        resources: [message, ...(meta.tool_params ? [JSON.stringify(meta.tool_params)] : [])],
+        remember: [],
+        metadata: { reason: message, serverName: params.serverName, arguments: meta.tool_params },
+        receivedAt: Date.now(),
+        native,
+      },
+    };
+  }
   if (method === "item/tool/requestUserInput" && Array.isArray(params.questions)) {
     const question: ConversationQuestion = {
       id,
