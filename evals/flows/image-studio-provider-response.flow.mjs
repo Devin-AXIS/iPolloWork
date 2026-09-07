@@ -14,6 +14,9 @@ export default {
           timeoutMs: 30_000,
           label: "window.__ipolloworkControl",
         });
+        await ctx.client.send("Page.enable");
+        await ctx.client.send("Page.bringToFront");
+        await ctx.client.send("Emulation.setDeviceMetricsOverride", { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false });
 
         const studioOpen = await ctx.eval(`Boolean(document.querySelector('iframe[title=${JSON.stringify(IMAGE_STUDIO_TITLE)}]'))`);
         if (!studioOpen) {
@@ -147,6 +150,7 @@ export default {
             rejectText: ["Unexpected server error", "Codex 未返回图片"],
           },
         });
+        await ctx.client.send("Emulation.clearDeviceMetricsOverride");
       },
     },
   ],
