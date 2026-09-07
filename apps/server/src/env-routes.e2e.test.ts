@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { sharedProviderDisconnectedEnvKey } from "@ipollowork/types/provider-credentials";
 
 import { EnvService } from "./env-file.js";
 import { startServer } from "./server.js";
@@ -32,6 +33,7 @@ function baseConfig(): ServerConfig {
     approval: { mode: "auto", timeoutMs: 1000 },
     corsOrigins: ["*"],
     workspaces: [],
+    opencodeAuthPath: join(dirs[0], "auth.json"),
     authorizedRoots: [],
     readOnly: false,
     startedAt: Date.now(),
@@ -277,6 +279,30 @@ describe("env routes", () => {
       },
     });
     expect(catalog.items.find((item) => item.id === "aliyun-oss")?.configured).toBe(false);
+  });
+
+  test("authorization center shares browser login without replacing API keys and respects disconnect", async () => {
+    writeFileSync(join(dirs[0], "auth.json"), JSON.stringify({ openai: {
+      type: "oauth", access: "private-browser-access", refresh: "private-browser-refresh",
+      accountId: "private-browser-account", expires: Date.now() + 3_600_000,
+    } }));
+    const { base } = await boot();
+    const save = await fetch(`${base}/authorization-services/openai-images/credentials`, {
+      method: "PUT", headers: hostAuth(), body: JSON.stringify({ values: { OPENAI_API_KEY: "private-api-key" } }),
+    });
+    expect(save.status).toBe(200);
+    const catalog = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    const body = await catalog.text();
+    expect(body).not.toContain("private-");
+    expect(JSON.parse(body).items).toContainEqual(expect.objectContaining({
+      id: "openai-images", configured: true, browserLogin: { providerId: "openai", connected: true },
+    }));
+    const store = new EnvService({ processEnv: {} });
+    await store.upsertMany([{ key: sharedProviderDisconnectedEnvKey("openai"), value: "1" }]);
+    const disconnected = await fetch(`${base}/authorization-services`, { headers: hostAuth() });
+    expect((await disconnected.json()).items).toContainEqual(expect.objectContaining({
+      id: "openai-images", configured: true, browserLogin: { providerId: "openai", connected: false },
+    }));
   });
 
   test("authorization tests keep credentials server-side and return a completed test result", async () => {

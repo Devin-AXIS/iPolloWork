@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
+import type { SharedProviderBrowserLogin } from "@ipollowork/types/provider-credentials";
 
 import { authorizationVault } from "./authorization-runtime.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
+import { providerFetch } from "./provider-fetch.js";
+import { resolveOpenAiBrowserSession, type OpenAiCodexOAuthSession } from "./openai-codex-oauth.js";
 import type { ServerConfig } from "./types.js";
 
 export const AUTHORIZATION_SERVICE_IDS = [
@@ -37,6 +40,7 @@ export type AuthorizationServiceStatus = {
   category: "media" | "storage";
   kind: "credentials" | "routing";
   agent: AuthorizationServiceAgentInfo;
+  browserLogin?: SharedProviderBrowserLogin;
 };
 
 export type AuthorizationServiceTestResult = {
@@ -46,6 +50,7 @@ export type AuthorizationServiceTestResult = {
 
 export type AuthorizationAccess = {
   read(serviceId: AuthorizationServiceId): Promise<Readonly<Record<string, string>>>;
+  openAiBrowserSession?(): Promise<OpenAiCodexOAuthSession | null>;
 };
 
 const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
@@ -162,7 +167,10 @@ export async function readAuthorizationServiceValues(config: ServerConfig, servi
 }
 
 export function createAuthorizationAccess(config: ServerConfig): AuthorizationAccess {
-  return { read: (serviceId) => readAuthorizationServiceValues(config, serviceId) };
+  return {
+    read: (serviceId) => readAuthorizationServiceValues(config, serviceId),
+    openAiBrowserSession: () => resolveOpenAiBrowserSession(config),
+  };
 }
 
 export async function saveAuthorizationService(config: ServerConfig, serviceId: AuthorizationServiceId, input: unknown): Promise<AuthorizationServiceStatus> {
@@ -208,20 +216,25 @@ function authorizationServiceStatus(service: AuthorizationServiceDefinition, val
 }
 
 export async function listAuthorizationServices(config: ServerConfig): Promise<AuthorizationServiceStatus[]> {
-  return Promise.all(AUTHORIZATION_SERVICES.map(async (service) =>
-    authorizationServiceStatus(service, await readAuthorizationServiceValues(config, service.id))
-  ));
+  return Promise.all(AUTHORIZATION_SERVICES.map(async (service) => {
+    const status = authorizationServiceStatus(service, await readAuthorizationServiceValues(config, service.id));
+    if (service.id === "openai-images") {
+      const session = await resolveOpenAiBrowserSession(config);
+      status.browserLogin = { providerId: "openai", connected: Boolean(session?.accountId) };
+    }
+    return status;
+  }));
 }
 
 async function fetchAuthorizationTest(url: string, init: RequestInit): Promise<AuthorizationServiceTestResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
   try {
-    const response = await fetch(url, { ...init, signal: controller.signal, redirect: "error" });
+    const response = await providerFetch(url, { ...init, signal: controller.signal, redirect: "error" });
     if (response.ok) return { ok: true, detail: "Connection verified." };
     return { ok: false, detail: `The service rejected this authorization (HTTP ${response.status}).` };
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") return { ok: false, detail: "The connection test timed out." };
+    if (error instanceof Error && error.name === "AbortError") return { ok: false, detail: "The connection test timed out." };
     return { ok: false, detail: "Could not reach the service. Check your network and try again." };
   } finally {
     clearTimeout(timeout);

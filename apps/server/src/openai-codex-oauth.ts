@@ -4,7 +4,9 @@ import { join } from "node:path";
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client";
 
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { sharedProviderDisconnectedIdsFromEnvKeys } from "@ipollowork/types/provider-credentials";
 
+import { EnvService } from "./env-file.js";
 import { resolveOpencodeAuthPath } from "./opencode-db.js";
 import { resolveWorkspaceOpencodeConnection } from "./opencode-connection.js";
 import type { ServerConfig } from "./types.js";
@@ -234,6 +236,15 @@ async function activeOpenAiAccountCredential(
 }
 
 const openAiCodexCredentialRefreshes = new Map<boolean, Promise<OpenAiCodexOAuthSession | null>>();
+
+/** Media shares the provider login, never implicitly imports another app's account. */
+export async function resolveOpenAiBrowserSession(config: ServerConfig): Promise<OpenAiCodexOAuthSession | null> {
+  const records = await new EnvService().list();
+  return resolveOpenAiCodexOAuthSession(config, {
+    explicitlyDisconnected: sharedProviderDisconnectedIdsFromEnvKeys(records.map((record) => record.key)).includes("openai"),
+    allowOfficialCodexFallback: false,
+  });
+}
 
 /**
  * Resolve the account-wide OpenAI OAuth session stored by the managed OpenCode

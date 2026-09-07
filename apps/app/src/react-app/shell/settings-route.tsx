@@ -2179,6 +2179,8 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
             client={ipolloworkServerSnapshot.ipolloworkServerClient}
             isRemoteWorkspace={isRemoteWorkspace}
             runtimeKey={environmentRuntimeKey}
+            onOpenOpenAiLogin={() => void handleOpenProviderAuth("openai")}
+            providerAuthOpen={providerAuthSnapshot.providerAuthModalOpen}
           />
         );
       case "debug":

@@ -1,5 +1,6 @@
 import { ApiError } from "../errors.js";
 import type { AuthorizationAccess } from "../authorization-center.js";
+import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
@@ -82,13 +83,6 @@ function cacheVoiceoverAudio(key: string, audio: Buffer) {
     voiceoverAudioCache.delete(oldest[0]);
     voiceoverAudioCacheBytes -= oldest[1].byteLength;
   }
-}
-
-function mediaProviderFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-  const desktopFetch: unknown = Reflect.get(globalThis, Symbol.for("ipollowork.mediaProviderFetch"));
-  return typeof desktopFetch === "function"
-    ? (desktopFetch as typeof fetch)(input, init)
-    : fetch(input, init);
 }
 
 function roundVoiceoverTime(value: number) {
@@ -1066,7 +1060,7 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(url, { signal: controller.signal, redirect: "error" });
+    response = await providerFetch(url, { signal: controller.signal, redirect: "error" });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
@@ -1394,7 +1388,7 @@ async function requestProviderJson(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(input.url, {
+    response = await providerFetch(input.url, {
       method: input.method ?? "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -1477,7 +1471,7 @@ async function uploadWorkspaceFileToBailianTemporaryStorage(input: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   try {
-    const response = await mediaProviderFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
+    const response = await providerFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
     if (!response.ok) {
       throw new ApiError(response.status, "bailian_temporary_upload_failed", `Alibaba Model Studio temporary storage rejected the audio upload (HTTP ${response.status}).`);
     }
@@ -1529,7 +1523,7 @@ async function requestTranslation(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
+    response = await providerFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,

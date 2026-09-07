@@ -4,11 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { AuthorizationAccess } from "../authorization-center.js";
+import { PROVIDER_FETCH_SYMBOL } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
-import { callOpenAiImageGenerationExtensionAction } from "./openai-image-generation.js";
+import { callOpenAiImageGenerationExtensionAction, openAiImageGenerationStatus } from "./openai-image-generation.js";
 
 const roots: string[] = [];
 const originalFetch = globalThis.fetch;
+const originalProviderFetch: unknown = Reflect.get(globalThis, PROVIDER_FETCH_SYMBOL);
 
 async function temporaryRoot() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-image-edit-"));
@@ -46,6 +48,8 @@ const authorization: AuthorizationAccess = {
 
 afterEach(async () => {
   globalThis.fetch = originalFetch;
+  if (originalProviderFetch === undefined) Reflect.deleteProperty(globalThis, PROVIDER_FETCH_SYMBOL);
+  else Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, originalProviderFetch);
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });
@@ -53,6 +57,32 @@ afterEach(async () => {
 });
 
 describe("OpenAI image editing", () => {
+  test("preserves separate generations of the same prompt when no filename is specified", async () => {
+    const root = await temporaryRoot();
+    globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("generated-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
+    const responses = await Promise.all([1, 2].map(() => callOpenAiImageGenerationExtensionAction(
+      config(root), authorization, "image_generate", { prompt: "生成图片" }, { workspaceId: "workspace" },
+    )));
+    const paths = responses.map((response) => response && "path" in response ? response.path : "");
+    expect(paths[0]).not.toBe(paths[1]);
+    for (const path of paths) {
+      if (!path) throw new Error("Generation did not return an artifact path");
+      expect(path).toMatch(/^artifacts\/ipollowork-image-[a-f0-9-]+\.png$/);
+      expect(await readFile(join(root, path), "utf8")).toBe("generated-image");
+    }
+  });
+
+  test("catalog separates browser login from API credentials without exposing either", async () => {
+    const status = await openAiImageGenerationStatus({
+      read: async () => ({}),
+      openAiBrowserSession: async () => ({ accessToken: "private-access-token", accountId: "private-account" }),
+    });
+    expect(status.models.find((model) => model.id === "openai/gpt-image-2")?.configured).toBe(false);
+    expect(status.models.find((model) => model.id === "openai/gpt-image-2-codex")).toMatchObject({ configured: true, capabilities: { mask: false, region: true } });
+    expect(status.defaultModel).toBe("openai/gpt-image-2-codex");
+    expect(JSON.stringify(status)).not.toContain("private-");
+  });
+
   test("submits the workspace image and transparent mask, then saves a new PNG artifact", async () => {
     const root = await temporaryRoot();
     await mkdir(join(root, "references"), { recursive: true });
@@ -174,6 +204,7 @@ describe("OpenAI image editing", () => {
       defaultModel: "openai/gpt-image-2",
       models: [
         { id: "openai/gpt-image-2", configured: true, available: true, capabilities: { mask: true, region: true } },
+        { id: "openai/gpt-image-2-codex", configured: false, available: true, capabilities: { mask: false, region: true } },
         { id: "volcengine/seedream-5", configured: true, available: true, capabilities: { mask: false, region: true } },
         { id: "midjourney/official", configured: false, available: false },
       ],
@@ -222,6 +253,52 @@ describe("OpenAI image editing", () => {
       provider: "volcengine",
     });
     expect(await readFile(join(root, "artifacts", "seedream-result.png"), "utf8")).toBe("seedream-image");
+  });
+
+  test("uses Electron's system-proxy-aware fetch for image generation", async () => {
+    const root = await temporaryRoot();
+    let platformFetchCalled = false;
+    let desktopFetchUrl = "";
+    globalThis.fetch = Object.assign(async () => {
+      platformFetchCalled = true;
+      return Response.json({});
+    }, { preconnect: originalFetch.preconnect });
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (input: RequestInfo | URL) => {
+      desktopFetchUrl = String(input);
+      return Response.json({ data: [{ b64_json: Buffer.from("desktop-fetch-image").toString("base64") }] });
+    });
+
+    const response = await callOpenAiImageGenerationExtensionAction(
+      config(root),
+      authorization,
+      "image_generate",
+      { prompt: "A proxy-aware image", filename: "proxy-result" },
+      { workspaceId: "workspace" },
+    );
+
+    expect(platformFetchCalled).toBe(false);
+    expect(desktopFetchUrl).toBe("https://api.openai.com/v1/images/generations");
+    expect(response?.result).toMatchObject({ path: "artifacts/proxy-result.png" });
+    expect(await readFile(join(root, "artifacts", "proxy-result.png"), "utf8")).toBe("desktop-fetch-image");
+  });
+
+  test("returns an actionable provider error when image generation cannot connect", async () => {
+    const root = await temporaryRoot();
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => {
+      throw new TypeError("fetch failed");
+    });
+
+    await expect(callOpenAiImageGenerationExtensionAction(
+      config(root),
+      authorization,
+      "image_generate",
+      { prompt: "A test image" },
+      { workspaceId: "workspace" },
+    )).rejects.toMatchObject({
+      status: 502,
+      code: "openai_image_generation_unreachable",
+      message: "Could not reach OpenAI for image generation. Check your connection or system proxy and try again.",
+    });
   });
 
   test("converts a selection into approximate bounds for a model without a native mask API", async () => {

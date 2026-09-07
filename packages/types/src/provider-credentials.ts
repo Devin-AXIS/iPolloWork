@@ -3,6 +3,12 @@ const SHARED_PROVIDER_CREDENTIAL_SUFFIX = "_API_KEY"
 const SHARED_PROVIDER_PROFILE_SUFFIX = "_PROFILE"
 const SHARED_PROVIDER_DISCONNECTED_SUFFIX = "_DISCONNECTED"
 
+/** Public metadata only; credentials remain in the provider account store. */
+export type SharedProviderBrowserLogin = {
+  providerId: "openai"
+  connected: boolean
+}
+
 export type SharedProviderModelProfile = {
   id: string
   name?: string
