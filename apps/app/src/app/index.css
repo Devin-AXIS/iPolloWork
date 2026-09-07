@@ -11,6 +11,11 @@
 
 @import "@fontsource-variable/ibm-plex-sans";
 
+/* Compensate for the transparent padding inside the supplied studio logos. */
+img:is([src$="/ext-design.png"], [src$="/ext-video.png"], [src$="/ext-image-studio.png"]) {
+  scale: 1.4;
+}
+
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
   html.ipollowork-electron & {

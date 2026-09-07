@@ -112,9 +112,7 @@ export default {
               const installedTiles = [...document.querySelectorAll('[data-testid="plugin-installed-tile"]')];
               const installedSection = document.querySelector('[data-testid="plugin-library-installed"]');
               const installedIconSources = installedTiles.map((entry) => entry.querySelector('img')?.getAttribute('src') ?? '');
-              const ipolloIcons = installedTiles
-                .map((entry) => entry.querySelector('img'))
-                .filter((image) => image?.getAttribute('src')?.includes('ipollowork-mark.svg'));
+              const studioIconSources = ['ext-design.png', 'ext-video.png', 'ext-image-studio.png'];
               const verticalCenter = (entry) => {
                 const rect = entry.getBoundingClientRect();
                 return rect.top + rect.height / 2;
@@ -179,7 +177,8 @@ export default {
                 })(),
                 curatedIconsUpdated: installedIconSources.some((src) => src.includes('ext-figma.svg'))
                   && installedIconSources.some((src) => src.includes('ext-github.svg')),
-                ipolloLogoUpdated: ipolloIcons.every((image) => image.naturalWidth === 281 && image.naturalHeight === 298),
+                studioLogosUpdated: studioIconSources.every((source) =>
+                  installedIconSources.some((iconSource) => iconSource.includes(source))),
                 hasInstalledSection: Boolean(document.querySelector('[data-testid="plugin-library-installed"]')),
                 hasMarketplaceFilters: Boolean(document.querySelector('[data-testid="plugin-category-filter"]'))
                   && Boolean(document.querySelector('[data-testid="plugin-status-filter"]')),
@@ -233,7 +232,7 @@ export default {
             ctx.assert(libraryStructure.redundantManageRemoved, "The installed section should not duplicate the Personal tab with a Manage button.");
             ctx.assert(libraryStructure.installedOverflowMatchesDesign, "Installed overflow should appear only when the row is full and render below it with thumbnails.");
             ctx.assert(libraryStructure.curatedIconsUpdated, "Featured third-party plugins should use curated SVGs.");
-            ctx.assert(libraryStructure.ipolloLogoUpdated, "Installed iPollo agents should render the current 281×298 iPollo logo asset.");
+            ctx.assert(libraryStructure.studioLogosUpdated, "Installed iPollo creative studios should render their distinct monochrome logo assets.");
             ctx.assert(libraryStructure.hasInstalledSection, "Installed plugin section was not found.");
             ctx.assert(libraryStructure.hasMarketplaceFilters, "Marketplace category and status filters were not found.");
             ctx.assert(libraryStructure.controlsUseEightPixelCorners, "Settings buttons and inputs should use 8px corners.");
