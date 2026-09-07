@@ -38,6 +38,10 @@ async function expectCard(ctx, path) {
 }
 
 async function openImageCard(ctx, path) {
+  if (await ctx.eval(`Boolean(document.querySelector('iframe[title="图片工作台"]'))`)) {
+    await ctx.waitFor(`window.__ipolloworkControl?.listActions().some(action => action.id === 'workspace_app.list_tools' && !action.disabled)`, {timeoutMs:30000,label:'restored Image Studio bridge ready'});
+    await ctx.waitFor(`${studioDocument}?.querySelector('#busyLayer')?.classList.contains('visible') === false`, {timeoutMs:30000,label:'restored image finished loading'});
+  }
   await expectCard(ctx, path);
   await ctx.eval(`${cardExpression(path)}.click()`);
   await ctx.waitFor(`${studioDocument}?.querySelector('#sourceMeta')?.textContent.includes(${JSON.stringify(path.split('/').pop())})`, {label:'selected output decoded in Image Studio'});
