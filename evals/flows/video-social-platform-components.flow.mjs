@@ -26,13 +26,13 @@ export default {
       name: "The Social category contains the full platform collection",
       run: async (ctx) => {
         let categoryOptions = [];
-        await ctx.prove("The Social category contains nineteen reusable components", {
+        await ctx.prove("The Social category contains twenty-two reusable components", {
           voiceover: vo[0],
           action: async () => {
             await openComponentCatalog(ctx);
             await ctx.fill('[data-testid="block-catalog-search"]', "");
             await ctx.waitFor(
-              `[...document.querySelectorAll('select[aria-label="Component category"] option')].some((option) => option.textContent?.trim() === "All components · 84")`,
+              `[...document.querySelectorAll('select[aria-label="Component category"] option')].some((option) => option.textContent?.trim() === "All components · 150")`,
               { label: "unfiltered component totals" },
             );
             await ctx.eval(`(() => {
@@ -59,12 +59,12 @@ export default {
               };
             })()`);
             ctx.assert(
-              categoryOptions.includes("All components · 84"),
-              "The component total is not 84.",
+              categoryOptions.includes("All components · 150"),
+              "The component total is not 150.",
             );
             ctx.assert(
-              categoryOptions.includes("Social Media · 19"),
-              "The Social Media category total is not 19.",
+              categoryOptions.includes("Social Media · 22"),
+              "The Social Media category total is not 22.",
             );
             for (const name of [
               "instagram-post",

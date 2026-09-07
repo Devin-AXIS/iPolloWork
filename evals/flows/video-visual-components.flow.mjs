@@ -58,12 +58,12 @@ export default {
               "Components is not immediately between Style and Animation.",
             );
             ctx.assert(result.card, "Route Map component card is missing.");
-            ctx.assert(result.text.includes("全部组件 · 84"), "Component total is missing.");
+            ctx.assert(result.text.includes("全部组件 · 150"), "Component total is missing.");
             ctx.assert(result.text.includes("地图与路径 · 12"), "Maps category count is missing.");
           },
           screenshot: {
             name: "components-next-to-theme",
-            requireText: ["组件", "全部组件 · 84", "地图与路径 · 12", "China Map", "World Map"],
+            requireText: ["组件", "全部组件 · 150", "地图与路径 · 12", "China Map", "World Map"],
           },
         });
       },
