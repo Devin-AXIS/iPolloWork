@@ -622,7 +622,7 @@
       };
     }
     async function run() {
-      if (state.busy) return;
+      if (state.busy) return { ok: false, message: tr("processing") };
       const args = actionArguments();
       if (!args.prompt) { setStatus(tr("promptRequired"), true); return { ok: false, message: tr("promptRequired") }; }
       if (state.mode === "edit" && !state.sourcePath) { setStatus(tr("imageRequired"), true); return { ok: false, message: tr("imageRequired") }; }
@@ -639,7 +639,7 @@
             })
           : await callService("generate-image", args);
         await renderImage(result); setMode("edit"); setStatus(tr("saved", { name: result.name || state.sourceName }));
-        return { ok: true };
+        return { ok: true, path: result.path };
       } catch (error) {
         const message = error instanceof Error ? error.message : tr("failed");
         setStatus(message, true);
@@ -750,7 +750,7 @@
         }
         if (message.params?.name === "generate_or_edit") {
           void run().then((result) => respond(message.id, result.ok
-            ? toolResult("Image action finished.")
+            ? { content: [{ type: "text", text: `Image saved: ${result.path}` }], structuredContent: { path: result.path } }
             : { isError: true, content: [{ type: "text", text: result.message || "Image action failed." }] })); return;
         }
         if (message.params?.name === "clear_selection") { clearSelection(false); respond(message.id, toolResult("Selection cleared.")); return; }

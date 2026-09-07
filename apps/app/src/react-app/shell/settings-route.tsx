@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Navigate, useLocation, useNavigate, useParams } from "react-router-dom";
-import { Download, Plus, RefreshCw, Sparkles } from "lucide-react";
+import { Download, Loader2, Plus, RefreshCw, Sparkles } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 
@@ -2268,7 +2268,17 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         hideShellHeader={route.tab === "cloud-account" || Boolean(route.pluginPackageId)}
         hideCloseButton={props.embedded && route.tab === "extensions"}
       >
-        {settingsView}
+        {loading && route.tab === "extensions" ? (
+          <div
+            className="flex min-h-[20rem] w-full items-center justify-center gap-2 text-sm text-dls-secondary"
+            role="status"
+            aria-live="polite"
+            data-testid="extensions-loading"
+          >
+            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            <span>{t("settings.loading")}</span>
+          </div>
+        ) : settingsView}
       </SettingsShell>
 
       <ProviderAuthModal

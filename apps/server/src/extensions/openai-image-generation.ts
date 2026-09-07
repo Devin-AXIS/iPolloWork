@@ -109,7 +109,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_generate",
     title: "Generate image artifact",
-    description: "Generate a PNG image artifact using a registered image model.",
+    description: "Generate and save a PNG workspace artifact without opening Image Studio. If model is omitted, use the first available connected image model.",
     inputSchema: {
       type: "object",
       properties: {
@@ -127,7 +127,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit",
     title: "Edit image artifact",
-    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact.",
+    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. Works without opening Image Studio; omit model to use an available connected image model.",
     effect: "write" as const,
     inputSchema: {
       type: "object",
@@ -201,8 +201,8 @@ function slugifyImageArtifactName(value: string) {
     .slice(0, 48) || "ipollowork-image";
 }
 
-function modelForId(value: string): ImageModelDefinition {
-  const requested = value || DEFAULT_IMAGE_MODEL_ID;
+async function modelForId(value: string, authorization: AuthorizationAccess): Promise<ImageModelDefinition> {
+  const requested = value || (await openAiImageGenerationStatus(authorization)).defaultModel;
   const model = IMAGE_MODELS.find((entry) => entry.id === requested);
   if (!model) throw new ApiError(400, "image_model_unknown", `Unknown image model: ${requested}`);
   if (!model.available) {
@@ -594,7 +594,7 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
 async function generateImageArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
   const prompt = readStringField(args, "prompt");
   if (!prompt) throw new ApiError(400, "invalid_payload", "prompt is required");
-  const model = modelForId(readStringField(args, "model"));
+  const model = await modelForId(readStringField(args, "model"), authorization);
   if (!model.capabilities.generate) throw new ApiError(400, "image_model_capability_unavailable", `${model.label} does not support image generation.`);
   const apiKey = await modelCredential(authorization, model);
   if (!apiKey && model.adapter !== "openai-codex") throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));
@@ -626,7 +626,7 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   const prompt = readStringField(args, "prompt");
   if (!sourcePath || !prompt) throw new ApiError(400, "invalid_payload", "sourcePath and prompt are required");
 
-  const model = modelForId(readStringField(args, "model"));
+  const model = await modelForId(readStringField(args, "model"), authorization);
   if (!model.capabilities.edit) throw new ApiError(400, "image_model_capability_unavailable", `${model.label} does not support image editing.`);
   const apiKey = await modelCredential(authorization, model);
   if (!apiKey && model.adapter !== "openai-codex") throw new ApiError(400, "image_model_authorization_missing", modelMissingAuthorizationMessage(model));

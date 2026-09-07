@@ -41,7 +41,7 @@ const STYLESHEET_EXTENSIONS = new Set([".css", ".scss", ".sass", ".less"]);
 const MARKDOWN_LINK_PATTERN = /\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|([^)\s]+))\s*\)/g;
 const ASSISTANT_ARTIFACT_MENTION_PATTERN = /(?:\b(?:artifact|complete|completed|created|deck|deliverable|exported|file|generated|open|opened|presentation|saved|skill|slides?|updated|wrote)\b|产物|创建|完成|打开|技能|文件|生成|路径|保存|输出|写入|更新)/i;
 const DISCOVERY_TOOL_NAMES = new Set(["glob", "grep", "search", "find"]);
-const ARTIFACT_METADATA_TOOL_NAMES = new Set(["ipollowork_extension_call"]);
+const ARTIFACT_METADATA_TOOL_NAMES = new Set(["ipollowork_extension_call", "ipollowork_workspace_app_call_tool"]);
 const WRITE_TOOL_NAMES = new Set([
   "apply_patch",
   "edit",
@@ -55,8 +55,8 @@ const WRITE_TOOL_NAMES = new Set([
 ]);
 const FILE_METADATA_KEYS = ["path", "file", "filePath", "filepath"];
 const FILE_METADATA_COLLECTION_KEYS = ["files"];
-const FILE_METADATA_CONTAINER_KEYS = ["artifacts", "changes", "output", "outputs", "result", "results"];
-const FILE_METADATA_MAX_DEPTH = 4;
+const FILE_METADATA_CONTAINER_KEYS = ["artifacts", "changes", "output", "outputs", "result", "results", "structuredContent", "content"];
+const FILE_METADATA_MAX_DEPTH = 6;
 const FILE_METADATA_MAX_VALUES = 100;
 const PATCH_FILE_PATTERN = /^\*\*\* (?:Add File|Update File):\s*(.+)$/gmi;
 const PATCH_MOVE_TO_PATTERN = /^\*\*\* Move to:\s*(.+)$/gmi;
@@ -366,7 +366,8 @@ function isWriteTool(toolName: string) {
 }
 
 function isArtifactMetadataTool(toolName: string) {
-  return ARTIFACT_METADATA_TOOL_NAMES.has(normalizedToolName(toolName));
+  const name = normalizedToolName(toolName).split(".").pop() ?? "";
+  return ARTIFACT_METADATA_TOOL_NAMES.has(name.replace(/^mcp__[^_]+__/, ""));
 }
 
 function collectFileMetadataValues(
@@ -378,6 +379,13 @@ function collectFileMetadataValues(
   if (values.length >= FILE_METADATA_MAX_VALUES || depth > FILE_METADATA_MAX_DEPTH) return values;
   if (typeof value === "string") {
     if (allowString) values.push(value);
+    else if (value.length <= 1_000_000 && /^[\s]*[\[{]/.test(value)) {
+      try {
+        collectFileMetadataValues(JSON.parse(value), depth + 1, false, values);
+      } catch {
+        // Tool text is not necessarily JSON; only structured paths are outputs.
+      }
+    }
     return values;
   }
   if (Array.isArray(value)) {
@@ -388,6 +396,10 @@ function collectFileMetadataValues(
     return values;
   }
   if (!isObject(value)) return values;
+  if (value.ok === false || value.isError === true) return values;
+  if (value.type === "text" && typeof value.text === "string") {
+    collectFileMetadataValues(value.text, depth + 1, false, values);
+  }
 
   for (const key of FILE_METADATA_KEYS) {
     const file = value[key];
@@ -400,10 +412,6 @@ function collectFileMetadataValues(
     collectFileMetadataValues(value[key], depth + 1, false, values);
   }
   return values;
-}
-
-function collectNestedFileMetadataValues(value: unknown) {
-  return collectFileMetadataValues(value);
 }
 
 function collectPatchFileValues(value: unknown) {
@@ -429,6 +437,9 @@ function addFileValues(map: Map<string, OpenTarget>, values: string[], confidenc
 }
 
 export function getWrittenFilePaths(toolName: string, input: unknown, output: unknown) {
+  if (isArtifactMetadataTool(toolName)) {
+    return [...new Set(collectFileMetadataValues(output).map((value) => value.trim()).filter(Boolean))];
+  }
   if (!isWriteTool(toolName)) return [];
   const values = [
     ...collectFileMetadataValues(input),
@@ -482,10 +493,10 @@ export function deriveOpenTargets(messages: UIMessage[], options: DeriveOpenTarg
         );
       }
 
-      if (artifactMetadataTool) {
+      if (artifactMetadataTool && part.state === "output-available") {
         addFileValues(
           targets,
-          [part.input, part.output].flatMap(collectNestedFileMetadataValues),
+          getWrittenFilePaths(part.toolName, part.input, part.output),
           95,
           "artifact tool metadata",
         );

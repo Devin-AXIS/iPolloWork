@@ -349,10 +349,13 @@ function codexMcpConfig(name: string, value: Record<string, unknown>): string[] 
   if (value.enabled === false) return [];
   const table = `[mcp_servers.${tomlString(name)}]`;
   const required = `required = ${value.required === true}`;
+  const toolTimeout = typeof value.tool_timeout_sec === "number" && Number.isFinite(value.tool_timeout_sec) && value.tool_timeout_sec > 0
+    ? [`tool_timeout_sec = ${value.tool_timeout_sec}`]
+    : [];
   if (value.type === "local" && Array.isArray(value.command)) {
     const [command, ...args] = value.command.filter((entry): entry is string => typeof entry === "string");
     if (!command) return [];
-    const lines = [table, required, `command = ${tomlString(command)}`];
+    const lines = [table, required, ...toolTimeout, `command = ${tomlString(command)}`];
     if (args.length) lines.push(`args = [${args.map(tomlString).join(", ")}]`);
     const environment = value.environment;
     if (environment && typeof environment === "object" && !Array.isArray(environment)) {
@@ -362,7 +365,7 @@ function codexMcpConfig(name: string, value: Record<string, unknown>): string[] 
     return lines;
   }
   if (value.type === "remote" && typeof value.url === "string" && value.url.trim()) {
-    const lines = [table, required, `url = ${tomlString(value.url.trim())}`];
+    const lines = [table, required, ...toolTimeout, `url = ${tomlString(value.url.trim())}`];
     const headers = value.headers;
     if (headers && typeof headers === "object" && !Array.isArray(headers)) {
       const httpHeaders = tomlStringMap(headers as Record<string, unknown>);
@@ -382,6 +385,7 @@ export function codexHarnessHostMcp(
     url: `http://127.0.0.1:${config.port}/engine-tools/mcp?workspaceId=${encodeURIComponent(workspace.id)}`,
     headers: { Authorization: `Bearer ${config.token}` },
     required: true,
+    tool_timeout_sec: 420,
   };
 }
 

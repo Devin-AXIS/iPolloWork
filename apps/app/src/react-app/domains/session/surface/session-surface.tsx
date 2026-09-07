@@ -100,7 +100,7 @@ import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionAct
 import { PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
-import { deriveOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
+import { createWorkspaceFileOpenTarget, deriveOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-store";
 import {
   beginOptimisticSessionPrompt,
@@ -677,6 +677,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
+  const loadWorkspaceImage = useCallback(async (path: string) => {
+    // Resolve absolute/file-URL paths through the server's workspace containment guard.
+    const resolved = await props.client.resolveArtifacts(props.workspaceId, [createWorkspaceFileOpenTarget({ path })]);
+    const target = resolved.items.find((item) => item.kind === "file" && item.preview === "image" && item.exists);
+    if (!target) throw new Error("Image is not available in this workspace");
+    const result = await props.client.downloadWorkspaceFile(props.workspaceId, target.value);
+    return new Blob([result.data], { type: result.contentType ?? "application/octet-stream" });
+  }, [props.client, props.workspaceId]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
@@ -2370,6 +2378,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 <OpenTargetProvider
                   openTargets={verifiedOpenTargets}
                   onOpenTarget={props.onOpenTarget}
+                  loadWorkspaceImage={loadWorkspaceImage}
                 >
                   <EnvironmentVariableProvider
                     client={props.isRemoteWorkspace ? null : props.environmentClient ?? props.client}

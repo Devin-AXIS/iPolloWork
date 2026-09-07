@@ -782,6 +782,50 @@ describe("conversation engine adapters", () => {
     })]);
   });
 
+  test("surfaces Codex MCP tool consent instead of leaving a turn silently waiting", async () => {
+    const state = createCodexLiveState();
+    const event = {
+      type: "request" as const,
+      id: 52,
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: "codex-image-thread",
+        serverName: "ipollowork",
+        mode: "form",
+        message: "Allow image generation?",
+        requestedSchema: { type: "object", properties: {} },
+        _meta: { codex_approval_kind: "mcp_tool_call", tool_params: { action: "image_generate" } },
+      },
+    };
+    const mapped = mapCodexHarnessEvent(event, state)[0];
+    expect(mapped).toMatchObject({
+      type: "permission.asked",
+      permission: { sessionId: "codex-image-thread", kind: "mcp", resources: ["Allow image generation?", '{"action":"image_generate"}'] },
+    });
+    if (mapped?.type !== "permission.asked") throw new Error("Expected visible MCP consent");
+    expect(mapCodexHarnessEvent({ ...event, params: { ...event.params, _meta: {} } }, state)).toEqual([]);
+
+    const originalFetch = globalThis.fetch;
+    const responses: unknown[] = [];
+    globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      responses.push(JSON.parse(String(init?.body)));
+      return Response.json({ ok: true });
+    }, { preconnect: originalFetch.preconnect });
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test", serverBaseUrl: "http://ipollowork.test", workspaceId: "ws_codex", token: "token",
+      });
+      await connection.replyPermission({ permission: mapped.permission, reply: "once" });
+      await connection.replyPermission({ permission: { ...mapped.permission, id: "53", native: { ...mapped.permission.native, rpcId: 53 } }, reply: "reject" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(responses).toEqual([
+      { rpcId: 52, result: { action: "accept", content: {}, _meta: null } },
+      { rpcId: 53, result: { action: "decline", content: null, _meta: null } },
+    ]);
+  });
+
   test("does not mark a Codex reasoning-only turn as successfully processed", () => {
     const state = createCodexLiveState();
     mapCodexHarnessEvent({

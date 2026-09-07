@@ -83,6 +83,23 @@ describe("OpenAI image editing", () => {
     expect(JSON.stringify(status)).not.toContain("private-");
   });
 
+  test("generates through a connected model when chat omits model and Image Studio is closed", async () => {
+    const root = await temporaryRoot();
+    const calls: string[] = [];
+    globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
+      calls.push(String(input));
+      return Response.json({ data: [{ b64_json: Buffer.from("headless-image").toString("base64") }] });
+    }, { preconnect: originalFetch.preconnect });
+    const result = await callOpenAiImageGenerationExtensionAction(config(root), {
+      read: async (service): Promise<Readonly<Record<string, string>>> => service === "volcengine-video" ? { ARK_API_KEY: "test-ark-key" } : {},
+    }, "image_generate", { prompt: "A mountain at sunrise" }, { workspaceId: "workspace" });
+    if (!result || !("path" in result) || !result.path) throw new Error("Expected a saved image");
+    expect(result.result).toMatchObject({ model: "volcengine/seedream-5", workspaceId: "workspace" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toContain("volces.com");
+    expect(await readFile(join(root, result.path), "utf8")).toBe("headless-image");
+  });
+
   test("submits the workspace image and transparent mask, then saves a new PNG artifact", async () => {
     const root = await temporaryRoot();
     await mkdir(join(root, "references"), { recursive: true });

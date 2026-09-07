@@ -123,7 +123,7 @@ describe("composer plus entry menu", () => {
     expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
     expect(sessionPageSource).toContain("entry.pluginId === pluginId");
     expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
-    expect(sessionPageSource).toContain('activePanelTab?.type === "workspace-app"');
+    expect(sessionPageSource).toContain('activePanelTab.type === "workspace-app"');
     expect(sessionPageSource).toContain("workspaceAppCapabilityInstruction");
     expect(sessionPageSource).toContain("only when this workbench exposes a relevant tool");
     expect(sessionPageSource).toContain("follow that instruction instead");
@@ -133,6 +133,19 @@ describe("composer plus entry menu", () => {
     expect(sessionPageSource).not.toContain("Call workspace_app.list_tools");
     expect(sessionPageSource).not.toContain("then call workspace_app.call_tool");
     expect(sessionPageSource).not.toContain("You must use its available workspace_app tools");
+  });
+
+  test("does not scope ordinary chat sends to an open workbench", () => {
+    const start = sessionPageSource.indexOf("const sendSessionDraft = useCallback(");
+    expect(start).toBeGreaterThan(-1);
+    // The complete callback ends at its dependency list, before the next hook.
+    const callbackEnd = sessionPageSource.indexOf("\n  }, [", start);
+    const sendDraft = sessionPageSource.slice(start, callbackEnd);
+    expect(sendDraft).toContain("mergePluginWorkshopInstruction");
+    expect(sendDraft).not.toContain("workspaceAppCapabilityInstruction");
+    expect(sendDraft).not.toContain('type === "workspace-app"');
+    const workbenchSend = sessionPageSource.slice(sessionPageSource.indexOf("const sendWorkspaceAppMessage = useCallback("));
+    expect(workbenchSend).toContain("workspaceAppCapabilityInstruction");
   });
 
   test("presents DeepSeek Harness as collaboration without implementation details", () => {

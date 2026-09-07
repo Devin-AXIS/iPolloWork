@@ -13,6 +13,10 @@ const uiStateSource = readFileSync(
   new URL("../src/react-app/shell/ui-state-store.ts", import.meta.url),
   "utf8",
 ).replaceAll("\r\n", "\n");
+const settingsRouteSource = readFileSync(
+  new URL("../src/react-app/shell/settings-route.tsx", import.meta.url),
+  "utf8",
+).replaceAll("\r\n", "\n");
 
 function functionBody(source: string, start: string, end: string) {
   const startIndex = source.indexOf(start);
@@ -95,6 +99,27 @@ describe("workspace resize performance", () => {
     expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
       handler.indexOf("props.sidebar.onOpenSession(workspaceId, sessionId);"),
     );
+  });
+
+  test("returns extensions and schedule views to the new-task starter", () => {
+    const handler = functionBody(
+      sessionPageSource,
+      "const handleSidebarCreateTask = useCallback",
+      "const handleSidebarOpenSessionSearch",
+    );
+    expect(handler).toContain("closeExpandedWorkSurface();");
+    expect(handler).toContain("setMainWorkspaceView(null);");
+    expect(handler.indexOf("setMainWorkspaceView(null);")).toBeLessThan(
+      handler.indexOf("props.sidebar.onCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);"),
+    );
+    expect(sessionPageSource).toContain("onCreateTaskInWorkspace={handleSidebarCreateTask}");
+  });
+
+  test("shows an accessible loading state while extensions initialize", () => {
+    expect(settingsRouteSource).toContain('loading && route.tab === "extensions"');
+    expect(settingsRouteSource).toContain('data-testid="extensions-loading"');
+    expect(settingsRouteSource).toContain('role="status"');
+    expect(settingsRouteSource).toContain('t("settings.loading")');
   });
 
   test("keeps the starter navigation shell while hiding its title", () => {
