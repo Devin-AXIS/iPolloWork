@@ -117,7 +117,19 @@ export async function runCodexImageTurn(
           ? turn.items.find((item: unknown) => isRecord(item) && item.type === "imageGeneration")
           : null;
         if (image) void codexImageBytes(image, root).then(resolve, reject);
-        else reject(imageFailure("Codex 未返回图片，请检查账号额度或重新登录后重试。"));
+        else if (isRecord(turn) && turn.status === "interrupted") {
+          reject(imageFailure("Codex 图片任务已中断，请重试。"));
+        } else if (isRecord(turn) && isRecord(turn.error) && turn.error.codexErrorInfo === "usageLimitExceeded") {
+          reject(new ApiError(429, "codex_image_usage_limit", "ChatGPT/Codex 图片额度已用完，请等待额度重置，或选择 API 模型（独立计费）。"));
+        } else if (isRecord(turn) && isRecord(turn.error) && turn.error.codexErrorInfo === "unauthorized") {
+          reject(new ApiError(401, "codex_image_login_required", "ChatGPT 授权已失效，请在授权中心重新登录 OpenAI。"));
+        } else if (isRecord(turn) && turn.status === "failed") {
+          reject(imageFailure("Codex 图片请求失败，请稍后重试或检查网络连接。"));
+        } else {
+          // A completed text turn is not image success and is not evidence of
+          // expired credentials or quota. Never expose private runtime stderr.
+          reject(imageFailure("Codex 未返回图片结果，图片工具可能未能启动。请更新 Codex 运行时后重试。"));
+        }
       }
     });
   });

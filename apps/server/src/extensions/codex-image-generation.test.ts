@@ -10,7 +10,7 @@ const image = { type: "imageGeneration", status: "completed", result: png.toStri
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
-function fakeRpc(options: { capability?: boolean; result?: unknown; silent?: boolean } = {}) {
+function fakeRpc(options: { capability?: boolean; result?: unknown; silent?: boolean; turn?: unknown } = {}) {
   let listener: ((event: StdioJsonRpcEvent) => void) | undefined;
   const calls: Array<{ method: string; params: unknown }> = [];
   return {
@@ -22,7 +22,7 @@ function fakeRpc(options: { capability?: boolean; result?: unknown; silent?: boo
       if (method === "thread/start") return { thread: { id: "image-thread" } };
       if (method === "turn/start" && !options.silent) {
         queueMicrotask(() => listener?.({ type: "notification", method: "turn/completed", params: {
-          threadId: "image-thread", turn: { status: "completed", items: options.result === null ? [] : [options.result ?? image] },
+          threadId: "image-thread", turn: options.turn ?? { status: "completed", items: options.result === null ? [] : [options.result ?? image] },
         } }));
       }
       return {};
@@ -59,7 +59,27 @@ describe("ChatGPT image generation", () => {
 
   test("reports missing output and releases the subscription", async () => {
     const rpc = fakeRpc({ result: null });
-    await expect(runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" })).rejects.toMatchObject({ code: "codex_image_generation_failed" });
+    await expect(runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" })).rejects.toMatchObject({
+      code: "codex_image_generation_failed", message: "Codex 未返回图片结果，图片工具可能未能启动。请更新 Codex 运行时后重试。",
+    });
+    expect(rpc.subscribed()).toBe(false);
+  });
+
+  test.each([
+    ["usageLimitExceeded", 429, "codex_image_usage_limit"],
+    ["unauthorized", 401, "codex_image_login_required"],
+    ["internalServerError", 502, "codex_image_generation_failed"],
+  ])("classifies failed turns by structured %s without exposing runtime details", async (codexErrorInfo, status, code) => {
+    const rpc = fakeRpc({ turn: { status: "failed", items: [], error: { codexErrorInfo, message: "private-token", additionalDetails: "private-stderr" } } });
+    const error = await runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" }).catch((error: unknown) => error);
+    expect(error).toMatchObject({ status, code });
+    expect(String(error)).not.toContain("private-");
+    expect(rpc.subscribed()).toBe(false);
+  });
+
+  test("reports an interrupted turn without blaming credentials", async () => {
+    const rpc = fakeRpc({ turn: { status: "interrupted", items: [] } });
+    await expect(runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" })).rejects.toMatchObject({ message: "Codex 图片任务已中断，请重试。" });
     expect(rpc.subscribed()).toBe(false);
   });
 

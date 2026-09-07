@@ -308,6 +308,15 @@
     function selectedModel() {
       return state.models.find((model) => model.id === state.model) || null;
     }
+    function applyProviderModels(provider) {
+      state.models = Array.isArray(provider.models)
+        ? provider.models.filter((model) => model && typeof model.id === "string" && model.available === true && model.configured === true)
+        : [];
+      if (!state.models.some((model) => model.id === state.model)) {
+        state.model = state.models.find((model) => model.id === provider.defaultModel)?.id || state.models[0]?.id || "";
+      }
+      syncProviderState();
+    }
     function modelAuthorizationNotice(model) {
       if (!model) return tr("providerNotice");
       if (model.provider === "midjourney") return tr("midjourneyUnavailable");
@@ -646,8 +655,7 @@
         const selectOptions = {
           model: state.models.map((model) => ({
             value: model.id,
-            label: `${model.label}${!model.available ? ` · ${tr("notAvailable")}` : !model.configured ? ` · ${tr("notConnected")}` : ""}`,
-            disabled: !model.available,
+            label: model.label,
           })),
           style: [
             ["auto", english ? "Auto" : "自动"], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "编辑视觉"],
@@ -860,7 +868,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.8" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.9" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
@@ -871,12 +879,8 @@
       await applyHostContext(pluginContext);
       try {
         const provider = await callService("status", {});
-        state.models = Array.isArray(provider.models) ? provider.models.filter((model) => model && typeof model.id === "string") : [];
-        const defaultModel = typeof provider.defaultModel === "string" ? provider.defaultModel : "";
-        if (state.models.some((model) => model.id === defaultModel)) state.model = defaultModel;
-        else if (!state.models.some((model) => model.id === state.model) && state.models[0]) state.model = state.models[0].id;
-        syncProviderState();
-      } catch { state.models = []; state.providerReady = false; }
+        applyProviderModels(provider);
+      } catch { applyProviderModels({ models: [] }); }
       renderProvider();
       publishContext();
     }).catch((error) => { setStatus(error.message || tr("failed"), true); });

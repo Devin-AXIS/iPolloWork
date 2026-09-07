@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runInNewContext } from "node:vm";
 
 import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
@@ -317,13 +318,41 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.8");
+    expect(result.manifest.package?.version).toBe("0.1.9");
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
     expect(workspaceUi).toContain("normalizedSelectionBounds");
     expect(workspaceUi).toContain("approximateSelection");
+  });
+
+  test("Image Studio offers only bound available models and clears a revoked selection", async () => {
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
+    expect(apply).toBeDefined();
+    const state: { model: string; models: unknown[]; providerReady: boolean } = { model: "api", models: [], providerReady: false };
+    const context = { state, syncProviderState: () => { state.providerReady = state.models.length > 0; } };
+    runInNewContext(`${apply}; globalThis.update = applyProviderModels`, context);
+    const catalog = [
+      { id: "api", available: true, configured: false },
+      { id: "browser", available: true, configured: true },
+      { id: "ark", available: true, configured: true },
+      { id: "midjourney", available: false, configured: true },
+      null,
+    ];
+    runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "api" })})`, context);
+    expect(state.models).toEqual(catalog.slice(1, 3));
+    expect(state.model).toBe("browser");
+    expect(state.providerReady).toBe(true);
+    state.model = "ark";
+    runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "browser" })})`, context);
+    expect(state.model).toBe("ark");
+    runInNewContext(`update({models: [], defaultModel: "api"})`, context);
+    expect(state.models).toEqual([]);
+    expect(state.model).toBe("");
+    expect(state.providerReady).toBe(false);
+    expect(ui).toContain("options: selectOptions.model");
   });
 
   test("accepts version 2 packages and rejects obsolete manifests", async () => {
