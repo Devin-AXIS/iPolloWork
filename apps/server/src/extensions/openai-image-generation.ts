@@ -1,6 +1,6 @@
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { basename, dirname, extname, resolve, sep } from "node:path";
+import { basename, extname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
 import type { AuthorizationAccess, AuthorizationServiceId } from "../authorization-center.js";
@@ -8,6 +8,7 @@ import { resolveWithinRoot } from "../paths.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { generateCodexImage } from "./codex-image-generation.js";
+import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
 const IMAGE_API_TIMEOUT_MS = 120_000;
@@ -591,6 +592,20 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
   throw new ApiError(400, "image_model_unavailable", model.unavailableReason ?? `${model.label} is not available.`);
 }
 
+async function saveImageArtifact(workspace: WorkspaceInfo, fileName: string, bytes: Buffer): Promise<string> {
+  const directory = await resolveWithinRoot(workspace.path, "artifacts");
+  await mkdir(directory, { recursive: true });
+  let path = `artifacts/${fileName}`;
+  try {
+    await writeFile(resolveSafeChildPath(workspace.path, path), bytes, { flag: "wx" });
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "EEXIST") throw error;
+    path = `artifacts/${basename(fileName, ".png")}-${randomUUID()}.png`;
+    await writeFile(resolveSafeChildPath(workspace.path, path), bytes, { flag: "wx" });
+  }
+  return path;
+}
+
 async function generateImageArtifact(config: ServerConfig, authorization: AuthorizationAccess, args: Record<string, unknown>, context: Record<string, unknown>) {
   const prompt = readStringField(args, "prompt");
   if (!prompt) throw new ApiError(400, "invalid_payload", "prompt is required");
@@ -604,13 +619,9 @@ async function generateImageArtifact(config: ServerConfig, authorization: Author
   const fileName = requestedName
     ? `${slugifyImageArtifactName(requestedName)}.png`
     : `${slugifyImageArtifactName(prompt)}-${randomUUID()}.png`;
-  const relativePath = `artifacts/${fileName}`;
-  const outputPath = resolveSafeChildPath(workspace.path, relativePath);
   const payload = await generateWithModel(model, apiKey, args, prompt, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
-
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, bytes);
+  const relativePath = await saveImageArtifact(workspace, fileName, bytes);
 
   return {
     path: relativePath,
@@ -645,8 +656,6 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   const sourceBaseName = basename(sourcePath, extname(sourcePath));
   const requestedName = readStringField(args, "filename");
   const fileName = `${slugifyImageArtifactName(requestedName || `${sourceBaseName}-edited-${Date.now()}`)}.png`;
-  const relativePath = `artifacts/${fileName}`;
-  const outputPath = resolveSafeChildPath(workspace.path, relativePath);
   const payload = await editWithModel(model, apiKey, args, {
     image,
     imageName: basename(sourcePath),
@@ -656,12 +665,15 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
     prompt,
   }, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
-  await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, bytes);
+  const relativePath = await saveImageArtifact(workspace, fileName, bytes);
   return { path: relativePath, bytes: bytes.byteLength, model: model.id, provider: model.provider, workspaceId: workspace.id };
 }
 
 export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
+  // Capture and validate ownership before a long-running provider request.
+  const sessionId = (action === "image_generate" || action === "image_edit") && context.sessionId
+    ? sessionArtifactOwner(context.sessionId)
+    : null;
   if (action === "status") {
     return {
       ok: true,
@@ -673,6 +685,7 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_generate") {
     const result = await generateImageArtifact(config, authorization, args, context);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
@@ -684,6 +697,7 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_edit") {
     const result = await editImageArtifact(config, authorization, args, context);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,

@@ -7,6 +7,7 @@ import type { AuthorizationAccess } from "../authorization-center.js";
 import { PROVIDER_FETCH_SYMBOL } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import { callOpenAiImageGenerationExtensionAction, openAiImageGenerationStatus } from "./openai-image-generation.js";
+import { listSessionArtifacts } from "../session-artifacts.js";
 
 const roots: string[] = [];
 const originalFetch = globalThis.fetch;
@@ -57,6 +58,35 @@ afterEach(async () => {
 });
 
 describe("OpenAI image editing", () => {
+  test("registers generation and edit with the initiating session and preserves a same-named source", async () => {
+    const root = await temporaryRoot();
+    const serverConfig = config(root);
+    globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("generated-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
+    const generated = await callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
+      prompt: "A painted sun", filename: "sun",
+    }, { workspaceId: "workspace", sessionId: "session-original" });
+    if (!generated || !("path" in generated) || !generated.path) throw new Error("Expected generation result");
+    globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("edited-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
+    const edited = await callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_edit", {
+      prompt: "Make it blue", sourcePath: generated.path, filename: "sun",
+    }, { workspaceId: "workspace", sessionId: "session-original" });
+    if (!edited || !("path" in edited) || !edited.path) throw new Error("Expected edit result");
+    expect(edited.path).not.toBe(generated.path);
+    expect(await readFile(join(root, generated.path), "utf8")).toBe("generated-image");
+    expect(await readFile(join(root, edited.path), "utf8")).toBe("edited-image");
+    expect((await listSessionArtifacts(serverConfig, "workspace", "session-original")).items.map((item) => item.path))
+      .toEqual([edited.path, generated.path]);
+    expect((await listSessionArtifacts(serverConfig, "workspace", "session-switched")).items).toEqual([]);
+    await expect(callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
+      prompt: "Bad owner",
+    }, { workspaceId: "workspace", sessionId: "../bad" })).rejects.toThrow("sessionId");
+    globalThis.fetch = Object.assign(async () => Response.json({ error: { message: "Provider unavailable" } }, { status: 503 }), { preconnect: originalFetch.preconnect });
+    await expect(callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
+      prompt: "Should fail",
+    }, { workspaceId: "workspace", sessionId: "session-failed" })).rejects.toThrow();
+    expect((await listSessionArtifacts(serverConfig, "workspace", "session-failed")).items).toEqual([]);
+  });
+
   test("preserves separate generations of the same prompt when no filename is specified", async () => {
     const root = await temporaryRoot();
     globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("generated-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
@@ -167,7 +197,7 @@ describe("OpenAI image editing", () => {
     await mkdir(join(root, "references"), { recursive: true });
     const outsideImage = join(outsideRoot, "outside.png");
     await writeFile(outsideImage, Buffer.from("outside-image"));
-    await symlink(outsideImage, join(root, "references", "linked.png"));
+    await symlink(outsideRoot, join(root, "references", "linked"), process.platform === "win32" ? "junction" : "dir");
     let called = false;
     globalThis.fetch = Object.assign(async () => {
       called = true;
@@ -178,7 +208,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_edit",
-      { sourcePath: "references/linked.png", prompt: "Change it" },
+      { sourcePath: "references/linked/outside.png", prompt: "Change it" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "path_escape" });
     expect(called).toBe(false);

@@ -2237,6 +2237,13 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
       }),
 
+    listSessionArtifacts: (workspaceId: string, sessionId: string, cursor: number | null = null) =>
+      requestJson<import("@ipollowork/types/workspace").SessionArtifactPage>(
+        baseUrl,
+        `/workspace/${encodeURIComponent(workspaceId)}/artifacts?sessionId=${encodeURIComponent(sessionId)}${cursor === null ? "" : `&cursor=${cursor}`}`,
+        { token, hostToken },
+      ),
+
     resolveArtifacts: (
       workspaceId: string,
       targets: Array<{

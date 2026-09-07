@@ -20,6 +20,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
+import { sessionArtifactsQueryKey } from "@/react-app/infra/session-artifacts-query";
 import {
   StudioInspectorHeader,
   StudioInspectorPanel,
@@ -411,6 +413,11 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
             sessionId: props.sessionId ?? undefined,
           },
         });
+        if (result.ok && props.sessionId) {
+          void getReactQueryClient().invalidateQueries({
+            queryKey: sessionArtifactsQueryKey(props.client.baseUrl, props.workspaceId, props.sessionId),
+          });
+        }
         return result.ok ? toolResult(result.result) : toolError(result.message);
       } catch (nextError) {
         return toolError(nextError);
