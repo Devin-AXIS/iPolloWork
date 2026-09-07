@@ -60,7 +60,7 @@ export default {
           target.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
           return true;
         })()`);
-        await ctx.waitFor("!document.querySelector('[role=\"listbox\"]')", {
+        await ctx.waitFor("document.querySelector('[aria-label=\"图片模型\"]')?.getAttribute('aria-expanded') !== 'true'", {
           label: "stale Image Studio popover to close",
         });
 
@@ -78,14 +78,8 @@ export default {
           },
           screenshot: { name: "image-studio-bound-models", requireText: [MODEL, "图片参数"], rejectText: ["GPT Image 2 · API", "Midjourney"] },
         });
-        const point = await ctx.eval(`(() => {
-          const rect = Array.from(document.querySelectorAll('[role="option"]')).find(e => e.textContent.trim() === ${JSON.stringify(MODEL)}).getBoundingClientRect();
-          return {x: rect.x + rect.width / 2, y: rect.y + rect.height / 2};
-        })()`);
-        await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
-        await ctx.client.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
-        await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
-        await ctx.waitFor(`!document.querySelector('[role="listbox"]') && document.querySelector('[aria-label="图片模型"]').textContent.includes(${JSON.stringify(MODEL)})`);
+        await ctx.eval(`Array.from(document.querySelectorAll('[role="option"]')).find(e => e.textContent.trim() === ${JSON.stringify(MODEL)}).click()`);
+        await ctx.waitFor(`document.querySelector('[aria-label="图片模型"]').getAttribute('aria-expanded') === 'false' && document.querySelector('[aria-label="图片模型"]').textContent.includes(${JSON.stringify(MODEL)})`);
 
         // Use the normal file-import control when the caller supplies a fixture.
         // Otherwise the user must already have an image open in this workbench.
