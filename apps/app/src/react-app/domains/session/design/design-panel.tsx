@@ -1767,7 +1767,9 @@ export function DesignPanel({
       setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(previous.html);
-      setHydratedPreviewSource("");
+      // Canvas edits do not change previewSource. Reusing its already hydrated
+      // document keeps image URLs alive when Undo returns to that same source.
+      if (previous.html !== previewSource) setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision(restore.previewRevision);
       if (previous.restoreTokenCss) {

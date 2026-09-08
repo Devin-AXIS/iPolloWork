@@ -809,7 +809,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     pendingSelectionClick = null;
   };
 
-  const replaceSelection = (element: HTMLElement, type: "selected" | "editing" = "selected", preservePending = false) => {
+  const replaceSelection = (element: HTMLElement, type: "selected" | "editing" | "draft" = "selected", preservePending = false) => {
     if (!preservePending) cancelPendingSelection();
     selectedElements = [element];
     primaryElement = element;
@@ -1280,9 +1280,8 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     if (data.type === "media-fill" && (data.kind === "image" || data.kind === "video") && typeof data.src === "string") {
       const targets = selectedTargets(data.ids);
       if (targets.length !== 1 || isLockedElement(targets[0])) return;
-      mediaTools.set(targets[0], data.kind, data.src, typeof data.preview === "string" ? data.preview : undefined);
-      syncOverlay();
-      post("draft");
+      const layer = mediaTools.set(targets[0], data.kind, data.src, typeof data.preview === "string" ? data.preview : undefined);
+      replaceSelection(layer, "draft");
       return;
     }
     if (data.type === "delete") {
@@ -1359,7 +1358,12 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
         rangeSelection?.addRange(textRange);
       } else if (data.scope === "range") return;
       else targets.forEach((target) => {
-        if (data.field === "backgroundImage") mediaTools.clearBackground(target);
+        if (data.field === "backgroundImage") {
+          const layer = mediaTools.clearFill(target);
+          selectedElements = selectedElements.map((selected) => selected === target ? layer : selected);
+          if (primaryElement === target) primaryElement = layer;
+          target = layer;
+        }
         target.style.setProperty(property, data.value);
       });
     } else {

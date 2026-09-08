@@ -19,6 +19,21 @@ const sharp = require("sharp");
 const root = await mkdtemp(join(tmpdir(), "ipollowork-selection-fixture-"));
 const mediaMode = process.argv.includes("--media");
 const framesMode = process.argv.includes("--frames");
+const historyMode = process.argv.includes("--history");
+let historyRuntime;
+let readHistory;
+if (historyMode) {
+  // Bun runs these production TypeScript owners; only the upstream process is fake.
+  const { CodexHarnessRuntime } = await import("../../apps/server/src/codex-harness-runtime.ts");
+  const { readCodexHarnessSnapshot } = await import("../../apps/server/src/codex-harness-session-read-model.ts");
+  const { EnvService } = await import("../../apps/server/src/env-file.ts");
+  const cli = join(root, "codex-empty-history-fixture.js");
+  await writeFile(cli, await readFile(new URL("./codex-empty-history-fixture.cjs", import.meta.url)));
+  process.env.IPOLLOWORK_CODEX_CLI = cli;
+  historyRuntime = new CodexHarnessRuntime({ config: { configPath: join(root, "history.json"), workspaces: [] }, env: new EnvService({ path: join(root, "env.json") }), workspace: { id: "history-proof", path: root, name: "History proof", engineId: "codex-harness", workspaceType: "local" } });
+  readHistory = readCodexHarnessSnapshot;
+  process.once("SIGINT", async () => { await historyRuntime.close(); process.exit(0); });
+}
 const videoMode = process.argv.includes("--video") || mediaMode;
 const fixturePort = videoMode ? 5274 : 5190;
 const authorization = { read: async () => ({ OPENAI_API_KEY: "fixture", ARK_API_KEY: "fixture", ...(framesMode ? { RUNNINGHUB_API_KEY: "fixture" } : {}) }), openAiBrowserSession: async () => ({ accessToken: "fixture", accountId: "fixture" }) };
@@ -95,8 +110,19 @@ const server = createServer(async (req, res) => {
     }
     if (req.url === "/setup") {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ html, manifest, root, framesMode, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
+      res.end(JSON.stringify({ html, manifest, root, framesMode, historyMode, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
       return;
+    }
+    if (historyMode && req.url.startsWith("/history/")) {
+      const url = new URL(req.url, "http://localhost");
+      const threadId = url.searchParams.get("id");
+      let result;
+      if (url.pathname === "/history/create" && req.method === "POST") result = await historyRuntime.startThread({ name: crypto.randomUUID(), modelProvider: "test", model: "test" });
+      else if (url.pathname === "/history/snapshot") result = { item: await readHistory(historyRuntime, threadId) };
+      else if (url.pathname === "/history/send" && req.method === "POST") result = await historyRuntime.call("turn/start", { threadId });
+      else if (url.pathname === "/history/witness") result = await historyRuntime.call("test/witness");
+      else throw new Error("Unsupported history fixture action");
+      res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(result)); return;
     }
     if (req.url === "/artifacts") { res.end(JSON.stringify(await listSessionArtifacts(config, context.workspaceId, context.sessionId))); return; }
     if (mediaMode && req.url.startsWith("/file?")) {

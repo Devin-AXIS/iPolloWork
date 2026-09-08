@@ -351,11 +351,19 @@ export async function listCodexHarnessSessions(
 
 export async function readCodexHarnessThread(runtime: CodexHarnessRuntime, threadId: string): Promise<CodexThread> {
   let response: { thread?: CodexThread };
+  // A thread just created for the template brief has no turns to list. Some
+  // supported runtimes reject that read with `list_turns is not supported yet`.
+  // Only our positively known, unstarted threads qualify; never infer emptiness
+  // from a blank preview, title, error text, or missing metadata turns array.
+  const metadataOnly = runtime.isAwaitingFirstTurn(threadId);
   try {
     response = await runtime.call<{ thread?: CodexThread }>("thread/read", {
       threadId,
-      includeTurns: true,
+      includeTurns: !metadataOnly,
     });
+    // A user can send while the metadata read is in flight.
+    if (metadataOnly && !runtime.isAwaitingFirstTurn(threadId))
+      return readCodexHarnessThread(runtime, threadId);
   } catch (error) {
     if (!isCodexUnmaterializedThreadError(error)) throw error;
     response = await runtime.call<{ thread?: CodexThread }>("thread/read", {

@@ -111,7 +111,7 @@ function ElementPropertiesContent({
   const fillField = selection.colorField;
   const backgroundValue = selection.styles[fillField];
   const [mediaFillOpen, setMediaFillOpen] = React.useState<"image" | "video" | null>(null);
-  React.useEffect(() => setMediaFillOpen(null), [selection.id]);
+  React.useEffect(() => setMediaFillOpen(null), [selection.id, selection.media?.kind]);
   const [linkOpen, setLinkOpen] = React.useState(Boolean(selection.href));
   const [linkDraft, setLinkDraft] = React.useState(selection.href);
   const [aspectRatioLocked, setAspectRatioLocked] = React.useState(false);
@@ -347,8 +347,8 @@ function ElementPropertiesContent({
           <PropertyButton active={fillType === "none"} aria-label="No fill" onClick={() => applyFillType("none")}><Minus /></PropertyButton>
           <PropertyButton active={fillType === "solid"} aria-label="Solid fill" onClick={() => applyFillType("solid")}><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
           <PropertyButton active={fillType === "gradient"} aria-label="Gradient fill" onClick={() => applyFillType("gradient")}><Grip /></PropertyButton>
-          <PropertyButton active={fillType === "image"} aria-label={t("media.workbench.image_fill")} title={t("media.workbench.image_fill")} disabled={selection.tag === "video"} onClick={() => applyFillType("image")}><Image /></PropertyButton>
-          {onChooseVideo && !isMultiSelection ? <PropertyButton active={fillType === "video"} aria-label={t("media.workbench.video_fill")} title={t("media.workbench.video_fill")} disabled={selection.tag === "img"} onClick={() => applyFillType("video")}><Video /></PropertyButton> : null}
+          <PropertyButton active={fillType === "image"} aria-label={t("media.workbench.image_fill")} title={t("media.workbench.image_fill")} onClick={() => applyFillType("image")}><Image /></PropertyButton>
+          {onChooseVideo && !isMultiSelection ? <PropertyButton active={fillType === "video"} aria-label={t("media.workbench.video_fill")} title={t("media.workbench.video_fill")} onClick={() => applyFillType("video")}><Video /></PropertyButton> : null}
         </div> : null}
         {isMultiSelection ? <>
           <ColorField label={t("design.properties.field.text_color")} mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />

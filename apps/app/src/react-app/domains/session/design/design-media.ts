@@ -59,6 +59,32 @@ export function designMediaTools() {
     element.querySelector(backgroundSelector)?.remove();
     element.removeAttribute("data-ipw-preview-background");
   };
+  // Replaced elements paint their own pixels above CSS backgrounds. Turn them
+  // into a fill layer when changing kind, retaining identity and the rendered box.
+  const fillLayer = (element: HTMLElement) => {
+    if (element.tagName !== "IMG" && element.tagName !== "VIDEO") return element;
+    const layer = element.ownerDocument.createElement("div");
+    const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+    for (const attribute of element.attributes) {
+      if (!/^(src|srcset|sizes|alt|poster|controls|autoplay|loop|muted|playsinline|preload|loading|decoding|crossorigin|data-ipw-preview-src)$/i.test(attribute.name))
+        layer.setAttribute(attribute.name, attribute.value);
+    }
+    // Tag selectors and intrinsic image dimensions no longer apply to a div.
+    // Inline declarations (including responsive percentages) remain authoritative.
+    if (style) {
+      for (const property of ["width", "height", "min-width", "min-height", "max-width", "max-height", "box-sizing", "aspect-ratio", "position", "inset", "margin", "padding", "border", "border-radius", "box-shadow", "transform", "opacity", "vertical-align", "flex", "align-self", "order", "grid-area", "object-fit", "object-position"]) {
+        if (!layer.style.getPropertyValue(property)) layer.style.setProperty(property, style.getPropertyValue(property));
+      }
+      layer.style.display = style.display === "inline" ? "inline-block" : style.display;
+    }
+    element.replaceWith(layer);
+    return layer;
+  };
+  const clearFill = (element: HTMLElement) => {
+    const layer = fillLayer(element);
+    clearBackground(layer);
+    return layer;
+  };
   const set = (element: HTMLElement, kind: MediaKind, src: string, preview?: string) => {
     if (!src || /^(javascript|vbscript):/i.test(src)) throw new Error("Invalid media source.");
     const existing = read(element);
@@ -66,7 +92,7 @@ export function designMediaTools() {
       (element.tagName === "IMG" && kind !== "image") ||
       (element.tagName === "VIDEO" && kind !== "video")
     )
-      throw new Error("The selected element uses a different media type.");
+      element = fillLayer(element);
     let target: Element = element;
     if (element.tagName !== "IMG" && element.tagName !== "VIDEO") {
       if (/^(INPUT|BR|HR|SOURCE|CANVAS|SVG|PICTURE)$/.test(element.tagName))
@@ -75,7 +101,10 @@ export function designMediaTools() {
         clearBackground(element);
         element.style.backgroundImage = `url("${preview ?? src}")`;
         if (preview) element.setAttribute("data-ipw-preview-background", `url("${src}")`);
-        return;
+        element.style.backgroundSize ||= "cover";
+        element.style.backgroundPosition ||= "center";
+        element.style.backgroundRepeat = "no-repeat";
+        return element;
       }
       let video = element.querySelector<HTMLVideoElement>(backgroundSelector);
       if (!video) {
@@ -105,6 +134,7 @@ export function designMediaTools() {
     else target.removeAttribute("data-ipw-preview-src");
     if (existing?.kind === "video")
       target.querySelectorAll(":scope > source").forEach((child) => child.remove());
+    return element;
   };
   const restore = (element: HTMLElement) => {
     const src = element.getAttribute("data-ipw-preview-src");
@@ -118,7 +148,7 @@ export function designMediaTools() {
       element.removeAttribute("data-ipw-preview-background");
     }
   };
-  return { read, set, restore, clearBackground };
+  return { read, set, restore, clearBackground, clearFill };
 }
 
 // Previewing an existing file is broader than offering a model edit action
