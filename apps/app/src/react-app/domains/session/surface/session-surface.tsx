@@ -730,6 +730,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const result = await props.client.downloadWorkspaceFile(props.workspaceId, target.value);
     return new Blob([result.data], { type: result.contentType ?? "application/octet-stream" });
   }, [props.client, props.workspaceId]);
+  const openTargetForSession = useCallback((target: OpenTarget, options?: OpenTargetOptions) => {
+    props.onOpenTarget?.(target, options, props.sessionId);
+  }, [props.onOpenTarget, props.sessionId]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
@@ -1156,12 +1159,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (editedImage) {
       pendingImageStudioRefreshRef.current = null;
       props.onOpenTarget?.(editedImage, { auto: true, viewer: "image-studio" }, props.sessionId);
+      toast.success(t("image_studio.ai.opened_result"));
       return;
     }
 
     const timeout = window.setTimeout(() => {
-      if (pendingImageStudioRefreshRef.current === pending) pendingImageStudioRefreshRef.current = null;
-    }, 3_000);
+      if (pendingImageStudioRefreshRef.current !== pending) return;
+      pendingImageStudioRefreshRef.current = null;
+      toast.warning(t("image_studio.ai.result_not_opened"));
+    }, 30_000);
     return () => window.clearTimeout(timeout);
   }, [latestAssistantCompleted, liveStatus.type, props.onOpenTarget, props.sessionId, renderedMessages.length, verifiedOpenTargets]);
 
@@ -2489,7 +2495,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
               <DevProfiler id="MessageList">
                 <OpenTargetProvider
                   openTargets={verifiedOpenTargets}
-                  onOpenTarget={props.onOpenTarget}
+                  onOpenTarget={openTargetForSession}
                   loadWorkspaceImage={loadWorkspaceImage}
                 >
                   <EnvironmentVariableProvider

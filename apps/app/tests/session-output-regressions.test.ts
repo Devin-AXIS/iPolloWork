@@ -194,6 +194,35 @@ describe("session output issue regressions", () => {
       "视频已经完成。\n\n更新文件：`video/session-1/index.html`\n\n音频位于：video/session-1/assets/voiceover-*.mp3\n\n最终校验通过。",
       [artifact.path],
     )).toBe("视频已经完成。\n\n最终校验通过。");
+
+    const imageArtifact: ArtifactItem = {
+      ...artifact,
+      id: "generated-image",
+      name: "result.png",
+      path: "artifacts/image-studio/result.png",
+      type: "image",
+      target: {
+        ...artifact.target,
+        id: "file:artifacts/image-studio/result.png",
+        value: "artifacts/image-studio/result.png",
+        name: "result.png",
+        preview: "image",
+        size: 2_621_440,
+      },
+    };
+    expect(artifactCardDescription(imageArtifact, "图片已生成")).toBe("PNG · 2.5 MB");
+  });
+
+  test("keeps generated image previews readable and localized", () => {
+    const markdownSource = readFileSync(new URL("../src/components/markdown/markdown.tsx", import.meta.url), "utf8");
+    const imageSource = readFileSync(new URL("../src/components/ui/image.tsx", import.meta.url), "utf8");
+    const chineseLocaleSource = readFileSync(new URL("../src/i18n/locales/zh.ts", import.meta.url), "utf8");
+
+    expect(markdownSource).toContain("const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;");
+    expect(imageSource).toContain("const DEFAULT_PREVIEW_MAX_HEIGHT = 360");
+    expect(markdownSource).toContain('t("image.preview.show_full")');
+    expect(imageSource).toContain('t("image.preview.show_less")');
+    expect(chineseLocaleSource).toContain('"image.preview.show_full": "查看完整图片"');
   });
 
   test("keeps scroll recovery compact and limits chat weight tuning to macOS", () => {

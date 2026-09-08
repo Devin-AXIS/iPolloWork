@@ -721,6 +721,12 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       : undefined);
   }, [props.surface.pluginId]);
 
+  useEffect(() => {
+    const sourcePath = props.launch?.intent === "edit-image" ? props.launch.source?.path : undefined;
+    if (!bridgeReady || props.surface.pluginId !== "image-studio" || !sourcePath) return;
+    void callWorkspaceAppTool("open_image", { sourcePath });
+  }, [bridgeReady, callWorkspaceAppTool, props.launch, props.surface.pluginId]);
+
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.placement !== "workspace" ? [] : [
     {
       id: "workspace_app.list_tools",
