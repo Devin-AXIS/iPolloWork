@@ -354,13 +354,13 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(html).not.toContain('call("prepare-prompt"');
 });
 
-test("current session AI expands chosen preferences, rejects stale replies and waits for review", async () => {
+test("one click expands with the current session AI and automatically submits exactly once", async () => {
   const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
   const signature = html.slice(html.indexOf("function promptSignature()"), html.indexOf("\n", html.indexOf("function promptSignature()")));
   const runner = signature + "\n" + html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
-  const calls: string[] = [], messages: unknown[] = [];
+  const calls: string[] = [], messages: unknown[] = [], timers: Array<() => void> = [];
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
-  const sandbox: Record<string,unknown> = { crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
+  const sandbox: Record<string,unknown> = { crypto: { randomUUID }, setTimeout(callback: () => void) { timers.push(callback); }, render() {}, publish() {}, tell() {}, refresh: async () => {},
     request: async (method: string, args: unknown) => { calls.push(method); messages.push(args); return {}; },
     call: async (action: string) => {
       calls.push(action);
@@ -374,16 +374,33 @@ test("current session AI expands chosen preferences, rejects stale replies and w
   expect(JSON.stringify(messages)).toContain("夸父追日");
   expect(runInNewContext("state.busy",sandbox)).toBe(false);
   await expect(runInNewContext("run()",sandbox)).rejects.toThrow("正在扩写");
-  expect(()=>runInNewContext("acceptExpandedPrompt({requestId:'wrong',prompt:'ignore'})",sandbox)).toThrow("过期");
-  runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'integrated_multimodal_description: [Shot 1] Kuafu runs. overall_soundscape: wind. non_diegetic_music: drums.'})",sandbox);
-  expect(calls).toEqual(["ui/message"]);
-  await runInNewContext("run()", sandbox);
+  await expect(runInNewContext("acceptExpandedPrompt({requestId:'wrong',prompt:'ignore'})",sandbox)).rejects.toThrow("过期");
+  const reply = "acceptExpandedPrompt({requestId:state.expansion.id,prompt:'integrated_multimodal_description: [Shot 1] Kuafu runs. overall_soundscape: wind. non_diegetic_music: drums.'})";
+  runInNewContext("globalThis.previousId=state.expansion.id",sandbox);
+  await runInNewContext(reply,sandbox);
   expect(calls).toEqual(["ui/message", "submit"]);
+  await expect(runInNewContext("acceptExpandedPrompt({requestId:previousId,prompt:'duplicate'})",sandbox)).rejects.toThrow("过期");
   runInNewContext("state.firstFrame='new.png'",sandbox);
   await runInNewContext("run()",sandbox);
   runInNewContext("state.camera='特写'",sandbox);
-  expect(()=>runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'stale'})",sandbox)).toThrow("过期");
+  await expect(runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'stale'})",sandbox)).rejects.toThrow("过期");
   expect(calls).toEqual(["ui/message", "submit", "ui/message"]);
+  runInNewContext("state.expansion=null",sandbox);
+  sandbox.request=async()=>({isError:true});
+  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("未接收");
+  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
+  expect(runInNewContext("state.busy",sandbox)).toBe(false);
+  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
+  sandbox.request=async()=>({});
+  await runInNewContext("run()",sandbox);
+  runInNewContext("state.host.sessionId='another-session'",sandbox);
+  await expect(runInNewContext(reply,sandbox)).rejects.toThrow("过期");
+  timers.at(-1)?.();
+  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
+  expect(runInNewContext("state.busy",sandbox)).toBe(false);
+  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
+  expect(html).toContain('"生成视频"');
+  expect(html).not.toContain("确认描述并生成");
 });
 
 test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {

@@ -12,7 +12,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.2.2",
+  "version": "0.2.3",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"

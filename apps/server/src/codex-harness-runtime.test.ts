@@ -361,7 +361,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
   });
 
-  test("unloads a previously read thread before changing its model provider", async () => {
+  test("resumes persisted history without treating a read as an attached thread", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
@@ -432,7 +432,6 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 
       expect((await readFile(logPath, "utf8")).trim().split("\n")).toEqual([
         "initialize",
-        "initialize",
         "resume:ipollowork-opencode/nemotron-3-ultra-free",
       ]);
     } finally {
@@ -481,7 +480,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
   if (message.method === "thread/read") {
     process.stdout.write(JSON.stringify({
       id: message.id,
-      result: { thread: { id: message.params.threadId, turns: [{ id: "materialized-turn" }] } },
+      result: { thread: { id: message.params.threadId, modelProvider: "ipollowork-openai", model: "gpt-5.6", turns: [{ id: "materialized-turn" }] } },
     }) + "\n");
     return;
   }
@@ -549,6 +548,9 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         modelProvider: "ipollowork-deepseek",
         model: "deepseek-v4",
       });
+      // A persisted history read must not suppress the first resume. The
+      // subsequent identical resume is still cached after actual attachment.
+      await runtime.call("thread/read", { threadId: "thread-1", includeTurns: true });
       await runtime.resumeThread({
         threadId: "thread-1",
         cwd: root,

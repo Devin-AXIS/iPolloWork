@@ -74,13 +74,13 @@ function Fixture() {
     return false; // Simulated transport: do not start an external agent turn.
   };
   if (setup.framesMode) return <main style={{ height: "100vh", display: "flex", flexDirection: "column" }} className="bg-background text-foreground">
-    <header className="border-b px-5 py-3 text-sm">视频参数验证 · 真实控件和消息桥，模拟会话 AI，不提交生成任务
+    <header className="border-b px-5 py-3 text-sm">视频参数验证 · 真实控件和消息桥，模拟 AI 和视频服务，不扣费
       {videoBrief ? <details className="mt-2"><summary>当前会话收到扩写请求（模拟）</summary><pre className="max-h-32 overflow-auto whitespace-pre-wrap text-xs">{videoBrief}</pre></details> : null}
       {videoBrief ? <button className="mt-2 rounded border p-2" onClick={async () => {
         window.__ipolloworkControl.setEnabled(true);
         const requestId=videoBrief.match(/requestId=([a-f0-9-]+)/)?.[1];
         await window.__ipolloworkControl.execute("workspace_app.call_tool",{name:"accept_expanded_prompt",arguments:{requestId,prompt:"integrated_multimodal_description: [Shot 1] Kuafu runs across the wilderness holding a staff, pursuing the setting sun. Epic cinematic style, low-angle tracking shot, golden sunset. overall_soundscape: footsteps and wind. non_diegetic_music: drums."}});
-      }}>模拟 AI 回填描述（不会生成视频）</button> : null}
+      }}>模拟 AI 回填并自动提交模拟视频</button> : null}
     </header>
     <section className="min-h-0 flex-1"><WorkspaceAppFrame
       surface={{ id: "video-console", pluginId: "video-console", label: "视频控制台", resource: setup.resource }}
