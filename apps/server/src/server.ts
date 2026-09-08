@@ -3764,21 +3764,13 @@ async function exportWorkspace(
       content: await readFile(skill.path, "utf8"),
     })),
   );
-  const commandContents = await Promise.all(
-    commands.map(async (command) => ({
-      name: command.name,
-      description: command.description,
-      template: command.template,
-    })),
-  );
-
   return {
     workspaceId: workspace.id,
     exportedAt: Date.now(),
     opencode,
     ipollowork,
     skills: skillContents,
-    commands: commandContents,
+    commands: commands.map(({ name, description, template }) => ({ name, description, template })),
     ...(files.length ? { files } : {}),
   };
 }
