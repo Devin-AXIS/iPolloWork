@@ -225,9 +225,9 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
   const args=submission();await call("submit",args);
   const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
   await updateVideoJob(config,job,{model:"minimax-h3"});
-  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>{
-    if(url.endsWith("/openapi/v2/query"))return Response.json({status:"SUCCESS",results:[{url:"https://rh-images.xiaoyaoyou.com/existing.mp4"}]});
-    expect(url).toBe("https://rh-images.xiaoyaoyou.com/existing.mp4");return new Response(mp4);
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
+    if(String(url).endsWith("/openapi/v2/query"))return Response.json({status:"SUCCESS",results:[{url:"https://rh-images.xiaoyaoyou.com/existing.mp4"}]});
+    expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/existing.mp4");return new Response(mp4);
   });
   await pollVideoJobs(config,auth);
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");

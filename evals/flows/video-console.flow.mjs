@@ -21,6 +21,8 @@ async function selectOption(ctx, label, value) {
 async function openConsole(ctx) {
   await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30000 });
   await ctx.waitFor(`Boolean(document.querySelector('[data-session-surface-id="' + location.hash.split('/').pop() + '"]'))`);
+  await ctx.eval(`document.querySelector('button[aria-label="Select tab: 视频控制台"]')?.click()`);
+  if(await ctx.eval(`Boolean(document.querySelector('button[aria-label="Select tab: 视频控制台"]'))`))await ctx.waitFor(`Boolean(${studio})`);
   if (!await ctx.eval(`Boolean(${studio})`)) {
     await ctx.eval(`document.querySelector('button[aria-label="打开右侧面板"]')?.click()`);
     if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="添加侧面板入口"]'))`)) {
@@ -69,7 +71,7 @@ export default {
           ctx.assert(await ctx.eval(`!document.querySelector('[data-testid="workspace-app-inspector"]').innerText.includes('未连接')`),"Unbound models are not shown as choices");
         }, screenshot:{name:"bound-video-model",requireText:["视频参数"]},
       });
-      await ctx.prove("Both models expose actual first-frame inputs and only supported controls", {
+      await ctx.prove("The selected model exposes actual first-frame inputs and only supported controls", {
         voiceover:vo[1],action:async()=>{
           await ctx.eval(`${element("#generateMode")}.click()`);
           await selectOption(ctx,"生成方式","首帧生视频");
@@ -106,7 +108,8 @@ export default {
           await ctx.waitFor(`Boolean(${element(`[data-job-id="${jobId}"]`)})`);
           const status = await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.innerText`);
           ctx.assert(!/生成失败|待确认|保存失败/.test(status), `The task must be accepted by the provider: ${status}`);
-        },screenshot:{name:"video-task-restored",requireText:["本会话任务"]},
+          await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.scrollIntoView({block:'center'})`);
+        },screenshot:{name:"video-task-restored",requireText:["视频参数"]},
       });
       await ctx.prove("The resulting video plays and persists as this session's artifact without a chat message", {
         voiceover:vo[3],action:async()=>{
@@ -124,7 +127,8 @@ export default {
           ctx.assert(JSON.stringify(await api(ctx,messagePath))===beforeMessages,"The console did not insert chat messages");
           const page=await api(ctx,`/workspace/${workspaceId}/artifacts?sessionId=${sessionId}`);
           ctx.assert(page.items.some(item=>item.path===outputPath),"The artifact remains after reload");
-        },screenshot:{name:"video-output-retained",requireText:["本会话任务"]},
+          await ctx.eval(`${element("#player")}.scrollIntoView({block:'center'})`);
+        },screenshot:{name:"video-output-retained",requireText:["视频参数"]},
       });
     },
   }],
