@@ -29,18 +29,18 @@ export default {
       })()`);
       try {
         await ctx.navigateHash('/settings/authorizations');
-        await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === '测试连接' && !b.disabled)`, { timeoutMs: 20_000 });
+        await ctx.waitFor(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === '测试 API' && !b.disabled)`, { timeoutMs: 20_000 });
         await ctx.prove("A provider outage appears in Chinese, and the connection-test button is usable again", {
           voiceover: "第三方服务暂时不可用时，授权中心显示清晰的中文提示，不会误报 Key 失效，也不会卡住测试按钮。",
-          action: () => ctx.clickText('测试连接', { selector: 'button', exact: true }),
+          action: () => ctx.clickText('测试 API', { selector: 'button', exact: true }),
           assert: async () => {
             await ctx.waitForText(message);
             ctx.assert(await ctx.eval('window.__providerErrorProof.calls === 1'), 'One user action issued exactly one test request.');
-            ctx.assert(await ctx.eval(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === '测试连接' && !b.disabled)`), 'The user can retry the test.');
+            ctx.assert(await ctx.eval(`Array.from(document.querySelectorAll('button')).some(b => b.textContent.trim() === '测试 API' && !b.disabled)`), 'The user can retry the test.');
             await ctx.expectNoText('Unexpected server error');
             await ctx.expectNoText('JSON Parse error');
           },
-          screenshot: { name: 'provider-outage-fallback', requireText: [message, '测试连接'], rejectText: ['Unexpected server error', 'JSON Parse error'] },
+          screenshot: { name: 'provider-outage-fallback', requireText: [message, '测试 API'], rejectText: ['Unexpected server error', 'JSON Parse error'] },
         });
       } finally {
         await ctx.eval(`(() => { if (window.__providerErrorProof) { window.fetch = window.__providerErrorProof.original; delete window.__providerErrorProof; } })()`);

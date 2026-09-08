@@ -124,6 +124,32 @@ test("503 and malformed responses show friendly text and never duplicate a billa
   }
 });
 
+test("video rejections retain provider codes and do not expose raw account diagnostics", async () => {
+  for (const [status, code, message, expected] of [
+    [400, "ModelNotOpen", "Your account 123 has not activated the model example. Request id: private-trace", "当前账号无权使用该第三方服务或模型"],
+    [400, "InvalidParameter", "Private upstream validation diagnostics", "第三方请求未完成，请检查参数后重试"],
+    [503, "UpstreamFault", "Private gateway diagnostics", "第三方服务暂时不可用"],
+  ] as const) {
+    const { config, call } = await setup();
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({ error: { code, message } }, { status }));
+    const args = submission();
+    await call("submit", args);
+    const job = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+    expect(job.message).toContain(expected);
+    expect(job.message).not.toContain(message);
+    expect(job.status).toBe(status < 500 ? "failed" : "uncertain");
+  }
+});
+
+test("H3 uses explicit ratios except for first-frame inputs, before contacting the provider", () => {
+  const args = submission({ model: "minimax-h3", resolution: "768P" });
+  expect(validateVideoSubmission(args).ratio).toBe("16:9");
+  for (const operation of ["text", "reference", "regenerate"]) {
+    expect(() => validateVideoSubmission({ ...args, operation, ratio: "adaptive" })).toThrow("画幅");
+  }
+  expect(validateVideoSubmission({ ...args, operation: "first", firstFrame: "source.png", ratio: "adaptive" }).ratio).toBe("adaptive");
+});
+
 test("authorization tests distinguish provider outages from invalid keys", async () => {
   const { config } = await setup();
   await saveAuthorizationService(config, "runninghub-video", { RUNNINGHUB_API_KEY: "test-rh-key" });
@@ -197,6 +223,9 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='edit';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("regenerate");expect(switched.duration).toBe("5");
+  const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");
+  expect(ratioField?.value).toBe("16:9");
+  expect(ratioField?.options?.some(option=>option.value==="adaptive")).toBe(false);
   expect(parsePluginUiInspectorContext(switched.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
   expect(runInNewContext(`state.models=[];normalized();state.model`,sandbox)).toBe("");
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');

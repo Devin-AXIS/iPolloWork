@@ -63,6 +63,7 @@
     function tell(message,error=false) { state.message=message; state.error=error; $("#message").textContent=message; $("#message").classList.toggle("error",error); publish(); }
     function model() { return state.models.find(item=>item.id===state.model); }
     function allowedOps() { return (model()?.operations||[]).filter(op=>editOps.includes(op)===(state.mode==="edit")); }
+    function allowedRatios() { return ["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:(model()?.ratios||state.ratios); }
     function normalized() {
       const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
       if(!model()) set("model",state.models[0]?.id||"");
@@ -71,7 +72,7 @@
       if(!current.resolutions.includes(state.resolution)) set("resolution",current.defaultResolution);
       if(!current.durations.includes(state.duration)) set("duration","5");
       if(state.operation==="edit") set("duration","-1");
-      if(!state.ratios.includes(state.ratio)||["first","first-last","edit","extend"].includes(state.operation)) set("ratio","adaptive");
+      if(!allowedRatios().includes(state.ratio)) set("ratio",allowedRatios()[0]);
       if(!["first","first-last"].includes(state.operation)) set("firstFrame","");
       if(state.operation!=="first-last") set("lastFrame","");
       if(!refOps.includes(state.operation)) for(const field of ["imageRefs","videoRefs","audioRefs"])set(field,"");
@@ -98,7 +99,7 @@
         if(["first","first-last"].includes(state.operation))fields.push(textarea("firstFrame","首帧图片","图片链接 / 工作区路径"));
         if(state.operation==="first-last")fields.push(textarea("lastFrame","尾帧图片","图片链接 / 工作区路径"));
         if(refOps.includes(state.operation))fields.push(textarea("imageRefs",`参考图片 · 最多 ${current.imageLimit} 张`,"每行一个链接 / 工作区路径"),textarea("videoRefs",`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`,"每行一个视频链接 / 工作区路径"),textarea("audioRefs",`参考音频 · 最多 ${current.audioLimit} 个`,"每行一个音频链接 / 工作区路径"));
-        fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",(["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:state.ratios).map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
+        fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",allowedRatios().map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
         if(current.id==="seedance-2.5")fields.push(select("generateAudio","同步生成声音",[{value:"true",label:"开启"},{value:"false",label:"关闭"}],true));
         fields.push(select("watermark","AI 生成水印",[{value:"true",label:"保留"},{value:"false",label:"不显示"}],true));
       }
@@ -236,7 +237,7 @@
       if(message.method==="ui/resource-teardown") {disposed=true;clearTimeout(pollTimer);if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error("控制台已关闭"));}pending.clear();respond({});}
     });
     async function poll(){try{if(!state.busy&&!document.hidden)await refresh();}catch(error){tell(error.message,true);}finally{if(!disposed)pollTimer=setTimeout(poll,10000);}}
-    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Console",version:"0.1.1"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
+    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Console",version:"0.1.2"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
       post({jsonrpc:"2.0",method:"ui/notifications/initialized",params:{}});state.host=host.hostContext?.[HOST]||{};document.documentElement.style.colorScheme=host.hostContext?.theme||"light dark";
       await refresh();await applyLaunch();pollTimer=setTimeout(poll,10000);
     }).catch(error=>tell(error.message,true));

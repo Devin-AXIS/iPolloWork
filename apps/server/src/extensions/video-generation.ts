@@ -26,6 +26,7 @@ const catalog = [
   {
     id: "seedance-2.5", label: "Seedance 2.5 · 火山引擎 Ark", service: "volcengine-video", key: "ARK_API_KEY",
     upstream: "doubao-seedance-2-5-260628", resolutions: ["480p", "720p", "1080p"], defaultResolution: "720p",
+    ratios,
     durations: ["-1", ...Array.from({ length: 27 }, (_, i) => String(i + 4))],
     operations: ["text", "first", "first-last", "reference", "edit", "extend"],
     imageLimit: 30, videoLimit: 10, audioLimit: 10, referenceSeconds: 30,
@@ -33,6 +34,7 @@ const catalog = [
   {
     id: "minimax-h3", label: "MiniMax H3 · RunningHub", service: "runninghub-video", key: "RUNNINGHUB_API_KEY",
     upstream: "minimax/hailuo-h3", resolutions: ["768P", "2K"], defaultResolution: "768P",
+    ratios: ratios.filter(ratio => ratio !== "adaptive"),
     durations: Array.from({ length: 11 }, (_, i) => String(i + 5)),
     operations: ["text", "first", "first-last", "reference", "regenerate"],
     imageLimit: 9, videoLimit: 3, audioLimit: 3, referenceSeconds: 15,
@@ -64,7 +66,8 @@ export function validateVideoSubmission(input: unknown): Submission {
   const args = parsed.data;
   const model = videoModelDefinition(args.model);
   if (!model.operations.includes(args.operation)) fail("当前模型不支持此操作。");
-  if (!model.resolutions.includes(args.resolution) || !model.durations.includes(args.duration) || !ratios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
+  const allowedRatios = ["first", "first-last", "edit", "extend"].includes(args.operation) ? ["adaptive"] : model.ratios;
+  if (!model.resolutions.includes(args.resolution) || !model.durations.includes(args.duration) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
   if (["first", "first-last", "edit", "extend"].includes(args.operation) && args.ratio !== "adaptive") fail("首帧、编辑和延长操作的画幅必须跟随输入素材。");
   if (args.operation === "edit" && args.duration !== "-1") fail("Seedance 视频编辑的时长必须跟随原视频。");
   if (["first", "first-last"].includes(args.operation) !== Boolean(args.firstFrame.trim())) fail("首帧模式需要首帧图片；其他模式请使用参考素材。");
@@ -118,7 +121,7 @@ async function jsonRequest(url: string, key: string, body?: unknown, signal?: Ab
   const data = validated.data;
   if (!response.ok) {
     const error = object.safeParse(data.error);
-    throw new ApiError(response.status, "video_provider_rejected", safeError(error.success ? error.data.message : data.errorMessage ?? data.message ?? `视频接口 HTTP ${response.status}`, key));
+    throw providerApiError(error.success ? error.data : data, response.status);
   }
   return data;
 }
@@ -338,7 +341,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       submitted = true;
       const result = await jsonRequest(request.url, key, request.body);
       if (!result.taskId && args.model === "minimax-h3" && result.errorCode) {
-        throw new ApiError(400, "video_provider_rejected", safeError(`${result.errorCode} ${result.errorMessage ?? "RunningHub 拒绝了生成请求"}`, key));
+        throw providerApiError(result, 400);
       }
       const upstreamId = z.string().min(1).max(200).parse(args.model === "seedance-2.5" ? result.id : result.taskId);
       if (!/^[a-zA-Z0-9_-]+$/.test(upstreamId)) throw new Error("服务商返回无效任务 ID。");

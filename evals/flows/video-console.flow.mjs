@@ -4,10 +4,29 @@ const vo = await loadVoiceoverParagraphs("video-console");
 const studio = `document.querySelector('iframe[title="视频控制台"]')?.contentDocument`;
 const element = selector => `${studio}?.querySelector(${JSON.stringify(selector)})`;
 
+async function selectOption(ctx, label, value) {
+  if (await ctx.eval(`document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.textContent.includes(${JSON.stringify(value)})`)) return;
+  await ctx.client.send("Page.bringToFront");
+  await ctx.eval(`document.querySelectorAll('[data-video-proof-option]').forEach(node => node.removeAttribute('data-video-proof-option'))`);
+  await ctx.trustedClick(`[aria-label="${label}"]`);
+  await ctx.waitFor(`(() => {
+    const option = Array.from(document.querySelectorAll('[role="option"]')).find(node => node.textContent.trim() === ${JSON.stringify(value)} && node.getBoundingClientRect().width > 0);
+    if (!option) return false;
+    option.setAttribute('data-video-proof-option', 'true'); return true;
+  })()`);
+  await ctx.trustedClick('[data-video-proof-option="true"]');
+  await ctx.waitFor(`!document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.disabled && document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.textContent.includes(${JSON.stringify(value)})`);
+}
+
 async function openConsole(ctx) {
   await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30000 });
   if (!await ctx.eval(`Boolean(${studio})`)) {
-    await ctx.trustedClick('button[aria-label="添加侧面板入口"]');
+    if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="打开右侧面板"]'))`)) {
+      await ctx.trustedClick('button[aria-label="打开右侧面板"]');
+    }
+    if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="添加侧面板入口"]'))`)) {
+      await ctx.trustedClick('button[aria-label="添加侧面板入口"]');
+    }
     await ctx.clickText("视频控制台", { selector: '[role="menuitem"],button' });
   }
   await ctx.waitFor(`Boolean(${element("#generateMode")})`);
@@ -40,11 +59,14 @@ export default {
       const messagePath=`/workspace/${workspaceId}/sessions/${sessionId}/messages`;
       await ctx.navigateHash(route);
       const beforeMessages=JSON.stringify(await api(ctx,messagePath));
-      let jobId, outputPath;
+      let jobId = ctx.env.IPOLLOWORK_EVAL_VIDEO_JOB_ID, outputPath;
       await ctx.prove("The console opens with a bound model and no unavailable choices", {
         voiceover:vo[0], action:()=>openConsole(ctx),
         assert:async()=>{
           await ctx.waitFor(`Boolean(document.querySelector('textarea[name="prompt"]'))`);
+          if (ctx.env.IPOLLOWORK_EVAL_VIDEO_MODEL) {
+            await selectOption(ctx, "视频模型", ctx.env.IPOLLOWORK_EVAL_VIDEO_MODEL);
+          }
           ctx.assert(await ctx.eval(`!document.querySelector('[data-testid="workspace-app-inspector"]').innerText.includes('未连接')`),"Unbound models are not shown as choices");
         }, screenshot:{name:"bound-video-model",requireText:["视频参数"]},
       });
@@ -59,13 +81,15 @@ export default {
         voiceover:vo[2],action:async()=>{
           await ctx.eval(`${element("#generateMode")}.click()`);
           await ctx.waitFor(`Boolean(document.querySelector('textarea[name="prompt"]'))`);
+          if (!jobId) {
           await ctx.fill('textarea[name="prompt"]',"海边的灯塔，平静的海浪，固定镜头，5 秒，不要人物或文字。");
-          await ctx.trustedClick('[aria-label="时长（秒）"]');
-          await ctx.clickText("5", { selector: '[role="option"]', exact: true });
+          await selectOption(ctx, "时长（秒）", "5");
           const previous=await ctx.eval(`Array.from(${studio}.querySelectorAll('[data-job-id]')).map(node=>node.dataset.jobId)`);
           await ctx.clickText("生成视频",{selector:"button"});
           await ctx.waitFor(`Array.from(${studio}.querySelectorAll('[data-job-id]')).some(node=>!${JSON.stringify(previous)}.includes(node.dataset.jobId))`,{timeoutMs:180000});
           jobId=await ctx.eval(`Array.from(${studio}.querySelectorAll('[data-job-id]')).find(node=>!${JSON.stringify(previous)}.includes(node.dataset.jobId)).dataset.jobId`);
+          }
+          ctx.output("Video job (reuse this ID after an interrupted proof; do not submit twice)", jobId);
           await ctx.navigateHash(`/workspace/${workspaceId}/session/${ctx.env.IPOLLOWORK_EVAL_OTHER_SESSION_ID}`);
           await ctx.navigateHash(route);await openConsole(ctx);
         },assert:async()=>{
