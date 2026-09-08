@@ -4,10 +4,6 @@
  */
 
 export default {
-  "composer.image_selection_attached": "Image selection attached",
-  "composer.image_selection_preparing": "Capturing image selection…",
-  "composer.image_selection_remove": "Remove image selection",
-  "composer.image_selection_failed": "Could not attach the image selection. Please retry.",
   "plugin_platform.action.install": "Install",
   "plugin_platform.action.connect": "Connect",
   "plugin_platform.action.open": "Open",

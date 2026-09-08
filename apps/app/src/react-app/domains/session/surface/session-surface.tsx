@@ -56,8 +56,6 @@ import {
 } from "@/app/lib/app-inspector";
 import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
 import { ReactSessionComposer } from "./composer/composer";
-import { withImageSelection } from "./image-selection-draft";
-import type { WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
   failedDraftRetrySurface,
@@ -180,6 +178,12 @@ type PendingArtifactCompletionValidation = {
   recoveryAttempted: boolean;
 };
 
+type PendingImageStudioRefresh = {
+  sourcePath: string;
+  baselineTargetIds: string[];
+  assistantMessageBaseline: number;
+};
+
 type VideoDeliveryValidationOutput = {
   valid: boolean;
   issues: Array<{ code?: string; message?: string }>;
@@ -227,7 +231,6 @@ export type SessionSurfaceProps = {
   ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
-  imageSelection?: WorkspaceImageSelection | null;
   modelVariantLabel: string;
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
@@ -658,6 +661,7 @@ function imageStudioReferenceInstruction(reference: ImageStudioAiReference | nul
     `- ${target}`,
     "- Treat this location as the subject of the user's request and preserve unrelated parts of the image.",
     "- Use the image editing skill and save the result as a new workspace file; do not overwrite the source image.",
+    "- In the final response, embed the edited image with a Markdown image link and report its exact workspace-relative path so the conversation shows both the image preview and its file card.",
   ].join("\n");
 }
 
@@ -728,25 +732,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.client, props.workspaceId]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
-  const [dismissedImageSelection, setDismissedImageSelection] = useState<string | null>(null);
-  const [preparingImageSelection, setPreparingImageSelection] = useState(false);
-  const preparingImageSelectionRef = useRef(false);
-  const imageSelection = props.imageSelection?.sessionId === props.sessionId && props.imageSelection.key !== dismissedImageSelection
-    ? props.imageSelection : null;
-  const prepareSelectedImage = useCallback(async (draft: ComposerDraft) => {
-    if (preparingImageSelectionRef.current) return null;
-    if (!imageSelection) return draft;
-    preparingImageSelectionRef.current = true;
-    setPreparingImageSelection(true);
-    try { return await withImageSelection(draft, imageSelection, props.supportsNativeAttachments); }
-    catch (error) {
-      toast.error(error instanceof Error ? error.message : t("composer.image_selection_failed"));
-      return null;
-    } finally {
-      preparingImageSelectionRef.current = false;
-      setPreparingImageSelection(false);
-    }
-  }, [imageSelection, props.supportsNativeAttachments]);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
   const [animationCatalogLoading, setAnimationCatalogLoading] = useState(false);
   const [animationCatalogError, setAnimationCatalogError] = useState<string | null>(null);
@@ -759,6 +744,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
   const videoDeliveryValidationInFlightRef = useRef(false);
   const pendingArtifactCompletionRef = useRef<PendingArtifactCompletionValidation | null>(null);
+  const pendingImageStudioRefreshRef = useRef<PendingImageStudioRefresh | null>(null);
   const artifactCompletionValidationInFlightRef = useRef(false);
   const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
   const promptDispatchAbortRef = useRef<AbortController | null>(null);
@@ -880,6 +866,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     pendingVideoDeliveryRef.current = null;
     videoDeliveryValidationInFlightRef.current = false;
     pendingArtifactCompletionRef.current = null;
+    pendingImageStudioRefreshRef.current = null;
     artifactCompletionValidationInFlightRef.current = false;
     setArtifactRequestOwnership([]);
     setShowDelayedLoading(false);
@@ -1153,6 +1140,32 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.sessionId, verifiedOpenTargets]);
 
   useEffect(() => {
+    const pending = pendingImageStudioRefreshRef.current;
+    if (!pending || liveStatus.type !== "idle" || !latestAssistantCompleted) return;
+    if (renderedMessages.length <= pending.assistantMessageBaseline) return;
+
+    const baselineTargetIds = new Set(pending.baselineTargetIds);
+    const editedImage = [...verifiedOpenTargets].reverse().find((target) => (
+      target.kind === "file"
+      && target.preview === "image"
+      && target.exists === true
+      && /\.(?:png|jpe?g|webp)$/i.test(target.value)
+      && !baselineTargetIds.has(target.id)
+      && !artifactPathMatchesTarget(target.value, pending.sourcePath)
+    ));
+    if (editedImage) {
+      pendingImageStudioRefreshRef.current = null;
+      props.onOpenTarget?.(editedImage, { auto: true, viewer: "image-studio" }, props.sessionId);
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      if (pendingImageStudioRefreshRef.current === pending) pendingImageStudioRefreshRef.current = null;
+    }, 3_000);
+    return () => window.clearTimeout(timeout);
+  }, [latestAssistantCompleted, liveStatus.type, props.onOpenTarget, props.sessionId, renderedMessages.length, verifiedOpenTargets]);
+
+  useEffect(() => {
     if (!pendingSessionLoad) {
       setShowDelayedLoading(false);
       return;
@@ -1253,6 +1266,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     setAwaitingAssistantBaseline(renderedMessages.length);
     const requestOrdinal = visibleUserRequestCount;
     const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery";
+    const imageStudioRefresh = nextDraft.capability?.id === "image-studio-reference" && selectedImageReference
+      ? {
+          sourcePath: selectedImageReference.sourcePath,
+          baselineTargetIds: openTargets.map((target) => target.id),
+          assistantMessageBaseline: renderedMessages.length,
+        }
+      : null;
     const recoveryDraft = artifactRecoveryDraft
       || nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
     const clientUserMessageId = !recoveryDraft
@@ -1302,6 +1322,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
         return false;
       }
       const dispatched = promptWasDispatched(dispatchOutcome);
+      if (dispatched && imageStudioRefresh) {
+        pendingImageStudioRefreshRef.current = imageStudioRefresh;
+      }
       const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
       if (dispatched && artifactCompletionTargets.length > 0) {
         pendingArtifactCompletionRef.current = {
@@ -1338,6 +1361,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
       }
       if (pendingVideoDeliveryRef.current === pendingDelivery) pendingVideoDeliveryRef.current = null;
+      if (pendingImageStudioRefreshRef.current === imageStudioRefresh) pendingImageStudioRefreshRef.current = null;
       if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
       if (dispatchAbort.signal.aborted) {
         setAwaitingAssistantBaseline(null);
@@ -1357,7 +1381,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       setSending(false);
       throw nextError;
     }
-  }, [newConversationMode, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, visibleUserRequestCount]);
+  }, [newConversationMode, openTargets, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference, visibleUserRequestCount]);
 
   const programmaticDraftIdRef = useRef<string | null>(null);
   useEffect(() => {
@@ -1542,8 +1566,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (isEmptyConversation && newConversationMode === "video") {
       props.onActivateVideoStudio?.(props.sessionId);
     }
-    const nextDraft = await prepareSelectedImage(buildDraft(text, attachments));
-    if (!nextDraft) return;
+    const nextDraft = buildDraft(text, attachments);
     const sentAttachments = nextDraft.attachments;
     const submittedComposerState = { draft, attachments, mentions, pasteParts };
     clearComposer();
@@ -1554,22 +1577,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
         restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
       }
     }
-  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, prepareSelectedImage, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedImageReference, selectedVoiceReference, sendDraft]);
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedImageReference, selectedVoiceReference, sendDraft]);
 
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
   const handleQueue = useCallback(async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference && !selectedImageReference) return;
-    const nextDraft = await prepareSelectedImage(buildDraft(text, attachments));
-    if (!nextDraft) return;
+    const nextDraft = buildDraft(text, attachments);
     appendQueuedDraft(props.sessionId, nextDraft);
     clearComposer();
     setStarterCapability(null);
     setSelectedAnimations([]);
     setSelectedVoiceReference(null);
     setSelectedImageReference(null);
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, prepareSelectedImage, props.sessionId, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
+  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedImageReference, selectedVoiceReference]);
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
@@ -1595,8 +1617,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     || Boolean(selectedVoiceReference)
     || Boolean(selectedImageReference);
   const composerTopAccessoryVisible = Boolean(
-    imageSelection || preparingImageSelection || starterCapability
-      || selectedAnimations.length
+    starterCapability || selectedAnimations.length
       || selectedVoiceReference
       || selectedImageReference
       || props.activeQuestion
@@ -1663,6 +1684,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // remain suppressed until the user starts the next run.
     pendingVideoDeliveryRef.current = null;
     pendingArtifactCompletionRef.current = null;
+    pendingImageStudioRefreshRef.current = null;
     setAwaitingAssistantBaseline(null);
     runActivityObservedRef.current = false;
     setSending(false);
@@ -1683,6 +1705,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // a new turn instead of remaining queued behind a run that already died.
     pendingVideoDeliveryRef.current = null;
     pendingArtifactCompletionRef.current = null;
+    pendingImageStudioRefreshRef.current = null;
     activeClientUserMessageIdRef.current = null;
     setAwaitingAssistantBaseline(null);
     runActivityObservedRef.current = false;
@@ -2243,8 +2266,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onStop={handleAbort}
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
-          disabled={preparingImageSelection || model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
-          inputDisabled={preparingImageSelection}
+          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
           modelPickerOpen={props.modelPickerOpen}
@@ -2303,19 +2325,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           topAccessory={
             composerTopAccessoryVisible ? (
               <div>
-                {imageSelection || preparingImageSelection || starterCapability || selectedAnimations.length || selectedVoiceReference || selectedImageReference ? (
+                {starterCapability || selectedAnimations.length || selectedVoiceReference || selectedImageReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
-                    {imageSelection || preparingImageSelection ? (
-                      <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border bg-muted px-2 text-xs" data-image-selection-chip>
-                        <span className="max-w-60 truncate" title={imageSelection?.sourcePath}>
-                          {t(preparingImageSelection ? "composer.image_selection_preparing" : "composer.image_selection_attached")}
-                        </span>
-                        <button type="button" disabled={preparingImageSelection} className="rounded-full p-0.5 hover:bg-accent"
-                          aria-label={t("composer.image_selection_remove")} onClick={() => setDismissedImageSelection(imageSelection?.key ?? null)}>
-                          <X className="size-3" />
-                        </button>
-                      </div>
-                    ) : null}
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
                     {selectedAnimations.map((animation) => <AnimationChip key={animation.item.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.item.name !== animation.item.name))} />)}
                     {selectedVoiceReference ? <VoiceChip reference={selectedVoiceReference} onClear={() => setSelectedVoiceReference(null)} /> : null}

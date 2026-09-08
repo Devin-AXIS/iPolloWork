@@ -160,6 +160,7 @@ const pluginUiInspectorFieldSchema = z.object({
     value: z.string(),
     label: z.string().min(1),
     disabled: z.boolean().optional(),
+    action: z.enum(["open-authorizations"]).optional(),
   }).strict()).optional(),
 }).strict();
 

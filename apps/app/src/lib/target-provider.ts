@@ -6,7 +6,7 @@ export type OpenTargetOptions = {
   auto?: boolean;
   external?: boolean;
   reveal?: boolean;
-  viewer?: "design" | "preview" | "video";
+  viewer?: "design" | "image-studio" | "preview" | "video";
 };
 
 type OpenTargetHandler = (target: OpenTarget, options?: OpenTargetOptions) => void;

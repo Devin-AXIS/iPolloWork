@@ -133,14 +133,22 @@ describe("Design AI composer integration", () => {
   test("hands Image Studio area and point annotations to a removable composer chip", async () => {
     const surfaceSource = await Bun.file(sessionSurfaceUrl).text();
     const frameSource = await Bun.file(workspaceAppFrameUrl).text();
+    const sessionPageSource = await Bun.file(sessionPageUrl).text();
 
     expect(frameSource).toContain('event.data.type !== "ipollowork:image-studio:ask-ai"');
     expect(frameSource).toContain('new CustomEvent("ipollowork:add-image-reference"');
+    expect(frameSource).not.toContain("onImageSelectionChange");
     expect(surfaceSource).toContain('window.addEventListener("ipollowork:add-image-reference"');
     expect(surfaceSource).toContain('data-composer-token="image-reference"');
+    expect(surfaceSource).not.toContain("data-image-selection-chip");
     expect(surfaceSource).toContain('? "image-studio-reference"');
     expect(surfaceSource).toContain("Normalized annotation point:");
     expect(surfaceSource).toContain("Normalized selected region:");
+    expect(surfaceSource).toContain("pendingImageStudioRefreshRef");
+    expect(surfaceSource).toContain('viewer: "image-studio"');
+    expect(surfaceSource).toContain("both the image preview and its file card");
+    expect(sessionPageSource).toContain('options.viewer !== "image-studio"');
+    expect(sessionPageSource).not.toContain("WorkspaceImageSelection");
   });
 
   test("uses the shared client controls for workspace app inspector fields", async () => {

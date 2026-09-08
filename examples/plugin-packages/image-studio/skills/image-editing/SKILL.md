@@ -11,6 +11,6 @@ Use this Skill when an existing workspace image is open in Image Studio or the c
 2. Change only the requested region when a mask is present. Preserve unselected composition, identity, typography, and brand details.
 3. Ask for a clearer selection only when the requested target cannot be inferred from the mask and prompt.
 4. Save every generated edit as a new workspace image. Never overwrite or delete the source image.
-5. Return the edited workspace path so Design, Video, websites, and chat artifacts can reuse it.
+5. In the final response, embed the edited image using a Markdown image link and report its exact workspace-relative path. This gives the conversation both an image preview and a reusable file card for Design, Video, websites, and other artifacts.
 
 Native-mask providers receive the mask directly. Other supported models receive the original and a pixel-aligned selection reference. The server composites through the exact mask, including soft edges and subtracted holes, so unselected pixels and the original dimensions are preserved. A purple selection preview is context, not image content to reproduce.
