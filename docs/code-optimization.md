@@ -1,6 +1,6 @@
-# iPolloWork 代码优化准备与方案
+# iPolloWork 代码优化记录与后续方案
 
-当前进度：第一批在独立分支 `codex/ponytail-batch-1` 实施；范围、验证记录与第二批详细方案见文末。以下基线数据来自准备阶段，不是本次优化后的性能测量。
+当前进度：两批修改均在独立分支 `codex/ponytail-batch-1` 实施；两批汇总、第二批验证结果与未覆盖场景见文末。以下基线数据来自准备阶段，不是优化后的性能测量。
 
 检查日期：2026-09-08。基线为本地 `Jovan` 分支的 `6aae245d143613454f99c8b13d70b1db0fddddf8`；检查开始时工作区干净，较已有远程跟踪引用领先 10 个提交，未刷新远程状态。本次完成技能安装、环境准备、基线检查和优化规划，未修改应用实现。
 
@@ -142,9 +142,9 @@ node .codex/skills/ipollowork-maintainable-code/scripts/audit-changes.mjs
 git diff --check
 ```
 
-## 第二批：收敛请求超时机制
+## 第二批：实施前方案（已执行，差异见结果）
 
-目标是去掉三套超时机制的重复实现，同时保留现有调用方可观察行为。第二批尚未实施。继续使用 `ponytail full`，从第一批最终提交固定新起点。
+目标是去掉三套超时机制的重复实现，同时保留现有调用方可观察行为。以下保留实施前方案；实施起点为第一批提交 `b12ff17e53995e13ef03aa3b0dc8460f52bf96fa`。执行中另发现并修复 OAuth 路径未命中长超时策略的问题，明确作为行为修复记录。
 
 ### 已核对的实现与策略差别
 
@@ -186,3 +186,76 @@ git diff --check
 | 分层错误提示 | Den/OpenCode 英文与 Server 中文、`serviceErrorMessage` 路径保持 |
 
 第二批后续独立事项：修复上述 Windows 测试资源释放，以及根 `test:orchestrator` 指向不存在的 `test:router`。已检查 orchestrator 当前没有该 test 脚本，不能把它简单替换成 typecheck 后继续叫“测试通过”；需先明确有效测试入口，或移除失效命令并同步使用说明。这两项与请求机制重构分开验证和提交。
+
+## 两批实际修改与功能影响
+
+工作目录为 `C:/Users/31939/Desktop/ipollo-new/_worktrees/ponytail-batch-1`。原工作区的代码未被这些优化覆盖；没有新增依赖、API、路由、数据库表或持久状态。
+
+| 批次 | 文件 | 实际修改 | 功能影响 |
+| --- | --- | --- | --- |
+| 第一批 | `apps/server/src/server.ts` | command 导出由 `Promise.all(async map)` 改成返回对象中的同步 `map`，业务代码净减 8 行 | 工作区导出格式、字段、顺序和技能文件内容保持；授权检查仍在 |
+| 第一批 | `evals/flows/workspace-export-commands.flow.mjs` | 新增真实 HTTP 导出证明，含临时工作区与隔离 DB | 验证空导出、鉴权、中文多行正文、可选字段和重复导出 |
+| 第二批 | `apps/app/src/app/lib/request-timeout.ts` | 31 行公共超时机制，由三个真实客户端复用 | 保留 Promise 截止、可用时 abort、请求结束清理 timer；不扩大到响应正文读取 |
+| 第二批 | `apps/app/src/app/lib/den.ts`、`ipollowork-server.ts`、`opencode.ts` | 删除重复 timer/controller/race；策略与错误转换继续由各客户端拥有 | 保留 Den 凭证/组织路由、Server 分级超时/中文提示、上传数据、长任务豁免及流式原生 fetch |
+| 第二批 | `apps/app/src/app/lib/opencode.ts` | 修复 OAuth 和 MCP callback 的真实 SDK URL 匹配；移除 AbortError 判断中的不必要类型断言；删除重复大小写 header 查询 | **有意的行为修复**：`/provider/:id/oauth/authorize`、`/provider/:id/oauth/callback` 从 10 秒改为策略原定 5 分钟；`/mcp/:name/auth/callback` 从 90 秒改为 5 分钟。MCP start 仍为 90 秒，普通请求仍为 10 秒 |
+| 第二批 | `apps/server/src/extensions-export.test.ts` | fixture 显式关闭 runtime SQLite store，Windows 等待句柄释放后删除目录 | 修复两个既有 `EBUSY` 清理失败；不改变产品导出逻辑，不跳过断言 |
+| 第二批 | `apps/app/tests/request-timeout.test.ts` | 19 个请求机制/适配器用例，包括真实 SDK 及真实 loopback HTTP | 成功、失败、取消、禁用超时、忽略 signal、上传、慢正文、OAuth 策略均有行为断言 |
+| 第二批 | `evals/flows/request-timeout.flow.mjs` | internal fraimz 绑定声明、中文解说和测试输出 | 可复现的接口/传输证明；不等同于完整桌面交互或外部 OAuth 登录验收 |
+| 两批 | 本文 | 保留基线、方案、实际差异、检查结果与限制 | 便于审阅和后续实施 |
+
+第二批生产代码净减 30 行（包含新增公共 helper），两批合计净减 38 行；测试、证明和文档新增行另计。收益是减少重复维护，不以删行数宣称启动速度或网络吞吐提升。
+
+### 插件与审查实际使用范围
+
+- 已安装的 Ponytail 以 skills 形式运行，应用 `ponytail-audit` 检查候选、`ponytail` 实施、`ponytail-review` 复核改动；它们只评估复杂度，正确性由额外检查负责。
+- 检查了 `plugin-management` 能力和当前可调用工具。本会话没有可调用的专用代码审查插件，也未检出该 skill 所列的 `search_plugins` / `suggest_plugins` 工具；未声称运行了 Codex Security 或 GitHub 审查服务，未安装无关插件。
+- 实际运行已有 Knip 6.29.0：Node 24 + `KNIP_DISABLE_RAW_TRANSFER=1`，`pnpm exec knip --workspace apps/app --production --reporter json`。扫描正常完成但因存在发现返回 1，stderr 为空；357 个文件记录，176 个 file 项、453 个 export 项、254 个 type 项，与准备阶段统计相同。此扫描限定 App 工作区，不是全仓零死代码证明。
+- Ponytail 审查落实的 `shrink:` 是三处重复请求机制；`stdlib:` 是 `Headers.get` 已忽略名称大小写，无需再查一遍 `Accept`。最终 diff 没有进一步值得增加风险的复杂度删减。
+- Knip 的未使用项还包含脚本/动态入口误报，未自动删除；PPT 颜色默认值、透明度语义不同，也没有强行合并。
+
+### 第二批验证记录
+
+| 检查 | 实际结果 |
+| --- | --- |
+| 修改前新增适配器用例 | 7 通过、1 失败；真实 SDK OAuth URL 的长超时未命中，修复后通过 |
+| `bun test tests/request-timeout.test.ts`（App） | 19 通过、0 失败，66 个断言；含真实 loopback HTTP |
+| `pnpm --filter @ipollowork/app test` | 1,157 通过、2 失败，143 个文件；两处均在原工作区复现，见下文 |
+| `pnpm --filter @ipollowork/app typecheck` | 通过 |
+| `pnpm --filter ipollowork-server typecheck` | 通过 |
+| 第一批 4 个 server 测试文件重跑 | 18 通过、0 失败，58 个断言；含 bundled plugin tool 导出与敏感值脱敏验证 |
+| `pnpm --filter @ipollowork/desktop typecheck:electron` | 通过 |
+| 维护性审计与 `git diff --check` | 8 个变更文件，0 errors / 0 warnings；diff 检查通过 |
+| App 生产构建 | 首次普通运行遇到内存分配失败；使用准备好的 Node 24 独立重跑通过（命令见下文），耗时 1m53s |
+| 生产主 chunk | `app-DNnIPbFm.js` 为 8,966.39 kB，gzip 1,875.29 kB；准备阶段为 8,966.94 / 1,875.48 kB。体积差异很小，未宣称显著性能提升；大 chunk 与混合静态/动态 import 告警仍存在 |
+| `pnpm fraimz --flow request-timeout --out evals/results/ponytail-batch-2` | Passed，1 passed / 0 failed / 0 skipped；运行目录 `2026-09-08T06-09-40-524Z` |
+| `pnpm fraimz --flow workspace-export-commands --out evals/results/ponytail-batch-2-export` | Passed，1 passed / 0 failed / 0 skipped；运行目录 `2026-09-08T06-09-45-261Z` |
+
+完整前端测试的两个失败是 `composer-queue-behavior.test.ts` 的 “keeps drafting available while model readiness blocks submission” 和 `video-hyperframes-panel.test.ts` 的 “keeps desktop panel titlebars draggable without swallowing control input”。在原工作区运行下列命令同样得到 70 通过、2 失败。本批没有修改它们引用的输入框、会话面板或拖拽样式实现；没有删掉或放宽断言来制造全绿结果。
+
+```powershell
+bun test --isolate tests/composer-queue-behavior.test.ts tests/video-hyperframes-panel.test.ts
+```
+
+本地运行日志保存在忽略目录 `.ipollowork-dev/ponytail-batch-2-*.log`；Knip JSON 也在该目录。fraimz HTML 和 JSON 保存在上述 `evals/results/` 运行目录。日志和构建产物不提交。
+
+构建复现（在优化 worktree 的 App 目录）：
+
+```powershell
+. ../../.ipollowork-dev/ponytail-env.ps1
+pnpm exec node node_modules/vite/bin/vite.js build
+```
+
+前端启动检查：在本 worktree 使用 Node 24 启动 Vite `127.0.0.1:5184`，`/__ipollowork_dev_server_id` 确认 `appRoot` 指向本 worktree；应用内浏览器实际渲染 `/session`，显示“请先创建项目”“创建项目后即可开始使用”，新建任务按钮禁用。启动检查通过，但隔离浏览器没有项目，无法继续真实模型会话；**桌面发送消息、回复、重开恢复以及外部 OAuth 登录/IPC 的完整体验验收为 Incomplete**。没有借用用户现有浏览器的账户或会话来制造通过记录。
+
+启动 Vite 与隔离 Edge 的组合命令曾被自动审批拦截，返回 `blocked by policy`，未提供更具体的原因；随后通过正常开发入口启动 Vite，并使用已授权的应用内浏览器完成上述启动检查。没有将启动检查或受控 SSE 测试写成完整 Electron 核心流程通过。
+
+### 尚需独立处理的优化与验证
+
+| 优先级 | 候选 | 下一步与验收条件 |
+| --- | --- | --- |
+| P1 | 普通 Request 对象已有 signal 的取消组合 | 当前共享机制保留原有策略，普通带超时 Request 的 signal 仍可能被 init signal 覆盖；单独补取消回归用例，再决定如何组合信号及 IPC 取消协议。SSE 豁免路径已验证可取消 |
+| P1 | 两个既有 UI 源码断言失败 | 在可用桌面上验证模型未就绪时编辑/提交状态、面板拖拽和控件点击，确认是产品问题还是断言过期，再修对应 owner |
+| P2 | 首屏 JS 与可选功能加载 | 先分析 JSZip 和 design-system-registry 的真实静态引用链；按产物大小和导出/设计功能验收，不仅移动 import |
+| P2 | Sidebar 全量订阅与 prune 比较 | 用真实侧栏操作测量渲染次数，再收窄订阅；保留拖拽、置顶、归档与状态持久化 |
+| P2 | 根 `test:orchestrator` 失效入口 | 先确定有效行为测试入口；不能用类型检查替代测试后报告通过 |
+| P3 | Knip / i18n 清理、媒体目录遍历、PPT 解析重复 | 修正入口图及动态引用认定，或补语义/顺序/路径安全用例后再删代码、改并发或合并解析 |
