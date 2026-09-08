@@ -3,6 +3,7 @@ import { createDenClient } from "../src/app/lib/den";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
 import { createClient } from "../src/app/lib/opencode";
 import { fetchWithTimeout } from "../src/app/lib/request-timeout";
+import { desktopFetch, desktopFetchViaMain, desktopFetchBinaryViaMain } from "../src/app/lib/desktop";
 
 const originalFetch = globalThis.fetch;
 const originalTimeout = globalThis.setTimeout;
@@ -32,6 +33,79 @@ function recordTimeouts(expireImmediately = false) {
 
 const serverClient = () => createiPolloWorkServerClient({ baseUrl: "http://127.0.0.1:9876", token: "test-token" });
 const denClient = () => createDenClient({ baseUrl: "https://den.test", token: "test-token" });
+
+describe("desktop request routing", () => {
+  test.each([desktopFetch, desktopFetchViaMain])("%p preserves SDK requests and explicit overrides through IPC", async (fetcher) => {
+    const calls: unknown[][] = [];
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+      __IPOLLOWORK_ELECTRON__: { invokeDesktop: async (...args: unknown[]) => {
+        calls.push(args);
+        return { status: 201, statusText: "Created", headers: [["x-proof", "ipc"]], body: "回复" };
+      } },
+    } });
+    const request = new Request("https://remote.test/api", {
+      method: "POST", headers: { Authorization: "Bearer test-token", "Content-Type": "application/json" }, body: "原始内容",
+    });
+    const response = await fetcher(request);
+    expect(calls[0]).toEqual(["__fetch", request.url, {
+      method: "POST", headers: { authorization: "Bearer test-token", "content-type": "application/json" },
+      body: "原始内容", timeoutMs: undefined, responseType: "text",
+    }]);
+    expect(request.bodyUsed).toBe(false);
+    expect(response.status).toBe(201);
+    expect(response.headers.get("x-proof")).toBe("ipc");
+    expect(await response.text()).toBe("回复");
+    await fetcher(request, { method: "PUT", headers: { "X-Override": "yes" }, body: "替换内容" });
+    expect(calls[1]).toEqual(["__fetch", request.url, {
+      method: "PUT", headers: { "x-override": "yes" }, body: "替换内容", timeoutMs: undefined, responseType: "text",
+    }]);
+  });
+
+  test("loopback keeps native streaming, request bodies and cancellation options", async () => {
+    const response = new Response("native");
+    for (const host of ["127.0.0.1", "localhost", "[::1]"]) {
+      const request = new Request(`http://${host}/stream`);
+      const options = { method: "POST", body: new FormData(), signal: new AbortController().signal };
+      useFetch(async (input, init) => {
+        expect(input).toBe(request);
+        expect(init).toBe(options);
+        return response;
+      });
+      expect(await desktopFetch(request, options)).toBe(response);
+    }
+  });
+
+  test("IPC preserves empty responses, HTTP errors, binary data and timeout options", async () => {
+    let status = 204;
+    let body: string | ArrayBuffer = "";
+    const calls: unknown[][] = [];
+    Object.defineProperty(globalThis, "window", { configurable: true, value: {
+      __IPOLLOWORK_ELECTRON__: { invokeDesktop: async (...args: unknown[]) => {
+        calls.push(args);
+        return { status, statusText: "", headers: [], body };
+      } },
+    } });
+    for (status of [204, 205, 304]) {
+      const response = await desktopFetch("https://remote.test");
+      expect(response.status).toBe(status);
+      expect(response.body).toBeNull();
+    }
+    status = 503;
+    body = "server unavailable";
+    const error = await desktopFetchViaMain(new URL("https://remote.test"));
+    expect(error.status).toBe(503);
+    expect(await error.text()).toBe(body);
+    status = 200;
+    body = new Uint8Array([0, 255, 128]).buffer;
+    const binary = await desktopFetchBinaryViaMain("https://remote.test/file", undefined, 90000);
+    expect(new Uint8Array(await binary.arrayBuffer())).toEqual(new Uint8Array([0, 255, 128]));
+    expect(calls.at(-1)).toEqual(["__fetch", "https://remote.test/file", {
+      method: undefined, headers: undefined, body: undefined, timeoutMs: 90000, responseType: "arrayBuffer",
+    }]);
+    body = "old bridge";
+    await expect(desktopFetchBinaryViaMain("https://remote.test/file")).rejects.toThrow("desktop_binary_fetch_requires_restart");
+  });
+});
 
 describe("shared request deadline", () => {
   test.each([0, -1, NaN, Infinity])("%p bypasses the deadline and preserves input and init", async (timeoutMs) => {

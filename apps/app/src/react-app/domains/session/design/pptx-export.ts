@@ -118,7 +118,7 @@ function round(value: number) {
   return Number(value.toFixed(3));
 }
 
-function parseColor(value: string) {
+export function parsePptxColor(value: string, fallback = { color: "111827", transparency: 0 }) {
   if (!value || value === "transparent") return { color: "000000", transparency: 100 };
   const hexadecimal = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
   if (hexadecimal) {
@@ -131,7 +131,7 @@ function parseColor(value: string) {
   }
 
   const match = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!match) return { color: "111827", transparency: 0 };
+  if (!match) return fallback;
   const channels = match.slice(1, 4).map((channel) => Math.max(0, Math.min(255, Number(channel))));
   const alpha = match[4] == null ? 1 : Math.max(0, Math.min(1, Number(match[4])));
   return {
@@ -196,7 +196,7 @@ export function createPptxVisualShadow(value: string): PptxVisualShadow | undefi
   const values = remaining.match(/-?\d*\.?\d+px/g)?.map((part) => Number.parseFloat(part));
   if (!values || values.length < 3) return undefined;
   const [offsetX, offsetY, blur] = values;
-  const shadowColor = parseColor(color);
+  const shadowColor = parsePptxColor(color);
   const offset = Math.hypot(offsetX, offsetY) * 0.75;
   const angle = (Math.atan2(-offsetY, offsetX) * 180 / Math.PI + 360) % 360;
   return {
@@ -210,8 +210,8 @@ export function createPptxVisualShadow(value: string): PptxVisualShadow | undefi
 }
 
 export function createPptxShapeOverlay(input: CreatePptxShapeOverlayInput): PptxShapeOverlay {
-  const fill = parseColor(input.style.backgroundColor);
-  const line = parseColor(input.style.borderColor);
+  const fill = parsePptxColor(input.style.backgroundColor);
+  const line = parsePptxColor(input.style.borderColor);
   const opacity = Math.max(0, Math.min(1, input.style.opacity));
   const borderRadius = cssPixels(input.style.borderRadius);
   const dimensions = shapeCoordinates(input.slide, input.box);
@@ -240,7 +240,7 @@ export function deckPptxFileName(baseName: string) {
 
 export function createPptxTextOverlay(input: CreatePptxTextOverlayInput): PptxTextOverlay {
   const { slide, box, style } = input;
-  const color = parseColor(style.color);
+  const color = parsePptxColor(style.color);
   const lineSpacing = pointValue(style.lineHeight, slide.width);
   const charSpacing = pointValue(style.letterSpacing, slide.width);
   return {
@@ -311,7 +311,7 @@ type PptxShapeStyleCompatibilityInput = Pick<
 >;
 
 export function isPptxShapeStyleCompatible(style: PptxShapeStyleCompatibilityInput) {
-  const hasVisibleFill = parseColor(style.backgroundColor).transparency < 100;
+  const hasVisibleFill = parsePptxColor(style.backgroundColor).transparency < 100;
   const borderWidths = [
     cssPixels(style.borderTopWidth),
     cssPixels(style.borderRightWidth),

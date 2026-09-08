@@ -3,17 +3,17 @@ import { fileURLToPath } from "node:url";
 
 export default {
   id: "client-optimization",
-  title: "Sidebar persistence and on-demand document/plugin imports retain their behavior",
+  title: "Sidebar persistence, document imports and PPTX conversion retain their behavior",
   kind: "internal",
   requiresApp: false,
   steps: [{
-    name: "Verify layout persistence, document extraction and plugin archives",
+    name: "Verify layout persistence, document extraction, PPTX conversion and plugin archives",
     async run(ctx) {
       let result;
-      await ctx.prove("Repeated layout operations avoid writes while real layout changes and file imports still work", {
-        voiceover: "这里验证重复排序不会反复存盘，真实移动、清理和重新加载仍保留正确布局，同时确认 Word、PPT 和插件包可以正常读取；这是状态和文件验证，不代表完整桌面流程验收。",
+      await ctx.prove("Layout changes and file imports work, and shared PPTX color conversion preserves export behavior", {
+        voiceover: "这里验证侧栏布局、Word、PPT 和插件包读取，并确认合并颜色解析后，PPT 的透明度、默认颜色和可编辑元素导出仍然正确；这是状态和转换验证，不代表完整桌面流程验收。",
         action: async () => {
-          result = spawnSync("bun", ["test", "--isolate", "tests/sidebar-layout-store.test.ts", "tests/sidebar-projects.test.ts", "tests/reference-ingestion.test.ts", "tests/plugin-developer-user-flow.test.ts"], {
+          result = spawnSync("bun", ["test", "--isolate", "tests/sidebar-layout-store.test.ts", "tests/sidebar-projects.test.ts", "tests/reference-ingestion.test.ts", "tests/plugin-developer-user-flow.test.ts", "tests/design-pptx-export.test.ts", "tests/pptx-element-export.test.ts", "tests/pptx-compatible-export.test.ts"], {
             cwd: fileURLToPath(new URL("../../apps/app/", import.meta.url)),
             encoding: "utf8", timeout: 55000, windowsHide: true,
           });

@@ -1,4 +1,5 @@
 import {
+  parsePptxColor,
   PPTX_SLIDE_HEIGHT_INCHES,
   PPTX_SLIDE_WIDTH_INCHES,
 } from "./pptx-export";
@@ -106,22 +107,7 @@ export function pointsForPptxCompatibleSlide(value: string, slideWidthPixels: nu
 }
 
 function parseColor(value: string) {
-  if (!value || value === "transparent") return { color: "000000", transparency: 100 };
-  const hex = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
-  if (hex) {
-    const expanded = hex.length === 3 || hex.length === 4
-      ? hex.split("").map((part) => `${part}${part}`).join("")
-      : hex;
-    const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6), 16) / 255 : 1;
-    return { color: expanded.slice(0, 6).toUpperCase(), transparency: Math.round((1 - alpha) * 100) };
-  }
-  const rgb = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!rgb) return { color: "000000", transparency: 100 };
-  const alpha = rgb[4] == null ? 1 : Math.max(0, Math.min(1, Number(rgb[4])));
-  return {
-    color: rgb.slice(1, 4).map((channel) => Number(channel).toString(16).padStart(2, "0")).join("").toUpperCase(),
-    transparency: Math.round((1 - alpha) * 100),
-  };
+  return parsePptxColor(value, { color: "000000", transparency: 100 });
 }
 
 function transparency(colorTransparency: number, opacity: number) {
