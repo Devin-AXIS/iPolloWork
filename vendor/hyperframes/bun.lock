@@ -256,6 +256,7 @@
         "@hyperframes/player": "workspace:*",
         "@hyperframes/sdk": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
+        "@ipollowork/types": "file:../../../../packages/types",
         "@phosphor-icons/react": "^2.1.10",
         "bpm-detective": "^2.0.5",
         "dompurify": "^3.4.13",
@@ -1722,6 +1723,8 @@
     "@codemirror/theme-one-dark/@codemirror/language": ["@codemirror/language@6.12.3", "https://registry.npmmirror.com/@codemirror/language/-/language-6.12.3.tgz", { "dependencies": { "@codemirror/state": "^6.0.0", "@codemirror/view": "^6.23.0", "@lezer/common": "^1.5.0", "@lezer/highlight": "^1.0.0", "@lezer/lr": "^1.0.0", "style-mod": "^4.0.0" } }, "sha512-QwCZW6Tt1siP37Jet9Tb02Zs81TQt6qQrZR2H+eGMcFsL1zMrk2/b9CLC7/9ieP1fjIUMgviLWMmgiHoJrj+ZA=="],
 
     "@google/genai/ws": ["ws@8.21.0", "https://registry.npmmirror.com/ws/-/ws-8.21.0.tgz", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g=="],
+
+    "@hyperframes/studio/@ipollowork/types": ["@ipollowork/types@file:../../packages/types", { "dependencies": { "zod": "^4.3.6" }, "devDependencies": { "tsup": "^8.5.0", "typescript": "^5.6.3" } }],
 
     "@types/adm-zip/@types/node": ["@types/node@25.7.0", "https://registry.npmmirror.com/@types/node/-/node-25.7.0.tgz", { "dependencies": { "undici-types": "~7.21.0" } }, "sha512-z+pdZyxE+RTQE9AcboAZCb4otwcrvgHD+GlBpPgn0emDVt0ohrTMhAwlr2Wd9nZ+nihhYFxO2pThz3C5qSu2Eg=="],
 

@@ -43,6 +43,7 @@ import {
 import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
+export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
 export type WorkspaceImageSelection = {
   key: string;
   sessionId: string;
@@ -66,6 +67,7 @@ type WorkspaceAppFrameProps = {
   }) => boolean | Promise<boolean>;
   onRequestClose?: () => void;
   onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
+  onImageSaved?: (save: WorkspaceImageSave) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
   resourceOverride?: iPolloWorkPluginUiResource;
   /** Scopes an unpacked draft to the current conversation without adding it to installed plugins. */
@@ -303,6 +305,14 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
+  const hostContextRef = useRef<McpUiHostContext>({});
+  const updateHostContext = useCallback((patch: Partial<McpUiHostContext>) => {
+    if (!bridgeRef.current) return;
+    // AppBridge replaces its initialization snapshot instead of merging patches.
+    // Keep launch/session data when size, theme or display mode changes first.
+    hostContextRef.current = { ...hostContextRef.current, ...patch };
+    bridgeRef.current.setHostContext(hostContextRef.current);
+  }, []);
   const resourceRef = useRef<iPolloWorkPluginUiResource | null>(null);
   const resourceIdentityRef = useRef("");
   const developmentPreviewRef = useRef(props.developmentPreview);
@@ -312,6 +322,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const onSendMessageRef = useRef(props.onSendMessage);
   const onImageSelectionChangeRef = useRef(props.onImageSelectionChange);
   onImageSelectionChangeRef.current = props.onImageSelectionChange;
+  const onImageSavedRef = useRef(props.onImageSaved);
+  onImageSavedRef.current = props.onImageSaved;
   const onRequestCloseRef = useRef(props.onRequestClose);
   onDisplayModeChangeRef.current = props.onDisplayModeChange;
   onSendMessageRef.current = props.onSendMessage;
@@ -390,6 +402,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       } : {}),
       [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
     };
+    hostContextRef.current = hostContext;
     const bridge = new AppBridge(
       null,
       { name: "iPolloWork", version: "0.21.2" },
@@ -433,6 +446,13 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           void getReactQueryClient().invalidateQueries({
             queryKey: sessionArtifactsQueryKey(props.client.baseUrl, props.workspaceId, props.sessionId),
           });
+        }
+        if (!disposed && result.ok && props.surface.pluginId === "image-studio" && name === "save-edit") {
+          const saved = result.result;
+          if (isRecord(saved) && typeof saved.path === "string" && typeof saved.originalPath === "string"
+            && typeof saved.revision === "string" && (saved.saveMode === "copy" || saved.saveMode === "overwrite")) {
+            onImageSavedRef.current?.({ path: saved.path, originalPath: saved.originalPath, revision: saved.revision, saveMode: saved.saveMode });
+          }
         }
         return result.ok ? toolResult(result.result) : toolError(result.message);
       } catch (nextError) {
@@ -497,7 +517,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
     const resizeObserver = new ResizeObserver(([entry]) => {
       if (!entry || disposed) return;
-      bridge.setHostContext({
+      updateHostContext({
         containerDimensions: {
           width: Math.round(entry.contentRect.width),
           height: Math.round(entry.contentRect.height),
@@ -506,7 +526,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     });
     resizeObserver.observe(iframe);
     const themeObserver = new MutationObserver(() => {
-      if (!disposed) bridge.setHostContext({ theme: currentTheme() });
+      if (!disposed) updateHostContext({ theme: currentTheme() });
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
 
@@ -527,21 +547,21 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       void bridge.teardownResource({}).catch(() => undefined).finally(() => transport.close());
       iframe.srcdoc = "";
     };
-  }, [developmentPreviewActive, platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage]);
+  }, [developmentPreviewActive, platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage, updateHostContext]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;
     if (!bridge) return;
     const pluginContext = pluginUiHostContext(props, props.developmentPreview);
-    bridge.setHostContext({
+    updateHostContext({
       ...(pluginContext.developmentPreview ? { developmentPreview: pluginContext.developmentPreview } : {}),
       [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
     });
-  }, [bridgeReady, props.developmentPreview?.revision, props.launch, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
+  }, [bridgeReady, props.developmentPreview?.revision, props.launch, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, updateHostContext]);
 
   useEffect(() => {
-    bridgeRef.current?.setHostContext({ displayMode: props.displayMode ?? "inline" });
-  }, [props.displayMode]);
+    updateHostContext({ displayMode: props.displayMode ?? "inline" });
+  }, [props.displayMode, updateHostContext]);
 
   const callWorkspaceAppTool = useCallback(async (name: string, args: Record<string, unknown>) => {
     const bridge = bridgeRef.current;

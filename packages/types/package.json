@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./video-image-workbench": {
+      "types": "./src/video-image-workbench.ts",
+      "development": "./src/video-image-workbench.ts",
+      "bun": "./src/video-image-workbench.ts",
+      "default": "./dist/video-image-workbench.js"
+    },
     ".": {
       "types": "./src/index.ts",
       "development": "./src/index.ts",
