@@ -18,6 +18,7 @@ import {
 import { bundledLanguages, codeToHtml } from "shiki";
 
 import { cn } from "@/lib/utils";
+import { t } from "@/i18n";
 import { useOpenTargets, type WorkspaceImageLoader } from "@/lib/target-provider";
 import { localFilePathFromHref, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 
@@ -161,7 +162,7 @@ function createEmojiAliases() {
 }
 
 const emojiAliases = createEmojiAliases();
-const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 100;
+const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;
 
 function parseShikiLanguage(lang: string) {
   const normalized = lang.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -203,7 +204,7 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
     preview.style.maxHeight = expanded ? "" : `${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px`;
 
     const label = button.querySelector("[data-ipollowork-image-toggle-label]");
-    if (label) label.textContent = expanded ? "Show less" : "Show full image";
+    if (label) label.textContent = expanded ? t("image.preview.show_less") : t("image.preview.show_full");
   }
 }
 
@@ -311,7 +312,7 @@ const baseMarkedOptions = {
         : `src="${escapeAttribute(safeImageHref(href))}"`;
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
-      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
+      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">${escapeHtml(t("image.preview.show_full"))}</span></button></span>`;
     },
     table(token) {
       const header = token.header.map((cell) => this.tablecell({ ...cell, header: true })).join("");

@@ -293,6 +293,22 @@ function mergePersistedSessions(
     };
   }
 
+  for (const [sessionId, currentSession] of Object.entries(currentState.sessions)) {
+    const persistedSession = sessions[sessionId] ?? EMPTY_SESSION;
+    const currentTabIds = new Set(currentSession.tabs.map((tab) => tab.id));
+    const tabs = [
+      ...persistedSession.tabs.filter((tab) => !currentTabIds.has(tab.id)),
+      ...currentSession.tabs,
+    ];
+    sessions[sessionId] = {
+      tabs,
+      activeTabId: resolveActiveTabId(
+        tabs,
+        currentSession.activeTabId ?? persistedSession.activeTabId,
+      ),
+    };
+  }
+
   return {
     ...currentState,
     sessions,

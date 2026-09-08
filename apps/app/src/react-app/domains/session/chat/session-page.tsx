@@ -173,7 +173,10 @@ import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
-import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import {
+  resolveInstalledPluginContributions,
+  useInstalledPluginContributions,
+} from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
@@ -3340,8 +3343,21 @@ export function SessionPage(props: SessionPageProps) {
     }
     if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
   }, [openWorkspaceApp, workspaceApps]);
-  const openImageStudio = useCallback((target: OpenTarget, sourceSessionId?: string) => {
-    openWorkspaceAppForPlugin("image-studio", {
+  const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
+    let surface = workspaceApps.find((entry) => entry.pluginId === "image-studio");
+    if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
+      const packages = await props.ipolloworkServerClient
+        .listPluginPackages(props.runtimeWorkspaceId)
+        .catch(() => null);
+      surface = packages
+        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => entry.pluginId === "image-studio")
+        : undefined;
+    }
+    if (!surface) {
+      toast.error(t("artifact.image_studio_install_required"));
+      return;
+    }
+    openWorkspaceApp(surface, {
       intent: "edit-image",
       source: {
         kind: "workspace-file",
@@ -3350,7 +3366,7 @@ export function SessionPage(props: SessionPageProps) {
         preview: target.preview,
       },
     }, sourceSessionId);
-  }, [openWorkspaceAppForPlugin]);
+  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     // SessionSurface automatically previews newly discovered targets after an
     // agent finishes. Video tasks already have a dedicated preview surface.
@@ -3391,9 +3407,9 @@ export function SessionPage(props: SessionPageProps) {
       // Image Studio annotations opt into replacing the workbench source once
       // their edited artifact is verified; ordinary generated images stay put.
       if (options?.auto && options.viewer !== "image-studio") return;
-      if (/\.(png|jpe?g|webp)$/i.test(target.value) && workspaceApps.some((surface) => surface.pluginId === "image-studio")) {
+      if (/\.(png|jpe?g|webp)$/i.test(target.value)) {
         if (!options?.auto) prioritizeRightPanel();
-        openImageStudio(target, sourceId ?? undefined);
+        await openImageStudio(target, sourceId ?? undefined);
         return;
       }
     }
@@ -3462,7 +3478,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceId;
     if (!sessionId) return;
     openArtifactTargetInPanel(target, sessionId, options?.auto);
-  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openImageStudio, openVideoStudio, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, workspaceApps]);
+  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openImageStudio, openVideoStudio, prioritizeRightPanel, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, workspaceApps]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;

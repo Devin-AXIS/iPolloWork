@@ -44,7 +44,7 @@ async function openImageCard(ctx, path) {
   }
   await expectCard(ctx, path);
   await ctx.eval(`${cardExpression(path)}.click()`);
-  await ctx.waitFor(`${studioDocument}?.querySelector('#sourceMeta')?.textContent.includes(${JSON.stringify(path.split('/').pop())})`, {label:'selected output decoded in Image Studio'});
+  await ctx.waitFor(`${studioDocument}?.querySelector('#documentTitle')?.textContent.includes(${JSON.stringify(path.split('/').pop())})`, {label:'selected output decoded in Image Studio'});
   ctx.assert(await ctx.eval(`${studioDocument}.querySelector('#imageCanvas').width > 100`), 'The saved output must decode into a real image');
   await openOutputs(ctx);
 }

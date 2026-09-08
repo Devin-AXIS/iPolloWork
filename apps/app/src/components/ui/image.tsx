@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils"
+import { t } from "@/i18n"
 import * as React from "react"
 
 export type GeneratedImageLike = {
@@ -14,7 +15,7 @@ export type ImageProps = GeneratedImageLike &
     previewMaxHeight?: number
   }
 
-const DEFAULT_PREVIEW_MAX_HEIGHT = 100
+const DEFAULT_PREVIEW_MAX_HEIGHT = 360
 
 function getImageSrc({
   base64,
@@ -141,7 +142,7 @@ export const Image = ({
               className="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-muted"
               onClick={() => setExpanded(true)}
             >
-              Show full image
+              {t("image.preview.show_full")}
             </button>
           </div>
         ) : null}
@@ -152,7 +153,7 @@ export const Image = ({
           className="rounded-full border border-border px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
           onClick={() => setExpanded(false)}
         >
-          Show less
+          {t("image.preview.show_less")}
         </button>
       ) : null}
     </div>
