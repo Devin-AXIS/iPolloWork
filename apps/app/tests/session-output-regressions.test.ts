@@ -155,7 +155,7 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain("displayName={activeTab.label}");
     expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
     expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
-    expect(sidePanelSource).toContain('<Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<SidebarRightToggleIcon panelOpen />');
@@ -530,6 +530,8 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain("strokeWidth: NAVIGATION_ICON_STROKE_WIDTH");
     expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
     expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
+    expect(sidePanelSource).toContain('if (tab.type === "video") return <SquarePlay');
+    expect(sidePanelSource).toContain('tab.surface.pluginId === "image-studio"');
     expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
     expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
     expect(sidePanelSource).not.toContain("WebkitMaskImage");
