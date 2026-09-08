@@ -1,0 +1,245 @@
+{
+  "schemaVersion": 2,
+  "id": "video-console",
+  "name": "视频控制台",
+  "description": "通过 Seedance 2.5 或 RunningHub MiniMax H3 生成和编辑视频，任务与产出保留在当前会话。",
+  "category": "设计与创作",
+  "defaultEnabled": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "package": {
+    "version": "0.1.0",
+    "publisher": {
+      "id": "ipollowork",
+      "name": "iPolloWork"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "ipollowork/video-console"
+  },
+  "permissions": [
+    {
+      "id": "workspace-read",
+      "reason": "读取用户选择的视频、图片和音频参考。"
+    },
+    {
+      "id": "workspace-write",
+      "reason": "保存导入素材、后台任务与生成的视频副本；不覆盖原视频。"
+    }
+  ],
+  "resources": [
+    {
+      "type": "ui",
+      "id": "console",
+      "label": "视频控制台",
+      "path": "ui/video-console.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://video-console/console",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false
+      }
+    },
+    {
+      "type": "local-service",
+      "id": "video-console-service",
+      "label": "视频控制台服务",
+      "path": "service/video-console.mjs",
+      "required": true,
+      "requires": [
+        "action:video-generation/status",
+        "action:video-generation/jobs",
+        "action:video-generation/submit",
+        "action:video-generation/recover",
+        "action:video-generation/import",
+        "action:video-generation/read"
+      ],
+      "provides": [
+        "action:status",
+        "action:jobs",
+        "action:submit",
+        "action:recover",
+        "action:import",
+        "action:read"
+      ],
+      "actions": [
+        {
+          "id": "status",
+          "title": "检查视频模型",
+          "description": "检查视频模型",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "jobs",
+          "title": "查看本会话视频任务",
+          "description": "查看本会话视频任务",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "submit",
+          "title": "生成或编辑视频",
+          "description": "生成或编辑视频",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "operation": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              },
+              "resolution": {
+                "type": "string"
+              },
+              "duration": {
+                "type": "string"
+              },
+              "ratio": {
+                "type": "string"
+              },
+              "firstFrame": {
+                "type": "string"
+              },
+              "lastFrame": {
+                "type": "string"
+              },
+              "imageRefs": {
+                "type": "string"
+              },
+              "videoRefs": {
+                "type": "string"
+              },
+              "audioRefs": {
+                "type": "string"
+              },
+              "generateAudio": {
+                "type": "string"
+              },
+              "watermark": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "recover",
+          "title": "恢复已有任务查询",
+          "description": "恢复已有任务查询",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "upstreamId": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import",
+          "title": "导入视频素材",
+          "description": "导入视频素材",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "filename": {
+                "type": "string"
+              },
+              "dataUrl": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "read",
+          "title": "预览视频素材",
+          "description": "预览视频素材",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "offset": {
+                "type": "number"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      ]
+    }
+  ],
+  "contributions": [
+    {
+      "type": "workspace-app",
+      "ref": "console",
+      "label": "视频控制台",
+      "description": "生成、编辑、延长视频，查看本会话任务和产出。"
+    },
+    {
+      "type": "conversation-template",
+      "label": "生成或编辑视频",
+      "description": "在右侧打开视频控制台。",
+      "prompt": "打开视频控制台，帮助我生成或编辑视频；先检查已绑定模型，确认素材和参数，再提交任务，结果另存到本会话产出。",
+      "mode": "video"
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Video Console",
+        "description": "Generate and edit video with Seedance 2.5 or RunningHub MiniMax H3; keep tasks and outputs in the current session.",
+        "category": "Design & Creative",
+        "permissions": {
+          "workspace-read": { "reason": "Read video, image and audio references selected by the user." },
+          "workspace-write": { "reason": "Save imported media, persistent tasks and generated video copies without overwriting originals." }
+        },
+        "resources": {
+          "console": {
+            "label": "Video Console"
+          },
+          "video-console-service": {
+            "label": "Video Console Service"
+          }
+        }
+      }
+    }
+  }
+}

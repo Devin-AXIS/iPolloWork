@@ -8,7 +8,7 @@ import {
   type McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
+import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
 import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 
 import type {
@@ -198,11 +198,11 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
     setError("");
     try {
       const update = await onCallTool(context.updateTool, formArguments());
-      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the image settings.");
+      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the settings.");
       const result = await onCallTool(context.submitTool, {});
-      if (result.isError) throw new Error(callToolResultText(result) || "The image action failed.");
+      if (result.isError) throw new Error(callToolResultText(result) || "The action failed.");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "The image action failed.");
+      setError(nextError instanceof Error ? nextError.message : "The action failed.");
     } finally {
       setSubmitting(false);
     }
@@ -214,9 +214,9 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
     setError("");
     try {
       const update = await onCallTool(context.updateTool, { ...formArguments(), [fieldId]: value });
-      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the image settings.");
+      if (update.isError) throw new Error(callToolResultText(update) || "Could not update the settings.");
     } catch (nextError) {
-      setError(nextError instanceof Error ? nextError.message : "Could not update the image settings.");
+      setError(nextError instanceof Error ? nextError.message : "Could not update the settings.");
     } finally {
       setUpdating(false);
     }
@@ -225,6 +225,32 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
   const status = error
     ? { message: error, tone: "error" }
     : context.status;
+
+  const renderField = (field: PluginUiInspectorContextV1["fields"][number]) => (
+    <label key={field.id} className="block space-y-1.5">
+      <span className="text-[11px] font-medium text-foreground">{field.label}</span>
+      {field.control === "textarea" ? (
+        <Textarea key={`${field.id}:${field.value}`} name={field.id} defaultValue={field.value}
+          placeholder={field.placeholder} disabled={submitting || updating}
+          onBlur={field.live ? event => {
+            // In-form selects and submit already collect every draft field. Do not
+            // disable a clicked submit button during the preceding blur event.
+            if (event.relatedTarget instanceof Node && formRef.current?.contains(event.relatedTarget)) return;
+            void updateLiveField(field.id, event.currentTarget.value);
+          } : undefined}
+          className="min-h-28 resize-y rounded-xl bg-background text-[12px] leading-5" />
+      ) : (
+        <Select key={`${field.id}:${field.value}:${JSON.stringify(field.options)}`} name={field.id}
+          defaultValue={field.value} items={field.options} disabled={submitting || updating}
+          onValueChange={field.live ? value => { if (value !== null) void updateLiveField(field.id, value); } : undefined}>
+          <SelectTrigger className="w-full rounded-xl bg-input/50" aria-label={field.label}><SelectValue /></SelectTrigger>
+          <SelectContent align="start">{field.options?.map(option => (
+            <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>
+          ))}</SelectContent>
+        </Select>
+      )}
+    </label>
+  );
 
   return (
     <StudioInspectorPanel
@@ -240,41 +266,13 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
       testId="workspace-app-inspector"
     >
       <form ref={formRef} className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        {context.fields.map((field) => (
-          <label key={field.id} className="block space-y-1.5">
-            <span className="text-[11px] font-medium text-foreground">{field.label}</span>
-            {field.control === "textarea" ? (
-              <Textarea
-                key={`${field.id}:${field.value}`}
-                name={field.id}
-                defaultValue={field.value}
-                placeholder={field.placeholder}
-                disabled={submitting || updating}
-                className="min-h-28 resize-y rounded-xl bg-background text-[12px] leading-5"
-              />
-            ) : (
-              <Select
-                key={`${field.id}:${field.value}:${JSON.stringify(field.options)}`}
-                name={field.id}
-                defaultValue={field.value}
-                items={field.options}
-                disabled={submitting || updating}
-                onValueChange={field.live ? (value) => {
-                  if (value !== null) void updateLiveField(field.id, value);
-                } : undefined}
-              >
-                <SelectTrigger className="w-full rounded-xl bg-input/50" aria-label={field.label}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent align="start">
-                  {field.options?.map((option) => (
-                    <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </label>
-        ))}
+        {context.fields.filter(field => !field.advanced).map(renderField)}
+        {context.fields.some(field => field.advanced) ? (
+          <details className="rounded-xl border border-border p-3">
+            <summary className="cursor-pointer text-xs font-medium">{context.advancedLabel ?? "Advanced"}</summary>
+            <div className="mt-4 space-y-4">{context.fields.filter(field => field.advanced).map(renderField)}</div>
+          </details>
+        ) : null}
 
         {status ? (
           <p
@@ -548,6 +546,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     if (!bridge) return toolError("Workspace App is not ready");
     return bridge.callTool({ name, arguments: args }, props.surface.pluginId === "image-studio" && name === "generate_or_edit"
       ? { timeout: IMAGE_GENERATION_REQUEST_TIMEOUT_MS }
+      : props.surface.pluginId === "video-console" && name === "generate_or_edit"
+      ? { timeout: VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS }
       : undefined);
   }, [props.surface.pluginId]);
 

@@ -640,6 +640,7 @@ export type iPolloWorkAuthorizationServiceId =
   | "openai-images"
   | "aliyun-bailian"
   | "volcengine-video"
+  | "runninghub-video"
   | "aliyun-oss"
   | "wasabi"
   | "storage-routing";
@@ -1029,6 +1030,7 @@ const resolveFetch = (url?: string) => {
 
 const DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS = 10_000;
 export const IMAGE_GENERATION_REQUEST_TIMEOUT_MS = 420_000;
+export const VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS = 180_000;
 const ENGINE_RELOAD_TIMEOUT_MS = 60_000;
 
 type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
@@ -1233,7 +1235,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         timeoutMs: (payload.extensionId === "openai-image-generation" && payload.action !== "status")
           || (payload.extensionId === "image-studio" && ["generate-image", "edit-image"].includes(payload.action))
           ? Math.max(timeouts.binary, IMAGE_GENERATION_REQUEST_TIMEOUT_MS)
-          : timeouts.binary,
+          : (["video-console", "video-generation"].includes(payload.extensionId) && payload.action === "submit")
+            ? Math.max(timeouts.binary, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS)
+            : timeouts.binary,
       }),
     callMedia: (action: iPolloWorkMediaAction, args: Record<string, unknown>, context?: Record<string, unknown>) =>
       requestJson<iPolloWorkExtensionActionResult>(baseUrl, "/experimental/extensions/call", {

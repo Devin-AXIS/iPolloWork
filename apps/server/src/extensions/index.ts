@@ -1,4 +1,5 @@
 import { ApiError } from "../errors.js";
+import { callVideoGenerationAction, VIDEO_GENERATION_EXTENSION_ACTIONS, VIDEO_GENERATION_EXTENSION_ID } from "./video-generation.js";
 import { createAuthorizationAccess } from "../authorization-center.js";
 import type { EnvService } from "../env-file.js";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./storage.js";
 
 const IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS = [
+  ...VIDEO_GENERATION_EXTENSION_ACTIONS,
   ...GOOGLE_WORKSPACE_EXTENSION_ACTIONS,
   ...OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS,
   ...MEDIA_EXTENSION_ACTIONS,
@@ -133,6 +135,9 @@ async function callBuiltInExtensionAction(
   connectSnapshot?: ConnectSnapshot,
 ) {
 
+  if (extensionId === VIDEO_GENERATION_EXTENSION_ID) {
+    return callVideoGenerationAction(config, createAuthorizationAccess(config), action, args, context);
+  }
   if (
     extensionId === GOOGLE_WORKSPACE_EXTENSION_ID &&
     action !== "status" &&

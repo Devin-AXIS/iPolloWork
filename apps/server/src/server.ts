@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { startVideoJobWorker } from "./extensions/video-generation.js";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -942,6 +943,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     });
     automationMonitors.set(key, monitor);
   };
+  const videoJobWorker = startVideoJobWorker(config);
   const workItemAutomationScheduler = startWorkItemAutomationScheduler({
     config,
     dispatch: async (item) => {
@@ -995,6 +997,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   return {
     ...server,
     stop: async () => {
+      await videoJobWorker.close();
       await workItemAutomationScheduler.close();
       automationMonitorAbort.abort(new Error("Server stopped"));
       await Promise.allSettled(automationMonitors.values());

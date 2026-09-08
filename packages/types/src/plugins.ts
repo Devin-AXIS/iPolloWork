@@ -10,7 +10,7 @@ const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const UI_URI_RE = /^ui:\/\/[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)$/;
-const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
+const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "video-generation", "storage"]);
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 export const PLUGIN_UI_INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
@@ -155,6 +155,7 @@ const pluginUiInspectorFieldSchema = z.object({
   control: z.enum(["textarea", "select"]),
   value: z.string(),
   live: z.boolean().optional(),
+  advanced: z.boolean().optional(),
   placeholder: z.string().optional(),
   options: z.array(z.object({
     value: z.string(),
@@ -168,6 +169,7 @@ export const pluginUiInspectorContextSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   updateTool: z.string().regex(SIMPLE_ID_RE),
+  advancedLabel: z.string().min(1).optional(),
   submitTool: z.string().regex(SIMPLE_ID_RE),
   submitLabel: z.string().min(1),
   submitDisabled: z.boolean().optional(),
