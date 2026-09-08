@@ -9,6 +9,8 @@ import { ensureDir } from "../utils.js";
 const jobSchema = z.object({
   id: z.string(), workspaceId: z.string(), sessionId: z.string(), model: z.string(),
   operation: z.string(), prompt: z.string(), fingerprint: z.string(), upstreamId: z.string(),
+  // Absent on existing standard-API jobs; preserve their query endpoint on upgrades.
+  workflowId: z.string().optional(),
   status: z.enum(["submitting", "running", "saving", "succeeded", "failed", "uncertain", "save_failed"]),
   path: z.string(), message: z.string(), createdAt: z.number(), updatedAt: z.number(), nextPoll: z.number(),
 });

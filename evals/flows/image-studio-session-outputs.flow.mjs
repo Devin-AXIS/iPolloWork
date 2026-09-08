@@ -23,7 +23,7 @@ async function showWindow(ctx) {
 async function openOutputs(ctx) {
   await ctx.waitFor(`Boolean(document.querySelector('[data-session-surface-id="' + location.hash.split('/').pop() + '"]'))`);
   if (!await ctx.eval(`document.querySelector('button[aria-label="产出文件"]')?.getAttribute('aria-pressed') === 'true'`)) {
-    await ctx.trustedClick('button[aria-label="产出文件"]');
+    await ctx.eval(`document.querySelector('button[aria-label="产出文件"]').click()`);
   }
   await ctx.waitFor(`Boolean(document.querySelector('[data-testid="conversation-files-outputs-view"]'))`);
 }

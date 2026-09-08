@@ -17,6 +17,7 @@ import { storageStatus, uploadWorkspaceFile } from "./storage.js";
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
 const RH = "https://www.runninghub.ai";
+const H3_WORKFLOW = "2084935567606894593";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
@@ -32,17 +33,17 @@ const catalog = [
     imageLimit: 30, videoLimit: 10, audioLimit: 10, referenceSeconds: 30,
   },
   {
-    id: "minimax-h3", label: "MiniMax H3 · RunningHub", service: "runninghub-video", key: "RUNNINGHUB_API_KEY",
-    upstream: "minimax/hailuo-h3", resolutions: ["768P", "2K"], defaultResolution: "768P",
+    id: "minimax-h3", label: "MiniMax H3 · RunningHub 工作流", service: "runninghub-video", key: "RUNNINGHUB_API_KEY",
+    upstream: H3_WORKFLOW, resolutions: ["0.5MP", "1MP"], defaultResolution: "0.5MP",
     ratios: ratios.filter(ratio => ratio !== "adaptive"),
     durations: Array.from({ length: 11 }, (_, i) => String(i + 5)),
-    operations: ["text", "first", "first-last", "reference", "regenerate"],
-    imageLimit: 9, videoLimit: 3, audioLimit: 3, referenceSeconds: 15,
+    operations: ["text", "first", "first-last"],
+    imageLimit: 0, videoLimit: 0, audioLimit: 0, referenceSeconds: 0,
   },
 ];
 // Source of truth for both the inspector and validation. Do not send unsupported knobs.
 // Ark: https://www.volcengine.com/docs/82379/1520757
-// H3: https://www.runninghub.ai/runninghub-api-doc-en/api-495380675 (and 676/677)
+// H3: https://www.runninghub.cn/post/2084935567606894593 (Aquila's open ComfyUI workflow)
 export function videoModelDefinition(id: string) {
   const model = catalog.find(item => item.id === id);
   if (!model) throw new ApiError(400, "video_model_invalid", "请选择已支持的视频模型。");
@@ -54,7 +55,7 @@ const submissionSchema = z.object({
   resolution: z.string(), duration: z.string(), ratio: z.string(),
   firstFrame: z.string().max(4096).default(""), lastFrame: z.string().max(4096).default(""),
   imageRefs: z.string().max(125000).default(""), videoRefs: z.string().max(42000).default(""), audioRefs: z.string().max(42000).default(""),
-  generateAudio: z.enum(["true", "false"]).optional(), watermark: z.enum(["true", "false"]).default("true"),
+  generateAudio: z.enum(["true", "false"]).optional(), watermark: z.enum(["true", "false"]).optional(),
 }).strict();
 type Submission = z.infer<typeof submissionSchema>;
 function fail(message: string): never { throw new ApiError(400, "video_invalid_parameters", message); }
@@ -77,8 +78,8 @@ export function validateVideoSubmission(input: unknown): Submission {
   if (!isReference(args.operation) && images.length + videos.length + audio.length) fail("当前操作不接受多模态参考素材。");
   if (isReference(args.operation) && !images.length && !videos.length && !audio.length) fail("请先添加参考素材。");
   if (["edit", "extend", "regenerate"].includes(args.operation) && !videos.length) fail("请添加原视频作为参考视频。");
-  if (args.model === "minimax-h3" && audio.length && !images.length && !videos.length) fail("H3 的音频参考需要搭配图片或视频。");
-  if (args.model === "minimax-h3" && args.generateAudio !== undefined) fail("RunningHub H3 不提供音频开关参数。");
+  if (args.model === "minimax-h3" && args.generateAudio !== undefined) fail("H3 工作流不提供音频开关参数。");
+  if (args.model === "minimax-h3" && args.watermark !== undefined) fail("H3 工作流不提供水印开关参数。");
   return args;
 }
 
@@ -101,6 +102,13 @@ async function credential(authorization: AuthorizationAccess, model: string) {
   return key;
 }
 const object = z.record(z.string(), z.unknown());
+function workflowData(value: unknown): unknown {
+  const result = z.object({ code: z.number(), msg: z.string().optional(), data: z.unknown().optional() }).parse(value);
+  if (result.code !== 0) {
+    throw new ApiError(400, "video_workflow_rejected", `RunningHub 工作流请求被拒绝（${result.code}）：${result.msg || "请检查账户权限、余额和工作流可用性。"}`);
+  }
+  return result.data;
+}
 function safeError(value: unknown, key = "") {
   let message = classifyProviderFailure(value)?.message ?? (value instanceof z.ZodError
     ? "第三方服务暂时不可用，请稍后重试。" : serviceErrorMessage(value, "第三方服务暂时不可用，请稍后重试。"));
@@ -172,13 +180,52 @@ async function sourceUrl(workspace: WorkspaceInfo, source: string, kind: "image"
   if (model === "seedance-2.5") return `data:${file.mime};base64,${bytes.toString("base64")}`;
   const form = new FormData();
   form.set("file", new Blob([bytes], { type: file.mime }), basename(source));
-  const response = await providerFetch(`${RH}/openapi/v2/media/upload/binary`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
-  const payload: unknown = await response.json().catch(() => { throw providerApiError({}, 502); });
-  const validated = z.object({ code: z.number(), data: z.object({ download_url: z.string() }).nullable() }).safeParse(payload);
-  if (!validated.success) throw providerApiError(payload, 502);
-  const result = validated.data;
-  if (!response.ok || result.code !== 200 || !result.data) throw providerApiError(payload, response.ok ? 400 : response.status);
-  return httpsUrl(result.data.download_url);
+  form.set("apiKey", key); form.set("fileType", "input");
+  const response = await providerFetch(`${RH}/task/openapi/upload`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
+  const payload = JSON.parse(new TextDecoder().decode(await readLimitedRequestBody(response, 64 * 1024)));
+  if (!response.ok) throw providerApiError(payload, response.status);
+  return z.object({ fileName: z.string().regex(/^[a-zA-Z0-9_/-]+\.(png|jpe?g|webp)$/i) }).parse(workflowData(payload)).fileName;
+}
+
+// Fetch the published graph before billing, verify the bindings, and replace only
+// the selected inputs. No local model execution or secret is embedded in the graph.
+async function h3Workflow(args: Submission, key: string, first: string, last: string, signal: AbortSignal) {
+  const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId: H3_WORKFLOW }, signal));
+  const { prompt } = z.object({ prompt: z.string() }).parse(data);
+  const graph = z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
+  const node = (id: string, type: string) => {
+    if (graph[id]?.class_type !== type) throw new ApiError(400, "video_workflow_changed", "H3 公开工作流的节点已变更，请更新软件后重试；尚未提交生成。");
+    return graph[id].inputs;
+  };
+  const target = node("131", "MiniMaxH3ImageToVideo");
+  const promptInput = node("134", "CR Prompt Text");
+  const timing = node("132", "ComfyMathExpression");
+  const output = node("92", "SaveVideo");
+  node("139", "LoadImage"); node("206", "LoadImage");
+  if (graph["300"] || graph["301"]) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
+  promptInput.prompt = args.prompt;
+  // H3 uses 24 fps and a 17n+5 frame grid: preserve the published duration expression.
+  timing["values.a"] = Number(args.duration);
+  output.format = "mp4"; output.codec = "h264";
+  const megapixels = args.resolution === "1MP" ? 1 : 0.5;
+  const imageNode = (id: string, path: string) => {
+    // The documented URL loader downloads on RunningHub, never on the local server.
+    graph[id] = { class_type: path.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image: path } };
+  };
+  if (first) {
+    imageNode("139", first);
+    graph["300"] = { class_type: "ImageScaleToTotalPixels", inputs: { image: ["139", 0], megapixels, resolution_steps: 32, upscale_method: "nearest-exact" } };
+    graph["301"] = { class_type: "GetImageSize", inputs: { image: ["300", 0] } };
+    target.first_frame = ["300", 0]; target.width = ["301", 0]; target.height = ["301", 1];
+  } else {
+    delete target.first_frame; delete graph["139"];
+    const [width, height] = args.ratio.split(":").map(Number);
+    target.width = Math.round(Math.sqrt(megapixels * 1_000_000 * width / height) / 32) * 32;
+    target.height = Math.round(Math.sqrt(megapixels * 1_000_000 * height / width) / 32) * 32;
+  }
+  if (last) { imageNode("206", last); target.last_frame = ["206", 0]; }
+  else { delete target.last_frame; delete graph["206"]; }
+  return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: H3_WORKFLOW, workflow: JSON.stringify(graph), instanceType: "plus", addMetadata: false } };
 }
 export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess) {
   const signal = AbortSignal.timeout(120_000);
@@ -208,19 +255,15 @@ export async function videoRequest(workspace: WorkspaceInfo, args: Submission, k
     for (const url of audio) content.push({ type: "audio_url", audio_url: { url }, role: "reference_audio" });
     return { url: `${ARK}/contents/generations/tasks`, body: { model: videoModelDefinition(args.model).upstream, content,
       resolution: args.resolution, ratio: args.ratio, duration: Number(args.duration), output_format: "mp4",
-      generate_audio: args.generateAudio !== "false", watermark: args.watermark === "true",
+      generate_audio: args.generateAudio !== "false", watermark: args.watermark !== "false",
       ...(isReference(args.operation) ? { omni_reference_task_type: args.operation } : {}) } };
   }
-  return { url: `${RH}/openapi/v2/minimax/hailuo-h3/${first ? "image" : isReference(args.operation) ? "multimodal" : "text"}-to-video`, body: {
-    prompt: args.prompt, resolution: args.resolution, duration: args.duration, aigc_watermark: args.watermark === "true",
-    ...(first ? { firstFrameUrl: first, ...(last ? { lastFrameUrl: last } : {}) } : { ratio: args.ratio }),
-    ...(isReference(args.operation) ? { imageUrls: images, videoUrls: videos, audioUrls: audio } : {}),
-  } };
+  return h3Workflow(args, key, first, last, signal);
 }
 
 async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, url: string, signal: AbortSignal) {
   const parsed = new URL(httpsUrl(url));
-  const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com"];
+  const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com"];
   if (!domains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))) throw new Error("服务商返回了未受信任的视频下载域名，请联系管理员检查接口。");
   const path = `${await sessionDirectory(workspace, job.sessionId, "renders")}/${job.id}.mp4`;
   const destination = await resolveWithinRoot(workspace.path, path);
@@ -257,6 +300,18 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
   return path;
 }
 
+async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
+  const request = { apiKey: key, taskId: job.upstreamId };
+  const status = z.string().parse(workflowData(await jsonRequest(`${RH}/task/openapi/status`, key, request, signal))).toLowerCase();
+  if (!["success", "failed"].includes(status)) return { status };
+  const result = await jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal);
+  if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
+  const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
+  const video = outputs.find(item => item.nodeId === "92" && item.fileType.toLowerCase() === "mp4");
+  if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
+  return { status, results: [{ url: video.fileUrl }] };
+}
+
 export async function pollVideoJobs(config: ServerConfig, authorization: AuthorizationAccess, signal = new AbortController().signal) {
   if (config.readOnly) return;
   await Promise.all((await claimVideoJobs(config)).map(async job => {
@@ -266,9 +321,10 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
       const workspace = config.workspaces.find(item => item.id === job.workspaceId);
       if (!workspace) throw new Error("发起任务的工作区已不可用，请恢复工作区后重试查询。");
       key = await credential(authorization, job.model);
-      const data = job.model === "seedance-2.5"
+      const data = object.parse(job.model === "seedance-2.5"
         ? await jsonRequest(`${ARK}/contents/generations/tasks/${encodeURIComponent(job.upstreamId)}`, key, undefined, signal)
-        : await jsonRequest(`${RH}/openapi/v2/query`, key, { taskId: job.upstreamId }, signal);
+        : job.workflowId ? await pollH3Workflow(job, key, signal)
+        : await jsonRequest(`${RH}/openapi/v2/query`, key, { taskId: job.upstreamId }, signal));
       const status = z.string().parse(data.status).toLowerCase();
       if (["failed", "cancelled", "canceled", "expired"].includes(status)) {
         const error = object.safeParse(data.error);
@@ -332,6 +388,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     const now = Date.now();
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
+      ...(args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
       model: args.model, operation: args.operation, prompt: args.prompt, status: "submitting", upstreamId: "", path: "", message: "准备并提交素材…",
       createdAt: now, updatedAt: now, nextPoll: now + 15 * 60_000 });
     if (!created.created) return { ok: true, result: { job: created.job } };
@@ -340,10 +397,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
       const request = await videoRequest(workspace, args, key, config, authorization);
       submitted = true;
       const result = await jsonRequest(request.url, key, request.body);
-      if (!result.taskId && args.model === "minimax-h3" && result.errorCode) {
-        throw providerApiError(result, 400);
-      }
-      const upstreamId = z.string().min(1).max(200).parse(args.model === "seedance-2.5" ? result.id : result.taskId);
+      const upstreamId = z.string().min(1).max(200).parse(args.model === "seedance-2.5" ? result.id : object.parse(workflowData(result)).taskId);
       if (!/^[a-zA-Z0-9_-]+$/.test(upstreamId)) throw new Error("服务商返回无效任务 ID。");
       const job = await updateVideoJob(config, created.job, { upstreamId, status: "running", nextPoll: now, message: "任务已提交，正在等待结果。" });
       return { ok: true, result: { job } };

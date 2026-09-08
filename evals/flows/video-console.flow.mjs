@@ -7,23 +7,22 @@ const element = selector => `${studio}?.querySelector(${JSON.stringify(selector)
 async function selectOption(ctx, label, value) {
   if (await ctx.eval(`document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.textContent.includes(${JSON.stringify(value)})`)) return;
   await ctx.client.send("Page.bringToFront");
-  await ctx.eval(`document.querySelectorAll('[data-video-proof-option]').forEach(node => node.removeAttribute('data-video-proof-option'))`);
   await ctx.trustedClick(`[aria-label="${label}"]`);
   await ctx.waitFor(`(() => {
     const option = Array.from(document.querySelectorAll('[role="option"]')).find(node => node.textContent.trim() === ${JSON.stringify(value)} && node.getBoundingClientRect().width > 0);
     if (!option) return false;
-    option.setAttribute('data-video-proof-option', 'true'); return true;
+    option.focus(); return true;
   })()`);
-  await ctx.trustedClick('[data-video-proof-option="true"]');
+  await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
+  await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Enter", code: "Enter", windowsVirtualKeyCode: 13 });
   await ctx.waitFor(`!document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.disabled && document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.textContent.includes(${JSON.stringify(value)})`);
 }
 
 async function openConsole(ctx) {
   await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30000 });
+  await ctx.waitFor(`Boolean(document.querySelector('[data-session-surface-id="' + location.hash.split('/').pop() + '"]'))`);
   if (!await ctx.eval(`Boolean(${studio})`)) {
-    if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="打开右侧面板"]'))`)) {
-      await ctx.trustedClick('button[aria-label="打开右侧面板"]');
-    }
+    await ctx.eval(`document.querySelector('button[aria-label="打开右侧面板"]')?.click()`);
     if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="添加侧面板入口"]'))`)) {
       await ctx.trustedClick('button[aria-label="添加侧面板入口"]');
     }
@@ -70,19 +69,30 @@ export default {
           ctx.assert(await ctx.eval(`!document.querySelector('[data-testid="workspace-app-inspector"]').innerText.includes('未连接')`),"Unbound models are not shown as choices");
         }, screenshot:{name:"bound-video-model",requireText:["视频参数"]},
       });
-      await ctx.prove("Editing switches to a supported operation and model-specific controls", {
-        voiceover:vo[1],action:()=>ctx.eval(`${element("#editMode")}.click()`),
+      await ctx.prove("Both models expose actual first-frame inputs and only supported controls", {
+        voiceover:vo[1],action:async()=>{
+          await ctx.eval(`${element("#generateMode")}.click()`);
+          await selectOption(ctx,"生成方式","首帧生视频");
+        },
         assert:async()=>{
-          await ctx.waitFor(`document.querySelector('[data-testid="workspace-app-inspector"]')?.innerText.includes('原视频')`);
-          ctx.assert(await ctx.eval(`${element("#editMode")}.getAttribute('aria-pressed')==='true'`),"Edit mode is visibly selected");
-        },screenshot:{name:"video-edit-parameters",requireText:["视频参数","原视频"]},
+          await ctx.waitFor(`Boolean(document.querySelector('textarea[name="firstFrame"]'))`);
+          ctx.assert(await ctx.eval(`document.querySelector('[aria-label="画幅"]')?.innerText.includes('跟随输入')`),"Image-to-video must follow the source image ratio");
+          if(ctx.env.IPOLLOWORK_EVAL_VIDEO_MODEL?.includes('H3')){
+            ctx.assert(await ctx.eval(`${element("#editMode")}.disabled`),"Unverified H3 video editing is unavailable");
+            ctx.assert(await ctx.eval(`!document.querySelector('[aria-label="AI 生成水印"]') && document.querySelector('[aria-label="分辨率"]')?.innerText.includes('0.5MP')`),"Workflow controls use the actual pixel budget and no unsupported watermark switch");
+          }
+        },screenshot:{name:"video-image-parameters",requireText:["视频参数","首帧图片"]},
       });
       await ctx.prove("A submitted task survives switching to another session and back", {
         voiceover:vo[2],action:async()=>{
           await ctx.eval(`${element("#generateMode")}.click()`);
           await ctx.waitFor(`Boolean(document.querySelector('textarea[name="prompt"]'))`);
           if (!jobId) {
-          await ctx.fill('textarea[name="prompt"]',"海边的灯塔，平静的海浪，固定镜头，5 秒，不要人物或文字。");
+          if(ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME){
+            await selectOption(ctx,"生成方式","首帧生视频");
+            await ctx.fill('textarea[name="firstFrame"]',ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME);
+          } else await selectOption(ctx,"生成方式","文生视频");
+          await ctx.fill('textarea[name="prompt"]',ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME?"保持首帧中的人物、构图和插画风格。固定镜头，天空的云缓慢飘动，人物衣角轻轻摆动，连续自然运动，不要文字。":"海边的灯塔，平静的海浪，固定镜头，5 秒，不要人物或文字。");
           await selectOption(ctx, "时长（秒）", "5");
           const previous=await ctx.eval(`Array.from(${studio}.querySelectorAll('[data-job-id]')).map(node=>node.dataset.jobId)`);
           await ctx.clickText("生成视频",{selector:"button"});
@@ -94,12 +104,15 @@ export default {
           await ctx.navigateHash(route);await openConsole(ctx);
         },assert:async()=>{
           await ctx.waitFor(`Boolean(${element(`[data-job-id="${jobId}"]`)})`);
-          ctx.assert(await ctx.eval(`!${element(`[data-job-id="${jobId}"]`)}.innerText.includes('生成失败')`),"The initiating session still owns the submitted task");
+          const status = await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.innerText`);
+          ctx.assert(!/生成失败|待确认|保存失败/.test(status), `The task must be accepted by the provider: ${status}`);
         },screenshot:{name:"video-task-restored",requireText:["本会话任务"]},
       });
       await ctx.prove("The resulting video plays and persists as this session's artifact without a chat message", {
         voiceover:vo[3],action:async()=>{
-          await ctx.waitFor(`${element(`[data-job-id="${jobId}"]`)}?.innerText.includes('已保存')`,{timeoutMs:600000});
+          await ctx.waitFor(`/已保存|生成失败|待确认|保存失败/.test(${element(`[data-job-id="${jobId}"]`)}?.innerText || '')`,{timeoutMs:1200000});
+          const status = await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.innerText`);
+          ctx.assert(status.includes('已保存'), `The provider must complete and save the task: ${status}`);
           const page=await api(ctx,`/workspace/${workspaceId}/artifacts?sessionId=${sessionId}`);
           outputPath=page.items.find(item=>item.path.endsWith(`${jobId}.mp4`))?.path;
           ctx.assert(Boolean(outputPath),"The generated file is registered to the initiating session");

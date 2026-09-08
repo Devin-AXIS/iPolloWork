@@ -26,6 +26,16 @@ async function setup() {
   return { root, config, call: (action: string, input: unknown = {}, owner = context) => callVideoGenerationAction(config,auth,action,input,owner) };
 }
 function submission(patch = {}) { return { requestId:randomUUID(),model:"seedance-2.5",operation:"text",prompt:"镜头缓慢推近海边的灯塔",resolution:"720p",duration:"5",ratio:"16:9", ...patch }; }
+function workflowFixture() {
+  return { code: 0, data: { prompt: JSON.stringify({
+    "131": { class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["139", 0], last_frame: ["206", 0] } },
+    "134": { class_type: "CR Prompt Text", inputs: { prompt: "public template example" } },
+    "132": { class_type: "ComfyMathExpression", inputs: { expression: "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17", "values.a": ["205", 0] } },
+    "92": { class_type: "SaveVideo", inputs: { format: "auto", codec: "auto" } },
+    "139": { class_type: "LoadImage", inputs: { image: "None" } },
+    "206": { class_type: "LoadImage", inputs: { image: "None" } },
+  }) } };
+}
 afterEach(async () => {
   if (oldFetch === undefined) Reflect.deleteProperty(globalThis,PROVIDER_FETCH_SYMBOL); else Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,oldFetch);
   for (const root of roots.splice(0)) await rm(root,{recursive:true,force:true});
@@ -54,19 +64,39 @@ test("rejects unsupported mode combinations before any network call",()=>{
   expect(validateVideoSubmission(submission({operation:"edit",duration:"-1",ratio:"adaptive",videoRefs:"https://example.com/input.mp4"})).operation).toBe("edit");
 });
 
-test("maps Seedance edit and H3 first/last and reference payloads to documented native fields",async()=>{
+test("maps Seedance first/last images and edit, and H3 first/last images into the real workflow graph",async()=>{
   const {config}=await setup();
   const request=async(patch:Record<string,string>)=>videoRequest(config.workspaces[0],validateVideoSubmission(submission(patch)),"key",config,auth);
   const edit=await request({operation:"edit",duration:"-1",ratio:"adaptive",videoRefs:"https://example.com/original.mp4"});
   expect(edit.body).toMatchObject({model:"doubao-seedance-2-5-260628",duration:-1,ratio:"adaptive",omni_reference_task_type:"edit",generate_audio:true,content:expect.arrayContaining([{type:"video_url",video_url:{url:"https://example.com/original.mp4"},role:"reference_video"}])});
   expect(edit.body).not.toHaveProperty("seed");
-  const frames=await request({model:"minimax-h3",resolution:"768P",operation:"first-last",ratio:"adaptive",firstFrame:"https://example.com/first.png",lastFrame:"https://example.com/last.png"});
-  expect(frames.url).toEndWith("/minimax/hailuo-h3/image-to-video");
-  expect(frames.body).toMatchObject({duration:"5",resolution:"768P",firstFrameUrl:"https://example.com/first.png",lastFrameUrl:"https://example.com/last.png"});
-  expect(frames.body).not.toHaveProperty("ratio");
-  const reference=await request({model:"minimax-h3",resolution:"2K",operation:"regenerate",videoRefs:"https://example.com/source.mp4"});
-  expect(reference.url).toEndWith("/minimax/hailuo-h3/multimodal-to-video");
-  expect(reference.body).toMatchObject({videoUrls:["https://example.com/source.mp4"],resolution:"2K",ratio:"16:9"});
+  const input={operation:"first-last",ratio:"adaptive",firstFrame:"https://example.com/first.png",lastFrame:"https://example.com/last.png"};
+  const arkFrames=await request(input);
+  expect(arkFrames.body).toMatchObject({content:expect.arrayContaining([
+    {type:"image_url",image_url:{url:input.firstFrame},role:"first_frame"},
+    {type:"image_url",image_url:{url:input.lastFrame},role:"last_frame"},
+  ])});
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
+  const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
+  expect(frames.url).toEndWith("/task/openapi/create");
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084935567606894593",instanceType:"plus"});
+  if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
+  const graph=JSON.parse(frames.body.workflow);
+  expect(graph["139"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
+  expect(graph["206"].inputs.image).toBe(input.lastFrame);
+  expect(graph["131"].inputs).toMatchObject({first_frame:["300",0],last_frame:["206",0],width:["301",0],height:["301",1]});
+  expect(graph["300"].inputs).toMatchObject({megapixels:0.5,resolution_steps:32});
+  expect(graph["134"].inputs.prompt).toBe(submission().prompt);
+  expect(graph["132"].inputs["values.a"]).toBe(5);
+  expect(graph["92"].inputs).toMatchObject({format:"mp4",codec:"h264"});
+  const text=await request({model:"minimax-h3",resolution:"1MP"});
+  if(!("workflow" in text.body))throw new Error("Missing workflow graph");
+  const textGraph=JSON.parse(text.body.workflow);
+  expect(textGraph["131"].inputs).toMatchObject({width:1344,height:736});
+  expect(textGraph["131"].inputs).not.toHaveProperty("first_frame");
+  expect(textGraph["131"].inputs).not.toHaveProperty("last_frame");
+  expect(textGraph).not.toHaveProperty("139");
+  expect(textGraph).not.toHaveProperty("206");
 });
 
 test("duplicate submissions are idempotent; restart saves only into initiating session",async()=>{
@@ -142,12 +172,30 @@ test("video rejections retain provider codes and do not expose raw account diagn
 });
 
 test("H3 uses explicit ratios except for first-frame inputs, before contacting the provider", () => {
-  const args = submission({ model: "minimax-h3", resolution: "768P" });
+  const args = submission({ model: "minimax-h3", resolution: "0.5MP" });
   expect(validateVideoSubmission(args).ratio).toBe("16:9");
-  for (const operation of ["text", "reference", "regenerate"]) {
+  for (const operation of ["text"]) {
     expect(() => validateVideoSubmission({ ...args, operation, ratio: "adaptive" })).toThrow("画幅");
   }
   expect(validateVideoSubmission({ ...args, operation: "first", firstFrame: "source.png", ratio: "adaptive" }).ratio).toBe("adaptive");
+});
+
+test("H3 workflow rejections are definite, redacted and never prompt for a standard-model key", async () => {
+  const { config, call } = await setup();
+  let creates=0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url:string) => {
+    if(url.endsWith("getJsonApiFormat"))return Response.json(workflowFixture());
+    creates++;return Response.json({code:421,msg:"WORKFLOW_NOT_FOUND test-rh-secret https://private.example/trace"});
+  });
+  const args = submission({ model: "minimax-h3", resolution: "0.5MP" });
+  await call("submit", args);
+  await call("submit", args);
+  const job = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("failed");
+  expect(job.message).toContain("421");
+  expect(job.message).not.toContain("Enterprise-Shared");
+  expect(job.message).not.toContain("test-rh-secret");
+  expect(creates).toBe(1);
 });
 
 test("authorization tests distinguish provider outages from invalid keys", async () => {
@@ -179,11 +227,13 @@ test("download failure preserves upstream id, cleans partial output and retry sa
 test("H3 query recognizes SUCCESS and FAILED application statuses",async()=>{
   const {config,call}=await setup();let phase="SUCCESS";
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
-    if(String(url).endsWith("text-to-video"))return Response.json({taskId:randomUUID(),status:"RUNNING",errorCode:"",errorMessage:""});
-    if(String(url).endsWith("/query"))return Response.json({status:phase,errorCode:phase==="FAILED"?"INSUFFICIENT_BALANCE":"",errorMessage:phase==="FAILED"?"余额不足":"",results:[{url:"https://rh-images-125.cos.ap-beijing.myqcloud.com/result.mp4",outputType:"mp4"}]});
+    if(String(url).endsWith("getJsonApiFormat"))return Response.json(workflowFixture());
+    if(String(url).endsWith("/create"))return Response.json({code:0,data:{taskId:randomUUID(),taskStatus:"QUEUED"}});
+    if(String(url).endsWith("/status"))return Response.json({code:0,data:phase});
+    if(String(url).endsWith("/outputs"))return Response.json(phase==="FAILED"?{code:805,msg:"生成失败"}:{code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/result.mp4",fileType:"mp4",nodeId:"92"}]});
     return new Response(mp4);
   });
-  for(const status of ["succeeded","failed"]){const args=submission({model:"minimax-h3",resolution:"2K"});await call("submit",args);await pollVideoJobs(config,auth);expect(String((await getVideoJob(config,args.requestId,"workspace",context.sessionId)).status)).toBe(status);phase="FAILED";}
+  for(const status of ["succeeded","failed"]){const args=submission({model:"minimax-h3",resolution:"0.5MP"});await call("submit",args);await pollVideoJobs(config,auth);expect(String((await getVideoJob(config,args.requestId,"workspace",context.sessionId)).status)).toBe(status);phase="FAILED";}
 });
 
 test("read-only and path escapes are rejected; preview is chunked",async()=>{
@@ -222,11 +272,12 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(result.model).toBe("seedance-2.5");
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='edit';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
-  expect(switched.operation).toBe("regenerate");expect(switched.duration).toBe("5");
+  expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
   const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");
   expect(ratioField?.value).toBe("16:9");
   expect(ratioField?.options?.some(option=>option.value==="adaptive")).toBe(false);
   expect(parsePluginUiInspectorContext(switched.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
+  expect(parsePluginUiInspectorContext(switched.inspector)?.fields.some(field=>field.id==="watermark")).toBe(false);
   expect(runInNewContext(`state.models=[];normalized();state.model`,sandbox)).toBe("");
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
   expect(html).not.toContain('"ui/message"');
@@ -237,12 +288,16 @@ test("Ark local reference video requires storage; H3 uploads through documented 
   const ark=validateVideoSubmission(submission({operation:"edit",ratio:"adaptive",duration:"-1",videoRefs:"clip.mp4"}));
   await expect(videoRequest(config.workspaces[0],ark,"key",config,auth)).rejects.toThrow("OSS/Wasabi");
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string,init:RequestInit)=>{
-    expect(url).toEndWith("/openapi/v2/media/upload/binary");expect(init.body instanceof FormData).toBe(true);
-    return Response.json({code:200,data:{download_url:"https://rh-images-125.cos.ap-beijing.myqcloud.com/clip.mp4"}});
+    if(url.endsWith("getJsonApiFormat"))return Response.json(workflowFixture());
+    expect(url).toEndWith("/task/openapi/upload");expect(init.body instanceof FormData).toBe(true);
+    if(init.body instanceof FormData){expect(init.body.get("apiKey")).toBe("key");expect(init.body.get("fileType")).toBe("input");}
+    return Response.json({code:0,data:{fileName:"api/uploaded.png"}});
   });
-  const h3=validateVideoSubmission(submission({model:"minimax-h3",resolution:"2K",operation:"regenerate",videoRefs:"clip.mp4"}));
+  await writeFile(join(root,"first.png"),Buffer.from("test-image-bytes"));
+  const h3=validateVideoSubmission(submission({model:"minimax-h3",resolution:"0.5MP",operation:"first",ratio:"adaptive",firstFrame:"first.png"}));
   const request=await videoRequest(config.workspaces[0],h3,"key",config,auth);
-  expect(request.body).toMatchObject({videoUrls:["https://rh-images-125.cos.ap-beijing.myqcloud.com/clip.mp4"]});
+  if(!("workflow" in request.body))throw new Error("Missing workflow graph");
+  expect(JSON.parse(request.body.workflow)["139"]).toMatchObject({class_type:"LoadImage",inputs:{image:"api/uploaded.png"}});
 });
 
 test("RunningHub authorization uses a non-billable account test and checks application-level errors",async()=>{

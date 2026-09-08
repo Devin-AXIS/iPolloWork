@@ -95,7 +95,7 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     agent: {
       capability: "RunningHub MiniMax H3 video generation",
       useWhen: "Use for MiniMax H3 text, image or multimodal video generation.",
-      instruction: "Use video-generation actions. Requires a RunningHub Enterprise-Shared standard model API key, not an app or workflow key.",
+      instruction: "Use video-generation actions. MiniMax H3 uses the public ComfyUI workflow API with a RunningHub workflow API key; supports text, first-frame and first/last-frame video generation.",
     },
   },
   {
@@ -277,7 +277,7 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
         });
         const data: unknown = await response.json().catch(() => { throw providerApiError({}, 502); });
         const ok = response.ok && data !== null && typeof data === "object" && "code" in data && data.code === 0;
-        return { ok, detail: ok ? "连接正常。H3 权限和余额将在提交任务时检查。" : classifyProviderFailure(data)?.message ?? "RunningHub 连接测试未通过，请检查服务状态及标准模型 API Key 权限。" };
+        return { ok, detail: ok ? "连接正常。H3 工作流权限和余额将在提交任务时检查。" : classifyProviderFailure(data)?.message ?? "RunningHub 连接测试未通过，请检查服务状态及工作流 API Key 权限。" };
       } catch (error) {
         return { ok: false, detail: serviceErrorMessage(error) };
       }

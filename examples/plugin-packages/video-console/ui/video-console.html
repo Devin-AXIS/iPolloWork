@@ -68,6 +68,7 @@
       const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
       if(!model()) set("model",state.models[0]?.id||"");
       const current=model(); if(!current) return changed;
+      if(state.mode==="edit"&&!current.operations.some(op=>editOps.includes(op)))set("mode","generate");
       if(!allowedOps().includes(state.operation)) set("operation",allowedOps()[0]);
       if(!current.resolutions.includes(state.resolution)) set("resolution",current.defaultResolution);
       if(!current.durations.includes(state.duration)) set("duration","5");
@@ -101,17 +102,19 @@
         if(refOps.includes(state.operation))fields.push(textarea("imageRefs",`参考图片 · 最多 ${current.imageLimit} 张`,"每行一个链接 / 工作区路径"),textarea("videoRefs",`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`,"每行一个视频链接 / 工作区路径"),textarea("audioRefs",`参考音频 · 最多 ${current.audioLimit} 个`,"每行一个音频链接 / 工作区路径"));
         fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",allowedRatios().map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
         if(current.id==="seedance-2.5")fields.push(select("generateAudio","同步生成声音",[{value:"true",label:"开启"},{value:"false",label:"关闭"}],true));
-        fields.push(select("watermark","AI 生成水印",[{value:"true",label:"保留"},{value:"false",label:"不显示"}],true));
+        if(current.id==="seedance-2.5")fields.push(select("watermark","AI 生成水印",[{value:"true",label:"保留"},{value:"false",label:"不显示"}],true));
       }
-      const notice=!current?"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。":state.operation==="regenerate"?"H3 使用原视频作参考重新生成，不是逐帧精确编辑。音频由模型生成，接口不提供独立开关。":state.operation==="edit"?"Seedance 编辑：原视频 4–30 秒，画幅与时长跟随输入。指令需明确增加、删除或修改的内容。":"生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。";
+      const notice=!current?"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。":current.id==="minimax-h3"?"H3 开源加速工作流：文生、首帧、首尾帧。使用普通工作流密钥；0.5MP / 1MP 为像素总量，画幅对齐 32 像素，时长按 24fps 帧网格取整。包含声音，不提供声音或水印开关。云端排队和生成可能需要数分钟，按 RunningHub 用量计费。":state.operation==="edit"?"Seedance 编辑：原视频 4–30 秒，画幅与时长跟随输入。指令需明确增加、删除或修改的内容。":"生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。";
       void request("ui/update-model-context",{content:[{type:"text",text:`视频控制台：${state.mode}；模型 ${current?.label||"未绑定"}；任务属于当前会话。`}],structuredContent:{[INSPECTOR]:{schemaVersion:1,title:"视频参数",description:notice,advancedLabel:"高级参数",updateTool:"set_parameters",submitTool:"generate_or_edit",submitLabel:state.busy?"提交中…":state.mode==="edit"?"生成编辑结果":"生成视频",submitDisabled:state.busy||!current||!state.host.sessionId,openRequestId:state.openRequest,fields,status:{message:state.message||notice,tone:state.error?"error":"info"}}}}).catch(()=>{});
     }
     function render() {
       $("#generateMode").setAttribute("aria-pressed",String(state.mode==="generate")); $("#editMode").setAttribute("aria-pressed",String(state.mode==="edit"));
       $("#generateMode").disabled=$("#editMode").disabled=state.busy;
+      $("#editMode").disabled=state.busy||!model()?.operations.some(op=>editOps.includes(op));
+      $("#editMode").title=$("#editMode").disabled&&!state.busy?"当前 H3 工作流只支持生成；编辑原视频请切换到 Seedance。":"";
       $("#importButton").disabled=state.busy||!model();
       const current=model();
-      $("#materialHint").textContent=current?`视频、音频参考每段 2–${current.referenceSeconds} 秒，各类总时长不超过 ${current.referenceSeconds} 秒。${current.id==="seedance-2.5"?"编辑原视频至少 4 秒。Ark 本地视频会上传并保留在默认 OSS/Wasabi；也可直接填公网链接或 asset://素材ID。":"H3 音频参考需搭配图片或视频。"}`:"先在授权中心配置 Ark 或 RunningHub，再选择模型。";
+      $("#materialHint").textContent=current?(current.id==="minimax-h3"?"选择“首帧图片”并导入图片即可图生视频；首尾帧模式可再导入尾帧。图片在提交时上传到 RunningHub，原文件不会修改。":`视频、音频参考每段 2–${current.referenceSeconds} 秒，各类总时长不超过 ${current.referenceSeconds} 秒。编辑原视频至少 4 秒。Ark 本地视频会上传并保留在默认 OSS/Wasabi；也可直接填公网链接或 asset://素材ID。`):"先在授权中心配置 Ark 或 RunningHub，再选择模型。";
       for(const option of $("#importTarget").options)option.disabled=option.value==="firstFrame"?!["text","first","first-last"].includes(state.operation):option.value==="lastFrame"?state.operation!=="first-last":!refOps.includes(state.operation);
       const selected=$("#importTarget").selectedOptions[0];
       if(selected?.disabled)$("#importTarget").value=[...$("#importTarget").options].find(option=>!option.disabled)?.value||"firstFrame";
@@ -167,7 +170,14 @@
       $("#player").src=previewUrl;$("#player").hidden=false;$("#empty").hidden=true;state.previewPath=path;
       $("#previewPath").textContent=path;$("#openPath").value=path;$("#useVideo").disabled=false;tell("视频已打开。生成结果也可以从当前会话的产出文件中查看。");
     }
-    function useSource(path) {mode("edit");state.videoRefs=path;publish();tell("已将视频设为编辑参考。请在右侧填写编辑指令，结果会另存为新文件。");}
+    function useSource(path) {
+      const editable=state.models.find(item=>item.operations.some(op=>editOps.includes(op)));
+      if(!model()?.operations.some(op=>editOps.includes(op))) {
+        if(!editable){tell("当前 H3 工作流不支持编辑原视频，请先绑定并选择 Seedance。",true);return;}
+        state.model=editable.id;
+      }
+      mode("edit");state.videoRefs=path;publish();tell("已将视频设为编辑参考。请在右侧填写编辑指令，结果会另存为新文件。");
+    }
     async function applyLaunch() {
       const launch=state.host.launch;
       const key=launch?.requestId||launch?.source?.path;
@@ -183,7 +193,7 @@
       if(!state.prompt.trim())throw new Error("请先填写视频描述或编辑指令。");
       if(!state.host.sessionId)throw new Error("请先打开一个会话，再生成视频。");
       state.busy=true;render();tell("正在准备并提交任务…");
-      const args=Object.fromEntries(params.filter(key=>key!=="generateAudio"||state.model==="seedance-2.5").map(key=>[key,state[key]]));
+      const args=Object.fromEntries(params.filter(key=>!["generateAudio","watermark"].includes(key)||state.model==="seedance-2.5").map(key=>[key,state[key]]));
       const signature=JSON.stringify(args);
       if(state.requestKey!==signature){state.requestKey=signature;state.submissionId=crypto.randomUUID();}
       try {
@@ -211,6 +221,7 @@
         const result=await call("import",{filename:file.name,dataUrl});
         if(target==="firstFrame"&&state.operation==="text")state.operation="first";
         state[target]=target.endsWith("Refs")?[state[target],result.path].filter(Boolean).join("\n"):result.path;
+        normalized();
         if(kind==="video")await preview(result.path);
         render();tell(`已导入 ${file.name}，素材将在提交时发送给服务商。`);
       } finally {state.busy=false;render();publish();}
