@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import {
   AppBridge,
   PostMessageTransport,
@@ -129,7 +130,7 @@ function toolResult(value: unknown): CallToolResult {
 function toolError(error: unknown): CallToolResult {
   return {
     isError: true,
-    content: [{ type: "text", text: error instanceof Error ? error.message : String(error || "Workspace App tool failed") }],
+    content: [{ type: "text", text: serviceErrorMessage(error) }],
   };
 }
 

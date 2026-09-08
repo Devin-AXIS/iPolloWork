@@ -119,6 +119,14 @@ describe("tool part mapper", () => {
     expect(message).not.toContain("exceeded retry limit");
   });
 
+  test("classifies provider outages and quota errors without exposing raw response bodies", () => {
+    expect(describeConversationSessionError({ data: { statusCode: 503, message: "upstream failed", responseBody: "<html>private upstream details</html>" } }))
+      .toBe("第三方服务暂时不可用，请稍后重试。");
+    expect(describeConversationSessionError({ data: { statusCode: 429, message: "insufficient_quota" } }))
+      .toBe("第三方服务余额或额度不足，请检查余额、用量限制或等待额度恢复。");
+    expect(describeConversationSessionError("Unexpected server error")).toBe("操作未完成，请稍后重试。");
+  });
+
   test("defers in-progress tools with empty input", () => {
     // shouldDeferInProgressTool left with the legacy message list (#2016);
     // the deferral behavior itself is still pinned here via the parser and

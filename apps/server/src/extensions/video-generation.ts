@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, extname } from "node:path";
 import { z } from "zod";
-import { ApiError } from "../errors.js";
+import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { ApiError, providerApiError } from "../errors.js";
 import { createAuthorizationAccess, type AuthorizationAccess } from "../authorization-center.js";
 import { resolveWithinRoot } from "../paths.js";
 import { readLimitedRequestBody } from "../limited-request-body.js";
@@ -98,7 +99,8 @@ async function credential(authorization: AuthorizationAccess, model: string) {
 }
 const object = z.record(z.string(), z.unknown());
 function safeError(value: unknown, key = "") {
-  let message = value instanceof Error ? value.message : typeof value === "string" ? value : "视频服务暂不可用";
+  let message = classifyProviderFailure(value)?.message ?? (value instanceof z.ZodError
+    ? "第三方服务暂时不可用，请稍后重试。" : serviceErrorMessage(value, "第三方服务暂时不可用，请稍后重试。"));
   if (key) message = message.replaceAll(key, "[redacted]");
   return message.replace(/https?:\/\/[^\s"<>]+/g, "[服务链接]").replace(/Bearer\s+\S+/gi, "Bearer [redacted]").slice(0, 700);
 }
@@ -108,7 +110,12 @@ async function jsonRequest(url: string, key: string, body?: unknown, signal?: Ab
     ...(body === undefined ? {} : { body: JSON.stringify(body) }), redirect: "error",
     signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(60_000)]) : AbortSignal.timeout(60_000) });
   const bytes = await readLimitedRequestBody(response, 2 * 1024 * 1024, { code: "video_response_too_large", message: "视频接口响应过大，请从服务商控制台检查任务。" });
-  const data = object.parse(JSON.parse(new TextDecoder().decode(bytes)));
+  let parsed: unknown;
+  try { parsed = JSON.parse(new TextDecoder().decode(bytes)); }
+  catch { throw providerApiError({}, response.ok ? 502 : response.status); }
+  const validated = object.safeParse(parsed);
+  if (!validated.success) throw providerApiError({}, response.ok ? 502 : response.status);
+  const data = validated.data;
   if (!response.ok) {
     const error = object.safeParse(data.error);
     throw new ApiError(response.status, "video_provider_rejected", safeError(error.success ? error.data.message : data.errorMessage ?? data.message ?? `视频接口 HTTP ${response.status}`, key));
@@ -163,8 +170,11 @@ async function sourceUrl(workspace: WorkspaceInfo, source: string, kind: "image"
   const form = new FormData();
   form.set("file", new Blob([bytes], { type: file.mime }), basename(source));
   const response = await providerFetch(`${RH}/openapi/v2/media/upload/binary`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
-  const result = z.object({ code: z.number(), data: z.object({ download_url: z.string() }).nullable() }).parse(await response.json());
-  if (!response.ok || result.code !== 200 || !result.data) throw new ApiError(502, "video_upload_failed", "RunningHub 素材上传失败，请检查标准模型 API key 和网络。");
+  const payload: unknown = await response.json().catch(() => { throw providerApiError({}, 502); });
+  const validated = z.object({ code: z.number(), data: z.object({ download_url: z.string() }).nullable() }).safeParse(payload);
+  if (!validated.success) throw providerApiError(payload, 502);
+  const result = validated.data;
+  if (!response.ok || result.code !== 200 || !result.data) throw providerApiError(payload, response.ok ? 400 : response.status);
   return httpsUrl(result.data.download_url);
 }
 export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess) {
@@ -337,7 +347,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     } catch (error) {
       const definite = !submitted || error instanceof ApiError && error.status < 500 && error.status !== 408;
       const job = await updateVideoJob(config, created.job, { status: definite ? "failed" : "uncertain",
-        message: `${safeError(error, key)}${definite ? "" : "。提交结果未确认，请先在服务商控制台检查任务，勿重复提交。"}` });
+        message: `${safeError(error, key)}${definite ? "" : "\n提交结果未确认，请先在服务商控制台检查任务，勿重复提交。"}` });
       return { ok: true, result: { job } };
     }
   }

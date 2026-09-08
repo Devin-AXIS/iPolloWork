@@ -551,8 +551,8 @@ describe("OpenAI image editing", () => {
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({
       status: 502,
-      code: "openai_image_generation_unreachable",
-      message: "Could not reach OpenAI for image generation. Check your connection or system proxy and try again.",
+      code: "provider_network_error",
+      message: "网络连接失败，请检查网络或代理设置后重试。",
     });
   });
 

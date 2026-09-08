@@ -694,7 +694,7 @@ describe("env routes", () => {
     expect(response.status).toBe(503);
     const body = (await response.json()) as { code: string; message: string };
     expect(body.code).toBe("ipollowork_models_voice_unavailable");
-    expect(body.message).toContain("not fully configured");
+    expect(body.message).toBe("第三方服务暂时不可用，请稍后重试。");
   });
 
   test("voice realtime session does not fall back on non-503 broker errors", async () => {
@@ -740,7 +740,7 @@ describe("env routes", () => {
 
     expect(response.status).toBe(429);
     const body = (await response.json()) as { code: string };
-    expect(body.code).toBe("ipollowork_models_voice_failed");
+    expect(body.code).toBe("provider_rate_limited");
   });
 
   test("values persist across server restart", async () => {

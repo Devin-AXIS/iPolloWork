@@ -1,4 +1,5 @@
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
@@ -972,7 +973,7 @@ export class iPolloWorkServerError extends Error {
   details?: unknown;
 
   constructor(status: number, code: string, message: string, details?: unknown) {
-    super(message);
+    super(serviceErrorMessage({ code, message }));
     this.status = status;
     this.code = code;
     this.details = details;
@@ -1057,21 +1058,33 @@ async function fetchWithTimeout(
       } catch {
         // ignore
       }
-      reject(new Error("Request timed out."));
+      reject(new Error("请求超时，请稍后重试。"));
     }, timeoutMs);
   });
 
   try {
     return await Promise.race([fetchImpl(url, initWithSignal), timeoutPromise]);
   } catch (error) {
-    const name = (error && typeof error === "object" && "name" in error ? (error as any).name : "") as string;
+    const name = error instanceof Error ? error.name : "";
     if (name === "AbortError") {
-      throw new Error("Request timed out.");
+      throw new Error("请求超时，请稍后重试。");
     }
-    throw error;
+    throw new Error(serviceErrorMessage(error));
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function parseServerJson(response: Response, text: string): unknown {
+  try { return text ? JSON.parse(text) : null; }
+  catch { throw new iPolloWorkServerError(response.status, "invalid_response", response.status >= 500 ? "服务暂时不可用，请稍后重试。" : "服务返回了异常响应，请稍后重试。"); }
+}
+
+function serverResponseError(response: Response, json: unknown) {
+  const body = json !== null && typeof json === "object" ? json : {};
+  const code = "code" in body && typeof body.code === "string" ? body.code : "request_failed";
+  const message = "message" in body && typeof body.message === "string" ? body.message : "服务请求未完成，请稍后重试。";
+  return new iPolloWorkServerError(response.status, code, message, "details" in body ? body.details : undefined);
 }
 
 async function requestJson<T>(
@@ -1093,13 +1106,8 @@ async function requestJson<T>(
   );
 
   const text = await response.text();
-  const json = text ? JSON.parse(text) : null;
-
-  if (!response.ok) {
-    const code = typeof json?.code === "string" ? json.code : "request_failed";
-    const message = typeof json?.message === "string" ? json.message : response.statusText;
-    throw new iPolloWorkServerError(response.status, code, message, json?.details);
-  }
+  const json = parseServerJson(response, text);
+  if (!response.ok) throw serverResponseError(response, json);
 
   return json as T;
 }
@@ -1145,15 +1153,7 @@ async function requestBinary(
 
   if (!response.ok) {
     const text = await response.text();
-    let json: any = null;
-    try {
-      json = text ? JSON.parse(text) : null;
-    } catch {
-      json = null;
-    }
-    const code = typeof json?.code === "string" ? json.code : "request_failed";
-    const message = typeof json?.message === "string" ? json.message : response.statusText;
-    throw new iPolloWorkServerError(response.status, code, message, json?.details);
+    throw serverResponseError(response, parseServerJson(response, text));
   }
 
   const contentType = response.headers.get("content-type");
@@ -1180,9 +1180,8 @@ async function requestRawJson<T>(
     body: options.body,
   }, options.timeoutMs ?? DEFAULT_IPOLLOWORK_SERVER_TIMEOUT_MS);
   const text = await response.text();
-  let json: any = null;
-  try { json = text ? JSON.parse(text) : null; } catch { json = null; }
-  if (!response.ok) throw new iPolloWorkServerError(response.status, typeof json?.code === "string" ? json.code : "request_failed", typeof json?.message === "string" ? json.message : response.statusText, json?.details);
+  const json = parseServerJson(response, text);
+  if (!response.ok) throw serverResponseError(response, json);
   return json as T;
 }
 

@@ -2,6 +2,7 @@ import { defineConfig } from "tsup"
 
 export default defineConfig({
   entry: {
+    "provider-errors": "src/provider-errors.ts",
     index: "src/index.ts",
     "den/desktop-app-restrictions": "src/den/desktop-app-restrictions.ts",
     "den/desktop-policies": "src/den/desktop-policies.ts",

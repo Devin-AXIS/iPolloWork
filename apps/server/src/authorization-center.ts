@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SharedProviderBrowserLogin } from "@ipollowork/types/provider-credentials";
+import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { providerApiError } from "./errors.js";
 
 import { authorizationVault } from "./authorization-runtime.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
@@ -243,10 +245,9 @@ async function fetchAuthorizationTest(url: string, init: RequestInit): Promise<A
   try {
     const response = await providerFetch(url, { ...init, signal: controller.signal, redirect: "error" });
     if (response.ok) return { ok: true, detail: "Connection verified." };
-    return { ok: false, detail: `The service rejected this authorization (HTTP ${response.status}).` };
+    return { ok: false, detail: providerApiError({ status: response.status }, response.status).message };
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") return { ok: false, detail: "The connection test timed out." };
-    return { ok: false, detail: "Could not reach the service. Check your network and try again." };
+    return { ok: false, detail: serviceErrorMessage(error) };
   } finally {
     clearTimeout(timeout);
   }
@@ -274,11 +275,11 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
           body: JSON.stringify({ apikey: resolved.values.RUNNINGHUB_API_KEY }),
           signal: AbortSignal.timeout(10_000), redirect: "error",
         });
-        const data: unknown = await response.json();
+        const data: unknown = await response.json().catch(() => { throw providerApiError({}, 502); });
         const ok = response.ok && data !== null && typeof data === "object" && "code" in data && data.code === 0;
-        return { ok, detail: ok ? "Connection verified. H3 access and balance are checked when submitting a task." : "RunningHub rejected this key. Use an Enterprise-Shared standard model API key." };
-      } catch {
-        return { ok: false, detail: "Could not reach RunningHub. Check your network and try again." };
+        return { ok, detail: ok ? "连接正常。H3 权限和余额将在提交任务时检查。" : classifyProviderFailure(data)?.message ?? "RunningHub 连接测试未通过，请检查服务状态及标准模型 API Key 权限。" };
+      } catch (error) {
+        return { ok: false, detail: serviceErrorMessage(error) };
       }
     }
     case "aliyun-oss": {

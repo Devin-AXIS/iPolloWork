@@ -1,4 +1,4 @@
-import { ApiError } from "../errors.js";
+import { ApiError, isApiError } from "../errors.js";
 import type { AuthorizationAccess } from "../authorization-center.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
@@ -1402,6 +1402,7 @@ async function requestProviderJson(input: {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio did not respond before the request timed out.");
     }
+    if (isApiError(error)) throw error;
     throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
   } finally {
     clearTimeout(timeout);
@@ -1536,6 +1537,7 @@ async function requestTranslation(input: {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio translation did not finish before the request timed out.");
     }
+    if (isApiError(error)) throw error;
     throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
   } finally {
     clearTimeout(timeout);

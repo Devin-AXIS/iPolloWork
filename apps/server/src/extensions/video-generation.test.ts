@@ -104,6 +104,38 @@ test("stale submitting task is marked uncertain without automatic resubmission",
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("uncertain");
 });
 
+test("503 and malformed responses show friendly text and never duplicate a billable submission", async () => {
+  for (const status of [200, 503]) {
+    for (const body of ["<html>Service Unavailable</html>", ""]) {
+      const { config, call } = await setup();
+      let calls = 0;
+      Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { calls++; return new Response(body, { status }); });
+      const args = submission();
+      await call("submit", args);
+      await call("submit", args);
+      await pollVideoJobs(config, auth);
+      const job = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+      expect(job.status).toBe("uncertain");
+      expect(job.message).toContain("第三方服务暂时不可用，请稍后重试。");
+      expect(job.message).toContain("勿重复提交");
+      expect(job.message).not.toContain("JSON");
+      expect(calls).toBe(1);
+    }
+  }
+});
+
+test("authorization tests distinguish provider outages from invalid keys", async () => {
+  const { config } = await setup();
+  await saveAuthorizationService(config, "runninghub-video", { RUNNINGHUB_API_KEY: "test-rh-key" });
+  await saveAuthorizationService(config, "openai-images", { OPENAI_API_KEY: "test-openai-key" });
+  for (const service of ["runninghub-video", "openai-images"] as const) {
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => new Response("<html>down</html>", { status: 503 }));
+    expect(await testAuthorizationService(config, service)).toMatchObject({ ok: false, detail: "第三方服务暂时不可用，请稍后重试。" });
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => new Response("", { status: 401 }));
+    expect(await testAuthorizationService(config, service)).toMatchObject({ ok: false, detail: "第三方服务授权已失效，请检查 API Key 或重新登录授权。" });
+  }
+});
+
 test("download failure preserves upstream id, cleans partial output and retry saves without generating",async()=>{
   const {config,root,call}=await setup();let creates=0,valid=false;
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL,init?:RequestInit)=>{
