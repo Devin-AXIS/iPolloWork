@@ -7,11 +7,22 @@ export async function fetchWithTimeout(
 ): Promise<Response> {
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return fetchImpl(input, init);
 
+  const callerSignal = init?.signal === undefined && typeof Request !== "undefined" && input instanceof Request
+    ? input.signal
+    : init?.signal;
+  callerSignal?.throwIfAborted();
   const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const signal = controller?.signal;
-  const initWithSignal = signal && !init?.signal ? { ...init, signal } : init;
+  const signal = controller && callerSignal
+    ? AbortSignal.any([callerSignal, controller.signal])
+    : controller?.signal ?? callerSignal;
+  const initWithSignal = signal ? { ...init, signal } : init;
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
+    if (callerSignal) {
+      onAbort = () => reject(callerSignal.reason);
+      callerSignal.addEventListener("abort", onAbort, { once: true });
+    }
     timeoutId = setTimeout(() => {
       try {
         controller?.abort();
@@ -27,5 +38,6 @@ export async function fetchWithTimeout(
     return await Promise.race([fetchImpl(input, initWithSignal), timeoutPromise]);
   } finally {
     clearTimeout(timeoutId);
+    if (onAbort) callerSignal?.removeEventListener("abort", onAbort);
   }
 }

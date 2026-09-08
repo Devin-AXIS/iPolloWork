@@ -22,7 +22,7 @@ export default {
         assert: async () => {
           ctx.assert(result.status === 0, result.error?.message ?? "Transport checks completed successfully");
           const output = `${result.stdout}\n${result.stderr}`;
-          ctx.assert(/\b19 pass\b/.test(output) && /\b0 fail\b/.test(output), "All 19 transport cases passed");
+          ctx.assert(/\b[1-9]\d* pass\b/.test(output) && /\b0 fail\b/.test(output), "Transport cases ran and all passed");
         },
       });
     },

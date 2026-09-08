@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { chunkPlainText } from "../chunking";
 import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent } from "../types";
@@ -23,6 +22,7 @@ function paragraphStyle(paragraph: Element) {
 }
 
 export async function extractDocxReference(file: File): Promise<ExtractedReferenceContent> {
+  const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const xml = await zip.file("word/document.xml")?.async("string");
   if (!xml) return { text: "", chunks: [], warnings: ["DOCX document.xml was not found."] };

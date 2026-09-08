@@ -81,14 +81,49 @@ describe("shared request deadline", () => {
     await expect(fetchWithTimeout(() => new Promise(() => {}), "https://example.test", {}, 5, "Deadline reached")).rejects.toThrow("Deadline reached");
   });
 
-  test("an existing init signal is preserved and the deadline does not abort the caller's controller", async () => {
+  test("the deadline aborts the transport without aborting the caller's controller", async () => {
     const controller = new AbortController();
     const init = { signal: controller.signal };
+    let transportSignal: AbortSignal | null | undefined;
     await expect(fetchWithTimeout((_, receivedInit) => {
-      expect(receivedInit).toBe(init);
+      transportSignal = receivedInit?.signal;
       return new Promise(() => {});
     }, "https://example.test", init, 5)).rejects.toThrow("Request timed out.");
+    expect(transportSignal?.aborted).toBe(true);
     expect(controller.signal.aborted).toBe(false);
+  });
+
+  test("Request cancellation reaches a cooperative transport", async () => {
+    const controller = new AbortController();
+    const request = new Request("https://example.test", { signal: controller.signal });
+    const reason = new Error("User stopped the request");
+    const result = fetchWithTimeout((_, init) => new Promise((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+    }), request, undefined, 25);
+    controller.abort(reason);
+    await expect(result).rejects.toBe(reason);
+  });
+
+  test("caller cancellation settles even when an IPC-style transport ignores signals", async () => {
+    const controller = new AbortController();
+    const reason = new Error("User stopped waiting");
+    const result = fetchWithTimeout(() => new Promise(() => {}), "https://example.test", { signal: controller.signal }, 25);
+    controller.abort(reason);
+    await expect(result).rejects.toBe(reason);
+  });
+
+  test("a pre-cancelled Request is not sent, while an explicit init signal takes precedence", async () => {
+    const controller = new AbortController();
+    const reason = new Error("Already cancelled");
+    controller.abort(reason);
+    const request = new Request("https://example.test", { signal: controller.signal });
+    let sent = false;
+    const transport = async () => { sent = true; return new Response("ok"); };
+    await expect(fetchWithTimeout(transport, request, undefined, 25)).rejects.toBe(reason);
+    expect(sent).toBe(false);
+    const response = await fetchWithTimeout(transport, request, { signal: new AbortController().signal }, 25);
+    expect(await response.text()).toBe("ok");
+    expect(await fetchWithTimeout(transport, request, { signal: null }, 25)).toBeInstanceOf(Response);
   });
 
   test("works without AbortController when an IPC-style transport only returns a promise", async () => {
@@ -190,6 +225,16 @@ describe("client timeout policies", () => {
     useFetch(async () => { throw error; });
     await expect(denClient().listMemory("org-proof")).rejects.toBe(error);
     await expect(createClient("http://127.0.0.1:9876").global.health({ throwOnError: true })).rejects.toBe(error);
+  });
+
+  test("OpenCode caller cancellation remains an abort instead of being mislabeled as a timeout", async () => {
+    const controller = new AbortController();
+    const client = createClient("http://127.0.0.1:9876");
+    useFetch((_, init) => new Promise((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(init.signal?.reason), { once: true });
+      controller.abort();
+    }));
+    await expect(client.global.health({ signal: controller.signal, throwOnError: true })).rejects.toMatchObject({ name: "AbortError" });
   });
 
   test("OpenCode keeps auth, normal deadlines and long-session exemptions", async () => {

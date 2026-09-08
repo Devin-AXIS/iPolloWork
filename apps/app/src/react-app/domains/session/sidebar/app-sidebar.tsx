@@ -547,6 +547,7 @@ function isSessionActivityStatus(status: string | undefined): status is SessionA
 export function AppSidebar(props: AppSidebarProps) {
   const activeEnterprise = useActiveEnterpriseConnection();
   const layout = useSidebarLayoutStore();
+  const pruneLayout = layout.prune;
   const contextId = props.workContextId?.trim() || "personal";
   const [expandedSessionIds, setExpandedSessionIds] = React.useState<Set<string>>(
     () => new Set(),
@@ -590,13 +591,13 @@ export function AppSidebar(props: AppSidebarProps) {
   }, []);
 
   React.useEffect(() => {
-    layout.prune({
+    pruneLayout({
       contextId,
       projectIds: sourceProjects.map((project) => project.workspace.id),
       sessionKeys,
       sourceProjectBySessionKey,
     });
-  }, [contextId, layout, sessionKeys, sourceProjectBySessionKey, sourceProjects]);
+  }, [contextId, pruneLayout, sessionKeys, sourceProjectBySessionKey, sourceProjects]);
 
   const handleDragStart = React.useCallback((payload: SidebarDragPayload) => {
     setDraggingItem(payload);

@@ -397,7 +397,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
+    expect(sidePanelSource).toMatch(/<div className="[^"\n]*\bpx-2\b[^"\n]*\bmac:titlebar-drag\b[^"\n]*"/);
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
     expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');

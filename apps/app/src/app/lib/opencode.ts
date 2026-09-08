@@ -205,7 +205,8 @@ async function fetchWithTimeout(
     return await fetchWithRequestTimeout(fetchImpl, input, init, effectiveTimeoutMs);
   } catch (error) {
     const name = error && typeof error === "object" && "name" in error ? error.name : "";
-    if (name === "AbortError") {
+    const callerSignal = init?.signal === undefined && input instanceof Request ? input.signal : init?.signal;
+    if (name === "AbortError" && !callerSignal?.aborted) {
       throw new Error("Request timed out.");
     }
     throw error;
