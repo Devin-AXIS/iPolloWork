@@ -153,6 +153,13 @@ const server = createServer(async (req, res) => {
     for await (const chunk of req) { body += chunk; if (body.length > 70 * 1024 * 1024) throw new Error("Too large"); }
     const { action, args, direct, pluginId } = JSON.parse(body);
     if (framesMode) {
+      if (action === "submit" || action === "jobs") {
+        if (action === "submit" && !videoJobs.some(job => job.id === args.requestId)) {
+          videoJobs.push({id:args.requestId,status:"running",model:args.model,prompt:args.prompt,operation:args.operation,createdAt:Date.now(),message:"模拟视频任务已自动提交（不调用外部服务）"});
+        }
+        const result=action === "jobs" ? {jobs:videoJobs} : {job:videoJobs.find(job => job.id === args.requestId)};
+        res.setHeader("Content-Type", "application/json");res.end(JSON.stringify({ok:true,result}));return;
+      }
       if (!["status", "jobs", "import", "read"].includes(action)) throw new Error("Only non-billable frame input actions are allowed.");
       const result = await callVideoGenerationAction(config, authorization, action, args, context);
       if (action === "import") actions.push({ action, filename: args.filename, path: result.result.path });
