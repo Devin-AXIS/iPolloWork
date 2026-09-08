@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -61,6 +61,41 @@ function auth(token: string) {
 }
 
 describe("artifact file routes", () => {
+  test("imports bounded media into its workspace path without overwriting an existing asset", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token } = await startiPolloWorkServer(root);
+    const path = "design/media-proof/assets/background.mp4";
+    const bytes = new Uint8Array(5_100_000).fill(37);
+    const upload = (target: string, authorized = true, content = bytes) => {
+      const body = new FormData();
+      body.set("file", new File([content], "background.mp4", { type: "video/mp4" }));
+      return fetch(`${base}/workspace/ws_1/files/raw?path=${encodeURIComponent(target)}`, {
+        method: "POST", body, headers: authorized ? { Authorization: `Bearer ${token}` } : {},
+      });
+    };
+    expect((await upload(path, false)).status).toBe(401);
+    expect((await upload("../escape.mp4")).status).toBe(400);
+    expect((await upload("design/media-proof/assets/executable.js")).status).toBe(400);
+    expect((await upload("empty.mp4", true, new Uint8Array())).status).toBe(400);
+    expect((await fetch(`${base}/workspace/ws_1/files/raw?path=malformed.mp4`, {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "multipart/form-data" }, body: "invalid",
+    })).status).toBe(400);
+    expect((await upload("too-large.png", true, new Uint8Array(25 * 1024 * 1024 + 1))).status).toBe(413);
+    const outside = await createWorkspaceRoot();
+    await symlink(outside, join(root, "outside"), process.platform === "win32" ? "junction" : "dir");
+    expect((await upload("outside/new/escaped.mp4")).status).toBe(400);
+    expect(await readFile(join(outside, "new/escaped.mp4")).catch(() => null)).toBeNull();
+    expect((await upload(path)).status).toBe(200);
+    expect(await readFile(join(root, path))).toEqual(Buffer.from(bytes));
+    expect((await upload(path)).status).toBe(409);
+    const downloaded = await fetch(`${base}/workspace/ws_1/files/raw?path=${path}`, { headers: auth(token) });
+    expect(downloaded.headers.get("content-type")).toBe("video/mp4");
+    expect((await downloaded.arrayBuffer()).byteLength).toBe(bytes.length);
+    // Legacy JSON binary writes retain their original 5 MB bound.
+    expect((await fetch(`${base}/workspace/ws_1/files/raw`, {
+      method: "POST", headers: auth(token), body: JSON.stringify({ path: "large.png", dataBase64: Buffer.from(bytes).toString("base64") }),
+    })).status).toBe(413);
+  });
   test("persists session outputs independently of chat, isolates owners, and rejects unsafe paths", async () => {
     const root = await createWorkspaceRoot();
     const { base, token, config } = await startiPolloWorkServer(root);

@@ -16,10 +16,11 @@ export const bundledPluginPackageIds = [
   "design-agent",
   "video-agent",
   "image-studio",
+  "video-console",
   "deepseek-harness",
 ] as const;
 
-export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio"] as const;
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

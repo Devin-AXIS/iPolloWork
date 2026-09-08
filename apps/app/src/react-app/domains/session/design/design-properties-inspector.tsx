@@ -17,6 +17,7 @@ import {
   FlipHorizontal2,
   Grip,
   Image,
+  Video,
   Italic,
   Link2,
   List,
@@ -68,6 +69,8 @@ type DesignPropertiesInspectorProps = {
   onDelete: () => void;
   onChooseReplacementImage: () => void;
   onChooseBackgroundImage: () => void;
+  onChooseVideo?: () => void;
+  mediaBusy?: boolean;
   children?: React.ReactNode;
 };
 
@@ -96,6 +99,8 @@ function ElementPropertiesContent({
   onDelete,
   onChooseReplacementImage,
   onChooseBackgroundImage,
+  onChooseVideo,
+  mediaBusy,
 }: Omit<DesignPropertiesInspectorProps, "selection" | "activeTab" | "onActiveTabChange" | "children"> & { selection: DesignSelection }) {
   const fontSize = numericValue(selection.styles.fontSize, 16);
   const lineHeight = numericValue(selection.styles.lineHeight, 14);
@@ -105,13 +110,14 @@ function ElementPropertiesContent({
   const shadowIntensity = shadowIntensityValue(selection.styles.boxShadow);
   const fillField = selection.colorField;
   const backgroundValue = selection.styles[fillField];
-  const [imageFillOpen, setImageFillOpen] = React.useState(false);
+  const [mediaFillOpen, setMediaFillOpen] = React.useState<"image" | "video" | null>(null);
+  React.useEffect(() => setMediaFillOpen(null), [selection.id, selection.media?.kind]);
   const [linkOpen, setLinkOpen] = React.useState(Boolean(selection.href));
   const [linkDraft, setLinkDraft] = React.useState(selection.href);
   const [aspectRatioLocked, setAspectRatioLocked] = React.useState(false);
   const [htmlCopied, setHtmlCopied] = React.useState(false);
   const htmlCopyFeedbackTimer = React.useRef<number | null>(null);
-  const fillType = imageFillOpen && selection.tag !== "img" ? "image" : fillTypeFor(selection);
+  const fillType = mediaFillOpen ?? fillTypeFor(selection);
   const isMixed = (field: DesignStyleField) => mixedStyleFields.includes(field);
 
   React.useEffect(() => {
@@ -160,18 +166,18 @@ function ElementPropertiesContent({
 
   const applyFillType = (type: FillType) => {
     if (type === "none") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundColor: "transparent", backgroundImage: "none" });
     }
     if (type === "solid") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundColor: isTransparentColor(backgroundValue) ? FILL_COLORS[0] ?? "#2f6de1" : backgroundValue, backgroundImage: "none" });
     }
     if (type === "gradient") {
-      setImageFillOpen(false);
+      setMediaFillOpen(null);
       onApplyFields({ backgroundImage: DEFAULT_GRADIENT });
     }
-    if (type === "image") setImageFillOpen(true);
+    if (type === "image" || type === "video") setMediaFillOpen(type);
   };
 
   const applyPixels = (field: DesignStyleField, value: string, remember?: boolean) => {
@@ -337,11 +343,12 @@ function ElementPropertiesContent({
       </InspectorSection> : null}
 
       <InspectorSection title={t("design.properties.section.fill")}>
-        {!isMultiSelection ? <div className="grid grid-cols-4 gap-1.5">
+        {!isMultiSelection ? <div className="grid grid-flow-col auto-cols-fr gap-1.5">
           <PropertyButton active={fillType === "none"} aria-label="No fill" onClick={() => applyFillType("none")}><Minus /></PropertyButton>
           <PropertyButton active={fillType === "solid"} aria-label="Solid fill" onClick={() => applyFillType("solid")}><span className="size-3 rounded-[2px] border border-current" /></PropertyButton>
           <PropertyButton active={fillType === "gradient"} aria-label="Gradient fill" onClick={() => applyFillType("gradient")}><Grip /></PropertyButton>
-          <PropertyButton active={fillType === "image"} aria-label="Image fill" onClick={() => applyFillType("image")}><Image /></PropertyButton>
+          <PropertyButton active={fillType === "image"} aria-label={t("media.workbench.image_fill")} title={t("media.workbench.image_fill")} onClick={() => applyFillType("image")}><Image /></PropertyButton>
+          {onChooseVideo && !isMultiSelection ? <PropertyButton active={fillType === "video"} aria-label={t("media.workbench.video_fill")} title={t("media.workbench.video_fill")} onClick={() => applyFillType("video")}><Video /></PropertyButton> : null}
         </div> : null}
         {isMultiSelection ? <>
           <ColorField label={t("design.properties.field.text_color")} mixed={isMixed("color")} value={selection.styles.color || "#000000"} onChange={(value, remember) => onApplyField("color", value, remember)} />
@@ -349,6 +356,7 @@ function ElementPropertiesContent({
         </> : <>
           {fillType === "solid" ? <ColorField value={backgroundValue || "#000000"} onChange={(value, remember) => onApplyField(fillField, value, remember)} /> : null}
           {fillType === "gradient" ? <DesignGradientPicker value={selection.styles.backgroundImage} recommendationColors={gradientRecommendationColors} onChange={(value, remember) => onApplyField("backgroundImage", value, remember)} /> : null}
+          {fillType === "video" && onChooseVideo ? <VideoFillPicker selection={selection} onChoose={onChooseVideo} onApplyFields={onApplyFields} busy={mediaBusy} /> : null}
           {fillType === "image" ? <ImageFillPicker selection={selection} onApplyFields={onApplyFields} onChooseImage={selection.tag === "img" ? onChooseReplacementImage : onChooseBackgroundImage} /> : null}
         </>}
       </InspectorSection>
@@ -443,11 +451,12 @@ function InspectorShell({ activeTab, onActiveTabChange, onClose, children, desig
   );
 }
 
-type FillType = "none" | "solid" | "gradient" | "image";
+type FillType = "none" | "solid" | "gradient" | "image" | "video";
 
 const DEFAULT_GRADIENT = "linear-gradient(180deg, #2e6bdb 0%, #76e3e9 100%)";
 
 function fillTypeFor(selection: DesignSelection): FillType {
+  if (selection.tag === "video" || selection.media?.kind === "video") return "video";
   if (selection.tag === "img") return "image";
   const image = selection.styles.backgroundImage.trim();
   if (/^url\(/i.test(image)) return "image";
@@ -455,8 +464,23 @@ function fillTypeFor(selection: DesignSelection): FillType {
   return isTransparentColor(selection.styles.backgroundColor) ? "none" : "solid";
 }
 
+function VideoFillPicker({ selection, onChoose, onApplyFields, busy }: {
+  selection: DesignSelection; onChoose: () => void;
+  onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; busy?: boolean;
+}) {
+  const fit = selection.styles.objectFit;
+  return <div className="mt-3 space-y-3">
+    <DesignImageFitSelect value={fit === "contain" ? "fit" : fit === "fill" ? "fill" : "crop"}
+      onChange={mode => onApplyFields({ objectFit: mode === "fit" ? "contain" : mode === "fill" ? "fill" : "cover", objectPosition: "50% 50%" })} />
+    <div className="relative flex h-[100px] items-center justify-center overflow-hidden rounded-lg bg-muted">
+      {selection.media?.kind === "video" ? <video src={selection.media.preview} muted playsInline preload="metadata" className="absolute inset-0 size-full object-cover" /> : <Video className="absolute size-8 text-muted-foreground/40" />}
+      <button type="button" disabled={busy} onClick={onChoose} className="relative rounded-lg bg-foreground px-4 py-2 text-[10px] text-background focus-visible:ring-2 disabled:opacity-50">{t("design.properties.action.choose_media")}</button>
+    </div>
+  </div>;
+}
+
 function ImageFillPicker({ selection, onApplyFields, onChooseImage }: { selection: DesignSelection; onApplyFields: (fields: Partial<Record<DesignStyleField, string>>) => void; onChooseImage: () => void }) {
-  const backgroundSource = selection.styles.backgroundImage.match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ?? (selection.tag === "img" ? selection.source : "");
+  const backgroundSource = selection.styles.backgroundImage.match(/^url\(["']?(.*?)["']?\)$/i)?.[1] ?? (selection.tag === "img" ? selection.src : "");
   const mode = imageFitMode(selection);
   const applyMode = (next: ImageFitMode) => onApplyFields(imageModeStyles(selection, next));
 

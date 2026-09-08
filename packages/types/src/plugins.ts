@@ -10,7 +10,7 @@ const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const UI_URI_RE = /^ui:\/\/[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)$/;
-const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "storage"]);
+const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "video-generation", "storage"]);
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 export const PLUGIN_UI_INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
@@ -152,23 +152,32 @@ const uiResourceMetadataSchema = z.object({
 const pluginUiInspectorFieldSchema = z.object({
   id: z.string().regex(FIELD_ID_RE),
   label: z.string().min(1),
-  control: z.enum(["textarea", "select"]),
+  control: z.enum(["textarea", "select", "image"]),
   value: z.string(),
   live: z.boolean().optional(),
+  advanced: z.boolean().optional(),
   placeholder: z.string().optional(),
+  media: z.object({
+    kind: z.enum(["image", "video", "audio"]),
+    importTool: z.string().regex(SIMPLE_ID_RE),
+    readTool: z.string().regex(SIMPLE_ID_RE).optional(),
+  }).strict().optional(),
   options: z.array(z.object({
     value: z.string(),
     label: z.string().min(1),
     disabled: z.boolean().optional(),
     action: z.enum(["open-authorizations"]).optional(),
   }).strict()).optional(),
-}).strict();
+}).strict().refine(field => field.control !== "image" || (field.media?.kind === "image" && Boolean(field.media.readTool)), {
+  message: "Image controls require image import and preview tools.",
+});
 
 export const pluginUiInspectorContextSchema = z.object({
   schemaVersion: z.literal(1),
   title: z.string().min(1),
   description: z.string().optional(),
   updateTool: z.string().regex(SIMPLE_ID_RE),
+  advancedLabel: z.string().min(1).optional(),
   submitTool: z.string().regex(SIMPLE_ID_RE),
   submitLabel: z.string().min(1),
   submitDisabled: z.boolean().optional(),
@@ -670,6 +679,7 @@ export type PluginUiHostContextV1 = {
   /** Optional, non-secret context supplied when the host opens this surface. */
   launch?: {
     intent: string;
+    requestId?: string;
     source?: {
       kind: "workspace-file";
       path: string;

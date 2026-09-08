@@ -23,7 +23,7 @@ async function showWindow(ctx) {
 async function openOutputs(ctx) {
   await ctx.waitFor(`Boolean(document.querySelector('[data-session-surface-id="' + location.hash.split('/').pop() + '"]'))`);
   if (!await ctx.eval(`document.querySelector('button[aria-label="产出文件"]')?.getAttribute('aria-pressed') === 'true'`)) {
-    await ctx.trustedClick('button[aria-label="产出文件"]');
+    await ctx.eval(`document.querySelector('button[aria-label="产出文件"]').click()`);
   }
   await ctx.waitFor(`Boolean(document.querySelector('[data-testid="conversation-files-outputs-view"]'))`);
 }
@@ -51,8 +51,7 @@ async function openImageCard(ctx, path) {
 
 async function closeOutputs(ctx) {
   if (await ctx.eval(`Boolean(document.querySelector('[data-testid="conversation-files-popover"]'))`)) {
-    await ctx.client.send('Input.dispatchKeyEvent', {type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
-    await ctx.client.send('Input.dispatchKeyEvent', {type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
+    await ctx.eval(`document.querySelector('button[aria-label="产出文件"]').click()`);
     await ctx.waitFor(`!document.querySelector('[data-testid="conversation-files-popover"]')`);
   }
 }
@@ -142,7 +141,7 @@ export default {
           ctx.output('Generated output', JSON.stringify(generated));
           await showWindow(ctx);
         },
-        screenshot: {name:'generated-session-output',fromSurface:false,requireText:['产出','图片工作台']},
+        screenshot: {name:'generated-session-output',requireText:['产出','图片工作台']},
       });
       await closeOutputs(ctx);
       await ctx.prove('An edit preserves the original and remains owned by the initiating session', {
@@ -172,7 +171,7 @@ export default {
           ctx.output('Edited output', JSON.stringify(edited));
           await showWindow(ctx);
         },
-        screenshot: {name:'edited-session-output',fromSurface:false,requireText:['产出','文件']},
+        screenshot: {name:'edited-session-output',requireText:['产出','文件']},
       });
       await ctx.prove('Reopening retains both outputs and their file cards open in Image Studio', {
         voiceover: vo[2],

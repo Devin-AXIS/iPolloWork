@@ -6,8 +6,11 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
+import { ImageSquare, VideoCamera, SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
 import { type DomEditSelection } from "../editor/domEditing";
+import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
+import { Tooltip } from "../ui/Tooltip";
+import { useStudioShellContext } from "../../contexts/StudioContext";
 import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
 import { resolveBoundedOverlayPosition } from "./boundedOverlay";
@@ -295,8 +298,9 @@ export function PreviewTextSelectionToolbar({
   hidden,
 }: PreviewTextSelectionToolbarProps) {
   const { tx } = useStudioI18n();
-  const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit } =
+  const { applyDomSelection, buildDomSelectionFromTarget, handleDomEditElementDelete, handleDomInnerHtmlCommit, openImageWorkbench } =
     useDomEditActionsContext();
+  const { projectId } = useStudioShellContext();
   const [state, setState] = useState<TextSelectionState | null>(null);
   const [replacementText, setReplacementText] = useState("");
   const stateRef = useRef<TextSelectionState | null>(null);
@@ -522,6 +526,15 @@ export function PreviewTextSelectionToolbar({
         <Sparkle size={18} />
       </button>
       <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
+      {window.parent !== window && activeSelection && projectId && resolveEditableVideoImage(activeSelection, projectId) ? (
+        <Tooltip label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}>
+        <button type="button" className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+          aria-label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}
+          onClick={() => void openImageWorkbench(activeSelection)}>
+          {activeSelection.element.tagName === "VIDEO" ? <VideoCamera size={18} /> : <ImageSquare size={18} />}
+        </button>
+        </Tooltip>
+      ) : null}
       <button
         type="button"
         className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"

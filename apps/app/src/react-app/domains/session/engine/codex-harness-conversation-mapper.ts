@@ -1,4 +1,5 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
 import type {
@@ -401,7 +402,7 @@ export function mapCodexHarnessEvent(
       completed.push({
         type: "session.error",
         sessionId: threadId,
-        errorText: error ?? "Codex turn failed",
+        errorText: serviceErrorMessage(turn.error, error ?? "Codex 处理失败，请稍后重试。"),
         ...(parentUserMessageId ? { parentUserMessageId } : {}),
       });
     } else if (turn.status === "completed" && !hasVisibleResult) {
@@ -485,7 +486,7 @@ export function mapCodexHarnessEvent(
     return [{
       type: "session.error",
       sessionId: threadId,
-      errorText: stringValue(error?.message) ?? stringValue(params.message) ?? "Codex runtime error",
+      errorText: serviceErrorMessage(error ?? params.message, "Codex 处理失败，请稍后重试。"),
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     }];
   }

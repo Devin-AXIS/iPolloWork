@@ -18,6 +18,7 @@ import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { SpinnerGap } from "@phosphor-icons/react";
 import { useStudioI18n } from "../../i18n";
 import { parseHostAiEditingMessage } from "../../utils/studioHelpers";
+import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
 
 function subscribeFullscreen(cb: () => void) {
   document.addEventListener("fullscreenchange", cb);
@@ -72,6 +73,11 @@ export function PreviewPane({
     if (playerState.previewDeletePending) playerState.setPreviewDeletePending(false);
   }, []);
   const { domEditSelection, previewSelectionInteraction } = useDomEditSelectionContext();
+  // Image editing must remain reachable after timeline/selection synchronisation,
+  // which can clear the primary-click marker without clearing the selected image.
+  const selectedImage = window.parent !== window && domEditSelection
+    ? resolveEditableVideoImage(domEditSelection, projectId)
+    : null;
 
   useEffect(() => {
     setAiEditing(false);
@@ -220,7 +226,7 @@ export function PreviewPane({
           iframeRef={iframeRef}
           containerRef={containerRef}
           activeSelection={editingEnabled ? domEditSelection : null}
-          hidden={timelineDisabled || !editingEnabled || previewSelectionInteraction !== "primary"}
+          hidden={timelineDisabled || !editingEnabled || (previewSelectionInteraction !== "primary" && !selectedImage)}
         />
       </div>
       {!isFullscreen && aiEditing ? (

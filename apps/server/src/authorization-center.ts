@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SharedProviderBrowserLogin } from "@ipollowork/types/provider-credentials";
+import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { providerApiError } from "./errors.js";
 
 import { authorizationVault } from "./authorization-runtime.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
@@ -11,6 +13,7 @@ export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
   "aliyun-bailian",
   "volcengine-video",
+  "runninghub-video",
   "aliyun-oss",
   "wasabi",
   "storage-routing",
@@ -83,6 +86,16 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
       capability: "Volcengine Ark image and video generation",
       useWhen: "Use when the user asks to generate or edit an image with Seedream, or generate a video with Seedance.",
       instruction: "Use the iPolloWork image or media extension and keep generation outputs in the active workspace.",
+    },
+  },
+  {
+    id: "runninghub-video",
+    keys: ["RUNNINGHUB_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "RunningHub MiniMax H3 video generation",
+      useWhen: "Use for MiniMax H3 text, image or multimodal video generation.",
+      instruction: "Use video-generation actions. MiniMax H3 uses the public ComfyUI workflow API with a RunningHub workflow API key; supports text, first-frame and first/last-frame video generation.",
     },
   },
   {
@@ -232,10 +245,9 @@ async function fetchAuthorizationTest(url: string, init: RequestInit): Promise<A
   try {
     const response = await providerFetch(url, { ...init, signal: controller.signal, redirect: "error" });
     if (response.ok) return { ok: true, detail: "Connection verified." };
-    return { ok: false, detail: `The service rejected this authorization (HTTP ${response.status}).` };
+    return { ok: false, detail: providerApiError({ status: response.status }, response.status).message };
   } catch (error) {
-    if (error instanceof Error && error.name === "AbortError") return { ok: false, detail: "The connection test timed out." };
-    return { ok: false, detail: "Could not reach the service. Check your network and try again." };
+    return { ok: false, detail: serviceErrorMessage(error) };
   } finally {
     clearTimeout(timeout);
   }
@@ -256,6 +268,20 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
       return fetchAuthorizationTest("https://dashscope.aliyuncs.com/compatible-mode/v1/models", { headers: { Authorization: `Bearer ${resolved.values.DASHSCOPE_API_KEY}` } });
     case "volcengine-video":
       return fetchAuthorizationTest("https://ark.cn-beijing.volces.com/api/v3/contents/generations/tasks?page_num=1&page_size=1", { headers: { Authorization: `Bearer ${resolved.values.ARK_API_KEY}` } });
+    case "runninghub-video": {
+      try {
+        const response = await providerFetch("https://www.runninghub.ai/uc/openapi/accountStatus", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apikey: resolved.values.RUNNINGHUB_API_KEY }),
+          signal: AbortSignal.timeout(10_000), redirect: "error",
+        });
+        const data: unknown = await response.json().catch(() => { throw providerApiError({}, 502); });
+        const ok = response.ok && data !== null && typeof data === "object" && "code" in data && data.code === 0;
+        return { ok, detail: ok ? "连接正常。H3 工作流权限和余额将在提交任务时检查。" : classifyProviderFailure(data)?.message ?? "RunningHub 连接测试未通过，请检查服务状态及工作流 API Key 权限。" };
+      } catch (error) {
+        return { ok: false, detail: serviceErrorMessage(error) };
+      }
+    }
     case "aliyun-oss": {
       const request = createAliyunOssV4Request({
         accessKeyId: resolved.values.ALIYUN_OSS_ACCESS_KEY_ID,

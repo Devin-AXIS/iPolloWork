@@ -4,6 +4,18 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./provider-errors": {
+      "types": "./src/provider-errors.ts",
+      "development": "./src/provider-errors.ts",
+      "bun": "./src/provider-errors.ts",
+      "default": "./dist/provider-errors.js"
+    },
+    "./video-image-workbench": {
+      "types": "./src/video-image-workbench.ts",
+      "development": "./src/video-image-workbench.ts",
+      "bun": "./src/video-image-workbench.ts",
+      "default": "./dist/video-image-workbench.js"
+    },
     ".": {
       "types": "./src/index.ts",
       "development": "./src/index.ts",

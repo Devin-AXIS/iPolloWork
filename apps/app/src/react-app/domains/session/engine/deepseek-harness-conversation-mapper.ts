@@ -1,4 +1,5 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { stripDeepSeekHarnessInternalContext } from "@ipollowork/types/workspace";
 
 import type { TodoItem } from "@/app/types";
@@ -554,7 +555,7 @@ export function normalizeDeepSeekHarnessErrorText(value: unknown): string {
   if (/^(error|错误)$/iu.test(message)) {
     return t("session.deepseek_harness_run_failed");
   }
-  return message || t("session.deepseek_harness_run_failed");
+  return serviceErrorMessage(message, t("session.deepseek_harness_run_failed"));
 }
 
 function turnErrorText(data: Record<string, unknown>): string | null {

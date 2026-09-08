@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
+import { ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
 
 import {
   IPOLLOWORK_DESIGN_STUDIO_FEATURES,
@@ -9,6 +9,11 @@ import {
   type DesignStudioClient,
   type DesignStudioFeatures,
 } from "@ipollowork/design-studio";
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { hydrateDesignMedia } from "./design-media";
+import { useDesignMediaWorkbench } from "./use-design-media-workbench";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
@@ -126,6 +131,8 @@ type DesignPanelProps = {
   sessionId: string;
   client: DesignStudioClient | null;
   workspaceId: string | null;
+  mediaClient?: iPolloWorkServerClient | null;
+  workspaceRoot?: string;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
   displayName?: string;
@@ -199,80 +206,13 @@ function sanitizePdfFileBaseName(value: string) {
 function isGenericPdfTitle(value: string) {
   return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
 }
-function isPreviewLocalAssetUrl(value: string) {
-  const trimmed = value.trim();
-  return Boolean(trimmed)
-    && !trimmed.startsWith("#")
-    && !trimmed.startsWith("/")
-    && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmed)
-    && !trimmed.split(/[?#]/, 1)[0]?.split("/").includes("..");
-}
-
-function resolvePreviewAssetPath(currentPath: string, assetUrl: string) {
-  const path = assetUrl.split(/[?#]/, 1)[0] ?? "";
-  const base = directoryPath(currentPath);
-  const segments: string[] = [];
-  for (const segment of `${base}${path}`.split("/")) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") segments.pop();
-    else segments.push(segment);
-  }
-  return segments.join("/");
-}
-
-type HydratedDesignPreview = {
-  source: string;
-  objectUrls: string[];
-};
-
-function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | null) {
-  const bytes = new Uint8Array(data);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-  return `data:${contentType ?? "application/octet-stream"};base64,${btoa(binary)}`;
-}
-
 async function hydrateDesignPreviewAssets(
   source: string,
   input: { client: DesignStudioClient | null; workspaceId: string | null; activePagePath: string },
-): Promise<HydratedDesignPreview> {
-  if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
-    return { source, objectUrls: [] };
-  }
-  const client = input.client;
-  const workspaceId = input.workspaceId;
-  const parser = new DOMParser();
-  const document = parser.parseFromString(source, "text/html");
-  const images = Array.from(document.querySelectorAll<HTMLImageElement>("img[src]"))
-    .filter((image) => isPreviewLocalAssetUrl(image.getAttribute("src") ?? ""));
-  if (!images.length) return { source, objectUrls: [] };
-
-  const assetUrls = new Map<string, string>();
-  await Promise.all(images.map(async (image) => {
-    const original = image.getAttribute("src") ?? "";
-    const assetPath = resolvePreviewAssetPath(input.activePagePath, original);
-    const existing = assetUrls.get(assetPath);
-    if (existing) {
-      image.setAttribute("src", existing);
-      image.setAttribute("data-ipw-preview-src", original);
-      return;
-    }
-    try {
-      const downloaded = await client.downloadWorkspaceFile(workspaceId, assetPath);
-      const dataUrl = arrayBufferToPreviewDataUrl(downloaded.data, downloaded.contentType);
-      assetUrls.set(assetPath, dataUrl);
-      image.setAttribute("src", dataUrl);
-      image.setAttribute("data-ipw-preview-src", original);
-    } catch {
-      // Leave the original relative URL in place so broken assets stay visible
-      // as broken assets instead of hiding an underlying file issue.
-    }
-  }));
-  const doctype = source.trimStart().toLowerCase().startsWith("<!doctype") ? "<!DOCTYPE html>\n" : "";
-  return { source: `${doctype}${document.documentElement.outerHTML}`, objectUrls: [] };
+) {
+  const { client, workspaceId, activePagePath } = input;
+  if (!client || !workspaceId || !activePagePath || typeof DOMParser === "undefined") return { source, objectUrls: [] };
+  return hydrateDesignMedia(source, activePagePath, path => client.downloadWorkspaceFile(workspaceId, path));
 }
 
 function deckPdfFileName(document: Document, path: string) {
@@ -542,6 +482,8 @@ export function DesignPanel({
   sessionId,
   client,
   workspaceId,
+  mediaClient = null,
+  workspaceRoot = "",
   isRemoteWorkspace = false,
   initialPath,
   displayName,
@@ -635,6 +577,7 @@ export function DesignPanel({
     setHistory((current) => pushDesignUndoHistory(current, snapshot));
   }, [setHistory]);
   const [previewSource, setPreviewSource] = React.useState("");
+  const [mediaRevision, setMediaRevision] = React.useState(0);
   const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
   const previewRevisionRef = React.useRef(previewRevision);
@@ -957,28 +900,34 @@ export function DesignPanel({
     setPreviewRevision((current) => current + 1);
   }, [activePagePath, fileQuery.data?.content, fileQuery.data?.updatedAt, sessionId, viewedVersionPath]);
 
+  const previewObjectUrlsRef = React.useRef<string[]>([]);
+  React.useEffect(() => {
+    const urls = previewObjectUrlsRef.current;
+    // Release only after React has replaced the iframe that used these URLs.
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [hydratedPreviewSource]);
+
   React.useEffect(() => {
     if (!previewSource) {
+      previewObjectUrlsRef.current = [];
       setHydratedPreviewSource("");
       return;
     }
     let cancelled = false;
-    let objectUrls: string[] = [];
     setPreviewLoaded(false);
     void hydrateDesignPreviewAssets(previewSource, { client, workspaceId, activePagePath }).then((result) => {
-      objectUrls = result.objectUrls;
       if (cancelled) {
-        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        result.objectUrls.forEach((url) => URL.revokeObjectURL(url));
         return;
       }
+      previewObjectUrlsRef.current = result.objectUrls;
       setHydratedPreviewSource(result.source);
       setPreviewRevision((current) => current + 1);
     });
     return () => {
       cancelled = true;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [activePagePath, client, previewSource, workspaceId]);
+  }, [activePagePath, client, previewSource, workspaceId, mediaRevision]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -1543,6 +1492,25 @@ export function DesignPanel({
     },
   });
 
+  const mediaWorkbench = useDesignMediaWorkbench({
+    client: mediaClient, workspaceId, page: activePagePath, selection,
+    enabled: editing && !isMultiSelection && !selection?.locked && !isRemoteWorkspace && viewedVersionPath === "current" && Boolean(mediaClient),
+    saveCurrent: async () => (await saveMutation.mutateAsync()).content,
+    onReload: (content, updatedAt) => {
+      queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, activePagePath], { content, updatedAt });
+      draftRef.current = content;
+      setDraft(content); setSavedSource(content); setPendingCanvasChange(false);
+      setPreviewSource(content); setHydratedPreviewSource(""); setPreviewLoaded(false);
+      setMediaRevision(current => current + 1);
+    },
+    onFill: (kind, src, preview) => {
+      if (!selection) return;
+      rememberHistory();
+      setPendingCanvasChange(true);
+      iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "media-fill", ids: [selection.id], kind, src, preview }, "*");
+    },
+  });
+
   const viewVersion = async (versionPath: string) => {
     if (!client || !workspaceId || !fileQuery.data || versionPath === viewedVersionPath) return;
     if (draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
@@ -1747,6 +1715,7 @@ export function DesignPanel({
 
   const chooseReplacementImage = async () => {
     if (!selection || selection.tag !== "img") return;
+    if (mediaClient) { mediaWorkbench.choose("image"); return; }
     const pickedPath = await pickLocalImageFile("选择替换图片");
     if (pickedPath) {
       const dataUrl = await readLocalImageAsDataUrl(pickedPath);
@@ -1798,7 +1767,9 @@ export function DesignPanel({
       setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(previous.html);
-      setHydratedPreviewSource("");
+      // Canvas edits do not change previewSource. Reusing its already hydrated
+      // document keeps image URLs alive when Undo returns to that same source.
+      if (previous.html !== previewSource) setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision(restore.previewRevision);
       if (previous.restoreTokenCss) {
@@ -1851,6 +1822,7 @@ export function DesignPanel({
 
   const chooseBackgroundImage = async () => {
     if (!selection || selection.tag === "img") return;
+    if (mediaClient) { mediaWorkbench.choose("image"); return; }
     const pickedPath = await pickLocalImageFile("选择填充图片");
     if (!pickedPath) {
       if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
@@ -2053,7 +2025,11 @@ export function DesignPanel({
   ) : null;
 
   return (
-    <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
+    <div ref={panelRef} className="relative flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
+      <input ref={mediaWorkbench.input} type="file" className="sr-only" aria-label={t("design.properties.action.choose_media")} onChange={event => { void mediaWorkbench.importFile(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
+      {mediaWorkbench.binding && mediaClient && workspaceId ? <MediaWorkbench key={mediaWorkbench.binding.source.requestId} source={mediaWorkbench.binding.source}
+        client={mediaClient} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
+        returnLabel={t("media.workbench.back_design")} onApply={mediaWorkbench.apply} onClose={mediaWorkbench.close} /> : null}
       <input
         ref={imageInputRef}
         type="file"
@@ -2512,6 +2488,12 @@ export function DesignPanel({
                         >
                           <img src={floatingToolbarAiIcon} alt="" className="size-[18px] select-none" draggable={false} />
                         </button> : null}
+                        {mediaWorkbench.canOpen ? <Tooltip><TooltipTrigger render={<button
+                          type="button" className={FLOATING_TOOLBAR_BUTTON_CLASS} disabled={mediaWorkbench.busy}
+                          onClick={() => void mediaWorkbench.open()}
+                          aria-label={t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}>
+                          {mediaWorkbench.busy ? <Loader2 className="size-[18px] animate-spin motion-reduce:animate-none" /> : selection.media?.kind === "video" ? <Video className="size-[18px]" /> : <ImageIcon className="size-[18px]" />}
+                        </button>} /><TooltipContent positionerClassName="z-[140]">{t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}</TooltipContent></Tooltip> : null}
                         <img src={floatingToolbarDivider} alt="" className="h-[22.5px] w-px shrink-0 select-none" draggable={false} />
                         <button
                           type="button"
@@ -2551,6 +2533,8 @@ export function DesignPanel({
                 onDelete={() => setDeleteConfirmationOpen(true)}
                 onChooseReplacementImage={() => void chooseReplacementImage()}
                 onChooseBackgroundImage={() => void chooseBackgroundImage()}
+                onChooseVideo={mediaClient ? () => mediaWorkbench.choose("video") : undefined}
+                mediaBusy={mediaWorkbench.busy}
               >
                 <DesignSystemDrawer
                   embedded

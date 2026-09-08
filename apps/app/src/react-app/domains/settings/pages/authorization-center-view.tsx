@@ -80,6 +80,12 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     descriptionKey: "settings.authorization.service.volcengine_video.description",
     fields: [{ key: "ARK_API_KEY", label: "Ark API key", placeholder: "your Ark API key" }],
   },
+  "runninghub-video": {
+    icon: AudioLines,
+    titleKey: "settings.authorization.service.runninghub_video.title",
+    descriptionKey: "settings.authorization.service.runninghub_video.description",
+    fields: [{ key: "RUNNINGHUB_API_KEY", label: "RunningHub API key", placeholder: "Enterprise-Shared API key", hintKey: "settings.authorization.runninghub_key_hint" }],
+  },
   "aliyun-oss": {
     icon: Cloud,
     titleKey: "settings.authorization.service.aliyun_oss.title",

@@ -3,6 +3,7 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
+import { providerFetch } from "../provider-fetch.js";
 import type { AuthorizationAccess } from "../authorization-center.js";
 import {
   createAliyunOssV4PresignedGetUrl,
@@ -195,7 +196,7 @@ async function fetchStorage(input: { endpoint: string; method: "DELETE" | "PUT";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), STORAGE_TIMEOUT_MS);
   try {
-    const response = await fetch(input.endpoint, {
+    const response = await providerFetch(input.endpoint, {
       method: input.method,
       headers: input.headers,
       ...(input.body ? { body: Uint8Array.from(input.body).buffer } : {}),
@@ -265,6 +266,7 @@ function temporaryReadUrl(input: {
   provider: StorageProviderId;
   values: Record<string, string>;
   objectKey: string;
+  expiresInSeconds?: number;
 }): string {
   if (input.provider === "aliyun-oss") {
     return createAliyunOssV4PresignedGetUrl({
@@ -273,7 +275,7 @@ function temporaryReadUrl(input: {
       bucket: input.values.ALIYUN_OSS_BUCKET,
       region: input.values.ALIYUN_OSS_REGION,
       objectKey: input.objectKey,
-      expiresInSeconds: 600,
+      expiresInSeconds: input.expiresInSeconds ?? 600,
     });
   }
   return createS3V4PresignedGetUrl({
@@ -283,7 +285,7 @@ function temporaryReadUrl(input: {
     region: input.values.WASABI_REGION,
     endpoint: `https://s3.${input.values.WASABI_REGION}.wasabisys.com`,
     objectKey: input.objectKey,
-    expiresInSeconds: 600,
+    expiresInSeconds: input.expiresInSeconds ?? 600,
   });
 }
 
@@ -379,7 +381,7 @@ export async function storageStatus(authorization: AuthorizationAccess) {
   };
 }
 
-async function uploadWorkspaceFile(config: ServerConfig, authorization: AuthorizationAccess, args: JsonRecord, context: JsonRecord) {
+export async function uploadWorkspaceFile(config: ServerConfig, authorization: AuthorizationAccess, args: JsonRecord, context: JsonRecord, readUrlTtl?: number) {
   const workspace = workspaceForContext(config, context);
   const source = resolveWorkspaceFile(workspace.path, requireString(args, "sourcePath"));
   let sourceStat;
@@ -410,6 +412,7 @@ async function uploadWorkspaceFile(config: ServerConfig, authorization: Authoriz
     bytes: bytes.byteLength,
     contentType,
     url: uploaded.url,
+    ...(readUrlTtl ? { signedReadUrl: temporaryReadUrl({ provider, values: credentials, objectKey, expiresInSeconds: readUrlTtl }) } : {}),
     ...(uploaded.downloadUrl ? { downloadUrl: uploaded.downloadUrl } : {}),
     workspaceId: workspace.id,
   };

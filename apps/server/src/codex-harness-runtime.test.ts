@@ -878,6 +878,58 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
   });
 
+  test("template briefs skip unsupported empty history, but first input and existing history never do", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-template-history-fixture.js");
+    await writeFile(fixturePath, await readFile(new URL("../../../evals/support/codex-empty-history-fixture.cjs", import.meta.url)));
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({
+      config, env: new EnvService({ path: join(root, "env.json") }),
+      workspace: { id: "template-history", name: "Template history", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" },
+    });
+    try {
+      await runtime.startThread({ name: "fresh", modelProvider: "test", model: "test" });
+      expect(runtime.isAwaitingFirstTurn("fresh")).toBe(true);
+      expect(await readCodexHarnessSnapshot(runtime, "fresh")).toMatchObject({ messages: [], status: { type: "idle" } });
+      await runtime.resumeThread({ threadId: "fresh", modelProvider: "test", model: "test" }, { force: true });
+      expect(runtime.isAwaitingFirstTurn("fresh")).toBe(true);
+      await runtime.call("turn/start", { threadId: "fresh" });
+      expect(runtime.isAwaitingFirstTurn("fresh")).toBe(false);
+      const snapshot = await readCodexHarnessSnapshot(runtime, "fresh");
+      expect(snapshot.messages).toHaveLength(2);
+      expect(JSON.stringify(snapshot.messages)).toContain("新品发布预告");
+      expect(JSON.stringify(snapshot.messages)).toContain("视频创作需求已收到");
+      // Unknown/persisted tasks must report the failure, never silently erase history.
+      let historyError: unknown;
+      try { await readCodexHarnessSnapshot(runtime, "existing"); } catch (error) { historyError = error; }
+      expect(historyError).toBeInstanceOf(Error);
+      expect(historyError instanceof Error && historyError.message).toBe("list_turns is not supported yet");
+      await runtime.startThread({ name: "race", modelProvider: "test", model: "test" });
+      const pending = readCodexHarnessSnapshot(runtime, "race");
+      await runtime.call("turn/start", { threadId: "race" });
+      expect((await pending).messages).toHaveLength(2);
+      await runtime.startThread({ name: "ambiguous", modelProvider: "test", model: "test" });
+      let sendError: unknown;
+      try { await runtime.call("turn/start", { threadId: "ambiguous", fail: true }); } catch (error) { sendError = error; }
+      expect(sendError).toBeInstanceOf(Error);
+      expect(runtime.isAwaitingFirstTurn("ambiguous")).toBe(false);
+      expect((await readCodexHarnessSnapshot(runtime, "ambiguous")).messages).toHaveLength(2);
+      await runtime.startThread({ name: "notified", modelProvider: "test", model: "test" });
+      await runtime.call("test/notify", { threadId: "notified" });
+      expect(runtime.isAwaitingFirstTurn("notified")).toBe(false);
+      expect((await readCodexHarnessSnapshot(runtime, "notified")).messages).toHaveLength(2);
+      await runtime.close();
+      expect(runtime.isAwaitingFirstTurn("fresh")).toBe(false);
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  });
+
   test("does not expose an unconfigured Codex OAuth account", async () => {
     const config = await testConfig();
     const providers = await codexHarnessProviders({

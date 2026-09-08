@@ -2,6 +2,7 @@ import { defineConfig } from "tsup"
 
 export default defineConfig({
   entry: {
+    "provider-errors": "src/provider-errors.ts",
     index: "src/index.ts",
     "den/desktop-app-restrictions": "src/den/desktop-app-restrictions.ts",
     "den/desktop-policies": "src/den/desktop-policies.ts",
@@ -9,6 +10,7 @@ export default defineConfig({
     "deepseek-official-models": "src/deepseek-official-models.ts",
     hyperframes: "src/hyperframes.ts",
     "hyperframes-project": "src/hyperframes-project.ts",
+    "video-image-workbench": "src/video-image-workbench.ts",
     "opencode-zen-public-models": "src/opencode-zen-public-models.ts",
     plugins: "src/plugins.ts",
     "provider-credentials": "src/provider-credentials.ts",

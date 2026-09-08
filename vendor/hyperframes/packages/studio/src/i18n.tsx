@@ -520,6 +520,8 @@ const studioLiteralZh: Record<string, string> = {
   best: "最佳",
   "Ask AI": "交给AI",
   "Ask AI about selected element": "让 AI 处理所选元素",
+  "Edit in Image Studio": "在图片工作台编辑",
+  "Edit in Video Console": "在视频控制台编辑",
   "Copy prompt to AI agent": "将提示词复制给 AI Agent",
   "Describe what you want to change…": "描述你想修改的内容…",
   "Context included in prompt": "提示词中包含的上下文",

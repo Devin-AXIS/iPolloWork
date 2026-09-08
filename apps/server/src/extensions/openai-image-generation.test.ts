@@ -87,7 +87,7 @@ describe("OpenAI image editing", () => {
     expect(edit.resultPath).toContain("后羿射日-edited-");
     expect((await listSessionArtifacts(edit.serverConfig, "workspace", edit.context.sessionId)).items).toHaveLength(2);
     const save = () => callOpenAiImageGenerationExtensionAction(edit.serverConfig, authorization, "image_edit_save", { editId: edit.editId, mode: "copy" }, edit.context);
-    expect(await save()).toMatchObject({ path: edit.resultPath, result: { saveMode: "copy" } });
+    expect(await save()).toMatchObject({ path: edit.resultPath, result: { saveMode: "copy", originalPath: edit.sourcePath } });
     expect(await save()).toMatchObject({ path: edit.resultPath });
     expect((await readFile(join(root, edit.sourcePath))).equals(edit.source)).toBe(true);
     expect((await readFile(join(root, edit.resultPath))).equals(edit.generated)).toBe(true);
@@ -99,7 +99,7 @@ describe("OpenAI image editing", () => {
     const root = await temporaryRoot();
     const edit = await reviewedEdit(root, format);
     const save = () => callOpenAiImageGenerationExtensionAction(edit.serverConfig, authorization, "image_edit_save", { editId: edit.editId, mode: "overwrite" }, edit.context);
-    expect(await save()).toMatchObject({ path: edit.sourcePath, result: { saveMode: "overwrite" } });
+    expect(await save()).toMatchObject({ path: edit.sourcePath, result: { saveMode: "overwrite", originalPath: edit.sourcePath } });
     const saved = await readFile(join(root, edit.sourcePath));
     expect((await sharp(saved).metadata()).format).toBe(format);
     expect((await sharp(saved).raw().toBuffer())[0]).toBeGreaterThan(210);
@@ -551,8 +551,8 @@ describe("OpenAI image editing", () => {
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({
       status: 502,
-      code: "openai_image_generation_unreachable",
-      message: "Could not reach OpenAI for image generation. Check your connection or system proxy and try again.",
+      code: "provider_network_error",
+      message: "网络连接失败，请检查网络或代理设置后重试。",
     });
   });
 

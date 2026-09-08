@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { startVideoJobWorker } from "./extensions/video-generation.js";
 import { readFile, writeFile, rm } from "node:fs/promises";
 import { homedir, hostname } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
@@ -21,7 +22,8 @@ import { exportExtensions } from "./extensions-export.js";
 import { deleteSkill, listSkills, upsertSkill } from "./skills.js";
 import { installHubSkill, listHubSkills } from "./skill-hub.js";
 import { deleteCommand, listCommands, repairCommands, upsertCommand } from "./commands.js";
-import { ApiError, formatError, isApiError } from "./errors.js";
+import { ApiError, formatError, isApiError, toApiError } from "./errors.js";
+import { providerFetch } from "./provider-fetch.js";
 import { readLimitedRequestBody } from "./limited-request-body.js";
 import { readJsoncFile, updateJsoncTopLevel, writeJsoncFile } from "./jsonc.js";
 import { recordAudit, readAuditEntries, readLastAudit } from "./audit.js";
@@ -355,7 +357,8 @@ async function createOpenAiRealtimeVoiceSession(env: EnvService, input: unknown)
 }
 
 async function createManagedVoiceSession(config: { baseUrl: string; apiKey: string }, input: unknown) {
-  const response = await fetch(`${config.baseUrl}/voice/realtime/session`, {
+  const response = await providerFetch(`${config.baseUrl}/voice/realtime/session`, {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.apiKey}`,
@@ -399,7 +402,8 @@ async function createManagedVoiceSession(config: { baseUrl: string; apiKey: stri
 async function createDirectOpenAiVoiceSession(apiKey: string, input: unknown) {
   const model = readStringField(input, "model") || IPOLLOWORK_VOICE_REALTIME_MODEL;
   const sessionContext = readStringField(input, "sessionContext").slice(0, 6_000);
-  const response = await fetch("https://api.openai.com/v1/realtime/client_secrets", {
+  const response = await providerFetch("https://api.openai.com/v1/realtime/client_secrets", {
+    signal: AbortSignal.timeout(30_000),
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -811,9 +815,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const response = await proxyOpencodeRequest({ config, request, url, workspace, proxyPath: mount.restPath });
           return finalize(response);
         } catch (error) {
-          const apiError = isApiError(error)
-            ? error
-            : new ApiError(500, "internal_error", "Unexpected server error");
+          const apiError = toApiError(error);
           errorMessage = apiError.message;
           return finalize(jsonResponse(formatError(apiError), apiError.status));
         }
@@ -860,9 +862,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
           const response = await proxyOpencodeRequest({ config, request, url, workspace: config.workspaces[0] });
           return finalize(response);
         } catch (error) {
-          const apiError = isApiError(error)
-            ? error
-            : new ApiError(500, "internal_error", "Unexpected server error");
+          const apiError = toApiError(error);
           errorMessage = apiError.message;
           return finalize(jsonResponse(formatError(apiError), apiError.status));
         }
@@ -899,9 +899,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
         if (!isApiError(error)) {
           console.error("[ipollowork-server] Unhandled error:", error);
         }
-        const apiError = isApiError(error)
-          ? error
-          : new ApiError(500, "internal_error", "Unexpected server error");
+        const apiError = toApiError(error);
         errorMessage = apiError.message;
         return finalize(jsonResponse(formatError(apiError), apiError.status));
       }
@@ -942,6 +940,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     });
     automationMonitors.set(key, monitor);
   };
+  const videoJobWorker = startVideoJobWorker(config);
   const workItemAutomationScheduler = startWorkItemAutomationScheduler({
     config,
     dispatch: async (item) => {
@@ -995,6 +994,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
   return {
     ...server,
     stop: async () => {
+      await videoJobWorker.close();
       await workItemAutomationScheduler.close();
       automationMonitorAbort.abort(new Error("Server stopped"));
       await Promise.allSettled(automationMonitors.values());

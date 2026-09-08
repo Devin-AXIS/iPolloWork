@@ -457,6 +457,7 @@ export function isCodexUnmaterializedThreadError(error: unknown): boolean {
 type AttachedThreadSelection = {
   provider: string;
   model: string;
+  awaitingFirstTurn?: boolean;
 };
 
 export class CodexHarnessRuntime {
@@ -479,6 +480,9 @@ export class CodexHarnessRuntime {
   }
 
   async call<T>(method: string, params: unknown = {}): Promise<T> {
+    // Invalidate before sending, including failed/ambiguous writes. Never hide
+    // a possibly accepted first message behind a metadata-only snapshot.
+    if (method === "turn/start") this.#markThreadUsed(params);
     const process = await this.#ensureStarted();
     try {
       const result = await process.call<T>(method, params);
@@ -488,6 +492,16 @@ export class CodexHarnessRuntime {
       if (error instanceof StdioJsonRpcError) throw error;
       throw new CodexHarnessUnavailableError("Codex Harness request failed", { cause: error });
     }
+  }
+
+  isAwaitingFirstTurn(threadId: string): boolean {
+    return this.#attachedThreadSelections.get(threadId)?.awaitingFirstTurn === true;
+  }
+
+  #markThreadUsed(params: unknown): void {
+    if (!isRecord(params) || typeof params.threadId !== "string") return;
+    const attached = this.#attachedThreadSelections.get(params.threadId);
+    if (attached) attached.awaitingFirstTurn = false;
   }
 
   async startThread<T extends Record<string, unknown>>(
@@ -721,7 +735,9 @@ export class CodexHarnessRuntime {
         : typeof thread?.model === "string"
           ? thread.model
           : "";
-      if (provider || model) this.#attachedThreadSelections.set(threadId, { provider, model });
+      const awaitingFirstTurn = this.isAwaitingFirstTurn(threadId) && !(Array.isArray(thread?.turns) && thread.turns.length);
+      if (provider || model) this.#attachedThreadSelections.set(threadId, { provider, model, awaitingFirstTurn });
+      else if (!awaitingFirstTurn) this.#markThreadUsed({ threadId });
       return;
     }
     if (method !== "thread/start" && method !== "thread/resume" && method !== "thread/fork") return;
@@ -747,7 +763,9 @@ export class CodexHarnessRuntime {
         : typeof input?.model === "string"
           ? input.model
           : "";
-    this.#attachedThreadSelections.set(threadId, { provider, model });
+    const awaitingFirstTurn = (method === "thread/start" || (method === "thread/resume" && this.isAwaitingFirstTurn(threadId)))
+      && !(Array.isArray(thread?.turns) && thread.turns.length);
+    this.#attachedThreadSelections.set(threadId, { provider, model, awaitingFirstTurn });
   }
 
   async #ensureStarted(): Promise<StdioJsonRpcProcess> {
@@ -871,6 +889,7 @@ export class CodexHarnessRuntime {
       rpc.notify("initialized", {});
       this.#unsubscribeProcessEvents();
       this.#unsubscribeProcessEvents = rpc.subscribe((event) => {
+        if (event.method === "turn/started" || event.method === "item/started") this.#markThreadUsed(event.params);
         for (const listener of this.#eventListeners) listener(event);
       });
       this.#process = rpc;

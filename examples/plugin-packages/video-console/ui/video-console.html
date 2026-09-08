@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>视频控制台</title>
+  <style>
+    :root { color-scheme:light dark; --bg:light-dark(#f4f4f2,#171819); --surface:light-dark(#fff,#202224); --text:light-dark(#202225,#f4f4f4); --muted:light-dark(#71717a,#a1a1aa); --line:light-dark(#e4e4e7,#37383b); --accent:light-dark(#1c2023,#ededee); --on-accent:light-dark(#fff,#171819); --danger:light-dark(#be2542,#ff8598); font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
+    * { box-sizing:border-box; } body { margin:0; color:var(--text); background:var(--bg); } button,input,select { font:inherit; } button { cursor:pointer; color:var(--text); border:1px solid var(--line); border-radius:9px; background:var(--surface); padding:7px 12px; } button:disabled { cursor:not-allowed; opacity:.45; } button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:2px solid #6290cf; outline-offset:3px; } button:hover:not(:disabled) { filter:brightness(.96); } .primary { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
+    header { position:sticky; top:0; z-index:1; display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--line); } nav { display:flex; gap:3px; padding:3px; border:1px solid var(--line); border-radius:11px; background:var(--bg); } nav button { border-color:transparent; background:transparent; padding:4px 14px; } nav button[aria-pressed="true"] { background:var(--surface); border-color:var(--line); } .tools { display:flex; align-items:center; gap:8px; } .badge { font-size:11px; color:var(--muted); } main { max-width:1280px; margin:auto; padding:24px; } .preview { min-height:330px; height:min(52vh,580px); border:1px solid var(--line); border-radius:16px; display:grid; place-items:center; overflow:hidden; background:light-dark(#ececea,#111214); } .preview video { width:100%; height:100%; object-fit:contain; background:#101113; } .empty { text-align:center; max-width:420px; padding:26px; } .empty svg { width:40px; height:40px; stroke:var(--muted); margin-bottom:12px; } h1 { font-size:20px; margin:0 0 8px; letter-spacing:-.4px; } h2 { font-size:13px; margin:0; } p { margin:0; } .muted { color:var(--muted); } .path { font-size:11px; overflow-wrap:anywhere; margin-top:10px; min-height:17px; }
+    .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } input,select { min-width:0; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; } input { flex:1; } #message { margin:14px 0; font-size:12px; white-space:pre-wrap; } #message.error { color:var(--danger); } .section-head { display:flex; align-items:center; justify-content:space-between; margin:26px 0 12px; } .job { padding:14px 16px; margin-bottom:10px; border:1px solid var(--line); border-radius:12px; background:var(--surface); } .job p { overflow-wrap:anywhere; } .job-head { display:flex; gap:12px; justify-content:space-between; margin-bottom:8px; } .job-state { font-size:11px; white-space:nowrap; color:var(--muted); } .job.error { border-color:light-dark(#ecc6ce,#61313c); } .job .row { margin-top:10px; } .job .meta { font-size:11px; color:var(--muted); margin:7px 0; } .job-message { font-size:12px; } [hidden] { display:none !important; }
+    @media(max-width:560px) { main { padding:14px; } header { padding:10px; } .badge { display:none; } .preview { min-height:240px; height:40vh; } .row input { flex-basis:100%; } }
+    @media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="视频操作"><button id="generateMode" aria-pressed="true">生成</button><button id="editMode" aria-pressed="false">编辑</button></nav>
+    <div class="tools"><span class="badge">视频控制台</span><button id="settings">参数</button></div>
+  </header>
+  <main>
+    <section class="preview" aria-label="视频预览">
+      <video id="player" controls playsinline preload="metadata" hidden></video>
+      <div id="empty" class="empty">
+        <svg viewBox="0 0 40 40" fill="none" stroke-width="1.5" aria-hidden="true"><rect x="4" y="8" width="23" height="24" rx="6"/><path d="m27 16 9-5v18l-9-5M13 15l8 5-8 5z"/></svg>
+        <h1>把想法变成一段视频</h1><p class="muted">描述场景，或添加参考素材。编辑结果另存为新视频，原文件保持不变。</p>
+        <button id="start" class="primary" style="margin-top:20px">设置生成参数</button>
+      </div>
+    </section>
+    <p id="previewPath" class="path muted"></p>
+    <p id="message" role="status" aria-live="polite"></p>
+    <section aria-label="本会话视频任务"><div class="section-head"><h2>本会话任务</h2><button id="refresh">刷新</button></div><div id="jobs"><p class="muted">正在读取任务…</p></div><button id="older" hidden>较早的任务</button></section>
+  </main>
+  <script>
+    const $ = selector => document.querySelector(selector);
+    const HOST = "ai.ipollo/workspace", INSPECTOR = "ai.ipollo/inspector";
+    const pending = new Map(); let requestId = 0, pollTimer, disposed = false, previewUrl = "", previewEpoch = 0;
+    const state = { mode:"generate", model:"", operation:"text", prompt:"", resolution:"", duration:"5", ratio:"adaptive", firstFrame:"", lastFrame:"", imageRefs:"", videoRefs:"", audioRefs:"", generateAudio:"true", watermark:"true", models:[], ratios:[], jobs:[], host:{}, busy:false, message:"", error:false, requestKey:"", openRequest:"initial", localVideoReady:false, pageBefore:undefined, previewPath:"" };
+    const names = { text:"文生视频", first:"首帧生视频", "first-last":"首尾帧生视频", reference:"多模态参考", edit:"编辑原视频", extend:"延长原视频", regenerate:"参考原视频重新生成" };
+    const statuses = { submitting:"提交中", running:"生成中", saving:"保存中", succeeded:"已保存", failed:"生成失败", uncertain:"待确认", save_failed:"保存失败" };
+    const editOps = ["edit","extend","regenerate"];
+    const refOps = ["reference",...editOps];
+    const params = ["model","operation","prompt","resolution","duration","ratio","firstFrame","lastFrame","imageRefs","videoRefs","audioRefs","generateAudio","watermark"];
+    function post(message) { parent.postMessage(message,"*"); }
+    function request(method, params) {
+      const id = ++requestId;
+      return new Promise((resolve,reject) => {
+        const timer = setTimeout(() => { pending.delete(id); reject(new Error("操作超时；若已提交生成，请先刷新任务状态，勿重复提交。")); },180000);
+        pending.set(id,{resolve,reject,timer}); post({jsonrpc:"2.0",id,method,params});
+      });
+    }
+    async function call(name, args={}) {
+      const response = await request("tools/call",{name,arguments:args});
+      if(response?.isError) throw new Error(response.content?.map(item=>item.text||"").join("\n")||"视频操作失败。");
+      return response?.structuredContent || {};
+    }
+    function tell(message,error=false) { state.message=message; state.error=error; $("#message").textContent=message; $("#message").classList.toggle("error",error); publish(); }
+    function model() { return state.models.find(item=>item.id===state.model); }
+    function allowedOps() { return (model()?.operations||[]).filter(op=>editOps.includes(op)===(state.mode==="edit")); }
+    function allowedRatios() { return ["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:(model()?.ratios||state.ratios); }
+    function normalized() {
+      const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
+      if(!model()) set("model",state.models[0]?.id||"");
+      const current=model(); if(!current) return changed;
+      if(state.mode==="edit"&&!current.operations.some(op=>editOps.includes(op)))set("mode","generate");
+      if(!allowedOps().includes(state.operation)) set("operation",allowedOps()[0]);
+      if(!current.resolutions.includes(state.resolution)) set("resolution",current.defaultResolution);
+      if(!current.durations.includes(state.duration)) set("duration","5");
+      if(state.operation==="edit") set("duration","-1");
+      if(!allowedRatios().includes(state.ratio)) set("ratio",allowedRatios()[0]);
+      if(!["first","first-last"].includes(state.operation)) set("firstFrame","");
+      if(state.operation!=="first-last") set("lastFrame","");
+      if(!refOps.includes(state.operation)) for(const field of ["imageRefs","videoRefs","audioRefs"])set(field,"");
+      for(const [field,limit] of [["imageRefs",current.imageLimit],["videoRefs",current.videoLimit],["audioRefs",current.audioLimit]]) {
+        if(state[field].split(/\n/).filter(Boolean).length>limit)set(field,"");
+      }
+      return changed;
+    }
+    function update(args) {
+      for(const key of params) if(typeof args[key]==="string")state[key]=args[key];
+      const changed=normalized();
+      if(changed.length)tell("已切换模型或方式，不兼容的参数 / 素材已重置，请检查后再提交。");
+      render(); publish();
+    }
+    function mode(value) { state.mode=value; const changed=normalized(); if(changed.length)tell("已切换操作，不兼容的参数已重置。"); render(); publish(); }
+    function select(id,label,values,advanced=false) { return {id,label,control:"select",value:state[id],live:true,advanced,options:values.map(value=>typeof value==="string"?{value,label:value}:value)}; }
+    function textarea(id,label,placeholder) { return {id,label,control:"textarea",value:state[id],placeholder,live:true}; }
+    function mediaField(id,label,kind,control="textarea") { return {id,label,control,value:state[id],live:true,placeholder:"每行一个链接 / 工作区路径",media:{kind,importTool:"import_media",...(control==="image"?{readTool:"read_media"}:{})}}; }
+    function publish() {
+      if(disposed)return;
+      const current=model();
+      const fields=[select("model","视频模型",state.models.map(item=>({value:item.id,label:item.label})))];
+      if(current) {
+        fields.push(select("operation","生成方式",allowedOps().map(value=>({value,label:names[value]}))),textarea("prompt",state.mode==="edit"?"编辑指令":"视频描述",state.operation==="extend"?"向后延长 @video1，描述接下来发生的情节…":state.operation==="edit"?"修改 @video1 的背景为…":"场景、主体动作、镜头运动、声音…"));
+        if(["first","first-last"].includes(state.operation))fields.push(mediaField("firstFrame","首帧图片","image","image"));
+        if(state.operation==="first-last")fields.push(mediaField("lastFrame","尾帧图片","image","image"));
+        if(refOps.includes(state.operation))fields.push(mediaField("imageRefs",`参考图片 · 最多 ${current.imageLimit} 张`,"image"),mediaField("videoRefs",`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`,"video"),mediaField("audioRefs",`参考音频 · 最多 ${current.audioLimit} 个`,"audio"));
+        fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",allowedRatios().map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
+        if(current.id==="seedance-2.5")fields.push(select("generateAudio","同步生成声音",[{value:"true",label:"开启"},{value:"false",label:"关闭"}],true));
+        if(current.id==="seedance-2.5")fields.push(select("watermark","AI 生成水印",[{value:"true",label:"保留"},{value:"false",label:"不显示"}],true));
+      }
+      const notice=!current?"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。":current.id==="minimax-h3"?"H3 开源加速工作流：文生、首帧、首尾帧。使用普通工作流密钥；0.5MP / 1MP 为像素总量，画幅对齐 32 像素，时长按 24fps 帧网格取整。包含声音，不提供声音或水印开关。云端排队和生成可能需要数分钟，按 RunningHub 用量计费。":state.operation==="edit"?"Seedance 编辑：原视频 4–30 秒，画幅与时长跟随输入。指令需明确增加、删除或修改的内容。":"生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。";
+      void request("ui/update-model-context",{content:[{type:"text",text:`视频控制台：${state.mode}；模型 ${current?.label||"未绑定"}；任务属于当前会话。`}],structuredContent:{[INSPECTOR]:{schemaVersion:1,title:"视频参数",description:notice,advancedLabel:"高级参数",updateTool:"set_parameters",submitTool:"generate_or_edit",submitLabel:state.busy?"提交中…":state.mode==="edit"?"生成编辑结果":"生成视频",submitDisabled:state.busy||!current||!state.host.sessionId,openRequestId:state.openRequest,fields,status:{message:state.message||notice,tone:state.error?"error":"info"}}}}).catch(()=>{});
+    }
+    function render() {
+      $("#generateMode").setAttribute("aria-pressed",String(state.mode==="generate")); $("#editMode").setAttribute("aria-pressed",String(state.mode==="edit"));
+      $("#generateMode").disabled=$("#editMode").disabled=state.busy;
+      $("#editMode").disabled=state.busy||!model()?.operations.some(op=>editOps.includes(op));
+      $("#editMode").title=$("#editMode").disabled&&!state.busy?"当前 H3 工作流只支持生成；编辑原视频请切换到 Seedance。":"";
+    }
+    async function refresh(reset=false) {
+      const response=await call("status"); state.models=response.models||[]; state.ratios=response.ratios||[]; state.localVideoReady=response.localVideoReady===true; state.statusLoaded=true;
+      normalized(); render(); publish();
+      await applyLaunch();
+      if(reset)state.pageBefore=undefined;
+      const result=await call("jobs",state.pageBefore?{before:state.pageBefore}:{}); state.jobs=result.jobs||[]; renderJobs();
+      const latest=state.jobs.find(job=>job.status==="succeeded");
+      if(!state.host.launch&&!state.pageBefore&&latest&&state.autoPreviewPath!==latest.path) {state.autoPreviewPath=latest.path;void preview(latest.path).catch(error=>tell(error.message,true));}
+    }
+    function node(tag,text,className="") {const element=document.createElement(tag); element.textContent=text; element.className=className; return element;}
+    function button(text,action) {const element=node("button",text); element.addEventListener("click",()=>{void Promise.resolve().then(action).catch(error=>tell(error.message,true));});return element;}
+    function renderJobs() {
+      const container=$("#jobs");container.replaceChildren();
+      if(!state.jobs.length)container.append(node("p","还没有视频任务。生成后，任务状态和结果会保留在这里。","muted"));
+      for(const job of state.jobs) {
+        const card=node("article","",`job ${["failed","uncertain","save_failed"].includes(job.status)?"error":""}`);card.dataset.jobId=job.id;
+        const head=node("div","","job-head"); head.append(node("p",job.prompt),node("span",statuses[job.status]||job.status,"job-state"));card.append(head);
+        card.append(node("p",`${job.model} · ${names[job.operation]} · ${new Date(job.createdAt).toLocaleString()}`,"meta"),node("p",job.message,"job-message"));
+        if(job.upstreamId)card.append(node("p",`任务 ID：${job.upstreamId}`,"meta"));
+        const actions=node("div","","row");
+        if(job.path){actions.append(button("预览",()=>preview(job.path)),button("作为原视频",()=>useSource(job.path)));card.append(node("p",job.path,"meta"));
+          if(state.host.launch?.intent==="edit-video" && job.status==="succeeded") actions.append(button("使用此版本",async()=>{
+            await request("ui/update-model-context",{content:[],structuredContent:{videoEditResult:{path:job.path,sourcePath:state.host.launch.source.path,requestId:state.host.launch.requestId}}});
+            tell("已选择此版本，请点击上方“替换当前素材”应用，原视频会保留。");
+          }));
+        }
+        if(["uncertain","save_failed"].includes(job.status)) {
+          const input=document.createElement("input");input.placeholder="服务商控制台中的已有任务 ID";input.setAttribute("aria-label","已有任务 ID");
+          if(!job.upstreamId)actions.append(input);
+          actions.append(button("恢复查询 / 保存",async()=>{await call("recover",{id:job.id,...(!job.upstreamId?{upstreamId:input.value.trim()}:{})});tell("正在恢复已有任务，不会重新生成。");await refresh();}));
+        }
+        card.append(actions);container.append(card);
+      }
+      $("#older").hidden=state.jobs.length<50;
+    }
+    async function preview(path) {
+      const epoch=++previewEpoch;const chunks=[];let offset=0,mime="video/mp4";
+      tell("正在加载预览…");
+      while(!disposed&&epoch===previewEpoch) {
+        const part=await call("read",{path,offset});
+        if(!part.mime?.startsWith("video/"))throw new Error("请选择 MP4 或 MOV 视频。");
+        if(part.size>100*1024*1024)throw new Error("视频超过 100 MB，请从会话产出文件中打开查看。");
+        if(part.nextOffset<=offset&&offset<part.size)throw new Error("视频读取中断，请重新打开。");
+        chunks.push(Uint8Array.from(atob(part.data),c=>c.charCodeAt(0)));offset=part.nextOffset;mime=part.mime;
+        if(offset>=part.size)break;
+      }
+      if(disposed||epoch!==previewEpoch)return;
+      if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(new Blob(chunks,{type:mime}));
+      $("#player").src=previewUrl;$("#player").hidden=false;$("#empty").hidden=true;state.previewPath=path;
+      $("#previewPath").textContent=path;tell("视频已打开。生成结果也可以从当前会话的产出文件中查看。");
+    }
+    function useSource(path) {
+      const editable=state.models.find(item=>item.operations.some(op=>editOps.includes(op)));
+      if(!model()?.operations.some(op=>editOps.includes(op))) {
+        if(!editable){tell("当前 H3 工作流不支持编辑原视频，请先绑定并选择 Seedance。",true);return;}
+        state.model=editable.id;
+      }
+      mode("edit");state.videoRefs=path;publish();tell("已将视频设为编辑参考。请在右侧填写编辑指令，结果会另存为新文件。");
+    }
+    async function applyLaunch() {
+      const launch=state.host.launch;
+      const key=launch?.requestId||launch?.source?.path;
+      if(!state.statusLoaded||launch?.intent!=="edit-video"||!launch.source?.path||state.appliedLaunch===key)return;
+      state.appliedLaunch=key;
+      const editable=state.models.find(item=>item.operations?.some(operation=>editOps.includes(operation)));
+      if(editable)state.model=editable.id;
+      useSource(launch.source.path);
+      await preview(launch.source.path);
+    }
+    async function run() {
+      if(state.busy)return;
+      if(!state.prompt.trim())throw new Error("请先填写视频描述或编辑指令。");
+      if(!state.host.sessionId)throw new Error("请先打开一个会话，再生成视频。");
+      state.busy=true;render();tell("正在准备并提交任务…");
+      const args=Object.fromEntries(params.filter(key=>!["generateAudio","watermark"].includes(key)||state.model==="seedance-2.5").map(key=>[key,state[key]]));
+      const signature=JSON.stringify(args);
+      if(state.requestKey!==signature){state.requestKey=signature;state.submissionId=crypto.randomUUID();}
+      try {
+        const result=await call("submit",{...args,requestId:state.submissionId});
+        state.pageBefore=undefined;state.requestKey="";
+        tell(result.job.message,["failed","uncertain"].includes(result.job.status));await refresh();
+      } finally {state.busy=false;render();publish();}
+    }
+    async function importMedia({fieldId:target,filename,dataUrl}) {
+      if(state.busy)throw new Error("正在处理任务，请稍后再导入。");
+      const current=model();
+      const allowed=target==="firstFrame"?["first","first-last"].includes(state.operation):target==="lastFrame"?state.operation==="first-last":["imageRefs","videoRefs","audioRefs"].includes(target)&&refOps.includes(state.operation);
+      if(!current||!state.host.sessionId||!allowed)throw new Error("当前模式不支持此素材，请重新选择生成方式。");
+      const kind=target==="videoRefs"?"video":target==="audioRefs"?"audio":"image";
+      if(target.endsWith("Refs")&&state[target].split(/\n/).filter(Boolean).length>=current[`${kind}Limit`])throw new Error("已达到当前模型的参考素材数量上限，请先移除部分素材。");
+      if(typeof dataUrl!=="string"||dataUrl.length>28*1024*1024)throw new Error("本机导入最多 20 MB，请使用工作区路径或公开链接。");
+      const match=/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      if(!match||!match[1].startsWith(`${kind}/`))throw new Error("文件类型与所选素材类型不一致。");
+      const bytes=Uint8Array.from(atob(match[2]),char=>char.charCodeAt(0));
+      if(!bytes.length||bytes.length>20*1024*1024)throw new Error("本机导入最多 20 MB，请使用工作区路径或公开链接。");
+      if(kind==="video"&&state.model==="seedance-2.5"&&!state.localVideoReady)throw new Error("Ark 本地视频需要先在授权中心配置 OSS/Wasabi 存储；也可直接在参考视频栏填写公网链接或素材库 ID。");
+      state.busy=true;render();tell("正在导入素材…");
+      try {
+        if(kind!=="image") {
+          const url=URL.createObjectURL(new Blob([bytes],{type:match[1]})),media=document.createElement(kind);
+          try {
+            const duration=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error("无法读取素材时长，请检查编码或改用公开链接。")),10000);media.onloadedmetadata=()=>{clearTimeout(timer);resolve(media.duration);};media.onerror=()=>{clearTimeout(timer);reject(new Error("无法读取素材，请检查格式。"));};media.src=url;});
+            if(!Number.isFinite(duration)||duration<(state.operation==="edit"&&kind==="video"?4:2)||duration>model().referenceSeconds)throw new Error("素材时长不在当前模型允许范围内，请先裁剪。");
+          } finally {media.removeAttribute("src");media.load();URL.revokeObjectURL(url);}
+        }
+        const result=await call("import",{filename,dataUrl});
+        state[target]=target.endsWith("Refs")?[state[target],result.path].filter(Boolean).join("\n"):result.path;
+        normalized();
+        if(kind==="video")await preview(result.path);
+        render();tell(`已导入 ${filename}，素材将在提交时发送给服务商。`);
+      } finally {state.busy=false;render();publish();}
+    }
+    function openSettings(){state.openRequest=crypto.randomUUID();publish();}
+    $("#generateMode").onclick=()=>mode("generate");$("#editMode").onclick=()=>mode("edit");$("#settings").onclick=$("#start").onclick=openSettings;
+    $("#refresh").onclick=()=>void refresh(true).catch(error=>tell(error.message,true));
+    $("#older").onclick=()=>{state.pageBefore=state.jobs.at(-1)?.createdAt;void refresh().catch(error=>tell(error.message,true));};
+    $("#player").onerror=()=>tell("当前播放器不支持此视频编码，可从本会话产出文件下载后播放。",true);
+    const toolDefinitions=[{name:"set_parameters",description:"Update video parameters; inspect model capabilities before submitting.",inputSchema:{type:"object",properties:Object.fromEntries(params.map(key=>[key,{type:"string"}]))}},{name:"generate_or_edit",description:"Submit the reviewed video request once. Uses the current session.",inputSchema:{type:"object",properties:{}}},{name:"open_video",description:"Preview a workspace video.",inputSchema:{type:"object",properties:{path:{type:"string"}},required:["path"]}}];
+    toolDefinitions.push({name:"import_media",description:"Import a user-selected file into the matching video parameter.",inputSchema:{type:"object",properties:{fieldId:{type:"string",enum:["firstFrame","lastFrame","imageRefs","videoRefs","audioRefs"]},filename:{type:"string"},dataUrl:{type:"string"}},required:["fieldId","filename","dataUrl"]}},{name:"read_media",description:"Read a selected frame image for preview.",inputSchema:{type:"object",properties:{path:{type:"string"},offset:{type:"number"}},required:["path"]}});
+    addEventListener("message",event=>{
+      if(event.source!==parent||event.data?.jsonrpc!=="2.0")return;const message=event.data;
+      const respond=result=>post({jsonrpc:"2.0",id:message.id,result});
+      if(message.id!==undefined&&!message.method){const handler=pending.get(message.id);if(!handler)return;pending.delete(message.id);clearTimeout(handler.timer);message.error?handler.reject(new Error(message.error.message)):handler.resolve(message.result);return;}
+      if(message.method==="tools/list")return respond({tools:toolDefinitions});
+      if(message.method==="tools/call") {
+        if(message.params?.name==="read_media") {
+          const args=message.params.arguments||{};
+          if(!args.path||![state.firstFrame,state.lastFrame].includes(args.path))return respond({isError:true,content:[{type:"text",text:"只能预览当前选中的首尾帧。"}]});
+          void call("read",args).then(result=>respond({content:[],structuredContent:result})).catch(error=>respond({isError:true,content:[{type:"text",text:error.message}]}));return;
+        }
+        void Promise.resolve().then(async()=>{const args=message.params?.arguments||{};switch(message.params?.name){case"set_parameters":if(state.busy)throw new Error("正在处理任务，请稍后再修改参数。");update(args);break;case"import_media":await importMedia(args);break;case"generate_or_edit":await run();break;case"open_video":await preview(args.path);break;default:throw new Error("未知视频操作。");}return{content:[],structuredContent:{model:state.model,operation:state.operation}};}).then(respond).catch(error=>{tell(error.message,true);respond({isError:true,content:[{type:"text",text:error.message}]});});return;
+      }
+      if(message.method==="ui/notifications/host-context-changed") {const context=message.params||{};if(context.theme)document.documentElement.style.colorScheme=context.theme;const host=context[HOST]||context.hostContext?.[HOST];if(host)state.host=host;void applyLaunch().catch(error=>tell(error.message,true));publish();}
+      if(message.method==="ui/resource-teardown") {disposed=true;clearTimeout(pollTimer);if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error("控制台已关闭"));}pending.clear();respond({});}
+    });
+    async function poll(){try{if(!state.busy&&!document.hidden)await refresh();}catch(error){tell(error.message,true);}finally{if(!disposed)pollTimer=setTimeout(poll,10000);}}
+    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Console",version:"0.1.2"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
+      post({jsonrpc:"2.0",method:"ui/notifications/initialized",params:{}});state.host=host.hostContext?.[HOST]||{};document.documentElement.style.colorScheme=host.hostContext?.theme||"light dark";
+      await refresh();await applyLaunch();pollTimer=setTimeout(poll,10000);
+    }).catch(error=>tell(error.message,true));
+  </script>
+</body>
+</html>

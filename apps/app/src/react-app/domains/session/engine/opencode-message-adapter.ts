@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import type { UIMessage } from "ai";
+import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import type { FilePart, Part, ToolPart } from "@opencode-ai/sdk/v2/client";
 
 import type { iPolloWorkSessionSnapshot } from "../../../../app/lib/ipollowork-server";
@@ -63,9 +64,9 @@ function withAttachmentRecoveryHint(text: string) {
 }
 
 function withRateLimitRecoveryHint(text: string, status?: number | null) {
-  const rateLimited = status === 429
-    || /\b429\b|too many requests|rate[\s_-]*limit/i.test(text);
-  return rateLimited ? t("message.rate_limit_error") : text;
+  const failure = classifyProviderFailure({ status, message: text });
+  return failure?.code === "provider_rate_limited" ? t("message.rate_limit_error")
+    : failure?.message ?? serviceErrorMessage(text);
 }
 
 export function describeConversationSessionError(error: unknown, fallback = "Session failed") {
@@ -84,6 +85,9 @@ export function describeConversationSessionError(error: unknown, fallback = "Ses
   const code = firstStringValue(records, ["code", "errorCode"]);
   const retries = firstNumberValue(records, ["retries", "retryCount"]);
   const responseBody = firstStringValue(records, ["responseBody", "body", "response"]);
+
+  const failure = classifyProviderFailure({ status, code, message: `${message ?? ""} ${responseBody ?? ""}` });
+  if (failure) return failure.code === "provider_rate_limited" ? t("message.rate_limit_error") : failure.message;
 
   const genericAbortMessage = name === "MessageAbortedError" && /^abort(?:ed)?$/i.test(message ?? "");
   const lines = [genericAbortMessage ? defaultErrorMessage(name, fallback) : message ?? defaultErrorMessage(name, fallback)];

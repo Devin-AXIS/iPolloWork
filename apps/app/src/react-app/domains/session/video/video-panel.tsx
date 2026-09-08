@@ -30,6 +30,7 @@ import {
 import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
+import { VideoImageWorkbench } from "./video-image-workbench";
 
 export {
   hyperframesStudioPort,
@@ -814,7 +815,11 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
   }, [expanded, onExpandedChange]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
+    <div className="relative flex h-full min-h-0 flex-col bg-background" data-testid="video-panel" data-expanded={expanded ? "true" : "false"}>
+      {!isRemoteWorkspace && status === "ready" && workspaceId && isIPolloWorkServerClient(client) ? (
+        <VideoImageWorkbench client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
+          studioUrl={studioUrl} studioFrameRef={studioFrameRef} />
+      ) : null}
       {isRemoteWorkspace ? (
         <div className="grid flex-1 place-items-center p-8 text-center text-sm text-muted-foreground">{t("video.local_only")}</div>
       ) : (

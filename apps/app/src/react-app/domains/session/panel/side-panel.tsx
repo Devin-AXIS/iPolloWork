@@ -863,6 +863,8 @@ export function SidePanel({
             <DesignPanel
               sessionId={activeTab.sessionId}
               client={client}
+              mediaClient={client}
+              workspaceRoot={workspaceRoot}
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
               initialPath={activeTab.path}

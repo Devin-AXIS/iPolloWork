@@ -107,7 +107,7 @@ export async function saveImageEditResult(config: ServerConfig, workspace: Works
       if (!canKeepCopy) throw new ApiError(409, "image_edit_finalized", "这版图片已经选择了保存方式，请重新打开图片继续编辑。");
     }
     const path = mode === "copy" ? receipt.resultPath : receipt.sourcePath;
-    if (receipt.completed) return { path, saveMode: mode };
+    if (receipt.completed) return { path, saveMode: mode, originalPath: receipt.sourcePath };
     const result = await workspaceImage(workspace, receipt.resultPath).catch(error => {
       if (error.code === "ENOENT" && receipt.mode === "overwrite" && receipt.replacementHash) return null;
       throw error;
@@ -117,7 +117,7 @@ export async function saveImageEditResult(config: ServerConfig, workspace: Works
       if (!result) throw new ApiError(410, "image_edit_expired", "Edited copy is unavailable");
       await recordSessionArtifact(config, workspace, owner, receipt.resultPath);
       await writeReceipt(receiptPath, { ...receipt, mode, completed: true });
-      return { path, saveMode: mode };
+      return { path, saveMode: mode, originalPath: receipt.sourcePath };
     }
     const source = await workspaceImage(workspace, receipt.sourcePath);
     if (source.hash !== receipt.sourceHash && source.hash !== receipt.replacementHash) {
@@ -152,7 +152,7 @@ export async function saveImageEditResult(config: ServerConfig, workspace: Works
       await unlink(latest.absolute);
     }
     await writeReceipt(receiptPath, { ...receipt, completed: true });
-    return { path, saveMode: mode };
+    return { path, saveMode: mode, originalPath: receipt.sourcePath };
   } finally {
     activeSaves.delete(key);
   }
