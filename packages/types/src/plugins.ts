@@ -14,6 +14,17 @@ const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "ope
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 export const PLUGIN_UI_INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
+export const imageSelectionSnapshotSchema = z.object({
+  selectionId: z.string().uuid(),
+  sourcePath: z.string().min(1).max(1000),
+  model: z.string().min(1),
+  size: z.string().optional(),
+  quality: z.string().optional(),
+  selectionBlend: z.enum(["natural", "strict"]).optional(),
+  guidance: z.string().max(1000),
+  previewDataUrl: z.string().startsWith("data:image/png;base64,").max(35 * 1024 * 1024),
+});
+export type ImageSelectionSnapshot = z.infer<typeof imageSelectionSnapshotSchema>;
 export const PLUGIN_INSTALL_PACKAGE_EXTENSION = ".ipollowork-plugin";
 export const PLUGIN_SOURCE_ARCHIVE_EXTENSION = ".zip";
 export const pluginPackageArchiveFormatSchema = z.enum(["install", "source"]);

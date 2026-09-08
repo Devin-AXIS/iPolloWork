@@ -4,6 +4,10 @@
  */
 
 export default {
+  "composer.image_selection_attached": "Image selection attached",
+  "composer.image_selection_preparing": "Capturing image selection…",
+  "composer.image_selection_remove": "Remove image selection",
+  "composer.image_selection_failed": "Could not attach the image selection. Please retry.",
   "plugin_platform.action.install": "Install",
   "plugin_platform.action.connect": "Connect",
   "plugin_platform.action.open": "Open",
@@ -2089,7 +2093,7 @@ export default {
   "question_modal.custom_answer_placeholder": "Type your answer here...",
   "question_modal.custom_answer_send": "Send",
   "question_modal.question_counter": "Question {current} of {total}",
-  "session.allow_for_session": "Always allow",
+  "session.allow_for_session": "Always allow (this conversation)",
   "session.allow_once": "Allow once",
   "session.cmd_agent_active": "Active",
   "session.cmd_agent_default_detail": "Use the engine's default agent",
@@ -2236,7 +2240,7 @@ export default {
   "session.permission_title_generic": "Approve {permission}?",
   "session.permission_title_read": "Read files?",
   "session.permission_title_task": "Start a subtask?",
-  "session.permission_decision_hint": "Allow once for this request, or always for this scope.",
+  "session.permission_decision_hint": "Allow once approves this request only. Always allow approves all permissions in this conversation, including MCP, shell, and files, without affecting other conversations.",
   "session.redo_aria_label": "Redo last reverted message",
   "session.redo_label": "Redo",
   "session.redo_title": "Redo last reverted message",

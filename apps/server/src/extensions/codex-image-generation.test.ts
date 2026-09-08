@@ -37,6 +37,16 @@ function fakeRpc(options: { capability?: boolean; result?: unknown; silent?: boo
 }
 
 describe("ChatGPT image generation", () => {
+  test("delivers both the original and the exact visible selection guide to the native image turn", async () => {
+    const rpc = fakeRpc();
+    const mask = Buffer.from("separate-selection-guide");
+    await runCodexImageTurn(rpc, tmpdir(), { prompt: "Edit selected pixels", size: "auto", quality: "auto", image: { bytes: png, mimeType: "image/png" }, selectionGuide: mask });
+    expect(rpc.calls[2]).toMatchObject({ method: "turn/start", params: { input: [
+      { type: "text", text: expect.stringContaining("Edit selected pixels") },
+      { type: "image", url: `data:image/png;base64,${png.toString("base64")}` },
+      { type: "image", url: `data:image/png;base64,${mask.toString("base64")}` },
+    ] } });
+  });
   test("uses an isolated native image turn with no conversation context or general tools", async () => {
     const rpc = fakeRpc();
     expect(await runCodexImageTurn(rpc, tmpdir(), { prompt: "A red bird", size: "auto", quality: "auto", image: { bytes: png, mimeType: "image/png" } })).toEqual(png);

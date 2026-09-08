@@ -53,6 +53,7 @@ export type CodexImageInput = {
   size: string;
   quality: string;
   image?: { bytes: Buffer; mimeType: string };
+  selectionGuide?: Buffer;
 };
 
 type ImageRpc = Pick<StdioJsonRpcProcess, "notify" | "subscribe" | "respond"> & {
@@ -142,6 +143,7 @@ export async function runCodexImageTurn(
       input: [
         { type: "text", text: prompt, text_elements: [] },
         ...(input.image ? [{ type: "image", url: `data:${input.image.mimeType};base64,${input.image.bytes.toString("base64")}` }] : []),
+        ...(input.selectionGuide ? [{ type: "image", url: `data:image/png;base64,${input.selectionGuide.toString("base64")}` }] : []),
       ],
     }, 30_000);
     return await completed;

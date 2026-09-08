@@ -12,6 +12,21 @@ import {
 } from "../src/lib/artifacts";
 
 describe("getArtifactsFromMessages", () => {
+  it("includes persisted Studio outputs without inserting chat messages or duplicating transcript images", () => {
+    const messages: UIMessage[] = [{ id: "chat", role: "assistant", parts: [{ type: "text", text: "Generated artifacts/sun.png" }] }];
+    const before = JSON.stringify(messages);
+    const files = [
+      { path: "artifacts/sun.png", size: 10, updatedAt: 100 },
+      { path: "artifacts/sun-edited.png", size: 20, updatedAt: 200 },
+    ];
+    const outputs = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false, registeredFiles: files });
+    expect(outputs).toHaveLength(2);
+    expect(outputs[0]).toMatchObject({ path: "artifacts/sun-edited.png", type: "image", target: { exists: true, size: 20, updatedAt: 200 } });
+    expect(getArtifactsFromMessages([], [], { registeredFiles: files })).toHaveLength(2);
+    expect(getArtifactsFromMessages([], [], { includeTargetFallbacks: false })).toEqual([]);
+    expect(JSON.stringify(messages)).toBe(before);
+  });
+
   it("shows an image card from a completed Codex MCP result without prose or an open workbench", () => {
     const messages: UIMessage[] = [{
       id: "image-result",

@@ -15,7 +15,9 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { t } from "@/i18n";
@@ -76,15 +78,20 @@ function PermissionAllowMenu(props: PermissionAllowMenuProps) {
           </Button>
         )}
       />
-      <DropdownMenuContent align="end" className="min-w-44">
-        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
-          <Clock3 />
-          {t("session.allow_once")}
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
-          <Check />
-          {t("session.allow_for_session")}
-        </DropdownMenuItem>
+      <DropdownMenuContent align="end" className="w-72 max-w-[calc(100vw-2rem)]">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel className="max-w-72 whitespace-normal text-xs font-normal text-muted-foreground">
+            {t("session.permission_decision_hint")}
+          </DropdownMenuLabel>
+          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "once")}>
+            <Clock3 />
+            {t("session.allow_once")}
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => props.respondPermission?.(props.permissionId, "always")}>
+            <Check />
+            {t("session.allow_for_session")}
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
   );

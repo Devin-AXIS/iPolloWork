@@ -433,6 +433,7 @@ type PermissionMemoryStorage = {
 };
 
 const SESSION_PERMISSION_MEMORY_STORAGE_KEY = "ipollowork.session-permission-memory.v1";
+const ALL_SESSION_PERMISSIONS = "*";
 const MAX_PERSISTED_PERMISSION_SESSIONS = 250;
 
 function browserPermissionMemoryStorage(): PermissionMemoryStorage | null {
@@ -517,8 +518,9 @@ function permissionMemorySessionKey(
 /**
  * Preserve an explicit "always" decision for the lifetime of its task even
  * when an engine only supports one-shot approvals or its client reconnects.
- * Native engines still receive the original decision first; this layer is the
- * shared compatibility fallback for subsequent requests of the same kind.
+ * New decisions cover all permission kinds in this task only. Native engines
+ * receive one-shot replies so their own "always" rules cannot leak into other
+ * tasks. Previously saved per-kind grants keep their original, narrower scope.
  */
 export function withSessionPermissionMemory(
   adapter: ConversationEngineAdapter,
@@ -549,11 +551,11 @@ export function withSessionPermissionMemory(
       };
       const isRemembered = (permission: ConversationPermission) => {
         const scope = permissionMemoryScope(permission);
-        return Boolean(scope && scopesForSession(permission.sessionId)?.has(scope));
+        const scopes = scopesForSession(permission.sessionId);
+        return Boolean(scopes?.has(ALL_SESSION_PERMISSIONS) || (scope && scopes?.has(scope)));
       };
       const remember = (permission: ConversationPermission) => {
-        const scope = permissionMemoryScope(permission);
-        if (!scope) return () => {};
+        const scope = ALL_SESSION_PERMISSIONS;
         const key = sessionKey(permission.sessionId);
         const scopes = scopesForSession(permission.sessionId) ?? new Set<string>();
         const existed = scopes.has(scope);
@@ -615,7 +617,7 @@ export function withSessionPermissionMemory(
         async replyPermission(request) {
           const rollback = request.reply === "always" ? remember(request.permission) : null;
           try {
-            await connection.replyPermission(request);
+            await connection.replyPermission({ ...request, reply: request.reply === "always" ? "once" : request.reply });
           } catch (error) {
             rollback?.();
             throw error;

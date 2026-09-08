@@ -11,6 +11,10 @@ ipollowork-server --workspace /path/to/workspace --approval auto
 
 `ipollowork-server` ships as a compiled binary, so Bun is not required at runtime.
 
+Exact selected-region image editing requires the native `sharp` processor. Use the desktop app or the Node-based server (`node dist/cli.js`) with optional dependencies enabled for this feature. The standalone Bun executable currently cannot load this processor: it still starts normally, but selected-image editing fails explicitly with `image_processor_unavailable` before contacting a model. Desktop builds include and unpack the native dependencies.
+
+The implementation reuses the repository's already locked `sharp` 0.34.5 (Apache-2.0) for PNG/JPEG/WebP decoding and pixel composition instead of maintaining custom codecs. It adds platform-specific native binaries to the server/desktop installation, is loaded only for selected edits, and bounds input bytes and decoded pixels before processing.
+
 Or from source:
 
 ```bash

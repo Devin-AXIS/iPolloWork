@@ -7,6 +7,10 @@
  */
 
 export default {
+  "composer.image_selection_attached": "已附加图片选区",
+  "composer.image_selection_preparing": "正在冻结图片选区…",
+  "composer.image_selection_remove": "移除图片选区",
+  "composer.image_selection_failed": "图片选区附加失败，请重试。",
   "plugin_platform.action.install": "安装",
   "plugin_platform.action.connect": "授权连接",
   "plugin_platform.action.open": "打开",
@@ -1828,7 +1832,7 @@ export default {
   "question_modal.custom_answer_label": "或输入自定义回答",
   "question_modal.custom_answer_placeholder": "在此输入你的回答…",
   "question_modal.question_counter": "问题{current} / {total}",
-  "session.allow_for_session": "始终允许",
+  "session.allow_for_session": "始终允许（本会话）",
   "session.allow_once": "允许一次",
   "session.cmd_current_workspace": "当前工作区",
   "session.cmd_new_session_detail": "在当前工作区开始新任务",
@@ -1936,7 +1940,7 @@ export default {
   "session.permission_title_generic": "批准 {permission}？",
   "session.permission_title_read": "读取文件？",
   "session.permission_title_task": "启动子任务？",
-  "session.permission_decision_hint": "允许一次当前请求，或始终允许此范围。",
+  "session.permission_decision_hint": "“允许一次”仅批准当前请求；“始终允许”将允许本会话全部权限（含 MCP、Shell 和文件操作），不影响其他会话。",
   "session.redo_aria_label": "重做上一条撤销的消息",
   "session.redo_label": "重做",
   "session.redo_title": "重做上一条撤销的消息",

@@ -954,8 +954,6 @@ export function SessionRoute() {
     workspaceId: selectedWorkspaceId,
     sessionId: selectedSessionId,
     workspaceRoot: selectedWorkspaceRoot,
-    ipolloworkServerClient: selectedWorkspaceEndpoint?.client ?? client,
-    runtimeWorkspaceId: selectedWorkspaceEndpoint?.workspaceId ?? null,
   });
   useEffect(() => {
     if (!sharedProviderClient) {

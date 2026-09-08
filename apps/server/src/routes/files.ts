@@ -5,6 +5,7 @@ import { Readable } from "node:stream";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { FileSessionStore } from "../file-sessions.js";
+import { listSessionArtifacts } from "../session-artifacts.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
@@ -791,6 +792,11 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
 
   addRoute(routes, "GET", "/workspace/:id/artifacts", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
+    const sessionId = ctx.url.searchParams.get("sessionId");
+    if (sessionId !== null) {
+      const cursor = ctx.url.searchParams.get("cursor");
+      return jsonResponse(await listSessionArtifacts(config, workspace.id, sessionId, cursor === null ? null : Number(cursor)));
+    }
     if (!resolveOutboxEnabled()) {
       return jsonResponse({ items: [] });
     }

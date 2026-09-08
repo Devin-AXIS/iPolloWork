@@ -2,7 +2,7 @@ import type { UIMessage } from "ai";
 import * as React from "react";
 
 import { useOpenTargets, type OpenTargetOptions } from "@/lib/target-provider";
-import { getAssistantFileMentionPaths, getWrittenFilePaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
+import { createWorkspaceFileOpenTarget, getAssistantFileMentionPaths, getWrittenFilePaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
 
 export type ArtifactType = "website" | "markdown" | "sheet" | "slides" | "document" | "image" | "video" | "audio" | "pdf" | "html" | "text" | "unknown";
 
@@ -50,6 +50,7 @@ type ArtifactPathCandidate = {
 type GetArtifactsOptions = {
   includeTargetFallbacks?: boolean
   supplementalFiles?: readonly string[]
+  registeredFiles?: readonly import("@ipollowork/types/workspace").SessionArtifact[]
 }
 
 const WORKSPACES_PREFIX_PATTERN = /^workspaces\/[^/]+\//i;
@@ -593,6 +594,12 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
     }
   }
 
+  for (const file of options.registeredFiles ?? []) {
+    const target = createWorkspaceFileOpenTarget({ path: file.path, size: file.size, mtimeMs: file.updatedAt });
+    // A Studio result has no chat message. Keep it out of per-turn artifact lists.
+    addArtifact(artifacts, file.path, "session-output", messages.length, sequence++, openTargets, target);
+  }
+
   return [...artifacts.values()].sort((left, right) => {
     const updatedAtDelta = (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
     if (updatedAtDelta !== 0) return updatedAtDelta;
@@ -647,10 +654,11 @@ export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions
   const { openTargets } = useOpenTargets();
   const includeTargetFallbacks = options.includeTargetFallbacks ?? false;
   const supplementalFiles = options.supplementalFiles;
+  const registeredFiles = options.registeredFiles;
 
   return React.useMemo(
-    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles }),
-    [includeTargetFallbacks, messages, openTargets, supplementalFiles],
+    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles, registeredFiles }),
+    [includeTargetFallbacks, messages, openTargets, supplementalFiles, registeredFiles],
   );
 }
 
