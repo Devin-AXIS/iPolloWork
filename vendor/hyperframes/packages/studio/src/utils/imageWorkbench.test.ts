@@ -121,7 +121,7 @@ describe("video image workbench binding", () => {
     ).toContain('src="../assets/背景-edited.png"');
   });
   it.each([
-    '<video data-hf-id="one" src="assets/background.mp4" poster="assets/source.png"></video>',
+    '<video data-hf-id="one" poster="assets/source.png"></video>',
     '<video><img data-hf-id="one" src="assets/source.png"></video>',
     '<canvas data-hf-id="one" style="background-image:url(assets/source.png)"></canvas>',
     '<img data-hf-id="one" src="https://example.org/image.png">',
@@ -145,6 +145,30 @@ describe("video image workbench binding", () => {
     expect(() =>
       replaceBoundVideoImage(html.replace("source.png", "other.png"), binding, "assets/new.png"),
     ).toThrow("changed");
+  });
+  it.each([
+    '<video data-hf-id="one" src="assets/background.mp4" poster="assets/poster.png" data-start="3" data-duration="4" style="width:500px"></video>',
+    '<video data-hf-id="one" data-start="3" data-duration="4" style="width:500px"><source src="assets/background.mp4" type="video/mp4"></video>',
+  ])("opens authored videos as whole clips and preserves timing/layout: %s", html => {
+    const selected = selection(html);
+    const media = resolveEditableVideoImage(selected, "proof");
+    expect(media?.kind).toBe("video");
+    expect(media?.sourcePath).toBe("assets/background.mp4");
+    if (!media) throw new Error("Missing video");
+    const binding = captureVideoImageBinding(selected, media, html);
+    const result = replaceBoundVideoImage(html, binding, "assets/edited.mov");
+    const video = new DOMParser().parseFromString(result, "text/html").querySelector("video");
+    expect(video?.getAttribute("src")).toBe("assets/edited.mov");
+    expect(video?.getAttribute("data-start")).toBe("3");
+    expect(video?.getAttribute("data-duration")).toBe("4");
+    expect(video?.style.width).toBe("500px");
+    expect(() => replaceBoundVideoImage(html, binding, "assets/edited.png")).toThrow();
+    expect(() => replaceBoundVideoImage(html.replace("background.mp4", "other.mp4"), binding, "assets/edited.mp4")).toThrow();
+  });
+  it("rejects ambiguous video sources and media kind mismatches", () => {
+    expect(resolveEditableVideoImage(selection('<video data-hf-id="one"><source src="assets/a.mp4"><source src="assets/b.mp4"></video>'), "proof")).toBeNull();
+    expect(resolveEditableVideoImage(selection('<video data-hf-id="one" src="assets/a.png"></video>'), "proof")).toBeNull();
+    expect(resolveEditableVideoImage(selection('<img data-hf-id="one" src="assets/a.mp4">'), "proof")).toBeNull();
   });
 });
 

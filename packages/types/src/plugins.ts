@@ -671,6 +671,7 @@ export type PluginUiHostContextV1 = {
   /** Optional, non-secret context supplied when the host opens this surface. */
   launch?: {
     intent: string;
+    requestId?: string;
     source?: {
       kind: "workspace-file";
       path: string;

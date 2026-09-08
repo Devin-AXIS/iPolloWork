@@ -44,6 +44,7 @@ import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
 export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
+export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string };
 export type WorkspaceImageSelection = {
   key: string;
   sessionId: string;
@@ -68,6 +69,7 @@ type WorkspaceAppFrameProps = {
   onRequestClose?: () => void;
   onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   onImageSaved?: (save: WorkspaceImageSave) => void;
+  onVideoResult?: (result: WorkspaceVideoResult) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
   resourceOverride?: iPolloWorkPluginUiResource;
   /** Scopes an unpacked draft to the current conversation without adding it to installed plugins. */
@@ -322,6 +324,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   onImageSelectionChangeRef.current = props.onImageSelectionChange;
   const onImageSavedRef = useRef(props.onImageSaved);
   onImageSavedRef.current = props.onImageSaved;
+  const onVideoResultRef = useRef(props.onVideoResult);
+  onVideoResultRef.current = props.onVideoResult;
   const onRequestCloseRef = useRef(props.onRequestClose);
   onDisplayModeChangeRef.current = props.onDisplayModeChange;
   onSendMessageRef.current = props.onSendMessage;
@@ -465,6 +469,12 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;
+      if (!disposed && props.surface.pluginId === "video-console") {
+        const result = context.structuredContent?.videoEditResult;
+        if (isRecord(result) && typeof result.path === "string" && typeof result.sourcePath === "string" && typeof result.requestId === "string") {
+          onVideoResultRef.current?.({ path: result.path, sourcePath: result.sourcePath, requestId: result.requestId });
+        }
+      }
       if (props.surface.pluginId === "image-studio") {
         const data = context.structuredContent;
         const revision = data?.selectionRevision;

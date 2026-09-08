@@ -7,6 +7,23 @@
  */
 
 export default {
+  "media.workbench.unavailable": "媒体工作台不可用，请确认扩展已安装。",
+  "media.workbench.title": "媒体编辑",
+  "media.workbench.failed": "无法更新媒体，请重试。",
+  "media.workbench.refreshed": "已刷新使用该文件的画面。",
+  "media.workbench.replace": "替换当前素材",
+  "media.workbench.refresh": "刷新素材",
+  "media.workbench.image_hint": "覆盖会同步刷新原文件的引用；另存为保留两版，点击“替换当前素材”仅更新选中的元素。",
+  "media.workbench.video_hint": "编辑结果保留为新版本；在下方选择“使用此版本”，再点击“替换当前素材”。原视频会保留。",
+  "media.workbench.too_large": "请选择有效的图片（最多 25 MB）或视频（最多 100 MB）。",
+  "media.workbench.changed": "当前页面或选中元素已改变，请重新选择素材。",
+  "media.workbench.wrong_type": "请选择与当前素材相同类型的文件。",
+  "media.workbench.back_design": "返回 Design",
+  "media.workbench.edit_video": "在视频控制台编辑",
+  "media.workbench.edit_image": "在图片工作台编辑",
+  "media.workbench.video_fill": "视频填充",
+  "media.workbench.image_fill": "图片填充",
+  "media.workbench.loading": "正在打开媒体工作台…",
   "video.image.title": "视频图片编辑",
   "video.image.back": "返回视频",
   "video.image.replace_selected": "替换当前视频图片",

@@ -5,24 +5,26 @@ import {
 } from "../components/editor/propertyPanelFill";
 import { applyPatchByTarget, readTagSnippetByTarget, type PatchTarget } from "./sourcePatcher";
 import { resolveTimelineAssetSrc } from "./timelineAssetDrop";
-import { safeVideoImagePath } from "@ipollowork/types/video-image-workbench";
+import { mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
 
 export type EditableVideoImage = {
   sourcePath: string;
   previewUrl: string;
-  kind: "image" | "background";
+  kind: "image" | "background" | "video";
   background: string;
   themeBackground: boolean;
 };
 
 // Studio's upload API uses OS-native separators, unlike the host bridge contract.
 export function uploadedVideoImagePath(result: unknown): string | null {
-  const path = result && typeof result === "object" && "files" in result && Array.isArray(result.files)
-    ? result.files[0] : null;
-  return safeVideoImagePath(typeof path === "string" ? path.replaceAll("\\", "/") : path);
+  const path =
+    result && typeof result === "object" && "files" in result && Array.isArray(result.files)
+      ? result.files[0]
+      : null;
+  return safeVideoMediaPath(typeof path === "string" ? path.replaceAll("\\", "/") : path);
 }
 
-// Only authored raster assets: a video poster/frame, canvas, SVG, remote URL,
+// Only authored media: a video poster/frame, canvas, SVG, remote URL,
 // responsive picture or multi-image background cannot be edited unambiguously.
 export function resolveEditableVideoImage(
   selection: DomEditSelection,
@@ -30,21 +32,41 @@ export function resolveEditableVideoImage(
 ): EditableVideoImage | null {
   const { element } = selection;
   if ((!selection.hfId && !selection.id) || selection.isInsideLockedComposition) return null;
-  if (element.closest("video,canvas,svg,picture") || element.hasAttribute("srcset")) return null;
-  const kind = element.tagName.toLowerCase() === "img" ? "image" : "background";
+  if (
+    element.closest("canvas,svg,picture") ||
+    element.parentElement?.closest("video") ||
+    element.hasAttribute("srcset")
+  )
+    return null;
+  const kind =
+    element.tagName.toLowerCase() === "video"
+      ? "video"
+      : element.tagName.toLowerCase() === "img"
+        ? "image"
+        : "background";
   const background =
     kind === "background" ? resolveEditableBackgroundImage(element, selection.computedStyles) : "";
   const urls = Array.from(background.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/gi));
   const source =
-    kind === "image" ? element.getAttribute("src") : urls.length === 1 ? urls[0][1] : null;
+    kind === "video"
+      ? element.getAttribute("src") ||
+        (element.querySelectorAll(":scope > source").length === 1
+          ? element.querySelector(":scope > source")?.getAttribute("src")
+          : null)
+      : kind === "image"
+        ? element.getAttribute("src")
+        : urls.length === 1
+          ? urls[0][1]
+          : null;
   if (!source || /^(data|blob):/i.test(source)) return null;
   try {
     const base = new URL(element.baseURI);
     const url = new URL(source, base);
     const prefix = `/api/projects/${encodeURIComponent(projectId)}/preview/`;
     if (url.origin !== base.origin || !url.pathname.startsWith(prefix)) return null;
-    const sourcePath = safeVideoImagePath(decodeURIComponent(url.pathname.slice(prefix.length)));
-    if (!sourcePath) return null;
+    const sourcePath = safeVideoMediaPath(decodeURIComponent(url.pathname.slice(prefix.length)));
+    if (!sourcePath || mediaKindForPath(sourcePath) !== (kind === "video" ? "video" : "image"))
+      return null;
     return {
       sourcePath,
       previewUrl: url.href,
@@ -64,6 +86,7 @@ export type VideoImageBinding = EditableVideoImage & {
   target: PatchTarget;
   sourceFile: string;
   originalTag: string;
+  originalVideoSources?: string;
 };
 
 export function captureVideoImageBinding(
@@ -73,14 +96,35 @@ export function captureVideoImageBinding(
 ): VideoImageBinding {
   const target = selection.hfId ? { hfId: selection.hfId } : { id: selection.id };
   const originalTag = readTagSnippetByTarget(html, target);
-  if (!originalTag) throw new Error("The selected image no longer exists. Select it again.");
-  return { ...image, target, sourceFile: selection.sourceFile, originalTag };
+  if (!originalTag) throw new Error("The selected media no longer exists. Select it again.");
+  return {
+    ...image,
+    target,
+    sourceFile: selection.sourceFile,
+    originalTag,
+    originalVideoSources: image.kind === "video" ? videoSources(html, originalTag) : undefined,
+  };
+}
+
+function videoSources(html: string, tag: string): string {
+  const start = html.indexOf(tag) + tag.length;
+  const end = html.slice(start).search(/<\/video\s*>/i);
+  return (
+    html
+      .slice(start, end < 0 ? start : start + end)
+      .match(/<source\b[^>]*>/gi)
+      ?.join("") ?? ""
+  );
 }
 
 export function assertVideoImageBinding(html: string, binding: VideoImageBinding) {
-  if (readTagSnippetByTarget(html, binding.target) !== binding.originalTag) {
+  if (
+    readTagSnippetByTarget(html, binding.target) !== binding.originalTag ||
+    (binding.originalVideoSources !== undefined &&
+      videoSources(html, binding.originalTag) !== binding.originalVideoSources)
+  ) {
     throw new Error(
-      "The selected image changed while editing. Select it again before replacing it.",
+      "The selected media changed while editing. Select it again before replacing it.",
     );
   }
 }
@@ -91,9 +135,13 @@ export function replaceBoundVideoImage(
   assetPath: string,
 ): string {
   assertVideoImageBinding(html, binding);
-  if (!safeVideoImagePath(assetPath)) throw new Error("Invalid edited image path.");
+  if (
+    !safeVideoMediaPath(assetPath) ||
+    mediaKindForPath(assetPath) !== (binding.kind === "video" ? "video" : "image")
+  )
+    throw new Error("Invalid edited media path.");
   const src = resolveTimelineAssetSrc(binding.sourceFile, assetPath);
-  if (binding.kind === "image") {
+  if (binding.kind === "image" || binding.kind === "video") {
     return applyPatchByTarget(html, binding.target, {
       type: "html-attribute",
       property: "src",

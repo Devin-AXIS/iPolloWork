@@ -2208,6 +2208,12 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }
     },
 
+    uploadWorkspaceMedia: (workspaceId: string, path: string, file: File) => {
+      const body = new FormData();
+      body.set("file", file);
+      return requestRawJson<iPolloWorkWorkspaceFileWriteResult>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/files/raw?path=${encodeURIComponent(path)}`, { token, hostToken, body, timeoutMs: timeouts.binary });
+    },
+
     writeWorkspaceBinaryFile: (
       workspaceId: string,
       payload: { path: string; data: ArrayBuffer; baseUpdatedAt?: number | null; force?: boolean },

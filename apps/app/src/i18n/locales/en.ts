@@ -4,6 +4,23 @@
  */
 
 export default {
+  "media.workbench.unavailable": "Media workbench is unavailable. Check that its extension is installed.",
+  "media.workbench.title": "Media editor",
+  "media.workbench.failed": "Could not update media. Please retry.",
+  "media.workbench.refreshed": "Views using this file have been refreshed.",
+  "media.workbench.replace": "Replace selected media",
+  "media.workbench.refresh": "Refresh media",
+  "media.workbench.image_hint": "Overwrite refreshes references to the original file. Save as keeps both versions; Replace selected media updates only this element.",
+  "media.workbench.video_hint": "Results are saved as new versions. Choose Use this version below, then Replace selected media. The original video is retained.",
+  "media.workbench.too_large": "Choose a valid image (up to 25 MB) or video (up to 100 MB).",
+  "media.workbench.changed": "The page or selected element changed. Select the media again.",
+  "media.workbench.wrong_type": "Choose a file of the same media type.",
+  "media.workbench.back_design": "Back to Design",
+  "media.workbench.edit_video": "Edit in Video Console",
+  "media.workbench.edit_image": "Edit in Image Studio",
+  "media.workbench.video_fill": "Video fill",
+  "media.workbench.image_fill": "Image fill",
+  "media.workbench.loading": "Opening media workbench…",
   "video.image.title": "Video image editing",
   "video.image.back": "Back to video",
   "video.image.replace_selected": "Replace selected video image",

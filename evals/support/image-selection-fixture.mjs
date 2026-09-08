@@ -2,7 +2,7 @@
 // actions run unchanged; only the external image provider is simulated.
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
-import { mkdtemp, mkdir, readFile, readdir, writeFile, symlink, lstat, readlink, unlink } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, writeFile, symlink, lstat, readlink, unlink, stat } from "node:fs/promises";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, resolve, relative } from "node:path";
@@ -16,7 +16,8 @@ import { resolveWithinRoot } from "../../apps/server/dist/paths.js";
 const require = createRequire(new URL("../../apps/server/package.json", import.meta.url));
 const sharp = require("sharp");
 const root = await mkdtemp(join(tmpdir(), "ipollowork-selection-fixture-"));
-const videoMode = process.argv.includes("--video");
+const mediaMode = process.argv.includes("--media");
+const videoMode = process.argv.includes("--video") || mediaMode;
 const fixturePort = videoMode ? 5274 : 5190;
 const authorization = { read: async () => ({ OPENAI_API_KEY: "fixture", ARK_API_KEY: "fixture" }), openAiBrowserSession: async () => ({ accessToken: "fixture", accountId: "fixture" }) };
 const config = { configPath: join(root, "server.json"), workspaces: [{ id: "selection-proof", path: root }] };
@@ -48,6 +49,16 @@ if (videoMode) {
   }
   await symlink(videoProjectPath, projectLink, "junction");
 }
+const designPage = mediaMode ? "design/selection-proof/entry.html" : null;
+if (designPage) {
+  await mkdir(join(root, "design/selection-proof/assets"), { recursive: true });
+  await writeFile(join(root, "design/selection-proof/assets/source.png"), source);
+  await writeFile(join(root, "design/selection-proof/assets/background.mp4"), await readFile(join(videoProjectPath, "assets/background.mp4")));
+  await writeFile(join(root, designPage), `<!doctype html><html><head><title>Media design proof</title><style>body{margin:24px;font:18px Arial;background:#fafafa} section{width:660px;height:300px;border-radius:16px;border:1px solid #ddd;display:grid;place-items:center} img,video{width:300px;height:187px;object-fit:cover} h1{font-size:24px}</style></head><body><h1>Design 媒体编辑验证</h1><section id="fill"><h2>保持布局和文字</h2></section><img id="hero" src="assets/source.png"><img id="other" src="assets/source.png"><video id="clip" src="assets/background.mp4" muted controls></video></body></html>`);
+}
+const videoManifest = mediaMode ? JSON.parse(await readFile(new URL("../../examples/plugin-packages/video-console/ipollowork.plugin.json", import.meta.url), "utf8")) : null;
+const videoHtml = mediaMode ? await readFile(new URL("../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url), "utf8") : null;
+const videoJobs = [];
 await recordSessionArtifact(config, config.workspaces[0], context.sessionId, "source.png");
 const generated = await sharp({ create: { width: 800, height: 500, channels: 4, background: "#319cce" } }).png().toBuffer();
 const requests = [];
@@ -80,25 +91,54 @@ const server = createServer(async (req, res) => {
     }
     if (req.url === "/setup") {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ html, manifest, root, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
+      res.end(JSON.stringify({ html, manifest, root, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
       return;
     }
     if (req.url === "/artifacts") { res.end(JSON.stringify(await listSessionArtifacts(config, context.workspaceId, context.sessionId))); return; }
+    if (mediaMode && req.url.startsWith("/file?")) {
+      const path = new URL(req.url, "http://localhost").searchParams.get("path");
+      const absolute = await resolveWithinRoot(root, path);
+      if (req.method === "POST") {
+        const chunks=[]; for await(const chunk of req) chunks.push(chunk);
+        const data=JSON.parse(Buffer.concat(chunks).toString());
+        await mkdir(join(absolute, ".."), {recursive:true});
+        await writeFile(absolute, data.content ?? Buffer.from(data.dataBase64, "base64"));
+      }
+      res.setHeader("Content-Type","application/json");
+      res.end(JSON.stringify({content:await readFile(absolute,"utf8"),updatedAt:(await stat(absolute)).mtimeMs})); return;
+    }
     if (req.url === "/witness") {
-      res.end(JSON.stringify({ requests, saved, actions, artifacts: (await listSessionArtifacts(config, context.workspaceId, context.sessionId)).items,
+      res.end(JSON.stringify({ requests, saved, actions, designHtml: designPage ? await readFile(join(root, designPage), "utf8") : null, videoJobs, artifacts: (await listSessionArtifacts(config, context.workspaceId, context.sessionId)).items,
         ...(videoMode ? { videoHtml: await readFile(join(videoProjectPath, "index.html"), "utf8"), videoAssets: await readdir(join(videoProjectPath, "assets")) } : {}),
         files: ["source.png", ...(await readdir(join(root, "artifacts")).catch(() => [])).map(name => "artifacts/" + name)] }));
       return;
     }
     if (videoMode && req.url.startsWith("/raw?")) {
       const path = new URL(req.url, "http://localhost").searchParams.get("path");
-      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Type", path.endsWith(".mp4") ? "video/mp4" : "image/png");
       res.end(await readFile(await resolveWithinRoot(root, path))); return;
     }
     if (req.url !== "/action" || req.method !== "POST") { res.statusCode = 404; res.end(); return; }
     let body = "";
     for await (const chunk of req) { body += chunk; if (body.length > 70 * 1024 * 1024) throw new Error("Too large"); }
-    const { action, args, direct } = JSON.parse(body);
+    const { action, args, direct, pluginId } = JSON.parse(body);
+    if (pluginId === "video-console" && mediaMode) {
+      let result;
+      if (action === "status") result={models:[{id:"seedance-2.5",label:"Seedance 2.5 · 模拟测试",operations:["text","edit"],resolutions:["720p"],defaultResolution:"720p",durations:["5"],imageLimit:9,videoLimit:3,audioLimit:3,referenceSeconds:30}],ratios:["16:9"],localVideoReady:true};
+      else if(action === "jobs") result={jobs:videoJobs};
+      else if(action === "submit") {
+        const path="video/selection-proof/renders/mock-edit.mp4";
+        await mkdir(join(root,"video/selection-proof/renders"),{recursive:true});
+        await writeFile(join(root,path),await readFile(join(videoProjectPath,"assets/background.mp4")));
+        const job={id:args.requestId,status:"succeeded",path,model:args.model,operation:args.operation,prompt:args.prompt,message:"模拟任务已完成",createdAt:Date.now()};
+        videoJobs.unshift(job);result={job};actions.push({action,sourcePath:args.videoRefs});
+      } else if(action === "read"){
+        const bytes=await readFile(await resolveWithinRoot(root,args.path)),offset=args.offset||0;
+        const part=bytes.subarray(offset,offset+1024*1024);
+        result={path:args.path,mime:"video/mp4",size:bytes.length,data:part.toString("base64"),nextOffset:offset+part.length};
+      } else throw new Error("Unexpected mock video action");
+      res.setHeader("Content-Type","application/json");res.end(JSON.stringify({ok:true,result}));return;
+    }
     actions.push({ action, sourcePath: args.sourcePath, selectionBlend: args.selectionBlend, mode: args.mode });
     const result = direct
       ? (await callOpenAiImageGenerationExtensionAction(config, authorization, action, args, context)).result

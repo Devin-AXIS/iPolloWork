@@ -14,6 +14,8 @@ import {
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import {
   MAX_VIDEO_IMAGE_BYTES,
+  MAX_VIDEO_MEDIA_BYTES,
+  mediaKindForPath,
   VIDEO_IMAGE_CANCEL,
   VIDEO_IMAGE_OPEN,
   VIDEO_IMAGE_RESULT,
@@ -87,6 +89,7 @@ export function useImageWorkbench(params: Params) {
           requestId: request.requestId,
           projectId: request.projectId,
           sourcePath: image.sourcePath,
+          kind: image.kind === "video" ? "video" : "image",
         },
         origin === "file://" ? "*" : origin,
       );
@@ -153,8 +156,13 @@ export function useImageWorkbench(params: Params) {
             assertVideoImageBinding(before, request.binding);
             assertCurrent();
             const form = new FormData();
-            if (action.image.bytes.byteLength > MAX_VIDEO_IMAGE_BYTES)
-              throw new Error("Image is too large.");
+            const kind = request.binding.kind === "video" ? "video" : "image";
+            if (
+              mediaKindForPath(action.image.name) !== kind ||
+              action.image.bytes.byteLength >
+                (kind === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES)
+            )
+              throw new Error("Unsupported media type or file too large.");
             form.append(
               "file",
               new File([action.image.bytes], `${action.actionId}-${action.image.name}`),
