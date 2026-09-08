@@ -2326,6 +2326,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
             sessionScroll.markScrollGesture(event.currentTarget);
           }}
           onScroll={sessionScroll.handleScroll}
+          data-testid="session-message-scroll"
           // Extra top padding while the find bar is open so it never covers
           // the first message (short transcripts cannot scroll it clear).
           className={`absolute inset-0 overflow-x-hidden overflow-y-auto overscroll-y-contain px-3 pb-4 sm:px-5 ${findOwned ? "pt-16" : "pt-4"}`}
@@ -2377,6 +2378,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                     onApplyChanges={props.onApplyEnvironmentChanges}
                   >
                     <MessageListProvider
+                      client={props.client}
                       workspaceId={props.workspaceId}
                       sessionId={props.sessionId}
                       sessionTitle={props.sessionTitle ?? t("session.default_title")}

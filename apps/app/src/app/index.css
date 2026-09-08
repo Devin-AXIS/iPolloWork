@@ -296,6 +296,20 @@ body {
   -moz-osx-font-smoothing: auto;
 }
 
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(p, li) {
+  line-height: 24px;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(strong, b) {
+  font-weight: 600;
+}
+
 html:lang(zh) .settings-description {
   font-weight: 500;
 }

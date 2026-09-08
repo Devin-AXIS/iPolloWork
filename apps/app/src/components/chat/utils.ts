@@ -1,6 +1,11 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
+import {
+  type ArtifactItem,
+  getArtifactStudioTarget,
+  getArtifactTypeLabel,
+} from "@/lib/artifacts"
 
 interface MessageGroup {
   messages: UIMessageWithIndex[]
@@ -87,6 +92,73 @@ export function getMessagesText(messages: UIMessage[]): string {
 
 export function buildAssistantResponseMarkdown(text: string): string {
   return `${text.trim()}\n`
+}
+
+const ARTIFACT_TITLE_FIELD_PATTERN = /(?:视频主题|设计主题|网页主题|演示主题|PPT主题|主题|标题)\s*[：:]\s*(.+?)(?=\s+(?:面向谁|受众|目标|想传达|核心内容|总?时长|场景(?:数)?|页数)\s*[：:]|$)/i
+
+export function artifactCardTitle(requestTitle: string, fallbackTitle: string) {
+  const structuredTitle = ARTIFACT_TITLE_FIELD_PATTERN.exec(requestTitle)?.[1]
+    ?.replace(/[“”"'`]/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/AI\s*Agent/gi, "AI Agent")
+    .replace(/([A-Za-z0-9])([\u3400-\u9fff])/g, "$1 $2")
+    .replace(/([\u3400-\u9fff])([A-Za-z0-9])/g, "$1 $2")
+    .trim()
+  return structuredTitle || fallbackTitle.replace(/\.html?$/i, "")
+}
+
+export function artifactCardDescription(artifact: ArtifactItem, sourceText: string) {
+  const studioTarget = getArtifactStudioTarget(artifact)
+  const type = studioTarget?.surface === "video" ? "video" : artifact.type
+  const typeLabel = type === "video"
+    ? t("session.outputs.kind_video")
+    : type === "slides"
+      ? t("session.outputs.kind_slides")
+      : type === "image"
+        ? t("session.outputs.kind_image")
+        : type === "html" || type === "website"
+          ? t("session.outputs.kind_design")
+          : getArtifactTypeLabel(type)
+  const duration = /(?:总?时长\s*[：:]?\s*)?(\d{1,4})\s*(?:秒|seconds?|secs?\b|s\b)/i.exec(sourceText)?.[1]
+  const scenes = /(\d{1,3})\s*(?:个\s*)?场景|(?:scene count|scenes?)\s*[：:]?\s*(\d{1,3})/i.exec(sourceText)
+  const sceneCount = scenes?.[1] ?? scenes?.[2]
+
+  return [
+    typeLabel,
+    duration ? t("session.outputs.duration_seconds", { count: Number(duration) }) : null,
+    sceneCount ? t("session.outputs.scene_count", { count: Number(sceneCount) }) : null,
+  ].filter(Boolean).join(" · ")
+}
+
+function normalizedArtifactPath(path: string) {
+  const normalized = path.trim().replaceAll("\\", "/").replace(/^\.\//, "")
+  return /(?:^|\/)((?:design|video)\/[^\s]+)$/i.exec(normalized)?.[1] ?? normalized
+}
+
+/** Keep delivery paths in the artifact card instead of repeating path-only lines in the reply. */
+export function stripArtifactPathLines(text: string, artifactPaths: readonly string[]) {
+  const paths = artifactPaths.map(normalizedArtifactPath).filter(Boolean)
+  if (paths.length === 0) return text
+
+  return text
+    .split(/\r?\n/)
+    .filter((line) => {
+      const normalizedLine = line.replaceAll("\\", "/").replace(/[`*_]/g, "").trim()
+      const labelledPath = /^(?:生成文件|更新(?:文件)?|音频(?:位于|文件)?|文件(?:路径)?|输出(?:文件)?|保存(?:到|至)?|路径|generated file|updated file|audio(?: files?)?|file|output|saved to)\s*[:：-]/i.test(normalizedLine)
+      if (labelledPath) return false
+      if (/^(?:\.\/)?(?:design|video)\/[^\s]+\.[a-z][a-z0-9]{0,9}[。.;；]?$/i.test(normalizedLine)) return false
+
+      const mentionedPath = paths.find((path) => normalizedLine.includes(path))
+      if (!mentionedPath) return true
+
+      const withoutPunctuation = normalizedLine.replace(/[。.;；]+$/, "").trim()
+      const standalonePath = withoutPunctuation === mentionedPath
+        || withoutPunctuation === `./${mentionedPath}`
+      return !standalonePath
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd()
 }
 
 export function assistantResponseMarkdownFilename(title: string, timestamp = new Date()): string {
