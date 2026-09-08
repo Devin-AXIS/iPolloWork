@@ -26,7 +26,7 @@ async function openConsole(ctx) {
   if (!await ctx.eval(`Boolean(${studio})`)) {
     await ctx.eval(`document.querySelector('button[aria-label="打开右侧面板"]')?.click()`);
     if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="添加侧面板入口"]'))`)) {
-      await ctx.trustedClick('button[aria-label="添加侧面板入口"]');
+      await ctx.eval(`document.querySelector('button[aria-label="添加侧面板入口"]').click()`);
     }
     await ctx.clickText("视频控制台", { selector: '[role="menuitem"],button' });
   }
@@ -34,6 +34,7 @@ async function openConsole(ctx) {
   if (!await ctx.eval(`Boolean(document.querySelector('textarea[name="prompt"]'))`)) {
     await ctx.eval(`${element("#settings")}.click()`);
   }
+  await ctx.waitFor(`document.querySelector('[data-testid="workspace-app-inspector"]')?.innerText.includes('视频参数')`,{timeoutMs:30000});
 }
 
 async function api(ctx, suffix) {
@@ -103,13 +104,14 @@ export default {
           }
           ctx.output("Video job (reuse this ID after an interrupted proof; do not submit twice)", jobId);
           await ctx.navigateHash(`/workspace/${workspaceId}/session/${ctx.env.IPOLLOWORK_EVAL_OTHER_SESSION_ID}`);
+          await ctx.waitFor(`Boolean(document.querySelector('[data-session-surface-id="${ctx.env.IPOLLOWORK_EVAL_OTHER_SESSION_ID}"]'))`);
           await ctx.navigateHash(route);await openConsole(ctx);
         },assert:async()=>{
           await ctx.waitFor(`Boolean(${element(`[data-job-id="${jobId}"]`)})`);
           const status = await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.innerText`);
           ctx.assert(!/生成失败|待确认|保存失败/.test(status), `The task must be accepted by the provider: ${status}`);
           await ctx.eval(`${element(`[data-job-id="${jobId}"]`)}.scrollIntoView({block:'center'})`);
-        },screenshot:{name:"video-task-restored",requireText:["视频参数"]},
+        },screenshot:{name:"video-task-restored",requireText:["视频控制台"]},
       });
       await ctx.prove("The resulting video plays and persists as this session's artifact without a chat message", {
         voiceover:vo[3],action:async()=>{
@@ -128,7 +130,7 @@ export default {
           const page=await api(ctx,`/workspace/${workspaceId}/artifacts?sessionId=${sessionId}`);
           ctx.assert(page.items.some(item=>item.path===outputPath),"The artifact remains after reload");
           await ctx.eval(`${element("#player")}.scrollIntoView({block:'center'})`);
-        },screenshot:{name:"video-output-retained",requireText:["视频参数"]},
+        },screenshot:{name:"video-output-retained",requireText:["视频控制台"]},
       });
     },
   }],
