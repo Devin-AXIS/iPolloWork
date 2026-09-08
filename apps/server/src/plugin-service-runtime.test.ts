@@ -395,7 +395,7 @@ describe("plugin service runtime", () => {
       workspaceId: WORKSPACE_ID,
       pluginId: "image-studio",
       action: "generate-image",
-      args: { prompt: "A calm product image", model: "openai/gpt-image-2", style: "minimal", camera: "50mm natural perspective", quality: "high" },
+      args: { prompt: "A calm product image", model: "openai/gpt-image-2", style: "minimal", camera: "50mm natural perspective", lighting: "golden hour", quality: "high", size: "2048x1152" },
       context: {},
       callHostAction: async (reference, args) => {
         calls.push({ reference, args });
@@ -405,12 +405,27 @@ describe("plugin service runtime", () => {
     expect(calls).toEqual([{
       reference: "action:openai-image-generation/image_generate",
       args: expect.objectContaining({
-        prompt: "A calm product image\n\nStyle: minimal. Camera: 50mm natural perspective.",
+        prompt: "A calm product image\n\nStyle: minimal. Camera: 50mm natural perspective. Lighting: golden hour.",
         model: "openai/gpt-image-2",
         quality: "high",
+        size: "2048x1152",
       }),
     }]);
     expect(generated).toMatchObject({ result: { path: importedPath, provider: "openai", model: "openai/gpt-image-2" } });
+
+    calls.length = 0;
+    const selectionId = "ea6d95e3-352d-469f-bd48-2d0eaf0cb290";
+    const captureArgs = { sourcePath: importedPath, sourceDataUrl: "data:image/png;base64,c291cmNl", maskDataUrl: "data:image/png;base64,bWFzaw==" };
+    const captured = await callPluginServiceAction({
+      config: serverConfig, env, workspaceId: WORKSPACE_ID, pluginId: "image-studio",
+      action: "capture-selection", args: captureArgs, context: { sessionId: "selection-session" },
+      callHostAction: async (reference, args) => {
+        calls.push({ reference, args });
+        return { result: { selectionId, sourcePath: importedPath } };
+      },
+    });
+    expect(calls).toEqual([{ reference: "action:openai-image-generation/selection_capture", args: captureArgs }]);
+    expect(captured).toMatchObject({ result: { selectionId, sourcePath: importedPath } });
 
     calls.length = 0;
     await callPluginServiceAction({
@@ -422,7 +437,10 @@ describe("plugin service runtime", () => {
       args: {
         sourcePath: importedPath,
         prompt: "Make the selected object blue",
+        selectionId,
+        selectionBlend: "natural",
         model: "volcengine/seedream-5",
+        size: "3K",
         maskDataUrl: `data:image/png;base64,${Buffer.from("mask").toString("base64")}`,
         selectionBounds: { left: 0.2, top: 0.1, right: 0.7, bottom: 0.8 },
       },
@@ -437,10 +455,24 @@ describe("plugin service runtime", () => {
       args: expect.objectContaining({
         sourcePath: importedPath,
         prompt: "Make the selected object blue",
+        selectionId,
+        selectionBlend: "natural",
         model: "volcengine/seedream-5",
         selectionBounds: { left: 0.2, top: 0.1, right: 0.7, bottom: 0.8 },
+        size: "3K",
       }),
     }]);
+    calls.length = 0;
+    const saved = await callPluginServiceAction({
+      config: serverConfig, env, workspaceId: WORKSPACE_ID, pluginId: "image-studio",
+      action: "save-edit", args: { editId: selectionId, mode: "overwrite" }, context: { sessionId: "selection-session" },
+      callHostAction: async (reference, args) => {
+        calls.push({ reference, args });
+        return { result: { path: importedPath, saveMode: "overwrite" } };
+      },
+    });
+    expect(calls).toEqual([{ reference: "action:openai-image-generation/image_edit_save", args: { editId: selectionId, mode: "overwrite" } }]);
+    expect(saved).toMatchObject({ result: { path: importedPath, saveMode: "overwrite", revision: expect.stringMatching(/^[a-f0-9]{64}$/) } });
   });
 
   test("exposes only declared environment values and removes plugin-owned data", async () => {

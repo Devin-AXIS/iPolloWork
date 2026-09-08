@@ -58,6 +58,7 @@ export async function recordSessionArtifact(
   workspace: WorkspaceInfo,
   sessionId: string,
   path: string,
+  replacedPath?: string,
 ): Promise<void> {
   const owner = sessionArtifactOwner(sessionId);
   const absolutePath = await resolveWithinRoot(workspace.path, path);
@@ -65,7 +66,10 @@ export async function recordSessionArtifact(
   if (!info.isFile() || !info.size) throw new ApiError(400, "invalid_artifact", "Artifact must be a non-empty file");
   const normalizedPath = relative(await realpath(workspace.path), absolutePath).replaceAll("\\", "/");
   const db = await openArtifactDb(config);
+  let transaction = false;
   try {
+    db.exec("BEGIN IMMEDIATE");
+    transaction = true;
     const statement = db.prepare(`INSERT INTO session_artifacts(workspace_id, session_id, path, size, updated_at)
       VALUES (?, ?, ?, ?, ?)
       ON CONFLICT(workspace_id, session_id, path) DO UPDATE SET size = excluded.size, updated_at = excluded.updated_at`);
@@ -74,6 +78,15 @@ export async function recordSessionArtifact(
     } finally {
       if ("finalize" in statement) statement.finalize();
     }
+    if (replacedPath && replacedPath !== normalizedPath) {
+      const remove = db.prepare("DELETE FROM session_artifacts WHERE workspace_id = ? AND session_id = ? AND path = ?");
+      try { remove.run(workspace.id, owner, replacedPath); }
+      finally { if ("finalize" in remove) remove.finalize(); }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    if (transaction) db.exec("ROLLBACK");
+    throw error;
   } finally {
     db.close();
   }

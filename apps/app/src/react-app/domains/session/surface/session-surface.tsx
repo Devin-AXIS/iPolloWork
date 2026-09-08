@@ -55,6 +55,8 @@ import {
 } from "@/app/lib/app-inspector";
 import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
 import { ReactSessionComposer } from "./composer/composer";
+import { withImageSelection } from "./image-selection-draft";
+import type { WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
   failedDraftRetrySurface,
@@ -224,6 +226,7 @@ export type SessionSurfaceProps = {
   ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
+  imageSelection?: WorkspaceImageSelection | null;
   modelVariantLabel: string;
   modelVariant: string | null;
   modelBehaviorOptions?: { value: string | null; label: string }[];
@@ -687,6 +690,25 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.client, props.workspaceId]);
   const [newConversationMode, setNewConversationMode] = useState<NewConversationMode>("work");
   const [starterCapability, setStarterCapability] = useState<StarterCapability | null>(null);
+  const [dismissedImageSelection, setDismissedImageSelection] = useState<string | null>(null);
+  const [preparingImageSelection, setPreparingImageSelection] = useState(false);
+  const preparingImageSelectionRef = useRef(false);
+  const imageSelection = props.imageSelection?.sessionId === props.sessionId && props.imageSelection.key !== dismissedImageSelection
+    ? props.imageSelection : null;
+  const prepareSelectedImage = useCallback(async (draft: ComposerDraft) => {
+    if (preparingImageSelectionRef.current) return null;
+    if (!imageSelection) return draft;
+    preparingImageSelectionRef.current = true;
+    setPreparingImageSelection(true);
+    try { return await withImageSelection(draft, imageSelection, props.supportsNativeAttachments); }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : t("composer.image_selection_failed"));
+      return null;
+    } finally {
+      preparingImageSelectionRef.current = false;
+      setPreparingImageSelection(false);
+    }
+  }, [imageSelection, props.supportsNativeAttachments]);
   const [animationCatalog, setAnimationCatalog] = useState<HyperframesCatalogItem[]>([]);
   const [animationCatalogLoading, setAnimationCatalogLoading] = useState(false);
   const [animationCatalogError, setAnimationCatalogError] = useState<string | null>(null);
@@ -1459,8 +1481,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (isEmptyConversation && newConversationMode === "video") {
       props.onActivateVideoStudio?.(props.sessionId);
     }
-    const nextDraft = buildDraft(text, attachments);
-    const sentAttachments = attachments;
+    const nextDraft = await prepareSelectedImage(buildDraft(text, attachments));
+    if (!nextDraft) return;
+    const sentAttachments = nextDraft.attachments;
     const submittedComposerState = { draft, attachments, mentions, pasteParts };
     clearComposer();
     try {
@@ -1470,19 +1493,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
         restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState);
       }
     }
-  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedVoiceReference, sendDraft]);
+  }, [attachments, buildDraft, clearComposer, draft, isEmptyConversation, mentions, newConversationMode, pasteParts, prepareSelectedImage, props.onActivateVideoStudio, props.sessionId, restoreComposerSessionIfEmpty, selectedAnimations.length, selectedVoiceReference, sendDraft]);
 
   // Queue: hold the draft locally and clear the composer. The drain effect
   // sends it once the session reports idle.
-  const handleQueue = useCallback(() => {
+  const handleQueue = useCallback(async () => {
     const text = draft.trim();
     if (!text && attachments.length === 0 && selectedAnimations.length === 0 && !selectedVoiceReference) return;
-    appendQueuedDraft(props.sessionId, buildDraft(text, attachments));
+    const nextDraft = await prepareSelectedImage(buildDraft(text, attachments));
+    if (!nextDraft) return;
+    appendQueuedDraft(props.sessionId, nextDraft);
     clearComposer();
     setStarterCapability(null);
     setSelectedAnimations([]);
     setSelectedVoiceReference(null);
-  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
+  }, [appendQueuedDraft, attachments, buildDraft, clearComposer, draft, prepareSelectedImage, props.sessionId, selectedAnimations.length, selectedVoiceReference]);
 
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
@@ -1508,7 +1533,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const composerHasPromptContext = selectedAnimations.length > 0
     || Boolean(selectedVoiceReference);
   const composerTopAccessoryVisible = Boolean(
-    starterCapability
+    imageSelection || preparingImageSelection || starterCapability
       || selectedAnimations.length
       || selectedVoiceReference
       || props.activeQuestion
@@ -2155,8 +2180,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onStop={handleAbort}
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
-          disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
-          inputDisabled={false}
+          disabled={preparingImageSelection || model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
+          inputDisabled={preparingImageSelection}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
           modelPickerOpen={props.modelPickerOpen}
@@ -2215,8 +2240,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
           topAccessory={
             composerTopAccessoryVisible ? (
               <div>
-                {starterCapability || selectedAnimations.length || selectedVoiceReference ? (
+                {imageSelection || preparingImageSelection || starterCapability || selectedAnimations.length || selectedVoiceReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
+                    {imageSelection || preparingImageSelection ? (
+                      <div className="inline-flex h-7 max-w-full items-center gap-1.5 rounded-full border bg-muted px-2 text-xs" data-image-selection-chip>
+                        <span className="max-w-60 truncate" title={imageSelection?.sourcePath}>
+                          {t(preparingImageSelection ? "composer.image_selection_preparing" : "composer.image_selection_attached")}
+                        </span>
+                        <button type="button" disabled={preparingImageSelection} className="rounded-full p-0.5 hover:bg-accent"
+                          aria-label={t("composer.image_selection_remove")} onClick={() => setDismissedImageSelection(imageSelection?.key ?? null)}>
+                          <X className="size-3" />
+                        </button>
+                      </div>
+                    ) : null}
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
                     {selectedAnimations.map((animation) => <AnimationChip key={animation.item.name} animation={animation} onClear={() => setSelectedAnimations((current) => current.filter((item) => item.item.name !== animation.item.name))} />)}
                     {selectedVoiceReference ? <VoiceChip reference={selectedVoiceReference} onClear={() => setSelectedVoiceReference(null)} /> : null}

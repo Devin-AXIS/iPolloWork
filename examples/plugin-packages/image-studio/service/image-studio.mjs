@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { basename, dirname, extname, resolve, sep } from "node:path";
 
 const MAX_IMAGE_BYTES = 25 * 1024 * 1024;
@@ -97,6 +98,7 @@ export default async function createImageStudioService(runtime) {
       name: basename(source.relativePath),
       mimeType,
       bytes: bytes.byteLength,
+      revision: createHash("sha256").update(bytes).digest("hex"),
       dataUrl: `data:${mimeType};base64,${bytes.toString("base64")}`,
     };
   }
@@ -106,6 +108,7 @@ export default async function createImageStudioService(runtime) {
     const path = text(Reflect.get(result, "path"));
     if (!path) throw new Error("Image provider did not return a workspace path");
     return {
+      ...result,
       ...await loadImage(path),
       provider: text(Reflect.get(result, "provider")),
       model: text(Reflect.get(result, "model")),
@@ -124,6 +127,14 @@ export default async function createImageStudioService(runtime) {
       },
 
       "load-image": async (input) => loadImage(requiredField(input, "sourcePath", 1_000)),
+      "capture-selection": async (input) => hostResult(await runtime.host.callAction(
+        "openai-image-generation/selection_capture",
+        {
+          sourcePath: requiredField(input, "sourcePath", 1_000),
+          sourceDataUrl: requiredField(input, "sourceDataUrl", MAX_IMAGE_BYTES * 2),
+          maskDataUrl: requiredField(input, "maskDataUrl", MAX_IMAGE_BYTES * 2),
+        },
+      )),
 
       "import-image": async (input) => {
         const dataUrl = requiredField(input, "dataUrl", MAX_IMAGE_BYTES * 2);
@@ -156,15 +167,23 @@ export default async function createImageStudioService(runtime) {
         "openai-image-generation/image_edit",
         {
           sourcePath: requiredField(input, "sourcePath", 1_000),
+          reviewResult: Reflect.get(input, "reviewResult"),
+          sourceRevision: field(input, "sourceRevision") || undefined,
           prompt: promptWithVariables(input),
           model: field(input, "model") || undefined,
           maskDataUrl: field(input, "maskDataUrl") || undefined,
+          selectionId: field(input, "selectionId") || undefined,
+          selectionBlend: field(input, "selectionBlend") || undefined,
           selectionBounds: selectionBounds(input),
           filename: field(input, "filename") || undefined,
           quality: field(input, "quality") || "auto",
           size: field(input, "size") || "auto",
         },
       ),
+      "save-edit": async (input) => callProvider("openai-image-generation/image_edit_save", {
+        editId: requiredField(input, "editId", 36),
+        mode: requiredField(input, "mode", 16),
+      }),
     },
   };
 }

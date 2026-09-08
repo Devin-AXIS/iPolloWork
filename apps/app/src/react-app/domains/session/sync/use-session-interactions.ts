@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import type { TodoItem } from "@/app/types";
 import { t } from "@/i18n";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
@@ -24,30 +23,11 @@ const emptyPermissions: ConversationPermission[] = [];
 const emptyQuestions: ConversationQuestion[] = [];
 const emptyTodos: TodoItem[] = [];
 
-function nonEmptyStringList(value: unknown): string[] {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((entry) => {
-    if (typeof entry !== "string") return [];
-    const pattern = entry.trim();
-    return pattern ? [pattern] : [];
-  });
-}
-
-export function persistentPermissionPatterns(permission: ConversationPermission): string[] {
-  const savedPatterns = nonEmptyStringList(permission.remember);
-  const patterns = savedPatterns.length > 0
-    ? savedPatterns
-    : nonEmptyStringList(permission.resources);
-  return [...new Set(patterns)];
-}
-
 export type UseSessionInteractionsInput = {
   connection: ConversationEngineConnection | null;
   workspaceId: string;
   sessionId: string | null;
   workspaceRoot: string;
-  ipolloworkServerClient?: iPolloWorkServerClient | null;
-  runtimeWorkspaceId?: string | null;
 };
 
 export function useSessionInteractions(input: UseSessionInteractionsInput) {
@@ -56,8 +36,6 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
     workspaceId,
     sessionId,
     workspaceRoot,
-    ipolloworkServerClient,
-    runtimeWorkspaceId,
   } = input;
 
   const [permissionReplyBusy, setPermissionReplyBusy] = useState(false);
@@ -149,28 +127,15 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
           (current = []) => current.filter((permission) => permission.id !== requestID),
         );
 
-        // The current task must not remain blocked if persisting the future
-        // directory rule fails. Reply first, then save the broader "always"
-        // scope as a best-effort cross-session authorization.
-        if (
-          reply === "always" &&
-          pendingPermission.kind === "external_directory" &&
-          ipolloworkServerClient &&
-          runtimeWorkspaceId
-        ) {
-          const requestedFolders = persistentPermissionPatterns(pendingPermission);
-          if (requestedFolders.length > 0) {
-            try {
-              const current = await ipolloworkServerClient.listAuthorizedFolders(runtimeWorkspaceId);
-              const nextFolders = [...new Set([...current.folders, ...requestedFolders])];
-              if (nextFolders.length !== current.folders.length) {
-                await ipolloworkServerClient.setAuthorizedFolders(runtimeWorkspaceId, nextFolders);
-              }
-            } catch (error) {
-              toast.error(t("app.error_request_failed"), {
-                description: describeRouteError(error),
-              });
-            }
+        // Apply the task-wide grant to requests already waiting alongside this
+        // one. Never persist a session choice as a workspace/global folder rule.
+        if (reply === "always") {
+          const snapshotStartedAt = Date.now();
+          try {
+            const remaining = await connection.listPermissions({ sessionId, directory: workspaceRoot || undefined });
+            seedPermissionState(workspaceId, sessionId, remaining, { snapshotStartedAt });
+          } catch {
+            // Preserve visible requests when the engine cannot refresh them.
           }
         }
       } catch (error) {
@@ -184,9 +149,7 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
     },
     [
       connection,
-      ipolloworkServerClient,
       pendingPermissions,
-      runtimeWorkspaceId,
       sessionId,
       workspaceId,
       workspaceRoot,

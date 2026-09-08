@@ -1,6 +1,5 @@
 /** @jsxImportSource react */
 import {
-  createContext,
   useCallback,
   use,
   useEffect,
@@ -18,6 +17,7 @@ import {
   type DesktopNotificationPreference,
 } from "./desktop-notification-preferences";
 import { LOCAL_PREFERENCES_KEY } from "./local-preferences-storage";
+import { LocalContext, type LocalContextValue } from "./local-context";
 
 export type LocalUIState = {
   view: View;
@@ -59,16 +59,6 @@ export type LocalPreferences = {
 export type EnginePreferences = {
   mode: string | null;
 };
-
-type LocalContextValue = {
-  ui: LocalUIState;
-  setUi: (updater: (previous: LocalUIState) => LocalUIState) => void;
-  prefs: LocalPreferences;
-  setPrefs: (updater: (previous: LocalPreferences) => LocalPreferences) => void;
-  ready: boolean;
-};
-
-const LocalContext = createContext<LocalContextValue | undefined>(undefined);
 
 const UI_STORAGE_KEY = "ipollowork.ui";
 export const DEFAULT_SHOW_THINKING = true;

@@ -100,6 +100,9 @@
     .range-value { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
     .busy-layer { position: absolute; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(244,244,242,.65); backdrop-filter: blur(9px); }
     .busy-layer.visible { display: grid; }
+    .save-review { position: absolute; z-index: 6; bottom: 16px; left: 16px; right: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow); }
+    .save-review p { flex: 1 1 180px; min-width: 0; margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+    .save-review button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
     .busy-card { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow); }
     .spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--text); border-radius: 50%; animation: spin .8s linear infinite; }
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
@@ -209,6 +212,12 @@
           <button id="zoomValue" class="zoom-pill" type="button" title="适应画布">100%</button>
           <button id="zoomIn" class="tool compact" type="button" title="放大" aria-label="放大">＋</button>
         </div>
+        <section id="saveReview" class="save-review" aria-label="保存编辑结果" hidden>
+          <p id="saveReviewText" role="status"></p>
+          <button id="cancelOverwrite" class="button ghost" type="button" hidden data-i18n="cancel">取消</button>
+          <button id="overwriteEdit" class="button" type="button" data-i18n="overwriteOriginal">覆盖原图</button>
+          <button id="saveCopy" class="button primary" type="button" data-i18n="saveAs">另存为</button>
+        </section>
         <div id="busyLayer" class="busy-layer"><div class="busy-card"><span class="spinner"></span><span id="busyText">正在处理图片…</span></div></div>
       </main>
     </div>
@@ -223,15 +232,18 @@
     const MAX_SELECTION_HISTORY_BYTES = 64 * 1024 * 1024;
     const state = {
       mode: "generate", tool: "smart", operation: "add", zoom: 1, drawing: false, moved: false,
-      start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "",
+      start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
       imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
       activeSubtract: false, temporaryTool: "", busy: false, providerReady: false,
-      locale: "zh", hostContext: null, prompt: "", model: "openai/gpt-image-2", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto",
+      locale: "zh", hostContext: null, prompt: "", model: "openai/gpt-image-2", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto", selectionBlend: "natural",
       statusMessage: "", statusTone: "info", inspectorOpenRequest: "", inspectorRequestSequence: 0,
     };
     const pending = new Map();
     let requestId = 0;
     let contextTimer = 0;
+    let selectionRevision = 0;
+    let boundsRevision = -1;
+    let cachedBounds = null;
 
     const $ = (selector) => document.querySelector(selector);
     const imageCanvas = $("#imageCanvas");
@@ -247,10 +259,14 @@
         importWorkspace: "从本地导入", instruction: "编辑指令", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "描述想生成或修改的内容…",
         selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
         model: "图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
-        imageParameters: "图片参数", generateDescription: "设置生成内容和画面参数", editDescription: "调整当前图片，原图不会被覆盖",
+        imageParameters: "图片参数", generateDescription: "设置生成内容和画面参数", editDescription: "先预览编辑结果，再选择覆盖或另存为",
+        overwriteOriginal: "覆盖原图", confirmOverwrite: "确认覆盖", saveAs: "另存为", cancel: "取消",
+        reviewSaved: "编辑结果已保存为副本：{name}。另存为保留两版；覆盖原图只保留原文件名。",
+        overwriteWarning: "确认用当前结果替换 {name}？旧版本将被替换，本次编辑副本将移除。",
+        overwriting: "正在覆盖原图…", savingCopy: "正在另存为…", overwritten: "已覆盖 {name}，主要产出保留原文件。", copySaved: "已另存为 {name}，原图和编辑版均保留。",
         providerNotice: "请先在设置 → 授权中心连接所选图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
         modelConnected: "{name} 已连接", modelNotConnected: "{name} 未连接", notConnected: "未连接", notAvailable: "暂不可用",
-        midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", approximateSelection: "{name} 将按选区的大致范围编辑，边界精度取决于模型。",
+        midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", exactSelection: "自然融合在选区内侧渐变衔接，选区外保持不变。请给目标和光晕留出选区余量；细线、精确替换可选严格边界。风格、镜头和光线仅作提示词引导。",
         loading: "正在打开图片…", importing: "正在导入图片…", processing: "正在处理图片…",
         saved: "已另存为 {name}", selectionCleared: "选区已清除", smartSelected: "已生成智能选区，可继续加选或减选。", promptRequired: "请先描述想生成或修改的内容。", imageRequired: "请先打开一张图片，或切换到生成模式。",
         tooLarge: "图片尺寸过大。精确选区目前支持最长边不超过 4096px。", failed: "操作失败", connected: "工作台已连接", dimensions: "{width} × {height}",
@@ -262,10 +278,14 @@
         importWorkspace: "Import from device", instruction: "Instruction", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Describe what to generate or change…",
         selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
         model: "Image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
-        imageParameters: "Image settings", generateDescription: "Set the content and visual controls", editDescription: "Adjust this image while preserving the original",
+        imageParameters: "Image settings", generateDescription: "Set the content and visual controls", editDescription: "Preview the edit, then overwrite or save as a copy",
+        overwriteOriginal: "Overwrite original", confirmOverwrite: "Confirm overwrite", saveAs: "Save as", cancel: "Cancel",
+        reviewSaved: "Edited copy saved: {name}. Save as keeps both; overwrite keeps the original filename.",
+        overwriteWarning: "Replace {name} with this result? The previous version will be replaced and this edit's copy removed.",
+        overwriting: "Overwriting original…", savingCopy: "Saving copy…", overwritten: "Overwrote {name}; the original file remains in outputs.", copySaved: "Saved as {name}; both versions are kept.",
         providerNotice: "Connect the selected image model in Settings → Authorization Center first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
         modelConnected: "{name} connected", modelNotConnected: "{name} not connected", notConnected: "Not connected", notAvailable: "Unavailable",
-        midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", approximateSelection: "{name} will edit the approximate selected region; boundary precision depends on the model.",
+        midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", exactSelection: "Natural blending feathers inward and preserves unselected pixels. Leave margin for the subject and glow; use Strict for fine lines or exact replacement. Style, camera and lighting are prompt guidance only.",
         loading: "Opening image…", importing: "Importing image…", processing: "Processing image…",
         saved: "Saved as {name}", selectionCleared: "Selection cleared", smartSelected: "Smart selection created. Add or subtract to refine it.", promptRequired: "Describe what you want to generate or change first.", imageRequired: "Open an image first, or switch to Generate.",
         tooLarge: "This image is too large. Precise selection currently supports a maximum side of 4096px.", failed: "Action failed", connected: "Studio connected", dimensions: "{width} × {height}",
@@ -280,7 +300,7 @@
       document.documentElement.lang = state.locale === "en" ? "en" : "zh-CN";
       document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = tr(node.dataset.i18n); });
       document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = tr(node.dataset.i18nPlaceholder); });
-      renderMode(); renderProvider(); renderSelectionState();
+      renderMode(); renderProvider(); renderSelectionState(); renderSaveReview();
     }
     function post(message) { parent.postMessage(message, "*"); }
     function respond(id, result) { post({ jsonrpc: "2.0", id, result }); }
@@ -303,10 +323,64 @@
       state.busy = busy;
       $("#busyText").textContent = message;
       $("#busyLayer").classList.toggle("visible", busy);
+      renderSaveReview();
       publishContext();
+    }
+    function renderSaveReview() {
+      $("#saveReview").hidden = !state.editResult;
+      $("#saveReview").setAttribute("aria-label", state.locale === "en" ? "Save edited image" : "保存编辑结果");
+      $("#saveReviewText").textContent = state.editResult
+        ? tr(state.confirmOverwrite ? "overwriteWarning" : "reviewSaved", { name: state.confirmOverwrite ? state.editResult.originalPath : state.sourceName })
+        : "";
+      $("#overwriteEdit").textContent = tr(state.confirmOverwrite ? "confirmOverwrite" : "overwriteOriginal");
+      $("#cancelOverwrite").hidden = !state.confirmOverwrite;
+      for (const id of ["overwriteEdit", "saveCopy", "cancelOverwrite"]) $("#" + id).disabled = state.busy;
+    }
+    async function saveEditedResult(mode) {
+      if (state.busy || !state.editResult) return;
+      if (mode === "overwrite" && !state.confirmOverwrite) {
+        state.confirmOverwrite = true; renderSaveReview(); return;
+      }
+      const editId = state.editResult.editId;
+      setBusy(true, tr(mode === "overwrite" ? "overwriting" : "savingCopy"));
+      try {
+        const result = await callService("save-edit", { editId, mode });
+        await renderImage(result);
+        setStatus(tr(mode === "overwrite" ? "overwritten" : "copySaved", { name: result.name }));
+        $("#parameters").focus();
+      } catch (error) {
+        state.confirmOverwrite = false;
+        setStatus(error instanceof Error ? error.message : tr("failed"), true);
+      } finally { setBusy(false); }
     }
     function selectedModel() {
       return state.models.find((model) => model.id === state.model) || null;
+    }
+    function normalizeModelParameters() {
+      for (const key of ["size", "quality"]) {
+        const parameter = selectedModel()?.parameters?.[key];
+        if (!parameter?.values.includes(state[key])) state[key] = parameter?.default || "auto";
+      }
+    }
+    function updateParameters(args) {
+      const model = typeof args.model === "string" ? state.models.find((entry) => entry.id === args.model) : selectedModel();
+      if (!model) throw new Error(tr("providerNotice"));
+      const changedModel = model.id !== state.model;
+      const next = {};
+      for (const key of ["size", "quality"]) {
+        const parameter = model.parameters?.[key];
+        const value = args[key] ?? state[key];
+        if (parameter?.values.includes(value)) next[key] = value;
+        else if (changedModel || args[key] === undefined || value === "auto") next[key] = parameter?.default || "auto";
+        else throw new Error(`${model.label}: ${key}=${String(value)} is not supported.`);
+      }
+      const selectionBlend = args.selectionBlend ?? state.selectionBlend ?? "natural";
+      if (!["natural", "strict"].includes(selectionBlend)) throw new Error("selectionBlend must be natural or strict");
+      Object.assign(state, next, { model: model.id, selectionBlend });
+      if (changedModel) state.statusMessage = "";
+      for (const key of ["prompt", "style", "camera", "lighting"]) if (typeof args[key] === "string") state[key] = args[key];
+      if (args.mode === "generate" || args.mode === "edit") setMode(args.mode);
+      renderProvider();
     }
     function applyProviderModels(provider) {
       state.models = Array.isArray(provider.models)
@@ -315,7 +389,7 @@
       if (!state.models.some((model) => model.id === state.model)) {
         state.model = state.models.find((model) => model.id === provider.defaultModel)?.id || state.models[0]?.id || "";
       }
-      syncProviderState();
+      normalizeModelParameters(); syncProviderState();
     }
     function modelAuthorizationNotice(model) {
       if (!model) return tr("providerNotice");
@@ -329,6 +403,7 @@
       if (!model) return tr("providerNotice");
       if (!model.available) return modelAuthorizationNotice(model);
       if (!model.configured) return modelAuthorizationNotice(model);
+      if (!model.parameters) return state.locale === "en" ? "Update the image service and reopen Image Studio to load model parameters." : "请更新图片服务并重新打开工作台，以加载模型参数。";
       const capability = state.mode === "edit" ? "edit" : "generate";
       if (!model.capabilities?.[capability]) return `${model.label} does not support ${capability}.`;
       if (state.mode === "edit" && selectionBounds() && !model.capabilities?.mask && !model.capabilities?.region) {
@@ -376,29 +451,23 @@
       applyZoom(); renderMode(); renderSelectionState();
     }
     function selectionBounds() {
+      if (boundsRevision === selectionRevision) return cachedBounds;
       if (!selectionCanvas.width || !selectionCanvas.height) return null;
       const pixels = selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height).data;
       let left = selectionCanvas.width, top = selectionCanvas.height, right = -1, bottom = -1;
-      for (let y = 0; y < selectionCanvas.height; y += 4) {
-        for (let x = 0; x < selectionCanvas.width; x += 4) {
-          if (pixels[(y * selectionCanvas.width + x) * 4 + 3] > 8) {
+      for (let y = 0; y < selectionCanvas.height; y++) {
+        for (let x = 0; x < selectionCanvas.width; x++) {
+          if (pixels[(y * selectionCanvas.width + x) * 4 + 3] > 0) {
             left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
           }
         }
       }
-      return right >= 0 ? { left, top, right, bottom } : null;
-    }
-    function normalizedSelectionBounds() {
-      const bounds = selectionBounds();
-      if (!bounds) return undefined;
-      return {
-        left: bounds.left / selectionCanvas.width,
-        top: bounds.top / selectionCanvas.height,
-        right: (bounds.right + 1) / selectionCanvas.width,
-        bottom: (bounds.bottom + 1) / selectionCanvas.height,
-      };
+      boundsRevision = selectionRevision;
+      cachedBounds = right >= 0 ? { left, top, right, bottom } : null;
+      return cachedBounds;
     }
     function renderSelectionState() {
+      selectionRevision++;
       $("#undo").disabled = state.selectionHistory.length === 0;
       $("#redo").disabled = state.redoHistory.length === 0;
       $("#clearSelection").disabled = !selectionBounds();
@@ -584,12 +653,38 @@
         reader.readAsDataURL(file);
       });
     }
+    async function captureSelection(expectedRevision) {
+      if (state.busy || state.drawing || state.mode !== "edit" || !selectionBounds()) throw new Error("请完成图片选区后重试。");
+      if (expectedRevision !== undefined && expectedRevision !== selectionRevision) throw new Error("图片选区已变化，请检查当前选区后重新发送。");
+      // Capture everything before the first await; later gestures cannot change this request.
+      const args = actionArguments();
+      const sourcePath = state.sourcePath;
+      const sourceDataUrl = imageCanvas.toDataURL("image/png");
+      const maskDataUrl = exportMask();
+      const preview = document.createElement("canvas");
+      preview.width = imageCanvas.width; preview.height = imageCanvas.height;
+      const context = preview.getContext("2d");
+      context.drawImage(imageCanvas, 0, 0);
+      context.globalAlpha = 0.55;
+      context.drawImage(selectionCanvas, 0, 0);
+      const previewDataUrl = preview.toDataURL("image/png");
+      const frozen = await callService("capture-selection", { sourcePath, sourceDataUrl, maskDataUrl });
+      return {
+        ...frozen, model: args.model, size: args.size, quality: args.quality, selectionBlend: args.selectionBlend, previewDataUrl,
+        guidance: [["Style", args.style], ["Camera", args.camera], ["Lighting", args.lighting]]
+          .filter((entry) => entry[1] && entry[1] !== "auto").map(([key, value]) => key + ": " + value).join(". "),
+      };
+    }
     async function renderImage(payload) {
       const image = new Image();
       image.src = payload.dataUrl;
       await image.decode();
       if (image.naturalWidth > MAX_CANVAS_DIMENSION || image.naturalHeight > MAX_CANVAS_DIMENSION) throw new Error(tr("tooLarge"));
       state.sourcePath = String(payload.path || ""); state.sourceName = String(payload.name || state.sourcePath.split("/").pop() || "image");
+      state.sourceRevision = String(payload.revision || "");
+      state.editResult = payload.editId ? { editId: payload.editId, originalPath: payload.originalPath } : null;
+      state.confirmOverwrite = false;
+      renderSaveReview();
       state.sourceDataUrl = String(payload.dataUrl || ""); state.imageWidth = image.naturalWidth; state.imageHeight = image.naturalHeight;
       imageCanvas.width = selectionCanvas.width = image.naturalWidth;
       imageCanvas.height = selectionCanvas.height = image.naturalHeight;
@@ -618,7 +713,9 @@
     function actionArguments() {
       return {
         prompt: state.prompt.trim(), model: state.model, style: state.style, camera: state.camera,
-        lighting: state.lighting, size: state.size, quality: state.quality,
+        lighting: state.lighting,
+        ...(state.mode === "edit" && selectionBounds() ? { selectionBlend: state.selectionBlend } : {}),
+        ...Object.fromEntries(["size", "quality"].filter((key) => selectedModel()?.parameters?.[key] && !(key === "size" && state.mode === "edit" && selectionBounds())).map((key) => [key, state[key]])),
       };
     }
     async function run() {
@@ -628,14 +725,20 @@
       if (state.mode === "edit" && !state.sourcePath) { setStatus(tr("imageRequired"), true); return { ok: false, message: tr("imageRequired") }; }
       const blocked = actionBlockedMessage();
       if (blocked) { setStatus(blocked, true); return { ok: false, message: blocked }; }
+      const isEdit = state.mode === "edit";
+      const sourcePath = state.sourcePath;
+      const frozen = isEdit && selectionBounds() ? captureSelection() : null;
+      const sourceRevision = state.sourceRevision;
       setBusy(true, tr("processing")); setStatus("");
       try {
-        const result = state.mode === "edit"
+        const selection = await frozen;
+        const result = isEdit
           ? await callService("edit-image", {
               ...args,
-              sourcePath: state.sourcePath,
-              maskDataUrl: exportMask() || undefined,
-              selectionBounds: normalizedSelectionBounds(),
+              sourcePath,
+              sourceRevision,
+              reviewResult: true,
+              selectionId: selection?.selectionId,
             })
           : await callService("generate-image", args);
         await renderImage(result); setMode("edit"); setStatus(tr("saved", { name: result.name || state.sourceName }));
@@ -652,38 +755,81 @@
       contextTimer = setTimeout(() => {
         const bounds = selectionBounds();
         const english = state.locale === "en";
+        const autoLabel = state.mode === "edit" ? (english ? "Match original" : "沿用原图") : (english ? "Auto" : "自动");
         const selectOptions = {
           model: state.models.map((model) => ({
             value: model.id,
             label: model.label,
           })),
           style: [
-            ["auto", english ? "Auto" : "自动"], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "编辑视觉"],
+            ["auto", autoLabel], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "杂志编辑视觉"],
             ["cinematic", english ? "Cinematic" : "电影感"], ["illustration", english ? "Illustration" : "插画"], ["minimal", english ? "Minimal" : "极简"],
+            ["Chinese ink wash painting", english ? "Chinese ink wash" : "国风水墨"], ["Chinese gongbi meticulous painting", english ? "Gongbi painting" : "工笔国画"],
+            ["watercolor painting", english ? "Watercolor" : "水彩"], ["classical oil painting", english ? "Oil painting" : "古典油画"],
+            ["anime illustration", english ? "Anime" : "日系动漫"], ["comic book with ink linework", english ? "Comic book" : "漫画线稿"],
+            ["high-end 3D render", english ? "3D render" : "精细 3D 渲染"], ["handmade clay miniature", english ? "Clay miniature" : "黏土微缩"],
+            ["pixel art", english ? "Pixel art" : "像素艺术"], ["fantasy concept art", english ? "Fantasy concept art" : "奇幻概念设计"],
+            ["retro analog film photography", english ? "Retro film" : "复古胶片"], ["cyberpunk science fiction", english ? "Cyberpunk" : "赛博朋克"],
           ],
           camera: [
-            ["auto", english ? "Auto" : "自动"], ["wide angle", english ? "Wide angle" : "广角"], ["50mm natural perspective", "50mm"],
+            ["auto", autoLabel], ["wide angle", english ? "Wide angle" : "广角"], ["50mm natural perspective", english ? "50mm · natural" : "50mm · 自然视角"],
             ["85mm portrait lens", "85mm"], ["macro close-up", english ? "Macro" : "微距"],
+            ["24mm environmental wide shot", english ? "24mm · environment" : "24mm · 环境广角"], ["35mm documentary perspective", english ? "35mm · documentary" : "35mm · 纪实视角"],
+            ["telephoto lens with compressed perspective", english ? "Telephoto compression" : "长焦压缩"], ["overhead top-down view", english ? "Top-down" : "垂直俯拍"],
+            ["low-angle heroic view", english ? "Low angle" : "低机位仰拍"], ["eye-level view", english ? "Eye level" : "平视"],
+            ["over-the-shoulder shot", english ? "Over the shoulder" : "过肩镜头"], ["aerial establishing shot", english ? "Aerial panorama" : "航拍全景"],
+            ["shallow depth of field with soft bokeh", english ? "Shallow focus / bokeh" : "浅景深虚化"],
           ],
           lighting: [
-            ["auto", english ? "Auto" : "自动"], ["soft daylight", english ? "Soft daylight" : "柔和日光"], ["studio softbox", english ? "Studio softbox" : "影棚柔光"],
+            ["auto", autoLabel], ["soft daylight", english ? "Soft daylight" : "柔和日光"], ["studio softbox", english ? "Studio softbox" : "影棚柔光"],
             ["golden hour", english ? "Golden hour" : "黄金时刻"], ["dramatic rim light", english ? "Rim light" : "轮廓光"],
+            ["diffused overcast lighting", english ? "Overcast diffuse" : "阴天漫射光"], ["soft window side lighting", english ? "Window side light" : "窗边侧光"],
+            ["backlit silhouette", english ? "Backlit silhouette" : "逆光剪影"], ["blue hour ambient light", english ? "Blue hour" : "蓝调时刻"],
+            ["cool moonlight", english ? "Moonlight" : "清冷月光"], ["warm candlelight", english ? "Candlelight" : "暖色烛光"],
+            ["neon practical lighting", english ? "Neon lighting" : "霓虹灯光"], ["volumetric light rays", english ? "Volumetric rays" : "体积光束"],
+            ["Rembrandt portrait lighting", english ? "Rembrandt light" : "伦勃朗光"], ["high-key bright lighting", english ? "High key" : "高调明亮"],
           ],
-          size: [["auto", english ? "Auto" : "自动"], ["1024x1024", "1:1"], ["1536x1024", "3:2"], ["1024x1536", "2:3"]],
-          quality: [["auto", english ? "Auto" : "自动"], ["medium", english ? "Standard" : "标准"], ["high", english ? "High" : "高"], ["low", english ? "Fast" : "快速"]],
         };
         const option = ([value, label]) => ({ value, label });
+        const modelParameters = selectedModel()?.parameters;
+        const promptSize = modelParameters?.size?.delivery === "prompt";
+        const parameterLabel = (key, value) => {
+          if (value === "auto") return english ? "Auto" : "自动";
+          if (key === "quality") return ({ low: english ? "Low · draft" : "低 · 草稿", medium: english ? "Medium" : "中", high: english ? "High" : "高" })[value] || value;
+          if (value === "2K" || value === "3K") return `${value} · ${english ? "Auto aspect ratio" : "自动画幅"}`;
+          const [width, height] = value.split("x").map(Number);
+          const gcd = (a, b) => b ? gcd(b, a % b) : a;
+          const divisor = gcd(width, height);
+          const ratio = `${width / divisor}:${height / divisor}`;
+          if (promptSize) return ratio;
+          const experimental = modelParameters?.size?.experimentalValues?.includes(value);
+          return `${value.replace("x", " × ")} · ${ratio}${experimental ? (english ? " · experimental" : " · 实验性") : ""}`;
+        };
+        const parameterFields = ["size", "quality"].flatMap((key) => {
+          if (key === "size" && state.mode === "edit" && bounds) return [];
+          const parameter = modelParameters?.[key];
+          return parameter ? [{
+            id: key, label: key === "size" ? (promptSize ? (english ? "Aspect ratio intent (prompt)" : "期望画幅（提示词）") : (english ? "Output size" : "输出尺寸")) : tr("quality"),
+            control: "select", value: state[key],
+            options: parameter.values.map((value) => ({ value, label: parameterLabel(key, value) })),
+          }] : [];
+        });
+        const parameterNotice = promptSize
+          ? (english ? "Style, camera, lighting and aspect ratio are prompt guidance. ChatGPT login does not expose exact size or quality controls; the output is model-determined." : "风格、镜头、光线和画幅会写入提示词。ChatGPT 登录通道不提供精确尺寸或质量控制，实际输出由模型决定。")
+          : (english ? "Style, camera and lighting are prompt guidance. Output settings are sent as native model parameters." : "风格、镜头、光线会写入提示词；输出参数直接传给模型接口。");
         const blocked = actionBlockedMessage();
-        const approximate = bounds && selectedModel()?.capabilities?.region && !selectedModel()?.capabilities?.mask
-          ? tr("approximateSelection", { name: selectedModel()?.label || "" })
+        const selectionNotice = state.mode === "edit" && bounds
+          ? (state.selectionBlend === "strict"
+            ? (english ? "Strict uses the exact mask without added feathering; hard edges can show a seam. Style, camera and lighting are prompt guidance only." : "严格边界按原始蒙版替换，不额外羽化；硬边选区可能出现接缝。风格、镜头和光线仅作提示词引导。")
+            : tr("exactSelection")) + (english ? " Original dimensions and unselected pixels are preserved. Attach the selection to edit from chat." : " 保持原图尺寸和选区外像素；左侧对话可附加此选区修改。")
           : "";
         const status = state.statusMessage
           ? { message: state.statusMessage, tone: state.statusTone }
           : blocked
             ? { message: blocked, tone: "info" }
-            : approximate
-              ? { message: approximate, tone: "info" }
-            : undefined;
+            : selectionNotice
+              ? { message: selectionNotice, tone: "info" }
+            : { message: parameterNotice, tone: "info" };
         const inspector = {
           schemaVersion: 1,
           title: tr("imageParameters"),
@@ -696,17 +842,17 @@
           fields: [
             { id: "model", label: tr("model"), control: "select", value: state.model, live: true, options: selectOptions.model },
             { id: "prompt", label: tr("instruction"), control: "textarea", value: state.prompt, placeholder: tr("promptPlaceholder") },
-            { id: "style", label: tr("style"), control: "select", value: state.style, options: selectOptions.style.map(option) },
-            { id: "camera", label: tr("camera"), control: "select", value: state.camera, options: selectOptions.camera.map(option) },
-            { id: "lighting", label: tr("lighting"), control: "select", value: state.lighting, options: selectOptions.lighting.map(option) },
-            { id: "size", label: tr("ratio"), control: "select", value: state.size, options: selectOptions.size.map(option) },
-            { id: "quality", label: tr("quality"), control: "select", value: state.quality, options: selectOptions.quality.map(option) },
+            ...(state.mode === "edit" && bounds ? [{ id: "selectionBlend", label: english ? "Edge blending" : "边缘衔接", control: "select", value: state.selectionBlend, live: true, options: [{ value: "natural", label: english ? "Natural · feather inward" : "自然融合 · 内侧渐变" }, { value: "strict", label: english ? "Strict · exact mask" : "严格边界 · 精确替换" }] }] : []),
+            { id: "style", label: tr("style"), control: "select", value: state.style, live: true, options: selectOptions.style.map(option) },
+            { id: "camera", label: tr("camera"), control: "select", value: state.camera, live: true, options: selectOptions.camera.map(option) },
+            { id: "lighting", label: tr("lighting"), control: "select", value: state.lighting, live: true, options: selectOptions.lighting.map(option) },
+            ...parameterFields,
           ],
           ...(status ? { status } : {}),
         };
         void request("ui/update-model-context", {
           content: [{ type: "text", text: `Image Studio mode: ${state.mode}. Source: ${state.sourcePath || "none"}. Prompt: ${state.prompt.trim() || "none"}. Selection: ${bounds ? "active" : "whole image"}.` }],
-          structuredContent: { mode: state.mode, sourcePath: state.sourcePath || null, prompt: state.prompt.trim(), selection: bounds, [INSPECTOR_CONTEXT_KEY]: inspector },
+          structuredContent: { mode: state.mode, sourcePath: state.sourcePath || null, prompt: state.prompt.trim(), selection: bounds, selectionRevision, selectionReady: Boolean(bounds && state.mode === "edit" && !state.busy && !state.drawing), [INSPECTOR_CONTEXT_KEY]: inspector },
         }).catch(() => undefined);
       }, 160);
     }
@@ -730,20 +876,24 @@
       }
       if (message.method === "tools/list") {
         respond(message.id, { tools: [
-          { name: "set_prompt", description: "Set the current Image Studio model, instruction, and optional visual controls.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, model: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" } } } },
+          { name: "set_prompt", description: "Set Image Studio parameters. Style, camera and lighting are prompt guidance. Read the current inspector options for model-specific size/quality; unsupported values are rejected. ChatGPT login only supports prompt-based aspect intent, not native size/quality controls.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, model: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, selectionBlend: { type: "string", enum: ["natural", "strict"] } } } },
           { name: "open_image", description: "Open a workspace-relative image in Image Studio.", inputSchema: { type: "object", properties: { sourcePath: { type: "string" } }, required: ["sourcePath"] } },
           { name: "generate_or_edit", description: "Run the current generation or edit after the user has reviewed the prompt and selection.", inputSchema: { type: "object", properties: {} } },
           { name: "clear_selection", description: "Clear the active mask so the next edit applies to the whole image.", inputSchema: { type: "object", properties: {} } },
+          { name: "capture_selection", description: "Freeze the exact selected image region for the current conversation without generating an image.", inputSchema: { type: "object", properties: { revision: { type: "number" } } } },
         ] }); return;
       }
       if (message.method === "tools/call") {
         const args = message.params?.arguments || {};
+        if (message.params?.name === "capture_selection") {
+          void captureSelection(args.revision).then((result) => respond(message.id, { content: [], structuredContent: result }))
+            .catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }));
+          return;
+        }
         if (message.params?.name === "set_prompt") {
-          if (typeof args.prompt === "string") state.prompt = args.prompt;
-          if (args.mode === "generate" || args.mode === "edit") setMode(args.mode);
-          for (const key of ["model", "style", "camera", "lighting", "size", "quality"]) if (typeof args[key] === "string") state[key] = args[key];
-          syncProviderState(); renderProvider();
-          respond(message.id, toolResult("Image Studio parameters updated.")); return;
+          try { updateParameters(args); respond(message.id, toolResult("Image Studio parameters updated.")); }
+          catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
+          return;
         }
         if (message.params?.name === "open_image") {
           void loadWorkspaceImage(String(args.sourcePath || "")).then(() => respond(message.id, toolResult("Image opened."))).catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] })); return;
@@ -858,6 +1008,9 @@
     $("#editMode").addEventListener("click", () => setMode("edit"));
     $("#generateMode").addEventListener("click", () => setMode("generate"));
     $("#parameters").addEventListener("click", requestInspector);
+    $("#overwriteEdit").addEventListener("click", () => void saveEditedResult("overwrite"));
+    $("#saveCopy").addEventListener("click", () => void saveEditedResult("copy"));
+    $("#cancelOverwrite").addEventListener("click", () => { state.confirmOverwrite = false; renderSaveReview(); });
     $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
     for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => $("#fileInput").click());
     $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
@@ -868,7 +1021,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.9" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.13" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });

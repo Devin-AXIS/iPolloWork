@@ -9,12 +9,21 @@ import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { generateCodexImage } from "./codex-image-generation.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
+import { prepareImageSelection, saveImageSelection, loadImageSelection } from "./image-selection.js";
+import { rememberImageEditResult, saveImageEditResult, validateImageEditSource } from "./image-edit-results.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
 const IMAGE_API_TIMEOUT_MS = 120_000;
 const MAX_IMAGE_INPUT_BYTES = 25 * 1024 * 1024;
 
 type ImageModelAdapterId = "openai" | "openai-codex" | "volcengine-ark" | "unavailable";
+
+type ImageParameter = {
+  values: readonly string[];
+  default: string;
+  delivery: "native" | "prompt";
+  experimentalValues?: readonly string[];
+};
 
 type ImageModelDefinition = {
   id: string;
@@ -27,6 +36,7 @@ type ImageModelDefinition = {
   credentialKey: string | null;
   available: boolean;
   unavailableReason?: string;
+  parameters: { size: ImageParameter | null; quality: ImageParameter | null };
   capabilities: {
     generate: boolean;
     edit: boolean;
@@ -55,6 +65,11 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     authorizationService: "openai-images",
     credentialKey: "OPENAI_API_KEY",
     available: true,
+    // https://developers.openai.com/api/docs/guides/image-generation#size-and-quality-options
+    parameters: {
+      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536", "2048x1152", "1152x2048", "2048x2048", "3840x2160", "2160x3840"], default: "auto", delivery: "native", experimentalValues: ["2048x2048", "3840x2160", "2160x3840"] },
+      quality: { values: ["auto", "low", "medium", "high"], default: "auto", delivery: "native" },
+    },
     capabilities: { generate: true, edit: true, mask: true, region: true },
   },
   {
@@ -67,6 +82,11 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     authorizationService: "openai-images",
     credentialKey: null,
     available: true,
+    // The app-server adapter accepts a prompt, not native image size/quality settings.
+    parameters: {
+      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536"], default: "auto", delivery: "prompt" },
+      quality: null,
+    },
     capabilities: { generate: true, edit: true, mask: false, region: true },
   },
   {
@@ -79,6 +99,12 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     authorizationService: "volcengine-video",
     credentialKey: "ARK_API_KEY",
     available: true,
+    // Seedream 5 presets; do not reuse GPT's unsupported 1K sizes or quality field.
+    // https://docs.byteplus.com/api/docs/ModelArk/1824121
+    parameters: {
+      size: { values: ["2K", "3K", "2048x2048", "2496x1664", "1664x2496", "2848x1600", "1600x2848", "3072x3072"], default: "2K", delivery: "native" },
+      quality: null,
+    },
     capabilities: { generate: true, edit: true, mask: false, region: true },
   },
   {
@@ -91,6 +117,7 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     authorizationService: null,
     credentialKey: null,
     available: false,
+    parameters: { size: null, quality: null },
     unavailableReason: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。",
     capabilities: { generate: false, edit: false, mask: false, region: false },
   },
@@ -98,7 +125,42 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
 
 const DEFAULT_IMAGE_MODEL_ID = IMAGE_MODELS[0].id;
 
+const imageParameterSchemas = Object.fromEntries(["size", "quality"].map((key) => [key, {
+  type: "string",
+  description: `Use values from status.models[].parameters.${key} for the selected model. Omit unsupported parameters; auto uses the model default. Prompt-delivered settings are intent, not exact controls.`,
+  enum: [...new Set(["auto", ...IMAGE_MODELS.flatMap((model) => model.parameters[key === "size" ? "size" : "quality"]?.values ?? [])])],
+}]));
+
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
+  {
+    extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
+    action: "image_edit_save",
+    title: "Save reviewed image edit",
+    description: "After the user reviews an edited copy, keep both versions with copy, or explicitly replace the original and remove this copy with overwrite. Never choose overwrite without the user's request.",
+    effect: "write" as const,
+    inputSchema: {
+      type: "object",
+      properties: { editId: { type: "string" }, mode: { type: "string", enum: ["copy", "overwrite"] } },
+      required: ["editId", "mode"], additionalProperties: false,
+    },
+  },
+  {
+    extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
+    action: "selection_capture",
+    title: "Capture image selection",
+    description: "Freeze the displayed source and exact mask for this conversation. No model request is made.",
+    effect: "write" as const,
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourcePath: { type: "string" },
+        sourceDataUrl: { type: "string" },
+        maskDataUrl: { type: "string" },
+      },
+      required: ["sourcePath", "sourceDataUrl", "maskDataUrl"],
+      additionalProperties: false,
+    },
+  },
   {
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "status",
@@ -117,8 +179,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
         prompt: { type: "string", description: "Image prompt to turn into an artifact." },
         model: { type: "string", description: "Stable image model ID returned by status." },
         filename: { type: "string", description: "Optional output filename without extension." },
-        quality: { type: "string", enum: ["low", "medium", "high", "auto"] },
-        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024", "auto"] },
+        ...imageParameterSchemas,
       },
       required: ["prompt"],
       additionalProperties: false,
@@ -134,9 +195,13 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
       type: "object",
       properties: {
         sourcePath: { type: "string", description: "Workspace-relative PNG, JPEG, or WebP source path." },
+        reviewResult: { type: "boolean", description: "Keep a save-review receipt for the resulting copy. Requires sessionId and sourceRevision; does not overwrite the source." },
+        sourceRevision: { type: "string", description: "SHA-256 of the source bytes loaded in Image Studio, used to reject stale edits." },
         prompt: { type: "string", description: "Describe the requested change." },
         model: { type: "string", description: "Stable image model ID returned by status." },
         maskDataUrl: { type: "string", description: "Optional PNG data URL whose transparent pixels identify the edit area." },
+        selectionId: { type: "string", description: "Immutable selection captured for this conversation. Uses its original image and exact mask, even when Image Studio is closed. Do not substitute a new selection." },
+        selectionBlend: { type: "string", enum: ["natural", "strict"], description: "natural feathers inward for a smooth transition while preserving unselected pixels; strict uses the exact mask without additional feathering. Defaults to strict for existing callers." },
         selectionBounds: {
           type: "object",
           description: "Optional normalized selected region, measured from the top-left of the image.",
@@ -150,8 +215,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
           additionalProperties: false,
         },
         filename: { type: "string", description: "Optional output filename without extension." },
-        quality: { type: "string", enum: ["low", "medium", "high", "auto"] },
-        size: { type: "string", enum: ["1024x1024", "1024x1536", "1536x1024", "auto"] },
+        ...imageParameterSchemas,
       },
       required: ["sourcePath", "prompt"],
       additionalProperties: false,
@@ -192,6 +256,13 @@ function readSelectionBounds(value: unknown): NormalizedSelectionBounds | null {
 function promptWithApproximateRegion(prompt: string, bounds: NormalizedSelectionBounds): string {
   const percent = (value: number) => Math.round(value * 100);
   return `${prompt}\n\nApply this change only inside the approximate selected region: left ${percent(bounds.left)}%, top ${percent(bounds.top)}%, right ${percent(bounds.right)}%, bottom ${percent(bounds.bottom)}%, measured from the top-left corner. Preserve all content outside this region.`;
+}
+
+function selectionPrompt(input: { prompt: string; selectionGuide?: Buffer; selectionBounds: NormalizedSelectionBounds | null; mask?: Buffer | null }) {
+  const continuity = "Change only the requested subject or property, not the whole selected background. Keep the original sky, terrain, texture, perspective and lighting unless explicitly requested otherwise. Integrate the subject and any glow naturally into the existing scene; keep boundary colours and details continuous. Do not create a rectangular patch, inset, panel, border, collage, or visible mask. Return the complete edited image with the original composition, framing and dimensions, not a crop.";
+  if (input.selectionGuide) return `${input.prompt}\n\nImage 1 is the original. Image 2 is an exact, pixel-aligned selection mask: WHITE is editable, BLACK must remain unchanged, gray is a soft edge. Edit ONLY the white/gray area of image 1. The mask is guidance, not content to draw.\n${continuity}`;
+  if (input.mask) return `${input.prompt}\n\nThe transparent mask marks the allowed edit area. Preserve everything outside it.\n${continuity}`;
+  return input.selectionBounds ? promptWithApproximateRegion(input.prompt, input.selectionBounds) : input.prompt;
 }
 
 function slugifyImageArtifactName(value: string) {
@@ -243,6 +314,7 @@ export async function openAiImageGenerationStatus(authorization: AuthorizationAc
       authorizationService: model.authorizationService,
       unavailableReason: model.unavailableReason ?? null,
       capabilities: model.capabilities,
+      parameters: model.parameters,
     }));
     const defaultModel = models.find((model) => model.available && model.configured)?.id ?? DEFAULT_IMAGE_MODEL_ID;
     const configured = models.some((model) => model.available && model.configured);
@@ -263,6 +335,7 @@ export async function openAiImageGenerationStatus(authorization: AuthorizationAc
         authorizationService: model.authorizationService,
         unavailableReason: model.unavailableReason ?? null,
         capabilities: model.capabilities,
+        parameters: model.parameters,
       })),
       error: error instanceof Error ? error.message : String(error),
     };
@@ -409,8 +482,15 @@ function decodedPngDataUrl(value: string): Buffer | null {
   return bytes;
 }
 
-function imageOption(value: string, allowed: readonly string[], fallback: string): string {
-  return allowed.includes(value) ? value : fallback;
+function imageOption(model: ImageModelDefinition, args: Record<string, unknown>, key: "size" | "quality"): string {
+  const value = args[key];
+  const parameter = model.parameters[key];
+  // Existing callers send auto for omitted controls; resolve it to this model's default.
+  if (value === undefined || value === "auto") return parameter?.default ?? "auto";
+  if (typeof value !== "string" || !parameter?.values.includes(value)) {
+    throw new ApiError(400, "image_parameter_unsupported", `${model.label} does not support ${key}=${String(value)}. Allowed: ${parameter?.values.join(", ") || "auto (provider managed)"}.`);
+  }
+  return value;
 }
 
 function blobBytes(value: Buffer): Uint8Array<ArrayBuffer> {
@@ -481,6 +561,7 @@ async function fetchArkImage(input: {
   prompt: string;
   size: string;
   image?: { bytes: Buffer; mimeType: string };
+  selectionGuide?: Buffer;
 }) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), IMAGE_API_TIMEOUT_MS);
@@ -488,10 +569,12 @@ async function fetchArkImage(input: {
     model: input.model,
     prompt: input.prompt,
     response_format: "b64_json",
+    output_format: "png",
     watermark: false,
   };
   if (input.size !== "auto") body.size = input.size;
   if (input.image) body.image = `data:${input.image.mimeType};base64,${input.image.bytes.toString("base64")}`;
+  if (input.image && input.selectionGuide) body.image = [body.image, `data:image/png;base64,${input.selectionGuide.toString("base64")}`];
 
   let response: Response;
   try {
@@ -523,9 +606,10 @@ async function fetchArkImage(input: {
 }
 
 async function generateWithModel(model: ImageModelDefinition, apiKey: string, args: Record<string, unknown>, prompt: string, authorization: AuthorizationAccess) {
-  const size = imageOption(readStringField(args, "size"), ["1024x1024", "1024x1536", "1536x1024", "auto"], "auto");
+  const size = imageOption(model, args, "size");
+  const quality = imageOption(model, args, "quality");
   if (model.adapter === "openai-codex") {
-    const bytes = await generateCodexImage(authorization, { prompt, size, quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto") });
+    const bytes = await generateCodexImage(authorization, { prompt, size, quality });
     return { data: [{ b64_json: bytes.toString("base64") }] };
   }
   if (model.adapter === "openai") {
@@ -533,7 +617,7 @@ async function generateWithModel(model: ImageModelDefinition, apiKey: string, ar
       apiKey,
       model: model.upstreamModel,
       prompt,
-      quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto"),
+      quality,
       size,
     });
   }
@@ -549,23 +633,23 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
   imageType: string;
   mask: Buffer | null;
   selectionBounds: NormalizedSelectionBounds | null;
+  selectionGuide?: Buffer;
   prompt: string;
 }, authorization: AuthorizationAccess) {
-  const size = imageOption(readStringField(args, "size"), ["1024x1024", "1024x1536", "1536x1024", "auto"], "auto");
+  const size = imageOption(model, args, "size");
+  const quality = imageOption(model, args, "quality");
   if (input.mask && !model.capabilities.mask) {
     if (!model.capabilities.region) {
       throw new ApiError(400, "image_model_region_unsupported", `${model.label} does not support selected-region editing.`);
     }
-    if (!input.selectionBounds) {
-      throw new ApiError(400, "image_selection_bounds_required", `${model.label} requires selectionBounds for approximate selected-region editing.`);
-    }
   }
   if (model.adapter === "openai-codex") {
     const bytes = await generateCodexImage(authorization, {
-      prompt: input.selectionBounds ? promptWithApproximateRegion(input.prompt, input.selectionBounds) : input.prompt,
+      prompt: selectionPrompt(input),
       size,
-      quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto"),
+      quality,
       image: { bytes: input.image, mimeType: input.imageType },
+      selectionGuide: input.selectionGuide,
     });
     return { data: [{ b64_json: bytes.toString("base64") }] };
   }
@@ -574,7 +658,8 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
       apiKey,
       model: model.upstreamModel,
       ...input,
-      quality: imageOption(readStringField(args, "quality"), ["low", "medium", "high", "auto"], "auto"),
+      prompt: selectionPrompt({ ...input, selectionGuide: undefined }),
+      quality,
       size,
     });
   }
@@ -582,11 +667,10 @@ async function editWithModel(model: ImageModelDefinition, apiKey: string, args: 
     return fetchArkImage({
       apiKey,
       model: model.upstreamModel,
-      prompt: input.selectionBounds && !model.capabilities.mask
-        ? promptWithApproximateRegion(input.prompt, input.selectionBounds)
-        : input.prompt,
+      prompt: selectionPrompt(input),
       size,
       image: { bytes: input.image, mimeType: input.imageType },
+      selectionGuide: input.selectionGuide,
     });
   }
   throw new ApiError(400, "image_model_unavailable", model.unavailableReason ?? `${model.label} is not available.`);
@@ -644,32 +728,64 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
 
   const workspace = workspaceForContext(config, context);
   const sourceCandidate = resolveSafeChildPath(workspace.path, sourcePath);
-  const sourceFile = await realpath(await resolveWithinRoot(workspace.path, sourceCandidate));
-  const sourceStats = await stat(sourceFile);
-  if (!sourceStats.isFile()) {
-    throw new ApiError(400, "invalid_path", "Source path must point to a file");
+  if (args.reviewResult !== undefined && typeof args.reviewResult !== "boolean") throw new ApiError(400, "invalid_payload", "reviewResult must be a boolean");
+  const review = args.reviewResult === true;
+  if (review) sessionArtifactOwner(context.sessionId);
+  const sourceHash = review ? await validateImageEditSource(workspace, sourcePath, args.sourceRevision) : null;
+  const selectionId = readStringField(args, "selectionId");
+  const frozen = selectionId ? await loadImageSelection(config, workspace, context.sessionId, selectionId) : null;
+  if (frozen && frozen.sourcePath !== sourcePath) throw new ApiError(400, "selection_source_mismatch", "Selection belongs to another source image");
+  let image: Buffer;
+  if (frozen) image = frozen.image;
+  else {
+    const sourceFile = await realpath(await resolveWithinRoot(workspace.path, sourceCandidate));
+    const sourceStats = await stat(sourceFile);
+    if (!sourceStats.isFile()) throw new ApiError(400, "invalid_path", "Source path must point to a file");
+    if (!sourceStats.size || sourceStats.size > MAX_IMAGE_INPUT_BYTES) throw new ApiError(413, "invalid_image", "Source image is empty or too large");
+    image = await readFile(sourceFile);
   }
-  if (!sourceStats.size || sourceStats.size > MAX_IMAGE_INPUT_BYTES) {
-    throw new ApiError(413, "invalid_image", "Source image is empty or too large");
-  }
-  const image = await readFile(sourceFile);
+  const mask = frozen?.mask ?? decodedPngDataUrl(readStringField(args, "maskDataUrl"));
+  const blend = args.selectionBlend ?? "strict";
+  if (blend !== "natural" && blend !== "strict") throw new ApiError(400, "invalid_selection_blend", "selectionBlend must be natural or strict");
+  const selection = mask ? await prepareImageSelection(image, mask, blend) : null;
   const sourceBaseName = basename(sourcePath, extname(sourcePath));
   const requestedName = readStringField(args, "filename");
-  const fileName = `${slugifyImageArtifactName(requestedName || `${sourceBaseName}-edited-${Date.now()}`)}.png`;
+  const fileName = requestedName
+    ? `${slugifyImageArtifactName(requestedName)}.png`
+    : `${sourceBaseName.replace(/[<>:"/\\|?*\u0000-\u001f]/g, "-").slice(0, 60) || "image"}-edited-${new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "")}-${randomUUID().slice(0, 8)}.png`;
   const payload = await editWithModel(model, apiKey, args, {
-    image,
-    imageName: basename(sourcePath),
-    imageType: imageMimeType(sourcePath),
-    mask: decodedPngDataUrl(readStringField(args, "maskDataUrl")),
+    image: selection?.image ?? image,
+    imageName: selection ? `${sourceBaseName}.png` : basename(sourcePath),
+    imageType: selection ? "image/png" : imageMimeType(sourcePath),
+    mask: selection?.mask ?? null,
+    selectionGuide: selection?.guide,
     selectionBounds: readSelectionBounds(args.selectionBounds),
     prompt,
   }, authorization);
-  const bytes = await imageDataFromPayload(payload, model.providerLabel);
+  const generated = await imageDataFromPayload(payload, model.providerLabel);
+  const bytes = selection ? await selection.composite(generated) : generated;
   const relativePath = await saveImageArtifact(workspace, fileName, bytes);
-  return { path: relativePath, bytes: bytes.byteLength, model: model.id, provider: model.provider, workspaceId: workspace.id };
+  const reviewInfo = sourceHash ? await rememberImageEditResult(config, workspace, context.sessionId, sourcePath, sourceHash, relativePath, bytes) : {};
+  return { path: relativePath, bytes: bytes.byteLength, model: model.id, provider: model.provider, workspaceId: workspace.id, ...reviewInfo };
 }
 
 export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
+  if (action === "image_edit_save") {
+    if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
+    const result = await saveImageEditResult(config, workspaceForContext(config, context), context.sessionId, args.editId, args.mode);
+    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, path: result.path, result, context };
+  }
+  if (action === "selection_capture") {
+    const workspace = workspaceForContext(config, context);
+    const sourcePath = readStringField(args, "sourcePath");
+    resolveSafeChildPath(workspace.path, sourcePath);
+    const image = decodedPngDataUrl(readStringField(args, "sourceDataUrl"));
+    const mask = decodedPngDataUrl(readStringField(args, "maskDataUrl"));
+    if (!image || !mask) throw new ApiError(400, "invalid_selection", "Source PNG and selection mask are required");
+    const selection = await prepareImageSelection(image, mask);
+    const selectionId = await saveImageSelection(config, workspace, context.sessionId, sourcePath, selection.image, selection.mask);
+    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { selectionId, sourcePath }, context };
+  }
   // Capture and validate ownership before a long-running provider request.
   const sessionId = (action === "image_generate" || action === "image_edit") && context.sessionId
     ? sessionArtifactOwner(context.sessionId)
