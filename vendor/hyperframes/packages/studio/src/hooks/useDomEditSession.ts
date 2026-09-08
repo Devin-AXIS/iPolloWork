@@ -20,6 +20,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
+import { useImageWorkbench } from "./useImageWorkbench";
 
 // ── Types ──
 
@@ -114,6 +115,8 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+  const openImageWorkbench = useImageWorkbench({ projectId, showToast, queueDomEditSave, readProjectFile,
+    writeProjectFile, updateEditingFileContent, domEditSaveTimestampRef, editHistory, reloadPreview, forceReloadSdkSession });
   // ── Selection ──
 
   const {
@@ -533,6 +536,7 @@ export function useDomEditSession({
   );
 
   return {
+    openImageWorkbench,
     // State
     domEditSelection,
     domEditGroupSelections,

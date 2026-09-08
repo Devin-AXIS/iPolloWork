@@ -7,6 +7,20 @@
  */
 
 export default {
+  "video.image.title": "视频图片编辑",
+  "video.image.back": "返回视频",
+  "video.image.replace_selected": "替换当前视频图片",
+  "video.image.refresh": "刷新视频图片",
+  "video.image.loading": "正在打开图片工作台…",
+  "video.image.save_hint": "覆盖会同步更新所有引用该文件的画面；另存为保留两版，点击“替换当前视频图片”只替换这个元素。",
+  "video.image.copy_applied": "已仅替换当前选中的图片，原图和编辑版均已保留。",
+  "video.image.overwrite_applied": "原图已覆盖，视频素材已刷新。",
+  "video.image.session_changed": "视频会话已改变，请重新选择图片。",
+  "video.image.open_failed": "无法打开图片工作台。",
+  "video.image.update_failed": "图片已保存，但视频更新失败。可重试或返回视频。",
+  "video.image.update_timeout": "图片已保存，但视频更新确认超时。请先返回视频查看结果，再决定是否重试。",
+  "video.image.too_large": "编辑后的图片超过 25 MB。",
+  "video.image.copy_changed": "另存的图片已发生变化，请重新打开后再替换视频图片。",
   "composer.image_selection_attached": "已附加图片选区",
   "composer.image_selection_preparing": "正在冻结图片选区…",
   "composer.image_selection_remove": "移除图片选区",

@@ -4,6 +4,20 @@
  */
 
 export default {
+  "video.image.title": "Video image editing",
+  "video.image.back": "Back to video",
+  "video.image.replace_selected": "Replace selected video image",
+  "video.image.refresh": "Refresh video image",
+  "video.image.loading": "Opening Image Studio…",
+  "video.image.save_hint": "Overwrite updates all uses of this file. Save as keeps both versions; use “Replace selected video image” to update only this element.",
+  "video.image.copy_applied": "Only the selected image was replaced. The original and edited copy are preserved.",
+  "video.image.overwrite_applied": "The original image was overwritten and refreshed in the video.",
+  "video.image.session_changed": "The video session changed. Select the image again.",
+  "video.image.open_failed": "Could not open Image Studio.",
+  "video.image.update_failed": "The image is saved, but updating the video failed. Retry or return to the video.",
+  "video.image.update_timeout": "The image is saved, but video update confirmation timed out. Return to the video to check before retrying.",
+  "video.image.too_large": "The edited image exceeds 25 MB.",
+  "video.image.copy_changed": "The saved copy has changed. Reopen it before replacing the video image.",
   "composer.image_selection_attached": "Image selection attached",
   "composer.image_selection_preparing": "Capturing image selection…",
   "composer.image_selection_remove": "Remove image selection",

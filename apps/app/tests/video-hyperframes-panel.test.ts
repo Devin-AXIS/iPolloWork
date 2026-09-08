@@ -23,6 +23,16 @@ import {
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
+  test("preserves image launch context across workspace app resize and theme updates", () => {
+    const source = readFileSync(new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url), "utf8");
+    expect(source).toContain("hostContextRef.current = { ...hostContextRef.current, ...patch }");
+    expect(source).toContain("hostContextRef.current = hostContext");
+    expect(source.match(/\.setHostContext\(/g)).toHaveLength(1);
+    expect(source).toContain("bridgeRef.current.setHostContext(hostContextRef.current)");
+    expect(source).toContain("updateHostContext({ theme: currentTheme() })");
+    expect(source).toContain('updateHostContext({ displayMode: props.displayMode ?? "inline" })');
+  });
+
   test("shows a live warning while the current session AI is editing the video", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),

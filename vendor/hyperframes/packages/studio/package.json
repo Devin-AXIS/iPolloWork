@@ -43,6 +43,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@ipollowork/types": "file:../../../../packages/types",
     "@codemirror/autocomplete": "^6.20.3",
     "@codemirror/commands": "^6.10.4",
     "@codemirror/lang-css": "^6.3.1",
