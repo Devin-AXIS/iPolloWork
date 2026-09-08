@@ -2,6 +2,9 @@ import { createReadStream } from "node:fs";
 import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
+import { MAX_VIDEO_IMAGE_BYTES, MAX_VIDEO_MEDIA_BYTES, mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
+import { resolveWithinRoot } from "../paths.js";
+import { readLimitedRequestBody } from "../limited-request-body.js";
 import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { FileSessionStore } from "../file-sessions.js";
@@ -173,6 +176,9 @@ function contentTypeForPath(path: string): string {
   if (lowered.endsWith(".jpg") || lowered.endsWith(".jpeg")) return "image/jpeg";
   if (lowered.endsWith(".gif")) return "image/gif";
   if (lowered.endsWith(".webp")) return "image/webp";
+  if (lowered.endsWith(".mp4")) return "video/mp4";
+  if (lowered.endsWith(".webm")) return "video/webm";
+  if (lowered.endsWith(".mov")) return "video/quicktime";
   if (lowered.endsWith(".pdf")) return "application/pdf";
   if (lowered.endsWith(".csv")) return "text/csv; charset=utf-8";
   if (lowered.endsWith(".tsv")) return "text/tab-separated-values; charset=utf-8";
@@ -1258,19 +1264,35 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     ensureWritable(config);
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
-    const body = await readJsonBody(ctx.request);
+    const contentType = ctx.request.headers.get("content-type") ?? "";
+    const multipart = /^multipart\/form-data(?:;|$)/i.test(contentType);
+    let mediaFile: File | null = null;
+    let body: Record<string, unknown>;
+    if (multipart) {
+      const path = safeVideoMediaPath(ctx.url.searchParams.get("path"));
+      if (!path || !ctx.request.body) throw new ApiError(400, "invalid_path", "A local image or video path is required");
+      const limit = (mediaKindForPath(path) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES) + 64 * 1024;
+      const bounded = await readLimitedRequestBody(ctx.request, limit, { code: "file_too_large", message: "Media exceeds upload limit" });
+      let form: FormData;
+      try { form = await new Response(Buffer.from(bounded), { headers: { "content-type": contentType } }).formData(); }
+      catch { throw new ApiError(400, "invalid_payload", "Invalid multipart media upload"); }
+      const file = form.get("file");
+      if (!(file instanceof File) || !file.size) throw new ApiError(400, "file_required", "A nonempty media file is required");
+      mediaFile = file;
+      body = { path };
+    } else body = await readJsonBody(ctx.request);
     const requestedPath = String(body.path ?? "");
     const relativePath = normalizeWorkspaceRelativePath(requestedPath, { allowSubdirs: true });
-    if (typeof body.dataBase64 !== "string") {
+    if (!mediaFile && typeof body.dataBase64 !== "string") {
       throw new ApiError(400, "invalid_payload", "dataBase64 must be a string");
     }
     let bytes: Buffer;
     try {
-      bytes = Buffer.from(body.dataBase64, "base64");
+      bytes = mediaFile ? Buffer.from(await mediaFile.arrayBuffer()) : Buffer.from(String(body.dataBase64), "base64");
     } catch {
       throw new ApiError(400, "invalid_payload", "dataBase64 is invalid");
     }
-    const maxBytes = FILE_SESSION_MAX_FILE_BYTES;
+    const maxBytes = mediaFile ? (mediaKindForPath(relativePath) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES) : FILE_SESSION_MAX_FILE_BYTES;
     if (bytes.byteLength > maxBytes) {
       throw new ApiError(413, "file_too_large", "File exceeds size limit", { maxBytes, size: bytes.byteLength });
     }
@@ -1279,8 +1301,14 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const baseUpdatedAt =
       typeof baseUpdatedAtRaw === "number" && Number.isFinite(baseUpdatedAtRaw) ? baseUpdatedAtRaw : null;
     const force = body.force === true;
-    const absPath = resolveSafeChildPath(workspace.path, relativePath);
+    if (mediaFile) {
+      // Check existing ancestors as well as the final (usually nonexistent) file.
+      const segments = relativePath.split("/");
+      for (let index = 1; index <= segments.length; index++) await resolveWithinRoot(workspace.path, ...segments.slice(0, index));
+    }
+    const absPath = mediaFile ? await resolveWithinRoot(workspace.path, relativePath) : resolveSafeChildPath(workspace.path, relativePath);
     const before = (await exists(absPath)) ? await stat(absPath) : null;
+    if (mediaFile && before) throw new ApiError(409, "conflict", "Media imports must use a new filename");
     if (before && !before.isFile()) {
       throw new ApiError(400, "invalid_path", "Path must point to a file");
     }
@@ -1298,8 +1326,16 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
 
     await ensureDir(dirname(absPath));
     const tmp = `${absPath}.tmp-${shortId()}`;
-    await writeFile(tmp, bytes);
-    await rename(tmp, absPath);
+    if (mediaFile) {
+      try { await writeFile(absPath, bytes, { flag: "wx" }); }
+      catch (error) {
+        if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") throw new ApiError(409, "conflict", "Media imports must use a new filename");
+        throw error;
+      }
+    } else {
+      await writeFile(tmp, bytes);
+      await rename(tmp, absPath);
+    }
     const after = await stat(absPath);
     const revision = fileRevision(after);
     recordWorkspaceFileEvent(workspace.id, { type: "write", path: relativePath, revision });

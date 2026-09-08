@@ -116,12 +116,13 @@
       if(selected?.disabled)$("#importTarget").value=[...$("#importTarget").options].find(option=>!option.disabled)?.value||"firstFrame";
     }
     async function refresh(reset=false) {
-      const response=await call("status"); state.models=response.models||[]; state.ratios=response.ratios||[]; state.localVideoReady=response.localVideoReady===true;
+      const response=await call("status"); state.models=response.models||[]; state.ratios=response.ratios||[]; state.localVideoReady=response.localVideoReady===true; state.statusLoaded=true;
       normalized(); render(); publish();
+      await applyLaunch();
       if(reset)state.pageBefore=undefined;
       const result=await call("jobs",state.pageBefore?{before:state.pageBefore}:{}); state.jobs=result.jobs||[]; renderJobs();
       const latest=state.jobs.find(job=>job.status==="succeeded");
-      if(!state.pageBefore&&latest&&state.autoPreviewPath!==latest.path) {state.autoPreviewPath=latest.path;void preview(latest.path).catch(error=>tell(error.message,true));}
+      if(!state.host.launch&&!state.pageBefore&&latest&&state.autoPreviewPath!==latest.path) {state.autoPreviewPath=latest.path;void preview(latest.path).catch(error=>tell(error.message,true));}
     }
     function node(tag,text,className="") {const element=document.createElement(tag); element.textContent=text; element.className=className; return element;}
     function button(text,action) {const element=node("button",text); element.addEventListener("click",()=>{void Promise.resolve().then(action).catch(error=>tell(error.message,true));});return element;}
@@ -134,7 +135,12 @@
         card.append(node("p",`${job.model} · ${names[job.operation]} · ${new Date(job.createdAt).toLocaleString()}`,"meta"),node("p",job.message,"job-message"));
         if(job.upstreamId)card.append(node("p",`任务 ID：${job.upstreamId}`,"meta"));
         const actions=node("div","","row");
-        if(job.path){actions.append(button("预览",()=>preview(job.path)),button("作为原视频",()=>useSource(job.path)));card.append(node("p",job.path,"meta"));}
+        if(job.path){actions.append(button("预览",()=>preview(job.path)),button("作为原视频",()=>useSource(job.path)));card.append(node("p",job.path,"meta"));
+          if(state.host.launch?.intent==="edit-video" && job.status==="succeeded") actions.append(button("使用此版本",async()=>{
+            await request("ui/update-model-context",{content:[],structuredContent:{videoEditResult:{path:job.path,sourcePath:state.host.launch.source.path,requestId:state.host.launch.requestId}}});
+            tell("已选择此版本，请点击上方“替换当前素材”应用，原视频会保留。");
+          }));
+        }
         if(["uncertain","save_failed"].includes(job.status)) {
           const input=document.createElement("input");input.placeholder="服务商控制台中的已有任务 ID";input.setAttribute("aria-label","已有任务 ID");
           if(!job.upstreamId)actions.append(input);
@@ -161,6 +167,16 @@
       $("#previewPath").textContent=path;$("#openPath").value=path;$("#useVideo").disabled=false;tell("视频已打开。生成结果也可以从当前会话的产出文件中查看。");
     }
     function useSource(path) {mode("edit");state.videoRefs=path;publish();tell("已将视频设为编辑参考。请在右侧填写编辑指令，结果会另存为新文件。");}
+    async function applyLaunch() {
+      const launch=state.host.launch;
+      const key=launch?.requestId||launch?.source?.path;
+      if(!state.statusLoaded||launch?.intent!=="edit-video"||!launch.source?.path||state.appliedLaunch===key)return;
+      state.appliedLaunch=key;
+      const editable=state.models.find(item=>item.operations?.some(operation=>editOps.includes(operation)));
+      if(editable)state.model=editable.id;
+      useSource(launch.source.path);
+      await preview(launch.source.path);
+    }
     async function run() {
       if(state.busy)return;
       if(!state.prompt.trim())throw new Error("请先填写视频描述或编辑指令。");
@@ -216,13 +232,13 @@
       if(message.method==="tools/call") {
         void Promise.resolve().then(async()=>{const args=message.params?.arguments||{};switch(message.params?.name){case"set_parameters":update(args);break;case"generate_or_edit":await run();break;case"open_video":await preview(args.path);break;default:throw new Error("未知视频操作。");}return{content:[],structuredContent:{model:state.model,operation:state.operation}};}).then(respond).catch(error=>{tell(error.message,true);respond({isError:true,content:[{type:"text",text:error.message}]});});return;
       }
-      if(message.method==="ui/notifications/host-context-changed") {const context=message.params||{};if(context.theme)document.documentElement.style.colorScheme=context.theme;const host=context[HOST]||context.hostContext?.[HOST];if(host)state.host=host;publish();}
+      if(message.method==="ui/notifications/host-context-changed") {const context=message.params||{};if(context.theme)document.documentElement.style.colorScheme=context.theme;const host=context[HOST]||context.hostContext?.[HOST];if(host)state.host=host;void applyLaunch().catch(error=>tell(error.message,true));publish();}
       if(message.method==="ui/resource-teardown") {disposed=true;clearTimeout(pollTimer);if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error("控制台已关闭"));}pending.clear();respond({});}
     });
     async function poll(){try{if(!state.busy&&!document.hidden)await refresh();}catch(error){tell(error.message,true);}finally{if(!disposed)pollTimer=setTimeout(poll,10000);}}
-    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Console",version:"0.1.0"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
+    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Console",version:"0.1.1"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
       post({jsonrpc:"2.0",method:"ui/notifications/initialized",params:{}});state.host=host.hostContext?.[HOST]||{};document.documentElement.style.colorScheme=host.hostContext?.theme||"light dark";
-      await refresh();pollTimer=setTimeout(poll,10000);
+      await refresh();await applyLaunch();pollTimer=setTimeout(poll,10000);
     }).catch(error=>tell(error.message,true));
   </script>
 </body>

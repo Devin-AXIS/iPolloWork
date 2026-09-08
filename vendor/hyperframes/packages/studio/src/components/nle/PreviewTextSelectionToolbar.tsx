@@ -6,9 +6,10 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { ImageSquare, SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
+import { ImageSquare, VideoCamera, SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
 import { type DomEditSelection } from "../editor/domEditing";
 import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
+import { Tooltip } from "../ui/Tooltip";
 import { useStudioShellContext } from "../../contexts/StudioContext";
 import { postVideoAiSelectionToHost } from "../editor/domEditingAgentPrompt";
 import { useDomEditActionsContext } from "../../contexts/DomEditContext";
@@ -526,11 +527,13 @@ export function PreviewTextSelectionToolbar({
       </button>
       <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
       {window.parent !== window && activeSelection && projectId && resolveEditableVideoImage(activeSelection, projectId) ? (
+        <Tooltip label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}>
         <button type="button" className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-          aria-label={tx("Edit in Image Studio")} title={tx("Edit in Image Studio")}
+          aria-label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}
           onClick={() => void openImageWorkbench(activeSelection)}>
-          <ImageSquare size={18} />
+          {activeSelection.element.tagName === "VIDEO" ? <VideoCamera size={18} /> : <ImageSquare size={18} />}
         </button>
+        </Tooltip>
       ) : null}
       <button
         type="button"

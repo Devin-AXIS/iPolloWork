@@ -1,16 +1,30 @@
 // Shared by the embedded editor and its host. Requests identify one authored
-// image, never pixels inside a video/canvas or an arbitrary host filesystem path.
+// media element, never pixels inside a video/canvas or an arbitrary host path.
 export const VIDEO_IMAGE_OPEN = "ipollowork:video:image-open";
 export const VIDEO_IMAGE_APPLY = "ipollowork:video:image-apply";
 export const VIDEO_IMAGE_RESULT = "ipollowork:video:image-result";
 export const VIDEO_IMAGE_CANCEL = "ipollowork:video:image-cancel";
 export const MAX_VIDEO_IMAGE_BYTES = 25 * 1024 * 1024;
+export const MAX_VIDEO_MEDIA_BYTES = 100 * 1024 * 1024;
+export type MediaKind = "image" | "video";
+
+export function mediaKindForPath(value: string): MediaKind | null {
+  if (/\.(png|jpe?g|webp)$/i.test(value)) return "image";
+  return /\.(mp4|mov)$/i.test(value) ? "video" : null;
+}
+
+export function safeVideoMediaPath(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 1000 || !mediaKindForPath(value)) return null;
+  if (/[\\\x00-\x1f?#:%"<>|]/.test(value)) return null;
+  return value.split("/").every(part => part && part !== "." && part !== "..") ? value : null;
+}
 
 export type VideoImageRequest = {
   type: typeof VIDEO_IMAGE_OPEN;
   requestId: string;
   projectId: string;
   sourcePath: string;
+  kind?: MediaKind;
 };
 
 export function safeVideoImagePath(value: unknown): string | null {
@@ -29,9 +43,11 @@ export function parseVideoImageRequest(value: unknown): VideoImageRequest | null
     typeof value.projectId !== "string"
   )
     return null;
-  const sourcePath = safeVideoImagePath(value.sourcePath);
+  const sourcePath = safeVideoMediaPath(value.sourcePath);
+  const kind = sourcePath ? mediaKindForPath(sourcePath) : null;
+  if (value.kind !== undefined && value.kind !== kind) return null;
   return sourcePath
-    ? { type: VIDEO_IMAGE_OPEN, requestId: value.requestId, projectId: value.projectId, sourcePath }
+    ? { type: VIDEO_IMAGE_OPEN, requestId: value.requestId, projectId: value.projectId, sourcePath, kind: kind ?? "image" }
     : null;
 }
 
@@ -66,8 +82,8 @@ export function parseVideoImageApply(value: unknown): VideoImageApply | null {
     !isRecord(image) ||
     !(image.bytes instanceof ArrayBuffer) ||
     image.bytes.byteLength === 0 ||
-    image.bytes.byteLength > MAX_VIDEO_IMAGE_BYTES ||
-    !safeVideoImagePath(image.name) ||
+    !safeVideoMediaPath(image.name) ||
+    image.bytes.byteLength > (typeof image.name === "string" && mediaKindForPath(image.name) === "video" ? MAX_VIDEO_MEDIA_BYTES : MAX_VIDEO_IMAGE_BYTES) ||
     typeof image.name !== "string" ||
     image.name.includes("/")
   )
