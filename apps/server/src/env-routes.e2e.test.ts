@@ -555,9 +555,12 @@ describe("env routes", () => {
     });
     expect(envPut.status).toBe(200);
 
+    let brokerCalls = 0;
     globalThis.fetch = ((input, init) => {
       const url = String(input);
       if (url === "https://inference.example.test/voice/realtime/session") {
+        brokerCalls += 1;
+        expect(init?.method).toBe("POST");
         expect(init?.headers).toMatchObject({ Authorization: "Bearer ow_inf_test" });
         return Promise.resolve(new Response(JSON.stringify({
           ok: true,
@@ -583,7 +586,9 @@ describe("env routes", () => {
       headers: hostAuth(),
       body: JSON.stringify({ scope: "owner", label: "managed voice owner" }),
     });
+    expect(issued.status).toBe(201);
     const tokenBody = (await issued.json()) as { token: string };
+    expect(typeof tokenBody.token).toBe("string");
 
     const response = await fetch(`${base}/voice/realtime/session`, {
       method: "POST",
@@ -596,8 +601,10 @@ describe("env routes", () => {
       ok: true,
       clientSecret: "managed-rt-secret",
       expiresAt: 456,
+      model: "gpt-realtime-2",
       source: "ipollowork-models",
     });
+    expect(brokerCalls).toBe(1);
   });
 
   test("voice realtime session falls back to direct OpenAI when broker returns 503", async () => {

@@ -311,3 +311,38 @@ pnpm exec node node_modules/vite/bin/vite.js build
 首次运行既有 orchestrator 文件测试在服务健康检查处失败；隔离默认配置/数据库并完善子进程处理后，根测试命令及独立 fraimz 均通过。没有放宽其文件内容或版本冲突断言。
 
 以上是源码、接口、转换和真实 CLI 验证，不等同于完整 Electron 登录、外部 OAuth、真实模型会话或 PowerPoint 客户端视觉验收；这些交互仍未在隔离环境完成。本批没有以删行数宣称可感知的启动提速。
+
+## 2026-09-08：维护脚本清理
+
+在同一分支以 `d9e9f0780` 为基线，检查 103 个维护/启动脚本的 package 命令、CI、导入、脚本间调用和文档入口，并补查 11 个容器脚本。13 个脚本没有文件名引用，逐一检查用途后清理其中 6 个；未将静态无引用直接等同于无用。vendor 上游工具链、自动发现的测试/验证流程及技能入口保留。
+
+| 删除脚本 | 原因与替代 |
+| --- | --- |
+| `scripts/dev-den-local.sh` | 旧别名指向已不存在的 `scripts/dev-web-local.sh`，无外部调用 |
+| `scripts/revert-org-mcp-connections.sh` | 固定针对历史 PR #2451/#2406 的一次性回退工具；没有当前维护入口，也未在本仓库历史找到对应 PR 提交 |
+| `apps/app/scripts/select-session-debug.mjs` | 孤立的会话选择计时日志工具；正式会话、消息、待办和权限验证入口保留 |
+| `apps/app/scripts/sessions-parallel.mjs` | 孤立的创建会话计时工具，部分创建失败仍可能输出成功；正式会话测试保留 |
+| `apps/app/scripts/verify-pptx-entrances.ts` | PptxGenJS 真实导出后注入三种入场动画的检查移入已有自动化测试，不再要求手动写出 PPTX 文件 |
+| `apps/app/scripts/managed-voice-e2e.mjs` | 与现有服务端语音接口回归重叠；将方法、模型、调用次数及 owner token 断言补入现有测试，删除另起 CLI 和自制 HTML 报告的维护路径 |
+
+共删除 558 行脚本，测试及既有验证流程调整后代码净减 529 行；新增文件、依赖、业务接口、配置及持久化状态均为零。语音测试启动真实本地服务，broker 出站响应受控模拟；不将它描述为外部语音服务或桌面麦克风完整验收。
+
+### 可继续收拢的手动工具（本次保留）
+
+| 工具 | 判断与处理条件 |
+| --- | --- |
+| `scripts/generate-scenario-template-batch.mjs` | 固定生成 10 套幻灯片和 10 套网站，并先删除目标目录；不属于日常构建。若模板以当前成品为维护源、无需整批重新生成，可退役 |
+| `scripts/audit-scenario-template-layouts.mjs` | 仍提供裁切、溢出和坏图检查；浏览器路径及幻灯片数量硬编码，宜并入统一模板审计后删除独立入口 |
+| `scripts/aur/open-pr.sh` | 手动创建 AUR 更新 PR 的旁路；当前发布 CI 使用 update/publish 脚本。若不需要人工 PR 阶段，可删此入口，保留实际发布脚本 |
+| `scripts/migration/01-cut-migration-release.mjs`、`02-validate-migration.mjs`、`03-post-migration-cleanup.mjs` | v0.12 Tauri → Electron 历史迁移工具。当前已是 Electron，src-tauri 和 desktop-tauri.ts 均不存在；尤其 03 不适合再运行。明确旧迁移版本维护范围后可统一退役并更新 runbook，不能连带删现用迁移兼容逻辑 |
+
+其余无文件名引用的手动入口具有独立职责：`scripts/package-plugin.mjs` 负责插件签名打包；`scripts/import-html-anything-templates.mjs` 负责现存模板的批量更新和来源/许可信息；`scripts/build-microsandbox-ipollowork-image.sh` 构建现有 Dockerfile；`evals/scripts/launch-web-profiles.mjs` 提供多身份浏览器环境，5 个验证流程实际消费其 CDP 环境变量。这些不作为垃圾脚本删除。
+
+### 验证
+
+- App 全量测试：1,172 pass / 0 fail，144 个文件、6,027 个断言。
+- 服务端环境/授权/语音接口测试：26 pass / 0 fail，89 个断言；修改前语音专项基线为 5 pass / 0 fail。
+- App 和 Server 类型检查均通过；删除项在其余跟踪文件中没有调用引用（清理记录除外）。
+- 既有 `client-optimization` internal fraimz：1 passed / 0 failed / 0 skipped；产物 `evals/results/ponytail-script-cleanup/2026-09-08T07-15-08-621Z/fraimz.html` 已生成。
+- 维护性审计检查 4 个保留的变更文件，0 errors / 0 warnings；6 个删除文件另经用途及引用复核，`git diff --check` 通过。
+- 本次没有修改生产业务实现或打包入口；完整桌面登录、模型对话和麦克风交互未重跑。
