@@ -56,13 +56,13 @@
     "@hyperframes/parsers": "workspace:*",
     "htmlparser2": "^12.0.0",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.26"
+    "postcss": "^8.5.28"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.1",
     "tsup": "^8.0.0",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   }
 }
