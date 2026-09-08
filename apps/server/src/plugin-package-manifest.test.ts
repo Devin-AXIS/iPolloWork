@@ -318,11 +318,45 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.13");
+    expect(result.manifest.package?.version).toBe("0.1.23");
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
+    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(18);
+    expect(workspaceUi).toContain('data-lucide="wand-sparkles"');
+    expect(workspaceUi).toContain('data-lucide="square-dashed"');
+    expect(workspaceUi).toContain('data-lucide="circle-dashed"');
+    expect(workspaceUi).toContain('data-lucide="zoom-out"');
+    expect(workspaceUi).toContain('data-lucide="zoom-in"');
+    expect(workspaceUi).not.toContain('data-ai-mode="inpaint"');
+    expect(workspaceUi).toContain('data-ai-mode="expand"');
+    expect(workspaceUi).toContain('data-ai-mode="erase"');
+    expect(workspaceUi).not.toContain('id="compareVersion"');
+    expect(workspaceUi).not.toContain('id="versionHistory"');
+    expect(workspaceUi).not.toContain('id="parameters"');
+    expect(workspaceUi).toContain('id="expandOptions"');
+    expect(workspaceUi).toContain("prepareExpandedEdit");
+    expect(workspaceUi).toContain('id="askAi"');
+    expect(workspaceUi).toContain('type: "ipollowork:image-studio:ask-ai"');
+    expect(workspaceUi).not.toContain('class="toolbar-row toolbar-row-secondary"');
+    expect(workspaceUi).toContain('id="zoomControls"');
+    expect(workspaceUi).toContain('id="selectionDisplayCanvas"');
+    expect(workspaceUi).toContain('id="selectionClear"');
+    expect(workspaceUi).toContain('id="selectionAskAi"');
+    expect(workspaceUi).toContain('id="selectionErase"');
+    expect(workspaceUi).toContain('id="expandRun"');
+    expect(workspaceUi).toContain('data-zoom="fit"');
+    expect(workspaceUi).toContain('id="instantTooltip"');
+    expect(workspaceUi).toContain('data-i18n="replaceImage"');
+    expect(workspaceUi).not.toContain('data-i18n="properties"');
+    expect(workspaceUi).toContain('id="documentTitle"');
+    expect(workspaceUi).toContain('id="emptyBack"');
+    expect(workspaceUi).toContain('src="data:image/png;base64,');
+    expect(workspaceUi).toContain('mode: "start"');
+    expect(workspaceUi).not.toContain('id="sourceMeta"');
+    expect(workspaceUi).toContain("normalizedSelectionBounds");
+    expect(workspaceUi).toContain("approximateSelection");
     expect(workspaceUi).toContain("captureSelection");
     expect(workspaceUi).toContain("exactSelection");
   });
@@ -404,10 +438,8 @@ describe("plugin package manifest", () => {
     expect(inspect('update({selectionBlend: "strict"})')).not.toHaveProperty("selectionBlend"); // No selection: no blend parameter.
     inspect('state.bounds = {left: 0.2, top: 0.2, right: 0.8, bottom: 0.8};');
     expect(inspect('update({selectionBlend: "natural"})')).toMatchObject({ selectionBlend: "natural" });
-    expect(inspect('inspector.fields.find(f => f.id === "selectionBlend")')).toMatchObject({ live: true, value: "natural" });
-    expect(inspect('inspector.fields.some(f => f.id === "size")')).toBe(false);
-    inspect('update({selectionBlend: "strict"})');
-    expect(inspect('inspector.status.message')).toContain("不额外羽化");
+    expect(inspect('inspector')).toBeUndefined();
+    expect(inspect('update({selectionBlend: "strict"})')).toMatchObject({ selectionBlend: "strict" });
   });
 
   test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {

@@ -11,6 +11,11 @@
 
 @import "@fontsource-variable/ibm-plex-sans";
 
+/* Compensate for the transparent padding inside the supplied studio logos. */
+img:is([src$="/ext-design.png"], [src$="/ext-video.png"], [src$="/ext-image-studio.png"]) {
+  scale: 1.4;
+}
+
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
   html.ipollowork-electron & {
@@ -294,6 +299,20 @@ body {
 [data-theme="dark"] body {
   -webkit-font-smoothing: auto;
   -moz-osx-font-smoothing: auto;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 24px;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(p, li) {
+  line-height: 24px;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(strong, b) {
+  font-weight: 600;
 }
 
 html:lang(zh) .settings-description {

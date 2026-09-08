@@ -60,9 +60,26 @@ describe("Cloud marketplace row visibility", () => {
   test("uses curated brand assets for featured plugins while preserving iPollo branding", () => {
     expect(resolveExtensionIconUrl({ pluginId: "figma", iconSlug: "figma" })).toBe("/ext-figma.svg");
     expect(resolveExtensionIconUrl({ pluginId: "context7", iconSlug: "semanticscholar" })).toBe("/ext-context7.svg");
-    expect(resolveExtensionIconUrl({ pluginId: "design-agent", iconSrc: "ipollowork-mark.svg" })).toBe("ipollowork-mark.svg");
-    expect(resolveExtensionIconUrl({ pluginId: "video-agent", iconSrc: "ipollowork-mark.svg" })).toBe("ipollowork-mark.svg");
+    expect(resolveExtensionIconUrl({ pluginId: "design-agent", iconSrc: "ipollowork-mark.svg" })).toBe("/ext-design.png");
+    expect(resolveExtensionIconUrl({ pluginId: "video-agent", iconSrc: "ipollowork-mark.svg" })).toBe("/ext-video.png");
+    expect(resolveExtensionIconUrl({ pluginId: "image-studio", iconSrc: "ipollowork-mark.svg" })).toBe("/ext-image-studio.png");
     expect(resolveExtensionIconUrl({ pluginId: "custom-plugin", iconSlug: "example" })).toBe("https://cdn.simpleicons.org/example");
+  });
+
+  test("ships distinct bitmap logos for the official creative studios", async () => {
+    const logos = await Promise.all([
+      "../public/ext-design.png",
+      "../public/ext-video.png",
+      "../public/ext-image-studio.png",
+    ].map(async (path) => new Uint8Array(await Bun.file(new URL(path, import.meta.url)).arrayBuffer())));
+
+    expect(new Set(logos.map((logo) => Buffer.from(logo).toString("base64"))).size).toBe(3);
+    logos.forEach((logo) => {
+      expect([...logo.slice(0, 8)]).toEqual([137, 80, 78, 71, 13, 10, 26, 10]);
+      const dimensions = new DataView(logo.buffer);
+      expect(dimensions.getUint32(16)).toBeGreaterThan(0);
+      expect(dimensions.getUint32(20)).toBeGreaterThan(0);
+    });
   });
 
   test("matches the Figma plugin library layout with functional source and marketplace filters", async () => {

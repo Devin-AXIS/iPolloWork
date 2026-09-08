@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Code2,
   FileText,
-  Film,
   Globe,
   Image,
   Loader2,
@@ -182,8 +181,10 @@ function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
     return <Globe className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   }
   if (tab.type === "design") return <Code2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
-  if (tab.type === "video") return <Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
-  if (tab.type === "workspace-app") return <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "video") return <SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "workspace-app") return tab.surface.pluginId === "image-studio"
+    ? <Image className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+    : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
 }

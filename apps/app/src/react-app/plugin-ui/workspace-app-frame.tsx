@@ -12,6 +12,9 @@ import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server
 import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 
 import type {
+  ImageStudioAiReference,
+} from "@/app/types";
+import type {
   iPolloWorkPluginUiResource,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
@@ -77,6 +80,33 @@ type WorkspaceAppFrameProps = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteUnitValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+function parseImageStudioAiReference(value: unknown): ImageStudioAiReference | null {
+  if (!isRecord(value)) return null;
+  const sourcePath = typeof value.sourcePath === "string" ? value.sourcePath.trim() : "";
+  const sourceName = typeof value.sourceName === "string" ? value.sourceName.trim() : "";
+  const imageWidth = typeof value.imageWidth === "number" && Number.isFinite(value.imageWidth) ? value.imageWidth : 0;
+  const imageHeight = typeof value.imageHeight === "number" && Number.isFinite(value.imageHeight) ? value.imageHeight : 0;
+  if (!sourcePath || imageWidth <= 0 || imageHeight <= 0) return null;
+  if (value.kind === "point" && isRecord(value.point)) {
+    const x = finiteUnitValue(value.point.x);
+    const y = finiteUnitValue(value.point.y);
+    return x === null || y === null ? null : { sourcePath, sourceName, imageWidth, imageHeight, kind: "point", point: { x, y } };
+  }
+  if (value.kind === "selection" && isRecord(value.selection)) {
+    const left = finiteUnitValue(value.selection.left);
+    const top = finiteUnitValue(value.selection.top);
+    const right = finiteUnitValue(value.selection.right);
+    const bottom = finiteUnitValue(value.selection.bottom);
+    if (left === null || top === null || right === null || bottom === null || left >= right || top >= bottom) return null;
+    return { sourcePath, sourceName, imageWidth, imageHeight, kind: "selection", selection: { left, top, right, bottom } };
+  }
+  return null;
 }
 
 function cspSourceList(values: string[] | undefined, fallback: string) {
@@ -236,13 +266,13 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
         closeLabel="Close settings"
         onClose={onClose}
       />}
-      bodyClassName="px-4 py-4"
+      bodyClassName="px-4 py-3.5"
       testId="workspace-app-inspector"
     >
-      <form ref={formRef} className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <form ref={formRef} className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         {context.fields.map((field) => (
-          <label key={field.id} className="block space-y-1.5">
-            <span className="text-[11px] font-medium text-foreground">{field.label}</span>
+          <label key={field.id} className="block space-y-1">
+            <span className="text-[10px] text-muted-foreground">{field.label}</span>
             {field.control === "textarea" ? (
               <Textarea
                 key={`${field.id}:${field.value}`}
@@ -250,7 +280,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
                 defaultValue={field.value}
                 placeholder={field.placeholder}
                 disabled={submitting || updating}
-                className="min-h-28 resize-y rounded-xl bg-background text-[12px] leading-5"
+                className="min-h-28 resize-y"
               />
             ) : (
               <Select
@@ -263,8 +293,10 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
                   if (value !== null) void updateLiveField(field.id, value);
                 } : undefined}
               >
-                <SelectTrigger className="w-full rounded-xl bg-input/50" aria-label={field.label}>
-                  <SelectValue />
+                <SelectTrigger className="w-full border-transparent bg-muted shadow-none hover:bg-muted/80" aria-label={field.label}>
+                  <SelectValue>
+                    {field.live ? field.options?.find((option) => option.value === field.value)?.label : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="start">
                   {field.options?.map((option) => (
@@ -301,6 +333,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
 
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
+  const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio";
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
   const resourceRef = useRef<iPolloWorkPluginUiResource | null>(null);
@@ -366,6 +399,23 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       active = false;
     };
   }, [props.client, props.resourceOverride, props.surface.pluginId, props.surface.resource.id, props.workspaceId, revision]);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    const receiveImageStudioReference = (event: MessageEvent) => {
+      if (props.surface.pluginId !== "image-studio" || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
+      if (event.data.type !== "ipollowork:image-studio:ask-ai") return;
+      const reference = parseImageStudioAiReference(event.data.reference);
+      if (!reference || !props.sessionId) return;
+      window.dispatchEvent(new CustomEvent("ipollowork:add-image-reference", {
+        detail: { sessionId: props.sessionId, reference },
+      }));
+      props.onDisplayModeChange?.("inline");
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", receiveImageStudioReference);
+    return () => window.removeEventListener("message", receiveImageStudioReference);
+  }, [props.onDisplayModeChange, props.sessionId, props.surface.pluginId]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -615,22 +665,35 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   }
 
   return (
-    <div className={cn("flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
+    <div className={cn("relative flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
       <iframe
         ref={iframeRef}
         title={props.surface.label}
-        className="h-full min-w-0 flex-1 border-0 bg-background"
+        className={cn(
+          "h-full min-w-0 border-0 bg-background",
+          inspectorBelowAppToolbar ? "w-full" : "flex-1",
+        )}
         sandbox="allow-scripts allow-same-origin"
         allow={buildAllowAttribute(resource.resource.ui.permissions)}
         data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
         data-preview-revision={props.developmentPreview?.revision}
       />
       {inspectorOpen && inspectorContext ? (
-        <WorkspaceAppInspector
-          context={inspectorContext}
-          onClose={() => setInspectorOpen(false)}
-          onCallTool={callWorkspaceAppTool}
-        />
+        inspectorBelowAppToolbar ? (
+          <div className="absolute bottom-0 right-0 top-[52px] z-10">
+            <WorkspaceAppInspector
+              context={inspectorContext}
+              onClose={() => setInspectorOpen(false)}
+              onCallTool={callWorkspaceAppTool}
+            />
+          </div>
+        ) : (
+          <WorkspaceAppInspector
+            context={inspectorContext}
+            onClose={() => setInspectorOpen(false)}
+            onCallTool={callWorkspaceAppTool}
+          />
+        )
       ) : null}
     </div>
   );
