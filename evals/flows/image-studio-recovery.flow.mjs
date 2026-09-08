@@ -23,7 +23,7 @@ async function selectRegion(ctx) {
   await ctx.client.send('Input.dispatchMouseEvent', {type:'mousePressed',...start,button:'left',buttons:1,clickCount:1});
   await ctx.client.send('Input.dispatchMouseEvent', {type:'mouseMoved',...end,button:'left',buttons:1});
   await ctx.client.send('Input.dispatchMouseEvent', {type:'mouseReleased',...end,button:'left',clickCount:1});
-  await ctx.waitFor(`Boolean(document.querySelector('[data-image-selection-chip]'))`);
+  await ctx.waitFor(`${studio}?.querySelector('#selectionActions')?.hidden === false`);
 }
 
 async function witness(ctx) {
@@ -70,19 +70,22 @@ export default {
         },
         assert:async()=>{
           ctx.assert(await ctx.eval(`${studio}.querySelector('#imageCanvas').width === 1536`),'Actual image decoded at original width');
-          ctx.assert(await ctx.eval(`document.querySelector('iframe[title="图片工作台"]').srcdoc.includes('version: "0.1.13"')`),'Installed workbench is version 0.1.13');
+          ctx.assert(await ctx.eval(`document.querySelector('iframe[title="图片工作台"]').srcdoc.includes('version: "0.1.29"')`),'Installed workbench is version 0.1.29');
           await ctx.expectNoText('暂时无法响应');
         },
         screenshot:{name:'real-app-open-image',requireText:['图片工作台','这里改成紫色的能量源'],rejectText:['暂时无法响应']},
       });
-      await ctx.prove('右侧真实选区出现在左侧对话附件中',{
-        voiceover:'在原图上框选一个区域，左侧对话框立即显示图片选区附件，测试不会发送消息或修改原图。',
-        action:()=>selectRegion(ctx),
-        assert:async()=>ctx.assert(await ctx.eval(`Boolean(document.querySelector('[data-image-selection-chip]'))`),'Chat displays the active selection'),
+      await ctx.prove('只有点击 AI 批注才把真实选区交给左侧对话',{
+        voiceover:'在原图上框选区域时左侧不会自动附加；点击 AI 批注后，只出现一个图片选区标签。',
+        action:async()=>{
+          await selectRegion(ctx);
+          ctx.assert(await ctx.eval(`!document.querySelector('[data-composer-token="image-reference"]')`),'Selecting alone does not add chat context');
+          await clickInStudio(ctx,'#selectionAskAi');
+          await ctx.waitFor(`document.querySelectorAll('[data-composer-token="image-reference"]').length === 1`);
+        },
+        assert:async()=>ctx.assert(await ctx.eval(`document.querySelectorAll('[data-composer-token="image-reference"]').length === 1`),'Chat displays exactly one explicit AI annotation'),
         screenshot:{name:'real-app-selection',requireText:['图片工作台','图片选区'],rejectText:['暂时无法响应']},
       });
-      await clickInStudio(ctx,'#clearSelection');
-      await ctx.waitFor(`!document.querySelector('[data-image-selection-chip]')`);
     },
   },{
     name:'独立测试图验证覆盖与另存为（模型响应模拟）',

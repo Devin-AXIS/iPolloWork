@@ -10,6 +10,7 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
 import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 import type {
   ImageStudioAiReference,
@@ -23,6 +24,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
+import { workspaceSettingsRoute } from "@/react-app/shell/workspace-routes";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { sessionArtifactsQueryKey } from "@/react-app/infra/session-artifacts-query";
 import {
@@ -36,8 +38,6 @@ import {
 import {
   PLUGIN_UI_HOST_CONTEXT_KEY,
   PLUGIN_UI_INSPECTOR_CONTEXT_KEY,
-  imageSelectionSnapshotSchema,
-  type ImageSelectionSnapshot,
   parsePluginUiInspectorContext,
   type PluginUiInspectorContextV1,
   type PluginUiHostContextV1,
@@ -46,12 +46,6 @@ import {
 import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
-export type WorkspaceImageSelection = {
-  key: string;
-  sessionId: string;
-  sourcePath: string;
-  capture: () => Promise<ImageSelectionSnapshot>;
-};
 
 type WorkspaceAppFrameProps = {
   surface: PluginUiSurface;
@@ -68,7 +62,6 @@ type WorkspaceAppFrameProps = {
     modelContext: WorkspaceAppModelContext | null;
   }) => boolean | Promise<boolean>;
   onRequestClose?: () => void;
-  onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
   resourceOverride?: iPolloWorkPluginUiResource;
   /** Scopes an unpacked draft to the current conversation without adding it to installed plugins. */
@@ -205,9 +198,10 @@ type WorkspaceAppInspectorProps = {
   context: PluginUiInspectorContextV1;
   onClose: () => void;
   onCallTool: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
+  onOpenAuthorizations: () => void;
 };
 
-function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppInspectorProps) {
+function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations }: WorkspaceAppInspectorProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [submitting, setSubmitting] = useState(false);
   const [updating, setUpdating] = useState(false);
@@ -290,7 +284,13 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
                 items={field.options}
                 disabled={submitting || updating}
                 onValueChange={field.live ? (value) => {
-                  if (value !== null) void updateLiveField(field.id, value);
+                  if (value === null) return;
+                  const option = field.options?.find((candidate) => candidate.value === value);
+                  if (option?.action === "open-authorizations") {
+                    onOpenAuthorizations();
+                    return;
+                  }
+                  void updateLiveField(field.id, value);
                 } : undefined}
               >
                 <SelectTrigger className="w-full border-transparent bg-muted shadow-none hover:bg-muted/80" aria-label={field.label}>
@@ -333,6 +333,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
 
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
+  const navigate = useNavigate();
   const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio";
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
@@ -343,8 +344,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const inspectorOpenRequestRef = useRef("");
   const onDisplayModeChangeRef = useRef(props.onDisplayModeChange);
   const onSendMessageRef = useRef(props.onSendMessage);
-  const onImageSelectionChangeRef = useRef(props.onImageSelectionChange);
-  onImageSelectionChangeRef.current = props.onImageSelectionChange;
   const onRequestCloseRef = useRef(props.onRequestClose);
   onDisplayModeChangeRef.current = props.onDisplayModeChange;
   onSendMessageRef.current = props.onSendMessage;
@@ -422,7 +421,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     if (!resource || !iframe?.contentWindow) return;
     setBridgeReady(false);
     let disposed = false;
-    const selectionSurfaceId = crypto.randomUUID();
     const transport = new PostMessageTransport(iframe.contentWindow, iframe.contentWindow);
     const pluginContext = pluginUiHostContext(props, developmentPreviewRef.current);
     const hostContext: McpUiHostContext = {
@@ -497,22 +495,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;
-      if (props.surface.pluginId === "image-studio") {
-        const data = context.structuredContent;
-        const revision = data?.selectionRevision;
-        const sourcePath = data?.sourcePath;
-        const sessionId = props.sessionId;
-        onImageSelectionChangeRef.current?.(data?.selectionReady === true && typeof revision === "number" && typeof sourcePath === "string" && sessionId ? {
-          key: `${selectionSurfaceId}:${sessionId}:${sourcePath}:${revision}`,
-          sessionId,
-          sourcePath,
-          capture: async () => {
-            const result = await bridge.callTool({ name: "capture_selection", arguments: { revision } });
-            if (result.isError) throw new Error(messageText(result.content) || "Image selection could not be captured");
-            return imageSelectionSnapshotSchema.parse(result.structuredContent);
-          },
-        } : null);
-      }
       const nextInspector = inspectorContextFrom(context);
       setInspectorContext(nextInspector);
       if (!nextInspector) {
@@ -570,7 +552,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
     return () => {
       disposed = true;
-      if (props.surface.pluginId === "image-studio") onImageSelectionChangeRef.current?.(null);
       resizeObserver.disconnect();
       themeObserver.disconnect();
       bridgeRef.current = null;
@@ -685,6 +666,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
               context={inspectorContext}
               onClose={() => setInspectorOpen(false)}
               onCallTool={callWorkspaceAppTool}
+              onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
             />
           </div>
         ) : (
@@ -692,6 +674,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
             context={inspectorContext}
             onClose={() => setInspectorOpen(false)}
             onCallTool={callWorkspaceAppTool}
+            onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
           />
         )
       ) : null}

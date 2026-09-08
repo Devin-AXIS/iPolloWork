@@ -174,7 +174,7 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
-import type { WorkspaceAppModelContext, WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
+import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
@@ -2866,11 +2866,6 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(sessionId, "panel");
   }, [props.selectedSessionId, props.selectedSessionKnown, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
-  const [workspaceImageSelection, setWorkspaceImageSelection] = useState<WorkspaceImageSelection | null>(null);
-  const activeImageSelection = sessionSidePanel === "panel" && activePanelTab?.type === "workspace-app"
-    && activePanelTab.surface.pluginId === "image-studio"
-    && workspaceImageSelection?.sessionId === props.selectedSessionId ? workspaceImageSelection : null;
-
   const sendSessionDraft = useCallback((
     draft: ComposerDraft,
     sessionId: string,
@@ -3393,9 +3388,11 @@ export function SessionPage(props: SessionPageProps) {
     const sourceId = sourceSessionId ?? props.selectedSessionId;
     if (target.kind === "file" && target.preview === "image") {
       // Let chat finish with its image card; open the editor only on a click.
-      if (options?.auto) return;
+      // Image Studio annotations opt into replacing the workbench source once
+      // their edited artifact is verified; ordinary generated images stay put.
+      if (options?.auto && options.viewer !== "image-studio") return;
       if (/\.(png|jpe?g|webp)$/i.test(target.value) && workspaceApps.some((surface) => surface.pluginId === "image-studio")) {
-        prioritizeRightPanel();
+        if (!options?.auto) prioritizeRightPanel();
         openImageStudio(target, sourceId ?? undefined);
         return;
       }
@@ -4881,7 +4878,6 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : <SessionSurface
-                        imageSelection={activeImageSelection}
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
@@ -5172,7 +5168,6 @@ export function SessionPage(props: SessionPageProps) {
                         launcherItems={sidePanelLauncherItems}
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
-                        onImageSelectionChange={setWorkspaceImageSelection}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onEditImage={openImageStudio}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}

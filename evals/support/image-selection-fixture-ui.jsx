@@ -21,7 +21,7 @@ const noop = () => {};
 const empty = async () => [];
 const initialSnapshot = {
   session: { id: "selection-proof", title: "图片选区修改验证", directory: "", time: { created: 1, updated: 1 } },
-  messages: [{ id: "intro", role: "assistant", parts: [{ type: "text", text: "请在右侧画出选区。左侧会显示选区附件；也可以直接在右侧输入编辑指令。" }] }],
+  messages: [{ id: "intro", role: "assistant", parts: [{ type: "text", text: "请在右侧画出选区，然后点击 AI 批注交给左侧对话。" }] }],
   todos: [], status: { type: "idle" },
 };
 const client = {
@@ -37,7 +37,6 @@ const client = {
   },
 };
 function Fixture() {
-  const [selection, setSelection] = useState(null);
   const [output, setOutput] = useState(null);
   const [showStudio, setShowStudio] = useState(true);
   const [showFiles, setShowFiles] = useState(false);
@@ -72,7 +71,7 @@ function Fixture() {
           opencodeBaseUrl={endpoint} ipolloworkToken="" developerMode={false}
           modelLabel="GPT-5.5" onModelClick={noop} modelPickerOpen={false} selectedModel={{ providerID: "openai", modelID: "gpt-5.5" }}
           onModelPickerOpenChange={noop} onModelChange={noop} onSendDraft={send} onDraftChange={noop} supportsNativeAttachments
-          imageSelection={showStudio ? selection : null} modelVariantLabel="均衡" modelVariant={null} onModelVariantChange={noop}
+          modelVariantLabel="均衡" modelVariant={null} onModelVariantChange={noop}
           selectedMode={null} listModes={empty} onSelectMode={noop} listAgents={empty} onSelectAgent={noop} listCommands={empty}
           recentFiles={[]} searchFiles={empty} isRemoteWorkspace={false} isSandboxWorkspace={false} providerConnectedCount={1}
         />}</div>
@@ -86,7 +85,7 @@ function Fixture() {
         surface={{ id: "image-studio", pluginId: "image-studio", label: "图片工作台", resource: setup.resource }}
         client={client} workspaceId="selection-proof" workspaceRoot="" sessionId="selection-proof" placement="workspace"
         resourceOverride={{ pluginId: "image-studio", resource: setup.resource, html: setup.html }}
-        launch={launch} onImageSelectionChange={setSelection}
+        launch={launch}
       /> : <div className="p-10">工作台已关闭，已发送的选区快照不受影响。</div>}</section>
     </div>
   </main>;

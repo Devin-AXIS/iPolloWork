@@ -7,10 +7,6 @@
  */
 
 export default {
-  "composer.image_selection_attached": "已附加图片选区",
-  "composer.image_selection_preparing": "正在冻结图片选区…",
-  "composer.image_selection_remove": "移除图片选区",
-  "composer.image_selection_failed": "图片选区附加失败，请重试。",
   "plugin_platform.action.install": "安装",
   "plugin_platform.action.connect": "授权连接",
   "plugin_platform.action.open": "打开",

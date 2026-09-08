@@ -38,11 +38,13 @@
       backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
     }
     .document-title { min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
-    .mode-switch { display: flex; height: 32px; gap: 2px; padding: 3px; border-radius: 9px; background: rgba(127,127,127,.09); }
-    .mode-switch button { flex: 0 0 auto; height: 26px; border: 0; border-radius: 6px; background: transparent; padding: 0 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .mode-switch { display: flex; height: 36px; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(127,127,127,.09); }
+    .mode-switch button { flex: 0 0 auto; height: 32px; border: 0; border-radius: 7px; background: transparent; padding: 0 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .mode-switch button.active { background: #fff; color: #171717; box-shadow: none; }
     .top-actions { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
-    .provider { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .provider { display: flex; min-width: 0; max-width: 190px; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .provider-status { flex: 0 0 auto; }
     .provider-dot { width: 7px; height: 7px; border-radius: 999px; background: #a1a1aa; }
     .provider.ready .provider-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
     .shell { position: relative; min-height: 0; }
@@ -55,8 +57,8 @@
     }
     .stage.panning { cursor: grabbing; user-select: none; }
     .empty { display: grid; justify-items: center; width: min(520px, calc(100% - 40px)); text-align: center; }
-    .empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 14px; background: rgba(127,127,127,.08); }
-    .empty-orb img { display: block; width: 42px; height: 42px; object-fit: contain; }
+    .empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #fff; }
+    .empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }
     .empty h2 { margin: 14px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: -.015em; }
     .empty p { margin: 6px 0 0; max-width: 390px; color: var(--muted); font-size: 13px; line-height: 1.55; }
     .empty-actions { display: flex; gap: 8px; margin-top: 18px; }
@@ -75,6 +77,7 @@
     #selectionCanvas[data-tool="smart"] { cursor: cell; }
     #selectionCanvas[data-tool="hand"] { cursor: grab; }
     #selectionCanvas[data-tool="hand"].dragging { cursor: grabbing; }
+    #selectionCanvas[data-annotation="true"] { cursor: crosshair; }
     .selection-actions {
       position: absolute; z-index: 4; display: flex; height: 36px; align-items: center; gap: 2px; padding: 3px;
       transform: translate(-50%, 8px); border: 1px solid var(--line); border-radius: 9px;
@@ -95,23 +98,20 @@
     .toolbar.visible { display: flex; }
     .toolbar-row { display: contents; }
     .tool { display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 7px 9px; color: var(--muted); }
-    .tool.compact { justify-content: center; width: 31px; height: 31px; padding: 0; flex: 0 0 auto; }
+    .tool.compact { justify-content: center; width: 32px; height: 32px; padding: 0; flex: 0 0 auto; }
     .tool:hover { color: var(--text); background: rgba(127,127,127,.08); }
     .tool.active { color: var(--accent-text); background: var(--accent); }
     .tool-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
     .separator { width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
     .operation-switch { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,127,127,.06); }
-    .operation-switch .tool { width: 27px; height: 27px; border-radius: 7px; }
+    .operation-switch .tool { width: 32px; height: 32px; border-radius: 7px; }
     .capability-switch { display: contents; }
     .zoom-controls {
-      position: fixed; z-index: 5; display: none; align-items: center; gap: 3px; padding: 4px;
-      transform: translateX(-50%); border: 1px solid var(--line); border-radius: 10px;
-      background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.08); backdrop-filter: blur(20px);
+      position: fixed; z-index: 5; bottom: 16px; left: 16px; display: none; align-items: center; gap: 3px;
+      border: 0; background: transparent;
     }
     .zoom-controls.visible { display: flex; }
-    .zoom-pill { min-width: 50px; color: var(--muted); text-align: center; font-variant-numeric: tabular-nums; }
-    button.zoom-pill { border: 0; border-radius: 7px; background: transparent; padding: 6px 4px; }
-    button.zoom-pill:hover { color: var(--text); background: rgba(127,127,127,.08); }
+    .zoom-pill { min-width: 44px; color: var(--muted); text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
     .button { display: inline-flex; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-solid); padding: 0 12px; font-size: 12px; font-weight: 500; white-space: nowrap; }
     .button:hover { border-color: var(--line-strong); background: rgba(127,127,127,.06); }
     .button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
@@ -139,16 +139,15 @@
     .expand-choices button:hover { color: var(--text); background: rgba(127,127,127,.12); }
     .expand-choices button.active { color: var(--accent-text); background: var(--accent); }
     .expand-run { height: 30px; border: 0; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-size: 12px; }
-    .floating-menu {
-      position: fixed; z-index: 20; min-width: 132px; padding: 5px; border: 1px solid var(--line); border-radius: 10px;
-      background: var(--surface-solid); box-shadow: 0 12px 34px rgba(24,24,27,.14);
-    }
-    .floating-menu button { display: flex; width: 100%; height: 30px; align-items: center; justify-content: space-between; border: 0; border-radius: 7px; background: transparent; padding: 0 9px; color: var(--text); font-size: 12px; }
-    .floating-menu button:hover, .floating-menu button.active { background: rgba(127,127,127,.09); }
     .instant-tooltip {
       position: fixed; z-index: 30; max-width: 220px; transform: translateX(-50%); border-radius: 6px;
       background: rgba(24,24,27,.94); padding: 4px 7px; color: #fff; font-size: 11px; line-height: 1.35;
       pointer-events: none; white-space: nowrap;
+    }
+    .annotation-hint {
+      position: fixed; z-index: 6; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 8px;
+      background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.1); padding: 6px 9px;
+      color: var(--muted); font-size: 11px; line-height: 1.35; pointer-events: none; white-space: nowrap;
     }
     .busy-layer { position: absolute; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(244,244,242,.65); backdrop-filter: blur(9px); }
     .busy-layer.visible { display: grid; }
@@ -160,11 +159,14 @@
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 760px) {
-      .provider { display: none; }
+      .provider-name { display: none; }
       .top-action { width: 32px; justify-content: center; padding: 0; }
       .top-action span { display: none; }
-      .toolbar.visible { display: grid; gap: 3px; overflow: visible; }
-      .toolbar-row { display: flex; min-width: 0; align-items: center; justify-content: flex-start; gap: 3px; overflow-x: auto; scrollbar-width: none; }
+      .toolbar { top: 14px; left: 14px; max-height: calc(100% - 28px); transform: none; overflow-x: hidden; overflow-y: auto; }
+      .toolbar.visible, .toolbar-row { display: flex; width: auto; flex-direction: column; align-items: center; gap: 3px; }
+      .toolbar .separator { width: 22px; height: 1px; margin: 2px 0; }
+      .operation-switch { flex-direction: column; }
+      .tool-options-popover, .expand-controls { width: min(236px, calc(100vw - 92px)); }
       .toolbar-row::-webkit-scrollbar { display: none; }
     }
     @media (max-width: 420px) {
@@ -178,7 +180,6 @@
         --text: #f4f4f5; --muted: #a1a1aa; --line: rgba(255,255,255,.1); --line-strong: rgba(255,255,255,.2);
         --accent: #f4f4f5; --accent-text: #18181b; --shadow: 0 20px 60px rgba(0,0,0,.35);
       }
-      .empty-orb img { filter: invert(1); }
       .busy-layer { background: rgba(21,21,21,.64); }
     }
   </style>
@@ -196,7 +197,11 @@
           <svg class="tool-icon" data-lucide="image-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></svg>
           <span data-i18n="replaceImage">替换图片</span>
         </button>
-        <div id="provider" class="provider"><span class="provider-dot"></span><span id="providerText" data-i18n="checking">检查图片模型…</span></div>
+        <button id="downloadImage" class="top-action" type="button" data-tooltip-key="downloadImage" aria-label="下载" hidden>
+          <svg class="tool-icon" data-lucide="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          <span data-i18n="downloadImage">下载</span>
+        </button>
+        <div id="provider" class="provider"><span class="provider-dot"></span><span id="providerName" class="provider-name" data-i18n="model">图片模型</span><span id="providerStatus" class="provider-status" data-i18n="checking">检查中…</span></div>
       </div>
     </header>
 
@@ -289,9 +294,12 @@
           <button id="zoomOut" class="tool compact" type="button" data-tooltip-key="zoomOut" aria-label="缩小">
             <svg class="tool-icon" data-lucide="zoom-out" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
           </button>
-          <button id="zoomValue" class="zoom-pill" type="button" aria-haspopup="menu" aria-expanded="false">100%</button>
+          <output id="zoomValue" class="zoom-pill" aria-live="polite">100%</output>
           <button id="zoomIn" class="tool compact" type="button" data-tooltip-key="zoomIn" aria-label="放大">
             <svg class="tool-icon" data-lucide="zoom-in" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+          </button>
+          <button id="fitWindow" class="tool compact" type="button" data-tooltip-key="fitWindow" data-zoom="fit" aria-label="适合窗口">
+            <svg class="tool-icon" data-lucide="maximize" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
           </button>
         </div>
         <div id="smartOptions" class="tool-options-popover">
@@ -316,16 +324,7 @@
           </div></div>
           <button id="expandRun" class="expand-run" type="button" data-i18n="startExpand">开始扩图</button>
         </div>
-        <div id="zoomMenu" class="floating-menu" role="menu" hidden>
-          <button type="button" data-zoom="fit"><span data-i18n="fitWindow">适合窗口</span><span>Fit</span></button>
-          <button type="button" data-zoom="0.1"><span>10%</span></button>
-          <button type="button" data-zoom="0.25"><span>25%</span></button>
-          <button type="button" data-zoom="0.5"><span>50%</span></button>
-          <button type="button" data-zoom="0.75"><span>75%</span></button>
-          <button type="button" data-zoom="1"><span>100%</span></button>
-          <button type="button" data-zoom="1.5"><span>150%</span></button>
-          <button type="button" data-zoom="2"><span>200%</span></button>
-        </div>
+        <div id="annotationHint" class="annotation-hint" role="status" hidden></div>
         <div id="instantTooltip" class="instant-tooltip" role="tooltip" hidden></div>
         <section id="saveReview" class="save-review" aria-label="保存编辑结果" hidden>
           <p id="saveReviewText" role="status"></p>
@@ -374,7 +373,7 @@
       zh: {
         title: "图片工作台", newImage: "新图片", edit: "编辑", generate: "生成", checking: "检查图片模型…", ready: "图片模型已连接", unavailable: "图片模型未连接",
         emptyTitle: "创建或编辑图片", emptyBody: "打开已有图片进行编辑，或从描述生成一张新图片。", generateEmptyTitle: "生成一张新图片", generateEmptyBody: "在右侧描述内容并设置画面参数。",
-        openImage: "打开图片", importImage: "导入图片", replaceImage: "替换图片", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
+        openImage: "打开图片", importImage: "导入图片", replaceImage: "替换图片", downloadImage: "下载", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
         importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "描述想生成的画面内容…",
         selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
         model: "图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
@@ -385,7 +384,7 @@
         overwriteWarning: "确认用当前结果替换 {name}？旧版本将被替换，本次编辑副本将移除。",
         overwriting: "正在覆盖原图…", savingCopy: "正在另存为…", overwritten: "已覆盖 {name}，主要产出保留原文件。", copySaved: "已另存为 {name}，原图和编辑版均保留。",
         providerNotice: "请先在设置 → 授权中心连接所选图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
-        modelConnected: "{name} 已连接", modelNotConnected: "{name} 未连接", notConnected: "未连接", notAvailable: "暂不可用",
+        connectedStatus: "已连接", notConnected: "未连接", notAvailable: "暂不可用",
         midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", approximateSelection: "{name} 将按选区的大致范围编辑，边界精度取决于模型。", exactSelection: "自然融合在选区内侧渐变衔接，选区外保持不变。请给目标和光晕留出选区余量；细线、精确替换可选严格边界。风格、镜头和光线仅作提示词引导。",
         loading: "正在打开图片…", importing: "正在导入图片…", processing: "正在处理图片…",
         saved: "已另存为 {name}", selectionRequired: "请先涂抹或框选需要处理的区域。", selectionCleared: "选区已清除", smartSelected: "已生成智能选区，可继续加选或减选。", annotationPointHint: "请在图片上点击需要批注的位置。", annotationAdded: "已添加到输入框。", promptRequired: "请先描述想生成或修改的内容。", imageRequired: "请先打开一张图片，或切换到生成模式。",
@@ -394,7 +393,7 @@
       en: {
         title: "Image Studio", newImage: "New image", edit: "Edit", generate: "Generate", checking: "Checking image model…", ready: "Image model connected", unavailable: "Image model not connected",
         emptyTitle: "Create or edit an image", emptyBody: "Open an existing image to edit it, or generate a new image from a description.", generateEmptyTitle: "Generate a new image", generateEmptyBody: "Describe the image and set visual controls in the panel on the right.",
-        openImage: "Open image", importImage: "Import image", replaceImage: "Replace image", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
+        openImage: "Open image", importImage: "Import image", replaceImage: "Replace image", downloadImage: "Download", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
         importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Describe the image you want to generate…",
         selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
         model: "Image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
@@ -405,7 +404,7 @@
         overwriteWarning: "Replace {name} with this result? The previous version will be replaced and this edit's copy removed.",
         overwriting: "Overwriting original…", savingCopy: "Saving copy…", overwritten: "Overwrote {name}; the original file remains in outputs.", copySaved: "Saved as {name}; both versions are kept.",
         providerNotice: "Connect the selected image model in Settings → Authorization Center first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
-        modelConnected: "{name} connected", modelNotConnected: "{name} not connected", notConnected: "Not connected", notAvailable: "Unavailable",
+        connectedStatus: "Connected", notConnected: "Not connected", notAvailable: "Unavailable",
         midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", approximateSelection: "{name} will edit the approximate selected region; boundary precision depends on the model.", exactSelection: "Natural blending feathers inward and preserves unselected pixels. Leave margin for the subject and glow; use Strict for fine lines or exact replacement. Style, camera and lighting are prompt guidance only.",
         loading: "Opening image…", importing: "Importing image…", processing: "Processing image…",
         saved: "Saved as {name}", selectionRequired: "Brush or select the area to process first.", selectionCleared: "Selection cleared", smartSelected: "Smart selection created. Add or subtract to refine it.", annotationPointHint: "Click the point you want to annotate.", annotationAdded: "Added to the composer.", promptRequired: "Describe what you want to generate or change first.", imageRequired: "Open an image first, or switch to Generate.",
@@ -428,6 +427,7 @@
       $("#selectionClear").ariaLabel = tr("clearSelection");
       $("#selectionAskAi").ariaLabel = tr("askAi");
       $("#selectionErase").ariaLabel = tr("eraseAction");
+      $("#annotationHint").textContent = tr("annotationPointHint");
       $("#documentTitle").textContent = state.sourceName || tr("newImage");
       renderMode(); renderProvider(); renderSelectionState(); renderSaveReview();
     }
@@ -516,10 +516,14 @@
     }
     function applyProviderModels(provider) {
       state.models = Array.isArray(provider.models)
-        ? provider.models.filter((model) => model && typeof model.id === "string" && model.available === true && model.configured === true)
+        ? provider.models.filter((model) => model && typeof model.id === "string")
         : [];
-      if (!state.models.some((model) => model.id === state.model)) {
-        state.model = state.models.find((model) => model.id === provider.defaultModel)?.id || state.models[0]?.id || "";
+      const selected = state.models.find((model) => model.id === state.model);
+      if (!selected?.available || !selected.configured) {
+        state.model = state.models.find((model) => model.id === provider.defaultModel && model.available && model.configured)?.id
+          || state.models.find((model) => model.available && model.configured)?.id
+          || state.models.find((model) => model.available)?.id
+          || "";
       }
       normalizeModelParameters(); syncProviderState();
     }
@@ -552,9 +556,9 @@
       syncProviderState();
       const model = selectedModel();
       $("#provider").classList.toggle("ready", state.providerReady);
-      $("#providerText").textContent = model
-        ? tr(state.providerReady ? "modelConnected" : "modelNotConnected", { name: model.label })
-        : tr("unavailable");
+      $("#providerName").textContent = model?.label || tr("model");
+      $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("notAvailable");
+      $("#provider").title = `${model?.label || tr("model")} · ${$("#providerStatus").textContent}`;
       publishContext();
     }
     function renderEmptyState() {
@@ -575,6 +579,7 @@
       $("#generateMode").setAttribute("aria-selected", String(!editing));
       $("#modeSwitch").hidden = !hasSource;
       $("#topImport").hidden = !editingSource;
+      $("#downloadImage").hidden = !editingSource;
       $("#empty").hidden = editingSource;
       $("#canvasWrap").classList.toggle("visible", editingSource);
       $("#toolbar").classList.toggle("visible", editingSource);
@@ -582,7 +587,6 @@
       $("#documentTitle").textContent = editingSource ? state.sourceName : tr("newImage");
       renderEmptyState();
       positionToolOptions();
-      positionZoomControls();
     }
     function setMode(mode) {
       state.mode = mode;
@@ -623,6 +627,15 @@
       boundsRevision = selectionRevision;
       cachedBounds = right >= 0 ? { left, top, right, bottom } : null;
       return cachedBounds;
+    }
+    function normalizedSelectionBounds() {
+      const bounds = selectionBounds();
+      return bounds ? {
+        left: bounds.left / selectionCanvas.width,
+        top: bounds.top / selectionCanvas.height,
+        right: (bounds.right + 1) / selectionCanvas.width,
+        bottom: (bounds.bottom + 1) / selectionCanvas.height,
+      } : null;
     }
     function renderSelectionState() {
       selectionRevision++;
@@ -686,6 +699,10 @@
     function setAnnotationMode(active) {
       state.annotationMode = active;
       $("#askAi").classList.toggle("active", active);
+      selectionCanvas.dataset.annotation = String(active);
+      $("#annotationHint").hidden = !active;
+      positionToolOptions();
+      positionAnnotationHint();
     }
     function imageReference(kind, target) {
       return {
@@ -768,7 +785,6 @@
       state.zoom = Math.max(.1, Math.min(3, scale));
       state.zoomMode = mode;
       applyZoom();
-      closeZoomMenu();
     }
     function applyZoom() {
       if (!state.imageWidth) return;
@@ -776,27 +792,7 @@
       $("#canvasWrap").style.width = `${Math.round(state.imageWidth * scale)}px`;
       $("#canvasWrap").style.height = `${Math.round(state.imageHeight * scale)}px`;
       $("#zoomValue").textContent = `${Math.round(scale * 100)}%`;
-      document.querySelectorAll("[data-zoom]").forEach((button) => {
-        const value = button.dataset.zoom;
-        button.classList.toggle("active", value === "fit" ? state.zoomMode === "fit" : state.zoomMode === "custom" && Number(value) === state.zoom);
-      });
       renderSelectionVisual(selectionBounds());
-      positionZoomControls();
-    }
-    function closeZoomMenu() {
-      $("#zoomMenu").hidden = true;
-      $("#zoomValue").setAttribute("aria-expanded", "false");
-    }
-    function toggleZoomMenu() {
-      const menu = $("#zoomMenu");
-      if (!menu.hidden) { closeZoomMenu(); return; }
-      menu.hidden = false;
-      $("#zoomValue").setAttribute("aria-expanded", "true");
-      const anchor = $("#zoomValue").getBoundingClientRect();
-      const left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, anchor.left + anchor.width / 2 - menu.offsetWidth / 2));
-      menu.style.left = `${left}px`;
-      const above = anchor.top - menu.offsetHeight - 7;
-      menu.style.top = `${above >= 8 ? above : anchor.bottom + 7}px`;
     }
     function showTooltip(button) {
       const label = button.dataset.tooltip;
@@ -805,8 +801,14 @@
       const rect = button.getBoundingClientRect();
       tooltip.textContent = label;
       tooltip.hidden = false;
-      tooltip.style.left = `${Math.max(36, Math.min(innerWidth - 36, rect.left + rect.width / 2))}px`;
-      tooltip.style.top = button.closest("#zoomControls") ? `${rect.top - tooltip.offsetHeight - 7}px` : `${rect.bottom + 7}px`;
+      const besideToolbar = matchMedia("(max-width: 760px)").matches && button.closest("#toolbar");
+      tooltip.style.transform = besideToolbar ? "none" : "translateX(-50%)";
+      tooltip.style.left = besideToolbar
+        ? `${Math.min(innerWidth - tooltip.offsetWidth - 8, rect.right + 7)}px`
+        : `${Math.max(36, Math.min(innerWidth - 36, rect.left + rect.width / 2))}px`;
+      tooltip.style.top = besideToolbar
+        ? `${Math.max(8, rect.top + rect.height / 2 - tooltip.offsetHeight / 2)}px`
+        : button.closest("#zoomControls") ? `${rect.top - tooltip.offsetHeight - 7}px` : `${rect.bottom + 7}px`;
     }
     function hideTooltip() {
       $("#instantTooltip").hidden = true;
@@ -929,7 +931,7 @@
       publishContext();
     }
     function positionToolOptions() {
-      const visible = state.mode === "edit" && Boolean(state.sourcePath);
+      const visible = state.mode === "edit" && Boolean(state.sourcePath) && !state.annotationMode;
       const smartOptions = $("#smartOptions");
       const brushOptions = $("#brushOptions");
       const expandOptions = $("#expandOptions");
@@ -938,20 +940,34 @@
       expandOptions.hidden = !visible || state.aiMode !== "expand";
       const popover = state.aiMode === "expand" ? expandOptions : state.tool === "smart" ? smartOptions : state.tool === "brush" ? brushOptions : null;
       if (!popover || popover.hidden) return;
-      const rect = $("#toolbar").getBoundingClientRect();
-      const left = Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, rect.left + rect.width / 2 - popover.offsetWidth / 2));
+      const toolbarRect = $("#toolbar").getBoundingClientRect();
+      const narrow = matchMedia("(max-width: 760px)").matches;
+      const anchor = state.aiMode === "expand" ? $('[data-ai-mode="expand"]') : $(`[data-tool="${state.tool}"]`);
+      const anchorRect = anchor?.getBoundingClientRect() || toolbarRect;
+      const left = narrow
+        ? Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, toolbarRect.right + 10))
+        : Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, toolbarRect.left + toolbarRect.width / 2 - popover.offsetWidth / 2));
       popover.style.left = `${left}px`;
-      popover.style.top = `${rect.bottom + 10}px`;
+      popover.style.top = narrow
+        ? `${Math.max(8, Math.min(innerHeight - popover.offsetHeight - 8, anchorRect.top + anchorRect.height / 2 - popover.offsetHeight / 2))}px`
+        : `${toolbarRect.bottom + 10}px`;
     }
-    function positionZoomControls() {
-      const controls = $("#zoomControls");
-      if (!controls.classList.contains("visible")) return;
-      const canvasRect = $("#canvasWrap").getBoundingClientRect();
-      const halfWidth = controls.offsetWidth / 2;
-      const center = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, canvasRect.left + canvasRect.width / 2));
-      const top = Math.min(innerHeight - controls.offsetHeight - 12, canvasRect.bottom + 12);
-      controls.style.left = `${center}px`;
-      controls.style.top = `${Math.max(12, top)}px`;
+    function positionAnnotationHint() {
+      const hint = $("#annotationHint");
+      if (hint.hidden) return;
+      const toolbar = $("#toolbar").getBoundingClientRect();
+      if (matchMedia("(max-width: 760px)").matches) {
+        const anchor = $("#askAi").getBoundingClientRect();
+        hint.style.transform = "none";
+        hint.style.left = `${Math.min(innerWidth - hint.offsetWidth - 8, toolbar.right + 10)}px`;
+        hint.style.top = `${Math.max(8, Math.min(innerHeight - hint.offsetHeight - 8, anchor.top + anchor.height / 2 - hint.offsetHeight / 2))}px`;
+        return;
+      }
+      hint.style.transform = "translateX(-50%)";
+      const halfWidth = hint.offsetWidth / 2;
+      const center = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, toolbar.left + toolbar.width / 2));
+      hint.style.left = `${center}px`;
+      hint.style.top = `${toolbar.bottom + 8}px`;
     }
     function selectOperation(operation) {
       state.operation = operation;
@@ -1032,6 +1048,15 @@
         setMode("edit");
       } catch (error) { setStatus(error instanceof Error ? error.message : tr("failed"), true); }
       finally { setBusy(false); $("#fileInput").value = ""; }
+    }
+    function downloadCurrentImage() {
+      if (!state.sourceDataUrl) return;
+      const link = document.createElement("a");
+      link.href = state.sourceDataUrl;
+      link.download = state.sourceName || "image.png";
+      document.body.append(link);
+      link.click();
+      link.remove();
     }
     function actionArguments(prompt) {
       return {
@@ -1137,7 +1162,9 @@
         const selectOptions = {
           model: state.models.map((model) => ({
             value: model.id,
-            label: model.label,
+            label: `${model.label}${!model.available ? ` · ${tr("notAvailable")}` : !model.configured ? ` · ${tr("notConnected")}` : ""}`,
+            disabled: !model.available,
+            ...(!model.configured && model.available ? { action: "open-authorizations" } : {}),
           })),
           style: [
             ["auto", autoLabel], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "杂志编辑视觉"],
@@ -1401,9 +1428,8 @@
     $("#askAi").addEventListener("click", requestAiAnnotation);
     $("#zoomIn").addEventListener("click", () => setZoom(currentZoom() + .1));
     $("#zoomOut").addEventListener("click", () => setZoom(currentZoom() - .1));
-    $("#zoomValue").addEventListener("click", toggleZoomMenu);
     document.querySelectorAll("[data-zoom]").forEach((button) => button.addEventListener("click", () => {
-      button.dataset.zoom === "fit" ? setZoom(fitZoom(), "fit") : setZoom(Number(button.dataset.zoom));
+      setZoom(fitZoom(), "fit");
     }));
     document.querySelectorAll("[data-tooltip-key]").forEach((button) => {
       button.addEventListener("pointerenter", () => showTooltip(button));
@@ -1411,15 +1437,11 @@
       button.addEventListener("focus", () => showTooltip(button));
       button.addEventListener("blur", hideTooltip);
     });
-    document.addEventListener("pointerdown", (event) => {
-      if (!$("#zoomMenu").contains(event.target) && !$("#zoomValue").contains(event.target)) closeZoomMenu();
-    });
     $("#stage").addEventListener("wheel", (event) => {
       if (!state.imageWidth || (!event.metaKey && !event.ctrlKey)) return;
       event.preventDefault();
       setZoom(currentZoom() + (event.deltaY < 0 ? .1 : -.1));
     }, { passive: false });
-    $("#stage").addEventListener("scroll", positionZoomControls);
     addEventListener("keydown", (event) => {
       const target = event.target;
       const editingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
@@ -1430,7 +1452,7 @@
       if (event.code === "Space" && !event.repeat && state.tool !== "hand") {
         event.preventDefault(); state.temporaryTool = state.tool; selectTool("hand"); return;
       }
-      if (event.key === "Escape") { closeZoomMenu(); hideTooltip(); setAnnotationMode(false); return; }
+      if (event.key === "Escape") { hideTooltip(); setAnnotationMode(false); return; }
       if (event.key === "0") { setZoom(fitZoom(), "fit"); return; }
       const shortcut = { w: "smart", b: "brush", r: "rectangle", o: "ellipse", h: "hand" }[event.key.toLowerCase()];
       if (shortcut) selectTool(shortcut);
@@ -1447,8 +1469,9 @@
     $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
     $("#emptyBack").addEventListener("click", () => setMode("start"));
     for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => $("#fileInput").click());
+    $("#downloadImage").addEventListener("click", downloadCurrentImage);
     $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
-    addEventListener("resize", () => { applyZoom(); positionToolOptions(); });
+    addEventListener("resize", () => { applyZoom(); positionToolOptions(); positionAnnotationHint(); });
 
     selectTool(state.tool);
     selectAiMode(state.aiMode);
@@ -1456,7 +1479,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.23" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.29" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
