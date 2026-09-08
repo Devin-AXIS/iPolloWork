@@ -152,17 +152,24 @@ const uiResourceMetadataSchema = z.object({
 const pluginUiInspectorFieldSchema = z.object({
   id: z.string().regex(FIELD_ID_RE),
   label: z.string().min(1),
-  control: z.enum(["textarea", "select"]),
+  control: z.enum(["textarea", "select", "image"]),
   value: z.string(),
   live: z.boolean().optional(),
   advanced: z.boolean().optional(),
   placeholder: z.string().optional(),
+  media: z.object({
+    kind: z.enum(["image", "video", "audio"]),
+    importTool: z.string().regex(SIMPLE_ID_RE),
+    readTool: z.string().regex(SIMPLE_ID_RE).optional(),
+  }).strict().optional(),
   options: z.array(z.object({
     value: z.string(),
     label: z.string().min(1),
     disabled: z.boolean().optional(),
   }).strict()).optional(),
-}).strict();
+}).strict().refine(field => field.control !== "image" || (field.media?.kind === "image" && Boolean(field.media.readTool)), {
+  message: "Image controls require image import and preview tools.",
+});
 
 export const pluginUiInspectorContextSchema = z.object({
   schemaVersion: z.literal(1),

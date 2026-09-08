@@ -54,6 +54,14 @@ function Fixture() {
     setDispatch("已保存新图片；原图未覆盖");
     return false; // Simulated transport: do not start an external agent turn.
   };
+  if (setup.framesMode) return <main style={{ height: "100vh", display: "flex", flexDirection: "column" }} className="bg-background text-foreground">
+    <header className="border-b px-5 py-3 text-sm">首尾帧上传验证 · 真实控件和本地导入，不提交生成任务</header>
+    <section className="min-h-0 flex-1"><WorkspaceAppFrame
+      surface={{ id: "video-console", pluginId: "video-console", label: "视频控制台", resource: setup.resource }}
+      client={client} workspaceId="selection-proof" workspaceRoot="" sessionId="selection-proof" placement="workspace"
+      resourceOverride={{ pluginId: "video-console", resource: setup.resource, html: setup.html }}
+    /></section>
+  </main>;
   return <main style={{ height: "100vh", display: "flex", flexDirection: "column" }} className="bg-background text-foreground">
     <header className="border-b px-5 py-3 flex items-center gap-4">
       <b>图片选区修改 · 界面验证</b>

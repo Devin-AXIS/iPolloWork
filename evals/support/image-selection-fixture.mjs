@@ -12,14 +12,16 @@ import { PROVIDER_FETCH_SYMBOL } from "../../apps/server/dist/provider-fetch.js"
 import { listSessionArtifacts, recordSessionArtifact } from "../../apps/server/dist/session-artifacts.js";
 import createService from "../../examples/plugin-packages/image-studio/service/image-studio.mjs";
 import { resolveWithinRoot } from "../../apps/server/dist/paths.js";
+import { callVideoGenerationAction } from "../../apps/server/dist/extensions/video-generation.js";
 
 const require = createRequire(new URL("../../apps/server/package.json", import.meta.url));
 const sharp = require("sharp");
 const root = await mkdtemp(join(tmpdir(), "ipollowork-selection-fixture-"));
 const mediaMode = process.argv.includes("--media");
+const framesMode = process.argv.includes("--frames");
 const videoMode = process.argv.includes("--video") || mediaMode;
 const fixturePort = videoMode ? 5274 : 5190;
-const authorization = { read: async () => ({ OPENAI_API_KEY: "fixture", ARK_API_KEY: "fixture" }), openAiBrowserSession: async () => ({ accessToken: "fixture", accountId: "fixture" }) };
+const authorization = { read: async () => ({ OPENAI_API_KEY: "fixture", ARK_API_KEY: "fixture", ...(framesMode ? { RUNNINGHUB_API_KEY: "fixture" } : {}) }), openAiBrowserSession: async () => ({ accessToken: "fixture", accountId: "fixture" }) };
 const config = { configPath: join(root, "server.json"), workspaces: [{ id: "selection-proof", path: root }] };
 const context = { workspaceId: "selection-proof", sessionId: "selection-proof" };
 const source = await sharp(Buffer.from('<svg width="800" height="500"><rect width="800" height="500" fill="#edcfa5"/><circle cx="400" cy="230" r="155" fill="#ee7837"/><path d="M0 420 L240 295 L510 430 L670 320 L800 390 V500 H0" fill="#34485d"/></svg>')).png().toBuffer();
@@ -61,15 +63,17 @@ const videoHtml = mediaMode ? await readFile(new URL("../../examples/plugin-pack
 const videoJobs = [];
 await recordSessionArtifact(config, config.workspaces[0], context.sessionId, "source.png");
 const generated = await sharp({ create: { width: 800, height: 500, channels: 4, background: "#319cce" } }).png().toBuffer();
+if (framesMode) await writeFile(join(root, "last.png"), generated);
 const requests = [];
 const actions = [];
 Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (_url, init) => {
+  if (framesMode) throw new Error("Frame upload proof must not call a billable provider.");
   requests.push(init.body instanceof FormData ? { nativeMask: Boolean(init.body.get("mask")), prompt: init.body.get("prompt") } : JSON.parse(init.body));
   return Response.json({ data: [{ b64_json: generated.toString("base64") }] });
 });
 const service = await createService({ workspace: { root }, plugin: { version: "0.1.13" }, host: { callAction: (reference, args) => callOpenAiImageGenerationExtensionAction(config, authorization, reference.split("/")[1], args, context) } });
-const manifest = JSON.parse(await readFile(new URL("../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url), "utf8"));
-const html = await readFile(new URL("../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url), "utf8");
+const manifest = JSON.parse(await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console" : "image-studio"}/ipollowork.plugin.json`, import.meta.url), "utf8"));
+const html = await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console/ui/video-console" : "image-studio/ui/image-studio"}.html`, import.meta.url), "utf8");
 const modulePath = fileURLToPath(new URL(videoMode ? "./video-image-fixture-ui.jsx" : "./image-selection-fixture-ui.jsx", import.meta.url)).replaceAll("\\", "/");
 let saved = null;
 const server = createServer(async (req, res) => {
@@ -91,7 +95,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.url === "/setup") {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ html, manifest, root, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
+      res.end(JSON.stringify({ html, manifest, root, framesMode, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
       return;
     }
     if (req.url === "/artifacts") { res.end(JSON.stringify(await listSessionArtifacts(config, context.workspaceId, context.sessionId))); return; }
@@ -122,6 +126,12 @@ const server = createServer(async (req, res) => {
     let body = "";
     for await (const chunk of req) { body += chunk; if (body.length > 70 * 1024 * 1024) throw new Error("Too large"); }
     const { action, args, direct, pluginId } = JSON.parse(body);
+    if (framesMode) {
+      if (!["status", "jobs", "import", "read"].includes(action)) throw new Error("Only non-billable frame input actions are allowed.");
+      const result = await callVideoGenerationAction(config, authorization, action, args, context);
+      if (action === "import") actions.push({ action, filename: args.filename, path: result.result.path });
+      res.setHeader("Content-Type", "application/json"); res.end(JSON.stringify(result)); return;
+    }
     if (pluginId === "video-console" && mediaMode) {
       let result;
       if (action === "status") result={models:[{id:"seedance-2.5",label:"Seedance 2.5 · 模拟测试",operations:["text","edit"],resolutions:["720p"],defaultResolution:"720p",durations:["5"],imageLimit:9,videoLimit:3,audioLimit:3,referenceSeconds:30}],ratios:["16:9"],localVideoReady:true};

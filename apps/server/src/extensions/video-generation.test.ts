@@ -313,9 +313,55 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(ratioField?.options?.some(option=>option.value==="adaptive")).toBe(false);
   expect(parsePluginUiInspectorContext(switched.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
   expect(parsePluginUiInspectorContext(switched.inspector)?.fields.some(field=>field.id==="watermark")).toBe(false);
+  const frames = runInNewContext(`state.operation='first-last';normalized();publish();published.structuredContent[INSPECTOR]`, sandbox);
+  expect(parsePluginUiInspectorContext(frames)?.fields.filter(field => field.control === "image").map(field => field.id)).toEqual(["firstFrame", "lastFrame"]);
+  expect(html).not.toContain('id="importTarget"');
+  expect(html).not.toContain('id="openPath"');
+  expect(html).not.toContain('素材与原视频');
   expect(runInNewContext(`state.models=[];normalized();state.model`,sandbox)).toBe("");
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
   expect(html).not.toContain('"ui/message"');
+});
+
+test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {
+  const { call, root } = await setup();
+  const provider = (await call("status")).result;
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
+  const functions = html.slice(html.indexOf("function model()"), html.indexOf("async function refresh("));
+  const importer = html.slice(html.indexOf("async function importMedia("), html.indexOf("function openSettings("));
+  const dataUrl = "data:image/png;base64,aW1hZ2U=";
+  const sandbox: Record<string, unknown> = {
+    provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
+    $: () => ({ setAttribute() {} }), tell() {}, request: async () => ({}),
+    call: async (action: string, args: Record<string, unknown>) => {
+      expect(action).toBe("import");
+      if (args.filename === "fail.png") throw new Error("导入失败");
+      return (await call(action, args)).result;
+    },
+  };
+  runInNewContext(`${definitions}\n${functions}\n${importer}\nglobalThis.state=state;state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};`, sandbox);
+  for (const model of ["seedance-2.5", "minimax-h3"]) {
+    runInNewContext(`state.model=${JSON.stringify(model)};state.operation='first-last';state.prompt='keep my draft';normalized();`, sandbox);
+    await runInNewContext(`importMedia({fieldId:'firstFrame',filename:'first.png',dataUrl})`, sandbox);
+    await runInNewContext(`importMedia({fieldId:'lastFrame',filename:'last.png',dataUrl})`, sandbox);
+    const before = runInNewContext(`({first:state.firstFrame,last:state.lastFrame,prompt:state.prompt,busy:state.busy})`, sandbox);
+    expect(before.first).not.toBe(before.last);
+    expect(await readFile(join(root, before.first))).toEqual(Buffer.from("image"));
+    expect(before).toMatchObject({ prompt: "keep my draft", busy: false });
+    await expect(runInNewContext(`importMedia({fieldId:'firstFrame',filename:'fail.png',dataUrl})`, sandbox)).rejects.toThrow("导入失败");
+    expect(runInNewContext(`state.firstFrame`, sandbox)).toBe(before.first);
+    expect(runInNewContext(`state.busy`, sandbox)).toBe(false);
+    await runInNewContext(`importMedia({fieldId:'firstFrame',filename:'replacement.png',dataUrl})`, sandbox);
+    expect(runInNewContext(`state.firstFrame`, sandbox)).not.toBe(before.first);
+    expect(runInNewContext(`state.lastFrame`, sandbox)).toBe(before.last);
+    runInNewContext(`state.operation='first';normalized();`, sandbox);
+    expect(runInNewContext(`state.lastFrame`, sandbox)).toBe("");
+    await expect(runInNewContext(`importMedia({fieldId:'lastFrame',filename:'last.png',dataUrl})`, sandbox)).rejects.toThrow("当前模式");
+    await expect(runInNewContext(`importMedia({fieldId:'firstFrame',filename:'bad.mp4',dataUrl:'data:video/mp4;base64,eA=='})`, sandbox)).rejects.toThrow("文件类型");
+    runInNewContext(`state.operation='text';normalized();`, sandbox);
+    expect(runInNewContext(`state.firstFrame`, sandbox)).toBe("");
+  }
 });
 
 test("Ark local reference video requires storage; H3 uploads through documented multipart API",async()=>{

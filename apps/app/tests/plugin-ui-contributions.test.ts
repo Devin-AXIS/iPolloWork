@@ -33,6 +33,21 @@ describe("plugin UI contributions", () => {
     })).toBeNull();
   });
 
+  test("image inspector controls require import and preview tools without changing existing controls", () => {
+    const context = {
+      schemaVersion: 1, title: "视频参数", updateTool: "set_parameters", submitTool: "generate_or_edit", submitLabel: "生成视频",
+      fields: [{ id: "firstFrame", label: "首帧图片", control: "image", value: "video/session/assets/first.png",
+        media: { kind: "image", importTool: "import_media", readTool: "read_media" } }],
+    };
+    expect(parsePluginUiInspectorContext(context)?.fields[0]).toEqual(context.fields[0]);
+    const field = context.fields[0];
+    expect(parsePluginUiInspectorContext({ ...context, fields: [{ ...field, media: undefined }] })).toBeNull();
+    expect(parsePluginUiInspectorContext({ ...context, fields: [{ ...field, media: { ...field.media, readTool: undefined } }] })).toBeNull();
+    expect(parsePluginUiInspectorContext({ ...context, fields: [{ ...field, media: { ...field.media, kind: "video" } }] })).toBeNull();
+    expect(parsePluginUiInspectorContext({ ...context, fields: [{ ...field, media: { ...field.media, importTool: "../shell" } }] })).toBeNull();
+    expect(parsePluginUiInspectorContext({ ...context, fields: [{ ...field, control: "textarea", media: { kind: "video", importTool: "import_media" } }] })).not.toBeNull();
+  });
+
   test("resolves enabled workspace, settings, and conversation surfaces from one package", async () => {
     const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json());
     const item: iPolloWorkPluginPackageItem = {

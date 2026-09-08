@@ -7,7 +7,7 @@
     :root { color-scheme:light dark; --bg:light-dark(#f4f4f2,#171819); --surface:light-dark(#fff,#202224); --text:light-dark(#202225,#f4f4f4); --muted:light-dark(#71717a,#a1a1aa); --line:light-dark(#e4e4e7,#37383b); --accent:light-dark(#1c2023,#ededee); --on-accent:light-dark(#fff,#171819); --danger:light-dark(#be2542,#ff8598); font:13px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI","Microsoft YaHei",sans-serif; }
     * { box-sizing:border-box; } body { margin:0; color:var(--text); background:var(--bg); } button,input,select { font:inherit; } button { cursor:pointer; color:var(--text); border:1px solid var(--line); border-radius:9px; background:var(--surface); padding:7px 12px; } button:disabled { cursor:not-allowed; opacity:.45; } button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible { outline:2px solid #6290cf; outline-offset:3px; } button:hover:not(:disabled) { filter:brightness(.96); } .primary { background:var(--accent); color:var(--on-accent); border-color:var(--accent); }
     header { position:sticky; top:0; z-index:1; display:flex; gap:12px; align-items:center; justify-content:space-between; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--line); } nav { display:flex; gap:3px; padding:3px; border:1px solid var(--line); border-radius:11px; background:var(--bg); } nav button { border-color:transparent; background:transparent; padding:4px 14px; } nav button[aria-pressed="true"] { background:var(--surface); border-color:var(--line); } .tools { display:flex; align-items:center; gap:8px; } .badge { font-size:11px; color:var(--muted); } main { max-width:1280px; margin:auto; padding:24px; } .preview { min-height:330px; height:min(52vh,580px); border:1px solid var(--line); border-radius:16px; display:grid; place-items:center; overflow:hidden; background:light-dark(#ececea,#111214); } .preview video { width:100%; height:100%; object-fit:contain; background:#101113; } .empty { text-align:center; max-width:420px; padding:26px; } .empty svg { width:40px; height:40px; stroke:var(--muted); margin-bottom:12px; } h1 { font-size:20px; margin:0 0 8px; letter-spacing:-.4px; } h2 { font-size:13px; margin:0; } p { margin:0; } .muted { color:var(--muted); } .path { font-size:11px; overflow-wrap:anywhere; margin-top:10px; min-height:17px; }
-    .material { margin-top:20px; padding:16px; border:1px solid var(--line); border-radius:13px; background:var(--surface); } .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .material .row + .row { margin-top:12px; } input,select { min-width:0; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; } input { flex:1; } .hint { font-size:11px; color:var(--muted); margin-top:9px; } #message { margin:14px 0; font-size:12px; white-space:pre-wrap; } #message.error { color:var(--danger); } .section-head { display:flex; align-items:center; justify-content:space-between; margin:26px 0 12px; } .job { padding:14px 16px; margin-bottom:10px; border:1px solid var(--line); border-radius:12px; background:var(--surface); } .job p { overflow-wrap:anywhere; } .job-head { display:flex; gap:12px; justify-content:space-between; margin-bottom:8px; } .job-state { font-size:11px; white-space:nowrap; color:var(--muted); } .job.error { border-color:light-dark(#ecc6ce,#61313c); } .job .row { margin-top:10px; } .job .meta { font-size:11px; color:var(--muted); margin:7px 0; } .job-message { font-size:12px; } [hidden] { display:none !important; }
+    .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } input,select { min-width:0; color:var(--text); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; } input { flex:1; } #message { margin:14px 0; font-size:12px; white-space:pre-wrap; } #message.error { color:var(--danger); } .section-head { display:flex; align-items:center; justify-content:space-between; margin:26px 0 12px; } .job { padding:14px 16px; margin-bottom:10px; border:1px solid var(--line); border-radius:12px; background:var(--surface); } .job p { overflow-wrap:anywhere; } .job-head { display:flex; gap:12px; justify-content:space-between; margin-bottom:8px; } .job-state { font-size:11px; white-space:nowrap; color:var(--muted); } .job.error { border-color:light-dark(#ecc6ce,#61313c); } .job .row { margin-top:10px; } .job .meta { font-size:11px; color:var(--muted); margin:7px 0; } .job-message { font-size:12px; } [hidden] { display:none !important; }
     @media(max-width:560px) { main { padding:14px; } header { padding:10px; } .badge { display:none; } .preview { min-height:240px; height:40vh; } .row input { flex-basis:100%; } }
     @media(prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
   </style>
@@ -27,13 +27,6 @@
       </div>
     </section>
     <p id="previewPath" class="path muted"></p>
-    <section class="material" aria-label="参考素材">
-      <div class="row"><h2>素材与原视频</h2><span class="badge">公开 HTTPS 链接 / 工作区路径</span></div>
-      <div class="row"><select id="importTarget" aria-label="导入到"><option value="firstFrame">首帧图片</option><option value="lastFrame">尾帧图片</option><option value="imageRefs">参考图片</option><option value="videoRefs">参考视频</option><option value="audioRefs">参考音频</option></select><button id="importButton">从本机导入</button><input id="mediaFile" type="file" hidden></div>
-      <p id="materialHint" class="hint"></p>
-      <div class="row"><input id="openPath" aria-label="工作区视频路径" placeholder="video/会话/renders/文件.mp4"><button id="openVideo">打开视频</button><button id="useVideo" disabled>作为原视频</button></div>
-      <p class="hint">本机导入最多 20 MB；较大文件可填写工作区路径或公开链接。所有参考素材会发送给所选服务商。</p>
-    </section>
     <p id="message" role="status" aria-live="polite"></p>
     <section aria-label="本会话视频任务"><div class="section-head"><h2>本会话任务</h2><button id="refresh">刷新</button></div><div id="jobs"><p class="muted">正在读取任务…</p></div><button id="older" hidden>较早的任务</button></section>
   </main>
@@ -91,15 +84,16 @@
     function mode(value) { state.mode=value; const changed=normalized(); if(changed.length)tell("已切换操作，不兼容的参数已重置。"); render(); publish(); }
     function select(id,label,values,advanced=false) { return {id,label,control:"select",value:state[id],live:true,advanced,options:values.map(value=>typeof value==="string"?{value,label:value}:value)}; }
     function textarea(id,label,placeholder) { return {id,label,control:"textarea",value:state[id],placeholder,live:true}; }
+    function mediaField(id,label,kind,control="textarea") { return {id,label,control,value:state[id],live:true,placeholder:"每行一个链接 / 工作区路径",media:{kind,importTool:"import_media",...(control==="image"?{readTool:"read_media"}:{})}}; }
     function publish() {
       if(disposed)return;
       const current=model();
       const fields=[select("model","视频模型",state.models.map(item=>({value:item.id,label:item.label})))];
       if(current) {
         fields.push(select("operation","生成方式",allowedOps().map(value=>({value,label:names[value]}))),textarea("prompt",state.mode==="edit"?"编辑指令":"视频描述",state.operation==="extend"?"向后延长 @video1，描述接下来发生的情节…":state.operation==="edit"?"修改 @video1 的背景为…":"场景、主体动作、镜头运动、声音…"));
-        if(["first","first-last"].includes(state.operation))fields.push(textarea("firstFrame","首帧图片","图片链接 / 工作区路径"));
-        if(state.operation==="first-last")fields.push(textarea("lastFrame","尾帧图片","图片链接 / 工作区路径"));
-        if(refOps.includes(state.operation))fields.push(textarea("imageRefs",`参考图片 · 最多 ${current.imageLimit} 张`,"每行一个链接 / 工作区路径"),textarea("videoRefs",`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`,"每行一个视频链接 / 工作区路径"),textarea("audioRefs",`参考音频 · 最多 ${current.audioLimit} 个`,"每行一个音频链接 / 工作区路径"));
+        if(["first","first-last"].includes(state.operation))fields.push(mediaField("firstFrame","首帧图片","image","image"));
+        if(state.operation==="first-last")fields.push(mediaField("lastFrame","尾帧图片","image","image"));
+        if(refOps.includes(state.operation))fields.push(mediaField("imageRefs",`参考图片 · 最多 ${current.imageLimit} 张`,"image"),mediaField("videoRefs",`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`,"video"),mediaField("audioRefs",`参考音频 · 最多 ${current.audioLimit} 个`,"audio"));
         fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",allowedRatios().map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
         if(current.id==="seedance-2.5")fields.push(select("generateAudio","同步生成声音",[{value:"true",label:"开启"},{value:"false",label:"关闭"}],true));
         if(current.id==="seedance-2.5")fields.push(select("watermark","AI 生成水印",[{value:"true",label:"保留"},{value:"false",label:"不显示"}],true));
@@ -112,12 +106,6 @@
       $("#generateMode").disabled=$("#editMode").disabled=state.busy;
       $("#editMode").disabled=state.busy||!model()?.operations.some(op=>editOps.includes(op));
       $("#editMode").title=$("#editMode").disabled&&!state.busy?"当前 H3 工作流只支持生成；编辑原视频请切换到 Seedance。":"";
-      $("#importButton").disabled=state.busy||!model();
-      const current=model();
-      $("#materialHint").textContent=current?(current.id==="minimax-h3"?"选择“首帧图片”并导入图片即可图生视频；首尾帧模式可再导入尾帧。图片在提交时上传到 RunningHub，原文件不会修改。":`视频、音频参考每段 2–${current.referenceSeconds} 秒，各类总时长不超过 ${current.referenceSeconds} 秒。编辑原视频至少 4 秒。Ark 本地视频会上传并保留在默认 OSS/Wasabi；也可直接填公网链接或 asset://素材ID。`):"先在授权中心配置 Ark 或 RunningHub，再选择模型。";
-      for(const option of $("#importTarget").options)option.disabled=option.value==="firstFrame"?!["text","first","first-last"].includes(state.operation):option.value==="lastFrame"?state.operation!=="first-last":!refOps.includes(state.operation);
-      const selected=$("#importTarget").selectedOptions[0];
-      if(selected?.disabled)$("#importTarget").value=[...$("#importTarget").options].find(option=>!option.disabled)?.value||"firstFrame";
     }
     async function refresh(reset=false) {
       const response=await call("status"); state.models=response.models||[]; state.ratios=response.ratios||[]; state.localVideoReady=response.localVideoReady===true; state.statusLoaded=true;
@@ -168,7 +156,7 @@
       if(disposed||epoch!==previewEpoch)return;
       if(previewUrl)URL.revokeObjectURL(previewUrl);previewUrl=URL.createObjectURL(new Blob(chunks,{type:mime}));
       $("#player").src=previewUrl;$("#player").hidden=false;$("#empty").hidden=true;state.previewPath=path;
-      $("#previewPath").textContent=path;$("#openPath").value=path;$("#useVideo").disabled=false;tell("视频已打开。生成结果也可以从当前会话的产出文件中查看。");
+      $("#previewPath").textContent=path;tell("视频已打开。生成结果也可以从当前会话的产出文件中查看。");
     }
     function useSource(path) {
       const editable=state.models.find(item=>item.operations.some(op=>editOps.includes(op)));
@@ -202,47 +190,54 @@
         tell(result.job.message,["failed","uncertain"].includes(result.job.status));await refresh();
       } finally {state.busy=false;render();publish();}
     }
-    async function importFile(file) {
-      if(!file)return;
-      if(file.size>20*1024*1024)throw new Error("本机导入最多 20 MB，请使用工作区路径或公开链接。");
-      const target=$("#importTarget").value;const kind=target==="videoRefs"?"video":target==="audioRefs"?"audio":"image";
-      if(!file.type.startsWith(`${kind}/`))throw new Error("文件类型与所选素材类型不一致。");
+    async function importMedia({fieldId:target,filename,dataUrl}) {
+      if(state.busy)throw new Error("正在处理任务，请稍后再导入。");
+      const current=model();
+      const allowed=target==="firstFrame"?["first","first-last"].includes(state.operation):target==="lastFrame"?state.operation==="first-last":["imageRefs","videoRefs","audioRefs"].includes(target)&&refOps.includes(state.operation);
+      if(!current||!state.host.sessionId||!allowed)throw new Error("当前模式不支持此素材，请重新选择生成方式。");
+      const kind=target==="videoRefs"?"video":target==="audioRefs"?"audio":"image";
+      if(target.endsWith("Refs")&&state[target].split(/\n/).filter(Boolean).length>=current[`${kind}Limit`])throw new Error("已达到当前模型的参考素材数量上限，请先移除部分素材。");
+      if(typeof dataUrl!=="string"||dataUrl.length>28*1024*1024)throw new Error("本机导入最多 20 MB，请使用工作区路径或公开链接。");
+      const match=/^data:([^;,]+);base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+      if(!match||!match[1].startsWith(`${kind}/`))throw new Error("文件类型与所选素材类型不一致。");
+      const bytes=Uint8Array.from(atob(match[2]),char=>char.charCodeAt(0));
+      if(!bytes.length||bytes.length>20*1024*1024)throw new Error("本机导入最多 20 MB，请使用工作区路径或公开链接。");
       if(kind==="video"&&state.model==="seedance-2.5"&&!state.localVideoReady)throw new Error("Ark 本地视频需要先在授权中心配置 OSS/Wasabi 存储；也可直接在参考视频栏填写公网链接或素材库 ID。");
-      if(kind!=="image") {
-        const url=URL.createObjectURL(file),media=document.createElement(kind);
-        try {
-          const duration=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error("无法读取素材时长，请检查编码或改用公开链接。")),10000);media.onloadedmetadata=()=>{clearTimeout(timer);resolve(media.duration);};media.onerror=()=>{clearTimeout(timer);reject(new Error("无法读取素材，请检查格式。"));};media.src=url;});
-          if(!Number.isFinite(duration)||duration<(state.operation==="edit"&&kind==="video"?4:2)||duration>model().referenceSeconds)throw new Error("素材时长不在当前模型允许范围内，请先裁剪。");
-        } finally {media.removeAttribute("src");media.load();URL.revokeObjectURL(url);}
-      }
       state.busy=true;render();tell("正在导入素材…");
       try {
-        const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error("无法读取文件。"));reader.readAsDataURL(file);});
-        const result=await call("import",{filename:file.name,dataUrl});
-        if(target==="firstFrame"&&state.operation==="text")state.operation="first";
+        if(kind!=="image") {
+          const url=URL.createObjectURL(new Blob([bytes],{type:match[1]})),media=document.createElement(kind);
+          try {
+            const duration=await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error("无法读取素材时长，请检查编码或改用公开链接。")),10000);media.onloadedmetadata=()=>{clearTimeout(timer);resolve(media.duration);};media.onerror=()=>{clearTimeout(timer);reject(new Error("无法读取素材，请检查格式。"));};media.src=url;});
+            if(!Number.isFinite(duration)||duration<(state.operation==="edit"&&kind==="video"?4:2)||duration>model().referenceSeconds)throw new Error("素材时长不在当前模型允许范围内，请先裁剪。");
+          } finally {media.removeAttribute("src");media.load();URL.revokeObjectURL(url);}
+        }
+        const result=await call("import",{filename,dataUrl});
         state[target]=target.endsWith("Refs")?[state[target],result.path].filter(Boolean).join("\n"):result.path;
         normalized();
         if(kind==="video")await preview(result.path);
-        render();tell(`已导入 ${file.name}，素材将在提交时发送给服务商。`);
+        render();tell(`已导入 ${filename}，素材将在提交时发送给服务商。`);
       } finally {state.busy=false;render();publish();}
     }
     function openSettings(){state.openRequest=crypto.randomUUID();publish();}
     $("#generateMode").onclick=()=>mode("generate");$("#editMode").onclick=()=>mode("edit");$("#settings").onclick=$("#start").onclick=openSettings;
     $("#refresh").onclick=()=>void refresh(true).catch(error=>tell(error.message,true));
     $("#older").onclick=()=>{state.pageBefore=state.jobs.at(-1)?.createdAt;void refresh().catch(error=>tell(error.message,true));};
-    $("#openVideo").onclick=()=>void preview($("#openPath").value.trim()).catch(error=>tell(error.message,true));
-    $("#useVideo").onclick=()=>useSource(state.previewPath);
-    $("#importButton").onclick=()=>{const target=$("#importTarget").value;$("#mediaFile").accept=target==="videoRefs"?"video/mp4,video/quicktime":target==="audioRefs"?"audio/mpeg,audio/wav":"image/png,image/jpeg,image/webp";$("#mediaFile").click();};
-    $("#mediaFile").onchange=event=>{void importFile(event.target.files[0]).catch(error=>tell(error.message,true));event.target.value="";};
     $("#player").onerror=()=>tell("当前播放器不支持此视频编码，可从本会话产出文件下载后播放。",true);
     const toolDefinitions=[{name:"set_parameters",description:"Update video parameters; inspect model capabilities before submitting.",inputSchema:{type:"object",properties:Object.fromEntries(params.map(key=>[key,{type:"string"}]))}},{name:"generate_or_edit",description:"Submit the reviewed video request once. Uses the current session.",inputSchema:{type:"object",properties:{}}},{name:"open_video",description:"Preview a workspace video.",inputSchema:{type:"object",properties:{path:{type:"string"}},required:["path"]}}];
+    toolDefinitions.push({name:"import_media",description:"Import a user-selected file into the matching video parameter.",inputSchema:{type:"object",properties:{fieldId:{type:"string",enum:["firstFrame","lastFrame","imageRefs","videoRefs","audioRefs"]},filename:{type:"string"},dataUrl:{type:"string"}},required:["fieldId","filename","dataUrl"]}},{name:"read_media",description:"Read a selected frame image for preview.",inputSchema:{type:"object",properties:{path:{type:"string"},offset:{type:"number"}},required:["path"]}});
     addEventListener("message",event=>{
       if(event.source!==parent||event.data?.jsonrpc!=="2.0")return;const message=event.data;
       const respond=result=>post({jsonrpc:"2.0",id:message.id,result});
       if(message.id!==undefined&&!message.method){const handler=pending.get(message.id);if(!handler)return;pending.delete(message.id);clearTimeout(handler.timer);message.error?handler.reject(new Error(message.error.message)):handler.resolve(message.result);return;}
       if(message.method==="tools/list")return respond({tools:toolDefinitions});
       if(message.method==="tools/call") {
-        void Promise.resolve().then(async()=>{const args=message.params?.arguments||{};switch(message.params?.name){case"set_parameters":update(args);break;case"generate_or_edit":await run();break;case"open_video":await preview(args.path);break;default:throw new Error("未知视频操作。");}return{content:[],structuredContent:{model:state.model,operation:state.operation}};}).then(respond).catch(error=>{tell(error.message,true);respond({isError:true,content:[{type:"text",text:error.message}]});});return;
+        if(message.params?.name==="read_media") {
+          const args=message.params.arguments||{};
+          if(!args.path||![state.firstFrame,state.lastFrame].includes(args.path))return respond({isError:true,content:[{type:"text",text:"只能预览当前选中的首尾帧。"}]});
+          void call("read",args).then(result=>respond({content:[],structuredContent:result})).catch(error=>respond({isError:true,content:[{type:"text",text:error.message}]}));return;
+        }
+        void Promise.resolve().then(async()=>{const args=message.params?.arguments||{};switch(message.params?.name){case"set_parameters":if(state.busy)throw new Error("正在处理任务，请稍后再修改参数。");update(args);break;case"import_media":await importMedia(args);break;case"generate_or_edit":await run();break;case"open_video":await preview(args.path);break;default:throw new Error("未知视频操作。");}return{content:[],structuredContent:{model:state.model,operation:state.operation}};}).then(respond).catch(error=>{tell(error.message,true);respond({isError:true,content:[{type:"text",text:error.message}]});});return;
       }
       if(message.method==="ui/notifications/host-context-changed") {const context=message.params||{};if(context.theme)document.documentElement.style.colorScheme=context.theme;const host=context[HOST]||context.hostContext?.[HOST];if(host)state.host=host;void applyLaunch().catch(error=>tell(error.message,true));publish();}
       if(message.method==="ui/resource-teardown") {disposed=true;clearTimeout(pollTimer);if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error("控制台已关闭"));}pending.clear();respond({});}

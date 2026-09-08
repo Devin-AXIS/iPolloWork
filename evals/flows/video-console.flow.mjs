@@ -4,7 +4,7 @@ const vo = await loadVoiceoverParagraphs("video-console");
 const studio = `document.querySelector('iframe[title="视频控制台"]')?.contentDocument`;
 const element = selector => `${studio}?.querySelector(${JSON.stringify(selector)})`;
 
-async function selectOption(ctx, label, value) {
+export async function selectOption(ctx, label, value) {
   if (await ctx.eval(`document.querySelector(${JSON.stringify(`[aria-label="${label}"]`)})?.textContent.includes(${JSON.stringify(value)})`)) return;
   await ctx.client.send("Page.bringToFront");
   await ctx.trustedClick(`[aria-label="${label}"]`);
@@ -78,7 +78,7 @@ export default {
           await selectOption(ctx,"生成方式","首帧生视频");
         },
         assert:async()=>{
-          await ctx.waitFor(`Boolean(document.querySelector('textarea[name="firstFrame"]'))`);
+          await ctx.waitFor(`Boolean(document.querySelector('input[data-media-field="firstFrame"]'))`);
           ctx.assert(await ctx.eval(`document.querySelector('[aria-label="画幅"]')?.innerText.includes('跟随输入')`),"Image-to-video must follow the source image ratio");
           if(ctx.env.IPOLLOWORK_EVAL_VIDEO_MODEL?.includes('H3')){
             ctx.assert(await ctx.eval(`${element("#editMode")}.disabled`),"Unverified H3 video editing is unavailable");
@@ -93,7 +93,8 @@ export default {
           if (!jobId) {
           if(ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME){
             await selectOption(ctx,"生成方式","首帧生视频");
-            await ctx.fill('textarea[name="firstFrame"]',ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME);
+            await ctx.eval(`document.querySelector('[data-inspector-field="firstFrame"] details').open=true`);
+            await ctx.fill('input[name="firstFrame"]',ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME);
           } else await selectOption(ctx,"生成方式","文生视频");
           await ctx.fill('textarea[name="prompt"]',ctx.env.IPOLLOWORK_EVAL_VIDEO_FIRST_FRAME?"保持首帧中的人物、构图和插画风格。固定镜头，天空的云缓慢飘动，人物衣角轻轻摆动，连续自然运动，不要文字。":"海边的灯塔，平静的海浪，固定镜头，5 秒，不要人物或文字。");
           await selectOption(ctx, "时长（秒）", "5");
