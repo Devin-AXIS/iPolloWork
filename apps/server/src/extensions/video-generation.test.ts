@@ -28,12 +28,16 @@ async function setup() {
 function submission(patch = {}) { return { requestId:randomUUID(),model:"seedance-2.5",operation:"text",prompt:"镜头缓慢推近海边的灯塔",resolution:"720p",duration:"5",ratio:"16:9", ...patch }; }
 function workflowFixture() {
   return { code: 0, data: { prompt: JSON.stringify({
-    "131": { class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["139", 0], last_frame: ["206", 0], prompt: ["134", 0], length: ["132", 1] } },
-    "134": { class_type: "CR Prompt Text", inputs: { prompt: "public template example" } },
-    "132": { class_type: "ComfyMathExpression", inputs: { expression: "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17", "values.a": ["205", 0] } },
-    "92": { class_type: "SaveVideo", inputs: { format: "auto", codec: "auto" } },
-    "139": { class_type: "LoadImage", inputs: { image: "None" } },
-    "206": { class_type: "LoadImage", inputs: { image: "None" } },
+    "17": { class_type: "MiniMaxH3ImageToVideo", inputs: { prompt: "public template example", clip: ["3",0], length: 360 } },
+    "3": { class_type: "CLIPLoader", inputs: { type: "minimax" } },
+    "7": { class_type: "SaveVideo", inputs: { format: "auto", codec: "auto", video: ["12",0] } },
+    "12": { class_type: "CreateVideo", inputs: { images: ["11",0] } },
+    "11": { class_type: "SamplerCustomAdvanced", inputs: { latent_image: ["17",1], guider: ["10",0], noise: ["16",0], sigmas: ["9",0] } },
+    "10": { class_type: "BasicGuider", inputs: { conditioning: ["17",0] } },
+    "9": { class_type: "BasicScheduler", inputs: { steps: 25 } },
+    "16": { class_type: "RandomNoise", inputs: { noise_seed: 42 } },
+    "24": { class_type: "LoadImage", inputs: { image: "template-first.png" } },
+    "25": { class_type: "LoadImage", inputs: { image: "template-last.png" } },
   }) } };
 }
 afterEach(async () => {
@@ -79,24 +83,27 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
   const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
   expect(frames.url).toEndWith("/task/openapi/create");
-  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084935567606894593",instanceType:"plus"});
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084511826766811137",instanceType:"plus"});
   if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
   const graph=JSON.parse(frames.body.workflow);
-  expect(graph["139"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
-  expect(graph["206"].inputs.image).toBe(input.lastFrame);
-  expect(graph["131"].inputs).toMatchObject({first_frame:["300",0],last_frame:["206",0],width:["301",0],height:["301",1]});
+  expect(graph["24"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
+  expect(graph["25"].inputs.image).toBe(input.lastFrame);
+  expect(graph["17"].inputs).toMatchObject({first_frame:["300",0],last_frame:["25",0],width:["301",0],height:["301",1]});
   expect(graph["300"].inputs).toMatchObject({megapixels:0.5,resolution_steps:32});
-  expect(graph["134"].inputs.prompt).toBe(submission().prompt);
-  expect(graph["132"].inputs["values.a"]).toBe(5);
-  expect(graph["92"].inputs).toMatchObject({format:"mp4",codec:"h264"});
+  expect(graph["17"].inputs.prompt).toBe(submission().prompt);
+  expect(frames.body).toMatchObject({nodeInfoList:[{nodeId:"17",fieldName:"prompt",fieldValue:submission().prompt}]});
+  expect(graph["17"].inputs.length).toBe(124);
+  expect(graph["7"].inputs).toMatchObject({format:"mp4",codec:"h264"});
   const text=await request({model:"minimax-h3",resolution:"1MP"});
   if(!("workflow" in text.body))throw new Error("Missing workflow graph");
   const textGraph=JSON.parse(text.body.workflow);
-  expect(textGraph["131"].inputs).toMatchObject({width:1344,height:736});
-  expect(textGraph["131"].inputs).not.toHaveProperty("first_frame");
-  expect(textGraph["131"].inputs).not.toHaveProperty("last_frame");
-  expect(textGraph).not.toHaveProperty("139");
-  expect(textGraph).not.toHaveProperty("206");
+  expect(textGraph["17"].inputs).toMatchObject({width:1344,height:736});
+  expect(textGraph["17"].inputs).not.toHaveProperty("first_frame");
+  expect(textGraph["17"].inputs).not.toHaveProperty("last_frame");
+  expect(textGraph).not.toHaveProperty("24");
+  expect(textGraph).not.toHaveProperty("25");
+  expect(JSON.stringify(textGraph)).not.toContain("public template example");
+  expect(JSON.stringify(textGraph)).not.toContain("template-first.png");
 });
 
 test("duplicate submissions are idempotent; restart saves only into initiating session",async()=>{
@@ -204,7 +211,7 @@ test("H3 refuses a changed public graph before billing and never resubmits an un
     Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>{
       if(url.endsWith("getJsonApiFormat")){
         const fixture=workflowFixture();
-        if(changed)fixture.data.prompt=fixture.data.prompt.replace('"CR Prompt Text"','"RenamedPrompt"');
+        if(changed)fixture.data.prompt=fixture.data.prompt.replace('"CLIPLoader"','"RenamedPrompt"');
         return Response.json(fixture);
       }
       creates++;throw new Error("lost create response test-rh-secret");
@@ -215,7 +222,7 @@ test("H3 refuses a changed public graph before billing and never resubmits an un
     expect(job.status).toBe(changed?"failed":"uncertain");
     expect(creates).toBe(changed?0:1);
     expect(job.message).not.toContain("test-rh-secret");
-    expect(job.workflowId).toBe("2084935567606894593");
+    expect(job.workflowId).toBe("2084511826766811137");
   }
 });
 
@@ -228,6 +235,22 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
     if(String(url).endsWith("/openapi/v2/query"))return Response.json({status:"SUCCESS",results:[{url:"https://rh-images.xiaoyaoyou.com/existing.mp4"}]});
     expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/existing.mp4");return new Response(mp4);
+  });
+  await pollVideoJobs(config,auth);
+  expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
+});
+
+test("existing H3 workflow jobs still download output node 92",async()=>{
+  const {config,call}=await setup();
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>url.endsWith("getJsonApiFormat")?Response.json(workflowFixture()):Response.json({code:0,data:{taskId:"old-h3-task",taskStatus:"QUEUED"}}));
+  const args=submission({model:"minimax-h3",resolution:"0.5MP"});
+  await call("submit",args);
+  const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
+  await updateVideoJob(config,job,{workflowId:"2084935567606894593"});
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
+    if(String(url).endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
+    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId:"92"}]});
+    expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/old.mp4");return new Response(mp4);
   });
   await pollVideoJobs(config,auth);
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
@@ -265,7 +288,7 @@ test("H3 query recognizes SUCCESS and FAILED application statuses",async()=>{
     if(String(url).endsWith("getJsonApiFormat"))return Response.json(workflowFixture());
     if(String(url).endsWith("/create"))return Response.json({code:0,data:{taskId:randomUUID(),taskStatus:"QUEUED"}});
     if(String(url).endsWith("/status"))return Response.json({code:0,data:phase});
-    if(String(url).endsWith("/outputs"))return Response.json(phase==="FAILED"?{code:805,msg:"生成失败"}:{code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/result.mp4",fileType:"mp4",nodeId:"92"}]});
+    if(String(url).endsWith("/outputs"))return Response.json(phase==="FAILED"?{code:805,msg:"生成失败"}:{code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/result.mp4",fileType:"mp4",nodeId:"7"}]});
     return new Response(mp4);
   });
   for(const status of ["succeeded","failed"]){const args=submission({model:"minimax-h3",resolution:"0.5MP"});await call("submit",args);await pollVideoJobs(config,auth);expect(String((await getVideoJob(config,args.requestId,"workspace",context.sessionId)).status)).toBe(status);phase="FAILED";}
@@ -318,6 +341,8 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(html).not.toContain('id="importTarget"');
   expect(html).not.toContain('id="openPath"');
   expect(html).not.toContain('素材与原视频');
+  expect(html).not.toContain('id="trimStart"');
+  expect(html).not.toContain('id="trimEnd"');
   expect(html).not.toContain('本会话任务');
   const local = runInNewContext(`state.mode='edit';state.ai=false;normalized();publish();({mode:state.mode,context:published.structuredContent})`,sandbox);
   expect(local.mode).toBe('edit');expect(local.context).toEqual({});
@@ -383,7 +408,7 @@ test("Ark local reference video requires storage; H3 uploads through documented 
   const h3=validateVideoSubmission(submission({model:"minimax-h3",resolution:"0.5MP",operation:"first",ratio:"adaptive",firstFrame:"first.png"}));
   const request=await videoRequest(config.workspaces[0],h3,"key",config,auth);
   if(!("workflow" in request.body))throw new Error("Missing workflow graph");
-  expect(JSON.parse(request.body.workflow)["139"]).toMatchObject({class_type:"LoadImage",inputs:{image:"api/uploaded.png"}});
+  expect(JSON.parse(request.body.workflow)["24"]).toMatchObject({class_type:"LoadImage",inputs:{image:"api/uploaded.png"}});
 });
 
 test("RunningHub authorization uses a non-billable account test and checks application-level errors",async()=>{

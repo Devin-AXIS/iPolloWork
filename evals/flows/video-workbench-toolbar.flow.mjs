@@ -11,6 +11,7 @@ export default {id:"video-workbench-toolbar",title:"视频工作台工具栏剪�
   await ctx.client.send("Emulation.setDeviceMetricsOverride",{width:1180,height:900,deviceScaleFactor:1,mobile:false});
   await ctx.waitFor(`${el('player')}?.videoWidth>0 && !${el('saveCopy')}?.disabled`,{timeoutMs:30000});
   const original=await ctx.eval("fetch('/witness').then(r=>r.json()).then(s=>s.source)",{awaitPromise:true});
+  ctx.assert(await ctx.eval(`!${doc}.querySelector('#trimStart') && !${doc}.querySelector('#trimEnd')`),'Bottom trim sliders are removed; toolbar trim remains available');
   await ctx.prove("无需 AI 授权也能用图标工具栏编辑，旧任务区已移除",{
     voiceover:"视频工作台把常规剪辑放进图标工具栏。不绑定 AI 模型也能剪辑，下方不再显示旧任务列表。",
     action:async()=>{await tool(ctx,'rotate');ctx.assert(await ctx.eval(`${el('player')}.style.transform.includes('90deg')`),'Rotate updates preview');await tool(ctx,'undo');ctx.assert(await ctx.eval(`${el('player')}.style.transform.includes('0deg')`),'Undo restores preview');await tool(ctx,'redo');ctx.assert(await ctx.eval(`${el('player')}.style.transform.includes('90deg')`),'Redo reapplies rotation');await tool(ctx,'undo');await ctx.eval(`${doc}.querySelector('[data-tool=trim]').focus()`);ctx.assert(await ctx.eval(`!${el('tooltip')}.hidden && ${el('tooltip')}.textContent==='裁剪时长'`),'Icon focus shows the text tooltip');},
