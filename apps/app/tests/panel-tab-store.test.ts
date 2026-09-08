@@ -62,4 +62,43 @@ describe("panel tab store", () => {
 
     expect(usePanelTabStore.getState().sessions["session-1"]?.activeTabId).toBe("design:session-1:entry");
   });
+
+  test("does not let late persistence hydration discard a tab the user just opened", async () => {
+    usePanelTabStore.getState().openTab("session-1", {
+      id: "workspace-app:image-studio:studio",
+      type: "workspace-app",
+      label: "图片工作台",
+      sessionId: "session-1",
+      surface: {
+        id: "image-studio:studio",
+        pluginId: "image-studio",
+        label: "图片工作台",
+        resource: { id: "studio", uri: "ui://image-studio/studio" },
+      },
+      launch: {
+        intent: "edit-image",
+        source: {
+          kind: "workspace-file",
+          path: "artifacts/image-studio/result.png",
+          name: "result.png",
+          preview: "image",
+        },
+      },
+    });
+    storage.set("ipollowork:panel-tabs:v1", JSON.stringify({
+      state: {
+        sessions: {
+          "session-1": { tabs: [], activeTabId: null },
+        },
+      },
+      version: 0,
+    }));
+
+    await usePanelTabStore.persist.rehydrate();
+
+    const session = usePanelTabStore.getState().sessions["session-1"];
+    expect(session?.activeTabId).toBe("workspace-app:image-studio:studio");
+    expect(session?.tabs).toHaveLength(1);
+    expect(session?.tabs[0]?.type).toBe("workspace-app");
+  });
 });

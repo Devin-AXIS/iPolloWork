@@ -1,6 +1,7 @@
 import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPart, type ToolUIPart, type UIMessage } from "ai"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
+import { formatFileSize } from "@/lib/utils"
 import {
   type ArtifactItem,
   getArtifactStudioTarget,
@@ -122,9 +123,14 @@ export function artifactCardDescription(artifact: ArtifactItem, sourceText: stri
   const duration = /(?:总?时长\s*[：:]?\s*)?(\d{1,4})\s*(?:秒|seconds?|secs?\b|s\b)/i.exec(sourceText)?.[1]
   const scenes = /(\d{1,3})\s*(?:个\s*)?场景|(?:scene count|scenes?)\s*[：:]?\s*(\d{1,3})/i.exec(sourceText)
   const sceneCount = scenes?.[1] ?? scenes?.[2]
+  const imageFormat = type === "image" ? artifact.path.split(".").at(-1)?.toUpperCase() : null
+  const imageSize = type === "image" && artifact.target.size !== undefined
+    ? formatFileSize(artifact.target.size)
+    : null
 
   return [
-    typeLabel,
+    imageFormat || typeLabel,
+    imageSize,
     duration ? t("session.outputs.duration_seconds", { count: Number(duration) }) : null,
     sceneCount ? t("session.outputs.scene_count", { count: Number(sceneCount) }) : null,
   ].filter(Boolean).join(" · ")

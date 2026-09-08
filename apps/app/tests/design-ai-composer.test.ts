@@ -146,9 +146,18 @@ describe("Design AI composer integration", () => {
     expect(surfaceSource).toContain("Normalized selected region:");
     expect(surfaceSource).toContain("pendingImageStudioRefreshRef");
     expect(surfaceSource).toContain('viewer: "image-studio"');
+    expect(surfaceSource).toContain("props.onOpenTarget?.(target, options, props.sessionId)");
+    expect(surfaceSource).toContain('t("image_studio.ai.opened_result")');
+    expect(surfaceSource).toContain('t("image_studio.ai.result_not_opened")');
+    expect(surfaceSource).toContain("}, 30_000);");
     expect(surfaceSource).toContain("both the image preview and its file card");
     expect(sessionPageSource).toContain('options.viewer !== "image-studio"');
+    expect(sessionPageSource).toContain('await openImageStudio(target, sourceId ?? undefined)');
+    expect(sessionPageSource).toContain("resolveInstalledPluginContributions(packages.items)");
+    expect(sessionPageSource).toContain('toast.error(t("artifact.image_studio_install_required"))');
     expect(sessionPageSource).not.toContain("WorkspaceImageSelection");
+
+    expect(frameSource).toContain('callWorkspaceAppTool("open_image", { sourcePath })');
   });
 
   test("uses the shared client controls for workspace app inspector fields", async () => {

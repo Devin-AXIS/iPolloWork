@@ -75,7 +75,7 @@ export default {
           ctx.assert(!state.studioOpen, "Generating an image must not force the workbench open.");
           ctx.log(`Real image validation waited ${Math.round((Date.now() - startedAt) / 1000)} seconds, including any user approvals.`);
         },
-        screenshot: { name: "chat-image-card", requireText: ["Image"], rejectText: ["Something went wrong"] },
+        screenshot: { name: "chat-image-card", requireText: ["图片"], rejectText: ["Something went wrong"] },
       });
 
       await ctx.prove("The persisted image card opens its image in the right-hand Image Studio", {
@@ -91,6 +91,12 @@ export default {
           await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(CARD)}))`, {
             timeoutMs: 60_000, label: "persisted image card after reload",
           });
+          await ctx.waitFor(`(() => {
+            const card = document.querySelector(${JSON.stringify(CARD)});
+            return card instanceof HTMLButtonElement
+              && Object.keys(card).some((key) => key.startsWith("__reactProps$"));
+          })()`, { timeoutMs: 30_000, label: "persisted image card is interactive" });
+          await ctx.client.send("Page.bringToFront");
           ctx.assert(await ctx.eval(`!document.querySelector(${JSON.stringify(STUDIO)})`), "The saved conversation should still have no Image Studio open.");
           await ctx.trustedClick(CARD);
           await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(STUDIO)})?.contentDocument?.querySelector('#canvasWrap.visible'))`, {
