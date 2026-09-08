@@ -119,9 +119,11 @@ export function MediaWorkbench({
       mediaKindForPath(result.path) !== "video"
     )
       return;
-    setSaved({ path: result.path, saveMode: "copy" });
+    const next: MediaWorkbenchSave = { path: result.path, saveMode: result.path === source.path ? "overwrite" : "copy", revision: result.revision };
+    setSaved(next);
     setError("");
     setNotice("");
+    if (next.saveMode === "overwrite") void apply(next);
   };
   return (
     <section

@@ -302,11 +302,11 @@ test("video inspector resets incompatible fields and publishes the real host con
     provider, INSPECTOR:"ai.ipollo/inspector",disposed:false,
     request:async (_method:string,context:unknown)=>{sandbox.published=context;},
   };
-  runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
+  runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
   expect(result.model).toBe("seedance-2.5");
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
-  const switched=runInNewContext(`state.model='minimax-h3';state.mode='edit';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
+  const switched=runInNewContext(`state.model='minimax-h3';state.mode='generate';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
   const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");
   expect(ratioField?.value).toBe("16:9");
@@ -318,7 +318,12 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(html).not.toContain('id="importTarget"');
   expect(html).not.toContain('id="openPath"');
   expect(html).not.toContain('素材与原视频');
+  expect(html).not.toContain('本会话任务');
+  const local = runInNewContext(`state.mode='edit';state.ai=false;normalized();publish();({mode:state.mode,context:published.structuredContent})`,sandbox);
+  expect(local.mode).toBe('edit');expect(local.context).toEqual({});
   expect(runInNewContext(`state.models=[];normalized();state.model`,sandbox)).toBe("");
+  runInNewContext(`publish()`,sandbox);
+  expect(runInNewContext(`published.structuredContent`,sandbox)).toEqual({});
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
   expect(html).not.toContain('"ui/message"');
 });
@@ -333,7 +338,7 @@ test("inspector uploads bind exact frame fields, preserve inputs on failure and 
   const dataUrl = "data:image/png;base64,aW1hZ2U=";
   const sandbox: Record<string, unknown> = {
     provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
-    $: () => ({ setAttribute() {} }), tell() {}, request: async () => ({}),
+    $: () => ({ setAttribute() {} }), renderEditor() {}, tell() {}, request: async () => ({}),
     call: async (action: string, args: Record<string, unknown>) => {
       expect(action).toBe("import");
       if (args.filename === "fail.png") throw new Error("导入失败");

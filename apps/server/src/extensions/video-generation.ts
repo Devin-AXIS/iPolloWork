@@ -13,6 +13,7 @@ import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifact
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { claimVideoJobs, createVideoJob, getVideoJob, listVideoJobs, updateVideoJob, type VideoJob } from "./video-jobs.js";
 import { storageStatus, uploadWorkspaceFile } from "./storage.js";
+import { inspectLocalVideo, localVideoEditSchema, saveLocalVideo } from "./video-local-edit.js";
 
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
@@ -91,6 +92,8 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "recover", title: "Resume an existing video task without resubmitting", effect: "write", properties: { id: stringProperty, upstreamId: stringProperty } },
   { action: "import", title: "Import video console media", effect: "write", properties: { filename: stringProperty, dataUrl: stringProperty } },
   { action: "read", title: "Read a bounded workspace media chunk", effect: "read", properties: { path: stringProperty, offset: { type: "number" } } },
+  { action: "inspect", title: "Inspect a local video for toolbar editing", effect: "read", properties: { path: stringProperty } },
+  { action: "local-edit", title: "Save local toolbar video edits without AI", effect: "write", properties: z.toJSONSchema(localVideoEditSchema).properties ?? {} },
 ].map(action => ({ extensionId: VIDEO_GENERATION_EXTENSION_ID, action: action.action, title: action.title,
   description: action.title, effect: action.effect === "read" ? "read" as const : "write" as const,
   inputSchema: { type: "object", properties: action.properties, additionalProperties: false } }));
@@ -381,7 +384,9 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   const workspace = config.workspaces.find(item => item.id === workspaceId);
   if (!workspace) throw new ApiError(404, "workspace_not_found", "工作区不存在。");
   const sessionId = sessionArtifactOwner(context.sessionId);
-  if (!["jobs", "read"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (!["jobs", "read", "inspect"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (action === "inspect") return { ok: true, result: await inspectLocalVideo(workspace, z.object({ path: z.string() }).strict().parse(input).path) };
+  if (action === "local-edit") return { ok: true, result: await saveLocalVideo(config, workspace, sessionId, input) };
   if (action === "jobs") {
     const args = z.object({ before: z.number().int().positive().optional() }).parse(input);
     return { ok: true, result: { jobs: await listVideoJobs(config, workspace.id, sessionId, args.before) } };

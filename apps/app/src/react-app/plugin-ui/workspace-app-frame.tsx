@@ -50,7 +50,7 @@ import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
 export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
-export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string };
+export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string; saveMode?: "copy" | "overwrite"; revision?: string };
 
 type WorkspaceAppFrameProps = {
   surface: PluginUiSurface;
@@ -629,7 +629,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       if (!disposed && props.surface.pluginId === "video-console") {
         const result = context.structuredContent?.videoEditResult;
         if (isRecord(result) && typeof result.path === "string" && typeof result.sourcePath === "string" && typeof result.requestId === "string") {
-          onVideoResultRef.current?.({ path: result.path, sourcePath: result.sourcePath, requestId: result.requestId });
+          onVideoResultRef.current?.({ path: result.path, sourcePath: result.sourcePath, requestId: result.requestId, saveMode: result.saveMode === "overwrite" ? "overwrite" : "copy", ...(typeof result.revision === "string" ? { revision: result.revision } : {}) });
         }
       }
       const nextInspector = inspectorContextFrom(context);

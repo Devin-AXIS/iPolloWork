@@ -4281,6 +4281,13 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
     await enginePackageManager.applyEnvironment();
+    // Reuse the packaged Video Studio binaries in the local video workbench server.
+    for (const [name, variable] of [["ffmpeg", "HYPERFRAMES_FFMPEG_PATH"], ["ffprobe", "HYPERFRAMES_FFPROBE_PATH"]]) {
+      if (!process.env[variable]) {
+        const binary = resolveFfBinary(name);
+        if (binary) process.env[variable] = binary;
+      }
+    }
     installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);
     await workspaceStore.importBundledDesktopBootstrapConfigIfPreferred();
