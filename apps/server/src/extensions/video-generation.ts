@@ -201,6 +201,10 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
   const promptInput = node("134", "CR Prompt Text");
   const timing = node("132", "ComfyMathExpression");
   const output = node("92", "SaveVideo");
+  if (JSON.stringify(target.prompt) !== '["134",0]' || JSON.stringify(target.length) !== '["132",1]'
+    || timing.expression !== "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17") {
+    throw new ApiError(400, "video_workflow_changed", "H3 工作流的提示词或时长连接已变化，请更新软件后重试；尚未提交生成。");
+  }
   node("139", "LoadImage"); node("206", "LoadImage");
   if (graph["300"] || graph["301"]) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
   promptInput.prompt = args.prompt;

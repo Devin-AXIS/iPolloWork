@@ -28,7 +28,7 @@ async function setup() {
 function submission(patch = {}) { return { requestId:randomUUID(),model:"seedance-2.5",operation:"text",prompt:"镜头缓慢推近海边的灯塔",resolution:"720p",duration:"5",ratio:"16:9", ...patch }; }
 function workflowFixture() {
   return { code: 0, data: { prompt: JSON.stringify({
-    "131": { class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["139", 0], last_frame: ["206", 0] } },
+    "131": { class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["139", 0], last_frame: ["206", 0], prompt: ["134", 0], length: ["132", 1] } },
     "134": { class_type: "CR Prompt Text", inputs: { prompt: "public template example" } },
     "132": { class_type: "ComfyMathExpression", inputs: { expression: "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17", "values.a": ["205", 0] } },
     "92": { class_type: "SaveVideo", inputs: { format: "auto", codec: "auto" } },
@@ -196,6 +196,41 @@ test("H3 workflow rejections are definite, redacted and never prompt for a stand
   expect(job.message).not.toContain("Enterprise-Shared");
   expect(job.message).not.toContain("test-rh-secret");
   expect(creates).toBe(1);
+});
+
+test("H3 refuses a changed public graph before billing and never resubmits an uncertain workflow", async () => {
+  for(const changed of [true,false]) {
+    const {config,call}=await setup();let creates=0;
+    Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>{
+      if(url.endsWith("getJsonApiFormat")){
+        const fixture=workflowFixture();
+        if(changed)fixture.data.prompt=fixture.data.prompt.replace('"CR Prompt Text"','"RenamedPrompt"');
+        return Response.json(fixture);
+      }
+      creates++;throw new Error("lost create response test-rh-secret");
+    });
+    const args=submission({model:"minimax-h3",resolution:"0.5MP"});
+    await call("submit",args);await call("submit",args);await pollVideoJobs(config,auth);
+    const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
+    expect(job.status).toBe(changed?"failed":"uncertain");
+    expect(creates).toBe(changed?0:1);
+    expect(job.message).not.toContain("test-rh-secret");
+    expect(job.workflowId).toBe("2084935567606894593");
+  }
+});
+
+test("existing H3 standard-model jobs keep their original query endpoint",async()=>{
+  const {config,call}=await setup();
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json({id:"existing-h3-task"}));
+  const args=submission();await call("submit",args);
+  const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
+  await updateVideoJob(config,job,{model:"minimax-h3"});
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>{
+    if(url.endsWith("/openapi/v2/query"))return Response.json({status:"SUCCESS",results:[{url:"https://rh-images.xiaoyaoyou.com/existing.mp4"}]});
+    expect(url).toBe("https://rh-images.xiaoyaoyou.com/existing.mp4");return new Response(mp4);
+  });
+  await pollVideoJobs(config,auth);
+  expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
 });
 
 test("authorization tests distinguish provider outages from invalid keys", async () => {
