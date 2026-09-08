@@ -350,7 +350,40 @@ test("video inspector resets incompatible fields and publishes the real host con
   runInNewContext(`publish()`,sandbox);
   expect(runInNewContext(`published.structuredContent`,sandbox)).toEqual({});
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
-  expect(html).not.toContain('"ui/message"');
+  expect(html).toContain('"ui/message"');
+  expect(html).not.toContain('call("prepare-prompt"');
+});
+
+test("current session AI expands chosen preferences, rejects stale replies and waits for review", async () => {
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const signature = html.slice(html.indexOf("function promptSignature()"), html.indexOf("\n", html.indexOf("function promptSignature()")));
+  const runner = signature + "\n" + html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
+  const calls: string[] = [], messages: unknown[] = [];
+  const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
+  const sandbox: Record<string,unknown> = { crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
+    request: async (method: string, args: unknown) => { calls.push(method); messages.push(args); return {}; },
+    call: async (action: string) => {
+      calls.push(action);
+      return { job: { id: "job", status: "running", message: "submitted" } };
+    },
+  };
+  runInNewContext(definitions+"\n"+runner+"\nglobalThis.state=state;state.model='minimax-h3';state.prompt='夸父追日';state.style='史诗电影';state.host={sessionId:'session'};", sandbox);
+  await runInNewContext("run()", sandbox);
+  expect(calls).toEqual(["ui/message"]);
+  expect(JSON.stringify(messages)).toContain("史诗电影");
+  expect(JSON.stringify(messages)).toContain("夸父追日");
+  expect(runInNewContext("state.busy",sandbox)).toBe(false);
+  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("正在扩写");
+  expect(()=>runInNewContext("acceptExpandedPrompt({requestId:'wrong',prompt:'ignore'})",sandbox)).toThrow("过期");
+  runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'integrated_multimodal_description: [Shot 1] Kuafu runs. overall_soundscape: wind. non_diegetic_music: drums.'})",sandbox);
+  expect(calls).toEqual(["ui/message"]);
+  await runInNewContext("run()", sandbox);
+  expect(calls).toEqual(["ui/message", "submit"]);
+  runInNewContext("state.firstFrame='new.png'",sandbox);
+  await runInNewContext("run()",sandbox);
+  runInNewContext("state.camera='特写'",sandbox);
+  expect(()=>runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'stale'})",sandbox)).toThrow("过期");
+  expect(calls).toEqual(["ui/message", "submit", "ui/message"]);
 });
 
 test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {

@@ -17,6 +17,7 @@ export type WorkspaceKind = "local" | "remote";
 /** Persisted files produced outside the chat transcript, scoped to one session. */
 export type SessionArtifact = {
   path: string;
+  previousPaths?: string[];
   size: number;
   updatedAt: number;
 };

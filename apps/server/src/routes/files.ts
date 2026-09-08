@@ -9,6 +9,7 @@ import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { FileSessionStore } from "../file-sessions.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
+import { renameArtifact } from "../artifact-rename.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
@@ -809,6 +810,16 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const outboxRoot = resolveOutboxDir(workspace.path);
     const items = await listArtifacts(outboxRoot);
     return jsonResponse({ items });
+  });
+
+  addRoute(routes, "POST", "/workspace/:id/artifacts/rename", "client", async (ctx) => {
+    ensureWritable(config); requireClientScope(ctx, "collaborator");
+    const workspace = await resolveWorkspace(config, ctx.params.id);
+    const input = await readJsonBody(ctx.request);
+    await requireApproval(ctx, { workspaceId: workspace.id, action: "files.write", summary: "Rename an output and update its workspace references", paths: [workspace.path] });
+    const result = await renameArtifact(config, workspace, input);
+    recordWorkspaceFileEvent(workspace.id, { type: "rename", path: String(input.path), toPath: result.path });
+    return jsonResponse(result);
   });
 
   addRoute(routes, "GET", "/workspace/:id/artifacts/:artifactId", "client", async (ctx) => {

@@ -12,6 +12,7 @@ import { PlatformProvider, createDefaultPlatform } from "../../apps/app/src/reac
 import { TooltipProvider } from "../../apps/app/src/components/ui/tooltip";
 import { getReactQueryClient } from "../../apps/app/src/react-app/infra/query-client";
 import { setLocale } from "../../apps/app/src/i18n";
+import { IPolloWorkControlProvider } from "../../apps/app/src/react-app/shell/control/control-provider";
 import "../../apps/app/src/app/index.css";
 
 const endpoint = "http://127.0.0.1:5190";
@@ -49,6 +50,7 @@ const client = {
   },
 };
 function Fixture() {
+  const [videoBrief, setVideoBrief] = useState("");
   const [historyId, setHistoryId] = useState(null);
   const [output, setOutput] = useState(null);
   const [showStudio, setShowStudio] = useState(true);
@@ -72,11 +74,19 @@ function Fixture() {
     return false; // Simulated transport: do not start an external agent turn.
   };
   if (setup.framesMode) return <main style={{ height: "100vh", display: "flex", flexDirection: "column" }} className="bg-background text-foreground">
-    <header className="border-b px-5 py-3 text-sm">首尾帧上传验证 · 真实控件和本地导入，不提交生成任务</header>
+    <header className="border-b px-5 py-3 text-sm">视频参数验证 · 真实控件和消息桥，模拟会话 AI，不提交生成任务
+      {videoBrief ? <details className="mt-2"><summary>当前会话收到扩写请求（模拟）</summary><pre className="max-h-32 overflow-auto whitespace-pre-wrap text-xs">{videoBrief}</pre></details> : null}
+      {videoBrief ? <button className="mt-2 rounded border p-2" onClick={async () => {
+        window.__ipolloworkControl.setEnabled(true);
+        const requestId=videoBrief.match(/requestId=([a-f0-9-]+)/)?.[1];
+        await window.__ipolloworkControl.execute("workspace_app.call_tool",{name:"accept_expanded_prompt",arguments:{requestId,prompt:"integrated_multimodal_description: [Shot 1] Kuafu runs across the wilderness holding a staff, pursuing the setting sun. Epic cinematic style, low-angle tracking shot, golden sunset. overall_soundscape: footsteps and wind. non_diegetic_music: drums."}});
+      }}>模拟 AI 回填描述（不会生成视频）</button> : null}
+    </header>
     <section className="min-h-0 flex-1"><WorkspaceAppFrame
       surface={{ id: "video-console", pluginId: "video-console", label: "视频控制台", resource: setup.resource }}
       client={client} workspaceId="selection-proof" workspaceRoot="" sessionId="selection-proof" placement="workspace"
       resourceOverride={{ pluginId: "video-console", resource: setup.resource, html: setup.html }}
+      onSendMessage={async ({text}) => { setVideoBrief(text); return true; }}
     /></section>
   </main>;
   return <main style={{ height: "100vh", display: "flex", flexDirection: "column" }} className="bg-background text-foreground">
@@ -123,4 +133,4 @@ function Fixture() {
     </div>
   </main>;
 }
-createRoot(document.getElementById("root")).render(<HashRouter><QueryClientProvider client={queryClient}><TooltipProvider><PlatformProvider value={createDefaultPlatform()}><LocalProvider><ShellConfigProvider><Fixture /></ShellConfigProvider></LocalProvider></PlatformProvider></TooltipProvider></QueryClientProvider></HashRouter>);
+createRoot(document.getElementById("root")).render(<HashRouter><QueryClientProvider client={queryClient}><TooltipProvider><PlatformProvider value={createDefaultPlatform()}><LocalProvider><ShellConfigProvider><IPolloWorkControlProvider><Fixture /></IPolloWorkControlProvider></ShellConfigProvider></LocalProvider></PlatformProvider></TooltipProvider></QueryClientProvider></HashRouter>);

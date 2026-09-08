@@ -2165,6 +2165,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         },
       ),
 
+    renameWorkspaceArtifact: (workspaceId: string, payload: { path: string; name: string; sessionId: string }) =>
+      requestJson<{ path: string; updatedReferences?: number }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/artifacts/rename`, { token, hostToken, method: "POST", body: payload }),
+
     deleteWorkspaceFiles: async (
       workspaceId: string,
       files: Array<{ path: string; recursive?: boolean }>,
