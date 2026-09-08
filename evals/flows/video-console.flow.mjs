@@ -126,6 +126,9 @@ export default {
         },assert:async()=>{
           await ctx.waitFor(`${element("#player")}?.readyState>=2`,{timeoutMs:60000});
           ctx.assert(await ctx.eval(`${element("#player")}.videoWidth>0`),"Saved video decodes after reload");
+          await ctx.eval(`(async()=>{const player=${element("#player")};player.muted=true;player.currentTime=0;await player.play();})()`,{awaitPromise:true});
+          await ctx.waitFor(`${element("#player")}.currentTime>0.5 && !${element("#player")}.paused`,{timeoutMs:15000});
+          await ctx.eval(`${element("#player")}.pause()`);
           ctx.assert(JSON.stringify(await api(ctx,messagePath))===beforeMessages,"The console did not insert chat messages");
           const page=await api(ctx,`/workspace/${workspaceId}/artifacts?sessionId=${sessionId}`);
           ctx.assert(page.items.some(item=>item.path===outputPath),"The artifact remains after reload");
