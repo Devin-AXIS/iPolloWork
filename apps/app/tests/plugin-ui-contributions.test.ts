@@ -20,9 +20,17 @@ describe("plugin UI contributions", () => {
         { id: "quality", label: "Quality", control: "select", value: "auto", live: true, options: [
           { value: "auto", label: "Auto" },
           { value: "future", label: "Future", disabled: true },
+          { value: "api", label: "API · Not connected", action: "open-authorizations" },
         ] },
       ],
-    })).toMatchObject({ title: "Image settings", fields: [{ id: "prompt" }, { id: "quality" }] });
+    })).toMatchObject({
+      title: "Image settings",
+      fields: [{ id: "prompt" }, { id: "quality", options: [
+        { value: "auto" },
+        { value: "future", disabled: true },
+        { value: "api", action: "open-authorizations" },
+      ] }],
+    });
     expect(parsePluginUiInspectorContext({
       schemaVersion: 1,
       title: "Broken",

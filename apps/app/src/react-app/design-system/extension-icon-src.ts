@@ -1,11 +1,14 @@
 const featuredPluginIconSrc: Readonly<Record<string, string>> = {
   context7: "/ext-context7.svg",
+  "design-agent": "/ext-design.png",
   figma: "/ext-figma.svg",
   github: "/ext-github.svg",
+  "image-studio": "/ext-image-studio.png",
   linear: "/ext-linear.svg",
   notion: "/ext-notion.svg",
   sentry: "/ext-sentry.svg",
   stripe: "/ext-stripe.svg",
+  "video-agent": "/ext-video.png",
 };
 
 export function resolveExtensionIconSrc(iconSrc: string): string {

@@ -166,6 +166,7 @@ const pluginUiInspectorFieldSchema = z.object({
     value: z.string(),
     label: z.string().min(1),
     disabled: z.boolean().optional(),
+    action: z.enum(["open-authorizations"]).optional(),
   }).strict()).optional(),
 }).strict().refine(field => field.control !== "image" || (field.media?.kind === "image" && Boolean(field.media.readTool)), {
   message: "Image controls require image import and preview tools.",

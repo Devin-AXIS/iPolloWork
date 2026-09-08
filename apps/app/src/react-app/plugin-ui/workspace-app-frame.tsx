@@ -11,7 +11,11 @@ import {
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
 import { ImagePlus, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
+import type {
+  ImageStudioAiReference,
+} from "@/app/types";
 import type {
   iPolloWorkPluginUiResource,
   iPolloWorkServerClient,
@@ -23,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
+import { workspaceSettingsRoute } from "@/react-app/shell/workspace-routes";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { sessionArtifactsQueryKey } from "@/react-app/infra/session-artifacts-query";
 import {
@@ -36,8 +41,6 @@ import {
 import {
   PLUGIN_UI_HOST_CONTEXT_KEY,
   PLUGIN_UI_INSPECTOR_CONTEXT_KEY,
-  imageSelectionSnapshotSchema,
-  type ImageSelectionSnapshot,
   parsePluginUiInspectorContext,
   type PluginUiInspectorContextV1,
   type PluginUiHostContextV1,
@@ -48,12 +51,6 @@ import type { PluginUiSurface } from "./plugin-ui-contributions";
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
 export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
 export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string };
-export type WorkspaceImageSelection = {
-  key: string;
-  sessionId: string;
-  sourcePath: string;
-  capture: () => Promise<ImageSelectionSnapshot>;
-};
 
 type WorkspaceAppFrameProps = {
   surface: PluginUiSurface;
@@ -70,7 +67,6 @@ type WorkspaceAppFrameProps = {
     modelContext: WorkspaceAppModelContext | null;
   }) => boolean | Promise<boolean>;
   onRequestClose?: () => void;
-  onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   onImageSaved?: (save: WorkspaceImageSave) => void;
   onVideoResult?: (result: WorkspaceVideoResult) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
@@ -84,6 +80,33 @@ type WorkspaceAppFrameProps = {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function finiteUnitValue(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1 ? value : null;
+}
+
+function parseImageStudioAiReference(value: unknown): ImageStudioAiReference | null {
+  if (!isRecord(value)) return null;
+  const sourcePath = typeof value.sourcePath === "string" ? value.sourcePath.trim() : "";
+  const sourceName = typeof value.sourceName === "string" ? value.sourceName.trim() : "";
+  const imageWidth = typeof value.imageWidth === "number" && Number.isFinite(value.imageWidth) ? value.imageWidth : 0;
+  const imageHeight = typeof value.imageHeight === "number" && Number.isFinite(value.imageHeight) ? value.imageHeight : 0;
+  if (!sourcePath || imageWidth <= 0 || imageHeight <= 0) return null;
+  if (value.kind === "point" && isRecord(value.point)) {
+    const x = finiteUnitValue(value.point.x);
+    const y = finiteUnitValue(value.point.y);
+    return x === null || y === null ? null : { sourcePath, sourceName, imageWidth, imageHeight, kind: "point", point: { x, y } };
+  }
+  if (value.kind === "selection" && isRecord(value.selection)) {
+    const left = finiteUnitValue(value.selection.left);
+    const top = finiteUnitValue(value.selection.top);
+    const right = finiteUnitValue(value.selection.right);
+    const bottom = finiteUnitValue(value.selection.bottom);
+    if (left === null || top === null || right === null || bottom === null || left >= right || top >= bottom) return null;
+    return { sourcePath, sourceName, imageWidth, imageHeight, kind: "selection", selection: { left, top, right, bottom } };
+  }
+  return null;
 }
 
 function cspSourceList(values: string[] | undefined, fallback: string) {
@@ -182,6 +205,7 @@ type WorkspaceAppInspectorProps = {
   context: PluginUiInspectorContextV1;
   onClose: () => void;
   onCallTool: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
+  onOpenAuthorizations: () => void;
 };
 
 function InspectorImagePreview({ path, readTool, onCallTool }: {
@@ -227,7 +251,7 @@ function InspectorImagePreview({ path, readTool, onCallTool }: {
     onError={() => setError("图片无法预览，请检查链接或更换图片。")} />;
 }
 
-function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppInspectorProps) {
+function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations }: WorkspaceAppInspectorProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const activeRef = useRef(true);
   useEffect(() => { activeRef.current = true; return () => { activeRef.current = false; }; }, []);
@@ -303,8 +327,8 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
     : context.status;
 
   const renderField = (field: PluginUiInspectorContextV1["fields"][number]) => (
-    <div key={field.id} className="block space-y-1.5" data-inspector-field={field.id}>
-      <span className="text-[11px] font-medium text-foreground">{field.label}</span>
+    <div key={field.id} className="block space-y-1" data-inspector-field={field.id}>
+      <span className="text-[10px] text-muted-foreground">{field.label}</span>
       {field.control === "image" ? (
         <>
           <div className="relative overflow-hidden rounded-xl border border-border bg-muted/30">
@@ -339,12 +363,22 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
             if (event.relatedTarget instanceof Node && formRef.current?.contains(event.relatedTarget)) return;
             void updateLiveField(field.id, event.currentTarget.value);
           } : undefined}
-          className="min-h-28 resize-y rounded-xl bg-background text-[12px] leading-5" />
+          className="min-h-28 resize-y" />
       ) : (
         <Select key={`${field.id}:${field.value}:${JSON.stringify(field.options)}`} name={field.id}
           defaultValue={field.value} items={field.options} disabled={submitting || updating}
-          onValueChange={field.live ? value => { if (value !== null) void updateLiveField(field.id, value); } : undefined}>
-          <SelectTrigger className="w-full rounded-xl bg-input/50" aria-label={field.label}><SelectValue /></SelectTrigger>
+          onValueChange={field.live ? value => {
+            if (value === null) return;
+            const option = field.options?.find(candidate => candidate.value === value);
+            if (option?.action === "open-authorizations") {
+              onOpenAuthorizations();
+              return;
+            }
+            void updateLiveField(field.id, value);
+          } : undefined}>
+          <SelectTrigger className="w-full border-transparent bg-muted shadow-none hover:bg-muted/80" aria-label={field.label}>
+            <SelectValue>{field.live ? field.options?.find(option => option.value === field.value)?.label : undefined}</SelectValue>
+          </SelectTrigger>
           <SelectContent align="start">{field.options?.map(option => (
             <SelectItem key={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>
           ))}</SelectContent>
@@ -373,10 +407,10 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
         closeLabel="Close settings"
         onClose={onClose}
       />}
-      bodyClassName="px-4 py-4"
+      bodyClassName="px-4 py-3.5"
       testId="workspace-app-inspector"
     >
-      <form ref={formRef} className="space-y-4" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+      <form ref={formRef} className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
         {context.fields.filter(field => !field.advanced).map(renderField)}
         {context.fields.some(field => field.advanced) ? (
           <details className="rounded-xl border border-border p-3">
@@ -410,6 +444,8 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
 
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
+  const navigate = useNavigate();
+  const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio";
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
   const hostContextRef = useRef<McpUiHostContext>({});
@@ -427,8 +463,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const inspectorOpenRequestRef = useRef("");
   const onDisplayModeChangeRef = useRef(props.onDisplayModeChange);
   const onSendMessageRef = useRef(props.onSendMessage);
-  const onImageSelectionChangeRef = useRef(props.onImageSelectionChange);
-  onImageSelectionChangeRef.current = props.onImageSelectionChange;
   const onImageSavedRef = useRef(props.onImageSaved);
   onImageSavedRef.current = props.onImageSaved;
   const onVideoResultRef = useRef(props.onVideoResult);
@@ -490,10 +524,26 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
   useEffect(() => {
     const iframe = iframeRef.current;
+    const receiveImageStudioReference = (event: MessageEvent) => {
+      if (props.surface.pluginId !== "image-studio" || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
+      if (event.data.type !== "ipollowork:image-studio:ask-ai") return;
+      const reference = parseImageStudioAiReference(event.data.reference);
+      if (!reference || !props.sessionId) return;
+      window.dispatchEvent(new CustomEvent("ipollowork:add-image-reference", {
+        detail: { sessionId: props.sessionId, reference },
+      }));
+      props.onDisplayModeChange?.("inline");
+      window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+    };
+    window.addEventListener("message", receiveImageStudioReference);
+    return () => window.removeEventListener("message", receiveImageStudioReference);
+  }, [props.onDisplayModeChange, props.sessionId, props.surface.pluginId]);
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
     if (!resource || !iframe?.contentWindow) return;
     setBridgeReady(false);
     let disposed = false;
-    const selectionSurfaceId = crypto.randomUUID();
     const transport = new PostMessageTransport(iframe.contentWindow, iframe.contentWindow);
     const pluginContext = pluginUiHostContext(props, developmentPreviewRef.current);
     const hostContext: McpUiHostContext = {
@@ -582,22 +632,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           onVideoResultRef.current?.({ path: result.path, sourcePath: result.sourcePath, requestId: result.requestId });
         }
       }
-      if (props.surface.pluginId === "image-studio") {
-        const data = context.structuredContent;
-        const revision = data?.selectionRevision;
-        const sourcePath = data?.sourcePath;
-        const sessionId = props.sessionId;
-        onImageSelectionChangeRef.current?.(data?.selectionReady === true && typeof revision === "number" && typeof sourcePath === "string" && sessionId ? {
-          key: `${selectionSurfaceId}:${sessionId}:${sourcePath}:${revision}`,
-          sessionId,
-          sourcePath,
-          capture: async () => {
-            const result = await bridge.callTool({ name: "capture_selection", arguments: { revision } });
-            if (result.isError) throw new Error(messageText(result.content) || "Image selection could not be captured");
-            return imageSelectionSnapshotSchema.parse(result.structuredContent);
-          },
-        } : null);
-      }
       const nextInspector = inspectorContextFrom(context);
       setInspectorContext(nextInspector);
       if (!nextInspector) {
@@ -655,7 +689,6 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
     return () => {
       disposed = true;
-      if (props.surface.pluginId === "image-studio") onImageSelectionChangeRef.current?.(null);
       resizeObserver.disconnect();
       themeObserver.disconnect();
       bridgeRef.current = null;
@@ -752,23 +785,39 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   }
 
   return (
-    <div className={cn("flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
+    <div className={cn("relative flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
       <iframe
         ref={iframeRef}
         title={props.surface.label}
-        className="h-full min-w-0 flex-1 border-0 bg-background"
+        className={cn(
+          "h-full min-w-0 border-0 bg-background",
+          inspectorBelowAppToolbar ? "w-full" : "flex-1",
+        )}
         sandbox="allow-scripts allow-same-origin"
         allow={buildAllowAttribute(resource.resource.ui.permissions)}
         data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
         data-preview-revision={props.developmentPreview?.revision}
       />
       {inspectorOpen && inspectorContext ? (
-        <WorkspaceAppInspector
-          key={`${props.surface.pluginId}:${props.sessionId}`}
-          context={inspectorContext}
-          onClose={() => setInspectorOpen(false)}
-          onCallTool={callWorkspaceAppTool}
-        />
+        inspectorBelowAppToolbar ? (
+          <div className="absolute bottom-0 right-0 top-[52px] z-10">
+            <WorkspaceAppInspector
+              key={`${props.surface.pluginId}:${props.sessionId}`}
+              context={inspectorContext}
+              onClose={() => setInspectorOpen(false)}
+              onCallTool={callWorkspaceAppTool}
+              onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
+            />
+          </div>
+        ) : (
+          <WorkspaceAppInspector
+            key={`${props.surface.pluginId}:${props.sessionId}`}
+            context={inspectorContext}
+            onClose={() => setInspectorOpen(false)}
+            onCallTool={callWorkspaceAppTool}
+            onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
+          />
+        )
       ) : null}
     </div>
   );

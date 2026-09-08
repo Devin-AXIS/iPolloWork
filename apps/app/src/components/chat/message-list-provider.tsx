@@ -1,9 +1,11 @@
 "use memo";
 
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server"
 import { useSessionActivityStore } from "@/react-app/domains/session/status/session-activity-store"
 import * as React from "react"
 
 interface MessageListContextValue {
+  client: iPolloWorkServerClient | null
   workspaceId: string
   sessionId: string
   sessionTitle: string
@@ -25,6 +27,7 @@ const MessageListContext = React.createContext<MessageListContextValue | null>(n
 
 interface MessageListProviderProps {
   children: React.ReactNode
+  client: iPolloWorkServerClient | null
   workspaceId: string
   sessionId: string
   sessionTitle: string
@@ -50,6 +53,7 @@ export interface DispatchAction {
 
 export function MessageListProvider({
   children,
+  client,
   workspaceId,
   sessionId,
   sessionTitle,
@@ -68,6 +72,7 @@ export function MessageListProvider({
 }: MessageListProviderProps) {
   const value = React.useMemo(
     () => ({
+      client,
       workspaceId,
       sessionId,
       sessionTitle,
@@ -85,6 +90,7 @@ export function MessageListProvider({
       onEditUserMessage,
     }),
     [
+      client,
       workspaceId,
       sessionId,
       sessionTitle,

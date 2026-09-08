@@ -5,7 +5,6 @@ import {
   ArrowRight,
   Code2,
   FileText,
-  Film,
   Globe,
   Image,
   Loader2,
@@ -59,7 +58,7 @@ import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
-import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
@@ -79,7 +78,6 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
-  onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
   onEditImage?: (target: OpenTarget) => void;
   onSaveAsTemplate?: () => void;
@@ -182,8 +180,10 @@ function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
     return <Globe className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   }
   if (tab.type === "design") return <Code2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
-  if (tab.type === "video") return <Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
-  if (tab.type === "workspace-app") return <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "video") return <SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "workspace-app") return tab.surface.pluginId === "image-studio"
+    ? <Image className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+    : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
 }
@@ -594,7 +594,6 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
-  onImageSelectionChange,
   onSendWorkspaceAppMessage,
   onEditImage,
   onSaveAsTemplate,
@@ -908,7 +907,6 @@ export function SidePanel({
         ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <WorkspaceAppFrame
-              onImageSelectionChange={onImageSelectionChange}
               surface={activeTab.surface}
               client={client}
               workspaceId={workspaceId}

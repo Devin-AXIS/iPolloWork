@@ -1,18 +1,19 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRight, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
+import { ArrowUpRightIcon, ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import type { iPolloWorkServerClient, iPolloWorkWorkspaceCatalogEntry } from "@/app/lib/ipollowork-server";
+import { downloadBlobAsFile } from "@/app/lib/download";
 import {
   htmlArtifactDisplayFilename,
   htmlArtifactFilenameFromTitle,
   type HtmlArtifactDisplayKind,
 } from "@/app/lib/session-title";
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
-import { buildReviseFilePrompt } from "@/components/chat/utils";
+import { artifactCardDescription, artifactCardTitle, buildReviseFilePrompt } from "@/components/chat/utils";
 import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { t } from "@/i18n";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
@@ -27,7 +28,17 @@ import {
   DescriptiveButtonTitle,
 } from "@/components/descriptive-button";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/components/ui/sonner";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -54,6 +65,9 @@ import {
 interface ArtifactButtonProps {
   artifact: ArtifactItem
   displayName?: string
+  description?: string
+  client?: iPolloWorkServerClient | null
+  workspaceId?: string | null
   sessionId?: string
   artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: (displayName?: string) => void
@@ -104,9 +118,10 @@ function artifactDisplayKind(artifact: ArtifactItem, requestTitle: string): Html
 }
 
 function appendFilenameOccurrence(filename: string, occurrence: number) {
-  return occurrence > 1
+  if (occurrence <= 1) return filename;
+  return /\.html?$/i.test(filename)
     ? filename.replace(/(\.html?)$/i, `-${occurrence}$1`)
-    : filename;
+    : `${filename} ${occurrence}`;
 }
 
 function artifactDisplayNames(
@@ -124,10 +139,14 @@ function artifactDisplayNames(
       naming.occurrence,
     );
     if (!candidate) continue;
-    const key = candidate.toLocaleLowerCase();
+    const title = artifactCardTitle(naming.title, candidate);
+    const requestTitle = title === candidate || naming.occurrence <= 1
+      ? title
+      : `${title} ${naming.occurrence}`;
+    const key = requestTitle.toLocaleLowerCase();
     const occurrence = (occurrences.get(key) ?? 0) + 1;
     occurrences.set(key, occurrence);
-    names.set(artifact.id, appendFilenameOccurrence(candidate, occurrence));
+    names.set(artifact.id, appendFilenameOccurrence(requestTitle, occurrence));
   }
   return names;
 }
@@ -235,9 +254,10 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, displayName, description, client, workspaceId, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
+  const [downloading, setDownloading] = useState(false);
   const canOpen = canOpenArtifactInContext(artifact, artifactContext);
   const canPreview = canPreviewArtifact(artifact);
   const isVideoEntry = artifactContext?.kind === "video"
@@ -255,9 +275,32 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
     : { ...artifact, name: presentedName, target: { ...artifact.target, name: presentedName } };
   const title = compactArtifactTitle(presentedName);
   const typeLabel = getArtifactTypeLabel(studioTarget?.surface === "video" ? "video" : artifact.type);
-  const actionLabel = canOpenVideoStudio
-    ? t("link_action.open_video_studio")
-    : canOpenDesignStudio ? t("link_action.open_design") : t("session.outputs.action_browse_edit");
+  const cardDescription = description || typeLabel;
+  const canDownload = Boolean(client && workspaceId && artifact.target.kind === "file");
+
+  const download = async () => {
+    if (!client || !workspaceId || artifact.target.kind !== "file" || downloading) return;
+    setDownloading(true);
+    try {
+      const result = await client.downloadWorkspaceFile(workspaceId, artifact.path);
+      downloadBlobAsFile(artifact.name, new Blob([result.data], {
+        type: result.contentType ?? "application/octet-stream",
+      }));
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : t("artifact.download_failed"));
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const copyPath = async () => {
+    try {
+      await navigator.clipboard.writeText(artifact.path);
+      toast.success(t("session.outputs.path_copied"));
+    } catch {
+      toast.error(t("session.outputs.path_copy_failed"));
+    }
+  };
 
   const content = (
     <>
@@ -266,22 +309,20 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
       </DescriptiveButtonIcon>
       <DescriptiveButtonContent className={cn("min-w-0", compact && "flex-none")}>
         <div className="flex min-w-0 items-center gap-1.5">
-          <DescriptiveButtonTitle className={cn(compact ? "max-w-48 text-xs font-medium" : "max-w-full text-sm font-medium")} title={presentedName}>{title}</DescriptiveButtonTitle>
-          <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 text-[9px] font-medium leading-none text-muted-foreground">
-            {typeLabel}
-          </span>
+          <DescriptiveButtonTitle className={cn(compact ? "max-w-48 text-xs font-medium" : "max-w-full text-sm font-medium")} data-testid="artifact-file-title" title={presentedName}>{title}</DescriptiveButtonTitle>
+          {compact ? (
+            <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 text-[9px] font-medium leading-none text-muted-foreground">
+              {typeLabel}
+            </span>
+          ) : null}
         </div>
-        {(!compact || canOpenVideoStudio) && canActivate ? (
-          <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")}>
-            {actionLabel}
+        {!compact ? (
+          <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")} data-testid="artifact-file-description">
+            {cardDescription}
           </DescriptiveButtonDescription>
         ) : null}
       </DescriptiveButtonContent>
-      {canActivate ? (
-        <span className="inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground transition-colors group-hover/button:bg-background group-hover/button:text-foreground">
-          {compact ? <ArrowUpRightIcon className="size-3.5" /> : <MoreHorizontalIcon className="size-3.5" />}
-        </span>
-      ) : null}
+      {compact && canActivate ? <ArrowUpRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : null}
     </>
   );
 
@@ -294,10 +335,10 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")}>
+    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")} data-testid="artifact-file-shell">
       <DescriptiveButton
         data-testid="artifact-file-card"
-        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4")}
+        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -311,21 +352,67 @@ function ArtifactButton({ artifact, displayName, sessionId, artifactContext, onO
       >
         {content}
       </DescriptiveButton>
-      {sessionId ? (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          className={cn("absolute right-1 top-1 size-7 rounded-lg bg-background/90 opacity-0 shadow-sm transition-opacity hover:bg-background group-hover/output:opacity-100 focus:opacity-100", compact && "right-8 top-1/2 -translate-y-1/2")}
-          aria-label={t("session.outputs.revise_file")}
-          title={t("session.outputs.revise_file")}
-          onClick={(event) => {
-            event.stopPropagation();
-            setDraft(sessionId, buildReviseFilePrompt(artifact.path));
-            window.dispatchEvent(new Event("ipollowork:focusPrompt"));
-          }}
-        >
-          <MessageSquarePlusIcon className="size-3.5" />
-        </Button>
+      {!compact ? (
+        <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/output:pointer-events-auto group-hover/output:opacity-100 group-focus-within/output:pointer-events-auto group-focus-within/output:opacity-100" data-testid="artifact-file-actions">
+          {canDownload ? (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className="size-7 rounded-lg bg-background/90 text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("artifact.download_artifact")}
+              title={t("artifact.download_artifact")}
+              disabled={downloading}
+              onClick={() => void download()}
+            >
+              {downloading ? <Loader2 className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}
+            </Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={(
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-7 rounded-lg bg-background/90 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={t("session.outputs.more_actions")}
+                  data-testid="artifact-file-more"
+                  title={t("session.outputs.more_actions")}
+                >
+                  <MoreHorizontalIcon className="size-3.5" />
+                </Button>
+              )}
+            />
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="pb-1">
+                  <span className="block truncate font-mono text-[11px] font-normal" title={artifact.path}>{artifact.path}</span>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuItem onClick={() => void copyPath()}>
+                <Copy />
+                {t("session.outputs.copy_path")}
+              </DropdownMenuItem>
+              {artifact.target.kind === "file" ? (
+                <DropdownMenuItem onClick={() => previewArtifact(presentedArtifact, { external: true, reveal: true })}>
+                  <FolderOpen />
+                  {t("artifact.show_in_folder")}
+                </DropdownMenuItem>
+              ) : null}
+              {sessionId ? (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => {
+                    setDraft(sessionId, buildReviseFilePrompt(artifact.path));
+                    window.dispatchEvent(new Event("ipollowork:focusPrompt"));
+                  }}>
+                    <MessageSquarePlusIcon />
+                    {t("session.outputs.revise_file")}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
       ) : null}
     </div>
   );
@@ -421,6 +508,8 @@ function WorkspaceFileTree({ nodes, query, onOpenTarget }: {
 
 interface ArtifactListProps {
   messages: UIMessage[]
+  client?: iPolloWorkServerClient | null
+  workspaceId?: string | null
   sessionId?: string
   sessionTitle?: string
   requestNaming?: ArtifactRequestNaming
@@ -434,7 +523,7 @@ interface ArtifactListProps {
   onOpenVideoStudio?: (displayName?: string) => void
 }
 
-export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ messages, client, workspaceId, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
   const requestArtifacts = selectArtifactsForRequest(
     artifacts,
@@ -451,6 +540,7 @@ export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming,
     displayedArtifacts,
     () => requestNaming ?? { title: sessionTitle?.trim() ?? "", occurrence: 1 },
   );
+  const descriptionSource = `${requestNaming?.title ?? ""} ${messages.map(messageText).join(" ")}`;
 
   if (displayedArtifacts.length === 0) {
     return null;
@@ -468,6 +558,9 @@ export function ArtifactList({ messages, sessionId, sessionTitle, requestNaming,
             key={artifact.id}
             artifact={artifact}
             displayName={displayNames.get(artifact.id)}
+            description={artifactCardDescription(artifact, descriptionSource)}
+            client={client}
+            workspaceId={workspaceId}
             sessionId={sessionId}
             artifactContext={artifactContext}
             onOpenVideoStudio={onOpenVideoStudio}
@@ -633,6 +726,9 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                 <ArtifactButton
                   artifact={group.primary}
                   displayName={outputDisplayNames.get(group.primary.id)}
+                  description={artifactCardDescription(group.primary, messages.map(messageText).join(" "))}
+                  client={client}
+                  workspaceId={workspaceId}
                   sessionId={sessionId}
                   artifactContext={group.primary.messageId === "session-output" ? undefined : artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}

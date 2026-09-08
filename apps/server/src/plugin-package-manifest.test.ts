@@ -303,6 +303,7 @@ describe("plugin package manifest", () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const manifest = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url)).json();
     const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const editingSkill = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/skills/image-editing/SKILL.md", import.meta.url)).text();
 
     const result = validatePluginPackageManifest(manifest);
 
@@ -318,21 +319,73 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.13");
+    expect(result.manifest.package?.version).toBe("0.1.29");
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
+    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(20);
+    expect(workspaceUi).toContain('data-lucide="wand-sparkles"');
+    expect(workspaceUi).toContain('data-lucide="square-dashed"');
+    expect(workspaceUi).toContain('data-lucide="circle-dashed"');
+    expect(workspaceUi).toContain('data-lucide="zoom-out"');
+    expect(workspaceUi).toContain('data-lucide="zoom-in"');
+    expect(workspaceUi).toContain('data-lucide="maximize"');
+    expect(workspaceUi).toContain('data-lucide="download"');
+    expect(workspaceUi).not.toContain('data-ai-mode="inpaint"');
+    expect(workspaceUi).toContain('data-ai-mode="expand"');
+    expect(workspaceUi).toContain('data-ai-mode="erase"');
+    expect(workspaceUi).not.toContain('id="compareVersion"');
+    expect(workspaceUi).not.toContain('id="versionHistory"');
+    expect(workspaceUi).not.toContain('id="parameters"');
+    expect(workspaceUi).toContain('id="expandOptions"');
+    expect(workspaceUi).toContain("prepareExpandedEdit");
+    expect(workspaceUi).toContain('id="askAi"');
+    expect(workspaceUi).toContain('type: "ipollowork:image-studio:ask-ai"');
+    expect(workspaceUi).not.toContain('class="toolbar-row toolbar-row-secondary"');
+    expect(workspaceUi).toContain('id="zoomControls"');
+    expect(workspaceUi).not.toContain('id="zoomMenu"');
+    expect(workspaceUi).toContain('id="selectionDisplayCanvas"');
+    expect(workspaceUi).toContain('id="selectionClear"');
+    expect(workspaceUi).toContain('id="selectionAskAi"');
+    expect(workspaceUi).toContain('id="selectionErase"');
+    expect(workspaceUi).toContain('id="expandRun"');
+    expect(workspaceUi).toContain('data-zoom="fit"');
+    expect(workspaceUi).toContain('id="instantTooltip"');
+    expect(workspaceUi).toContain('data-i18n="replaceImage"');
+    expect(workspaceUi).not.toContain('data-i18n="properties"');
+    expect(workspaceUi).toContain('id="documentTitle"');
+    expect(workspaceUi).toContain('id="downloadImage"');
+    expect(workspaceUi).toContain('id="emptyBack"');
+    expect(workspaceUi).toContain(".empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #fff; }");
+    expect(workspaceUi).toContain(".empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }");
+    expect(workspaceUi).toContain('src="data:image/png;base64,');
+    expect(workspaceUi).toContain('mode: "start"');
+    expect(workspaceUi).not.toContain('id="sourceMeta"');
+    expect(workspaceUi).toContain("normalizedSelectionBounds");
+    expect(workspaceUi).toContain("approximateSelection");
     expect(workspaceUi).toContain("captureSelection");
     expect(workspaceUi).toContain("exactSelection");
+    expect(editingSkill).toContain("both an image preview and a reusable file card");
   });
 
-  test("Image Studio offers only bound available models and clears a revoked selection", async () => {
+  test("Image Studio lists the full catalog, selects a connected model, and marks authorization actions", async () => {
     const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
     const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
     expect(apply).toBeDefined();
-    const state: { model: string; models: unknown[]; providerReady: boolean } = { model: "api", models: [], providerReady: false };
-    const context = { state, normalizeModelParameters: () => {}, syncProviderState: () => { state.providerReady = state.models.length > 0; } };
+    const state: {
+      model: string;
+      models: Array<{ id: string; available: boolean; configured: boolean }>;
+      providerReady: boolean;
+    } = { model: "api", models: [], providerReady: false };
+    const context = {
+      state,
+      normalizeModelParameters: () => {},
+      syncProviderState: () => {
+        const selected = state.models.find((entry) => entry.id === state.model);
+        state.providerReady = Boolean(selected?.available && selected.configured);
+      },
+    };
     runInNewContext(`${apply}; globalThis.update = applyProviderModels`, context);
     const catalog = [
       { id: "api", available: true, configured: false },
@@ -342,7 +395,7 @@ describe("plugin package manifest", () => {
       null,
     ];
     runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "api" })})`, context);
-    expect(state.models).toEqual(catalog.slice(1, 3));
+    expect(state.models).toEqual(catalog.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
     expect(state.model).toBe("browser");
     expect(state.providerReady).toBe(true);
     state.model = "ark";
@@ -353,6 +406,8 @@ describe("plugin package manifest", () => {
     expect(state.model).toBe("");
     expect(state.providerReady).toBe(false);
     expect(ui).toContain("options: selectOptions.model");
+    expect(ui).toContain('action: "open-authorizations"');
+    expect(ui).toContain("disabled: !model.available");
   });
 
   test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {
@@ -380,6 +435,13 @@ describe("plugin package manifest", () => {
     const inspect = (expression: string) => runInNewContext(expression, context);
     expect(inspect('inspector.fields.find(f => f.id === "size").options.map(o => o.value)')).toEqual(models[0]?.parameters.size?.values);
     expect(inspect('inspector.fields.find(f => f.id === "quality").value')).toBe("high");
+    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => o.action || null)')).toEqual([
+      "open-authorizations",
+      "open-authorizations",
+      "open-authorizations",
+      null,
+    ]);
+    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => Boolean(o.disabled))')).toEqual([false, false, false, true]);
     expect(inspect('update({model: models[2].id, prompt: "Kept draft", size: "1536x1024", quality: "high"})')).toMatchObject({ size: "2K", prompt: "Kept draft", style: "minimal" });
     expect(inspect('actionArguments()')).not.toHaveProperty("quality");
     expect(inspect('inspector.fields.some(f => f.id === "quality")')).toBe(false);
@@ -404,10 +466,8 @@ describe("plugin package manifest", () => {
     expect(inspect('update({selectionBlend: "strict"})')).not.toHaveProperty("selectionBlend"); // No selection: no blend parameter.
     inspect('state.bounds = {left: 0.2, top: 0.2, right: 0.8, bottom: 0.8};');
     expect(inspect('update({selectionBlend: "natural"})')).toMatchObject({ selectionBlend: "natural" });
-    expect(inspect('inspector.fields.find(f => f.id === "selectionBlend")')).toMatchObject({ live: true, value: "natural" });
-    expect(inspect('inspector.fields.some(f => f.id === "size")')).toBe(false);
-    inspect('update({selectionBlend: "strict"})');
-    expect(inspect('inspector.status.message')).toContain("不额外羽化");
+    expect(inspect('inspector')).toBeUndefined();
+    expect(inspect('update({selectionBlend: "strict"})')).toMatchObject({ selectionBlend: "strict" });
   });
 
   test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {

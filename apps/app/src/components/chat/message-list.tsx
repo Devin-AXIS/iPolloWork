@@ -99,24 +99,30 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
+const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
 
 type RenderAssistantGroupOptions = {
   highlightQuery?: string
+  artifactPaths?: readonly string[]
 }
 
 function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>[number], index: number, options: RenderAssistantGroupOptions = {}) {
   if (group.kind === "text") {
+    const text = options.artifactPaths
+      ? stripArtifactPathLines(group.text, options.artifactPaths)
+      : group.text
     return (
       <MessageContent
         key={`text-${index}`}
         className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
+        data-chat-readable-text="true"
         markdown
         highlightQuery={options.highlightQuery}
       >
-        {group.text}
+        {text}
       </MessageContent>
     )
   }
@@ -569,7 +575,7 @@ function AssistantProcessSection(props: {
 
 const AssistantMessage = React.memo(
   ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
-    const { showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
+    const { client, workspaceId, showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
       [message.parts, showThinking]
@@ -583,10 +589,20 @@ const AssistantMessage = React.memo(
       const completed = getMessageCompleted(message)
       return created !== null && completed !== null && completed >= created ? completed - created : null
     }, [message])
+    const visibleArtifactPaths = React.useMemo(() => {
+      if (isStreaming) return []
+      const sourceMessages = artifactMessages ?? [message]
+      return getArtifactsFromMessages(sourceMessages, [], {
+          supplementalFiles: artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
+        })
+        .filter((artifact) => artifact.type !== "text" && artifact.type !== "unknown")
+        .map((artifact) => artifact.path)
+    }, [artifactFiles, artifactMessages, isStreaming, message, templateEntryPath])
 
     return (
       <Message
-        className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10"
+        className={cn(ASSISTANT_COLUMN_CLASS_NAME, "flex flex-col items-start gap-2")}
+        data-testid="assistant-message-column"
         data-message-id={message.id}
         data-message-role={message.role}
       >
@@ -599,11 +615,13 @@ const AssistantMessage = React.memo(
             />
           )}
           {assistantRenderSections.resultGroups.map((group, index) =>
-            renderAssistantGroup(group, index, { highlightQuery })
+            renderAssistantGroup(group, index, { highlightQuery, artifactPaths: visibleArtifactPaths })
           )}
           {!isStreaming ? (
             <ArtifactList
               messages={artifactMessages ?? [message]}
+              client={client}
+              workspaceId={workspaceId}
               sessionId={sessionId}
               sessionTitle={sessionTitle}
               requestNaming={requestNaming}
@@ -781,7 +799,9 @@ const UserMessage = React.memo(
                 {message.parts.some((part) => part.type === "text" && part.text) ? (
                   <MessageContent
                     layoutId={message.id}
-                    className="bg-muted text-foreground max-w-[85%] rounded-3xl px-5 py-2.5 whitespace-pre-wrap sm:max-w-[75%]"
+                    className="bg-muted text-foreground max-w-[85%] rounded-3xl px-5 py-2.5 text-left whitespace-pre-wrap sm:max-w-[75%]"
+                    data-chat-readable-text="true"
+                    data-testid="user-message-bubble"
                   >
                     {renderUserTextWithSkillChips(message.parts.map((part) => (part.type === "text" ? part.text : "")).join(""), highlightQuery)}
                   </MessageContent>
@@ -1177,19 +1197,21 @@ function MessageGroup({
   }
 
   return (
-      <div className="flex flex-col gap-2 group/message-group">
+    <div className="flex flex-col gap-2 group/message-group" data-testid="assistant-message-group">
       {hasProcessContent ? (
-        <AssistantProcessDisclosure
-          groups={processRenderGroups}
-          isStreaming={isLiveGroup}
-          hasError={hasSessionError}
-          durationMs={processDurationMs}
-          contentClassName="max-h-[520px] overflow-y-auto"
-        >
-          <div ref={stepsRef}>
-            {itemRenderData.map(renderProcessItem)}
-          </div>
-        </AssistantProcessDisclosure>
+        <div className={ASSISTANT_COLUMN_CLASS_NAME} data-testid="assistant-process-column">
+          <AssistantProcessDisclosure
+            groups={processRenderGroups}
+            isStreaming={isLiveGroup}
+            hasError={hasSessionError}
+            durationMs={processDurationMs}
+            contentClassName="max-h-[520px] overflow-y-auto"
+          >
+            <div ref={stepsRef}>
+              {itemRenderData.map(renderProcessItem)}
+            </div>
+          </AssistantProcessDisclosure>
+        </div>
       ) : null}
       {resultData ? (
         <div
@@ -1218,7 +1240,10 @@ function MessageGroup({
       ) : null}
       {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
-        <div className="mx-auto flex w-full max-w-[800px] flex-wrap items-center gap-2 px-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100 md:px-8">
+        <div
+          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100")}
+          data-testid="assistant-message-actions"
+        >
           <MessageActions className="flex gap-0">
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
             <SaveMessageAsMarkdownButton messages={renderableItems.map((item) => item.message)} />

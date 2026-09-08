@@ -5,7 +5,14 @@ import {
   buildWorkspaceFileTree,
   filterWorkspaceFileTree,
 } from "../src/components/chat/artifact";
-import { formatProcessDuration, getAssistantProcessState } from "../src/components/chat/utils";
+import {
+  artifactCardDescription,
+  artifactCardTitle,
+  formatProcessDuration,
+  getAssistantProcessState,
+  stripArtifactPathLines,
+} from "../src/components/chat/utils";
+import type { ArtifactItem } from "../src/lib/artifacts";
 
 describe("session output issue regressions", () => {
   test("empty projects hide task controls and render the no-task state", () => {
@@ -127,6 +134,9 @@ describe("session output issue regressions", () => {
     expect(artifactSource).not.toContain("hover:-translate-y-px");
     expect(artifactSource).not.toContain("hover:shadow-sm");
     expect(artifactSource).toContain('data-testid="artifact-file-card"');
+    expect(artifactSource).toContain('group-hover/output:pointer-events-auto');
+    expect(artifactSource).toContain('t("session.outputs.copy_path")');
+    expect(artifactSource).toContain("client.downloadWorkspaceFile(workspaceId, artifact.path)");
     expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
     expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
     expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
@@ -136,7 +146,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
-    expect(artifactSource).toContain('"h-full w-full min-w-0 gap-4 rounded-2xl px-5 py-4"');
+    expect(artifactSource).toContain('"h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20"');
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
@@ -145,7 +155,7 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain("displayName={activeTab.label}");
     expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
     expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
-    expect(sidePanelSource).toContain('<Film className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
     expect(sidePanelSource).toContain('<SidebarRightToggleIcon panelOpen />');
@@ -153,6 +163,60 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource.match(/className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"/g)?.length).toBe(3);
     expect(sidePanelSource).not.toContain('aria-label="Close panel"');
     expect(designPanelSource).toContain("const activePageDisplayName = activePagePath === lockedPath");
+  });
+
+  test("makes the file card the primary delivery entry", () => {
+    const request = "已应用模板：AI 热点拆解 视频主题：AI Agent 发展科普 面向谁：学生 总时长：60 秒";
+    const artifact: ArtifactItem = {
+      id: "video-entry",
+      name: "index.html",
+      path: "video/session-1/index.html",
+      type: "html",
+      messageId: "assistant-1",
+      messageIndex: 1,
+      target: {
+        id: "file:video/session-1/index.html",
+        kind: "file",
+        value: "video/session-1/index.html",
+        name: "index.html",
+        preview: "html",
+        confidence: 100,
+        reason: "test",
+      },
+    };
+
+    expect(artifactCardTitle(request, "fallback-video.html")).toBe("AI Agent 发展科普");
+    const description = artifactCardDescription(artifact, `${request} 共 10 个场景`);
+    expect(description).toContain("60");
+    expect(description).toContain("10");
+    expect(description.split(" · ")).toHaveLength(3);
+    expect(stripArtifactPathLines(
+      "视频已经完成。\n\n更新文件：`video/session-1/index.html`\n\n音频位于：video/session-1/assets/voiceover-*.mp3\n\n最终校验通过。",
+      [artifact.path],
+    )).toBe("视频已经完成。\n\n最终校验通过。");
+  });
+
+  test("keeps scroll recovery compact and limits chat weight tuning to macOS", () => {
+    const scrollOverlaySource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/scroll-overlay.tsx", import.meta.url),
+      "utf8",
+    );
+    const appStyles = readFileSync(
+      new URL("../src/app/index.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(scrollOverlaySource).toContain('data-testid="jump-to-latest"');
+    expect(scrollOverlaySource).toContain('t("session.scroll.jump_to_latest")');
+    expect(scrollOverlaySource).toContain("absolute bottom-3 right-3");
+    expect(scrollOverlaySource).not.toContain("shadow-(--dls-card-shadow)");
+    expect(appStyles).toContain('html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"]');
+    expect(appStyles).toContain("font-size: 15px");
+    expect(appStyles).toContain("font-weight: 500");
+    expect(appStyles).toContain("line-height: 24px");
+    expect(appStyles).toContain("font-weight: 600");
+    expect(appStyles).not.toContain("font-weight: 450");
+    expect(appStyles).not.toContain('ipollowork-platform-windows [data-chat-readable-text="true"]');
   });
 
   test("numbers repeated artifact requests by their user turn", () => {
@@ -466,6 +530,8 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain("strokeWidth: NAVIGATION_ICON_STROKE_WIDTH");
     expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
     expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
+    expect(sidePanelSource).toContain('if (tab.type === "video") return <SquarePlay');
+    expect(sidePanelSource).toContain('tab.surface.pluginId === "image-studio"');
     expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
     expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
     expect(sidePanelSource).not.toContain("WebkitMaskImage");

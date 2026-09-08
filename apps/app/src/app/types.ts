@@ -146,6 +146,16 @@ export type ComposerAttachment = {
   previewUrl?: string;
 };
 
+export type ImageStudioAiReference = {
+  sourcePath: string;
+  sourceName: string;
+  imageWidth: number;
+  imageHeight: number;
+  kind: "selection" | "point";
+  selection?: { left: number; top: number; right: number; bottom: number };
+  point?: { x: number; y: number };
+};
+
 export type SlashCommandOption = {
   id: string;
   name: string;
