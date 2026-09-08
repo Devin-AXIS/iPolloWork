@@ -5,6 +5,8 @@ const vo = await loadVoiceoverParagraphs("video-component-first-batch");
 async function openComponentCatalog(ctx) {
   await ctx.client.send("Page.reload", { ignoreCache: true });
   await ctx.waitFor('document.readyState === "complete"', { label: "fresh Studio build" });
+  await ctx.eval('window.postMessage({ type: "ipollowork:studio-locale", locale: "en" }, "*")');
+  await ctx.waitFor('document.documentElement.lang === "en"', { label: "English Studio locale" });
   const propertiesOpen = await ctx.eval(
     'Boolean(document.querySelector("button[aria-label=\\"Components\\"]"))',
   );
@@ -21,6 +23,7 @@ async function openComponentCatalog(ctx) {
 }
 
 async function hoverBlock(ctx, blockName) {
+  await ctx.client.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 1, y: 1 });
   await ctx.eval(`(() => {
     document.querySelector('[data-block-name="${blockName}"]')?.scrollIntoView({ block: 'center' });
   })()`);
@@ -81,31 +84,30 @@ export default {
               };
             })()`);
               ctx.assert(
-                state.options.includes("All components · 84"),
-                "The component total is not 84.",
+                state.options.includes("All components · 150"),
+                "The component total is not 150.",
               );
               ctx.assert(
-                state.options.includes("Text & Labels · 4"),
+                state.options.includes("Text & Labels · 10"),
                 "Text section count is missing.",
               );
               ctx.assert(
-                state.options.includes("Media & UI · 5"),
+                state.options.includes("Media & UI · 11"),
                 "Media section count is missing.",
               );
               ctx.assert(
-                state.options.includes("Data & Charts · 15"),
+                state.options.includes("Data & Charts · 22"),
                 "Data section count is missing.",
               );
               ctx.assert(
-                state.dataCards === 15,
-                "The data section does not contain all fifteen components.",
+                state.dataCards === 22,
+                "The data section does not contain all twenty-two components.",
               );
               ctx.assert(state.rankingCards === 4, "The ranking component set is incomplete.");
             },
             screenshot: {
               name: "first-batch-sections",
-              fromSurface: false,
-              requireText: ["Data & Charts · 15", "Animated Bar Chart", "Bar Chart Race"],
+              requireText: ["Data & Charts · 22", "Animated Bar Chart", "Bar Chart Race"],
             },
           },
         );
@@ -140,7 +142,6 @@ export default {
           },
           screenshot: {
             name: "ranking-component-hover-preview",
-            fromSurface: false,
             requireText: ["Podium Ranking", "Live Leaderboard", "Medal Table"],
           },
         });
@@ -193,7 +194,6 @@ export default {
           },
           screenshot: {
             name: "map-component-hover-preview",
-            fromSurface: false,
             requireText: ["China Map", "World Map", "Metro Network Map", "Territory Heat Map"],
           },
         });
@@ -202,53 +202,64 @@ export default {
     {
       name: "The China map exposes editable properties and inherits the video theme",
       run: async (ctx) => {
-        await ctx.prove("China Map inserts with editable regional data and an explicit inherited-theme contract", {
-          voiceover: vo[3],
-          action: async () => {
-            await leaveHoveredBlock(ctx);
-            await ctx.waitFor(
-              'Boolean(document.querySelector("[data-block-name=\\"china-map\\"]"))',
-              { label: "China Map card" },
-            );
-            await ctx.trustedClick('[data-block-name="china-map"] button');
-            await ctx.waitFor(
-              'Boolean(document.querySelector("[data-testid=\\"block-params-panel\\"]"))',
-              { timeoutMs: 20_000, label: "China Map properties" },
-            );
-          },
-          assert: async () => {
-            const state = await ctx.eval(`(() => ({
+        await ctx.prove(
+          "China Map inserts with editable regional data and an explicit inherited-theme contract",
+          {
+            voiceover: vo[3],
+            action: async () => {
+              await leaveHoveredBlock(ctx);
+              await ctx.waitFor(
+                'Boolean(document.querySelector("[data-block-name=\\"china-map\\"]"))',
+                { label: "China Map card" },
+              );
+              await ctx.eval(`(() => {
+              window.__chinaMapCountBeforeInsert = document.querySelectorAll('[role="button"][aria-label^="Select China Map"]').length;
+            })()`);
+              await ctx.trustedClick('[data-block-name="china-map"] button');
+              await ctx.waitFor(
+                'Boolean(document.querySelector("[data-testid=\\"block-params-panel\\"]")) && document.querySelectorAll(\'[role="button"][aria-label^="Select China Map"]\').length > window.__chinaMapCountBeforeInsert && !document.body.innerText.includes("Adding china-map")',
+                { timeoutMs: 20_000, label: "China Map properties" },
+              );
+            },
+            assert: async () => {
+              const state = await ctx.eval(`(() => ({
               contract: document.querySelector('[data-component-data-contract]')?.getAttribute('data-component-data-contract'),
               rows: document.querySelectorAll('[data-component-data-row]').length,
-              timeline: Boolean(document.querySelector('[aria-label="Select China Map"]')),
+              timeline: Boolean(document.querySelector('[role="button"][aria-label^="Select China Map"]')),
               text: document.body.innerText,
             }))()`);
-            ctx.assert(
-              state.contract === "region-value",
-              "The China Map structured data contract is missing.",
-            );
-            ctx.assert(state.rows === 10, `Expected ten province rows, received ${state.rows}.`);
-            ctx.assert(state.timeline, "The China Map clip was not inserted on the timeline.");
-            ctx.assert(
-              state.text.includes("Component variables"),
-              "The component variable panel is missing.",
-            );
-            const source = await ctx.eval(
-              `fetch('/api/projects/' + location.hash.match(/#?project\\/([^?]+)/)?.[1] + '/files/index.html').then((response) => response.json()).then((data) => data.content)`,
-              { awaitPromise: true },
-            );
-            ctx.assert(
-              source.includes('data-composition-src="compositions/china-map.html"') &&
-                source.includes('data-ipw-theme-mode="inherit"'),
-              "The inserted China Map is not explicitly linked to the video theme.",
-            );
+              ctx.assert(
+                state.contract === "region-value",
+                "The China Map structured data contract is missing.",
+              );
+              ctx.assert(state.rows === 10, `Expected ten province rows, received ${state.rows}.`);
+              ctx.assert(state.timeline, "The China Map clip was not inserted on the timeline.");
+              ctx.assert(
+                state.text.includes("Component variables"),
+                "The component variable panel is missing.",
+              );
+              const source = await ctx.eval(
+                `fetch('/api/projects/' + location.hash.match(/#?project\\/([^?]+)/)?.[1] + '/files/index.html').then((response) => response.json()).then((data) => data.content)`,
+                { awaitPromise: true },
+              );
+              ctx.assert(
+                source.includes('data-composition-src="compositions/china-map.html"') &&
+                  source.includes('data-ipw-theme-mode="inherit"'),
+                "The inserted China Map is not explicitly linked to the video theme.",
+              );
+            },
+            screenshot: {
+              name: "china-map-properties",
+              requireText: [
+                "China Map",
+                "Component variables",
+                "Theme linked",
+                "Structured data",
+                "Title",
+              ],
+            },
           },
-          screenshot: {
-            name: "china-map-properties",
-            fromSurface: false,
-            requireText: ["China Map", "Component variables", "Data overrides", "Follow theme", "Highlight"],
-          },
-        });
+        );
       },
     },
   ],

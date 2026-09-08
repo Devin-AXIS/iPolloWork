@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToString } from "react-dom/server";
 import { DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import {
   sharedConfiguredProviderIdsFromEnvKeys,
@@ -12,6 +14,7 @@ import {
 } from "@ipollowork/types/provider-credentials";
 
 import {
+  LocalProvider,
   getEnginePreferences,
   updateModelPreferences,
   updateEnginePreferences,
@@ -61,6 +64,20 @@ function preferences(): LocalPreferences {
 }
 
 describe("shared AI provider preferences", () => {
+  test("keeps the local context shared with a newly loaded provider module", async () => {
+    const refreshedPath = "../src/react-app/kernel/local-provider.tsx?image-studio-refresh";
+    const refreshed: typeof import("../src/react-app/kernel/local-provider") = await import(
+      refreshedPath
+    );
+    expect(refreshed.LocalProvider).not.toBe(LocalProvider);
+    function Consumer() {
+      const local = refreshed.useLocal();
+      return createElement("span", null, local.ready ? local.prefs.model.modelID : "loading");
+    }
+    expect(renderToString(createElement(LocalProvider, { children: createElement(Consumer) }))).toContain("big-pickle");
+    expect(() => renderToString(createElement(Consumer))).toThrow("Local context is missing");
+  });
+
   test("preserves an independent model selection for each engine", () => {
     const initial = preferences();
     expect(getEnginePreferences(initial, DEEPSEEK_HARNESS_ENGINE_ID)).toEqual({

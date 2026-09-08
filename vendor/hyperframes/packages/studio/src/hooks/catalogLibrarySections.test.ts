@@ -10,6 +10,21 @@ import {
 
 const REGISTRY_ROOT = fileURLToPath(new URL("../../../../registry", import.meta.url));
 const REMOVED_EFFECT_SECTIONS = ["opening-effect", "ending-effect", "transition-effect"];
+const EXPECTED_VISUAL_COMPONENT_COUNTS = {
+  brand: 10,
+  data: 22,
+  developer: 8,
+  diagrams: 12,
+  knowledge: 8,
+  maps: 12,
+  media: 11,
+  people: 6,
+  product: 10,
+  proof: 10,
+  scene: 9,
+  social: 22,
+  typography: 10,
+} as const;
 
 const MIGRATED_CAPTION_COMPONENTS = [
   "caption-highlight",
@@ -173,6 +188,12 @@ function parseManifest(manifestPath: string): MotionManifest {
   return JSON.parse(readFileSync(manifestPath, "utf8")) as MotionManifest;
 }
 
+function visualComponentManifests(): Array<{ manifestPath: string; manifest: MotionManifest }> {
+  return registryManifests(join(REGISTRY_ROOT, "blocks"))
+    .map((manifestPath) => ({ manifestPath, manifest: parseManifest(manifestPath) }))
+    .filter(({ manifest }) => Boolean(manifest.visualComponent));
+}
+
 function isVariableEntry(value: unknown): value is { id: string } {
   return Boolean(
     value && typeof value === "object" && "id" in value && typeof value.id === "string",
@@ -180,6 +201,81 @@ function isVariableEntry(value: unknown): value is { id: string } {
 }
 
 describe("component catalog registry", () => {
+  it("publishes exactly 150 visual components in the intentional category distribution", () => {
+    const components = visualComponentManifests();
+    const categoryCounts = Object.fromEntries(
+      Object.keys(EXPECTED_VISUAL_COMPONENT_COUNTS).map((category) => [
+        category,
+        components.filter(({ manifest }) => manifest.visualComponent?.category === category).length,
+      ]),
+    );
+
+    expect(components).toHaveLength(150);
+    expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(150);
+  });
+
+  it("keeps every visual component themeable, seekable, and bounded to four properties", () => {
+    for (const { manifestPath, manifest } of visualComponentManifests()) {
+      const html = readFileSync(
+        join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
+        "utf8",
+      );
+
+      expect(manifest.visualComponent).toMatchObject({
+        version: 1,
+        surfaces: ["video"],
+        themeMode: "inherit",
+      });
+      expect(manifest.variables?.length).toBeGreaterThan(0);
+      expect(manifest.variables?.length).toBeLessThanOrEqual(4);
+      expect(manifest.visualComponent?.ai?.slots).toEqual(
+        manifest.variables?.map((variable) => variable.id),
+      );
+      expect(html).toContain("var(--ipw-color-");
+      expect(html).toMatch(/gsap\.timeline\(\{\s*paused:\s*true/);
+      expect(html).not.toMatch(/Math\.random|Date\.now|repeat\s*:\s*-1/);
+    }
+  });
+
+  it("keeps the generated expansion property-safe and instance-aware", () => {
+    const generated = visualComponentManifests().filter(({ manifestPath, manifest }) => {
+      const html = readFileSync(
+        join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
+        "utf8",
+      );
+      return html.includes("visual-component-catalog.ts");
+    });
+
+    expect(generated).toHaveLength(66);
+    for (const { manifestPath, manifest } of generated) {
+      const html = readFileSync(
+        join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),
+        "utf8",
+      );
+      const declaredMatch = html.match(/data-composition-variables='([^']+)'/);
+      const serialized = (declaredMatch?.[1] ?? "")
+        .replaceAll("&#39;", "'")
+        .replaceAll("&amp;", "&");
+      const declarations: unknown = JSON.parse(serialized);
+
+      expect(manifest.variables?.map((variable) => variable.id)).toEqual([
+        "title",
+        "items",
+        "highlight",
+        "note",
+      ]);
+      expect(
+        Array.isArray(declarations)
+          ? declarations.filter(isVariableEntry).map((variable) => variable.id)
+          : [],
+      ).toEqual(manifest.variables?.map((variable) => variable.id));
+      expect(html).toContain("window.__hfVariablesByComp?.[id]");
+      expect(html).toContain("element.textContent");
+      expect(html).not.toMatch(/innerHTML\s*=/);
+    }
+  });
+
   it("does not publish the removed effect clip catalog", () => {
     const manifests = [
       ...registryManifests(join(REGISTRY_ROOT, "blocks")),

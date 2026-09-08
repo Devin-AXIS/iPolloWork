@@ -953,6 +953,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(generated).toContain('required = true');
     expect(generated).toContain('url = "http://127.0.0.1:43127/engine-tools/mcp?workspaceId=codex%20plugins%2Fone"');
     expect(generated).toContain('http_headers = { "Authorization" = "Bearer test" }');
+    expect(generated).toContain('tool_timeout_sec = 420');
   });
 
   test("keeps an unavailable plugin MCP from becoming a Codex startup dependency", () => {
@@ -971,6 +972,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(generated).toContain('[mcp_servers."figma"]');
     expect(generated).toContain('required = false');
     expect(generated).toContain('url = "http://127.0.0.1:3845/mcp"');
+    expect(generated).not.toContain('tool_timeout_sec');
   });
 
   test("keeps configured models authoritative over Codex's native directory", () => {

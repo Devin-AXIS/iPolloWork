@@ -12,6 +12,45 @@ import {
 } from "../src/lib/artifacts";
 
 describe("getArtifactsFromMessages", () => {
+  it("includes persisted Studio outputs without inserting chat messages or duplicating transcript images", () => {
+    const messages: UIMessage[] = [{ id: "chat", role: "assistant", parts: [{ type: "text", text: "Generated artifacts/sun.png" }] }];
+    const before = JSON.stringify(messages);
+    const files = [
+      { path: "artifacts/sun.png", size: 10, updatedAt: 100 },
+      { path: "artifacts/sun-edited.png", size: 20, updatedAt: 200 },
+    ];
+    const outputs = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false, registeredFiles: files });
+    expect(outputs).toHaveLength(2);
+    expect(outputs[0]).toMatchObject({ path: "artifacts/sun-edited.png", type: "image", target: { exists: true, size: 20, updatedAt: 200 } });
+    expect(getArtifactsFromMessages([], [], { registeredFiles: files })).toHaveLength(2);
+    expect(getArtifactsFromMessages([], [], { includeTargetFallbacks: false })).toEqual([]);
+    expect(JSON.stringify(messages)).toBe(before);
+  });
+
+  it("shows an image card from a completed Codex MCP result without prose or an open workbench", () => {
+    const messages: UIMessage[] = [{
+      id: "image-result",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "ipollowork.ipollowork_extension_call",
+        toolCallId: "image-call",
+        state: "output-available",
+        input: { extensionId: "openai-image-generation", action: "image_generate" },
+        output: { content: [{ type: "text", text: JSON.stringify({ ok: true, path: "artifacts/sunrise.png" }) }] },
+      }],
+    }];
+    const artifacts = getArtifactsFromMessages(messages, [], { includeTargetFallbacks: false });
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      path: "artifacts/sunrise.png",
+      type: "image",
+      messageId: "image-result",
+      target: { exists: true, preview: "image" },
+    });
+    expect(canOpenArtifact(artifacts[0]!)).toBe(true);
+  });
+
   it("lists a Design template entry when the completion omits its path", () => {
     const messages: UIMessage[] = [{
       id: "msg_done",

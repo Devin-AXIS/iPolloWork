@@ -87,6 +87,8 @@ describe("permission approval modal helpers", () => {
     const source = await Bun.file(permissionPanelUrl).text();
     expect(source).toContain('props.respondPermission?.(props.permissionId, "always")');
     expect(source).toContain('t("session.allow_for_session")');
+    expect(source).toContain('t("session.permission_decision_hint")');
+    expect(source).toContain("<DropdownMenuGroup>");
   });
 
   test("uses readable labels for generic permission titles", () => {

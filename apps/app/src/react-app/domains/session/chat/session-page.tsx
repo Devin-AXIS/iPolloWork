@@ -174,7 +174,7 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
 import { cn } from "@/lib/utils";
 import { useInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
-import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import type { WorkspaceAppModelContext, WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import { isProjectBuilderSession, ProjectOverview, WorkCenter } from "@/react-app/domains/work";
 import {
@@ -2866,6 +2866,11 @@ export function SessionPage(props: SessionPageProps) {
     setSidePanelState(sessionId, "panel");
   }, [props.selectedSessionId, props.selectedSessionKnown, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
+  const [workspaceImageSelection, setWorkspaceImageSelection] = useState<WorkspaceImageSelection | null>(null);
+  const activeImageSelection = sessionSidePanel === "panel" && activePanelTab?.type === "workspace-app"
+    && activePanelTab.surface.pluginId === "image-studio"
+    && workspaceImageSelection?.sessionId === props.selectedSessionId ? workspaceImageSelection : null;
+
   const sendSessionDraft = useCallback((
     draft: ComposerDraft,
     sessionId: string,
@@ -2873,32 +2878,13 @@ export function SessionPage(props: SessionPageProps) {
   ) => {
     const send = props.surface?.onSendDraft;
     if (!send) return false;
-    const workspaceAppTab = sessionId === props.selectedSessionId
-      && sessionSidePanel === "panel"
-      && activePanelTab?.type === "workspace-app"
-      ? activePanelTab
-      : null;
     const workshopTab = sessionId === props.selectedSessionId
       && sessionSidePanel === "panel"
       && activePanelTab?.type === "plugin-studio"
       ? activePanelTab
       : null;
-    if (workspaceAppTab) {
-      const workspaceCapabilityId = `workspace-app:${workspaceAppTab.surface.pluginId}:${workspaceAppTab.surface.resource.id}`;
-      const capabilityId = draft.capability?.id;
-      const alreadyScoped = capabilityId?.split("+").includes(workspaceCapabilityId) === true;
-      const workspaceInstruction = workspaceAppCapabilityInstruction(workspaceAppTab.label);
-      const capabilityInstruction = draft.capability?.instruction?.includes(workspaceInstruction)
-        ? draft.capability.instruction
-        : [draft.capability?.instruction, workspaceInstruction].filter(Boolean).join("\n\n");
-      return send({
-        ...draft,
-        capability: {
-          id: alreadyScoped ? capabilityId : capabilityId ? `${capabilityId}+${workspaceCapabilityId}` : workspaceCapabilityId,
-          instruction: capabilityInstruction,
-        },
-      }, sessionId, options);
-    }
+    // Workbench-originated messages carry their own context. Merely keeping a
+    // workbench open must not redirect ordinary chat requests through its UI.
     if (!workshopTab) return send(draft, sessionId, options);
     const capabilityId = draft.capability?.id;
     const alreadyScoped = capabilityId?.split("+").includes("plugin-workshop") === true;
@@ -3176,6 +3162,16 @@ export function SessionPage(props: SessionPageProps) {
     setMainWorkspaceView(null);
     props.sidebar.onOpenSession(workspaceId, sessionId);
   }, [closeExpandedWorkSurface, props.sidebar.onOpenSession]);
+  const handleSidebarCreateTask = useCallback((
+    workspaceId: string,
+    type?: iPolloWorkSessionType,
+    templateId?: iPolloWorkTemplateId,
+    templateScope?: WorkContextId,
+  ) => {
+    closeExpandedWorkSurface();
+    setMainWorkspaceView(null);
+    return props.sidebar.onCreateTaskInWorkspace(workspaceId, type, templateId, templateScope);
+  }, [closeExpandedWorkSurface, props.sidebar.onCreateTaskInWorkspace]);
   const handleSidebarOpenSessionSearch = useCallback(() => {
     closeExpandedWorkSurface();
     props.sidebar.onOpenSessionSearch?.();
@@ -3328,6 +3324,38 @@ export function SessionPage(props: SessionPageProps) {
     preserveSidePanelOnPanelOpenRef.current = true;
     setCurrentSidePanel("panel");
   }, [activePanelTab?.id, openTab, prioritizeRightPanel, setCurrentSidePanel]);
+  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number], launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
+    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    if (!sessionId) return;
+    openTab(sessionId, {
+      id: `workspace-app:${surface.id}`,
+      type: "workspace-app",
+      label: surface.label,
+      sessionId,
+      surface,
+      launch,
+    });
+    setCurrentSidePanel("panel");
+  }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
+  const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
+    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    if (surface) {
+      openWorkspaceApp(surface, launch, sourceSessionId);
+      return;
+    }
+    if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
+  }, [openWorkspaceApp, workspaceApps]);
+  const openImageStudio = useCallback((target: OpenTarget, sourceSessionId?: string) => {
+    openWorkspaceAppForPlugin("image-studio", {
+      intent: "edit-image",
+      source: {
+        kind: "workspace-file",
+        path: target.value,
+        name: target.name,
+        preview: target.preview,
+      },
+    }, sourceSessionId);
+  }, [openWorkspaceAppForPlugin]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     // SessionSurface automatically previews newly discovered targets after an
     // agent finishes. Video tasks already have a dedicated preview surface.
@@ -3363,6 +3391,15 @@ export function SessionPage(props: SessionPageProps) {
     }
 
     const sourceId = sourceSessionId ?? props.selectedSessionId;
+    if (target.kind === "file" && target.preview === "image") {
+      // Let chat finish with its image card; open the editor only on a click.
+      if (options?.auto) return;
+      if (/\.(png|jpe?g|webp)$/i.test(target.value) && workspaceApps.some((surface) => surface.pluginId === "image-studio")) {
+        prioritizeRightPanel();
+        openImageStudio(target, sourceId ?? undefined);
+        return;
+      }
+    }
     const videoArtifactSessionId = target.kind === "file" && target.preview === "html"
       ? videoProjectSessionIdFromEntryPath(target.value)
       : null;
@@ -3428,7 +3465,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceId;
     if (!sessionId) return;
     openArtifactTargetInPanel(target, sessionId, options?.auto);
-  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openVideoStudio, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface]);
+  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openImageStudio, openVideoStudio, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, workspaceApps]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;
@@ -3910,37 +3947,6 @@ export function SessionPage(props: SessionPageProps) {
   const openVoiceRailPane = useCallback(() => {
     toggleCurrentSidePanel("voice");
   }, [toggleCurrentSidePanel]);
-  const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number], launch?: PluginUiHostContextV1["launch"]) => {
-    if (!props.selectedSessionId) return;
-    openTab(props.selectedSessionId, {
-      id: `workspace-app:${surface.id}`,
-      type: "workspace-app",
-      label: surface.label,
-      sessionId: props.selectedSessionId,
-      surface,
-      launch,
-    });
-    setCurrentSidePanel("panel");
-  }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
-  const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"]) => {
-    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
-    if (surface) {
-      openWorkspaceApp(surface, launch);
-      return;
-    }
-    if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
-  }, [openWorkspaceApp, workspaceApps]);
-  const openImageStudio = useCallback((target: OpenTarget) => {
-    openWorkspaceAppForPlugin("image-studio", {
-      intent: "edit-image",
-      source: {
-        kind: "workspace-file",
-        path: target.value,
-        name: target.name,
-        preview: target.preview,
-      },
-    });
-  }, [openWorkspaceAppForPlugin]);
   const sendWorkspaceAppMessage = useCallback(async (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
@@ -4481,7 +4487,7 @@ export function SessionPage(props: SessionPageProps) {
           onRevealProject={(workspaceId) => void props.sidebar.onRevealProject(workspaceId)}
           onOpenDeleteProject={setDeleteProjectId}
           onPrefetchSession={props.sidebar.onPrefetchSession}
-          onCreateTaskInWorkspace={props.sidebar.onCreateTaskInWorkspace}
+          onCreateTaskInWorkspace={handleSidebarCreateTask}
           onOpenRenameSession={props.onRenameSession ? openRenameModal : undefined}
           onOpenDeleteSession={props.onDeleteSession ? (sessionId) => {
             setSessionActionId(sessionId);
@@ -4875,6 +4881,7 @@ export function SessionPage(props: SessionPageProps) {
                           onImport={importDesignTemplate}
                         />
                       ) : <SessionSurface
+                        imageSelection={activeImageSelection}
                         key={`${props.runtimeWorkspaceId}:${props.selectedSessionId}`}
                         // Spread `surface` first so the explicit per-workspace
                         // routing props below CAN'T be silently overridden by
@@ -5165,6 +5172,7 @@ export function SessionPage(props: SessionPageProps) {
                         launcherItems={sidePanelLauncherItems}
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
+                        onImageSelectionChange={setWorkspaceImageSelection}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onEditImage={openImageStudio}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}

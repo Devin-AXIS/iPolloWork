@@ -50,7 +50,7 @@ async function discoverBridge(): Promise<UiControlBridge | null> {
 
 export async function uiControlRequest(
   path: string,
-  options: { method?: string; body?: unknown } = {},
+  options: { method?: string; body?: unknown; timeoutMs?: number } = {},
 ): Promise<unknown> {
   const bridge = await discoverBridge();
   if (!bridge) {
@@ -59,7 +59,7 @@ export async function uiControlRequest(
   try {
     const response = await fetch(`${bridge.baseUrl}${path}`, {
       method: options.method || "GET",
-      signal: AbortSignal.timeout(BRIDGE_TIMEOUT_MS),
+      signal: AbortSignal.timeout(options.timeoutMs ?? BRIDGE_TIMEOUT_MS),
       headers: {
         Authorization: `Bearer ${bridge.token}`,
         ...(options.body ? { "Content-Type": "application/json" } : {}),

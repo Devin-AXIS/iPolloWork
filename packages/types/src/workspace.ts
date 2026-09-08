@@ -14,6 +14,18 @@
  */
 export type WorkspaceKind = "local" | "remote";
 
+/** Persisted files produced outside the chat transcript, scoped to one session. */
+export type SessionArtifact = {
+  path: string;
+  size: number;
+  updatedAt: number;
+};
+
+export type SessionArtifactPage = {
+  items: SessionArtifact[];
+  nextCursor: number | null;
+};
+
 export type WorkspaceRemoteKind = "opencode" | "ipollowork";
 
 export const DEFAULT_ENGINE_ID = "opencode";

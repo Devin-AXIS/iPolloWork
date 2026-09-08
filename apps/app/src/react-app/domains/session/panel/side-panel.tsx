@@ -58,7 +58,7 @@ import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
-import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceImageSelection } from "@/react-app/plugin-ui/workspace-app-frame";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
@@ -78,6 +78,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
   onEditImage?: (target: OpenTarget) => void;
   onSaveAsTemplate?: () => void;
@@ -594,6 +595,7 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
+  onImageSelectionChange,
   onSendWorkspaceAppMessage,
   onEditImage,
   onSaveAsTemplate,
@@ -905,6 +907,7 @@ export function SidePanel({
         ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <WorkspaceAppFrame
+              onImageSelectionChange={onImageSelectionChange}
               surface={activeTab.surface}
               client={client}
               workspaceId={workspaceId}

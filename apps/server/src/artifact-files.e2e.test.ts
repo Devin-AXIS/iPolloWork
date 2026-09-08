@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
+import { listSessionArtifacts, recordSessionArtifact } from "./session-artifacts.js";
 
 type Served = { port: number; stop: (closeActiveConnections?: boolean) => void | Promise<void> };
 
@@ -36,6 +37,7 @@ async function startiPolloWorkServer(workspaceRoot: string) {
   const config: ServerConfig = {
     host: "127.0.0.1",
     port: 0,
+    configPath: join(workspaceRoot, "server.json"),
     token: "owt_test_token",
     hostToken: "owt_host_token",
     approval: { mode: "auto", timeoutMs: 1000 },
@@ -51,7 +53,7 @@ async function startiPolloWorkServer(workspaceRoot: string) {
   };
   const server = await startServer(config) as Served;
   stops.push(() => server.stop(true));
-  return { base: `http://127.0.0.1:${server.port}`, token: config.token };
+  return { base: `http://127.0.0.1:${server.port}`, token: config.token, config };
 }
 
 function auth(token: string) {
@@ -59,6 +61,49 @@ function auth(token: string) {
 }
 
 describe("artifact file routes", () => {
+  test("persists session outputs independently of chat, isolates owners, and rejects unsafe paths", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token, config } = await startiPolloWorkServer(root);
+    const workspace = config.workspaces[0];
+    const path = "reports/artifact-eval.md";
+    await Promise.all(Array.from({ length: 5 }, () => recordSessionArtifact(config, workspace, "session-a", path)));
+    await recordSessionArtifact(config, workspace, "session-b", "reports/artifact-eval.csv");
+    const response = await fetch(`${base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(token) });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ items: [{ path }], nextCursor: null });
+    expect((await listSessionArtifacts(config, "ws_1", "session-b")).items.map((item) => item.path)).toEqual(["reports/artifact-eval.csv"]);
+    expect((await listSessionArtifacts(config, "another-workspace", "session-a")).items).toEqual([]);
+    expect((await listSessionArtifacts(config, "ws_1", "empty-session")).items).toEqual([]);
+    await expect(recordSessionArtifact(config, workspace, "session-a", "../outside.png")).rejects.toThrow();
+    await expect(recordSessionArtifact(config, workspace, "session-a", "reports/missing.png")).rejects.toThrow();
+    expect((await fetch(`${base}/workspace/ws_1/artifacts?sessionId=session-a`)).status).toBe(401);
+    for (const query of ["sessionId=../escape", "sessionId=", "sessionId=session-a&cursor=invalid"]) {
+      expect((await fetch(`${base}/workspace/ws_1/artifacts?${query}`, { headers: auth(token) })).status).toBe(400);
+    }
+    // A new server and DB connection reconstruct the association without any UI state.
+    await stops.pop()?.();
+    const restarted = await startiPolloWorkServer(root);
+    expect(await (await fetch(`${restarted.base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(restarted.token) })).json())
+      .toMatchObject({ items: [{ path }], nextCursor: null });
+  });
+
+  test("pages saved outputs without duplicates or scanning unrelated workspace files", async () => {
+    const root = await createWorkspaceRoot();
+    const { config } = await startiPolloWorkServer(root);
+    for (let index = 0; index < 103; index++) {
+      const path = `reports/output-${index}.png`;
+      await writeFile(join(root, path), "image");
+      await recordSessionArtifact(config, config.workspaces[0], "session-many", path);
+    }
+    const first = await listSessionArtifacts(config, "ws_1", "session-many");
+    expect(first.items).toHaveLength(100);
+    expect(first.nextCursor).not.toBeNull();
+    const second = await listSessionArtifacts(config, "ws_1", "session-many", first.nextCursor);
+    expect(second.items).toHaveLength(3);
+    expect(second.nextCursor).toBeNull();
+    expect(new Set([...first.items, ...second.items].map((item) => item.path)).size).toBe(103);
+  });
+
   test("resolve, read, write, and download markdown/csv/xlsx/pptx/html artifacts", async () => {
     const root = await createWorkspaceRoot();
     const { base, token } = await startiPolloWorkServer(root);

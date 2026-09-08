@@ -54,6 +54,8 @@ function permissionMemoryTestAdapter(
 ) {
   const listeners: Array<(event: ConversationEvent) => void> = [];
   const replies: Array<{ permission: ConversationPermission; reply: "once" | "always" | "reject" }> = [];
+  const pending: ConversationPermission[] = [];
+  const failedReplyIds = new Set<string>();
   const adapter = withSessionPermissionMemory({
     id,
     connect: () => {
@@ -67,11 +69,14 @@ function permissionMemoryTestAdapter(
         async subscribe(input) {
           listeners.push(input.onEvent);
         },
-        async listPermissions() {
-          return [];
+        async listPermissions(input) {
+          return pending.filter((permission) => permission.sessionId === input.sessionId);
         },
         async replyPermission(input) {
+          if (failedReplyIds.has(input.permission.id)) throw new Error("Approval failed");
           replies.push({ permission: input.permission, reply: input.reply });
+          const index = pending.findIndex((permission) => permission.id === input.permission.id);
+          if (index >= 0) pending.splice(index, 1);
         },
         async listQuestions() {
           return [];
@@ -112,7 +117,7 @@ function permissionMemoryTestAdapter(
       return connection;
     },
   }, storage);
-  return { adapter, listeners, replies };
+  return { adapter, listeners, replies, pending, failedReplyIds };
 }
 
 function testPermission(id: string, sessionId: string, kind = "edit"): ConversationPermission {
@@ -180,7 +185,7 @@ describe("conversation engine adapters", () => {
     expect(requestCount).toBe(0);
   });
 
-  test("keeps always-allow effective across reconnects for all three engines", async () => {
+  test("allows all permission kinds in only the current task across reconnects for all three engines", async () => {
     for (const engineId of [DEFAULT_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, CODEX_HARNESS_ENGINE_ID]) {
       const harness = permissionMemoryTestAdapter(engineId);
       const connectInput = {
@@ -208,16 +213,20 @@ describe("conversation engine adapters", () => {
         onEvent: (event) => laterVisible.push(event),
       });
       const repeated = testPermission(`${engineId}-repeated`, "session-always");
-      const differentKind = testPermission(`${engineId}-shell`, "session-always", "bash");
+      const differentKinds = ["shell", "bash", "mcp", "read", "external_directory", "permissions", "task"]
+        .map((kind) => testPermission(`${engineId}-${kind}`, "session-always", kind));
+      const otherTask = testPermission(`${engineId}-other-task`, "session-other", "mcp");
       harness.listeners[1]?.({ type: "permission.asked", permission: repeated });
-      harness.listeners[1]?.({ type: "permission.asked", permission: differentKind });
+      for (const permission of differentKinds) harness.listeners[1]?.({ type: "permission.asked", permission });
+      harness.listeners[1]?.({ type: "permission.asked", permission: otherTask });
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
       expect(firstVisible).toEqual([{ type: "permission.asked", permission: first }]);
-      expect(laterVisible).toEqual([{ type: "permission.asked", permission: differentKind }]);
+      expect(laterVisible).toEqual([{ type: "permission.asked", permission: otherTask }]);
       expect(harness.replies).toEqual([
-        { permission: first, reply: "always" },
+        { permission: first, reply: "once" },
         { permission: repeated, reply: "once" },
+        ...differentKinds.map((permission) => ({ permission, reply: "once" })),
       ]);
     }
   });
@@ -245,7 +254,7 @@ describe("conversation engine adapters", () => {
         signal: new AbortController().signal,
         onEvent: (event) => restoredVisible.push(event),
       });
-      const repeated = testPermission(`${engineId}-repeated`, "session-always");
+      const repeated = testPermission(`${engineId}-repeated`, "session-always", "mcp");
       afterReload.listeners[0]?.({ type: "permission.asked", permission: repeated });
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -293,6 +302,75 @@ describe("conversation engine adapters", () => {
 
     expect(visible).toEqual([{ type: "permission.asked", permission: repeated }]);
     expect(afterReload.replies).toEqual([]);
+  });
+
+  test("does not expand old per-kind grants until the user chooses task-wide approval", async () => {
+    const storage = permissionMemoryTestStorage();
+    const sessionId = "legacy-task";
+    const key = JSON.stringify([DEFAULT_ENGINE_ID, "legacy-workspace", sessionId]);
+    storage.setItem("ipollowork.session-permission-memory.v1", JSON.stringify({ [key]: ["shell"] }));
+    const harness = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
+    const connection = harness.adapter.connect({ baseUrl: "http://test", workspaceId: "legacy-workspace" });
+    const shell = testPermission("shell", sessionId, "shell");
+    const mcp = testPermission("mcp", sessionId, "mcp");
+    harness.pending.push(shell, mcp);
+    expect(await connection.listPermissions({ sessionId })).toEqual([mcp]);
+    expect(harness.replies).toEqual([{ permission: shell, reply: "once" }]);
+    await connection.replyPermission({ permission: mcp, reply: "always" });
+    expect(JSON.parse(storage.getItem("ipollowork.session-permission-memory.v1") ?? "{}")[key]).toContain("*");
+  });
+
+  test.each(["once", "reject"] satisfies Array<"once" | "reject">)("%s does not grant later permission requests", async (reply) => {
+    const storage = permissionMemoryTestStorage();
+    const harness = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
+    const connection = harness.adapter.connect({ baseUrl: "http://test", workspaceId: "workspace-once" });
+    await connection.replyPermission({ permission: testPermission("first", "task", "shell"), reply });
+    const next = testPermission("next", "task", "shell");
+    harness.pending.push(next);
+    expect(await connection.listPermissions({ sessionId: "task" })).toEqual([next]);
+    expect(storage.getItem("ipollowork.session-permission-memory.v1")).toBeNull();
+  });
+
+  test("rolls back task-wide memory when the user's approval fails", async () => {
+    const storage = permissionMemoryTestStorage();
+    const harness = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID, storage);
+    const connection = harness.adapter.connect({ baseUrl: "http://test", workspaceId: "workspace-failed" });
+    const first = testPermission("failed", "task");
+    harness.failedReplyIds.add(first.id);
+    await expect(connection.replyPermission({ permission: first, reply: "always" })).rejects.toThrow("Approval failed");
+    harness.pending.push(testPermission("mcp", "task", "mcp"));
+    expect(await connection.listPermissions({ sessionId: "task" })).toHaveLength(1);
+    expect(storage.getItem("ipollowork.session-permission-memory.v1")).toBeNull();
+  });
+
+  test("drains already-pending permissions but retains failed approvals and other tasks", async () => {
+    const harness = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID);
+    const connection = harness.adapter.connect({ baseUrl: "http://test", workspaceId: "workspace-queue" });
+    const first = testPermission("first", "task", "shell");
+    const mcp = testPermission("mcp", "task", "mcp");
+    const failed = testPermission("failed", "task", "external_directory");
+    const other = testPermission("other", "other-task", "mcp");
+    harness.pending.push(first, mcp, failed, other);
+    harness.failedReplyIds.add(failed.id);
+    await connection.replyPermission({ permission: first, reply: "always" });
+    expect(await connection.listPermissions({ sessionId: "task" })).toEqual([failed]);
+    expect(harness.pending).toEqual([failed, other]);
+    expect(harness.replies).toEqual([{ permission: first, reply: "once" }, { permission: mcp, reply: "once" }]);
+  });
+
+  test("task-wide permission approval never answers a user question", async () => {
+    const harness = permissionMemoryTestAdapter(DEFAULT_ENGINE_ID);
+    const connection = harness.adapter.connect({ baseUrl: "http://test", workspaceId: "workspace-question" });
+    const events: ConversationEvent[] = [];
+    await connection.subscribe({ signal: new AbortController().signal, onEvent: (event) => events.push(event) });
+    await connection.replyPermission({ permission: testPermission("first", "task"), reply: "always" });
+    const event: ConversationEvent = {
+      type: "question.asked",
+      question: { id: "question", sessionId: "task", questions: [{ question: "Choose an output format", options: [] }], receivedAt: 1, native: null },
+    };
+    harness.listeners[0]?.(event);
+    expect(events).toEqual([event]);
+    expect(harness.replies).toHaveLength(1);
   });
 
   test("keeps plugin agents and the iPolloWork runtime agent out of OpenCode work modes", async () => {
@@ -782,6 +860,50 @@ describe("conversation engine adapters", () => {
     })]);
   });
 
+  test("surfaces Codex MCP tool consent instead of leaving a turn silently waiting", async () => {
+    const state = createCodexLiveState();
+    const event = {
+      type: "request" as const,
+      id: 52,
+      method: "mcpServer/elicitation/request",
+      params: {
+        threadId: "codex-image-thread",
+        serverName: "ipollowork",
+        mode: "form",
+        message: "Allow image generation?",
+        requestedSchema: { type: "object", properties: {} },
+        _meta: { codex_approval_kind: "mcp_tool_call", tool_params: { action: "image_generate" } },
+      },
+    };
+    const mapped = mapCodexHarnessEvent(event, state)[0];
+    expect(mapped).toMatchObject({
+      type: "permission.asked",
+      permission: { sessionId: "codex-image-thread", kind: "mcp", resources: ["Allow image generation?", '{"action":"image_generate"}'] },
+    });
+    if (mapped?.type !== "permission.asked") throw new Error("Expected visible MCP consent");
+    expect(mapCodexHarnessEvent({ ...event, params: { ...event.params, _meta: {} } }, state)).toEqual([]);
+
+    const originalFetch = globalThis.fetch;
+    const responses: unknown[] = [];
+    globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      responses.push(JSON.parse(String(init?.body)));
+      return Response.json({ ok: true });
+    }, { preconnect: originalFetch.preconnect });
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test", serverBaseUrl: "http://ipollowork.test", workspaceId: "ws_codex", token: "token",
+      });
+      await connection.replyPermission({ permission: mapped.permission, reply: "once" });
+      await connection.replyPermission({ permission: { ...mapped.permission, id: "53", native: { ...mapped.permission.native, rpcId: 53 } }, reply: "reject" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+    expect(responses).toEqual([
+      { rpcId: 52, result: { action: "accept", content: {}, _meta: null } },
+      { rpcId: 53, result: { action: "decline", content: null, _meta: null } },
+    ]);
+  });
+
   test("does not mark a Codex reasoning-only turn as successfully processed", () => {
     const state = createCodexLiveState();
     mapCodexHarnessEvent({
@@ -1076,7 +1198,7 @@ describe("conversation engine adapters", () => {
     expect(responses).toEqual([
       {
         rpcId: 41,
-        result: { decision: "acceptForSession" },
+        result: { decision: "accept" },
       },
       { rpcId: 42, result: { decision: "accept" } },
     ]);
@@ -1120,7 +1242,7 @@ describe("conversation engine adapters", () => {
 
     expect(responses).toEqual([{
       rpcId: "legacy-approval",
-      result: { decision: "approved_for_session" },
+      result: { decision: "approved" },
     }]);
   });
 

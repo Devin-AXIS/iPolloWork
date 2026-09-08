@@ -151,7 +151,7 @@ const browserActionSchema = {
 export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   {
     name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
-    description: "List the actions currently exposed by installed and enabled iPolloWork extensions.",
+    description: "List the actions currently exposed by installed and enabled iPolloWork extensions. For image generation or editing, use extensionId=openai-image-generation, then call image_generate or image_edit through ipollowork_extension_call. These server actions work with Image Studio closed or open; do not list or operate Workspace App UI tools for a normal image request. Omit model to use an available connected image model, or inspect status when the user requests a specific model. Return the saved path as a Markdown image link in the final answer.",
     parameters: objectParameters({
       extensionId: {
         type: "string",

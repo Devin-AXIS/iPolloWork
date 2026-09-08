@@ -10,7 +10,6 @@ import type {
   ConversationSnapshot,
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
-import { persistentPermissionPatterns } from "../src/react-app/domains/session/sync/use-session-interactions";
 import { deriveRenderedSessionMessages } from "../src/react-app/domains/session/surface/session-render-state";
 import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
 import {
@@ -163,27 +162,13 @@ afterEach(() => {
 });
 
 describe("session permission sync", () => {
-  test("persists the broader legacy always scope instead of the current resource", () => {
-    expect(persistentPermissionPatterns({
-      ...permission("perm-legacy", "session-a"),
-      kind: "external_directory",
-      resources: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\references\\*"],
-      remember: ["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"],
-    })).toEqual(["C:\\Users\\demo\\.agents\\skills\\hyperframes-core\\*"]);
-  });
-
-  test("persists the v2 save scope and falls back for older requests", () => {
-    const normalized = permission("perm-v2", "session-a", {
-      kind: "external_directory",
-      resources: ["C:/Users/demo/outside/current.txt"],
-      remember: ["C:/Users/demo/outside/*", "C:/Users/demo/outside/*"],
-    });
-
-    expect(persistentPermissionPatterns(normalized)).toEqual(["C:/Users/demo/outside/*"]);
-    expect(persistentPermissionPatterns({
-      ...normalized,
-      remember: [],
-    })).toEqual(["C:/Users/demo/outside/current.txt"]);
+  test("keeps always-allow task scoped and refreshes other queued approvals", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/session/sync/use-session-interactions.ts", import.meta.url)).text();
+    expect(source).not.toContain("setAuthorizedFolders");
+    expect(source).not.toContain("listAuthorizedFolders");
+    expect(source).toContain('if (reply === "always")');
+    expect(source).toContain("connection.listPermissions({ sessionId");
+    expect(source).toContain("seedPermissionState(workspaceId, sessionId, remaining, { snapshotStartedAt })");
   });
 
   test("seeds only permissions for the selected session", () => {

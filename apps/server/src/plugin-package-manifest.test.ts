@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { runInNewContext } from "node:vm";
 
 import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
@@ -356,6 +357,113 @@ describe("plugin package manifest", () => {
     expect(workspaceUi).not.toContain('id="sourceMeta"');
     expect(workspaceUi).toContain("normalizedSelectionBounds");
     expect(workspaceUi).toContain("approximateSelection");
+    expect(workspaceUi).toContain("captureSelection");
+    expect(workspaceUi).toContain("exactSelection");
+  });
+
+  test("Image Studio offers only bound available models and clears a revoked selection", async () => {
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
+    expect(apply).toBeDefined();
+    const state: { model: string; models: unknown[]; providerReady: boolean } = { model: "api", models: [], providerReady: false };
+    const context = { state, normalizeModelParameters: () => {}, syncProviderState: () => { state.providerReady = state.models.length > 0; } };
+    runInNewContext(`${apply}; globalThis.update = applyProviderModels`, context);
+    const catalog = [
+      { id: "api", available: true, configured: false },
+      { id: "browser", available: true, configured: true },
+      { id: "ark", available: true, configured: true },
+      { id: "midjourney", available: false, configured: true },
+      null,
+    ];
+    runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "api" })})`, context);
+    expect(state.models).toEqual(catalog.slice(1, 3));
+    expect(state.model).toBe("browser");
+    expect(state.providerReady).toBe(true);
+    state.model = "ark";
+    runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "browser" })})`, context);
+    expect(state.model).toBe("ark");
+    runInNewContext(`update({models: [], defaultModel: "api"})`, context);
+    expect(state.models).toEqual([]);
+    expect(state.model).toBe("");
+    expect(state.providerReady).toBe(false);
+    expect(ui).toContain("options: selectOptions.model");
+  });
+
+  test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {
+    const { openAiImageGenerationStatus } = await import("./extensions/openai-image-generation.js");
+    const { models } = await openAiImageGenerationStatus({ read: async () => ({}) });
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const functions = ["selectedModel", "normalizeModelParameters", "updateParameters", "actionArguments", "publishContext"].map((name) => {
+      const source = ui.match(new RegExp(`    function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n    \\}`))?.[0];
+      if (!source) throw new Error(`Missing ${name}`);
+      return source;
+    }).join("\n");
+    const context = { models };
+    runInNewContext(`
+      const state = { models, model: models[0].id, mode: "generate", locale: "zh", prompt: "Draft", style: "minimal", camera: "auto", lighting: "auto", size: "1536x1024", quality: "high" };
+      const selectionBounds = () => state.bounds ?? null, actionBlockedMessage = () => "", tr = key => key, renderProvider = () => {}, setMode = mode => { state.mode = mode; };
+      const INSPECTOR_CONTEXT_KEY = "inspector";
+      let contextTimer, selectionRevision = 0;
+      const clearTimeout = () => {}, setTimeout = fn => { fn(); return 1; };
+      const request = (_method, args) => { globalThis.inspector = args.structuredContent.inspector; return Promise.resolve(); };
+      ${functions}
+      globalThis.state = state;
+      globalThis.update = args => { updateParameters(args); publishContext(); return actionArguments(); };
+      publishContext();
+    `, context);
+    const inspect = (expression: string) => runInNewContext(expression, context);
+    expect(inspect('inspector.fields.find(f => f.id === "size").options.map(o => o.value)')).toEqual(models[0]?.parameters.size?.values);
+    expect(inspect('inspector.fields.find(f => f.id === "quality").value')).toBe("high");
+    expect(inspect('update({model: models[2].id, prompt: "Kept draft", size: "1536x1024", quality: "high"})')).toMatchObject({ size: "2K", prompt: "Kept draft", style: "minimal" });
+    expect(inspect('actionArguments()')).not.toHaveProperty("quality");
+    expect(inspect('inspector.fields.some(f => f.id === "quality")')).toBe(false);
+    expect(inspect('inspector.fields.find(f => f.id === "size").options.map(o => o.value)')).toEqual(models[2]?.parameters.size?.values);
+    expect(() => inspect('update({size: "1024x1024", prompt: "Must not replace draft"})')).toThrow("not supported");
+    expect(inspect('state.prompt')).toBe("Kept draft");
+    expect(() => inspect('update({model: "missing"})')).toThrow();
+    expect(inspect('update({model: models[1].id, size: "3K"})')).toMatchObject({ size: "auto" });
+    expect(inspect('inspector.status.message')).toContain("不提供精确尺寸或质量控制");
+    expect(inspect('inspector.fields.find(f => f.id === "size").label')).toBe("期望画幅（提示词）");
+    expect(inspect('update({model: models[0].id})')).toMatchObject({ size: "auto", quality: "auto" });
+    for (const key of ["style", "camera", "lighting"]) {
+      const values: string[] = inspect(`inspector.fields.find(f => f.id === "${key}").options.map(o => o.value)`);
+      expect(values.length).toBeGreaterThanOrEqual(14);
+      expect(new Set(values).size).toBe(values.length);
+      expect(inspect(`inspector.fields.find(f => f.id === "${key}").live`)).toBe(true);
+    }
+    expect(inspect('update({style: "Chinese ink wash painting", camera: "overhead top-down view", lighting: "volumetric light rays"})')).toMatchObject({ style: "Chinese ink wash painting", camera: "overhead top-down view", lighting: "volumetric light rays" });
+    expect(() => inspect('update({selectionBlend: "unknown", prompt: "Invalid draft"})')).toThrow();
+    expect(inspect('state.prompt')).toBe("Kept draft");
+    inspect('state.mode = "edit"; state.selectionBlend = "natural";');
+    expect(inspect('update({selectionBlend: "strict"})')).not.toHaveProperty("selectionBlend"); // No selection: no blend parameter.
+    inspect('state.bounds = {left: 0.2, top: 0.2, right: 0.8, bottom: 0.8};');
+    expect(inspect('update({selectionBlend: "natural"})')).toMatchObject({ selectionBlend: "natural" });
+    expect(inspect('inspector')).toBeUndefined();
+    expect(inspect('update({selectionBlend: "strict"})')).toMatchObject({ selectionBlend: "strict" });
+  });
+
+  test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const source = ui.match(/    async function saveEditedResult\(mode\) \{[\s\S]*?\n    \}/)?.[0];
+    expect(source).toBeDefined();
+    const calls: unknown[] = [];
+    const state = { busy: false, editResult: { editId: "receipt", originalPath: "original.png" }, confirmOverwrite: false };
+    const context = {
+      state, renderSaveReview: () => {}, tr: (key: string) => key,
+      setBusy: (value: boolean) => { state.busy = value; }, setStatus: () => {}, $: () => ({ focus: () => {} }),
+      renderImage: async () => {}, callService: async (action: string, args: unknown) => { calls.push({ action, args }); throw new Error("Source changed"); },
+    };
+    runInNewContext(`${source}; globalThis.save = saveEditedResult`, context);
+    await runInNewContext('save("overwrite")', context);
+    expect(calls).toHaveLength(0);
+    expect(state.confirmOverwrite).toBe(true);
+    await runInNewContext('save("overwrite")', context);
+    expect(calls).toEqual([{ action: "save-edit", args: { editId: "receipt", mode: "overwrite" } }]);
+    expect(state.busy).toBe(false);
+    expect(state.confirmOverwrite).toBe(false);
+    expect(state.editResult.editId).toBe("receipt");
+    await runInNewContext('save("copy")', context);
+    expect(calls).toHaveLength(2); // Save as needs no destructive confirmation.
   });
 
   test("accepts version 2 packages and rejects obsolete manifests", async () => {

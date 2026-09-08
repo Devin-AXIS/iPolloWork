@@ -104,6 +104,34 @@ function codexChildEnvironment(environment: NodeJS.ProcessEnv): NodeJS.ProcessEn
   };
 }
 
+/** Shared CLI resolution for conversation runtimes and isolated native image turns. */
+export function createCodexAppServer(input: {
+  cwd: string;
+  environment: NodeJS.ProcessEnv;
+  args?: readonly string[];
+}): StdioJsonRpcProcess {
+  const configuredCli = process.env.IPOLLOWORK_CODEX_CLI?.trim() ?? "";
+  if (configuredCli && !existsSync(configuredCli)) {
+    throw new CodexHarnessUnavailableError(`Codex Harness runtime was not found at ${configuredCli}`);
+  }
+  const wrapper = configuredCli.endsWith(".js");
+  const command = wrapper
+    ? process.versions.electron
+      ? process.execPath
+      : process.env.IPOLLOWORK_NODE_BIN?.trim() || (process.platform === "win32" ? "node.exe" : "node")
+    : configuredCli || (process.platform === "win32" ? "codex.exe" : "codex");
+  return new StdioJsonRpcProcess({
+    name: "Codex Harness",
+    command,
+    args: [...(wrapper ? [configuredCli] : []), "app-server", "--stdio", ...(input.args ?? [])],
+    cwd: input.cwd,
+    env: codexChildEnvironment({
+      ...input.environment,
+      ...(wrapper && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+    }),
+  });
+}
+
 function tomlString(value: string): string {
   return JSON.stringify(value);
 }
@@ -321,10 +349,13 @@ function codexMcpConfig(name: string, value: Record<string, unknown>): string[] 
   if (value.enabled === false) return [];
   const table = `[mcp_servers.${tomlString(name)}]`;
   const required = `required = ${value.required === true}`;
+  const toolTimeout = typeof value.tool_timeout_sec === "number" && Number.isFinite(value.tool_timeout_sec) && value.tool_timeout_sec > 0
+    ? [`tool_timeout_sec = ${value.tool_timeout_sec}`]
+    : [];
   if (value.type === "local" && Array.isArray(value.command)) {
     const [command, ...args] = value.command.filter((entry): entry is string => typeof entry === "string");
     if (!command) return [];
-    const lines = [table, required, `command = ${tomlString(command)}`];
+    const lines = [table, required, ...toolTimeout, `command = ${tomlString(command)}`];
     if (args.length) lines.push(`args = [${args.map(tomlString).join(", ")}]`);
     const environment = value.environment;
     if (environment && typeof environment === "object" && !Array.isArray(environment)) {
@@ -334,7 +365,7 @@ function codexMcpConfig(name: string, value: Record<string, unknown>): string[] 
     return lines;
   }
   if (value.type === "remote" && typeof value.url === "string" && value.url.trim()) {
-    const lines = [table, required, `url = ${tomlString(value.url.trim())}`];
+    const lines = [table, required, ...toolTimeout, `url = ${tomlString(value.url.trim())}`];
     const headers = value.headers;
     if (headers && typeof headers === "object" && !Array.isArray(headers)) {
       const httpHeaders = tomlStringMap(headers as Record<string, unknown>);
@@ -354,6 +385,7 @@ export function codexHarnessHostMcp(
     url: `http://127.0.0.1:${config.port}/engine-tools/mcp?workspaceId=${encodeURIComponent(workspace.id)}`,
     headers: { Authorization: `Bearer ${config.token}` },
     required: true,
+    tool_timeout_sec: 420,
   };
 }
 
@@ -780,12 +812,12 @@ export class CodexHarnessRuntime {
       },
     });
     await writeFile(join(codexHome, "config.toml"), config, "utf8");
-    const environment = codexChildEnvironment({
+    const environment: NodeJS.ProcessEnv = {
       ...process.env,
       ...sharedProviderChildEnvironment(records),
       CODEX_HOME: codexHome,
       NO_COLOR: "1",
-    });
+    };
     for (const provider of providers) {
       environment[providerEnvironmentKey(codexHarnessRuntimeProviderId(provider.id))] = provider.apiKey;
     }
@@ -827,30 +859,9 @@ export class CodexHarnessRuntime {
     environment: NodeJS.ProcessEnv;
     fingerprint: string;
   }): Promise<StdioJsonRpcProcess> {
-    const configuredCli = process.env.IPOLLOWORK_CODEX_CLI?.trim() ?? "";
-    if (configuredCli && !existsSync(configuredCli)) {
-      throw new CodexHarnessUnavailableError(`Codex Harness runtime was not found at ${configuredCli}`);
-    }
-    const wrapper = configuredCli.endsWith(".js");
-    const command = wrapper
-      ? process.versions.electron
-        ? process.execPath
-        : process.env.IPOLLOWORK_NODE_BIN?.trim() || (process.platform === "win32" ? "node.exe" : "node")
-      : configuredCli || (process.platform === "win32" ? "codex.exe" : "codex");
-    const args = [
-      ...(wrapper ? [configuredCli] : []),
-      "app-server",
-      "--stdio",
-    ];
-    const rpc = new StdioJsonRpcProcess({
-      name: "Codex Harness",
-      command,
-      args,
+    const rpc = createCodexAppServer({
       cwd: this.#workspace.path,
-      env: {
-        ...prepared.environment,
-        ...(wrapper && process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
-      },
+      environment: prepared.environment,
     });
     try {
       await rpc.call("initialize", {

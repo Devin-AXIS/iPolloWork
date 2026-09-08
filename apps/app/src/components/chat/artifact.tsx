@@ -19,6 +19,7 @@ import { t } from "@/i18n";
 import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
 import { createWorkspaceFileOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
+import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
 import {
   DescriptiveButton,
   DescriptiveButtonContent,
@@ -590,12 +591,22 @@ type ConversationFilesMode = "directory" | "outputs";
 function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, client, workspaceId, workspaceRoot, templateEntryPath, supplementalFiles, artifactContext, onOpenTarget, onOpenVideoStudio, popover = false, onClose }: Omit<ConversationOutputPanelProps, "openTargets"> & { popover?: boolean; onClose?: () => void }) {
   const [mode, setMode] = useState<ConversationFilesMode>("outputs");
   const [fileQuery, setFileQuery] = useState("");
+  const sessionArtifacts = useSessionArtifacts(client, workspaceId, sessionId);
+  const registeredFiles = useMemo(
+    () => sessionArtifacts.data?.pages.flatMap((page) => page.items) ?? [],
+    [sessionArtifacts.data],
+  );
   const discoveredArtifacts = useArtifacts(messages, {
     includeTargetFallbacks: false,
     supplementalFiles: supplementalFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
+    registeredFiles,
   });
-  const artifacts = templateEntryPath
+  const templateArtifacts = templateEntryPath
     ? selectTemplateEntryArtifacts(discoveredArtifacts, templateEntryPath)
+    : discoveredArtifacts;
+  const templateIds = new Set(templateArtifacts.map((artifact) => artifact.id));
+  const artifacts = templateEntryPath
+    ? discoveredArtifacts.filter((artifact) => templateIds.has(artifact.id) || artifact.messageId === "session-output")
     : discoveredArtifacts;
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
@@ -702,6 +713,12 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
         ) : null}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-3">
+        {mode === "outputs" && sessionArtifacts.isError ? (
+          <div role="alert" className="mb-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{t("session.files.load_failed")}</span>
+            <Button variant="outline" size="sm" onClick={() => void sessionArtifacts.refetch()}>{t("session.files.retry")}</Button>
+          </div>
+        ) : null}
         {mode === "outputs" ? outputs.length ? (
           <div className={cn("grid gap-2.5", popover ? "grid-cols-1" : "grid-cols-[repeat(auto-fill,minmax(220px,1fr))]")} data-testid="conversation-files-outputs-view">
             {outputGroups.map((group) => (
@@ -713,7 +730,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                   client={client}
                   workspaceId={workspaceId}
                   sessionId={sessionId}
-                  artifactContext={artifactContext}
+                  artifactContext={group.primary.messageId === "session-output" ? undefined : artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
                 />
                 {group.artifacts.length > 1 ? (
@@ -747,6 +764,13 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
             <WorkspaceFileTree nodes={filteredWorkspaceFileTree} query={fileQuery} onOpenTarget={onOpenTarget} />
           </div>
         )}
+        {mode === "outputs" && (sessionArtifacts.isFetching || sessionArtifacts.hasNextPage) ? (
+          <div className="mt-3 flex justify-center">
+            <Button variant="ghost" size="sm" disabled={sessionArtifacts.isFetching} onClick={() => void sessionArtifacts.fetchNextPage()}>
+              {sessionArtifacts.isFetching ? t("session.files.loading") : t("workspace_list.show_more_fallback")}
+            </Button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

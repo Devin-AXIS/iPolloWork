@@ -470,6 +470,8 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }),
     [ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool]: async (_ctx, args) => uiControlRequest("/execute", {
       method: "POST",
+      // Image generation can outlive the default short UI discovery deadline.
+      timeoutMs: 420_000,
       body: {
         actionId: "workspace_app.call_tool",
         args: {

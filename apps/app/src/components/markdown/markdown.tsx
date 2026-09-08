@@ -18,7 +18,7 @@ import {
 import { bundledLanguages, codeToHtml } from "shiki";
 
 import { cn } from "@/lib/utils";
-import { useOpenTargets } from "@/lib/target-provider";
+import { useOpenTargets, type WorkspaceImageLoader } from "@/lib/target-provider";
 import { localFilePathFromHref, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 
 import { applyTextHighlights } from "./text-highlights";
@@ -72,6 +72,40 @@ function safeImageHref(href: string) {
   }
 
   return safeHref(trimmed);
+}
+
+export function markdownWorkspaceImagePath(href: string) {
+  // Protocol-relative URLs are web images, not UNC workspace paths.
+  return href.trim().startsWith("//") ? "" : localFilePathFromHref(href);
+}
+
+export function createMarkdownImageLoader(loadImage: WorkspaceImageLoader) {
+  const requests = new Map<string, Promise<string>>();
+  const urls = new Set<string>();
+  let disposed = false;
+  return {
+    load(path: string) {
+      if (disposed) return Promise.reject(new Error("Image preview disposed"));
+      let request = requests.get(path);
+      if (!request) {
+        request = loadImage(path).then((blob) => {
+          if (disposed) throw new Error("Image preview disposed");
+          const url = URL.createObjectURL(blob);
+          urls.add(url);
+          return url;
+        });
+        // Deduplicate images and streamed re-renders, including failed requests.
+        requests.set(path, request);
+      }
+      return request;
+    },
+    dispose() {
+      disposed = true;
+      for (const url of urls) URL.revokeObjectURL(url);
+      urls.clear();
+      requests.clear();
+    },
+  };
 }
 
 function normalizeFilePathForMatch(path: string) {
@@ -180,6 +214,7 @@ export function sanitizeMarkdownHtml(value: string) {
       "checked",
       "class",
       "data-ipollowork-image-preview",
+      "data-ipollowork-image-path",
       "data-ipollowork-image-toggle",
       "data-ipollowork-image-toggle-label",
       "data-ipollowork-link-href",
@@ -270,10 +305,13 @@ const baseMarkedOptions = {
       return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, title, text }) {
-      const safe = escapeAttribute(safeImageHref(href));
+      const path = markdownWorkspaceImagePath(href);
+      const source = path
+        ? `data-ipollowork-image-path="${escapeAttribute(path)}"`
+        : `src="${escapeAttribute(safeImageHref(href))}"`;
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
-      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img src="${safe}" alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
+      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
     },
     table(token) {
       const header = token.header.map((cell) => this.tablecell({ ...cell, header: true })).join("");
@@ -408,7 +446,8 @@ function MarkdownBlockInner({
   ...props
 }: MarkdownBlockInnerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { openTargets, onOpenTarget } = useOpenTargets();
+  const { openTargets, onOpenTarget, loadWorkspaceImage } = useOpenTargets();
+  const imageLoaderRef = useRef<ReturnType<typeof createMarkdownImageLoader> | null>(null);
   const [linkMenu, setLinkMenu] = useState<{ target: OpenTarget; rect: DOMRect } | null>(null);
   const renderedText = useStreamingMarkdownText(text, streaming);
   const syncHtml = useMemo(() => {
@@ -443,6 +482,36 @@ function MarkdownBlockInner({
   }, [renderedText, streaming]);
 
   const html = !streaming && highlightedHtml?.text === renderedText ? highlightedHtml.html : syncHtml;
+  const innerHtml = useMemo(() => ({ __html: html }), [html]);
+
+  useEffect(() => {
+    const loader = loadWorkspaceImage ? createMarkdownImageLoader(loadWorkspaceImage) : null;
+    imageLoaderRef.current = loader;
+    return () => {
+      imageLoaderRef.current = null;
+      loader?.dispose();
+    };
+  }, [loadWorkspaceImage]);
+
+  // Also restore previews if motion replaces the HTML on a context re-render.
+  useEffect(() => {
+    const root = rootRef.current;
+    const loader = imageLoaderRef.current;
+    if (!root || !loader) return;
+    for (const image of root.querySelectorAll<HTMLImageElement>("img[data-ipollowork-image-path]")) {
+      const path = image.dataset.ipolloworkImagePath;
+      if (!path) continue;
+      void loader.load(path).then((url) => {
+        if (imageLoaderRef.current !== loader || !root.contains(image)) return;
+        if (image.getAttribute("src") !== url) image.src = url;
+        syncMarkdownImagePreviews(root);
+      }).catch(() => {
+        if (imageLoaderRef.current !== loader || !root.contains(image)) return;
+        // Keep the description readable; the artifact card remains available.
+        image.replaceWith(document.createTextNode(image.alt || path));
+      });
+    }
+  });
 
   // Re-apply search highlights after EVERY render (no dependency array on
   // purpose): motion.div re-sets dangerouslySetInnerHTML on unrelated
@@ -548,7 +617,7 @@ function MarkdownBlockInner({
       <motion.div
         ref={rootRef}
         className={cn("markdown-content max-w-none text-foreground", className)}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={innerHtml}
         {...props}
       />
       {linkMenu && onOpenTarget ? (

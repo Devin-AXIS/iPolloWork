@@ -8,6 +8,7 @@ import {
   type McpUiUpdateModelContextRequest,
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
 import { Loader2, RotateCw, SlidersHorizontal } from "lucide-react";
 
 import type {
@@ -22,6 +23,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { usePlatform } from "@/react-app/kernel/platform";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
+import { sessionArtifactsQueryKey } from "@/react-app/infra/session-artifacts-query";
 import {
   StudioInspectorHeader,
   StudioInspectorPanel,
@@ -33,6 +36,8 @@ import {
 import {
   PLUGIN_UI_HOST_CONTEXT_KEY,
   PLUGIN_UI_INSPECTOR_CONTEXT_KEY,
+  imageSelectionSnapshotSchema,
+  type ImageSelectionSnapshot,
   parsePluginUiInspectorContext,
   type PluginUiInspectorContextV1,
   type PluginUiHostContextV1,
@@ -41,6 +46,12 @@ import {
 import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
+export type WorkspaceImageSelection = {
+  key: string;
+  sessionId: string;
+  sourcePath: string;
+  capture: () => Promise<ImageSelectionSnapshot>;
+};
 
 type WorkspaceAppFrameProps = {
   surface: PluginUiSurface;
@@ -57,6 +68,7 @@ type WorkspaceAppFrameProps = {
     modelContext: WorkspaceAppModelContext | null;
   }) => boolean | Promise<boolean>;
   onRequestClose?: () => void;
+  onImageSelectionChange?: (selection: WorkspaceImageSelection | null) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
   resourceOverride?: iPolloWorkPluginUiResource;
   /** Scopes an unpacked draft to the current conversation without adding it to installed plugins. */
@@ -198,6 +210,7 @@ type WorkspaceAppInspectorProps = {
 function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppInspectorProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
 
   const formArguments = () => {
@@ -210,7 +223,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
   };
 
   const submit = async () => {
-    if (submitting || context.submitDisabled) return;
+    if (submitting || updating || context.submitDisabled) return;
     setSubmitting(true);
     setError("");
     try {
@@ -226,12 +239,16 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
   };
 
   const updateLiveField = async (fieldId: string, value: string) => {
+    if (updating || submitting) return;
+    setUpdating(true);
     setError("");
     try {
       const update = await onCallTool(context.updateTool, { ...formArguments(), [fieldId]: value });
       if (update.isError) throw new Error(callToolResultText(update) || "Could not update the image settings.");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Could not update the image settings.");
+    } finally {
+      setUpdating(false);
     }
   };
 
@@ -262,15 +279,16 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
                 name={field.id}
                 defaultValue={field.value}
                 placeholder={field.placeholder}
-                disabled={submitting}
+                disabled={submitting || updating}
                 className="min-h-28 resize-y"
               />
             ) : (
               <Select
-                key={`${field.id}:${field.value}`}
+                key={`${field.id}:${field.value}:${JSON.stringify(field.options)}`}
                 name={field.id}
                 defaultValue={field.value}
-                disabled={submitting}
+                items={field.options}
+                disabled={submitting || updating}
                 onValueChange={field.live ? (value) => {
                   if (value !== null) void updateLiveField(field.id, value);
                 } : undefined}
@@ -304,7 +322,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool }: WorkspaceAppIns
           </p>
         ) : null}
 
-        <Button type="submit" className="w-full rounded-xl" disabled={submitting || context.submitDisabled}>
+        <Button type="submit" className="w-full rounded-xl" disabled={submitting || updating || context.submitDisabled}>
           {submitting ? <Loader2 className="animate-spin" /> : null}
           {context.submitLabel}
         </Button>
@@ -325,6 +343,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const inspectorOpenRequestRef = useRef("");
   const onDisplayModeChangeRef = useRef(props.onDisplayModeChange);
   const onSendMessageRef = useRef(props.onSendMessage);
+  const onImageSelectionChangeRef = useRef(props.onImageSelectionChange);
+  onImageSelectionChangeRef.current = props.onImageSelectionChange;
   const onRequestCloseRef = useRef(props.onRequestClose);
   onDisplayModeChangeRef.current = props.onDisplayModeChange;
   onSendMessageRef.current = props.onSendMessage;
@@ -402,6 +422,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     if (!resource || !iframe?.contentWindow) return;
     setBridgeReady(false);
     let disposed = false;
+    const selectionSurfaceId = crypto.randomUUID();
     const transport = new PostMessageTransport(iframe.contentWindow, iframe.contentWindow);
     const pluginContext = pluginUiHostContext(props, developmentPreviewRef.current);
     const hostContext: McpUiHostContext = {
@@ -458,6 +479,11 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
             sessionId: props.sessionId ?? undefined,
           },
         });
+        if (result.ok && props.sessionId) {
+          void getReactQueryClient().invalidateQueries({
+            queryKey: sessionArtifactsQueryKey(props.client.baseUrl, props.workspaceId, props.sessionId),
+          });
+        }
         return result.ok ? toolResult(result.result) : toolError(result.message);
       } catch (nextError) {
         return toolError(nextError);
@@ -471,6 +497,22 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;
+      if (props.surface.pluginId === "image-studio") {
+        const data = context.structuredContent;
+        const revision = data?.selectionRevision;
+        const sourcePath = data?.sourcePath;
+        const sessionId = props.sessionId;
+        onImageSelectionChangeRef.current?.(data?.selectionReady === true && typeof revision === "number" && typeof sourcePath === "string" && sessionId ? {
+          key: `${selectionSurfaceId}:${sessionId}:${sourcePath}:${revision}`,
+          sessionId,
+          sourcePath,
+          capture: async () => {
+            const result = await bridge.callTool({ name: "capture_selection", arguments: { revision } });
+            if (result.isError) throw new Error(messageText(result.content) || "Image selection could not be captured");
+            return imageSelectionSnapshotSchema.parse(result.structuredContent);
+          },
+        } : null);
+      }
       const nextInspector = inspectorContextFrom(context);
       setInspectorContext(nextInspector);
       if (!nextInspector) {
@@ -528,6 +570,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 
     return () => {
       disposed = true;
+      if (props.surface.pluginId === "image-studio") onImageSelectionChangeRef.current?.(null);
       resizeObserver.disconnect();
       themeObserver.disconnect();
       bridgeRef.current = null;
@@ -544,7 +587,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       ...(pluginContext.developmentPreview ? { developmentPreview: pluginContext.developmentPreview } : {}),
       [PLUGIN_UI_HOST_CONTEXT_KEY]: pluginContext,
     });
-  }, [props.developmentPreview?.revision, props.launch, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
+  }, [bridgeReady, props.developmentPreview?.revision, props.launch, props.placement, props.sessionId, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot]);
 
   useEffect(() => {
     bridgeRef.current?.setHostContext({ displayMode: props.displayMode ?? "inline" });
@@ -553,8 +596,10 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const callWorkspaceAppTool = useCallback(async (name: string, args: Record<string, unknown>) => {
     const bridge = bridgeRef.current;
     if (!bridge) return toolError("Workspace App is not ready");
-    return bridge.callTool({ name, arguments: args });
-  }, []);
+    return bridge.callTool({ name, arguments: args }, props.surface.pluginId === "image-studio" && name === "generate_or_edit"
+      ? { timeout: IMAGE_GENERATION_REQUEST_TIMEOUT_MS }
+      : undefined);
+  }, [props.surface.pluginId]);
 
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.placement !== "workspace" ? [] : [
     {
@@ -596,13 +641,10 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         }
         const bridge = bridgeRef.current;
         if (!bridge) throw new Error("Workspace App is not ready");
-        return bridge.callTool({
-          name: args.name,
-          arguments: isRecord(args.arguments) ? args.arguments : {},
-        });
+        return callWorkspaceAppTool(args.name, isRecord(args.arguments) ? args.arguments : {});
       },
     },
-  ], [bridgeReady, developmentPreviewActive, props.placement, props.sessionId, props.surface.label]);
+  ], [bridgeReady, callWorkspaceAppTool, developmentPreviewActive, props.placement, props.sessionId, props.surface.label]);
   useControlActions(controlActions);
 
   if (loading) {

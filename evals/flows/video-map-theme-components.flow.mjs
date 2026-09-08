@@ -221,8 +221,8 @@ export default {
               };
             })()`);
               ctx.assert(
-                state.options.includes("All components · 84"),
-                "The component total is not 84.",
+                state.options.includes("All components · 150"),
+                "The component total is not 150.",
               );
               ctx.assert(state.options.includes("Maps & Routes · 12"), "The map total is not 12.");
               ctx.assert(state.cards === 12, `Expected twelve map cards, received ${state.cards}.`);

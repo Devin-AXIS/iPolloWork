@@ -105,12 +105,12 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
     getReducedMotionServerSnapshot,
   );
 
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    previewController.activate();
+    return () => {
       previewController.dispose();
-    },
-    [previewController],
-  );
+    };
+  }, [previewController]);
   useEffect(() => {
     writeStudioUiPreferences({ catalogColumnCount: columnCount });
   }, [columnCount]);
@@ -710,6 +710,7 @@ const BlockCard = memo(function BlockCard({
       style={{ contentVisibility: "auto", containIntrinsicSize: "160px" }}
       data-testid="block-catalog-card"
       data-block-name={block.name}
+      data-preview-active={previewing ? "true" : "false"}
       draggable={!insertionBusy}
       onClick={handleAdd}
       onKeyDown={handleCardKeyDown}

@@ -23,7 +23,7 @@
   },
   "permissions": [
     { "id": "workspace-read", "reason": "读取用户在当前工作区中选择的图片。" },
-    { "id": "workspace-write", "reason": "将导入、生成和编辑后的图片另存到当前工作区。" }
+    { "id": "workspace-write", "reason": "保存图片副本；仅在用户确认后覆盖原图并移除本次编辑副本。" }
   ],
   "resources": [
     {
@@ -48,17 +48,49 @@
       "requires": [
         "action:openai-image-generation/status",
         "action:openai-image-generation/image_generate",
-        "action:openai-image-generation/image_edit"
+        "action:openai-image-generation/image_edit",
+        "action:openai-image-generation/selection_capture",
+        "action:openai-image-generation/image_edit_save"
       ],
       "provides": [
         "action:status",
         "action:load-image",
         "action:import-image",
         "action:generate-image",
-        "action:edit-image"
+        "action:edit-image",
+        "action:capture-selection",
+        "action:save-edit"
       ],
       "required": true,
       "actions": [
+        {
+          "id": "save-edit",
+          "title": "保存编辑结果",
+          "description": "另存为保留两版；仅经用户确认后覆盖原图并移除本次副本。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": { "editId": { "type": "string" }, "mode": { "type": "string", "enum": ["copy", "overwrite"] } },
+            "required": ["editId", "mode"],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "capture-selection",
+          "title": "附加图片选区",
+          "description": "冻结当前图片及完整蒙版，供当前会话编辑使用。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": { "type": "string" },
+              "sourceDataUrl": { "type": "string" },
+              "maskDataUrl": { "type": "string" }
+            },
+            "required": ["sourcePath", "sourceDataUrl", "maskDataUrl"],
+            "additionalProperties": false
+          }
+        },
         {
           "id": "status",
           "title": "检查图片工作台",
@@ -126,6 +158,10 @@
               "prompt": { "type": "string" },
               "model": { "type": "string" },
               "maskDataUrl": { "type": "string" },
+              "selectionId": { "type": "string" },
+              "reviewResult": { "type": "boolean" },
+              "sourceRevision": { "type": "string" },
+              "selectionBlend": { "type": "string", "enum": ["natural", "strict"] },
               "selectionBounds": {
                 "type": "object",
                 "properties": {
@@ -198,7 +234,7 @@
         },
         "permissions": {
           "workspace-read": { "reason": "Read images selected by the user in the current workspace." },
-          "workspace-write": { "reason": "Save imported, generated, and edited images as workspace files." }
+          "workspace-write": { "reason": "Save copies; replace the original and remove this edit's copy only after user confirmation." }
         }
       }
     }

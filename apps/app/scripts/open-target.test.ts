@@ -225,6 +225,29 @@ describe("deriveOpenTargets", () => {
     expect(targets[0]).toMatchObject({ value: "reports/customers.csv", preview: "sheet", confidence: 95 });
   });
 
+  it.each(["ipollowork.ipollowork_extension_call", "mcp__ipollowork__ipollowork_extension_call", "ipollowork_workspace_app_call_tool"])("extracts a saved image from %s without final-answer prose", (toolName) => {
+    const output = { ok: true, path: "artifacts/generated-image.png", result: { path: "artifacts/generated-image.png" } };
+    for (const result of [
+      JSON.stringify(output),
+      { content: [{ type: "text", text: JSON.stringify(output) }] },
+      { content: [], structuredContent: output },
+      { ok: true, result: { content: [], structuredContent: { path: output.path } } },
+    ]) {
+      const targets = deriveOpenTargets([toolMessage("generated", toolName, { sourcePath: "references/original.png" }, result)]);
+      expect(targets).toEqual([expect.objectContaining({ value: output.path, preview: "image", confidence: 95 })]);
+    }
+  });
+
+  it("does not turn failed image requests or their input paths into artifacts", () => {
+    for (const result of [
+      { ok: false, path: "artifacts/failed.png" },
+      { isError: true, structuredContent: { path: "artifacts/failed.png" } },
+      { content: [{ type: "text", text: "not JSON: artifacts/failed.png" }] },
+    ]) {
+      expect(deriveOpenTargets([toolMessage("failed", "ipollowork.ipollowork_extension_call", { path: "references/original.png" }, result)])).toEqual([]);
+    }
+  });
+
   it("keeps URI-backed source documents as URL targets when filename is missing", () => {
     const targets = deriveOpenTargets([
       {
