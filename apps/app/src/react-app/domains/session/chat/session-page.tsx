@@ -2,6 +2,7 @@
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
+import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
@@ -3338,7 +3339,7 @@ export function SessionPage(props: SessionPageProps) {
       openWorkspaceApp(surface, launch, sourceSessionId);
       return;
     }
-    if (pluginId === "image-studio") toast.error(t("artifact.image_studio_install_required"));
+    toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
   }, [openWorkspaceApp, workspaceApps]);
   const openImageStudio = useCallback((target: OpenTarget, sourceSessionId?: string) => {
     openWorkspaceAppForPlugin("image-studio", {
@@ -3386,6 +3387,16 @@ export function SessionPage(props: SessionPageProps) {
     }
 
     const sourceId = sourceSessionId ?? props.selectedSessionId;
+    if (target.kind === "file" && mediaKindForPath(target.value) === "video") {
+      if (options?.auto) return;
+      prioritizeRightPanel();
+      openWorkspaceAppForPlugin("video-console", {
+        intent: "edit-video",
+        requestId: crypto.randomUUID(),
+        source: { kind: "workspace-file", path: target.value, name: target.name, preview: target.preview },
+      }, sourceId ?? undefined);
+      return;
+    }
     if (target.kind === "file" && target.preview === "image") {
       // Let chat finish with its image card; open the editor only on a click.
       // Image Studio annotations opt into replacing the workbench source once
@@ -3462,7 +3473,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceId;
     if (!sessionId) return;
     openArtifactTargetInPanel(target, sessionId, options?.auto);
-  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openImageStudio, openVideoStudio, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, workspaceApps]);
+  }, [artifactContext, browserUrlForTarget, currentVideoEntryPath, downloadOpenTarget, isVideoSession, openArtifactTargetInPanel, openCurrentVideoStudio, openDesignTab, openImageStudio, openVideoStudio, openWorkspaceAppForPlugin, prioritizeRightPanel, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceRoot, resolveOpenTargetTemplateSurface, workspaceApps]);
   const closeRightPane = useCallback((options?: { preserveAutoCollapse?: boolean }) => {
     if (!options?.preserveAutoCollapse) {
       userOpenedSidePanelWhileNarrowRef.current = false;

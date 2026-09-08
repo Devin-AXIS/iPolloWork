@@ -15,6 +15,19 @@ import {
 import type { ArtifactItem } from "../src/lib/artifacts";
 
 describe("session output issue regressions", () => {
+  test("output bundles expand and media files route separately from HTML studios", () => {
+    const artifactSource = readFileSync(new URL("../src/components/chat/artifact.tsx", import.meta.url), "utf8");
+    const sessionPageSource = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
+    expect(artifactSource).toContain("count: outputGroups.length");
+    expect(artifactSource).toContain("<details");
+    expect(artifactSource).toContain("group.artifacts.slice(1).map");
+    expect(artifactSource).toContain('artifact.type === "video") && canOpenArtifact(artifact)');
+    expect(sessionPageSource).toContain('mediaKindForPath(target.value) === "video"');
+    expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("video-console", {');
+    expect(sessionPageSource).toContain('intent: "edit-video"');
+    expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("image-studio", {');
+    expect(sessionPageSource).toContain('options?.viewer === "video" && videoArtifactSessionId');
+  });
   test("empty projects hide task controls and render the no-task state", () => {
     const sessionPageSource = readFileSync(
       new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),

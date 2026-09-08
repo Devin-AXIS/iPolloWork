@@ -314,7 +314,7 @@ export function groupConversationOutputArtifacts(artifacts: ArtifactItem[]): Con
 
   for (const artifact of artifacts) {
     const directory = getArtifactBundleDirectory(artifact.path);
-    if (!directory) {
+    if (!directory || artifact.type === "image" || artifact.type === "video") {
       standalone.push({ id: artifact.id, primary: artifact, artifacts: [artifact], bundled: false });
       continue;
     }

@@ -48,6 +48,7 @@ import {
   type ArtifactItem,
   type ArtifactRequestOwnership,
   artifactPathMatchesTarget,
+  canOpenArtifact,
   canOpenArtifactInContext,
   canPreviewArtifact,
   getArtifactStudioTarget,
@@ -266,7 +267,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
   const opensCurrentVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
   const canOpenVideoStudio = opensCurrentVideoStudio || studioTarget?.surface === "video";
   const canOpenDesignStudio = studioTarget?.surface === "design";
-  const canActivate = studioTarget
+  const canActivate = studioTarget || ((artifact.type === "image" || artifact.type === "video") && canOpenArtifact(artifact))
     ? true
     : artifactContext?.kind === "video" ? opensCurrentVideoStudio : canOpen;
   const presentedName = displayName?.trim() || artifact.name;
@@ -611,7 +612,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
   const outputDisplayNames = artifactDisplayNames(
-    outputGroups.map((group) => group.primary),
+    outputs,
     (artifact) => artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle),
   );
   const workspaceFilesQuery = useQuery({
@@ -629,7 +630,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   const directoryLoading = mode === "directory" && workspaceFilesQuery.isPending;
   const directoryUnavailable = mode === "directory" && (!client || !workspaceId);
   const subtitle = mode === "outputs"
-    ? outputs.length ? t("session.files.output_count", { count: outputs.length }) : t("session.outputs.empty")
+    ? outputs.length ? t("session.files.output_count", { count: outputGroups.length }) : t("session.outputs.empty")
     : workspaceFilesQuery.isError || directoryUnavailable
       ? t("session.files.load_failed")
       : directoryLoading
@@ -726,17 +727,23 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                 <ArtifactButton
                   artifact={group.primary}
                   displayName={outputDisplayNames.get(group.primary.id)}
-                  description={artifactCardDescription(group.primary, messages.map(messageText).join(" "))}
+                  description={artifactCardDescription(group.primary, group.primary.type === "image" || group.primary.type === "video" ? "" : messages.map(messageText).join(" "))}
                   client={client}
                   workspaceId={workspaceId}
                   sessionId={sessionId}
-                  artifactContext={group.primary.messageId === "session-output" ? undefined : artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
                 />
                 {group.artifacts.length > 1 ? (
-                  <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                    {t("session.outputs.bundle_count", { count: group.artifacts.length })}
-                  </span>
+                  <details className="mt-1 rounded-lg border border-border/60 p-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground" aria-label={t("session.outputs.expand_bundle")}>
+                      {t("session.outputs.bundle_count", { count: group.artifacts.length })}
+                    </summary>
+                    <div className="mt-2 grid gap-2">
+                      {group.artifacts.slice(1).map((artifact) => (
+                        <ArtifactButton key={artifact.id} artifact={artifact} displayName={outputDisplayNames.get(artifact.id)} client={client} workspaceId={workspaceId} sessionId={sessionId} compact />
+                      ))}
+                    </div>
+                  </details>
                 ) : null}
               </div>
             ))}
