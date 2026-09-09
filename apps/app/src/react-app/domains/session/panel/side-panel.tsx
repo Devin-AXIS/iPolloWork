@@ -58,7 +58,7 @@ import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
-import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
@@ -78,7 +78,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
-  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onSaveAsTemplate?: () => void;
   aiEditing?: boolean;
@@ -912,7 +912,10 @@ export function SidePanel({
               workspaceRoot={workspaceRoot}
               aiEditing={aiEditing}
               expanded={expanded}
-              onSendMessage={onSendWorkspaceAppMessage}
+              onSendMessage={onSendWorkspaceAppMessage ? async input => {
+                const result = await onSendWorkspaceAppMessage(input);
+                return typeof result === "boolean" ? result : result.accepted;
+              } : undefined}
             />
           </div>
         ) : activeTab?.type === "workspace-app" && client && workspaceId ? (

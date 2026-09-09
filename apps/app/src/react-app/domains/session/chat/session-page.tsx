@@ -4004,7 +4004,7 @@ export function SessionPage(props: SessionPageProps) {
         instruction: context,
       },
     }, props.selectedSessionId);
-    return outcome ? promptWasDispatched(outcome) : false;
+    return { accepted: outcome ? promptWasDispatched(outcome) : false, sessionId: typeof outcome === "object" ? outcome.sessionId ?? props.selectedSessionId : props.selectedSessionId };
   }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
   const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
   const launcherDesignTabId = launcherDesignPath && props.selectedSessionId

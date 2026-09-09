@@ -729,6 +729,28 @@ describe("plugin package manifest", () => {
       "resources.0.ui",
     ]));
 
+    // Local workbenches choose an available port each time their service starts.
+    for (const frameDomain of ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]) {
+      expect(validatePluginPackageManifest({
+        ...manifest,
+        permissions: [{ id: "network", reason: "Embed a local workbench." }],
+        resources: [{
+          ...manifest.resources[0],
+          ui: { ...manifest.resources[0].ui, csp: { frameDomains: [frameDomain] } },
+        }],
+      }).success).toBe(true);
+    }
+    for (const frameDomain of ["http://example.com:*", "http://127.0.0.1.evil.test:*", "http://127.0.0.1:*/*", "http://*:*"]) {
+      expect(validatePluginPackageManifest({
+        ...manifest,
+        permissions: [{ id: "network", reason: "Embed a workbench." }],
+        resources: [{
+          ...manifest.resources[0],
+          ui: { ...manifest.resources[0].ui, csp: { frameDomains: [frameDomain] } },
+        }],
+      }).success).toBe(false);
+    }
+
     const undeclaredNetwork = validatePluginPackageManifest({
       ...manifest,
       resources: [{

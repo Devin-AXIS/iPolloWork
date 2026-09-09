@@ -204,6 +204,7 @@ export type ArtifactCompletionTarget = {
  */
 export type PromptDispatchResult = {
   dispatched: boolean;
+  sessionId?: string;
   artifactCompletionTargets?: ArtifactCompletionTarget[];
 };
 

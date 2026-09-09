@@ -47,8 +47,10 @@ import {
 } from "@ipollowork/types/plugins";
 
 import type { PluginUiSurface } from "./plugin-ui-contributions";
+import { ServiceWorkbenchFrame } from "./service-workbench-frame";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
+export type WorkspaceAppMessageResult = boolean | { accepted: boolean; sessionId: string };
 export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
 export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string; saveMode?: "copy" | "overwrite"; revision?: string };
 
@@ -65,7 +67,7 @@ type WorkspaceAppFrameProps = {
   onSendMessage?: (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
-  }) => boolean | Promise<boolean>;
+  }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onRequestClose?: () => void;
   onImageSaved?: (save: WorkspaceImageSave) => void;
   onVideoResult?: (result: WorkspaceVideoResult) => void;
@@ -443,6 +445,13 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
 }
 
 export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
+  if (props.surface.resource.type === "local-service") {
+    return <ServiceWorkbenchFrame {...props} />;
+  }
+  return <McpWorkspaceAppFrame {...props} />;
+}
+
+function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const platform = usePlatform();
   const navigate = useNavigate();
   const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio";
@@ -622,7 +631,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       const text = messageText(content);
       const sendMessage = onSendMessageRef.current;
       if (!text || !sendMessage) return { isError: true };
-      return await sendMessage({ text, modelContext: modelContextRef.current }) ? {} : { isError: true };
+      const result = await sendMessage({ text, modelContext: modelContextRef.current });
+      return (typeof result === "boolean" ? result : result.accepted) ? {} : { isError: true };
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;

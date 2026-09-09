@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 2,
+  "id": "xiaohongshu-ops",
+  "name": "小红书运营台",
+  "description": "管理小红书账号、内容、任务排期与互动。附带本地运营台源码和账号执行、任务调度技能。",
+  "category": "营销",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "local",
+    "trusted": false
+  },
+  "package": {
+    "version": "0.3.10",
+    "publisher": {
+      "id": "local",
+      "name": "本地插件"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "local/xiaohongshu-ops"
+  },
+  "composer": {
+    "prompt": "使用 open-workbench 直接打开小红书运营台。首次使用请先完成账号接入；只执行用户明确要求的运营任务。"
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "xhs-ops-worker",
+      "label": "小红书账号任务执行",
+      "path": "skills/xhs-ops-worker",
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "xhs-ops-dispatcher",
+      "label": "小红书任务调度",
+      "path": "skills/xhs-ops-dispatcher",
+      "required": true
+    },
+    {
+      "type": "local-service",
+      "id": "workbench",
+      "label": "小红书运营台",
+      "path": "service/workbench.mjs",
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开小红书运营台",
+          "description": "直接启动本机运营台并返回页面地址，不调用 AI 对话。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "rebind-session",
+          "title": "更新账号绑定会话",
+          "description": "首次发送消息生成正式会话后更新已绑定账号的会话 ID。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "previousSessionId": {
+                "type": "string"
+              },
+              "sessionId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "previousSessionId",
+              "sessionId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "claim-job",
+          "title": "领取账号验证任务",
+          "description": "当前绑定会话领取指定的只读账号验证或数据同步任务。",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              },
+              "accountId": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "required": [
+              "jobId",
+              "accountId"
+            ],
+            "additionalProperties": false
+          },
+          "effect": "write"
+        },
+        {
+          "id": "complete-job",
+          "title": "回写账号验证及数据",
+          "description": "以实际观察到的账号名称、小红书号和页面URL完成已领取的任务；数据同步任务需携带 analyticsCsv。",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              },
+              "actualAccount": {
+                "type": "string"
+              },
+              "actualProfileId": {
+                "type": "string"
+              },
+              "resultUrl": {
+                "type": "string"
+              },
+              "analyticsCsv": {
+                "type": "string",
+                "maxLength": 500000
+              }
+            },
+            "required": [
+              "jobId",
+              "actualAccount",
+              "actualProfileId"
+            ],
+            "additionalProperties": false
+          },
+          "effect": "write"
+        },
+        {
+          "id": "block-job",
+          "title": "报告账号验证阻塞",
+          "description": "登录失效、验证码、账号不匹配或无法读取数据时，将具体原因写回运营台。",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              },
+              "code": {
+                "type": "string"
+              },
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "jobId",
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          },
+          "effect": "write"
+        },
+        {
+          "id": "observe-browser-session",
+          "title": "自动识别账号登录",
+          "description": "核对软件内创作平台的可见账号身份，自动连接匹配账号。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "tree": {
+                "type": "string",
+                "maxLength": 100000
+              }
+            },
+            "required": [
+              "url",
+              "tree"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "required": true,
+      "browserSession": {
+        "origin": "https://creator.xiaohongshu.com",
+        "observeAction": "observe-browser-session",
+        "paths": [
+          "/login",
+          "/new/home"
+        ]
+      }
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Xiaohongshu Operations",
+        "description": "Manage accounts, content, scheduled tasks, and interactions with a local console and worker skills.",
+        "category": "Marketing",
+        "composer": {
+          "prompt": "Call open-workbench to open the local console directly. Connect an account before use and execute only explicitly requested operations."
+        },
+        "resources": {
+          "xhs-ops-worker": {
+            "label": "Xiaohongshu account worker"
+          },
+          "xhs-ops-dispatcher": {
+            "label": "Xiaohongshu task dispatcher"
+          },
+          "workbench": {
+            "label": "Xiaohongshu Operations"
+          }
+        }
+      }
+    }
+  }
+}

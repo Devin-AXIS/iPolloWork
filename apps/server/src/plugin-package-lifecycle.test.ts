@@ -1652,10 +1652,29 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "image-studio", version: "0.1.9", installedVersion: "0.1.9", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.29", installedVersion: "0.1.29", updateAvailable: false },
+          { pluginId: "video-console", version: "0.2.4", installedVersion: "0.2.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.3.10", installedVersion: null, updateAvailable: false },
         ],
       });
+
+      const xhsInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/xiaohongshu-ops/install`, {
+        method: "POST", headers,
+      });
+      expect(xhsInstallation.status).toBe(200);
+      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/src/server.ts"), "utf8"))
+        .toContain("export function startServer()");
+      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/scripts/start.mjs"), "utf8"))
+        .toContain("homedir()");
+      const xhsRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/xiaohongshu-ops`, {
+        method: "DELETE", headers,
+      });
+      expect(xhsRemoval.status).toBe(200);
+      const refreshedCatalog = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers });
+      expect((await refreshedCatalog.json()).items).toContainEqual(expect.objectContaining({
+        pluginId: "xiaohongshu-ops", installedVersion: null, updateAvailable: false,
+      }));
 
       const dshInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/deepseek-harness/install`, {
         method: "POST",
