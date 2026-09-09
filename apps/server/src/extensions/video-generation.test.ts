@@ -36,8 +36,6 @@ function workflowFixture() {
     "10": { class_type: "BasicGuider", inputs: { conditioning: ["17",0] } },
     "9": { class_type: "BasicScheduler", inputs: { steps: 25 } },
     "16": { class_type: "RandomNoise", inputs: { noise_seed: 42 } },
-    "24": { class_type: "LoadImage", inputs: { image: "template-first.png" } },
-    "25": { class_type: "LoadImage", inputs: { image: "template-last.png" } },
   }) } };
 }
 afterEach(async () => {
@@ -83,7 +81,7 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
   const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
   expect(frames.url).toEndWith("/task/openapi/create");
-  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084511826766811137",instanceType:"plus"});
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2097511747551842305",instanceType:"plus"});
   if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
   const graph=JSON.parse(frames.body.workflow);
   expect(graph["24"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
@@ -222,7 +220,7 @@ test("H3 refuses a changed public graph before billing and never resubmits an un
     expect(job.status).toBe(changed?"failed":"uncertain");
     expect(creates).toBe(changed?0:1);
     expect(job.message).not.toContain("test-rh-secret");
-    expect(job.workflowId).toBe("2084511826766811137");
+    expect(job.workflowId).toBe("2097511747551842305");
   }
 });
 
@@ -240,16 +238,20 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
 });
 
-test("existing H3 workflow jobs still download output node 92",async()=>{
+test.each([
+  ["2084935567606894593", "92"],
+  ["2084511826766811137", "7"],
+  ["2097511747551842305", "7"],
+])("H3 workflow %s keeps its saved output node %s",async(workflowId, nodeId)=>{
   const {config,call}=await setup();
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>url.endsWith("getJsonApiFormat")?Response.json(workflowFixture()):Response.json({code:0,data:{taskId:"old-h3-task",taskStatus:"QUEUED"}}));
   const args=submission({model:"minimax-h3",resolution:"0.5MP"});
   await call("submit",args);
   const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
-  await updateVideoJob(config,job,{workflowId:"2084935567606894593"});
+  await updateVideoJob(config,job,{workflowId});
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
     if(String(url).endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
-    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId:"92"}]});
+    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId}]});
     expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/old.mp4");return new Response(mp4);
   });
   await pollVideoJobs(config,auth);
