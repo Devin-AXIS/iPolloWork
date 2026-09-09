@@ -166,7 +166,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     action: "prompt_optimize",
     title: "Optimize image prompt",
     description: "Optimize an image description in the background using ChatGPT login without creating a conversation or an image.",
-    inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 1, maxLength: 8000 }, referencePath: { type: "string" } }, required: ["prompt"], additionalProperties: false },
+    inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 1, maxLength: 8000 }, referencePath: { type: "string" }, mediaKind: { type: "string", enum: ["image", "video"] }, settings: { type: "object", additionalProperties: { type: "string" } } }, required: ["prompt"], additionalProperties: false },
   },
   {
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
@@ -780,6 +780,13 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   if (action === "prompt_optimize") {
     const prompt = readStringField(args, "prompt").trim();
     if (!prompt || prompt.length > 8000) throw new ApiError(400, "invalid_prompt", "请输入不超过 8000 字的图片描述。");
+    const mediaKind = args.mediaKind === "video" ? "video" : "image";
+    const settings: Record<string, string> = {};
+    if (args.settings && typeof args.settings === "object" && !Array.isArray(args.settings)) {
+      for (const [key, value] of Object.entries(args.settings)) {
+        if (["model", "operation", "size", "quality", "style", "camera", "lighting", "pace", "resolution", "duration", "ratio", "generateAudio", "watermark"].includes(key) && typeof value === "string" && value.length <= 200) settings[key] = value;
+      }
+    }
     const referencePath = readStringField(args, "referencePath");
     let image: { bytes: Buffer; mimeType: string } | undefined;
     if (referencePath) {
@@ -788,7 +795,7 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
       if (!info.isFile() || info.size > MAX_IMAGE_INPUT_BYTES) throw new ApiError(400, "invalid_image", "参考图过大或不可用。");
       image = { bytes: await readFile(path), mimeType: imageMimeType(path) };
     }
-    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { prompt: await optimizeCodexImagePrompt(authorization, { prompt, image }) } };
+    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { prompt: await optimizeCodexImagePrompt(authorization, { prompt, image, mediaKind, settings }) } };
   }
   if (action === "image_edit_save") {
     if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");

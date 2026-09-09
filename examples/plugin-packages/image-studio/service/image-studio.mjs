@@ -1,4 +1,4 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, dirname, extname, resolve, sep } from "node:path";
 
@@ -88,12 +88,22 @@ function hostResult(value) {
 }
 
 export default async function createImageStudioService(runtime) {
+  const generationPath = sourcePath => resolve(runtime.storage.dataDir, `${createHash("sha256").update(sourcePath).digest("hex")}.generation.json`);
   async function loadImage(sourcePath) {
     const source = safeWorkspaceFile(runtime.workspace.root, sourcePath);
     const bytes = await readFile(source.absolutePath);
     if (!bytes.length || bytes.byteLength > MAX_IMAGE_BYTES) throw new Error("Image is empty or too large");
     const mimeType = imageMimeType(source.relativePath);
+    let generation = null;
+    try {
+      const metadataPath = generationPath(source.relativePath);
+      if ((await stat(metadataPath)).size < 64000) {
+        const record = JSON.parse(await readFile(metadataPath, "utf8"));
+        if (isRecord(record) && typeof record.prompt === "string" && typeof record.model === "string" && record.revision === createHash("sha256").update(bytes).digest("hex")) generation = record;
+      }
+    } catch { /* Imported and older images may not have generation metadata. */ }
     return {
+      generation,
       path: source.relativePath,
       name: basename(source.relativePath),
       mimeType,
@@ -107,9 +117,13 @@ export default async function createImageStudioService(runtime) {
     const result = hostResult(await runtime.host.callAction(reference, args));
     const path = text(Reflect.get(result, "path"));
     if (!path) throw new Error("Image provider did not return a workspace path");
+    const image = await loadImage(path);
+    const generation = text(args.prompt) ? { revision: image.revision, model: text(result.model), prompt: text(args.prompt), createdAt: new Date().toISOString(), size: text(args.size), quality: text(args.quality), sourcePath: text(args.sourcePath) } : image.generation;
+    if (generation) await writeFile(generationPath(image.path), JSON.stringify(generation), { flag: "wx" }).catch(error => { if (error.code !== "EEXIST") throw error; });
     return {
       ...result,
-      ...await loadImage(path),
+      ...image,
+      generation,
       provider: text(Reflect.get(result, "provider")),
       model: text(Reflect.get(result, "model")),
     };

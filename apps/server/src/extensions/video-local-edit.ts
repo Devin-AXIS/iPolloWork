@@ -41,7 +41,7 @@ async function videoFile(workspace: WorkspaceInfo, path: string) {
   const absolute = await realpath(await resolveWithinRoot(workspace.path, path));
   const info = await stat(absolute);
   if (!info.isFile() || !info.size || info.size > MAX_BYTES) throw new ApiError(400, "video_size", "本地编辑支持 100 MB 以内的非空视频。");
-  return { absolute, revision: await hashFile(absolute) };
+  return { absolute, bytes: info.size, revision: await hashFile(absolute) };
 }
 async function runBinary(name: "ffmpeg" | "ffprobe", args: string[], timeout: number) {
   try {
@@ -59,7 +59,7 @@ export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string) 
   const metadata = probeSchema.parse(JSON.parse(result.stdout));
   const video = metadata.streams.find(stream => stream.codec_type === "video");
   if (!video?.width || !video.height || video.width * video.height > 3840 * 2160) throw new ApiError(400, "video_dimensions", "请选择分辨率不超过 4K 的视频。");
-  return { path, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
+  return { path, bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
 }
 export function localVideoFilters(edit: Edit) {
   const { crop } = edit;

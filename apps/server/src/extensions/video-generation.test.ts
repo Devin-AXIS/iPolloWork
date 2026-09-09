@@ -350,57 +350,31 @@ test("video inspector resets incompatible fields and publishes the real host con
   runInNewContext(`publish()`,sandbox);
   expect(runInNewContext(`published.structuredContent`,sandbox)).toEqual({});
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
-  expect(html).toContain('"ui/message"');
+  expect(html).not.toContain('"ui/message"');
   expect(html).not.toContain('call("prepare-prompt"');
 });
 
-test("one click expands with the current session AI and automatically submits exactly once", async () => {
+test("generate directly submits the current prompt and settings without chat expansion", async () => {
   const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
-  const signature = html.slice(html.indexOf("function promptSignature()"), html.indexOf("\n", html.indexOf("function promptSignature()")));
-  const runner = signature + "\n" + html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
-  const calls: string[] = [], messages: unknown[] = [], timers: Array<() => void> = [];
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
-  const sandbox: Record<string,unknown> = { crypto: { randomUUID }, setTimeout(callback: () => void) { timers.push(callback); }, render() {}, publish() {}, tell() {}, refresh: async () => {},
-    request: async (method: string, args: unknown) => { calls.push(method); messages.push(args); return {}; },
-    call: async (action: string) => {
-      calls.push(action);
-      return { job: { id: "job", status: "running", message: "submitted" } };
-    },
+  const runner = html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
+  const calls: Array<{ action: string; args: Record<string, unknown> }> = [];
+  const sandbox = { crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
+    request() { throw new Error("Generation must not send chat messages"); },
+    call: async (action: string, args: Record<string, unknown>) => { calls.push({ action, args }); return { job: { id: "job", status: "running", message: "submitted" } }; },
   };
-  runInNewContext(definitions+"\n"+runner+"\nglobalThis.state=state;state.model='minimax-h3';state.prompt='夸父追日';state.style='史诗电影';state.host={sessionId:'session'};", sandbox);
+  runInNewContext(definitions+"\n"+runner+"\nglobalThis.state=state;state.model='minimax-h3';state.prompt='夸父追日';state.duration='5';state.ratio='16:9';state.host={sessionId:'session'};", sandbox);
+  expect(await runInNewContext("run()", sandbox)).toMatchObject({ job: { id: "job", status: "running" } });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({ action: "submit", args: { prompt: "夸父追日", duration: "5", ratio: "16:9", model: "minimax-h3" } });
+  runInNewContext("state.style='史诗电影'", sandbox);
   await runInNewContext("run()", sandbox);
-  expect(calls).toEqual(["ui/message"]);
-  expect(JSON.stringify(messages)).toContain("史诗电影");
-  expect(JSON.stringify(messages)).toContain("夸父追日");
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("正在扩写");
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:'wrong',prompt:'ignore'})",sandbox)).rejects.toThrow("过期");
-  const reply = "acceptExpandedPrompt({requestId:state.expansion.id,prompt:'integrated_multimodal_description: [Shot 1] Kuafu runs. overall_soundscape: wind. non_diegetic_music: drums.'})";
-  runInNewContext("globalThis.previousId=state.expansion.id",sandbox);
-  await runInNewContext(reply,sandbox);
-  expect(calls).toEqual(["ui/message", "submit"]);
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:previousId,prompt:'duplicate'})",sandbox)).rejects.toThrow("过期");
-  runInNewContext("state.firstFrame='new.png'",sandbox);
-  await runInNewContext("run()",sandbox);
-  runInNewContext("state.camera='特写'",sandbox);
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'stale'})",sandbox)).rejects.toThrow("过期");
-  expect(calls).toEqual(["ui/message", "submit", "ui/message"]);
-  runInNewContext("state.expansion=null",sandbox);
-  sandbox.request=async()=>({isError:true});
-  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("未接收");
-  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
-  sandbox.request=async()=>({});
-  await runInNewContext("run()",sandbox);
-  runInNewContext("state.host.sessionId='another-session'",sandbox);
-  await expect(runInNewContext(reply,sandbox)).rejects.toThrow("过期");
-  timers.at(-1)?.();
-  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
-  expect(html).toContain('"生成视频"');
-  expect(html).not.toContain("确认描述并生成");
+  expect(calls[1]?.args.prompt).toBe("夸父追日\n\n风格：史诗电影");
+  expect(runInNewContext("state.prompt", sandbox)).toBe("夸父追日");
+  runInNewContext("state.busy=true", sandbox);
+  await expect(runInNewContext("run()", sandbox)).rejects.toThrow("本次未提交新任务");
+  expect(calls).toHaveLength(2);
+  expect(html).not.toContain("accept_expanded_prompt");
 });
 
 test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {
@@ -483,4 +457,27 @@ test("Ark local video reuses default storage with a 24-hour signed read URL",asy
   const result=await videoRequest(config.workspaces[0],args,"ark-key",config,storageAuth);
   expect(uploads).toBe(1);expect(JSON.stringify(result.body)).toContain("x-oss-expires=86400");
   expect(JSON.stringify(result.body)).not.toContain("test-secret");expect(await readFile(join(root,"clip.mp4"))).toEqual(mp4);
+});
+
+
+test("video model defaults to prior generation without overriding explicit selection", async () => {
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const refresh = html.slice(html.indexOf("async function refresh()"), html.indexOf("function node("));
+  const state = { model: "", jobsLoaded: false, activeJobId: "", host: { launch: { source: { path: "" } } } };
+  const sandbox = { state, document: { activeElement: null }, $: () => ({ contains: () => false }), normalized() {}, render() {}, publish() {}, applyLaunch: async () => {},
+    call: async (action: string) => action === "status" ? { models: [{ id: "seedance-2.5" }, { id: "minimax-h3" }] } : { jobs: [
+      { id: "old", model: "seedance-2.5", createdAt: 1, status: "succeeded", path: "old.mp4" },
+      { id: "latest", model: "minimax-h3", createdAt: 2, status: "succeeded", path: "latest.mp4" },
+    ] },
+  };
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("minimax-h3");
+  state.model = "seedance-2.5";
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("seedance-2.5");
+  state.model = "";
+  state.jobsLoaded = false;
+  state.host.launch.source.path = "old.mp4";
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("seedance-2.5");
 });

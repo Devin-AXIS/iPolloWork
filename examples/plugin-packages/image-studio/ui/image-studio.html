@@ -41,9 +41,10 @@
     .mode-switch { display: flex; height: 36px; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(127,127,127,.09); }
     .mode-switch button { flex: 0 0 auto; height: 32px; border: 0; border-radius: 7px; background: transparent; padding: 0 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .mode-switch button.active { background: #fff; color: #171717; box-shadow: none; }
-    .top-actions { grid-column: 3; display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
+    .top-actions { grid-column: 3; display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; }
     .provider { display: flex; min-width: 0; max-width: 190px; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
-    .provider { position: relative; padding: 6px 0; }
+    .provider { position: relative; height: 32px; padding: 0 10px; border-radius: 8px; background: #f0f0f2; color: #18181b; }
+    .provider:hover { background: #e6e6e9; }
     .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
     .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
     .provider #modelMenu:disabled { cursor: wait; }
@@ -154,9 +155,10 @@
     .button.primary:hover { opacity: .86; }
     .button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
     .button.ghost:hover { border-color: transparent; background: rgba(127,127,127,.06); color: var(--text); }
-    .top-action { display: inline-flex; height: 32px; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 0 9px; color: var(--text); font-size: 12px; }
+    .top-action { display: inline-flex; height: 32px; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-solid); padding: 0 10px; color: var(--text); font-size: 12px; }
+    #fileInfo{position:absolute;right:16px;bottom:16px;z-index:7;width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface-solid);display:grid;place-items:center} #fileInfo[hidden]{display:none}
     .top-action:hover { background: rgba(127,127,127,.08); }
-    .top-action .tool-icon { width: 16px; height: 16px; stroke-width: 1.5; }
+    .top-action .tool-icon { width: 18px; height: 18px; stroke-width: 2; }
     .button.full { width: 100%; }
     .tool-options-popover {
       position: fixed; z-index: 6; display: grid; width: 236px; gap: 8px; padding: 10px 12px;
@@ -202,11 +204,12 @@
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 760px) {
-      .provider { position: relative; padding: 6px 0; }
+      .provider { position: relative; height: 32px; padding: 0 10px; border-radius: 8px; background: #f0f0f2; color: #18181b; }
     .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
     .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
     .provider #modelMenu:disabled { cursor: wait; }
-    .provider-name { display: none; }
+    .provider-name { display: block; }
+      .provider-status { display: none; }
       .top-action { width: 32px; justify-content: center; padding: 0; }
       .top-action span { display: none; }
       .toolbar { top: 14px; left: 14px; max-height: calc(100% - 28px); transform: none; overflow-x: hidden; overflow-y: auto; }
@@ -403,6 +406,7 @@
   </div>
   <input id="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp">
 
+  <button id="fileInfo" aria-label="文件信息" title="文件信息" hidden><svg data-lucide="info" class="lucide lucide-info" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button>
   <script>
     const HOST_CONTEXT_KEY = "ai.ipollo/workspace";
     const INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
@@ -682,6 +686,7 @@
       $("#modeSwitch").hidden = !hasSource && state.mode !== "generate";
       $("#topImport").hidden = !editingSource;
       $("#downloadImage").hidden = !editingSource;
+      $("#fileInfo").hidden = !editingSource;
       $("#empty").hidden = editingSource || state.mode === "generate";
       $("#generationGallery").hidden = state.mode !== "generate";
       renderGallery();
@@ -693,6 +698,7 @@
       positionToolOptions();
     }
     function setMode(mode) {
+      post({type:"ipollowork:image-studio:file-info-close"});
       state.mode = mode;
       if (state.aiMode !== "inpaint") {
         state.aiMode = "inpaint";
@@ -1189,6 +1195,7 @@
       if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:image-list" || state.busy) return;
       if (event.data.error) { $("#galleryStatus").textContent = event.data.error; return; }
       const paths = Array.isArray(event.data.paths) ? event.data.paths.filter(path => typeof path === "string").slice(0, 12) : [];
+      if(paths.length && !state.sourcePath && state.mode === "start"){setMode("generate");requestInspector();}
       setBusy(true); let loaded = 0;
       try {
         for (const path of paths.reverse()) {
@@ -1199,6 +1206,7 @@
       } finally { setBusy(false); }
     });
     async function renderImage(payload) {
+      post({type:"ipollowork:image-studio:file-info-close"});
       const image = new Image();
       image.src = payload.dataUrl;
       await image.decode();
@@ -1206,6 +1214,7 @@
       await rememberGalleryImage(payload, image);
       state.sourcePath = String(payload.path || ""); state.sourceName = String(payload.name || state.sourcePath.split("/").pop() || "image");
       state.sourceRevision = String(payload.revision || "");
+      state.sourceMetadata = payload;
       state.editResult = payload.editId ? { editId: payload.editId, originalPath: payload.originalPath } : null;
       state.confirmOverwrite = false;
       renderSaveReview();
@@ -1753,6 +1762,7 @@
     $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
     $("#emptyBack").addEventListener("click", () => setMode("start"));
     for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => $("#fileInput").click());
+    $('#fileInfo').onclick=()=>{const m=state.sourceMetadata||{},g=m.generation;const gcd=(a,b)=>b?gcd(b,a%b):a;const divisor=gcd(state.imageWidth,state.imageHeight);post({type:'ipollowork:image-studio:file-info',rows:[{label:'名称',value:state.sourceName},{label:'格式',value:m.mimeType||'图片'},{label:'文件大小',value:typeof m.bytes==='number'?`${(m.bytes/1024/1024).toFixed(2)} MB`:'未知'},{label:'尺寸',value:`${state.imageWidth} × ${state.imageHeight} px`},{label:'比例',value:`${state.imageWidth/divisor}:${state.imageHeight/divisor}`},{label:'生成模型',value:g?.model||'无生成记录'},{label:'生成时间',value:g?.createdAt||'无生成记录'}],prompt:g?.prompt||''});};
     $("#downloadImage").addEventListener("click", downloadCurrentImage);
     $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
     addEventListener("resize", () => { applyZoom(); positionToolOptions(); positionAnnotationHint(); });
@@ -1763,7 +1773,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.51" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.54" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
@@ -1777,6 +1787,7 @@
         applyProviderModels(provider);
       } catch { applyProviderModels({ models: [] }); }
       renderProvider();
+      post({type:"ipollowork:image-studio:list-images"});
       publishContext();
     }).catch((error) => { setStatus(error.message || tr("failed"), true); });
   </script>

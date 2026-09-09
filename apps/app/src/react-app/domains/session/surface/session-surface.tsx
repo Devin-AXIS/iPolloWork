@@ -819,6 +819,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
     window.addEventListener("ipollowork:add-image-reference", addImageReference);
     return () => window.removeEventListener("ipollowork:add-image-reference", addImageReference);
   }, [props.sessionId]);
+  useEffect(() => {
+    const addVideoReference = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const detail: unknown = event.detail;
+      if (!detail || typeof detail !== "object" || !("sessionId" in detail) || detail.sessionId !== props.sessionId
+        || !("path" in detail) || typeof detail.path !== "string" || !detail.path.trim()
+        || !("time" in detail) || typeof detail.time !== "number" || !Number.isFinite(detail.time) || detail.time < 0) return;
+      const current = getComposerDraft(useComposerStateStore.getState(), props.sessionId).trimEnd();
+      const reference = `@${encodeComposerMentionValue(detail.path)} （视频 ${detail.time.toFixed(1)} 秒处）`;
+      setComposerMentions(props.sessionId, { ...mentions, [detail.path]: "file" });
+      if (!current.includes(reference)) setComposerDraft(props.sessionId, `${current}${current ? "\n" : ""}${reference}\n`);
+      toast.success("已添加视频批注，请输入修改要求");
+    };
+    window.addEventListener("ipollowork:add-video-reference", addVideoReference);
+    return () => window.removeEventListener("ipollowork:add-video-reference", addVideoReference);
+  }, [mentions, props.sessionId, setComposerDraft, setComposerMentions]);
   const composerShellRef = useRef<HTMLDivElement>(null);
   const hydratedKeyRef = useRef<string | null>(null);
   const opencodeClient = useMemo(
@@ -1225,7 +1241,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const animationInstruction = animationSelectionInstruction(selectedAnimations);
     const voiceInstruction = voiceReferenceInstruction(selectedVoiceReference);
     const imageInstruction = imageStudioReferenceInstruction(selectedImageReference);
-    const capabilityInstruction = [starterCapability?.instruction, animationInstruction, voiceInstruction, imageInstruction]
+    const videoReference = Object.keys(mentions).find(path => mentions[path] === "file" && /\.(mp4|mov)$/i.test(path));
+    const videoInstruction = videoReference ? [
+      "Video workbench AI annotation: source video " + JSON.stringify(videoReference),
+      "For requested video content edits, use the active Video workbench tools via workspace_app.list_tools and workspace_app.call_tool. Preserve the selected model and compatible parameters; set the user's edit prompt and the source video reference using a supported reference/edit operation, then call generate_or_edit.",
+      "Do not claim submission or generation unless the tool returned an actual job.id. If submission is busy, fails, or the model cannot accept video references, report that limitation; do not describe the video as generating.",
+      "Use get_job_status to verify the task. Report pending status only with the real job id. Completion requires a succeeded job with an existing output path. Return that path to the user. Never overwrite the source video.",
+    ].join("\n") : null;
+    const capabilityInstruction = [starterCapability?.instruction, animationInstruction, voiceInstruction, imageInstruction, videoInstruction]
       .filter((value): value is string => Boolean(value))
       .join("\n\n");
     return {
@@ -1242,7 +1265,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 ? "video-voice-reference"
                 : selectedImageReference
                   ? "image-studio-reference"
-                  : starterCapability!.id,
+                  : videoReference ? "video-workbench-reference" : starterCapability!.id,
             instruction: capabilityInstruction,
           }
         : undefined,

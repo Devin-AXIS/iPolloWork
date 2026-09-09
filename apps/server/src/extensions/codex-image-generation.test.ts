@@ -133,6 +133,13 @@ describe("Background prompt optimization", () => {
     expect(rpc.calls[1]).toMatchObject({ method: "turn/start", params: { input: [{ type: "text", text: "cat" }, { type: "image", url: expect.stringContaining("data:image/png;base64,") }] } });
     expect(rpc.subscribed()).toBe(false);
   });
+  test("video optimization carries selected settings into the isolated turn", async () => {
+    const rpc = fakeRpc({ result: { type: "agentMessage", text: "A five-second tracking shot." } });
+    const settings = { duration: "5", ratio: "16:9", camera: "跟随主体", generateAudio: "false" };
+    await runCodexPromptOptimization(rpc, tmpdir(), { prompt: "行走的人", mediaKind: "video", settings });
+    expect(rpc.calls[0]).toMatchObject({ params: { developerInstructions: expect.stringContaining("Optimize the video description") } });
+    expect(rpc.calls[1]).toMatchObject({ params: { input: [{ type: "text", text: JSON.stringify({ description: "行走的人", settings }) }] } });
+  });
   test("rejects failed and empty results and cleans up timeouts", async () => {
     await expect(runCodexPromptOptimization(fakeRpc({ result: null }), tmpdir(), { prompt: "cat" })).rejects.toThrow("未收到");
     const rpc = fakeRpc({ silent: true });
