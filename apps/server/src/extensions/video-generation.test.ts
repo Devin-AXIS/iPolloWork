@@ -317,6 +317,20 @@ test("plugin manifest is valid and advertises only host-backed actions",async()=
   expect(result.manifest.contributions).toContainEqual(expect.objectContaining({type:"workspace-app",ref:"console"}));
 });
 
+test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
+  const callback=html.slice(html.indexOf("function openSettings()"),html.indexOf("async function recover("));
+  const edits:string[]=[];
+  const state={mode:"edit",previewPath:"",model:"minimax-h3",openRequest:""};
+  const sandbox={state,crypto:{randomUUID:()=> "open-settings"},publish:()=>{},mode:(value:string)=>{state.mode=value;},useSource:(path:string)=>edits.push(path)};
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(state).toMatchObject({mode:"generate",model:"minimax-h3",openRequest:"open-settings"});
+  expect(edits).toEqual([]);
+  state.mode="edit";state.previewPath="video/original.mp4";
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(edits).toEqual(["video/original.mp4"]);
+});
+
 test("video inspector resets incompatible fields and publishes the real host contract",async()=>{
   const {call}=await setup();
   const provider=(await call("status")).result;

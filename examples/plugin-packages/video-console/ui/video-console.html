@@ -239,7 +239,7 @@
         render();tell(`已导入 ${filename}，素材将在提交时发送给服务商。`);
       } finally {state.busy=false;render();publish();}
     }
-    function openSettings(){if(state.mode==="edit")useSource(state.previewPath);else{state.openRequest=crypto.randomUUID();publish();}}
+    function openSettings(){if(state.mode==="edit"&&state.previewPath)useSource(state.previewPath);else{mode("generate");state.openRequest=crypto.randomUUID();publish();}}
     async function recover(upstreamId){const job=state.jobs.find(item=>item.id===state.activeJobId);if(!job||state.busy)return;state.busy=true;render();try{await call('recover',{id:job.id,...(upstreamId?{upstreamId}:{})});await refresh();}catch(error){tell(error.message,true);}finally{state.busy=false;render();}}
     $('#recover').onclick=()=>{const job=state.jobs.find(item=>item.id===state.activeJobId);if(job?.upstreamId)void recover();else{$('#upstreamId').value='';$('#recoverDialog').showModal();}};
     $('#recoverDialog').onclose=()=>{if($('#recoverDialog').returnValue==='recover')void recover($('#upstreamId').value.trim());};
@@ -300,7 +300,7 @@
       if(message.method==="ui/resource-teardown") {disposed=true;clearTimeout(pollTimer);resizeObserver.disconnect();$('#player').pause();$('#player').removeAttribute('src');$('#player').load();if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error("工作台已关闭"));}pending.clear();respond({});}
     });
     async function poll(){try{if(!state.busy&&!document.hidden)await refresh();}catch(error){tell(error.message,true);}finally{if(!disposed)pollTimer=setTimeout(poll,10000);}}
-    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Workbench",version:"0.2.3"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
+    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Workbench",version:"0.2.4"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
       post({jsonrpc:"2.0",method:"ui/notifications/initialized",params:{}});state.host=host.hostContext?.[HOST]||{};document.documentElement.style.colorScheme=host.hostContext?.theme||"light dark";
       await refresh();await applyLaunch();pollTimer=setTimeout(poll,10000);
     }).catch(error=>tell(error.message,true));
