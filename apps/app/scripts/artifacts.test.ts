@@ -440,10 +440,20 @@ describe("getArtifactsFromMessages", () => {
       .filter(isConversationOutputArtifact);
     const groups = groupConversationOutputArtifacts(outputs);
 
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.bundled).toBe(true);
-    expect(groups[0]?.primary.path).toBe("hyperframes/launch/index.html");
-    expect(groups[0]?.artifacts.map((artifact) => artifact.path)).toContain("hyperframes/launch/src/scene.tsx");
-    expect(groups[1]?.primary.path).toBe("hyperframes/recap/index.html");
+    expect(groups).toHaveLength(3);
+    const project = groups.find((group) => group.primary.path === "hyperframes/launch/index.html");
+    expect(project?.bundled).toBe(true);
+    expect(project?.artifacts.map((artifact) => artifact.path)).toContain("hyperframes/launch/src/scene.tsx");
+    expect(groups.find((group) => group.primary.type === "image")?.bundled).toBe(false);
+    expect(groups.some((group) => group.primary.path === "hyperframes/recap/index.html")).toBe(true);
+  });
+
+  it("keeps all 18 media outputs independently reachable in one session directory", () => {
+    const paths = Array.from({ length: 18 }, (_, index) => `video/session/renders/output-${index}.${index % 2 ? "mp4" : "png"}`);
+    const outputs = getArtifactsFromMessages([], [], { registeredFiles: paths.map((path) => ({ path, size: 10, updatedAt: 100 })) });
+    const groups = groupConversationOutputArtifacts(outputs);
+    expect(groups).toHaveLength(18);
+    expect(groups.every((group) => !group.bundled && group.artifacts.length === 1)).toBe(true);
+    expect(new Set(groups.map((group) => group.primary.path))).toEqual(new Set(paths));
   });
 });

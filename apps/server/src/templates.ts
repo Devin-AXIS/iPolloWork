@@ -1484,6 +1484,17 @@ export async function listTemplateSessions(config: ServerConfig, workspace: Work
   return (await templateDb(config)).listSessions(workspace.id).map(snapshotFromRow);
 }
 
+export async function renameTemplateEntry(config: ServerConfig, workspace: WorkspaceInfo, from: string, to: string) {
+  const db = await templateDb(config);
+  for (const row of db.listSessions(workspace.id)) {
+    if (row.entry !== from) continue;
+    const manifest = templateManifestV1Schema.parse(JSON.parse(row.manifestJson));
+    const root = `${row.surface === "video" ? "video" : "design"}/${row.sessionId}/`;
+    if (!to.startsWith(root)) throw new ApiError(400, "invalid_rename", "工程入口必须保留在原工程目录。");
+    db.upsertSession({ ...row, entry: to, manifestJson: JSON.stringify({ ...manifest, entry: to.slice(root.length) }) });
+  }
+}
+
 function parseLegacyTemplateSessionState(
   raw: unknown,
   workspace: WorkspaceInfo,

@@ -724,22 +724,11 @@ export class CodexHarnessRuntime {
         : typeof input?.threadId === "string"
           ? input.threadId
           : null;
-      // Reading persisted history does not load the thread into app-server.
-      // Only start/resume/fork may establish an attached selection.
-      if (!threadId || !this.#attachedThreadSelections.has(threadId)) return;
-      const provider = typeof output?.modelProvider === "string"
-        ? output.modelProvider
-        : typeof thread?.modelProvider === "string"
-          ? thread.modelProvider
-          : "";
-      const model = typeof output?.model === "string"
-        ? output.model
-        : typeof thread?.model === "string"
-          ? thread.model
-          : "";
-      const awaitingFirstTurn = this.isAwaitingFirstTurn(threadId) && !(Array.isArray(thread?.turns) && thread.turns.length);
-      if (provider || model) this.#attachedThreadSelections.set(threadId, { provider, model, awaitingFirstTurn });
-      else if (!awaitingFirstTurn) this.#markThreadUsed({ threadId });
+      if (!threadId) return;
+      // Reading persisted history does not load a thread into app-server.
+      // Only start/resume/fork may populate the attached-selection cache;
+      // otherwise a history read after restart makes the next turn skip resume.
+      if (Array.isArray(thread?.turns) && thread.turns.length) this.#markThreadUsed({ threadId });
       return;
     }
     if (method !== "thread/start" && method !== "thread/resume" && method !== "thread/fork") return;

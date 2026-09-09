@@ -314,7 +314,7 @@ export function groupConversationOutputArtifacts(artifacts: ArtifactItem[]): Con
 
   for (const artifact of artifacts) {
     const directory = getArtifactBundleDirectory(artifact.path);
-    if (!directory) {
+    if (!directory || artifact.type === "image" || artifact.type === "video") {
       standalone.push({ id: artifact.id, primary: artifact, artifacts: [artifact], bundled: false });
       continue;
     }
@@ -595,6 +595,9 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
   }
 
   for (const file of options.registeredFiles ?? []) {
+    for (const previous of file.previousPaths ?? []) {
+      for (const [key, item] of artifacts) if (artifactPathMatchesTarget(item.path, previous)) artifacts.delete(key);
+    }
     const target = createWorkspaceFileOpenTarget({ path: file.path, size: file.size, mtimeMs: file.updatedAt });
     // A Studio result has no chat message. Keep it out of per-turn artifact lists.
     addArtifact(artifacts, file.path, "session-output", messages.length, sequence++, openTargets, target);
