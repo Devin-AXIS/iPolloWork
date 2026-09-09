@@ -412,6 +412,10 @@ describe("plugin service runtime", () => {
       }),
     }]);
     expect(generated).toMatchObject({ result: { path: importedPath, provider: "openai", model: "openai/gpt-image-2" } });
+    const generationRecord = JSON.parse(await readFile(join(pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "image-studio"), `${createHash("sha256").update(importedPath).digest("hex")}.generation.json`), "utf8"));
+    expect(generationRecord).toMatchObject({ model: "openai/gpt-image-2", quality: "high", size: "2048x1152" });
+    expect(generationRecord.prompt).toContain("A calm product image");
+    expect(generationRecord.revision).toBeTruthy();
 
     calls.length = 0;
     const selectionId = "ea6d95e3-352d-469f-bd48-2d0eaf0cb290";
