@@ -41,11 +41,15 @@
     .mode-switch { display: flex; height: 36px; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(127,127,127,.09); }
     .mode-switch button { flex: 0 0 auto; height: 32px; border: 0; border-radius: 7px; background: transparent; padding: 0 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
     .mode-switch button.active { background: #fff; color: #171717; box-shadow: none; }
-    .top-actions { display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
+    .top-actions { grid-column: 3; display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 4px; }
     .provider { display: flex; min-width: 0; max-width: 190px; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .provider { position: relative; padding: 6px 0; }
+    .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
+    .provider #modelMenu:disabled { cursor: wait; }
     .provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .provider-status { flex: 0 0 auto; }
-    .provider-dot { width: 7px; height: 7px; border-radius: 999px; background: #a1a1aa; }
+    .provider-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 999px; background: #a1a1aa; }
     .provider.ready .provider-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
     .shell { position: relative; min-height: 0; }
     .workspace { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; }
@@ -55,7 +59,39 @@
       background-image: radial-gradient(circle at 1px 1px, rgba(113,113,122,.13) 1px, transparent 0);
       background-size: 20px 20px;
     }
+    html.generating, html.generating body, html.generating .stage { background: transparent; }
     .stage.panning { cursor: grabbing; user-select: none; }
+    .generation-gallery { align-self: stretch; justify-self: stretch; min-height: 0; display: flex; flex-direction: column; width: min(100%, 808px); margin: 0 auto; padding: 20px 24px 12px; gap: 12px; }
+    .gallery-sections { display: grid; grid-template-columns: 1fr; gap: 12px; overflow: auto; min-height: 0; flex: 1; align-content: start; }
+    .gallery-section { min-width: 0; }
+    .gallery-heading { margin: 0 0 12px; font-size: 14px; font-weight: 600; height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .gallery-heading .gallery-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 20px; }
+    .gallery-heading .button { min-height: 28px; padding: 4px 8px; font-size: 12px; }
+    .gallery-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; overflow: auto; min-height: 0; padding: 0; align-content: start; grid-auto-rows: max-content; flex: 1; }
+    .image-card { min-width: 0; height: 190px; position: relative; border: 0; border-radius: 16px; background: #fff; color: #18181b; box-shadow: none; overflow: hidden; }
+    .generation-pending { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; font-size: 12px; line-height: 1.5; }
+    .generation-progress { appearance: none; width: 100%; max-width: 140px; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: #eeeeef; }
+    .generation-progress::-webkit-progress-bar { background: #eeeeef; border-radius: 999px; }
+    .generation-progress::-webkit-progress-value { background: #18181b; border-radius: 999px; transition: width 1s linear; }
+    .generation-progress::-moz-progress-bar { background: #18181b; border-radius: 999px; }
+    @media (prefers-reduced-motion: reduce) { .generation-progress::-webkit-progress-value { transition: none; } }
+    .image-card.selected::after { content: "✓"; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 8px; background: #18181b; color: #fff; pointer-events: none; }
+    .image-card > button:first-child { width: 100%; height: 146px; border: 0; background: transparent; padding: 8px; display: grid; place-items: center; }
+    .image-card img { max-width: 100%; width: 100%; height: 130px; object-fit: contain; border-radius: 8px; }
+    .card-actions { display: flex; justify-content: space-between; gap: 4px; height: 44px; padding: 8px; border-top: 0; }
+    .card-actions button { background: transparent; border: 0; padding: 6px; border-radius: 6px; font-size: 12px; }
+    .card-actions button:hover { background: var(--surface-muted); }
+    .reference-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 0 0 auto; }
+    @media (min-width: 481px) and (max-width: 640px) {
+      .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 480px) {
+      .card-actions { height: 42px; padding: 7px; }
+      .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .image-card { height: 142px; }
+      .image-card > button:first-child { height: 100px; }
+      .image-card img { height: 84px; }
+    }
     .empty { display: grid; justify-items: center; width: min(520px, calc(100% - 40px)); text-align: center; }
     .empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #fff; }
     .empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }
@@ -132,6 +168,13 @@
     input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: rgba(127,127,127,.2); }
     input[type="range"]::-webkit-slider-thumb { width: 8px; height: 16px; margin-top: -6px; appearance: none; border: 0; border-radius: 3px; background: var(--text); }
     .range-value { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .parameter-options { max-height: calc(100vh - 16px); overflow-y: auto; }
+    .parameter-options .range-value { width: 28px; padding: 3px 0; border: 1px solid var(--line); border-radius: 5px; background: transparent; text-align: center; appearance: textfield; }
+    .parameter-options .range-value::-webkit-inner-spin-button { appearance: none; }
+    .parameter-options input:focus-visible, .popover-grip:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px; }
+    .popover-grip { grid-column: 1 / -1; display: grid; place-items: center; width: 100%; height: 16px; border: 0; border-radius: 4px; padding: 0; background: transparent; cursor: grab; touch-action: none; }
+    .popover-grip::after { content: ""; width: 20px; height: 4px; border-radius: 4px; background: var(--line-strong); }
+    .popover-grip:active { cursor: grabbing; }
     .expand-controls { width: 248px; }
     .expand-row { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
     .expand-choices { display: flex; gap: 3px; }
@@ -159,7 +202,11 @@
     .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
     @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 760px) {
-      .provider-name { display: none; }
+      .provider { position: relative; padding: 6px 0; }
+    .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
+    .provider #modelMenu:disabled { cursor: wait; }
+    .provider-name { display: none; }
       .top-action { width: 32px; justify-content: center; padding: 0; }
       .top-action span { display: none; }
       .toolbar { top: 14px; left: 14px; max-height: calc(100% - 28px); transform: none; overflow-x: hidden; overflow-y: auto; }
@@ -168,6 +215,14 @@
       .operation-switch { flex-direction: column; }
       .tool-options-popover, .expand-controls { width: min(236px, calc(100vw - 92px)); }
       .toolbar-row::-webkit-scrollbar { display: none; }
+      .parameter-options { gap: 8px; padding: 6px; }
+      #brushOptions { width: 92px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #smartOptions { width: 52px; }
+      .parameter-options .tool-range { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
+      .parameter-options input[type="range"] { writing-mode: vertical-lr; direction: rtl; width: 32px; height: clamp(80px, 24vh, 160px); flex-shrink: 0; cursor: ns-resize; touch-action: none; }
+      .parameter-options input[type="range"]::-webkit-slider-runnable-track { width: 4px; height: 100%; }
+      .parameter-options input[type="range"]::-webkit-slider-thumb { width: 16px; height: 8px; margin-top: 0; margin-left: -6px; }
+      .parameter-options .range-value { width: 36px; }
     }
     @media (max-width: 420px) {
       .topbar { gap: 6px; padding: 0 8px; }
@@ -201,13 +256,21 @@
           <svg class="tool-icon" data-lucide="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
           <span data-i18n="downloadImage">下载</span>
         </button>
-        <div id="provider" class="provider"><span class="provider-dot"></span><span id="providerName" class="provider-name" data-i18n="model">图片模型</span><span id="providerStatus" class="provider-status" data-i18n="checking">检查中…</span></div>
+        <div id="provider" class="provider"><span class="provider-dot"></span><span id="providerName" class="provider-name" data-i18n="model">图片模型</span><span id="providerStatus" class="provider-status" data-i18n="checking">检查中…</span><svg data-lucide="chevron-down" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex: 0 0 16px" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg><button id="modelMenu" type="button" aria-label="切换图片模型" aria-haspopup="menu"></button></div>
       </div>
     </header>
 
     <div class="shell">
       <main class="workspace">
         <div id="stage" class="stage">
+          <section id="generationGallery" class="generation-gallery" hidden aria-label="生成图片历史">
+            <div class="gallery-sections">
+              <section class="gallery-section"><div class="gallery-heading"><h2 class="gallery-title">从产出文件添加</h2><button id="loadOutputImages" class="button ghost" type="button" aria-label="刷新产出图片">刷新</button></div><div id="galleryGrid" class="gallery-grid"></div></section>
+            </div>
+            <div class="reference-bar">
+              <span id="galleryStatus" role="status"></span>
+            </div>
+          </section>
           <section id="empty" class="empty">
             <div class="empty-orb" aria-hidden="true">
               <img alt="" src="data:image/png;base64,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">
@@ -302,12 +365,14 @@
             <svg class="tool-icon" data-lucide="maximize" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
           </button>
         </div>
-        <div id="smartOptions" class="tool-options-popover">
+        <div id="smartOptions" class="tool-options-popover parameter-options">
+          <button class="popover-grip" type="button" data-tooltip-key="moveParameters" aria-label="移动参数浮层"></button>
           <label class="tool-range"><span data-i18n="toleranceShort">范围</span><input id="tolerance" type="range" min="4" max="44" value="18"><span id="toleranceValue" class="range-value">18</span></label>
         </div>
-        <div id="brushOptions" class="tool-options-popover" hidden>
-          <label class="tool-range"><span data-i18n="brushSizeShort">大小</span><input id="brushSize" type="range" min="8" max="220" value="64"><span id="brushSizeValue" class="range-value">64</span></label>
-          <label class="tool-range"><span data-i18n="hardnessShort">硬度</span><input id="hardness" type="range" min="10" max="100" value="80"><span id="hardnessValue" class="range-value">80</span></label>
+        <div id="brushOptions" class="tool-options-popover parameter-options" hidden>
+          <button class="popover-grip" type="button" data-tooltip-key="moveParameters" aria-label="移动参数浮层"></button>
+          <label class="tool-range"><span data-i18n="brushSizeShort">大小</span><input id="brushSize" type="range" min="8" max="220" value="64"><input id="brushSizeValue" class="range-value" type="number" aria-label="画笔大小" min="8" max="220" value="64"></label>
+          <label class="tool-range"><span data-i18n="hardnessShort">硬度</span><input id="hardness" type="range" min="10" max="100" value="80"><input id="hardnessValue" class="range-value" type="number" aria-label="边缘硬度" min="10" max="100" value="80"></label>
         </div>
         <div id="expandOptions" class="tool-options-popover expand-controls" hidden>
           <div class="expand-row"><span data-i18n="expandDirection">方向</span><div class="expand-choices">
@@ -346,9 +411,9 @@
     const MAX_SELECTION_HISTORY_BYTES = 64 * 1024 * 1024;
     const state = {
       mode: "start", aiMode: "inpaint", tool: "smart", operation: "add", zoom: 1, zoomMode: "fit", drawing: false, moved: false,
-      start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
+      gallery: [], referencePath: "", galleryKey: "", generating: false, generationStartedAt: 0, start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
       imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
-      activeSubtract: false, temporaryTool: "", annotationMode: false, annotationPoint: null, busy: false, providerReady: false,
+      activeSubtract: false, temporaryTool: "", selectionTool: "smart", annotationMode: false, annotationPoint: null, busy: false, providerReady: false,
       expandDirection: "all", expandScale: 1.5,
       locale: "zh", hostContext: null, prompt: "", model: "openai/gpt-image-2", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto", selectionBlend: "natural",
       statusMessage: "", statusTone: "info", inspectorOpenRequest: "", inspectorRequestSequence: 0,
@@ -372,9 +437,9 @@
     const copy = {
       zh: {
         title: "图片工作台", newImage: "新图片", edit: "编辑", generate: "生成", checking: "检查图片模型…", ready: "图片模型已连接", unavailable: "图片模型未连接",
-        emptyTitle: "创建或编辑图片", emptyBody: "打开已有图片进行编辑，或从描述生成一张新图片。", generateEmptyTitle: "生成一张新图片", generateEmptyBody: "在右侧描述内容并设置画面参数。",
-        openImage: "打开图片", importImage: "导入图片", replaceImage: "替换图片", downloadImage: "下载", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
-        importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "描述想生成的画面内容…",
+        emptyTitle: "创建或编辑图片", emptyBody: "打开已有图片进行编辑，或从描述生成一张新图片。", generateEmptyTitle: "生成一张新图片", generateEmptyBody: "描述你想要的画面，让想法变成图片。",
+        moveParameters: "移动参数浮层", openImage: "打开图片", importImage: "导入图片", replaceImage: "替换图片", downloadImage: "下载", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
+        importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "添加参考图或直接描述想生成的画面内容...",
         selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
         model: "图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
         imageParameters: "生成图片", generateDescription: "描述内容并设置画面参数",
@@ -392,9 +457,9 @@
       },
       en: {
         title: "Image Studio", newImage: "New image", edit: "Edit", generate: "Generate", checking: "Checking image model…", ready: "Image model connected", unavailable: "Image model not connected",
-        emptyTitle: "Create or edit an image", emptyBody: "Open an existing image to edit it, or generate a new image from a description.", generateEmptyTitle: "Generate a new image", generateEmptyBody: "Describe the image and set visual controls in the panel on the right.",
-        openImage: "Open image", importImage: "Import image", replaceImage: "Replace image", downloadImage: "Download", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
-        importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Describe the image you want to generate…",
+        emptyTitle: "Create or edit an image", emptyBody: "Open an existing image to edit it, or generate a new image from a description.", generateEmptyTitle: "Generate a new image", generateEmptyBody: "Describe what you imagine and turn it into an image.",
+        moveParameters: "Move parameters", openImage: "Open image", importImage: "Import image", replaceImage: "Replace image", downloadImage: "Download", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
+        importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Add a reference image or describe the image you want to generate...",
         selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
         model: "Image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
         imageParameters: "Generate image", generateDescription: "Describe the image and set visual controls",
@@ -424,6 +489,8 @@
         node.dataset.tooltip = tr(node.dataset.tooltipKey);
         node.setAttribute("aria-label", tr(node.dataset.tooltipKey));
       });
+      $("#brushSize").ariaLabel = $("#brushSizeValue").ariaLabel = tr("brushSize");
+      $("#hardness").ariaLabel = $("#hardnessValue").ariaLabel = tr("hardness");
       $("#selectionClear").ariaLabel = tr("clearSelection");
       $("#selectionAskAi").ariaLabel = tr("askAi");
       $("#selectionErase").ariaLabel = tr("eraseAction");
@@ -448,10 +515,37 @@
       state.statusTone = error ? "error" : /已另存为|Saved as/.test(state.statusMessage) ? "success" : "info";
       publishContext();
     }
+    function imageProgressPercent() {
+      const seconds = Math.max(0, Math.floor((Date.now() - state.generationStartedAt) / 1000));
+      return Math.min(95, Math.round(95 * (1 - Math.exp(-seconds / 40))));
+    }
+    function imageProgressLabel() {
+      const seconds = Math.floor((Date.now() - state.generationStartedAt) / 1000);
+      const english = state.locale === "en";
+      if (seconds >= 120) return english ? `Still generating · ${seconds}s elapsed` : `仍在生成 · 已等待 ${seconds} 秒`;
+      const percent = imageProgressPercent();
+      return english ? `Generating · est. ${percent}%` : `生成中 · 预估 ${percent}%`;
+    }
+    function refreshImageProgress() {
+      const label = imageProgressLabel();
+      $("#busyText").textContent = label;
+      const pending = $("#galleryGrid").querySelector('[role="status"]');
+      if (pending) {
+        pending.querySelector(".generation-label").textContent = label;
+        const progress = pending.querySelector("progress");
+        progress.value = imageProgressPercent();
+        progress.setAttribute("aria-valuetext", label);
+      }
+      publishContext();
+    }
     function setBusy(busy, message = tr("processing")) {
       state.busy = busy;
       $("#busyText").textContent = message;
-      $("#busyLayer").classList.toggle("visible", busy);
+      $("#busyLayer").classList.toggle("visible", busy && state.mode !== "generate");
+      renderGallery();
+      $("#modelMenu").disabled = busy;
+      $("#editMode").disabled = busy;
+      $("#generateMode").disabled = busy;
       $("#selectionErase").disabled = busy;
       $("#expandRun").disabled = busy;
       renderSaveReview();
@@ -507,6 +601,11 @@
       }
       const selectionBlend = args.selectionBlend ?? state.selectionBlend ?? "natural";
       if (!["natural", "strict"].includes(selectionBlend)) throw new Error("selectionBlend must be natural or strict");
+      if (typeof args.referencePath === "string") {
+        if (args.referencePath && !state.gallery.some(entry => entry.path === args.referencePath)) throw new Error("请重新选择参考图");
+        state.referencePath = args.referencePath;
+        renderGallery();
+      }
       Object.assign(state, next, { model: model.id, selectionBlend });
       if (changedModel) state.statusMessage = "";
       for (const key of ["prompt", "style", "camera", "lighting"]) if (typeof args[key] === "string") state[key] = args[key];
@@ -540,7 +639,7 @@
       if (!model.available) return modelAuthorizationNotice(model);
       if (!model.configured) return modelAuthorizationNotice(model);
       if (!model.parameters) return state.locale === "en" ? "Update the image service and reopen Image Studio to load model parameters." : "请更新图片服务并重新打开工作台，以加载模型参数。";
-      const capability = state.mode === "edit" ? "edit" : "generate";
+      const capability = state.mode === "edit" || state.referencePath ? "edit" : "generate";
       if (!model.capabilities?.[capability]) return `${model.label} does not support ${capability}.`;
       const regionEdit = state.mode === "edit" && (state.aiMode === "expand" || Boolean(selectionBounds()));
       if (regionEdit && !model.capabilities?.mask && !model.capabilities?.region) {
@@ -556,6 +655,8 @@
       syncProviderState();
       const model = selectedModel();
       $("#provider").classList.toggle("ready", state.providerReady);
+      const menu = $("#modelMenu");
+      menu.disabled = state.busy;
       $("#providerName").textContent = model?.label || tr("model");
       $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("notAvailable");
       $("#provider").title = `${model?.label || tr("model")} · ${$("#providerStatus").textContent}`;
@@ -570,6 +671,7 @@
       $("#emptyBack").hidden = !generating || Boolean(state.sourcePath);
     }
     function renderMode() {
+      document.documentElement.classList.toggle("generating", state.mode === "generate");
       const editing = state.mode === "edit";
       const hasSource = Boolean(state.sourcePath);
       const editingSource = editing && hasSource;
@@ -577,10 +679,12 @@
       $("#generateMode").classList.toggle("active", !editing);
       $("#editMode").setAttribute("aria-selected", String(editing));
       $("#generateMode").setAttribute("aria-selected", String(!editing));
-      $("#modeSwitch").hidden = !hasSource;
+      $("#modeSwitch").hidden = !hasSource && state.mode !== "generate";
       $("#topImport").hidden = !editingSource;
       $("#downloadImage").hidden = !editingSource;
-      $("#empty").hidden = editingSource;
+      $("#empty").hidden = editingSource || state.mode === "generate";
+      $("#generationGallery").hidden = state.mode !== "generate";
+      renderGallery();
       $("#canvasWrap").classList.toggle("visible", editingSource);
       $("#toolbar").classList.toggle("visible", editingSource);
       $("#zoomControls").classList.toggle("visible", editingSource);
@@ -918,7 +1022,8 @@
       setAnnotationMode(false);
       if (!preserveAiMode && tool !== "hand" && state.aiMode !== "inpaint") selectAiMode("inpaint");
       state.tool = tool;
-      document.querySelectorAll("[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
+      if (tool !== "hand") state.selectionTool = tool;
+      document.querySelectorAll("button[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
       selectionCanvas.dataset.tool = tool;
       positionToolOptions();
     }
@@ -930,7 +1035,19 @@
       renderSelectionState();
       publishContext();
     }
+    const toolOptionPositions = new Map();
+    function toolOptionsKey(popover) {
+      return `${popover.id}:${matchMedia("(max-width: 760px)").matches ? "vertical" : "horizontal"}`;
+    }
+    function placeToolOptions(popover, left, top) {
+      popover.style.left = `${Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, left))}px`;
+      popover.style.top = `${Math.max(8, Math.min(innerHeight - popover.offsetHeight - 8, top))}px`;
+    }
     function positionToolOptions() {
+      const narrow = matchMedia("(max-width: 760px)").matches;
+      document.querySelectorAll('.parameter-options input[type="range"]').forEach((slider) => {
+        slider.setAttribute("aria-orientation", narrow ? "vertical" : "horizontal");
+      });
       const visible = state.mode === "edit" && Boolean(state.sourcePath) && !state.annotationMode;
       const smartOptions = $("#smartOptions");
       const brushOptions = $("#brushOptions");
@@ -940,17 +1057,14 @@
       expandOptions.hidden = !visible || state.aiMode !== "expand";
       const popover = state.aiMode === "expand" ? expandOptions : state.tool === "smart" ? smartOptions : state.tool === "brush" ? brushOptions : null;
       if (!popover || popover.hidden) return;
+      const saved = toolOptionPositions.get(toolOptionsKey(popover));
+      if (saved) { placeToolOptions(popover, saved.left, saved.top); return; }
       const toolbarRect = $("#toolbar").getBoundingClientRect();
-      const narrow = matchMedia("(max-width: 760px)").matches;
-      const anchor = state.aiMode === "expand" ? $('[data-ai-mode="expand"]') : $(`[data-tool="${state.tool}"]`);
+      const anchor = state.aiMode === "expand" ? $('[data-ai-mode="expand"]') : $(`button[data-tool="${state.tool}"]`);
       const anchorRect = anchor?.getBoundingClientRect() || toolbarRect;
-      const left = narrow
-        ? Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, toolbarRect.right + 10))
-        : Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, toolbarRect.left + toolbarRect.width / 2 - popover.offsetWidth / 2));
-      popover.style.left = `${left}px`;
-      popover.style.top = narrow
-        ? `${Math.max(8, Math.min(innerHeight - popover.offsetHeight - 8, anchorRect.top + anchorRect.height / 2 - popover.offsetHeight / 2))}px`
-        : `${toolbarRect.bottom + 10}px`;
+      const left = narrow ? toolbarRect.right + 8 : anchorRect.left;
+      const top = narrow ? anchorRect.top : toolbarRect.bottom + 8;
+      placeToolOptions(popover, left, top);
     }
     function positionAnnotationHint() {
       const hint = $("#annotationHint");
@@ -1013,11 +1127,83 @@
           .filter((entry) => entry[1] && entry[1] !== "auto").map(([key, value]) => key + ": " + value).join(". "),
       };
     }
+    async function rememberGalleryImage(payload, decoded) {
+      if (!payload.path || !payload.dataUrl) return;
+      const image = decoded || new Image();
+      if (!decoded) { image.src = payload.dataUrl; await image.decode(); }
+      const thumbnail = document.createElement("canvas");
+      const scale = Math.min(1, 240 / Math.max(image.naturalWidth, image.naturalHeight));
+      thumbnail.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      thumbnail.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      thumbnail.getContext("2d").drawImage(image, 0, 0, thumbnail.width, thumbnail.height);
+      state.gallery = [{ path: payload.path, name: payload.name || payload.path.split("/").pop(), thumbnail: thumbnail.toDataURL("image/webp", .7) }, ...state.gallery.filter(entry => entry.path !== payload.path)].slice(0, 24);
+      try { if (state.galleryKey) localStorage.setItem(state.galleryKey, JSON.stringify(state.gallery)); } catch { $("#galleryStatus").textContent = "历史记录暂时无法保存"; }
+      renderGallery();
+    }
+    function selectReference(path) {
+      if (state.busy) return;
+      state.referencePath = path;
+      setStatus(""); renderGallery(); publishContext();
+    }
+    function renderGallery() {
+      const grid = $("#galleryGrid");
+      grid.replaceChildren();
+      if (state.generating) {
+        const pending = document.createElement("div"); pending.className = "image-card generation-pending"; pending.setAttribute("role", "status");
+        const label = document.createElement("span"); label.className = "generation-label"; label.textContent = imageProgressLabel();
+        const progress = document.createElement("progress"); progress.className = "generation-progress"; progress.max = 100; progress.value = imageProgressPercent();
+        progress.setAttribute("aria-label", state.locale === "en" ? "Estimated image generation progress" : "预估生图进度");
+        progress.setAttribute("aria-valuetext", label.textContent);
+        pending.append(label, progress); grid.append(pending);
+      }
+      for (const entry of state.gallery) {
+        const card = document.createElement("article"); card.className = `image-card${entry.path === state.referencePath ? " selected" : ""}`;
+        const select = document.createElement("button"); select.type = "button"; select.disabled = state.busy;
+        select.setAttribute("aria-label", `用作参考图：${entry.name}`); select.setAttribute("aria-pressed", String(entry.path === state.referencePath));
+        const image = document.createElement("img"); image.src = entry.thumbnail; image.alt = entry.name; image.loading = "lazy"; select.append(image); select.onclick = () => selectReference(entry.path);
+        const actions = document.createElement("div"); actions.className = "card-actions";
+        for (const [label, action] of [["预览", () => previewGalleryImage(entry)], ["编辑图片", async () => { await loadWorkspaceImage(entry.path); if (state.sourcePath === entry.path) setMode("edit"); }]]) {
+          const button = document.createElement("button"); button.type = "button"; button.textContent = label; button.disabled = state.busy; button.onclick = action; actions.append(button);
+        }
+        card.append(select, actions); grid.append(card);
+      }
+      $("#loadOutputImages").disabled = state.busy;
+    }
+    addEventListener("message", event => {
+      if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:preview-closed") return;
+      const index = state.gallery.findIndex(entry => entry.path === event.data.path);
+      if (index >= 0) $("#galleryGrid").querySelectorAll("article .card-actions button:first-child")[index]?.focus();
+    });
+    async function previewGalleryImage(entry) {
+      setBusy(true, tr("loading"));
+      try { const payload = await callService("load-image", { sourcePath: entry.path }); post({ type: "ipollowork:image-studio:preview", src: payload.dataUrl, name: entry.name, path: entry.path }); }
+      catch (error) { setStatus(error.message, true); }
+      finally { setBusy(false); }
+    }
+    $("#loadOutputImages").onclick = () => {
+      if (state.busy) return;
+      $("#galleryStatus").textContent = "正在读取近期产出…";
+      post({ type: "ipollowork:image-studio:list-images" });
+    };
+    addEventListener("message", async event => {
+      if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:image-list" || state.busy) return;
+      if (event.data.error) { $("#galleryStatus").textContent = event.data.error; return; }
+      const paths = Array.isArray(event.data.paths) ? event.data.paths.filter(path => typeof path === "string").slice(0, 12) : [];
+      setBusy(true); let loaded = 0;
+      try {
+        for (const path of paths.reverse()) {
+          if (state.gallery.some(entry => entry.path === path)) { loaded++; continue; }
+          try { await rememberGalleryImage(await callService("load-image", { sourcePath: path })); loaded++; } catch { /* A missing file must not hide other outputs. */ }
+        }
+        $("#galleryStatus").textContent = loaded ? `已载入 ${loaded} 张近期图片` : "暂无可读取的图片产出";
+      } finally { setBusy(false); }
+    });
     async function renderImage(payload) {
       const image = new Image();
       image.src = payload.dataUrl;
       await image.decode();
       if (image.naturalWidth > MAX_CANVAS_DIMENSION || image.naturalHeight > MAX_CANVAS_DIMENSION) throw new Error(tr("tooLarge"));
+      await rememberGalleryImage(payload, image);
       state.sourcePath = String(payload.path || ""); state.sourceName = String(payload.name || state.sourcePath.split("/").pop() || "image");
       state.sourceRevision = String(payload.revision || "");
       state.editResult = payload.editId ? { editId: payload.editId, originalPath: payload.originalPath } : null;
@@ -1122,14 +1308,20 @@
       if (blocked) { setStatus(blocked, true); return { ok: false, message: blocked }; }
       const isEdit = state.mode === "edit";
       const sourcePath = state.sourcePath;
+      const referencePath = state.referencePath;
+      state.generating = !isEdit;
       const frozen = isEdit && state.aiMode !== "expand" && selectionBounds() ? captureSelection() : null;
       const sourceRevision = state.sourceRevision;
-      setBusy(true, tr("processing")); setStatus("");
+      state.generationStartedAt = Date.now();
+      setBusy(true, imageProgressLabel()); setStatus("");
+      const progressTimer = setInterval(refreshImageProgress, 1000);
       try {
         const prompt = state.mode === "edit" ? editPrompt(state.aiMode === "inpaint" ? userPrompt : "") : userPrompt;
         const args = actionArguments(prompt);
         let result;
-        if (state.mode === "generate") result = await callService("generate-image", args);
+        if (!isEdit) result = referencePath
+          ? await callService("edit-image", { ...args, sourcePath: referencePath })
+          : await callService("generate-image", args);
         else if (state.aiMode === "expand") {
           const target = await prepareExpandedEdit();
           result = await callService("edit-image", { ...args, ...target });
@@ -1143,15 +1335,16 @@
               selectionId: selection?.selectionId,
             });
         }
-        await renderImage(result); setMode("edit");
-        if (!result.editId) setStatus(tr("saved", { name: result.name || state.sourceName }));
+        if (isEdit) { await renderImage(result); }
+        else { await rememberGalleryImage(result); await renderImage(result); setMode("edit"); }
+        if (!result.editId) setStatus(state.locale === "en" ? "Image ready to edit." : "图片已生成，可以继续编辑。");
         return { ok: true, path: result.path };
       } catch (error) {
         const message = error instanceof Error ? error.message : tr("failed");
         setStatus(message, true);
         return { ok: false, message };
       }
-      finally { setBusy(false); }
+      finally { clearInterval(progressTimer); state.generationStartedAt = 0; state.generating = false; setBusy(false); }
     }
     function publishContext() {
       clearTimeout(contextTimer);
@@ -1160,12 +1353,6 @@
         const english = state.locale === "en";
         const autoLabel = state.mode === "edit" ? (english ? "Match original" : "沿用原图") : (english ? "Auto" : "自动");
         const selectOptions = {
-          model: state.models.map((model) => ({
-            value: model.id,
-            label: `${model.label}${!model.available ? ` · ${tr("notAvailable")}` : !model.configured ? ` · ${tr("notConnected")}` : ""}`,
-            disabled: !model.available,
-            ...(!model.configured && model.available ? { action: "open-authorizations" } : {}),
-          })),
           style: [
             ["auto", autoLabel], ["photorealistic", english ? "Photorealistic" : "写实摄影"], ["editorial", english ? "Editorial" : "杂志编辑视觉"],
             ["cinematic", english ? "Cinematic" : "电影感"], ["illustration", english ? "Illustration" : "插画"], ["minimal", english ? "Minimal" : "极简"],
@@ -1242,15 +1429,15 @@
             : { message: parameterNotice, tone: "info" };
         const inspector = state.mode === "generate" ? {
           schemaVersion: 1,
-          title: tr("imageParameters"),
-          description: tr("generateDescription"),
+          title: state.referencePath ? (english ? "Generate from this image" : "参考这张图片生成") : tr("generateEmptyTitle"),
+          description: tr("generateEmptyBody"),
           updateTool: "set_prompt",
           submitTool: "generate_or_edit",
-          submitLabel: tr("generateImage"),
+          submitLabel: state.generationStartedAt ? imageProgressLabel() : tr("generateImage"),
           submitDisabled: state.busy || Boolean(blocked),
           openRequestId: state.inspectorOpenRequest || undefined,
           fields: [
-            { id: "model", label: tr("model"), control: "select", value: state.model, live: true, options: selectOptions.model },
+            { id: "referencePath", label: english ? "Reference image" : "参考图", control: "image", value: state.referencePath, media: { kind: "image", importTool: "import_reference", readTool: "preview_reference" } },
             { id: "prompt", label: tr("instruction"), control: "textarea", value: state.prompt, placeholder: tr("promptPlaceholder") },
             ...(state.mode === "edit" && bounds ? [{ id: "selectionBlend", label: english ? "Edge blending" : "边缘衔接", control: "select", value: state.selectionBlend, live: true, options: [{ value: "natural", label: english ? "Natural · feather inward" : "自然融合 · 内侧渐变" }, { value: "strict", label: english ? "Strict · exact mask" : "严格边界 · 精确替换" }] }] : []),
             { id: "style", label: tr("style"), control: "select", value: state.style, live: true, options: selectOptions.style.map(option) },
@@ -1277,7 +1464,17 @@
     }
     async function applyHostContext(hostContext) {
       if (!hostContext || typeof hostContext !== "object") return;
+      if (typeof hostContext.workspaceId !== "string") return;
       state.hostContext = hostContext;
+      const galleryKey = `image-studio-gallery:${hostContext.workspaceId}:${hostContext.sessionId || "workspace"}`;
+      if (state.galleryKey !== galleryKey) {
+        state.galleryKey = galleryKey;
+        try {
+          const saved = JSON.parse(localStorage.getItem(galleryKey) || "[]");
+          state.gallery = Array.isArray(saved) ? saved.filter(entry => entry && typeof entry.path === "string" && typeof entry.thumbnail === "string" && entry.thumbnail.startsWith("data:image/")).slice(0, 24) : [];
+        } catch { state.gallery = []; }
+        renderGallery();
+      }
       const launch = hostContext.launch;
       if (launch?.intent === "edit-image" && launch.source?.path) await loadWorkspaceImage(String(launch.source.path));
     }
@@ -1296,6 +1493,8 @@
       if (message.method === "tools/list") {
         respond(message.id, { tools: [
           { name: "set_prompt", description: "Set Image Studio parameters. Style, camera and lighting are prompt guidance. Read the current inspector options for model-specific size/quality; unsupported values are rejected. ChatGPT login only supports prompt-based aspect intent, not native size/quality controls.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, model: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, aiMode: { type: "string", enum: ["inpaint", "expand", "erase"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, selectionBlend: { type: "string", enum: ["natural", "strict"] } } } },
+          { name: "import_reference", description: "Upload a reference image for generation.", inputSchema: { type: "object", properties: { dataUrl: { type: "string" }, filename: { type: "string" } }, required: ["dataUrl", "filename"] } },
+          { name: "preview_reference", description: "Read the selected reference thumbnail.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
           { name: "open_image", description: "Open a workspace-relative image in Image Studio.", inputSchema: { type: "object", properties: { sourcePath: { type: "string" } }, required: ["sourcePath"] } },
           { name: "generate_or_edit", description: "Run the current generation or edit after the user has reviewed the prompt and selection.", inputSchema: { type: "object", properties: {} } },
           { name: "clear_selection", description: "Clear the active mask so the next edit applies to the whole image.", inputSchema: { type: "object", properties: {} } },
@@ -1313,6 +1512,22 @@
           try { updateParameters(args); respond(message.id, toolResult("Image Studio parameters updated.")); }
           catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
           return;
+        }
+        if (message.params?.name === "preview_reference") {
+          const entry = state.gallery.find(entry => entry.path === args.path);
+          if (!entry) { respond(message.id, { isError: true, content: [{ type: "text", text: "参考图已不可用，请重新选择" }] }); return; }
+          const data = entry.thumbnail.split(",")[1];
+          const size = atob(data).length;
+          respond(message.id, { content: [], structuredContent: { mime: entry.thumbnail.slice(5, entry.thumbnail.indexOf(";")), data, size, nextOffset: size } }); return;
+        }
+        if (message.params?.name === "import_reference") {
+          if (state.busy) { respond(message.id, { isError: true, content: [{ type: "text", text: tr("processing") }] }); return; }
+          setBusy(true, tr("importing")); setStatus("");
+          void (async () => {
+            try { const payload = await callService("import-image", { dataUrl: args.dataUrl, filename: args.filename }); await rememberGalleryImage(payload); state.referencePath = payload.path; respond(message.id, toolResult("Reference image uploaded.")); }
+            catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
+            finally { setBusy(false); }
+          })(); return;
         }
         if (message.params?.name === "open_image") {
           void loadWorkspaceImage(String(args.sourcePath || "")).then(() => respond(message.id, toolResult("Image opened."))).catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] })); return;
@@ -1403,7 +1618,10 @@
       }
       state.drawing = false; state.start = state.last = state.gestureBase = null; renderSelectionState();
     });
-    document.querySelectorAll("[data-tool]").forEach((button) => button.addEventListener("click", () => selectTool(button.dataset.tool)));
+    document.querySelectorAll("button[data-tool]").forEach((button) => button.addEventListener("click", () => {
+      state.temporaryTool = "";
+      selectTool(button.dataset.tool === "hand" && state.tool === "hand" ? state.selectionTool : button.dataset.tool);
+    }));
     document.querySelectorAll("[data-ai-mode]").forEach((button) => button.addEventListener("click", () => selectAiMode(button.dataset.aiMode)));
     document.querySelectorAll("[data-operation]").forEach((button) => button.addEventListener("click", () => selectOperation(button.dataset.operation)));
     document.querySelectorAll("[data-expand-direction]").forEach((button) => button.addEventListener("click", () => {
@@ -1416,8 +1634,46 @@
       document.querySelectorAll("[data-expand-scale]").forEach((candidate) => candidate.classList.toggle("active", candidate === button));
       publishContext();
     }));
-    $("#brushSize").addEventListener("input", () => { $("#brushSizeValue").textContent = $("#brushSize").value; });
-    $("#hardness").addEventListener("input", () => { $("#hardnessValue").textContent = $("#hardness").value; });
+    document.querySelectorAll(".popover-grip").forEach((handle) => {
+      const popover = handle.parentElement;
+      let drag = null;
+      const rememberPosition = () => {
+        const rect = popover.getBoundingClientRect();
+        toolOptionPositions.set(toolOptionsKey(popover), { left: rect.left, top: rect.top });
+      };
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const rect = popover.getBoundingClientRect();
+        drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
+        handle.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!drag || drag.id !== event.pointerId) return;
+        placeToolOptions(popover, event.clientX - drag.x, event.clientY - drag.y);
+        rememberPosition();
+      });
+      for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+        handle.addEventListener(eventName, () => { drag = null; });
+      }
+      handle.addEventListener("keydown", (event) => {
+        const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key];
+        if (!delta) return;
+        event.preventDefault(); event.stopPropagation();
+        const rect = popover.getBoundingClientRect();
+        placeToolOptions(popover, rect.left + delta[0], rect.top + delta[1]);
+        rememberPosition();
+      });
+    });
+    for (const id of ["brushSize", "hardness"]) {
+      const slider = $(`#${id}`);
+      const number = $(`#${id}Value`);
+      slider.addEventListener("input", () => { number.value = slider.value; });
+      number.addEventListener("change", () => {
+        if (number.value !== "" && Number.isFinite(number.valueAsNumber)) slider.value = number.value;
+        number.value = slider.value;
+      });
+    }
     $("#tolerance").addEventListener("input", () => { $("#toleranceValue").textContent = $("#tolerance").value; });
     $("#undo").addEventListener("click", undoSelection);
     $("#redo").addEventListener("click", redoSelection);
@@ -1449,17 +1705,45 @@
       const command = event.metaKey || event.ctrlKey;
       if (command && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redoSelection() : undoSelection(); return; }
       if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redoSelection(); return; }
-      if (event.code === "Space" && !event.repeat && state.tool !== "hand") {
-        event.preventDefault(); state.temporaryTool = state.tool; selectTool("hand"); return;
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!event.repeat && state.tool !== "hand") { state.temporaryTool = state.tool; selectTool("hand"); }
+        return;
       }
-      if (event.key === "Escape") { hideTooltip(); setAnnotationMode(false); return; }
+      if (event.key === "Escape") { hideTooltip(); setAnnotationMode(false); if (state.tool === "hand") { state.temporaryTool = ""; selectTool(state.selectionTool); } return; }
       if (event.key === "0") { setZoom(fitZoom(), "fit"); return; }
       const shortcut = { w: "smart", b: "brush", r: "rectangle", o: "ellipse", h: "hand" }[event.key.toLowerCase()];
       if (shortcut) selectTool(shortcut);
     });
+    addEventListener("blur", () => {
+      if (!state.temporaryTool) return;
+      const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
+    });
     addEventListener("keyup", (event) => {
       if (event.code !== "Space" || !state.temporaryTool) return;
       const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
+    });
+    $("#modelMenu").addEventListener("click", () => {
+      if (state.busy) return;
+      const rect = $("#modelMenu").getBoundingClientRect();
+      post({ type: "ipollowork:image-studio:model-menu", value: state.model,
+        options: state.models.map(entry => ({ id: entry.id, label: entry.label + (entry.configured ? "" : state.locale === "en" ? " · Not connected" : " · 未连接"), disabled: !entry.available })),
+        left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+        manageLabel: state.locale === "en" ? "Manage connections…" : "管理连接…" });
+    });
+    addEventListener("message", event => {
+      if (event.source !== parent) return;
+      if (event.data?.type === "ipollowork:image-studio:model-menu-closed") { $("#modelMenu").focus(); return; }
+      if (event.data?.type !== "ipollowork:image-studio:select-model" || state.busy || typeof event.data.value !== "string") return;
+      const previousSize = state.size, previousQuality = state.quality;
+      try {
+        updateParameters({ model: event.data.value });
+        if (previousSize !== state.size || previousQuality !== state.quality) {
+          setStatus(state.locale === "en" ? "Output settings adjusted to this model." : "已按所选模型调整画幅或质量设置。");
+          state.statusTone = "success";
+        }
+      } catch (error) { setStatus(error.message, true); }
+      $("#modelMenu").focus();
     });
     $("#editMode").addEventListener("click", () => setMode("edit"));
     $("#generateMode").addEventListener("click", () => { setMode("generate"); requestInspector(); });
@@ -1479,7 +1763,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.29" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.51" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });

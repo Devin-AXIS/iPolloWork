@@ -724,7 +724,9 @@ export class CodexHarnessRuntime {
         : typeof input?.threadId === "string"
           ? input.threadId
           : null;
-      if (!threadId) return;
+      // Reading persisted history does not load the thread into app-server.
+      // Only start/resume/fork may establish an attached selection.
+      if (!threadId || !this.#attachedThreadSelections.has(threadId)) return;
       const provider = typeof output?.modelProvider === "string"
         ? output.modelProvider
         : typeof thread?.modelProvider === "string"

@@ -7,7 +7,7 @@ import type { AuthorizationAccess, AuthorizationServiceId } from "../authorizati
 import { resolveWithinRoot } from "../paths.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
-import { generateCodexImage } from "./codex-image-generation.js";
+import { generateCodexImage, optimizeCodexImagePrompt } from "./codex-image-generation.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 import { prepareImageSelection, saveImageSelection, loadImageSelection } from "./image-selection.js";
 import { rememberImageEditResult, saveImageEditResult, validateImageEditSource } from "./image-edit-results.js";
@@ -160,6 +160,13 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
       required: ["sourcePath", "sourceDataUrl", "maskDataUrl"],
       additionalProperties: false,
     },
+  },
+  {
+    extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
+    action: "prompt_optimize",
+    title: "Optimize image prompt",
+    description: "Optimize an image description in the background using ChatGPT login without creating a conversation or an image.",
+    inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 1, maxLength: 8000 }, referencePath: { type: "string" } }, required: ["prompt"], additionalProperties: false },
   },
   {
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
@@ -770,6 +777,19 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
 }
 
 export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
+  if (action === "prompt_optimize") {
+    const prompt = readStringField(args, "prompt").trim();
+    if (!prompt || prompt.length > 8000) throw new ApiError(400, "invalid_prompt", "请输入不超过 8000 字的图片描述。");
+    const referencePath = readStringField(args, "referencePath");
+    let image: { bytes: Buffer; mimeType: string } | undefined;
+    if (referencePath) {
+      const path = await resolveWithinRoot(workspaceForContext(config, context).path, referencePath);
+      const info = await stat(path);
+      if (!info.isFile() || info.size > MAX_IMAGE_INPUT_BYTES) throw new ApiError(400, "invalid_image", "参考图过大或不可用。");
+      image = { bytes: await readFile(path), mimeType: imageMimeType(path) };
+    }
+    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { prompt: await optimizeCodexImagePrompt(authorization, { prompt, image }) } };
+  }
   if (action === "image_edit_save") {
     if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
     const result = await saveImageEditResult(config, workspaceForContext(config, context), context.sessionId, args.editId, args.mode);

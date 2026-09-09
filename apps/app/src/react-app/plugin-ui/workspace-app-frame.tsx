@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
-import { ImagePlus, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
+import { ImagePlus, Undo2, Sparkles, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import type {
@@ -22,7 +22,10 @@ import type {
 } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ImagePreview } from "@/react-app/domains/session/artifacts/preview";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -206,6 +209,8 @@ type WorkspaceAppInspectorProps = {
   onClose: () => void;
   onCallTool: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
   onOpenAuthorizations: () => void;
+  composer?: boolean;
+  onOptimizePrompt?: (args: Record<string, string>) => Promise<string>;
 };
 
 function InspectorImagePreview({ path, readTool, onCallTool }: {
@@ -247,11 +252,11 @@ function InspectorImagePreview({ path, readTool, onCallTool }: {
   }, [path, readTool, onCallTool]);
   if (error) return <span role="status" className="px-3 text-[11px] text-destructive">{error}</span>;
   if (!src) return <Loader2 aria-label="正在加载图片" className="size-5 animate-spin text-muted-foreground" />;
-  return <img src={src} alt="已选择的图片预览" referrerPolicy="no-referrer" className="h-32 w-full object-contain"
+  return <img src={src} alt="已选择的图片预览" referrerPolicy="no-referrer" className="max-h-full w-full object-contain"
     onError={() => setError("图片无法预览，请检查链接或更换图片。")} />;
 }
 
-function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations }: WorkspaceAppInspectorProps) {
+function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations, onOptimizePrompt, composer = false }: WorkspaceAppInspectorProps) {
   const formRef = useRef<HTMLFormElement>(null);
   const activeRef = useRef(true);
   useEffect(() => { activeRef.current = true; return () => { activeRef.current = false; }; }, []);
@@ -259,6 +264,57 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
   const [updating, setUpdating] = useState(false);
   const [error, setError] = useState("");
   const [uploadingField, setUploadingField] = useState("");
+  const [originalPrompt, setOriginalPrompt] = useState<string | null>(null);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizationElapsed, setOptimizationElapsed] = useState(0);
+  const [optimizationCompleted, setOptimizationCompleted] = useState(false);
+  useEffect(() => {
+    if (!optimizing) return;
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => setOptimizationElapsed(Math.floor((Date.now() - startedAt) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [optimizing]);
+  useEffect(() => {
+    if (!optimizationCompleted) return;
+    const timer = window.setTimeout(() => setOptimizationCompleted(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [optimizationCompleted]);
+  const optimizationLabel = optimizing
+    ? optimizationElapsed >= 45
+      ? `仍在优化 · 已等待 ${optimizationElapsed} 秒`
+      : `优化中 · 预估 ${Math.min(95, Math.round(95 * (1 - Math.exp(-optimizationElapsed / 12))))}%`
+    : optimizationCompleted ? "已优化 · 100%" : "优化提示词";
+  const optimizationRequestRef = useRef<string | null>(null);
+  const [hasPrompt, setHasPrompt] = useState(Boolean(context.fields.find(field => field.id === "prompt")?.value));
+  const optimizePrompt = async () => {
+    const draft = formArguments();
+    const prompt = typeof draft.prompt === "string" ? draft.prompt.trim() : "";
+    if (!prompt || !onOptimizePrompt || optimizing) return;
+    const requestId = crypto.randomUUID();
+    optimizationRequestRef.current = requestId;
+    setOptimizationElapsed(0); setOptimizationCompleted(false);
+    setOptimizing(true); setUpdating(true); setError("");
+    try {
+      const result = await onCallTool(context.updateTool, draft);
+      if (result.isError) throw new Error(callToolResultText(result));
+      setUpdating(false);
+      const optimized = await onOptimizePrompt(draft);
+      if (optimizationRequestRef.current !== requestId || !activeRef.current) return;
+      const updated = await onCallTool(context.updateTool, { prompt: optimized });
+      if (updated.isError) throw new Error(callToolResultText(updated));
+      setOriginalPrompt(prompt);
+      setOptimizationCompleted(true);
+    } catch (error) {
+      if (optimizationRequestRef.current !== requestId || !activeRef.current) return;
+      setError(error instanceof Error ? error.message : "优化失败，请重试。");
+    } finally {
+      if (optimizationRequestRef.current === requestId && activeRef.current) {
+        optimizationRequestRef.current = null;
+        setOptimizing(false);
+        setUpdating(false);
+      }
+    }
+  };
 
   const upload = async (field: PluginUiInspectorContextV1["fields"][number], file: File) => {
     if (!field.media || updating || submitting || context.submitDisabled) return;
@@ -294,6 +350,9 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
 
   const submit = async () => {
     if (submitting || updating || context.submitDisabled) return;
+    optimizationRequestRef.current = null;
+    setOptimizing(false);
+    setOriginalPrompt(null);
     setSubmitting(true);
     setError("");
     try {
@@ -315,8 +374,10 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
     try {
       const update = await onCallTool(context.updateTool, { ...formArguments(), [fieldId]: value });
       if (update.isError) throw new Error(callToolResultText(update) || "Could not update the settings.");
+      return true;
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Could not update the settings.");
+      return false;
     } finally {
       setUpdating(false);
     }
@@ -326,25 +387,28 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
     ? { message: error, tone: "error" }
     : context.status;
 
+  const isAdvancedField = (field: PluginUiInspectorContextV1["fields"][number]) =>
+    field.advanced || (composer && ["style", "camera", "lighting", "quality"].includes(field.id));
+
   const renderField = (field: PluginUiInspectorContextV1["fields"][number]) => (
-    <div key={field.id} className="block space-y-1" data-inspector-field={field.id}>
-      <span className="text-[10px] text-muted-foreground">{field.label}</span>
+    <div key={field.id} className={cn("min-w-0 flex flex-col gap-1", composer && (field.control === "image" ? "w-20 shrink-0 self-start" : field.control === "textarea" ? "min-w-0 flex-1 basis-40" : "w-40 max-w-full shrink-0"))} data-inspector-field={field.id}>
+      <span className={cn("text-[10px] text-muted-foreground", composer && "text-xs", composer && (field.control === "textarea" || field.control === "image") && "sr-only")}>{field.label}</span>
       {field.control === "image" ? (
         <>
-          <div className="relative overflow-hidden rounded-xl border border-border bg-muted/30">
+          <div className={cn("relative overflow-hidden rounded-xl border border-border bg-muted/30", composer && "rounded-[16px] border-0 bg-white shadow-none")}>
             <button type="button" aria-label={`${field.value ? "更换" : "上传"}${field.label}`}
               disabled={submitting || updating || context.submitDisabled}
               onClick={() => formRef.current?.querySelector<HTMLInputElement>(`input[data-media-field="${field.id}"]`)?.click()}
-              className="flex h-32 w-full items-center justify-center rounded-xl text-center transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60">
+              className={cn("flex h-32 w-full items-center justify-center rounded-xl text-center transition-colors hover:bg-muted/70 focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-60", composer && "h-20 rounded-[16px]")}>
               {uploadingField === field.id ? <span role="status" className="flex items-center gap-2 text-xs"><Loader2 className="size-4 animate-spin" />正在上传…</span>
                 : field.value ? <InspectorImagePreview key={field.value} path={field.value} readTool={field.media?.readTool} onCallTool={onCallTool} />
-                : <span className="flex flex-col items-center gap-2 text-muted-foreground"><ImagePlus className="size-6" /><span className="text-xs">点击上传{field.label}</span><span className="text-[10px]">PNG / JPG / WebP · 最大 20 MB</span></span>}
+                : <span className="flex flex-col items-center gap-2 text-muted-foreground"><ImagePlus className="size-6" />{composer ? <span className="text-[11px]">参考图</span> : <><span className="text-xs">点击上传{field.label}</span><span className="text-[10px]">PNG / JPG / WebP · 最大 20 MB</span></>}</span>}
             </button>
             {field.value ? <Tooltip><TooltipTrigger render={<Button type="button" variant="secondary" size="icon"
-              className="absolute right-1.5 top-1.5 size-7 rounded-lg" aria-label={`移除${field.label}`}
+              className="absolute right-1.5 top-1.5 size-7 rounded-[8px]" aria-label={`移除${field.label}`}
               disabled={submitting || updating || context.submitDisabled} onClick={() => void updateLiveField(field.id, "")} />}><X className="size-3.5" /></TooltipTrigger><TooltipContent>移除{field.label}</TooltipContent></Tooltip> : null}
           </div>
-          <details className="text-[11px] text-muted-foreground">
+          {composer ? <input type="hidden" name={field.id} value={field.value} /> : <details className="text-[11px] text-muted-foreground">
             <summary className="cursor-pointer">链接 / 工作区路径</summary>
             <Input key={`${field.id}:${field.value}`} name={field.id} defaultValue={field.value} aria-label={`${field.label}路径`}
               placeholder="图片链接 / 工作区路径" disabled={submitting || updating}
@@ -352,7 +416,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
                 if (event.relatedTarget instanceof Node && formRef.current?.contains(event.relatedTarget)) return;
                 void updateLiveField(field.id, event.currentTarget.value);
               }} className="mt-2 h-8 text-xs" />
-          </details>
+          </details>}
         </>
       ) : field.control === "textarea" ? (
         <Textarea key={`${field.id}:${field.value}`} name={field.id} defaultValue={field.value}
@@ -363,7 +427,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
             if (event.relatedTarget instanceof Node && formRef.current?.contains(event.relatedTarget)) return;
             void updateLiveField(field.id, event.currentTarget.value);
           } : undefined}
-          className="min-h-28 resize-y" />
+          className={cn("min-h-28 resize-y", composer && "h-20 min-h-20 max-h-20 resize-none border-0 bg-transparent px-3 py-3 text-sm shadow-none focus-visible:ring-1")} />
       ) : (
         <Select key={`${field.id}:${field.value}:${JSON.stringify(field.options)}`} name={field.id}
           defaultValue={field.value} items={field.options} disabled={submitting || updating}
@@ -376,7 +440,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
             }
             void updateLiveField(field.id, value);
           } : undefined}>
-          <SelectTrigger className="w-full border-transparent bg-muted shadow-none hover:bg-muted/80" aria-label={field.label}>
+          <SelectTrigger className={cn("w-full border-transparent bg-muted shadow-none hover:bg-muted/80", composer && "rounded-[8px] bg-[#f0f0f2] text-zinc-900 hover:bg-[#e6e6e9]")} aria-label={field.label}>
             <SelectValue>{field.live ? field.options?.find(option => option.value === field.value)?.label : undefined}</SelectValue>
           </SelectTrigger>
           <SelectContent align="start">{field.options?.map(option => (
@@ -400,29 +464,38 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
   return (
     <StudioInspectorPanel
       ariaLabel={context.title}
-      header={<StudioInspectorHeader
+      className={composer ? "h-auto max-h-full w-full rounded-[16px] border-0 bg-white text-zinc-900 shadow-none [&_.text-muted-foreground]:text-zinc-500" : undefined}
+      header={composer ? undefined : <StudioInspectorHeader
         title={context.title}
         description={context.description}
         icon={<SlidersHorizontal />}
         closeLabel="Close settings"
         onClose={onClose}
       />}
-      bodyClassName="px-4 py-3.5"
+      bodyClassName={cn("px-4 py-3.5", composer && "@container")}
       testId="workspace-app-inspector"
     >
-      <form ref={formRef} className="space-y-3" onSubmit={(event) => { event.preventDefault(); void submit(); }}>
-        {context.fields.filter(field => !field.advanced).map(renderField)}
-        {context.fields.some(field => field.advanced) ? (
-          <details className="rounded-xl border border-border p-3">
-            <summary className="cursor-pointer text-xs font-medium">{context.advancedLabel ?? "Advanced"}</summary>
-            <div className="mt-4 space-y-4">{context.fields.filter(field => field.advanced).map(renderField)}</div>
+      <form ref={formRef} onInput={() => setHasPrompt(Boolean(formRef.current?.querySelector<HTMLTextAreaElement>('textarea[name="prompt"]')?.value.trim()))} className={composer ? "flex flex-wrap items-end gap-3" : "space-y-3"} onSubmit={(event) => { event.preventDefault(); void submit(); }}>
+        {composer ? <>
+          <div className="flex w-full items-start gap-3">
+            {context.fields.filter(field => !isAdvancedField(field) && field.control === "image").map(renderField)}
+            {context.fields.filter(field => !isAdvancedField(field) && field.control === "textarea").map(renderField)}
+          </div>
+          {context.fields.filter(field => !isAdvancedField(field) && field.control !== "image" && field.control !== "textarea").map(renderField)}
+        </> : context.fields.filter(field => !isAdvancedField(field)).map(renderField)}
+        {context.fields.some(field => isAdvancedField(field)) ? (
+          <details className={cn("rounded-xl border border-border p-3", composer && "order-10 w-full border-0 p-0")}>
+            <summary className="cursor-pointer text-xs font-medium">{context.advancedLabel ?? (composer ? "更多设置" : "Advanced")}</summary>
+            <div className={composer ? "mt-1 flex flex-wrap gap-3 bg-white" : "mt-4 space-y-4"}>{context.fields.filter(field => isAdvancedField(field)).map(renderField)}</div>
+            {composer && status?.tone === "info" ? <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{status.message}</p> : null}
           </details>
         ) : null}
 
-        {status ? (
+        {status && (!composer || status.tone !== "info") ? (
           <p
             className={cn(
-              "rounded-lg px-2.5 py-2 text-[11px] leading-4",
+              "rounded-[8px] px-2.5 py-2 text-[11px] leading-4",
+              composer && "order-20 w-full",
               status.tone === "error" && "bg-destructive/10 text-destructive",
               status.tone === "success" && "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300",
               status.tone === "info" && "bg-muted text-muted-foreground",
@@ -433,7 +506,15 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
           </p>
         ) : null}
 
-        <Button type="submit" className="w-full rounded-xl" disabled={submitting || updating || context.submitDisabled}>
+        {composer && onOptimizePrompt ? <div className="ml-auto flex items-center gap-2">
+          {originalPrompt !== null && !optimizing ? <Button type="button" variant="ghost" size="sm" disabled={updating || submitting || optimizing}
+            onClick={async () => { if (await updateLiveField("prompt", originalPrompt)) setOriginalPrompt(null); }}><Undo2 className="size-4" />撤销优化</Button> : null}
+          <Button type="button" variant="ghost" className="h-9 rounded-[8px]" disabled={!hasPrompt || updating || submitting || optimizing || context.submitDisabled}
+            aria-busy={optimizing} onClick={() => void optimizePrompt()}>
+            {optimizing ? <Loader2 className="size-4 animate-spin" /> : <Sparkles className="size-4" />}{optimizationLabel}
+          </Button>
+        </div> : null}
+        <Button type="submit" className={cn("w-full rounded-xl", composer && !onOptimizePrompt && "ml-auto", composer && "h-9 w-auto min-w-28 shrink-0 rounded-[8px] shadow-none")} disabled={submitting || updating || context.submitDisabled}>
           {submitting ? <Loader2 className="animate-spin" /> : null}
           {context.submitLabel}
         </Button>
@@ -447,6 +528,8 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const navigate = useNavigate();
   const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio";
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [modelMenu, setModelMenu] = useState<{ value: string; options: { id: string; label: string; disabled: boolean }[]; left: number; top: number; width: number; height: number; manageLabel: string } | null>(null);
+  const [imagePreview, setImagePreview] = useState<{ src: string; name: string; path: string } | null>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
   const hostContextRef = useRef<McpUiHostContext>({});
   const updateHostContext = useCallback((patch: Partial<McpUiHostContext>) => {
@@ -526,6 +609,39 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     const iframe = iframeRef.current;
     const receiveImageStudioReference = (event: MessageEvent) => {
       if (props.surface.pluginId !== "image-studio" || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
+      if (event.data.type === "ipollowork:image-studio:model-menu") {
+        const data = event.data;
+        if (typeof data.value !== "string" || typeof data.manageLabel !== "string" || !Array.isArray(data.options)
+          || typeof data.left !== "number" || typeof data.top !== "number" || typeof data.width !== "number" || typeof data.height !== "number"
+          || ![data.left, data.top, data.width, data.height].every(Number.isFinite)) return;
+        const options = data.options.flatMap((entry: unknown) => isRecord(entry) && typeof entry.id === "string" && typeof entry.label === "string" && typeof entry.disabled === "boolean"
+          ? [{ id: entry.id, label: entry.label, disabled: entry.disabled }] : []);
+        const bounds = iframe.getBoundingClientRect();
+        setModelMenu({ value: data.value, options, left: bounds.left + data.left, top: bounds.top + data.top, width: data.width, height: data.height, manageLabel: data.manageLabel });
+        return;
+      }
+      if (event.data.type === "ipollowork:image-studio:manage-connections") {
+        navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"));
+        return;
+      }
+      if (event.data.type === "ipollowork:image-studio:preview") {
+        if (typeof event.data.src !== "string" || event.data.src.length > 36 * 1024 * 1024 || !/^data:image\/(png|jpeg|webp);base64,/.test(event.data.src)
+          || typeof event.data.name !== "string" || typeof event.data.path !== "string") return;
+        setImagePreview({ src: event.data.src, name: event.data.name, path: event.data.path });
+        return;
+      }
+      if (event.data.type === "ipollowork:image-studio:list-images") {
+        if (!props.sessionId) {
+          iframe?.contentWindow?.postMessage({ type: "ipollowork:image-studio:image-list", paths: [] }, "*");
+          return;
+        }
+        void props.client.listSessionArtifacts(props.workspaceId, props.sessionId, null).then(page => {
+          iframe?.contentWindow?.postMessage({ type: "ipollowork:image-studio:image-list", paths: page.items.filter(item => /\.(png|jpe?g|webp)$/i.test(item.path)).slice(0, 12).map(item => item.path) }, "*");
+        }).catch(() => {
+          iframe?.contentWindow?.postMessage({ type: "ipollowork:image-studio:image-list", error: "无法读取产出文件，请重试" }, "*");
+        });
+        return;
+      }
       if (event.data.type !== "ipollowork:image-studio:ask-ai") return;
       const reference = parseImageStudioAiReference(event.data.reference);
       if (!reference || !props.sessionId) return;
@@ -537,7 +653,7 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     window.addEventListener("message", receiveImageStudioReference);
     return () => window.removeEventListener("message", receiveImageStudioReference);
-  }, [props.onDisplayModeChange, props.sessionId, props.surface.pluginId]);
+  }, [navigate, props.client, props.workspaceId, props.onDisplayModeChange, props.sessionId, props.surface.pluginId, resource]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -791,13 +907,14 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   }
 
   return (
-    <div className={cn("relative flex h-full min-h-0 w-full overflow-hidden bg-background", props.className)}>
+    <div className={cn("relative flex h-full min-h-0 w-full overflow-hidden bg-background", inspectorBelowAppToolbar && inspectorOpen && inspectorContext && "flex-col bg-[#f4f4f2] dark:bg-[#151515]", props.className)}
+      style={inspectorBelowAppToolbar && inspectorOpen && inspectorContext ? { backgroundImage: "radial-gradient(circle at 1px 1px, rgba(113,113,122,.13) 1px, transparent 0)", backgroundSize: "20px 20px", backgroundPosition: "0 52px" } : undefined}>
       <iframe
         ref={iframeRef}
         title={props.surface.label}
         className={cn(
           "h-full min-w-0 border-0 bg-background",
-          inspectorBelowAppToolbar ? "w-full" : "flex-1",
+          inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1",
         )}
         sandbox="allow-scripts allow-same-origin"
         allow={buildAllowAttribute(resource.resource.ui.permissions)}
@@ -806,14 +923,27 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       />
       {inspectorOpen && inspectorContext ? (
         inspectorBelowAppToolbar ? (
-          <div className="absolute bottom-0 right-0 top-[52px] z-10">
-            <WorkspaceAppInspector
-              key={`${props.surface.pluginId}:${props.sessionId}`}
-              context={inspectorContext}
-              onClose={() => setInspectorOpen(false)}
-              onCallTool={callWorkspaceAppTool}
-              onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
-            />
+          <div className="z-10 flex max-h-[65%] shrink-0 justify-center px-4 pb-4">
+            <div className="pointer-events-auto flex max-h-full w-full max-w-[760px] flex-col gap-4">
+              <WorkspaceAppInspector
+                key={`${props.surface.pluginId}:${props.sessionId}`}
+                context={inspectorContext}
+                composer
+                onClose={() => setInspectorOpen(false)}
+                onCallTool={callWorkspaceAppTool}
+                onOptimizePrompt={async args => {
+                  const response = await props.client.callExtensionAction({
+                    extensionId: "openai-image-generation", action: "prompt_optimize",
+                    args: { prompt: args.prompt, referencePath: args.referencePath },
+                    context: { workspaceId: props.workspaceId, directory: props.workspaceRoot },
+                  });
+                  if (!response.ok) throw new Error(response.message);
+                  if (!isRecord(response.result) || typeof response.result.prompt !== "string") throw new Error("未收到有效的优化结果。");
+                  return response.result.prompt;
+                }}
+                onOpenAuthorizations={() => navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"))}
+              />
+            </div>
           </div>
         ) : (
           <WorkspaceAppInspector
@@ -825,6 +955,37 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           />
         )
       ) : null}
+      {modelMenu ? <DropdownMenu open onOpenChange={open => {
+        if (!open) {
+          setModelMenu(null);
+          iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:image-studio:model-menu-closed" }, "*");
+        }
+      }}>
+        <DropdownMenuTrigger aria-label="切换图片模型" style={{ position: "fixed", left: modelMenu.left, top: modelMenu.top, width: modelMenu.width, height: modelMenu.height, opacity: 0 }} />
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuRadioGroup value={modelMenu.value} onValueChange={value => {
+            iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:image-studio:select-model", value }, "*");
+            setModelMenu(null);
+          }}>
+            {modelMenu.options.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} disabled={option.disabled}>{option.label}</DropdownMenuRadioItem>)}
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onClick={() => {
+            setModelMenu(null);
+            navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"));
+          }}>{modelMenu.manageLabel}</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu> : null}
+      <Dialog open={imagePreview !== null} onOpenChange={open => {
+        if (open) return;
+        iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:image-studio:preview-closed", path: imagePreview?.path }, "*");
+        setImagePreview(null);
+      }}>
+        <DialogContent className="flex h-[min(80dvh,800px)] flex-col gap-4 sm:max-w-[min(90vw,1000px)]" data-testid="image-studio-preview" aria-describedby={undefined}>
+          <DialogHeader className="shrink-0 pr-8"><DialogTitle className="truncate">{imagePreview?.name}</DialogTitle></DialogHeader>
+          {imagePreview ? <ImagePreview src={imagePreview.src} alt={imagePreview.name} className="min-h-0 flex-1 rounded-lg" /> : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

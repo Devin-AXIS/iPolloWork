@@ -361,7 +361,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
   });
 
-  test("unloads a previously read thread before changing its model provider", async () => {
+  test("resumes a history-only thread before sending and unloads it when changing providers", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
@@ -426,12 +426,20 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       await runtime.resumeThread({
         threadId: "thread-1",
         cwd: root,
+        modelProvider: "ipollowork-openai",
+        model: "gpt-5.6",
+      });
+
+      await runtime.resumeThread({
+        threadId: "thread-1",
+        cwd: root,
         modelProvider: "ipollowork-opencode",
         model: "nemotron-3-ultra-free",
       });
 
       expect((await readFile(logPath, "utf8")).trim().split("\n")).toEqual([
         "initialize",
+        "resume:ipollowork-openai/gpt-5.6",
         "initialize",
         "resume:ipollowork-opencode/nemotron-3-ultra-free",
       ]);
