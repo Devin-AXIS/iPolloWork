@@ -329,8 +329,15 @@ test("video inspector resets incompatible fields and publishes the real host con
   };
   runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
-  expect(result.model).toBe("seedance-2.5");
-  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
+  expect(result.model).toBe("minimax-h3");
+  expect(runInNewContext("state.resolution",sandbox)).toBe("0.5MP");
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
+  const manual=runInNewContext("state.model='seedance-2.5';normalized();publish();({model:state.model,inspector:published.structuredContent[INSPECTOR]})",sandbox);
+  expect(manual.model).toBe("seedance-2.5");
+  expect(parsePluginUiInspectorContext(manual.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
+  const unavailable=runInNewContext("state.model='';state.models=provider.models.filter(item=>item.id!=='minimax-h3');normalized();state.model",sandbox);
+  expect(unavailable).toBe("seedance-2.5");
+  runInNewContext("state.models=provider.models;",sandbox);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='generate';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
   const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");

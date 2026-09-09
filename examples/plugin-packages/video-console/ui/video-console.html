@@ -78,7 +78,7 @@
     function allowedRatios() { return ["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:(model()?.ratios||state.ratios); }
     function normalized() {
       const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
-      if(!model()) set("model",state.models[0]?.id||"");
+      if(!model()) set("model",state.models.find(item=>item.id==="minimax-h3")?.id||state.models[0]?.id||"");
       const current=model(); if(!current) return changed;
       if(state.ai&&!current.operations.some(op=>editOps.includes(op)))set("ai",false);
       if(!allowedOps().includes(state.operation)) set("operation",allowedOps()[0]);
