@@ -9,6 +9,7 @@ const featuredPluginIconSrc: Readonly<Record<string, string>> = {
   sentry: "/ext-sentry.svg",
   stripe: "/ext-stripe.svg",
   "video-agent": "/ext-video.png",
+  "video-console": "/ext-video-console.png",
 };
 
 export function resolveExtensionIconSrc(iconSrc: string): string {

@@ -4067,7 +4067,7 @@ export function SessionPage(props: SessionPageProps) {
       id: `workspace-app:${surface.id}`,
       label: surface.label,
       group: "studio",
-      icon: surface.pluginId === "image-studio" ? "image-studio" : "workspace-app",
+      icon: surface.pluginId === "image-studio" ? "image-studio" : surface.pluginId === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
       disabled: !props.selectedWorkspaceId,
     })),

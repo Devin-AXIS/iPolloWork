@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { StdioJsonRpcEvent } from "../stdio-json-rpc-runtime.js";
-import { codexImageBytes, generateCodexImage, runCodexImageTurn } from "./codex-image-generation.js";
+import { codexImageBytes, generateCodexImage, runCodexImageTurn, runCodexPromptOptimization } from "./codex-image-generation.js";
 
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aWQAAAABJRU5ErkJggg==", "base64");
 const image = { type: "imageGeneration", status: "completed", result: png.toString("base64"), failure: null };
@@ -21,6 +21,7 @@ function fakeRpc(options: { capability?: boolean; result?: unknown; silent?: boo
       if (method === "modelProvider/capabilities/read") return { imageGeneration: options.capability !== false };
       if (method === "thread/start") return { thread: { id: "image-thread" } };
       if (method === "turn/start" && !options.silent) {
+        if (options.result) queueMicrotask(() => listener?.({ type: "notification", method: "item/completed", params: { threadId: "image-thread", item: options.result } }));
         queueMicrotask(() => listener?.({ type: "notification", method: "turn/completed", params: {
           threadId: "image-thread", turn: options.turn ?? { status: "completed", items: options.result === null ? [] : [options.result ?? image] },
         } }));
@@ -122,4 +123,33 @@ describe("ChatGPT image generation", () => {
     await expect(codexImageBytes({ ...image, result: "", savedPath: join(root, "..", "outside.png") }, root)).rejects.toMatchObject({ code: "path_escape" });
     await expect(codexImageBytes({ type: "agentMessage", text: path }, root)).rejects.toMatchObject({ code: "codex_image_generation_failed" });
   });
+});
+
+describe("Background prompt optimization", () => {
+  test("uses an ephemeral text-only turn and returns its final text", async () => {
+    const rpc = fakeRpc({ result: { type: "agentMessage", text: "A quiet watercolor cat by a rainy window." } });
+    expect(await runCodexPromptOptimization(rpc, tmpdir(), { prompt: "cat", image: { bytes: png, mimeType: "image/png" } })).toContain("watercolor");
+    expect(rpc.calls[0]).toMatchObject({ method: "thread/start", params: { ephemeral: true, config: { "features.image_generation": false, "features.plugins": false } } });
+    expect(rpc.calls[1]).toMatchObject({ method: "turn/start", params: { input: [{ type: "text", text: "cat" }, { type: "image", url: expect.stringContaining("data:image/png;base64,") }] } });
+    expect(rpc.subscribed()).toBe(false);
+  });
+  test("video optimization carries selected settings into the isolated turn", async () => {
+    const rpc = fakeRpc({ result: { type: "agentMessage", text: "A five-second tracking shot." } });
+    const settings = { duration: "5", ratio: "16:9", camera: "跟随主体", generateAudio: "false" };
+    await runCodexPromptOptimization(rpc, tmpdir(), { prompt: "行走的人", mediaKind: "video", settings });
+    expect(rpc.calls[0]).toMatchObject({ params: { developerInstructions: expect.stringContaining("Optimize the video description") } });
+    expect(rpc.calls[1]).toMatchObject({ params: { input: [{ type: "text", text: JSON.stringify({ description: "行走的人", settings }) }] } });
+  });
+  test("rejects failed and empty results and cleans up timeouts", async () => {
+    await expect(runCodexPromptOptimization(fakeRpc({ result: null }), tmpdir(), { prompt: "cat" })).rejects.toThrow("未收到");
+    const rpc = fakeRpc({ silent: true });
+    await expect(runCodexPromptOptimization(rpc, tmpdir(), { prompt: "cat" }, 5)).rejects.toThrow("超时");
+    expect(rpc.subscribed()).toBe(false);
+  });
+});
+
+
+test("reports an upstream failed image without inventing a quota or authorization cause", async () => {
+  await expect(codexImageBytes({ type: "imageGeneration", status: "failed", result: "", failure: null }, tmpdir()))
+    .rejects.toMatchObject({ status: 502, message: "ChatGPT 生图服务返回失败，未提供具体原因。描述已保留，请稍后重试。" });
 });

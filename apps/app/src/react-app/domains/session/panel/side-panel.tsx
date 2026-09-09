@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  Clapperboard,
   FileText,
   Globe,
   Image,
@@ -92,7 +93,7 @@ export type SidePanelLauncherItem = {
   label: string;
   group: "content" | "studio";
   shortcut?: string;
-  icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "workspace-app";
+  icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "video-console" | "workspace-app";
   disabled?: boolean;
   onClick: () => void;
 };
@@ -173,7 +174,7 @@ export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem })
             ? <ToolCase className="size-[18px]" />
             : item.icon === "image-studio"
               ? <Image className="size-[18px]" />
-              : <PanelsTopLeft className="size-[18px]" />;
+              : item.icon === "video-console" ? <Clapperboard className="size-[18px]" /> : <PanelsTopLeft className="size-[18px]" />;
 
   return (
     <span
@@ -246,7 +247,7 @@ function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
   if (tab.type === "video") return <SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "workspace-app") return tab.surface.pluginId === "image-studio"
     ? <Image className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
-    : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+    : tab.surface.pluginId === "video-console" ? <Clapperboard className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
 }
@@ -866,6 +867,26 @@ export function SidePanel({
             </div>
           </div>
         </div>
+        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").map(tab => (
+          <div key={`${tab.sessionId}:${tab.id}`} className={cn("min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
+            <WorkspaceAppFrame
+              active={tab.id === activeTab?.id}
+              surface={tab.surface}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              sessionId={tab.sessionId}
+              launch={tab.launch}
+              placement="workspace"
+              displayMode={expanded ? "fullscreen" : "inline"}
+              onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
+              onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
+              onSendMessage={onSendWorkspaceAppMessage}
+              onRequestClose={() => closeTab(tab)}
+            />
+          </div>
+
+        )) : null}
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
@@ -916,22 +937,6 @@ export function SidePanel({
                 const result = await onSendWorkspaceAppMessage(input);
                 return typeof result === "boolean" ? result : result.accepted;
               } : undefined}
-            />
-          </div>
-        ) : activeTab?.type === "workspace-app" && client && workspaceId ? (
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <WorkspaceAppFrame
-              surface={activeTab.surface}
-              client={client}
-              workspaceId={workspaceId}
-              workspaceRoot={workspaceRoot}
-              sessionId={activeTab.sessionId}
-              launch={activeTab.launch}
-              placement="workspace"
-              displayMode={expanded ? "fullscreen" : "inline"}
-              onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
-              onSendMessage={onSendWorkspaceAppMessage}
-              onRequestClose={() => closeTab(activeTab)}
             />
           </div>
         ) : activeTab?.type === "artifact" ? (
