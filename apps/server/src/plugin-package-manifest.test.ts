@@ -319,12 +319,12 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.29");
+    expect(result.manifest.package?.version).toBe("0.1.51");
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
-    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(20);
+    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(21);
     expect(workspaceUi).toContain('data-lucide="wand-sparkles"');
     expect(workspaceUi).toContain('data-lucide="square-dashed"');
     expect(workspaceUi).toContain('data-lucide="circle-dashed"');
@@ -405,9 +405,9 @@ describe("plugin package manifest", () => {
     expect(state.models).toEqual([]);
     expect(state.model).toBe("");
     expect(state.providerReady).toBe(false);
-    expect(ui).toContain("options: selectOptions.model");
-    expect(ui).toContain('action: "open-authorizations"');
-    expect(ui).toContain("disabled: !model.available");
+    expect(ui).toContain('id="modelMenu"');
+    expect(ui).toContain('ipollowork:image-studio:model-menu');
+    expect(ui).toContain("disabled: !entry.available");
   });
 
   test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {
@@ -435,13 +435,7 @@ describe("plugin package manifest", () => {
     const inspect = (expression: string) => runInNewContext(expression, context);
     expect(inspect('inspector.fields.find(f => f.id === "size").options.map(o => o.value)')).toEqual(models[0]?.parameters.size?.values);
     expect(inspect('inspector.fields.find(f => f.id === "quality").value')).toBe("high");
-    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => o.action || null)')).toEqual([
-      "open-authorizations",
-      "open-authorizations",
-      "open-authorizations",
-      null,
-    ]);
-    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => Boolean(o.disabled))')).toEqual([false, false, false, true]);
+    expect(inspect('inspector.fields.some(f => f.id === "model")')).toBe(false);
     expect(inspect('update({model: models[2].id, prompt: "Kept draft", size: "1536x1024", quality: "high"})')).toMatchObject({ size: "2K", prompt: "Kept draft", style: "minimal" });
     expect(inspect('actionArguments()')).not.toHaveProperty("quality");
     expect(inspect('inspector.fields.some(f => f.id === "quality")')).toBe(false);

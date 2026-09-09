@@ -16,6 +16,10 @@ img:is([src$="/ext-design.png"], [src$="/ext-video.png"], [src$="/ext-image-stud
   scale: 1.4;
 }
 
+img[src$="/ext-video-console.png"] {
+  scale: 1.2;
+}
+
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
   html.ipollowork-electron & {

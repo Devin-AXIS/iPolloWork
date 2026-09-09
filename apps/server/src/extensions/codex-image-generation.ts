@@ -26,7 +26,17 @@ export async function codexImageBytes(item: unknown, root: string): Promise<Buff
   if (isRecord(item.failure) && item.failure.type === "usageLimitExceeded") {
     throw new ApiError(429, "codex_image_usage_limit", "ChatGPT/Codex 图片额度已用完，请等待额度重置，或选择 API 模型（独立计费）。");
   }
-  if (item.failure || item.status !== "completed") throw imageFailure("Codex 图片生成未完成，请稍后重试。");
+  if (item.failure || item.status !== "completed") {
+    console.warn("[codex-image] Incomplete image result", {
+      status: typeof item.status === "string" ? item.status : "unknown",
+      failureType: isRecord(item.failure) && typeof item.failure.type === "string" ? item.failure.type : null,
+      hasImageData: typeof item.result === "string" && item.result.length > 0,
+      hasSavedPath: typeof item.savedPath === "string" && item.savedPath.length > 0,
+    });
+    throw imageFailure(item.status === "failed"
+      ? "ChatGPT 生图服务返回失败，未提供具体原因。描述已保留，请稍后重试。"
+      : "ChatGPT 生图未完成，未返回图片。描述已保留，请稍后重试。");
+  }
   let bytes: Buffer;
   if (typeof item.result === "string" && item.result) {
     const base64 = item.result.replace(/^data:image\/png;base64,/, "");
@@ -162,6 +172,13 @@ export async function generateCodexImage(authorization: AuthorizationAccess, inp
   }
   if (generating) throw new ApiError(409, "codex_image_busy", "已有一张图片正在使用 ChatGPT 账号生成，请等待完成。");
   generating = true;
+  try { return await withCodexImageSession(authorization, (rpc, root) => runCodexImageTurn(rpc, root, input)); }
+  finally { generating = false; }
+}
+
+async function withCodexImageSession<T>(authorization: AuthorizationAccess, run: (rpc: StdioJsonRpcProcess, root: string) => Promise<T>): Promise<T> {
+  const session = await authorization.openAiBrowserSession?.();
+  if (!session?.accountId) throw new ApiError(401, "codex_image_login_required", "请先在授权中心登录 ChatGPT。");
   let root: string | undefined;
   let rpc: StdioJsonRpcProcess | undefined;
   try {
@@ -173,18 +190,55 @@ export async function generateCodexImage(authorization: AuthorizationAccess, inp
     await rpc.call("account/login/start", {
       type: "chatgptAuthTokens", accessToken: session.accessToken, chatgptAccountId: session.accountId,
     }, 30_000);
-    return await runCodexImageTurn(rpc, root, input);
+    return await run(rpc, root);
   } catch (error) {
     if (isApiError(error)) throw error;
     // RPC failures can include private process stderr. Keep those out of the UI.
     throw imageFailure("无法连接 Codex 生图服务。请检查网络、更新 Codex 运行时，或在授权中心重新登录 OpenAI。");
   } finally {
-    try {
-      await rpc?.close();
-      // root is created by mkdtemp above, never supplied by the caller.
-      if (root) await rm(root, { recursive: true, force: true });
-    } finally {
-      generating = false;
-    }
+    await rpc?.close();
+    // root is created by mkdtemp above, never supplied by the caller.
+    if (root) await rm(root, { recursive: true, force: true });
   }
+}
+
+
+// A text-only, ephemeral turn never touches the user's conversation history.
+export async function runCodexPromptOptimization(rpc: ImageRpc, root: string, input: { prompt: string; image?: { bytes: Buffer; mimeType: string } }, timeoutMs = 120_000): Promise<string> {
+  const started = await rpc.call("thread/start", {
+    ephemeral: true, cwd: root, modelProvider: "openai", approvalPolicy: "never", sandbox: "read-only",
+    config: { "features.image_generation": false, "features.plugins": false, web_search: "disabled" },
+    developerInstructions: "Optimize the image description. Preserve the user's subject, intent, language, style and explicit constraints. Use the attached reference image if present. Improve clarity, composition and lighting without inventing a different scene. Return only the optimized prompt, under 1200 characters. Do not use tools, generate images, access files, or ask questions.",
+  }, 30_000);
+  if (!isRecord(started) || !isRecord(started.thread) || typeof started.thread.id !== "string") throw imageFailure("无法启动提示词优化。");
+  const threadId = started.thread.id;
+  let unsubscribe = () => {};
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let text = "";
+  const completed = new Promise<string>((resolve, reject) => {
+    timer = setTimeout(() => reject(new ApiError(504, "prompt_optimization_timeout", "提示词优化超时，请重试。")), timeoutMs);
+    unsubscribe = rpc.subscribe(event => {
+      if (event.type === "request") { rpc.respond(event.id, { decision: "decline" }); reject(imageFailure("优化请求需要重新授权，请在授权中心检查连接。")); return; }
+      if (!isRecord(event.params) || event.params.threadId !== threadId) return;
+      const item = event.params.item;
+      if (event.method === "item/completed" && isRecord(item) && item.type === "agentMessage" && typeof item.text === "string") text = item.text.trim();
+      if (event.method === "turn/completed") {
+        const turn = event.params.turn;
+        if (isRecord(turn) && turn.status === "completed" && text && text.length <= 8000) resolve(text);
+        else reject(imageFailure("未收到有效的优化结果，请检查授权或稍后重试。"));
+      }
+    });
+  });
+  void completed.catch(() => undefined);
+  try {
+    await rpc.call("turn/start", { threadId, input: [
+      { type: "text", text: input.prompt, text_elements: [] },
+      ...(input.image ? [{ type: "image", url: `data:${input.image.mimeType};base64,${input.image.bytes.toString("base64")}` }] : []),
+    ] }, 30_000);
+    return await completed;
+  } finally { clearTimeout(timer); unsubscribe(); }
+}
+
+export async function optimizeCodexImagePrompt(authorization: AuthorizationAccess, input: { prompt: string; image?: { bytes: Buffer; mimeType: string } }): Promise<string> {
+  return withCodexImageSession(authorization, (rpc, root) => runCodexPromptOptimization(rpc, root, input));
 }
