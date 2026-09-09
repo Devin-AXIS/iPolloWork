@@ -45,6 +45,8 @@ async function openArtifactDb(config: ServerConfig) {
       CREATE INDEX IF NOT EXISTS session_artifacts_owner
         ON session_artifacts(workspace_id, session_id, sequence DESC);
     `);
+    sqlite.exec(`CREATE TABLE IF NOT EXISTS artifact_path_renames (workspace_id TEXT NOT NULL, old_path TEXT NOT NULL, new_path TEXT NOT NULL, PRIMARY KEY(workspace_id, old_path))`);
+    sqlite.exec(`CREATE INDEX IF NOT EXISTS artifact_path_renames_target ON artifact_path_renames(workspace_id, new_path)`);
     return sqlite;
   } catch (error) {
     sqlite.close();
@@ -112,8 +114,17 @@ export async function listSessionArtifacts(
     try {
       const rows = z.array(artifactRow).parse(statement.all(workspaceId, owner, cursor ?? Number.MAX_SAFE_INTEGER, PAGE_SIZE + 1));
       const page = rows.slice(0, PAGE_SIZE);
+      const aliases = new Map<string, string[]>();
+      if (page.length) {
+        const query = db.prepare(`SELECT old_path, new_path FROM artifact_path_renames WHERE workspace_id = ? AND new_path IN (${page.map(() => "?").join(",")})`);
+        try {
+          for (const row of z.array(z.object({ old_path: z.string(), new_path: z.string() })).parse(query.all(workspaceId, ...page.map(item => item.path)))) {
+            const paths = aliases.get(row.new_path) ?? []; paths.push(row.old_path); aliases.set(row.new_path, paths);
+          }
+        } finally { if ("finalize" in query) query.finalize(); }
+      }
       return {
-        items: page.map(({ path, size, updatedAt }) => ({ path, size, updatedAt })),
+        items: page.map(({ path, size, updatedAt }) => ({ path, size, updatedAt, ...(aliases.has(path) ? { previousPaths: aliases.get(path) } : {}) })),
         nextCursor: rows.length > PAGE_SIZE ? page[page.length - 1].sequence : null,
       };
     } finally {
@@ -122,4 +133,24 @@ export async function listSessionArtifacts(
   } finally {
     db.close();
   }
+}
+
+export async function recordArtifactRename(config: ServerConfig, workspaceId: string, from: string, to: string, artifact: {sessionId:string;size:number;updatedAt:number}) {
+  const db = await openArtifactDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const statements = [
+      ["UPDATE OR REPLACE session_artifacts SET path = ? WHERE workspace_id = ? AND path = ?", [to, workspaceId, from]],
+      ["UPDATE artifact_path_renames SET new_path = ? WHERE workspace_id = ? AND new_path = ?", [to, workspaceId, from]],
+      ["DELETE FROM artifact_path_renames WHERE workspace_id = ? AND old_path = ?", [workspaceId, to]],
+      ["INSERT OR REPLACE INTO artifact_path_renames VALUES (?, ?, ?)", [workspaceId, from, to]],
+    ] satisfies Array<[string, string[]]>;
+    for (const [sql, values] of statements) { const statement = db.prepare(sql); try { statement.run(...values); } finally { if ("finalize" in statement) statement.finalize(); } }
+    const register = db.prepare(`INSERT INTO session_artifacts(workspace_id, session_id, path, size, updated_at)
+      VALUES (?, ?, ?, ?, ?) ON CONFLICT(workspace_id, session_id, path) DO UPDATE SET size = excluded.size, updated_at = excluded.updated_at`);
+    try { register.run(workspaceId,sessionArtifactOwner(artifact.sessionId),to,artifact.size,artifact.updatedAt); }
+    finally { if ("finalize" in register) register.finalize(); }
+    db.exec("COMMIT");
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
 }

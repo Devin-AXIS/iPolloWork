@@ -3,7 +3,8 @@
 import type { UIMessage } from "ai";
 import { ArrowUpRightIcon, ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 import type { iPolloWorkServerClient, iPolloWorkWorkspaceCatalogEntry } from "@/app/lib/ipollowork-server";
 import { downloadBlobAsFile } from "@/app/lib/download";
@@ -48,6 +49,7 @@ import {
   type ArtifactItem,
   type ArtifactRequestOwnership,
   artifactPathMatchesTarget,
+  canOpenArtifact,
   canOpenArtifactInContext,
   canPreviewArtifact,
   getArtifactStudioTarget,
@@ -258,6 +260,24 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
   const [downloading, setDownloading] = useState(false);
+  const queryClient = useQueryClient();
+  const [renaming, setRenaming] = useState(false);
+  const [newName, setNewName] = useState(artifact.name);
+  const [renameBusy, setRenameBusy] = useState(false);
+  const renameOutput = async () => {
+    if (!client || !workspaceId || !sessionId || renameBusy) return;
+    setRenameBusy(true);
+    try {
+      await client.renameWorkspaceArtifact(workspaceId, { path: artifact.path, name: newName, sessionId });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["session-artifacts", client.baseUrl, workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: ["conversation-workspace-files", workspaceId] }),
+        queryClient.invalidateQueries({ queryKey: ["artifact-panel", workspaceId] }),
+      ]);
+      setRenaming(false);
+    } catch (error) { toast.error(error instanceof Error ? error.message : t("session.outputs.rename_failed")); }
+    finally { setRenameBusy(false); }
+  };
   const canOpen = canOpenArtifactInContext(artifact, artifactContext);
   const canPreview = canPreviewArtifact(artifact);
   const isVideoEntry = artifactContext?.kind === "video"
@@ -266,7 +286,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
   const opensCurrentVideoStudio = isVideoEntry && Boolean(onOpenVideoStudio);
   const canOpenVideoStudio = opensCurrentVideoStudio || studioTarget?.surface === "video";
   const canOpenDesignStudio = studioTarget?.surface === "design";
-  const canActivate = studioTarget
+  const canActivate = studioTarget || ((artifact.type === "image" || artifact.type === "video") && canOpenArtifact(artifact))
     ? true
     : artifactContext?.kind === "video" ? opensCurrentVideoStudio : canOpen;
   const presentedName = displayName?.trim() || artifact.name;
@@ -326,7 +346,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
     </>
   );
 
-  if (!canActivate) {
+  if (!canActivate && !(client && workspaceId && sessionId && artifact.target.kind === "file")) {
     return (
       <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
         {content}
@@ -337,8 +357,9 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
   return (
     <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")} data-testid="artifact-file-shell">
       <DescriptiveButton
+        disabled={!canActivate}
         data-testid="artifact-file-card"
-        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl px-2 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20")}
+        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl pl-2 pr-20 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -352,7 +373,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
       >
         {content}
       </DescriptiveButton>
-      {!compact ? (
+      {(
         <div className="pointer-events-none absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity group-hover/output:pointer-events-auto group-hover/output:opacity-100 group-focus-within/output:pointer-events-auto group-focus-within/output:opacity-100" data-testid="artifact-file-actions">
           {canDownload ? (
             <Button
@@ -382,7 +403,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
                 </Button>
               )}
             />
-            <DropdownMenuContent align="end" className="w-64">
+            <DropdownMenuContent align="end" className="w-64" positionerClassName="z-[80]">
               <DropdownMenuGroup>
                 <DropdownMenuLabel className="pb-1">
                   <span className="block truncate font-mono text-[11px] font-normal" title={artifact.path}>{artifact.path}</span>
@@ -392,6 +413,11 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
                 <Copy />
                 {t("session.outputs.copy_path")}
               </DropdownMenuItem>
+              {client && workspaceId && sessionId && artifact.target.kind === "file" ? (
+                <DropdownMenuItem onClick={() => { setNewName(artifact.name); setRenaming(true); }}>
+                  {t("session.outputs.rename")}
+                </DropdownMenuItem>
+              ) : null}
               {artifact.target.kind === "file" ? (
                 <DropdownMenuItem onClick={() => previewArtifact(presentedArtifact, { external: true, reveal: true })}>
                   <FolderOpen />
@@ -413,7 +439,17 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-      ) : null}
+      )}
+      <Dialog open={renaming} onOpenChange={(open) => { if (!renameBusy) setRenaming(open); }}>
+        <DialogContent className="max-w-md">
+          <DialogTitle>{t("session.outputs.rename")}</DialogTitle>
+          <DialogDescription>{t("session.outputs.rename_hint")}</DialogDescription>
+          <form onSubmit={(event) => { event.preventDefault(); void renameOutput(); }} className="grid gap-4">
+            <Input autoFocus aria-label={t("session.outputs.rename")} value={newName} onChange={(event) => setNewName(event.target.value)} disabled={renameBusy} />
+            <Button type="submit" disabled={renameBusy || !newName.trim()}>{renameBusy ? t("common.loading") : t("common.save")}</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -611,7 +647,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   const outputs = artifacts.filter(isConversationOutputArtifact);
   const outputGroups = groupConversationOutputArtifacts(outputs);
   const outputDisplayNames = artifactDisplayNames(
-    outputGroups.map((group) => group.primary),
+    outputs,
     (artifact) => artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle),
   );
   const workspaceFilesQuery = useQuery({
@@ -629,7 +665,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
   const directoryLoading = mode === "directory" && workspaceFilesQuery.isPending;
   const directoryUnavailable = mode === "directory" && (!client || !workspaceId);
   const subtitle = mode === "outputs"
-    ? outputs.length ? t("session.files.output_count", { count: outputs.length }) : t("session.outputs.empty")
+    ? outputs.length ? t("session.files.output_count", { count: outputGroups.length }) : t("session.outputs.empty")
     : workspaceFilesQuery.isError || directoryUnavailable
       ? t("session.files.load_failed")
       : directoryLoading
@@ -726,17 +762,23 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                 <ArtifactButton
                   artifact={group.primary}
                   displayName={outputDisplayNames.get(group.primary.id)}
-                  description={artifactCardDescription(group.primary, messages.map(messageText).join(" "))}
+                  description={artifactCardDescription(group.primary, group.primary.type === "image" || group.primary.type === "video" ? "" : messages.map(messageText).join(" "))}
                   client={client}
                   workspaceId={workspaceId}
                   sessionId={sessionId}
-                  artifactContext={group.primary.messageId === "session-output" ? undefined : artifactContext}
                   onOpenVideoStudio={onOpenVideoStudio}
                 />
                 {group.artifacts.length > 1 ? (
-                  <span className="pointer-events-none absolute bottom-2 right-2 rounded-md bg-muted px-1.5 py-0.5 text-[9px] font-medium text-muted-foreground">
-                    {t("session.outputs.bundle_count", { count: group.artifacts.length })}
-                  </span>
+                  <details className="mt-1 rounded-lg border border-border/60 p-2">
+                    <summary className="cursor-pointer text-xs text-muted-foreground" aria-label={t("session.outputs.expand_bundle")}>
+                      {t("session.outputs.bundle_count", { count: group.artifacts.length })}
+                    </summary>
+                    <div className="mt-2 grid gap-2">
+                      {group.artifacts.slice(1).map((artifact) => (
+                        <ArtifactButton key={artifact.id} artifact={artifact} displayName={outputDisplayNames.get(artifact.id)} client={client} workspaceId={workspaceId} sessionId={sessionId} compact />
+                      ))}
+                    </div>
+                  </details>
                 ) : null}
               </div>
             ))}

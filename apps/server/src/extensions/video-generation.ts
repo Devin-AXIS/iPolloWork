@@ -13,11 +13,12 @@ import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifact
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { claimVideoJobs, createVideoJob, getVideoJob, listVideoJobs, updateVideoJob, type VideoJob } from "./video-jobs.js";
 import { storageStatus, uploadWorkspaceFile } from "./storage.js";
+import { inspectLocalVideo, localVideoEditSchema, saveLocalVideo } from "./video-local-edit.js";
 
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
 const RH = "https://www.runninghub.ai";
-const H3_WORKFLOW = "2084935567606894593";
+const H3_WORKFLOW = "2084511826766811137";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
@@ -43,7 +44,7 @@ const catalog = [
 ];
 // Source of truth for both the inspector and validation. Do not send unsupported knobs.
 // Ark: https://www.volcengine.com/docs/82379/1520757
-// H3: https://www.runninghub.cn/post/2084935567606894593 (Aquila's open ComfyUI workflow)
+// H3: https://www.runninghub.cn/post/2084511826766811137 (native 25-step workflow).
 export function videoModelDefinition(id: string) {
   const model = catalog.find(item => item.id === id);
   if (!model) throw new ApiError(400, "video_model_invalid", "请选择已支持的视频模型。");
@@ -91,6 +92,8 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "recover", title: "Resume an existing video task without resubmitting", effect: "write", properties: { id: stringProperty, upstreamId: stringProperty } },
   { action: "import", title: "Import video console media", effect: "write", properties: { filename: stringProperty, dataUrl: stringProperty } },
   { action: "read", title: "Read a bounded workspace media chunk", effect: "read", properties: { path: stringProperty, offset: { type: "number" } } },
+  { action: "inspect", title: "Inspect a local video for toolbar editing", effect: "read", properties: { path: stringProperty } },
+  { action: "local-edit", title: "Save local toolbar video edits without AI", effect: "write", properties: z.toJSONSchema(localVideoEditSchema).properties ?? {} },
 ].map(action => ({ extensionId: VIDEO_GENERATION_EXTENSION_ID, action: action.action, title: action.title,
   description: action.title, effect: action.effect === "read" ? "read" as const : "write" as const,
   inputSchema: { type: "object", properties: action.properties, additionalProperties: false } }));
@@ -197,19 +200,22 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
     if (graph[id]?.class_type !== type) throw new ApiError(400, "video_workflow_changed", "H3 公开工作流的节点已变更，请更新软件后重试；尚未提交生成。");
     return graph[id].inputs;
   };
-  const target = node("131", "MiniMaxH3ImageToVideo");
-  const promptInput = node("134", "CR Prompt Text");
-  const timing = node("132", "ComfyMathExpression");
-  const output = node("92", "SaveVideo");
-  if (JSON.stringify(target.prompt) !== '["134",0]' || JSON.stringify(target.length) !== '["132",1]'
-    || timing.expression !== "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17") {
-    throw new ApiError(400, "video_workflow_changed", "H3 工作流的提示词或时长连接已变化，请更新软件后重试；尚未提交生成。");
+  const target = node("17", "MiniMaxH3ImageToVideo");
+  const output = node("7", "SaveVideo");
+  const sampler = node("11", "SamplerCustomAdvanced");
+  const guider = node("10", "BasicGuider");
+  if (JSON.stringify(sampler.latent_image) !== '["17",1]' || JSON.stringify(guider.conditioning) !== '["17",0]'
+    || typeof target.prompt !== "string" || node("3", "CLIPLoader").type !== "minimax"
+    || node("9", "BasicScheduler").steps !== 25) {
+    throw new ApiError(400, "video_workflow_changed", "H3 工作流的模型或生成连接已变化，已停止提交以避免错误生成。");
   }
-  node("139", "LoadImage"); node("206", "LoadImage");
+  node("24", "LoadImage"); node("25", "LoadImage");
   if (graph["300"] || graph["301"]) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
-  promptInput.prompt = args.prompt;
-  // H3 uses 24 fps and a 17n+5 frame grid: preserve the published duration expression.
-  timing["values.a"] = Number(args.duration);
+  target.prompt = args.prompt;
+  // Explicit conditioning: never retain the author's prompt, duration or reference images.
+  const frames = Math.max(5, Math.round(Number(args.duration) * 24));
+  target.length = frames + (5 - frames % 17 + 17) % 17;
+  node("16", "RandomNoise").noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
   output.format = "mp4"; output.codec = "h264";
   const megapixels = args.resolution === "1MP" ? 1 : 0.5;
   const imageNode = (id: string, path: string) => {
@@ -217,19 +223,31 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
     graph[id] = { class_type: path.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image: path } };
   };
   if (first) {
-    imageNode("139", first);
-    graph["300"] = { class_type: "ImageScaleToTotalPixels", inputs: { image: ["139", 0], megapixels, resolution_steps: 32, upscale_method: "nearest-exact" } };
+    imageNode("24", first);
+    graph["300"] = { class_type: "ImageScaleToTotalPixels", inputs: { image: ["24", 0], megapixels, resolution_steps: 32, upscale_method: "nearest-exact" } };
     graph["301"] = { class_type: "GetImageSize", inputs: { image: ["300", 0] } };
     target.first_frame = ["300", 0]; target.width = ["301", 0]; target.height = ["301", 1];
   } else {
-    delete target.first_frame; delete graph["139"];
+    delete target.first_frame;
     const [width, height] = args.ratio.split(":").map(Number);
     target.width = Math.round(Math.sqrt(megapixels * 1_000_000 * width / height) / 32) * 32;
     target.height = Math.round(Math.sqrt(megapixels * 1_000_000 * height / width) / 32) * 32;
   }
-  if (last) { imageNode("206", last); target.last_frame = ["206", 0]; }
-  else { delete target.last_frame; delete graph["206"]; }
-  return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: H3_WORKFLOW, workflow: JSON.stringify(graph), instanceType: "plus", addMetadata: false } };
+  if (last) { imageNode("25", last); target.last_frame = ["25", 0]; }
+  else delete target.last_frame;
+  // Submit only the selected output's dependency graph; disconnected demo media is excluded.
+  const reachable = new Set<string>();
+  const visit = (id: string) => {
+    if (reachable.has(id)) return;
+    if (!graph[id]) throw new ApiError(400, "video_workflow_changed", "H3 工作流缺少生成节点，尚未提交。");
+    reachable.add(id);
+    for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
+  };
+  visit("7");
+  if (!reachable.has("17")) throw new ApiError(400, "video_workflow_changed", "H3 输出未连接当前生成节点，尚未提交。");
+  const workflow = Object.fromEntries(Object.entries(graph).filter(([id]) => reachable.has(id)));
+  const nodeInfoList = [{ nodeId: "17", fieldName: "prompt", fieldValue: args.prompt }];
+  return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: H3_WORKFLOW, workflow: JSON.stringify(workflow), nodeInfoList, instanceType: "plus", addMetadata: false } };
 }
 export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess) {
   const signal = AbortSignal.timeout(120_000);
@@ -311,7 +329,8 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   const result = await jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal);
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
   const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
-  const video = outputs.find(item => item.nodeId === "92" && item.fileType.toLowerCase() === "mp4");
+  const outputNode = job.workflowId === H3_WORKFLOW ? "7" : "92";
+  const video = outputs.find(item => item.nodeId === outputNode && item.fileType.toLowerCase() === "mp4");
   if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
   return { status, results: [{ url: video.fileUrl }] };
 }
@@ -381,7 +400,9 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   const workspace = config.workspaces.find(item => item.id === workspaceId);
   if (!workspace) throw new ApiError(404, "workspace_not_found", "工作区不存在。");
   const sessionId = sessionArtifactOwner(context.sessionId);
-  if (!["jobs", "read"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (!["jobs", "read", "inspect"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (action === "inspect") return { ok: true, result: await inspectLocalVideo(workspace, z.object({ path: z.string() }).strict().parse(input).path) };
+  if (action === "local-edit") return { ok: true, result: await saveLocalVideo(config, workspace, sessionId, input) };
   if (action === "jobs") {
     const args = z.object({ before: z.number().int().positive().optional() }).parse(input);
     return { ok: true, result: { jobs: await listVideoJobs(config, workspace.id, sessionId, args.before) } };

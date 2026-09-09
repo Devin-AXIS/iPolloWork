@@ -1,8 +1,8 @@
 {
   "schemaVersion": 2,
   "id": "video-console",
-  "name": "视频控制台",
-  "description": "通过 Seedance 2.5 或 RunningHub MiniMax H3 生成和编辑视频，任务与产出保留在当前会话。",
+  "name": "视频工作台",
+  "description": "用工具栏剪辑、裁切、旋转和调整视频；通过独立 AI 入口生成或修改内容。",
   "category": "设计与创作",
   "defaultEnabled": true,
   "source": {
@@ -12,7 +12,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.1.4",
+  "version": "0.2.3",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -29,14 +29,14 @@
     },
     {
       "id": "workspace-write",
-      "reason": "保存导入素材、后台任务与生成的视频副本；不覆盖原视频。"
+      "reason": "保存剪辑副本；仅在用户确认后覆盖当前视频。"
     }
   ],
   "resources": [
     {
       "type": "ui",
       "id": "console",
-      "label": "视频控制台",
+      "label": "视频工作台",
       "path": "ui/video-console.html",
       "required": true,
       "ui": {
@@ -48,7 +48,7 @@
     {
       "type": "local-service",
       "id": "video-console-service",
-      "label": "视频控制台服务",
+      "label": "视频工作台服务",
       "path": "service/video-console.mjs",
       "required": true,
       "requires": [
@@ -57,7 +57,9 @@
         "action:video-generation/submit",
         "action:video-generation/recover",
         "action:video-generation/import",
-        "action:video-generation/read"
+        "action:video-generation/read",
+        "action:video-generation/inspect",
+        "action:video-generation/local-edit"
       ],
       "provides": [
         "action:status",
@@ -65,7 +67,9 @@
         "action:submit",
         "action:recover",
         "action:import",
-        "action:read"
+        "action:read",
+        "action:inspect",
+        "action:local-edit"
       ],
       "actions": [
         {
@@ -201,6 +205,145 @@
             },
             "additionalProperties": false
           }
+        },
+        {
+          "id": "inspect",
+          "title": "读取视频剪辑信息",
+          "description": "读取视频尺寸、时长和版本，不调用模型。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "local-edit",
+          "title": "保存工具栏剪辑",
+          "description": "用本地工具处理视频，支持覆盖或另存为，不调用模型。",
+          "effect": "write",
+          "inputSchema": {
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "type": "object",
+            "properties": {
+              "requestId": {
+                "type": "string",
+                "format": "uuid",
+                "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              },
+              "path": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "revision": {
+                "type": "string",
+                "pattern": "^[a-f0-9]{64}$"
+              },
+              "mode": {
+                "type": "string",
+                "enum": [
+                  "copy",
+                  "overwrite"
+                ]
+              },
+              "start": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 3600
+              },
+              "end": {
+                "type": "number",
+                "exclusiveMinimum": 0,
+                "maximum": 3600
+              },
+              "rotation": {
+                "anyOf": [
+                  {
+                    "type": "number",
+                    "const": 0
+                  },
+                  {
+                    "type": "number",
+                    "const": 90
+                  },
+                  {
+                    "type": "number",
+                    "const": 180
+                  },
+                  {
+                    "type": "number",
+                    "const": 270
+                  }
+                ]
+              },
+              "flip": {
+                "type": "boolean"
+              },
+              "speed": {
+                "type": "number",
+                "minimum": 0.5,
+                "maximum": 2
+              },
+              "volume": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "crop": {
+                "type": "object",
+                "properties": {
+                  "x": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "y": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1
+                  },
+                  "width": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "maximum": 1
+                  },
+                  "height": {
+                    "type": "number",
+                    "minimum": 0.05,
+                    "maximum": 1
+                  }
+                },
+                "required": [
+                  "x",
+                  "y",
+                  "width",
+                  "height"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "requestId",
+              "path",
+              "revision",
+              "mode",
+              "start",
+              "end",
+              "rotation",
+              "flip",
+              "speed",
+              "volume",
+              "crop"
+            ],
+            "additionalProperties": false
+          }
         }
       ]
     }
@@ -209,14 +352,14 @@
     {
       "type": "workspace-app",
       "ref": "console",
-      "label": "视频控制台",
-      "description": "生成、编辑、延长视频，查看本会话任务和产出。"
+      "label": "视频工作台",
+      "description": "通过工具栏编辑视频，或使用 AI 生成和修改内容。"
     },
     {
       "type": "conversation-template",
       "label": "生成或编辑视频",
-      "description": "在右侧打开视频控制台。",
-      "prompt": "打开视频控制台，帮助我生成或编辑视频；先检查已绑定模型，确认素材和参数，再提交任务，结果另存到本会话产出。",
+      "description": "在右侧打开视频工作台。",
+      "prompt": "打开视频工作台。常规剪辑使用工具栏，只有生成、延长或内容修改才调用 AI；保存前选择覆盖或另存为。",
       "mode": "video"
     }
   ],
@@ -224,19 +367,23 @@
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "name": "Video Console",
-        "description": "Generate and edit video with Seedance 2.5 or RunningHub MiniMax H3; keep tasks and outputs in the current session.",
+        "name": "Video Workbench",
+        "description": "Edit video with local toolbar tools, or use AI to generate and change content.",
         "category": "Design & Creative",
         "permissions": {
-          "workspace-read": { "reason": "Read video, image and audio references selected by the user." },
-          "workspace-write": { "reason": "Save imported media, persistent tasks and generated video copies without overwriting originals." }
+          "workspace-read": {
+            "reason": "Read video, image and audio references selected by the user."
+          },
+          "workspace-write": {
+            "reason": "Save edited copies; overwrite the current video only after user confirmation."
+          }
         },
         "resources": {
           "console": {
-            "label": "Video Console"
+            "label": "Video Workbench"
           },
           "video-console-service": {
-            "label": "Video Console Service"
+            "label": "Video Workbench Service"
           }
         }
       }
