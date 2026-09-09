@@ -3581,12 +3581,12 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     const restoredPanel = lastRightPanelViewRef.current;
-    if (restoredPanel === "launcher") {
+    if (!props.selectedSessionId || restoredPanel === "launcher") {
       setSessionPanelView("launcher");
       return;
     }
     setCurrentSidePanel(restoredPanel);
-  }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     openDesignTab();
@@ -4016,7 +4016,7 @@ export function SessionPage(props: SessionPageProps) {
       shortcut: "⌘T",
       icon: "web",
       onClick: addBrowserPanelTab,
-      disabled: !isElectronRuntime(),
+      disabled: !props.selectedSessionId || !isElectronRuntime(),
     },
     {
       id: "design",
@@ -4381,9 +4381,9 @@ export function SessionPage(props: SessionPageProps) {
   }, [props.selectedSessionId]);
 
   useEffect(() => {
-    if (!showProjectNoTasksState || !sidePanelOpen) return;
+    if (!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher") return;
     closeRightPane();
-  }, [closeRightPane, showProjectNoTasksState, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, showProjectNoTasksState, sidePanelOpen]);
 
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
@@ -4729,7 +4729,6 @@ export function SessionPage(props: SessionPageProps) {
                           aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           aria-pressed={sidePanelOpen}
-                          disabled={!props.selectedSessionId && !sidePanelOpen}
                           onClick={toggleRightPanel}
                           data-testid="right-panel-toggle"
                         >

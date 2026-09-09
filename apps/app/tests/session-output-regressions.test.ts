@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { runInNewContext } from "node:vm";
 import {
   artifactRequestNamingContext,
   buildWorkspaceFileTree,
@@ -15,6 +16,39 @@ import {
 import type { ArtifactItem } from "../src/lib/artifacts";
 
 describe("session output issue regressions", () => {
+  test("new conversations can open, close and reopen the launcher without a session", () => {
+    const source = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
+    const callback = source.slice(source.indexOf("const toggleRightPanel = useCallback(() => {") + "const toggleRightPanel = useCallback(() => {".length, source.indexOf("  const openDesignRailPane =", source.indexOf("const toggleRightPanel =")));
+    const body = callback.slice(0, callback.lastIndexOf("}, ["));
+    const opened: string[] = [];
+    const props: { selectedSessionId: string | null } = { selectedSessionId: null };
+    const state = {
+      props, sidePanelOpen: false,
+      effectiveSidePanelView: "",
+      lastRightPanelViewRef: { current: "panel" },
+      userOpenedSidebarWhileNarrowRef: { current: false },
+      userOpenedSidePanelWhileNarrowRef: { current: false },
+      autoCollapsedSidePanelRef: { current: null },
+      setSessionPanelView: (view: string) => { opened.push(view); state.sidePanelOpen = true; state.effectiveSidePanelView = view; },
+      setCurrentSidePanel: (view: string) => opened.push(view),
+      closeRightPane: () => { state.sidePanelOpen = false; state.effectiveSidePanelView = ""; },
+    };
+    const toggle = () => runInNewContext(`(() => {${body}})()`, state);
+    toggle();
+    expect(opened).toEqual(["launcher"]);
+    toggle();
+    expect(state.sidePanelOpen).toBe(false);
+    toggle();
+    expect(opened).toEqual(["launcher", "launcher"]);
+    expect(state.props.selectedSessionId).toBeNull();
+    state.sidePanelOpen = false;
+    state.props.selectedSessionId = "existing-session";
+    state.lastRightPanelViewRef.current = "panel";
+    toggle();
+    expect(opened.at(-1)).toBe("panel");
+    expect(source).not.toContain('disabled={!props.selectedSessionId && !sidePanelOpen}');
+    expect(source).toContain('!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher"');
+  });
   test("output bundles expand and media files route separately from HTML studios", () => {
     const artifactSource = readFileSync(new URL("../src/components/chat/artifact.tsx", import.meta.url), "utf8");
     const sessionPageSource = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
