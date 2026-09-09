@@ -23,7 +23,8 @@ describe("sidebar primary actions", () => {
     expect(sidebarSource).toContain('<CalendarDays className="!size-[15px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
     expect(sidebarSource).toContain('<ToyBrick className="!size-[17px]" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
     expect(sidebarSource).toContain('<ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
-    expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(5);
+    expect(sidebarSource).toContain('<Tags className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />');
+    expect(sidebarSource.match(/className=\{primarySidebarActionClass\}/g)).toHaveLength(6);
   });
 
   test("shares one navigation stroke token", () => {

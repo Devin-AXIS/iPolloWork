@@ -1,0 +1,12 @@
+Data Annotation Training Cloud
+Copyright 2026 Smart Future School
+
+This product includes software from OpenDataLab LabelU-Kit:
+https://github.com/opendatalab/labelU-Kit
+
+This product includes software from Mozilla PDF.js:
+https://github.com/mozilla/pdf.js
+
+LabelU-Kit and PDF.js are distributed under the Apache License 2.0.
+This plugin is independently developed and is not an official OpenDataLab or
+Mozilla product.

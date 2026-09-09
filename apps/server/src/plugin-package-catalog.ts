@@ -1,6 +1,7 @@
 import { access } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { REQUIRED_BUNDLED_PLUGIN_IDS } from "@ipollowork/types/plugins";
 
 import { ApiError } from "./errors.js";
 
@@ -18,9 +19,10 @@ export const bundledPluginPackageIds = [
   "image-studio",
   "video-console",
   "deepseek-harness",
+  ...REQUIRED_BUNDLED_PLUGIN_IDS,
 ] as const;
 
-export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console", ...REQUIRED_BUNDLED_PLUGIN_IDS] as const;
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

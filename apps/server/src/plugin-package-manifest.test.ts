@@ -96,6 +96,15 @@ const minimalManifest = {
 };
 
 describe("plugin package manifest", () => {
+  test("allows dynamic loopback iframe ports without allowing arbitrary HTTP hosts", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/labelu-data-annotation/ipollowork.plugin.json", import.meta.url)).json();
+    expect(validatePluginPackageManifest(manifest).success).toBe(true);
+    for (const domain of ["http://example.com:*", "http://127.0.0.1.evil.test:*", "http://*:*", "javascript:alert(1)"]) {
+      manifest.resources[0].ui.csp.frameDomains = [domain];
+      expect(validatePluginPackageManifest(manifest).success).toBe(false);
+    }
+  });
   test("accepts localized display metadata and rejects invalid locale references", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const localized = {

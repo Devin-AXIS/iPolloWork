@@ -3,6 +3,7 @@ import type { Dirent } from "node:fs";
 import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { z } from "zod";
+import { isRequiredBundledPlugin } from "@ipollowork/types/plugins";
 import type {
   PluginPromptCapabilitySummary,
   PluginUiResource,
@@ -1802,6 +1803,9 @@ async function setPluginPackageEnabledUnlocked(input: {
   pluginId: string;
   enabled: boolean;
 }) {
+  if (!input.enabled && isRequiredBundledPlugin(input.pluginId)) {
+    throw new ApiError(403, "plugin_package_required", "This bundled plugin must remain enabled");
+  }
   const state = await readState(input.serverConfig);
   const installed = state.packages[input.pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
@@ -1827,6 +1831,9 @@ async function setPluginPackageResourceEnabledUnlocked(input: {
   resourceId: string;
   enabled: boolean;
 }) {
+  if (!input.enabled && isRequiredBundledPlugin(input.pluginId)) {
+    throw new ApiError(403, "plugin_package_required", "Resources of this bundled plugin must remain enabled");
+  }
   const state = await readState(input.serverConfig);
   const installed = state.packages[input.pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
@@ -1872,6 +1879,9 @@ async function uninstallPluginPackageUnlocked(input: {
   serverConfig: ServerConfig;
   pluginId: string;
 }): Promise<PluginPackageUninstallResult> {
+  if (isRequiredBundledPlugin(input.pluginId)) {
+    throw new ApiError(403, "plugin_package_required", "This bundled plugin cannot be uninstalled");
+  }
   const state = await readState(input.serverConfig);
   const installed = state.packages[input.pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");

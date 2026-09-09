@@ -19,6 +19,7 @@ import {
   Plus,
   Search,
   SquarePen,
+  Tags,
   Trash2,
   RefreshCw,
   RotateCcw,
@@ -461,7 +462,7 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | null;
+  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | "data-annotation" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
@@ -469,6 +470,8 @@ export type AppSidebarProps = {
   onOpenSchedule: () => void;
   onOpenExtensions: () => void;
   onOpenPluginWorkshop: () => void;
+  onOpenDataAnnotation?: () => void;
+  dataAnnotationDisabled?: boolean;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -846,6 +849,20 @@ export function AppSidebar(props: AppSidebarProps) {
                   <ToolCase className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("plugin_workshop.title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenDataAnnotation}
+                disabled={!props.onOpenDataAnnotation || props.dataAnnotationDisabled}
+                isActive={props.activePrimaryItem === "data-annotation"}
+                className={primarySidebarActionClass}
+                data-testid="sidebar-data-annotation"
+              >
+                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <Tags className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
+                </span>
+                <span className="flex-1 truncate">{t("data_annotation.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

@@ -1,0 +1,8 @@
+node_modules/
+.DS_Store
+*.log
+# The desktop release ships the pinned upstream build without a customer download.
+!app/dist/
+!app/dist/**
+!service/dist/
+!service/dist/**

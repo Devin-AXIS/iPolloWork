@@ -9,11 +9,16 @@ const FIELD_ID_RE = /^[A-Za-z][A-Za-z0-9._-]*$/;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const RELATION_RE = /^(?:action|authorization|resource|service|workflow):[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
 const UI_URI_RE = /^ui:\/\/[a-z0-9]+(?:[._/-][a-z0-9]+)*$/;
-const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?)$/;
+const CSP_SOURCE_RE = /^(?:https:\/\/(?:\*\.)?[A-Za-z0-9.-]+(?::\d+)?|http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::(?:\d+|\*))?)$/;
 const RESERVED_EXTENSION_IDS = new Set(["google-workspace", "media-center", "openai-image-generation", "video-generation", "storage"]);
 export const PLUGIN_UI_RESOURCE_MIME_TYPE = "text/html;profile=mcp-app";
 export const PLUGIN_UI_HOST_CONTEXT_KEY = "ai.ipollo/workspace";
 export const PLUGIN_UI_INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
+// This distribution ships data annotation as a required local capability.
+export const REQUIRED_BUNDLED_PLUGIN_IDS = ["labelu-data-annotation"] as const;
+export function isRequiredBundledPlugin(pluginId: string): boolean {
+  return REQUIRED_BUNDLED_PLUGIN_IDS.some((id) => id === pluginId);
+}
 export const imageSelectionSnapshotSchema = z.object({
   selectionId: z.string().uuid(),
   sourcePath: z.string().min(1).max(1000),

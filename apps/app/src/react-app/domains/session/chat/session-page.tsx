@@ -1973,6 +1973,7 @@ export function SessionPage(props: SessionPageProps) {
     setSessionTypeRevision((value) => value + 1);
   }, []);
   const openVideoStudio = useCallback((sessionId: string, options?: { auto?: boolean; label?: string }) => {
+    if (options?.auto && activePanelTab?.type === "workspace-app") return;
     if (!options?.auto) prioritizeRightPanel();
     const videoTabId = `video:${sessionId}`;
     openTab(props.selectedSessionId ?? sessionId, {
@@ -1982,7 +1983,7 @@ export function SessionPage(props: SessionPageProps) {
       sessionId,
     });
     setSidePanelState(props.selectedSessionId ?? sessionId, "panel");
-  }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
+  }, [activePanelTab?.type, openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
   const openCurrentVideoStudio = useCallback((options?: { auto?: boolean; label?: string }) => {
     if (!props.selectedSessionId) return;
     const videoSessionId = currentTemplateSessionData?.manifest.surface === "video"
@@ -3344,6 +3345,31 @@ export function SessionPage(props: SessionPageProps) {
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
   }, [openWorkspaceApp, workspaceApps]);
+  const dataAnnotationOpening = useRef(false);
+  const openDataAnnotation = useCallback(() => {
+    const client = props.ipolloworkServerClient;
+    const workspaceId = props.runtimeWorkspaceId;
+    if (!client || !workspaceId || dataAnnotationOpening.current) return;
+    dataAnnotationOpening.current = true;
+    void (async () => {
+      const { items } = await client.listPluginPackages(workspaceId);
+      const surface = resolveInstalledPluginContributions(items).workspaceApps
+        .find((entry) => entry.pluginId === "labelu-data-annotation");
+      if (!surface) throw new Error(t("data_annotation.unavailable"));
+      const sessionId = (props.selectedSessionKnown ? props.selectedSessionId : null)
+        ?? selectedWorkspaceProject?.sessions[0]?.id
+        ?? await props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work");
+      if (!sessionId) throw new Error(t("plugin_workshop.create_session_failed"));
+      if (sessionId !== props.selectedSessionId) props.sidebar.onOpenSession(props.selectedWorkspaceId, sessionId);
+      openWorkspaceApp(surface, undefined, sessionId);
+      setTemplateMarketOpen(false);
+      setMainWorkspaceView(null);
+      setSidePanelState(sessionId, "panel");
+      prioritizeRightPanel();
+    })().catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : t("data_annotation.unavailable"));
+    }).finally(() => { dataAnnotationOpening.current = false; });
+  }, [openWorkspaceApp, prioritizeRightPanel, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedSessionKnown, props.selectedWorkspaceId, props.sidebar, selectedWorkspaceProject, setSidePanelState]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
     let surface = workspaceApps.find((entry) => entry.pluginId === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
@@ -4537,7 +4563,9 @@ export function SessionPage(props: SessionPageProps) {
               ? "extensions"
               : activePanelTab?.type === "plugin-studio"
                 ? "plugin-workshop"
-                : null}
+                : activePanelTab?.type === "workspace-app" && activePanelTab.surface.pluginId === "labelu-data-annotation"
+                  ? "data-annotation"
+                  : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
           onOpenHelp={props.onOpenHelp}
@@ -4548,6 +4576,8 @@ export function SessionPage(props: SessionPageProps) {
           onOpenSchedule={openGlobalSchedule}
           onOpenExtensions={openExtensionsRailPane}
           onOpenPluginWorkshop={openPluginWorkshop}
+          onOpenDataAnnotation={openDataAnnotation}
+          dataAnnotationDisabled={!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedWorkspaceId}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}

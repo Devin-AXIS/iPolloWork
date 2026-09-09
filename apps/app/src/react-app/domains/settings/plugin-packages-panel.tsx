@@ -18,6 +18,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { isRequiredBundledPlugin } from "@ipollowork/types/plugins";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { currentLocale, t } from "@/i18n";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
@@ -381,6 +382,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       catalogItems.find((catalogItem) => catalogItem.pluginId === selectedSourceItem.pluginId)?.manifest.localization,
     );
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
+    const required = isRequiredBundledPlugin(item.pluginId);
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
     const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
@@ -450,7 +452,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 <Switch
                   size="sm"
                   checked={item.enabled}
-                  disabled={busyKey !== null}
+                  disabled={required || busyKey !== null}
                   aria-label={t("plugin_platform.enable")}
                   onCheckedChange={(checked) => void run(toggleKey, async () => {
                     await props.client?.setPluginPackageEnabled(props.workspaceId ?? "", item.pluginId, checked);
@@ -678,7 +680,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                       <Switch
                         size="sm"
                         checked={enabled}
-                        disabled={!item.enabled || busyKey !== null}
+                        disabled={required || !item.enabled || busyKey !== null}
                         aria-label={t("plugin_platform.toggle_skill", { name: resource.label ?? resource.id })}
                         onCheckedChange={(checked) => void run(toggleKey, async () => {
                           await props.client?.setPluginPackageResourceEnabled(props.workspaceId ?? "", item.pluginId, resource.id, checked);
@@ -753,7 +755,11 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             </dl>
           </div>
 
-          <div className="mt-8 flex flex-col gap-4 border-t border-dls-border pt-6 sm:flex-row sm:items-center sm:justify-between">
+          {required ? (
+            <p className="mt-8 border-t border-dls-border pt-6 text-xs text-dls-secondary" data-testid="required-plugin-notice">
+              {t("plugin_platform.required_bundle")}
+            </p>
+          ) : <div className="mt-8 flex flex-col gap-4 border-t border-dls-border pt-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <h3 className="text-sm font-semibold text-dls-text">{t("plugin_platform.uninstall")}</h3>
               <p className="mt-1 max-w-2xl text-xs leading-5 text-dls-secondary">
@@ -774,7 +780,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
               {busyKey === `${item.pluginId}:remove` ? <Loader2 size={14} className="animate-spin" /> : null}
               {t("plugin_platform.uninstall")}
             </Button>
-          </div>
+          </div>}
 
           <details className="mt-8 rounded-xl border border-dls-border px-4 py-3">
             <summary className="cursor-pointer text-xs font-medium text-dls-secondary">{t("plugin_platform.advanced")}</summary>

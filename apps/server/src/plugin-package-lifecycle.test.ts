@@ -1625,6 +1625,76 @@ describe("plugin package lifecycle", () => {
     }
   });
 
+  test("prepares required data annotation offline and rejects removal or disabling", async () => {
+    const workspaceRoot = await createRoot("ipollowork-data-annotation-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    // A previous optional-plugin release may have remembered an uninstall.
+    await mkdir(join(workspaceRoot, "plugin-packages"), { recursive: true });
+    await writeFile(join(workspaceRoot, "plugin-packages", "state.json"), JSON.stringify({
+      schemaVersion: 3, packages: {}, suppressedDefaultPluginIds: ["labelu-data-annotation"],
+    }));
+    const config = serverConfig(workspaceRoot);
+    const server = await startServer(config);
+    const base = `http://127.0.0.1:${server.port}`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    const path = `/workspace/${WORKSPACE_ID}/plugin-packages`;
+    try {
+      const list = await fetch(base + path, { headers });
+      expect(list.status).toBe(200);
+      expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.1" }),
+      ]) });
+      const ui = await fetch(`${base}${path}/labelu-data-annotation/ui/workbench`, { headers });
+      expect(ui.status).toBe(200);
+      expect(await ui.json()).toMatchObject({
+        html: expect.stringContaining('title="数据标注平台"'),
+        resource: { ui: { csp: { frameDomains: ["http://127.0.0.1:*"] } } },
+      });
+      const open = await fetch(`${base}/experimental/extensions/call`, {
+        method: "POST", headers,
+        body: JSON.stringify({ extensionId: "labelu-data-annotation", action: "open-workbench", args: {}, context: { directory: workspaceRoot, workspaceId: WORKSPACE_ID } }),
+      });
+      expect(open.status).toBe(200);
+      const launch = await open.json();
+      expect(launch.ok).toBe(true);
+      const page = await fetch(launch.result.url);
+      expect(page.status).toBe(200);
+      expect(await page.text()).toContain('<div id="root">');
+      for (const [suffix, method] of [
+        ["", "DELETE"], ["", "PATCH"], ["/resources/labelu-data-annotation-workflow", "PATCH"],
+      ]) {
+        const rejected = await fetch(`${base}${path}/labelu-data-annotation${suffix}`, {
+          method, headers, ...(method === "PATCH" ? { body: JSON.stringify({ enabled: false }) } : {}),
+        });
+        expect(rejected.status).toBe(403);
+        expect(await rejected.json()).toMatchObject({ code: "plugin_package_required" });
+      }
+      const { uninstallPluginPackage } = await import("./plugin-package-lifecycle.js");
+      await expect(uninstallPluginPackage({ serverConfig: config, pluginId: "labelu-data-annotation" }))
+        .rejects.toMatchObject({ code: "plugin_package_required" });
+      expect((await fetch(launch.result.url)).status).toBe(200);
+      const repeated = await fetch(base + path, { headers });
+      expect((await repeated.json()).items.filter((item: { pluginId: string }) => item.pluginId === "labelu-data-annotation")).toHaveLength(1);
+    } finally {
+      await server.stop();
+    }
+    const stateFile = join(workspaceRoot, "plugin-packages", "state.json");
+    const state = JSON.parse(await readFile(stateFile, "utf8"));
+    state.packages["labelu-data-annotation"].enabled = false;
+    state.packages["labelu-data-annotation"].disabledResourceIds = ["labelu-data-annotation-workflow"];
+    await writeFile(stateFile, JSON.stringify(state));
+    await rm(join(workspaceRoot, ".opencode", "skills", "labelu-data-annotation", "SKILL.md"));
+    const restarted = await startServer(config);
+    try {
+      const list = await fetch(`http://127.0.0.1:${restarted.port}${path}`, { headers });
+      expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, disabledResourceIds: [] }),
+      ]) });
+    } finally {
+      await restarted.stop();
+    }
+  });
+
   test("lists and installs every bundled service plugin through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -1652,8 +1722,10 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "image-studio", version: "0.1.9", installedVersion: "0.1.9", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.29", installedVersion: "0.1.29", updateAvailable: false },
+          { pluginId: "video-console", version: "0.2.3", installedVersion: "0.2.3", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
+          { pluginId: "labelu-data-annotation", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
         ],
       });
 

@@ -65,6 +65,7 @@ import {
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
 import { bundledPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
+import { isRequiredBundledPlugin } from "@ipollowork/types/plugins";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -694,7 +695,7 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         || !preview.manifest.source.trusted) continue;
 
       const installed = installedById.get(pluginId);
-      if (!installed && suppressed.has(pluginId)) continue;
+      if (!installed && suppressed.has(pluginId) && !isRequiredBundledPlugin(pluginId)) continue;
       if (!installed) {
         await installPluginPackage({
           serverConfig: config,
@@ -705,6 +706,14 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
           serverConfig: config,
           packageRoot,
         });
+      }
+      if (installed && isRequiredBundledPlugin(pluginId)) {
+        if (!installed.enabled) await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });
+        for (const resourceId of installed.disabledResourceIds) {
+          if (preview.manifest.resources.some((resource) => resource.type === "skill" && resource.id === resourceId)) {
+            await setPluginPackageResourceEnabled({ serverConfig: config, pluginId, resourceId, enabled: true });
+          }
+        }
       }
     } catch (error) {
       logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
@@ -2223,6 +2232,9 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pluginId = ctx.params.pluginId ?? "";
+    if (isRequiredBundledPlugin(pluginId)) {
+      throw new ApiError(403, "plugin_package_required", "This bundled plugin cannot be uninstalled");
+    }
     await requireApproval(ctx, {
       workspaceId: workspace.id,
       action: "plugin_packages.remove",

@@ -39,6 +39,17 @@ extraResources:
     to: plugin-packages/image-studio
   - from: ../../examples/plugin-packages/deepseek-harness
     to: plugin-packages/deepseek-harness
+  - from: ../../examples/plugin-packages/labelu-data-annotation
+    to: plugin-packages/labelu-data-annotation
+    filter:
+      - ipollowork.plugin.json
+      - LICENSE-THIRD-PARTY.txt
+      - NOTICE.txt
+      - README.md
+      - skills/**
+      - ui/**
+      - app/dist/**
+      - service/dist/**
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.

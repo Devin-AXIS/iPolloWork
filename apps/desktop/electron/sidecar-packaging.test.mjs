@@ -3,7 +3,10 @@ import { it } from "node:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { createPackage } from "@electron/asar";
+import { parse as parseYaml } from "yaml";
+import { minimatch } from "minimatch";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
 import afterSignModule from "../scripts/electron-after-sign.cjs";
@@ -15,6 +18,28 @@ import {
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 const { assertMacEngineTrustFiles } = afterSignModule;
+
+it("ships the complete offline annotation runtime in desktop extraResources", async () => {
+  const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
+  const resource = config.extraResources.find((entry) => entry.to === "plugin-packages/labelu-data-annotation");
+  assert.ok(resource, "Annotation must be present on every desktop platform");
+  const root = new URL(`../${resource.from}/`, import.meta.url);
+  const manifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", root), "utf8"));
+  assert.equal(manifest.defaultEnabled, true);
+  const files = await readdir(root, { recursive: true, withFileTypes: true });
+  const paths = files.filter((file) => file.isFile()).map((file) =>
+    path.relative(fileURLToPath(root), path.join(file.parentPath, file.name)).replaceAll("\\", "/")
+  );
+  for (const entry of manifest.resources) {
+    const referenced = paths.filter((file) => file === entry.path || file.startsWith(`${entry.path}/`));
+    assert.ok(referenced.length > 0, `Missing offline resource: ${entry.id}`);
+    for (const file of referenced) {
+      assert.ok(resource.filter.some((pattern) => minimatch(file, pattern)), `Packaging drops ${file}`);
+    }
+  }
+  assert.ok(resource.filter.includes("LICENSE-THIRD-PARTY.txt"));
+  assert.ok(!resource.filter.some((pattern) => minimatch("node_modules/example/index.js", pattern)));
+});
 
 it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
   const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
