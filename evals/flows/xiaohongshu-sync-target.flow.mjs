@@ -57,6 +57,16 @@ export default {
           await new Promise(resolve => setTimeout(resolve, 150));
         }
         ctx.assert(ready, 'The real workbench sync button did not load.');
+        // Record the real host acknowledgement across the workbench's reload.
+        const marker = 'xhs-sync-proof-' + Date.now();
+        await app(`window.__xhsSyncProofAccepted = false; window.__xhsSyncProofListener = event => {
+          if (event.data?.marker === ${JSON.stringify(marker)} && event.data.accepted) window.__xhsSyncProofAccepted = true;
+        }; window.addEventListener('message', window.__xhsSyncProofListener);`);
+        await frameEval(`window.addEventListener('message', event => {
+          if (event.source === parent && event.data?.jsonrpc === '2.0' && event.data.id === 2 && !event.data.method) {
+            parent.postMessage({ marker: ${JSON.stringify(marker)}, accepted: !event.data.error && !event.data.result?.isError }, '*');
+          }
+        });`);
         let selectedTab;
         let syncJob;
         await ctx.prove('在当前会话点击同步成功发起或继续任务并打开所选账号，无需返回旧会话', {
@@ -76,14 +86,20 @@ export default {
             ctx.assert(JSON.parse(syncJob.payload_json).browserProfileId === account.browserProfileId, 'Sync job did not retain the selected browser profile.');
             let received = false;
             for (let i = 0; i < 40; i++) {
-              received = await app('document.body.innerText.includes(' + JSON.stringify(syncJob.id) + ')');
+              received = await app('window.__xhsSyncProofAccepted === true');
               if (received) break;
               await new Promise(resolve => setTimeout(resolve, 150));
             }
-            ctx.assert(received, 'The current conversation did not receive the sync task after clicking.');
+            ctx.assert(received, 'The current conversation rejected the sync task after clicking.');
           },
           assert: async () => {
             let actual;
+            const page = await app('window.__IPOLLOWORK_ELECTRON__.browser.snapshot(' + JSON.stringify({ tabId: selectedTab.id }) + ')');
+            if (!page.tree.includes(account.expectedProfileId)) {
+              const home = page.tree.split('\n').find(line => line.includes('button "首页"'));
+              ctx.assert(home, 'Open the creator home page to verify the selected account identity.');
+              await app('window.__IPOLLOWORK_ELECTRON__.browser.act(' + JSON.stringify({ tabId: selectedTab.id, snapshotId: page.snapshotId, actions: [{ type: 'click', ref: home.trim().split(']')[0].slice(1), expectedName: '首页' }] }) + ')');
+            }
             for (let i = 0; i < 20; i++) {
               actual = await app('window.__IPOLLOWORK_ELECTRON__.browser.snapshot(' + JSON.stringify({ tabId: selectedTab.id }) + ')');
               if (actual.tree.includes(account.expectedProfileId)) break;
@@ -100,6 +116,7 @@ export default {
           screenshot: { name: 'selected-account-sync', requireText: ['小红书运营台'] },
         });
       } finally {
+        await app(`if (window.__xhsSyncProofListener) window.removeEventListener('message', window.__xhsSyncProofListener); delete window.__xhsSyncProofListener; delete window.__xhsSyncProofAccepted;`).catch(() => {});
         frame?.close();
         desktop.close();
         db.close();
