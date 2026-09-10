@@ -111,31 +111,39 @@ export function ServiceWorkbenchFrame(props: {
     let stopped = false;
     let busy = false;
     let checks = 0;
+    let nextTab = 0;
+    let revision = 0;
+    const observedTabs = new Set<string>();
     const observe = async () => {
       if (stopped || busy || ++checks > 15) return;
       busy = true;
+      const observationRevision = revision;
       try {
         const state = await browser.getState!();
-        const tab = state?.tabs?.find(item => item.id === state.activeTabId);
-        if (!tab?.url || tab.status !== "ready" || new URL(tab.url).origin !== login.origin
-          || !login.paths.includes(new URL(tab.url).pathname)) return;
         const profilePrefix = `${props.surface.pluginId}:`;
-        if (tab.profileId && !tab.profileId.startsWith(profilePrefix)) return;
+        const pending = state?.tabs?.filter(tab => {
+          if (!tab.url || tab.status !== "ready" || observedTabs.has(tab.id)
+            || (tab.profileId && !tab.profileId.startsWith(profilePrefix))) return false;
+          const url = new URL(tab.url);
+          return url.origin === login.origin && login.paths.includes(url.pathname);
+        }) ?? [];
+        if (!pending.length || stopped || observationRevision !== revision) return;
+        const tab = pending[nextTab++ % pending.length]!;
         const snapshot = await browser.snapshot!({ tabId: tab.id, ...(login.avatarSelector ? { imageSelector: login.avatarSelector } : {}) });
-        if (stopped || new URL(snapshot.url).origin !== login.origin) return;
+        if (stopped || observationRevision !== revision || new URL(snapshot.url).origin !== login.origin) return;
         const response = await props.client.callExtensionAction({
           extensionId: props.surface.pluginId, action: login.observeAction,
           args: { url: snapshot.url, tree: snapshot.tree, ...(snapshot.imageUrl ? { avatarUrl: snapshot.imageUrl } : {}), ...(tab.profileId ? { browserProfileId: tab.profileId.slice(profilePrefix.length) } : {}) },
           context: { directory: props.workspaceRoot, workspaceId: props.workspaceId, sessionId: props.sessionId ?? undefined },
         });
-        if (response.ok && response.result && typeof response.result === "object"
-          && "connected" in response.result && response.result.connected === true && (!login.avatarSelector || snapshot.imageUrl)) stopped = true;
+        if (!stopped && observationRevision === revision && response.ok && response.result && typeof response.result === "object"
+          && "connected" in response.result && response.result.connected === true && (!login.avatarSelector || snapshot.imageUrl)) observedTabs.add(tab.id);
       } catch { /* Navigation and transient page loading can be retried on the next observation. */ }
       finally { busy = false; }
     };
     void observe();
     const timer = window.setInterval(() => { void observe(); }, 2000);
-    const unsubscribe = browser.onStateChange?.(() => { stopped = false; checks = 0; void observe(); });
+    const unsubscribe = browser.onStateChange?.(() => { revision += 1; checks = 0; nextTab = 0; observedTabs.clear(); void observe(); });
     return () => { stopped = true; window.clearInterval(timer); unsubscribe?.(); };
   }, [frameLoad, workbench.data, props.sessionId, props.workspaceId, props.workspaceRoot, props.client, props.surface]);
 

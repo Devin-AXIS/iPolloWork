@@ -36,7 +36,10 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
   }
   if (account && account.browserProfileId !== browserProfileId) return { connected: false }
   if (!account || !actualName || actualName.toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) return { connected: false }
-  db.bindAccountWorker(account.id, sessionId)
+  // A verified browser login is independent of which task can execute for it.
+  if (!account.workerThreadId && !accounts.some(item => item.workerThreadId === sessionId)) {
+    db.bindAccountWorker(account.id, sessionId)
+  }
   if (account.sessionStatus !== 'healthy' || !account.lastVerifiedAt) {
     db.setAccountSession(account.id, 'healthy', { verified: true })
     db.audit({ accountId: account.id, action: 'verify_session', status: 'succeeded', detail: { source: 'browser-login', profileId, url: url.href } })
