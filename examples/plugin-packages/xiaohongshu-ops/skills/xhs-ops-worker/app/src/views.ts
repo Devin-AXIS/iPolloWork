@@ -4,7 +4,7 @@ import { searchSorts, type PostDraft, type StudioService } from './studio.js'
 
 type Nav = 'accounts' | 'publishing' | 'comments' | 'analytics'
 
-const assetVersion = '20260910.9'
+const assetVersion = '20260910.10'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')

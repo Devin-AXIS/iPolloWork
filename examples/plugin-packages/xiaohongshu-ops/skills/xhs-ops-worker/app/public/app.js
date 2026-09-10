@@ -26,7 +26,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.2' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.3' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -311,6 +311,17 @@
     catch (error) { feedback(error.message); toast(error.message, true) }
     finally { studioBusy = false; restore() }
   }
+  // Save the current account's draft before internal navigation. A native
+  // beforeunload prompt cannot reliably be shown inside the embedded workbench.
+  document.addEventListener('click', event => {
+    const link = event.target.closest('a[href]')
+    if (!draftForm || !studioDirty || !link || event.defaultPrevented || event.button !== 0
+      || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+    const target = new URL(link.href, location.href)
+    if (target.origin !== location.origin || !['/accounts', '/publishing', '/comments', '/analytics'].includes(target.pathname)) return
+    event.preventDefault()
+    runStudio(null, async () => { await saveDraft(); location.assign(target.href) })
+  })
   draftForm?.addEventListener('submit', event => { event.preventDefault(); runStudio(event.submitter, async () => { await saveDraft(); location.reload() }) })
   document.querySelector('[data-save-copy]')?.addEventListener('click', event => runStudio(event.currentTarget, async () => { await saveDraft(true); location.reload() }))
   document.querySelector('[data-save-comments]')?.addEventListener('click', event => runStudio(event.currentTarget, saveComments))

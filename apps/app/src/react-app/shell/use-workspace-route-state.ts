@@ -20,7 +20,7 @@ import {
   type WorkspaceList,
 } from "@/app/lib/desktop";
 import { createClient } from "@/app/lib/opencode";
-import { createiPolloWorkServerClient, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { createiPolloWorkServerClient, iPolloWorkServerError, type iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { isDesktopRuntime } from "@/app/lib/runtime-env";
 import {
   filterWorkspacesForWorkContext,
@@ -264,8 +264,19 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
         }
         try {
           const response = await endpoint.client.listSessions(endpoint.workspaceId, { limit: 200 });
-          const fetchedItems = response.items ?? [];
-          const items = fetchedItems;
+          const items = response.items ?? [];
+          const selection = routeSelectionRef.current;
+          // Unstarted threads may not enter the runtime's list until their first
+          // message. Verify the selected thread before treating it as deleted.
+          if (selection.workspaceId === workspace.id && selection.sessionId
+            && !items.some(session => session.id === selection.sessionId)) {
+            try {
+              const { item } = await endpoint.client.getSession(endpoint.workspaceId, selection.sessionId);
+              items.unshift(item);
+            } catch (error) {
+              if (!(error instanceof iPolloWorkServerError && error.status === 404)) throw error;
+            }
+          }
           if (!isCurrentSessionLoad()) return;
           setSessionsByWorkspaceId((current) => {
             const nextItems = mergeFetchedSessionsWithPending(workspace.id, items, current[workspace.id] ?? []);
@@ -672,7 +683,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
       disposed = true;
       window.clearInterval(interval);
     };
-  }, [loadWorkspaceSessionsInBackground, loading, selectedWorkspace]);
+  }, [loadWorkspaceSessionsInBackground, loading, selectedWorkspace, selectedSessionId]);
 
   const handleRemoteWorkspaceConnectionSaved = useCallback(
     async (workspaceId: string) => {
