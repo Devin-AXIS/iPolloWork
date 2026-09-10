@@ -132,6 +132,7 @@ export default {
             throw error;
           }
           ctx.assert(result.ok !== false, JSON.stringify(result));
+          ctx.assert(result.results?.length === actions.length, 'The browser stopped this batch early; remaining actions need a fresh snapshot.');
         };
         const view = async url => {
           await ctx.client.send('Page.navigate', { url: 'about:blank' });
@@ -155,6 +156,7 @@ export default {
               const input = { ...operation, accountId: account.id, runKey, operationKey: 'action-1' };
               const { job } = await call('prepare-job', input, sessionId);
               ctx.assert(job.status === 'dispatched' && job.workerThreadId === sessionId, 'The scheduled session could not prepare its operation.');
+              ctx.assert(new URL(job.payload.destinationUrl).origin === mockOrigin, 'This proof must only submit to its local mock platform.');
               const tabId = await open(account, job.payload.destinationUrl);
               const visible = await snapshot(tabId, '@' + account.handle);
               ctx.assert(visible.tree.includes(account.expectedProfileId), 'The visible account does not match.');
@@ -189,7 +191,7 @@ export default {
               { type: 'fill', name: '正文', value: job.payload.body },
               { type: 'fill', name: '话题', value: job.payload.topics.join(' ') },
             ]);
-            await act(tabId, [{ type: 'press', key: 'Enter', name: '确认发布', expectedName: '确认发布' }]);
+            await act(tabId, [{ type: 'click', name: '确认发布', expectedName: '确认发布' }]);
           }),
           assert: async () => { const state = await platformState(); ctx.assert(state.publishSubmissions === 1 && state.posts[0].imageNames.length === 4 && state.posts[0].author === author.handle, 'Publishing produced the wrong article or duplicate submissions.'); },
           screenshot: { name: 'scheduled-publish', requireText: ['把使用经验记录下来', '发布成功', '@matrix_author'] },
@@ -199,7 +201,7 @@ export default {
           voiceover: vo[1],
           action: () => runScheduled(editor, { type: 'create_comment', targetUrl, body: '记录使用场景这个方法很实用，谢谢分享。' }, async (tabId, job) => {
             await act(tabId, [{ type: 'fill', name: '发表评论', value: job.payload.commentBody }]);
-            await act(tabId, [{ type: 'press', key: 'Enter', name: '发送评论', expectedName: '发送评论' }]);
+            await act(tabId, [{ type: 'click', name: '发送评论', expectedName: '发送评论' }]);
           }),
           assert: async () => { const state = await platformState(); ctx.assert(state.commentSubmissions === 1 && state.posts[0].comments[0].author === editor.handle && db.listInteractions(100, editor.id)[0].status === 'published', 'The comment was not written as the selected account.'); },
           screenshot: { name: 'scheduled-comment', requireText: ['@matrix_editor', '记录使用场景这个方法很实用，谢谢分享。'] },
@@ -210,7 +212,7 @@ export default {
           voiceover: vo[2],
           action: () => runScheduled(editor, { type: 'reply_comment', targetUrl, targetAuthor: 'real_reader', targetCommentText: '第一次记录时应该关注什么？', body: '可以先记录使用场景和实际遇到的问题。' }, async (tabId, job) => {
             await act(tabId, [{ type: 'fill', name: '回复 @real_reader', value: job.payload.commentBody }]);
-            await act(tabId, [{ type: 'press', key: 'Enter', name: '发送给 @real_reader', expectedName: '发送给 @real_reader' }]);
+            await act(tabId, [{ type: 'click', name: '发送给 @real_reader', expectedName: '发送给 @real_reader' }]);
           }),
           assert: async () => { const state = await platformState(); const reply = state.posts[0].comments.find(comment => comment.author === 'real_reader')?.replies[0]; ctx.assert(state.replySubmissions === 1 && reply?.author === editor.handle && db.listInteractions(100, editor.id).length === 2, 'Reply target or account ownership was lost.'); },
           screenshot: { name: 'scheduled-reply', requireText: ['第一次记录时应该关注什么？', '可以先记录使用场景和实际遇到的问题。'] },

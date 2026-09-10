@@ -848,7 +848,7 @@ export class OpsDatabase {
       if (!observation || observation.sessionId !== job.workerThreadId) throw new Error('当前会话与执行任务不一致')
       if (observation.actualProfileId !== account.expectedProfileId || observation.actualAccount.trim().toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) throw new Error('浏览器身份与指定账号不一致，不能发布或回复')
     }
-    if (job.type !== 'verify_session' && this.database.prepare("SELECT id FROM browser_jobs WHERE account_id = ? AND id != ? AND status IN ('running', 'needs_reconcile') LIMIT 1").get(accountId, id)) throw new Error('该账号还有正在执行或结果待核对的操作，请先处理，避免重复发送')
+    if (job.type !== 'verify_session' && this.database.prepare("SELECT id FROM browser_jobs WHERE account_id = ? AND id != ? AND type != 'verify_session' AND status IN ('running', 'needs_reconcile') LIMIT 1").get(accountId, id)) throw new Error('该账号还有正在执行或结果待核对的操作，请先处理，避免重复发送')
     const token = randomBytes(24).toString('base64url')
     const leaseUntil = new Date(Date.now() + 10 * 60_000).toISOString()
     const result = this.database.prepare(`UPDATE browser_jobs SET status = 'running', lease_token_hash = ?, lease_until = ?,

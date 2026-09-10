@@ -42,6 +42,13 @@ function fixture() {
 test('scheduled sessions prepare and complete comments and replies without rebinding account workers', async () => {
   const f = fixture()
   try {
+    const verification = f.db.createJob({
+      type: 'verify_session', accountId: f.author.id, contentItemId: null, scheduledAt: new Date().toISOString(),
+      payload: { destinationUrl: f.author.profileUrl, expectedHandle: f.author.handle, expectedProfileId: f.author.expectedProfileId, expectedProfileUrl: f.author.profileUrl },
+      idempotencyKey: 'existing-read-only-verification',
+    })
+    f.db.dispatchDue()
+    f.db.claimJob(verification.id, f.author.id)
     const job = await f.prepare()
     assert.equal(job.status, 'dispatched')
     assert.equal(job.workerThreadId, 'scheduled-session')

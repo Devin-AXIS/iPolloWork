@@ -877,27 +877,33 @@ export function createBrowserRuntime({
       if (!snapshotId || snapshotId !== state.latestSnapshotId || state.url !== tab.view.webContents.getURL()) {
         throw new Error("Browser snapshot is stale. Take a new snapshot before acting.");
       }
-      const results = [];
-      for (const action of actions) {
-        if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
-        results.push(await performAction({
-          action,
-          debuggerApi,
-          state,
-          tab,
-          workspaceRoot: payload.workspaceRoot,
-        }));
-        if (state.latestSnapshotId !== snapshotId) break;
+      // Windows may deny foreground focus to a scheduled background task. Keep
+      // Chromium input active for this bounded batch, then release it again.
+      await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: true });
+      try {
+        const results = [];
+        for (const action of actions) {
+          if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
+          results.push(await performAction({
+            action,
+            debuggerApi,
+            state,
+            tab,
+            workspaceRoot: payload.workspaceRoot,
+          }));
+          if (state.latestSnapshotId !== snapshotId) break;
+        }
+        return {
+          ok: true,
+          provider: "builtin",
+          tabId: tab.tabId,
+          url: tab.view.webContents.getURL(),
+          results,
+          snapshotRequired: state.latestSnapshotId !== snapshotId,
+        };
+      } finally {
+        await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
       }
-      const snapshotRequired = state.latestSnapshotId !== snapshotId;
-      return {
-        ok: true,
-        provider: "builtin",
-        tabId: tab.tabId,
-        url: tab.view.webContents.getURL(),
-        results,
-        snapshotRequired,
-      };
     });
   }
 
