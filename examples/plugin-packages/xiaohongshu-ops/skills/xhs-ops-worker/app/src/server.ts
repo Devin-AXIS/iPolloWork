@@ -153,7 +153,18 @@ export function createApp(service: OpsService): Hono {
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
   app.get('/brand', (c) => c.html(renderBrand({ brand: service.db.getBrand(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets() })))
-  app.get('/interactions', (c) => c.html(renderInteractions({ interactions: service.db.listInteractions(), reviews: service.db.listReviews(), accounts: service.db.listAccounts() })))
+  app.get('/interactions', (c) => {
+    const accounts = service.db.listAccounts()
+    const accountId = c.req.query('account')
+    const account = accountId === undefined ? accounts[0] : accounts.find(item => String(item.id) === accountId)
+    if (accountId !== undefined && !account) return c.html(renderError('账号不存在', '请返回互动页选择已接入的账号。', 404), 404)
+    c.header('Cache-Control', 'no-store')
+    return c.html(renderInteractions({
+      accounts, account,
+      interactions: account ? service.db.listInteractions(100, account.id) : [],
+      reviews: account ? service.db.listReviews(100, account.id) : [],
+    }))
+  })
   app.get('/jobs', (c) => c.html(renderJobs({ jobs: service.db.listJobs(), accounts: service.db.listAccounts(), audit: service.db.listAudit() })))
 
   app.get('/media/:id', (c) => {

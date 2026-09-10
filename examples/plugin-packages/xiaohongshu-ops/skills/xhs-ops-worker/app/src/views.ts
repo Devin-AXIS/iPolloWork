@@ -3,7 +3,7 @@ import type { OpsDatabase } from './db.js'
 
 type Nav = 'accounts' | 'interactions' | 'analytics'
 
-const assetVersion = '20260910.4'
+const assetVersion = '20260910.5'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -45,11 +45,11 @@ function status(value: string): string {
   return `<span class="status status-${escapeHtml(value)}">${escapeHtml(statusLabel(value))}</span>`
 }
 
-function shell(title: string, active: Nav, body: string, pageData?: unknown): string {
+function shell(title: string, active: Nav, body: string, pageData?: unknown, accountId?: number): string {
   const nav: Array<[Nav, string, string, string]> = [
     ['accounts', '/accounts', 'user-circle', '账号'],
-    ['interactions', '/interactions', 'messages', '互动'],
-    ['analytics', '/analytics', 'chart-bar', '数据'],
+    ['interactions', '/interactions' + (accountId === undefined ? '' : `?account=${accountId}`), 'messages', '互动'],
+    ['analytics', '/analytics' + (accountId === undefined ? '' : `?account=${accountId}`), 'chart-bar', '数据'],
   ]
   return `<!doctype html>
 <html lang="zh-CN">
@@ -84,11 +84,10 @@ function accountAvatar(account: AccountBinding): string {
   return `<span class="account-avatar" aria-hidden="true">${account.avatarUrl ? `<img data-account-avatar src="${escapeHtml(account.avatarUrl)}" alt="" referrerpolicy="no-referrer">` : ''}<span data-avatar-fallback ${account.avatarUrl ? 'hidden' : ''}>${escapeHtml(account.displayName.slice(0, 1) || account.handle.slice(0, 1) || '小')}</span></span>`
 }
 
-function accountBar(accounts: AccountBinding[], selectedAccount?: AccountBinding): string {
-  const primary = selectedAccount ?? accounts[0]
+function accountBar(accounts: AccountBinding[], panel: 'interactions' | 'analytics', primary: AccountBinding | undefined): string {
   const label = primary ? `${accountAvatar(primary)}<span><strong>${escapeHtml(primary.displayName)}</strong><small>${primary.sessionStatus === 'healthy' ? '<b></b> 已登录' : escapeHtml(statusLabel(primary.sessionStatus))}</small></span>${icon('chevron-down')}` : ''
   return `<section class="account-bar" aria-label="当前账号">
-    ${selectedAccount ? `<form class="account-switcher" action="/analytics" method="get">${label}<select class="account-switcher-select" name="account" aria-label="切换数据账号" data-analytics-account>${accounts.map(item => `<option value="${item.id}" ${item.id === selectedAccount.id ? 'selected' : ''}>${escapeHtml(item.displayName)} · ${escapeHtml(item.expectedProfileId)}</option>`).join('')}</select></form>` : primary ? `<a class="account-switcher" href="/accounts">${label}</a>` : '<a class="account-switcher is-empty" href="/accounts">还没有账号</a>'}
+    ${primary ? `<details class="account-picker"><summary class="account-switcher" aria-label="切换账号">${label}</summary><nav class="account-menu" aria-label="选择账号">${accounts.map(item => `<a href="/${panel}?account=${item.id}" ${item.id === primary.id ? 'aria-current="true"' : ''}>${accountAvatar(item)}<span><strong>${escapeHtml(item.displayName)}</strong><small>小红书号 ${escapeHtml(item.expectedProfileId)} · ${escapeHtml(statusLabel(item.sessionStatus))}</small></span>${item.id === primary.id ? icon('check', '当前账号') : ''}</a>`).join('')}</nav></details>` : '<a class="account-switcher is-empty" href="/accounts">还没有账号</a>'}
     <a class="add-account-link" href="/accounts?connect=1">${icon('plus')}<span>添加账号</span></a>
   </section>`
 }
@@ -123,7 +122,7 @@ export function renderAnalytics(input: { accounts: AccountBinding[]; account: Ac
   const counts = content.counts
   const local = `<section class="surface panel"><div class="section-heading"><div><h2>运营台文章记录</h2><p>仅统计在本运营台创建的文章，与平台历史文章分开显示。</p></div></div><div class="analytics-metrics">${metric('全部文章', content.total)}${metric('已发布', counts.published || 0)}${metric('待发布', ['planned', 'generating', 'ready', 'scheduled', 'publishing'].reduce((sum, key) => sum + (counts[key] || 0), 0))}${metric('失败 / 错过', (counts.failed || 0) + (counts.missed || 0))}</div>
     ${content.items.length ? `<div class="analytics-articles">${content.items.map(item => `<details class="analytics-article"><summary><span>${escapeHtml(item.title || '待生成文章')}</span>${status(item.status)}<small>${formatDate(item.publishedAt || item.scheduledAt)}</small></summary><div><p class="analytics-body">${escapeHtml(item.body || '正文尚未生成。')}</p>${item.topics.length ? `<p>${item.topics.map(topic => '#' + escapeHtml(topic)).join(' ')}</p>` : ''}${item.error ? `<p class="analytics-error">${escapeHtml(item.error)}</p>` : ''}${item.resultUrl && /^https:\/\//.test(item.resultUrl) ? `<a class="button button-secondary" href="${escapeHtml(item.resultUrl)}" target="_blank" rel="noreferrer">查看已发布文章</a>` : ''}</div></details>`).join('')}</div><nav class="analytics-pagination" aria-label="文章分页">${content.page > 1 ? `<a class="button button-secondary" href="/analytics?account=${account.id}&page=${content.page - 1}">上一页</a>` : ''}<span>第 ${content.page} / ${content.pages} 页 · 共 ${content.total} 篇</span>${content.page < content.pages ? `<a class="button button-secondary" href="/analytics?account=${account.id}&page=${content.page + 1}">下一页</a>` : ''}</nav>` : empty('这个账号还没有文章记录', '通过会话生成的文章会在这里显示状态和正文。')}</section>`
-  return shell('数据', 'analytics', `<div class="simple-page analytics-page">${accountBar(accounts, account)}${heading}${profile}${platformView}${local}</div>`, { accounts })
+  return shell('数据', 'analytics', `<div class="simple-page analytics-page">${accountBar(accounts, 'analytics', account)}${heading}${profile}${platformView}${local}</div>`, { accounts }, account.id)
 }
 
 export function renderAccounts(accounts: AccountBinding[]): string {
@@ -147,10 +146,10 @@ export function renderAccounts(accounts: AccountBinding[]): string {
   return shell('账号管理', 'accounts', body + deleteDialog, { accounts })
 }
 
-export function renderInteractions(input: { interactions: Interaction[]; reviews: ReviewItem[]; accounts: AccountBinding[] }): string {
+export function renderInteractions(input: { interactions: Interaction[]; reviews: ReviewItem[]; accounts: AccountBinding[]; account: AccountBinding | undefined }): string {
   const pending = input.reviews.filter((review) => review.status === 'pending')
-  const body = `<div class="simple-page">${accountBar(input.accounts)}<header class="simple-heading"><div><span class="eyebrow">互动</span><h1>只处理需要人工判断的内容</h1><p>常规互动保留记录；投诉、隐私、价格承诺等敏感内容会停在这里等待确认。</p></div></header><section class="interaction-layout"><div class="surface panel"><div class="section-heading"><div><h2>待人工审核</h2><p>${pending.length} 条待处理</p></div></div><div class="review-list">${pending.length ? pending.map((review) => { const account = input.accounts.find((candidate) => candidate.id === review.accountId); return `<article class="review-card"><header><span>由 ${escapeHtml(account?.displayName ?? '账号已移除')} 回复</span>${status(review.status)}</header><blockquote>${escapeHtml(review.sourceText)}</blockquote><div class="risk-list">${review.riskLabels.map((risk) => `<span>${escapeHtml(risk)}</span>`).join('')}</div><label>建议回复<textarea rows="4" data-review-text="${review.id}">${escapeHtml(review.suggestedText)}</textarea></label><footer><button class="button button-primary" data-review-action="approved" data-review-id="${review.id}">批准并排队</button><button class="button button-secondary" data-review-action="rejected" data-review-id="${review.id}">拒绝</button></footer></article>` }).join('') : empty('没有待审核内容', '敏感互动会自动暂停，不会直接发送。')}</div></div><div class="surface panel"><div class="section-heading"><div><h2>最近互动</h2><p>保留最近 100 条结果</p></div></div><div class="activity-list">${input.interactions.length ? input.interactions.map((interaction) => `<article><span class="activity-icon">${icon(interaction.kind === 'reply' ? 'corner-up-left' : 'message-circle')}</span><div><strong>${escapeHtml(statusLabel(interaction.kind))}${interaction.remoteAuthor ? ` · ${escapeHtml(interaction.remoteAuthor)}` : ''}</strong><p>${escapeHtml(interaction.body)}</p><small>${formatDate(interaction.createdAt)}</small></div>${status(interaction.status)}</article>`).join('') : empty('还没有互动记录', '任务发布后，互动结果会自动出现在这里。')}</div></div></section></div>`
-  return shell('互动', 'interactions', body)
+  const body = `<div class="simple-page">${accountBar(input.accounts, 'interactions', input.account)}<header class="simple-heading"><div><span class="eyebrow">互动</span><h1>只处理需要人工判断的内容</h1><p>常规互动保留记录；投诉、隐私、价格承诺等敏感内容会停在这里等待确认。</p></div></header><section class="interaction-layout"><div class="surface panel"><div class="section-heading"><div><h2>待人工审核</h2><p>${pending.length} 条待处理</p></div></div><div class="review-list">${pending.length ? pending.map((review) => { const account = input.accounts.find((candidate) => candidate.id === review.accountId); return `<article class="review-card"><header><span>由 ${escapeHtml(account?.displayName ?? '账号已移除')} 回复</span>${status(review.status)}</header><blockquote>${escapeHtml(review.sourceText)}</blockquote><div class="risk-list">${review.riskLabels.map((risk) => `<span>${escapeHtml(risk)}</span>`).join('')}</div><label>建议回复<textarea rows="4" data-review-text="${review.id}">${escapeHtml(review.suggestedText)}</textarea></label><footer><button class="button button-primary" data-review-action="approved" data-review-id="${review.id}">批准并排队</button><button class="button button-secondary" data-review-action="rejected" data-review-id="${review.id}">拒绝</button></footer></article>` }).join('') : empty('没有待审核内容', '敏感互动会自动暂停，不会直接发送。')}</div></div><div class="surface panel"><div class="section-heading"><div><h2>最近互动</h2><p>保留最近 100 条结果</p></div></div><div class="activity-list">${input.interactions.length ? input.interactions.map((interaction) => `<article><span class="activity-icon">${icon(interaction.kind === 'reply' ? 'corner-up-left' : 'message-circle')}</span><div><strong>${escapeHtml(statusLabel(interaction.kind))}${interaction.remoteAuthor ? ` · ${escapeHtml(interaction.remoteAuthor)}` : ''}</strong><p>${escapeHtml(interaction.body)}</p><small>${formatDate(interaction.createdAt)}</small></div>${status(interaction.status)}</article>`).join('') : empty('还没有互动记录', '任务发布后，互动结果会自动出现在这里。')}</div></div></section></div>`
+  return shell('互动', 'interactions', body, undefined, input.account?.id)
 }
 
 export function renderBrand(input: { brand: BrandProfile; knowledge: KnowledgeItem[]; assets: MediaAsset[] }): string {

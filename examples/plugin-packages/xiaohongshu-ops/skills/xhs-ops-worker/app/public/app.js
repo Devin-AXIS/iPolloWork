@@ -23,7 +23,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.15' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.16' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -46,7 +46,18 @@
     } catch (error) { toast(error.message, true) }
     finally { loginPending = false }
   }))
-  document.querySelector('[data-analytics-account]')?.addEventListener('change', event => event.target.form.requestSubmit())
+  const accountPicker = document.querySelector('.account-picker')
+  if (accountPicker) {
+    document.addEventListener('click', event => {
+      if (!accountPicker.contains(event.target)) accountPicker.open = false
+    })
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape' && accountPicker.open) {
+        accountPicker.open = false
+        accountPicker.querySelector('summary').focus()
+      }
+    })
+  }
   document.querySelector('[data-analytics-import]')?.addEventListener('submit', async event => {
     event.preventDefault()
     const form = event.currentTarget

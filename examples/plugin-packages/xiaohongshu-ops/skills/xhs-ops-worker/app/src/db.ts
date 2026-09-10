@@ -893,8 +893,14 @@ export class OpsDatabase {
     return interactionFromRow(row)
   }
 
-  listInteractions(limit = 100): Interaction[] {
-    return (this.database.prepare('SELECT * FROM interactions ORDER BY created_at DESC LIMIT ?').all(limit) as Row[]).map(interactionFromRow)
+  listInteractions(limit = 100, accountId?: number): Interaction[] {
+    // Incoming reader comments belong to the content owner; managed actions belong to the acting account.
+    const rows = accountId === undefined
+      ? this.database.prepare('SELECT * FROM interactions ORDER BY created_at DESC LIMIT ?').all(limit)
+      : this.database.prepare(`SELECT i.* FROM interactions i JOIN content_items c ON c.id = i.content_item_id
+          WHERE i.account_id = ? OR (i.account_id IS NULL AND c.account_id = ?)
+          ORDER BY i.created_at DESC LIMIT ?`).all(accountId, accountId, limit)
+    return (rows as Row[]).map(interactionFromRow)
   }
 
   updateInteractionByJob(job: BrowserJob): void {
@@ -954,8 +960,11 @@ export class OpsDatabase {
     }
   }
 
-  listReviews(limit = 100): ReviewItem[] {
-    return (this.database.prepare('SELECT * FROM review_items ORDER BY created_at DESC LIMIT ?').all(limit) as Row[]).map(reviewFromRow)
+  listReviews(limit = 100, accountId?: number): ReviewItem[] {
+    const rows = accountId === undefined
+      ? this.database.prepare('SELECT * FROM review_items ORDER BY created_at DESC LIMIT ?').all(limit)
+      : this.database.prepare('SELECT * FROM review_items WHERE account_id = ? ORDER BY created_at DESC LIMIT ?').all(accountId, limit)
+    return (rows as Row[]).map(reviewFromRow)
   }
 
   resolveReview(id: string, status: 'approved' | 'rejected', suggestedText: string): ReviewItem {

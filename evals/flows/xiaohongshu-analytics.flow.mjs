@@ -1,62 +1,92 @@
-import { connect, listTargets } from '../runner/cdp.mjs';
+const origin = process.env.XHS_OPS_ORIGIN;
 
 export default {
   id: 'xiaohongshu-analytics',
-  title: '小红书数据页：账号切换与数据来源',
+  title: '小红书互动与数据面板：原地切换账号',
   kind: 'user-facing',
+  requiredEnv: ['XHS_OPS_ORIGIN'],
+  preserveTheme: true,
+  cdpTarget: { urlIncludes: origin },
   steps: [{
-    name: '从运营台导航查看当前账号数据',
+    name: '展开账号列表，切换后保留面板与账号',
     async run(ctx) {
-      const frame = `document.querySelector('iframe[title="小红书运营台"]')`;
-      await ctx.waitFor(`Boolean(${frame})`);
-      const origin = new URL(await ctx.eval(`${frame}.src`)).origin;
-      const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.type === 'iframe' && item.url.startsWith(origin + '/'));
-      ctx.assert(Boolean(target), 'Missing workbench frame.');
-      const client = await connect(target.webSocketDebuggerUrl);
-      const evaluate = async expression => (await client.send('Runtime.evaluate', { expression, returnByValue: true })).result.value;
-      const waitFor = async expression => {
-        for (let i = 0; i < 40; i++) {
-          if (await evaluate(expression)) return;
-          await new Promise(resolve => setTimeout(resolve, 150));
-        }
-        throw new Error('Analytics page did not reach the expected state.');
+      const waitForAccount = (panel, id) => ctx.waitFor("location.pathname === '/" + panel + "' && document.readyState === 'complete' && document.querySelector('.account-menu a[aria-current]')?.getAttribute('href') === '/" + panel + "?account=" + id + "' && new URL(location.href).searchParams.get('account') === '" + id + "'");
+      const assertMenu = async (panel, accounts) => {
+        const state = await ctx.eval("(() => { const menu = document.querySelector('.account-menu'); const bounds = menu.getBoundingClientRect(); return { panel: location.pathname, open: document.querySelector('.account-picker').open, links: [...menu.querySelectorAll('a')].map(a => a.getAttribute('href')), text: menu.innerText, overflow: document.documentElement.scrollWidth > innerWidth + 1, fits: bounds.left >= 0 && bounds.right <= innerWidth }; })()");
+        ctx.assert(state.panel === '/' + panel && state.open, 'Account header navigated away instead of opening its list.');
+        ctx.assert(!state.overflow && state.fits, 'The account list is clipped or overflows.');
+        for (const account of accounts) ctx.assert(state.links.includes('/' + panel + '?account=' + account.id) && state.text.includes(account.name), 'The list is missing a bound account.');
+      };
+      const assertSelected = async (panel, account) => {
+        await waitForAccount(panel, account.id);
+        ctx.assert(await ctx.eval("document.querySelector('.account-switcher strong').textContent === " + JSON.stringify(account.name)), 'The header shows the wrong account.');
+        const other = panel === 'analytics' ? 'interactions' : 'analytics';
+        ctx.assert(await ctx.eval("Boolean(document.querySelector('.app-sidebar a[href=\"/" + other + "?account=" + account.id + "\"]'))"), 'Navigation lost the selected account.');
       };
       try {
-        await ctx.eval(`${frame}.style.width = ''`);
-        await ctx.prove('数据页使用统一的账号卡片，选择后直接查看账号数据', {
-          voiceover: '数据页顶部改成头像、账号名称和连接状态的卡片，右侧可添加账号；选择账号后直接更新数据，无需再点查看。',
-          action: async () => {
-            await evaluate(`window.__analyticsNavigating = true; document.querySelector('nav a[href="/analytics"]').click()`);
-            await waitFor(`!window.__analyticsNavigating && document.readyState === 'complete' && Boolean(document.querySelector('[data-analytics-account]'))`);
-            await evaluate(`document.querySelector('[data-analytics-account]').dispatchEvent(new Event('change', {bubbles:true}))`);
-            await waitFor(`Boolean(new URL(location.href).searchParams.get('account'))`);
-          },
-          assert: async () => {
-            const state = await evaluate(`({text:document.body.innerText, selected:document.querySelector('[data-analytics-account]').value, account:new URL(location.href).searchParams.get('account'), active:document.querySelector('nav a[aria-current="page"]').textContent.trim(), overflow:document.documentElement.scrollWidth > innerWidth + 1})`);
-            ctx.assert(state.selected === state.account && state.active === '数据', 'Selected account or active navigation is incorrect.');
-            ctx.assert(await evaluate(`Boolean(document.querySelector('.account-bar .account-avatar')) && Boolean(document.querySelector('.account-bar .add-account-link')) && !document.querySelector('.analytics-switch')`), 'Shared account card is missing.');
-            for (const label of ['账号与文章数据', '平台数据', '运营台文章记录', '导入 / 更新平台数据']) ctx.assert(state.text.includes(label), `Missing ${label}`);
-            ctx.assert(!state.overflow, 'The data page overflows the workbench width.');
-            const template = await fetch(origin + '/analytics/template.csv');
-            ctx.assert(template.ok && (await template.text()).includes('小红书号'), 'CSV template is unavailable.');
-          },
-          screenshot: 'account-analytics',
+        await ctx.client.send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'light' }] });
+        await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 1000, deviceScaleFactor: 1, mobile: false });
+        await ctx.client.send('Page.navigate', { url: origin + '/interactions' });
+        await ctx.waitFor('document.readyState === "complete" && Boolean(document.querySelector(".account-picker"))');
+        const accounts = await ctx.eval("[...document.querySelectorAll('.account-menu a')].map(a => ({id: new URL(a.href).searchParams.get('account'), name: a.querySelector('strong').textContent, current: a.hasAttribute('aria-current')}))");
+        ctx.assert(accounts.length >= 2, 'Use a workbench with at least two bound accounts.');
+        const first = accounts.find(account => account.current);
+        const second = accounts.find(account => !account.current);
+        await ctx.prove('点击互动页账号栏展开已绑定账号，不跳转到账号管理', {
+          voiceover: '在互动页点击账号名称或箭头，直接展开所有已绑定账号，并标记当前账号。',
+          action: () => ctx.trustedClick('.account-switcher'),
+          assert: () => assertMenu('interactions', accounts),
+          screenshot: { name: 'interactions-account-menu', requireText: ['最近互动', first.name, second.name] },
         });
-        await ctx.prove('窄面板仍能完整显示数据与三个导航入口', {
-          voiceover: '面板缩窄后，统计卡片分为两列，三个导航入口排列在底部。',
+        await ctx.prove('选择另一账号后仍在互动页，并显示该账号为当前账号', {
+          voiceover: '选择另一个账号，留在互动页查看它的审核内容和最近互动。',
           action: async () => {
-            await ctx.eval(`${frame}.style.width = '390px'`);
-            await waitFor('innerWidth === 390');
+            await ctx.trustedClick('.account-menu a[href="/interactions?account=' + second.id + '"]');
+            await waitForAccount('interactions', second.id);
           },
           assert: async () => {
-            const state = await evaluate(`({width:innerWidth,overflow:document.documentElement.scrollWidth > innerWidth + 1, nav:getComputedStyle(document.querySelector('.app-sidebar')).position, links:document.querySelectorAll('.app-sidebar nav a').length})`);
-            ctx.assert(state.width === 390 && !state.overflow && state.links === 3, 'Narrow layout lost navigation or overflowed.');
+            await assertSelected('interactions', second);
+            ctx.assert(await ctx.eval("!document.querySelector('.account-picker').open && document.querySelector('.app-sidebar a[aria-current]').textContent.trim() === '互动'"), 'Switching changed the wrong panel or left its menu open.');
           },
-          screenshot: 'account-analytics-narrow',
+          screenshot: { name: 'interactions-account-selected', requireText: [second.name, '待人工审核', '最近互动'] },
+        });
+        await ctx.prove('进入数据页保留所选账号，账号栏同样展开列表', {
+          voiceover: '从互动进入数据页时，继续查看同一个账号；点击顶部仍能展开账号列表。',
+          action: async () => {
+            await ctx.trustedClick('.app-sidebar a[href="/analytics?account=' + second.id + '"]');
+            await waitForAccount('analytics', second.id);
+            await ctx.trustedClick('.account-switcher');
+          },
+          assert: async () => {
+            await assertSelected('analytics', second);
+            await assertMenu('analytics', accounts);
+          },
+          screenshot: { name: 'analytics-account-menu', requireText: ['账号与文章数据', first.name, second.name] },
+        });
+        await ctx.prove('数据页直接切换账号，窄面板中的下拉列表完整可用', {
+          voiceover: '在数据页直接选择账号，文章和数据随之更新。窄面板里也能完整展开列表，按 Escape 或点击外部即可收起。',
+          action: async () => {
+            await ctx.trustedClick('.account-menu a[href="/analytics?account=' + first.id + '"]');
+            await waitForAccount('analytics', first.id);
+            await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+            await ctx.trustedClick('.account-switcher');
+            await ctx.client.send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+            await ctx.client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+            ctx.assert(await ctx.eval("!document.querySelector('.account-picker').open && document.activeElement.matches('.account-switcher')"), 'Escape did not close the list and return focus.');
+            await ctx.trustedClick('.account-switcher');
+            await ctx.trustedClick('.simple-heading');
+            ctx.assert(await ctx.eval("!document.querySelector('.account-picker').open"), 'Clicking outside did not close the list.');
+            await ctx.trustedClick('.account-switcher');
+          },
+          assert: async () => {
+            await assertSelected('analytics', first);
+            await assertMenu('analytics', accounts);
+            ctx.assert(await ctx.eval('innerWidth === 390'), 'The narrow layout was not exercised.');
+          },
+          screenshot: { name: 'analytics-account-menu-narrow', requireText: ['账号与文章数据', first.name, second.name] },
         });
       } finally {
-        await ctx.eval(`${frame}.style.width = ''`);
-        client.close();
+        await ctx.client.send('Emulation.clearDeviceMetricsOverride');
       }
     },
   }],

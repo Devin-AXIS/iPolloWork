@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.3.15",
+    "version": "0.3.16",
     "publisher": {
       "id": "local",
       "name": "本地插件"
