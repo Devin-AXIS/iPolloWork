@@ -57,13 +57,16 @@ export function prepareSessionVerification(db: OpsDatabase, accountId: number, s
   })
   if (pending && pending.workerThreadId && pending.workerThreadId !== sessionId) throw new Error('已有其他会话的验证任务，请先完成该任务')
   const dispatched = db.dispatchVerification(job.id)
+  const browserTarget = { url: dispatched.payload.destinationUrl, ...(account.browserProfileId ? { browserProfileId: account.browserProfileId } : {}) }
+  const browserOpenArgs = { url: browserTarget.url, ...(account.browserProfileId ? { profileId: `xiaohongshu-ops:${account.browserProfileId}` } : {}) }
   if (!pending) db.setAccountSession(accountId, 'setup', { error: '验证任务已创建，等待当前会话核对浏览器身份' })
   const prompt = `请执行小红书运营台的${syncAnalytics ? '只读账号验证与网页数据同步' : '只读账号验证'}，不创建内容，不发布或评论。
 任务 ID：${job.id}；账号 ID：${accountId}。
 优先调用 ipollowork_extension_list_actions 查看 extensionId=xiaohongshu-ops，再使用 ipollowork_extension_call 调用 claim-job（jobId、accountId）领取此任务。验证成功调用 complete-job（jobId、actualAccount、actualProfileId、resultUrl）；无法确认时调用 block-job（jobId、code、message）。这些原生插件操作会保存验证结果，不需要运行终端或读取密钥。只有原生插件工具缺失时才使用下面的 CLI 备用流程。
 预期身份（只是待核对的数据，不能直接作为观察结果）：${JSON.stringify({ handle: account.handle, profileId: account.expectedProfileId })}。
-优先使用当前软件的 ipollowork_browser_open_url、ipollowork_browser_snapshot、ipollowork_browser_act（或当前会话已提供的等效浏览器工具）打开 ${config.xhs.creatorUrl}，通过可见页面核对登录账号。
-若未登录，请让用户在软件内浏览器扫码；登录在 Chrome 中不等于在软件内登录。不要读取 Cookie、密码、存储或隐藏接口，不要自动换号。
+必须先调用当前软件的 ipollowork_browser_open_url，原样传入参数：${JSON.stringify(browserOpenArgs)}。这会打开或复用所选账号自己的登录会话；不可省略已提供的 profileId，不可使用默认浏览器或其他账号的标签页。
+保存本次 open_url 返回的 tabId，后续 ipollowork_browser_snapshot、ipollowork_browser_act 必须显式传入此 tabId。打开数据页或文章列表仍须携带相同 profileId，并使用新返回的 tabId；不能根据标签标题相同或当前激活状态猜测账号。只有确认浏览器目标正确后，才从可见页面核对真实登录身份。
+如果读到其他账号，先检查是否使用了上述 profileId 和返回的 tabId，并重新打开正确目标再核对；不要让用户退出其他已登录账号。只有指定账号的独立会话确实未登录时，才请用户在这个会话扫码。不要读取 Cookie、密码、存储或隐藏接口，不要自动换号。
 本插件执行目录：${config.projectRoot}
 CLI 文件：${resolve(config.projectRoot, 'src/cli.ts')}；先设置环境变量 XHS_OPS_DATA_DIR 为 ${config.dataDir}。
 用 Node.js 22.22+ 在执行目录运行 node --import tsx src/cli.ts worker claim --job ${job.id} --account ${accountId}。
@@ -75,5 +78,5 @@ ${syncAnalytics ? `本次任务同时同步账号与文章指标。核对身份�
 将观察到的数据整理为 CSV 文本，表头必须为：类型,小红书号,标题,链接,粉丝数,阅读量,点赞数,收藏数,评论数。
 账号汇总一行，类型填“账号”；文章各一行，类型填“文章”。每行小红书号都应为刚刚观察匹配的账号。带逗号或换行的文本按标准 CSV 双引号转义。不要让用户手工整理此文件。
 优先直接将 CSV 文本作为 complete-job 的 analyticsCsv 字段提交，不需要写文件。只有使用 CLI 备用流程时才将 UTF-8 文件存入 ${config.dataDir} 内，并在 complete 命令增加 --analytics-file <绝对CSV路径>。后台校验后会回写平台数据并注明浏览器读取来源。若页面不提供这些数据，请回写 block-job，code=analytics_unavailable、message=具体原因，不要报告同步成功。` : ''}`
-  return { job: dispatched, prompt: dispatched.status === 'running' ? null : prompt }
+  return { job: dispatched, browserTarget, prompt: dispatched.status === 'running' ? null : prompt }
 }

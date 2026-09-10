@@ -383,6 +383,35 @@ test('session replacement preserves binding and browser sync writes validated da
   } finally { db.close() }
 })
 
+test('verification targets the selected browser profile and upgrades pending jobs without changing another account', async () => {
+  const db = new OpsDatabase(':memory:')
+  try {
+    const app = createApp(new OpsService(db, generator))
+    const base = { profileUrl: 'https://creator.xiaohongshu.com/new/home', position: '产品', audience: '用户', noteTone: '自然', commentTone: '自然', contentColumns: [], bannedTopics: [], dailyLimit: 2 }
+    const first = db.createAccount({ ...base, handle: '旧账号', displayName: '旧账号', expectedProfileId: '111', workerThreadId: 'session-a' })
+    const second = db.createAccount({ ...base, handle: '独立账号', displayName: '独立账号', expectedProfileId: '222', workerThreadId: 'session-b', browserProfileId: '11111111-1111-4111-8111-111111111111' })
+    db.setAccountSession(first.id, 'healthy', { verified: true })
+    const unchanged = db.getAccount(first.id)
+    const legacy = db.createJob({ type: 'verify_session', accountId: second.id, scheduledAt: new Date().toISOString(), idempotencyKey: 'pending-sync', payload: { destinationUrl: config.xhs.creatorUrl, expectedHandle: second.handle, expectedProfileId: second.expectedProfileId, expectedProfileUrl: second.profileUrl, evidence: { syncAnalytics: true } } })
+    db.dispatchDue()
+    const response = await app.request(`/api/accounts/${second.id}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: config.origin }, body: JSON.stringify({ sessionId: 'session-b', syncAnalytics: true }) })
+    assert.equal(response.status, 202)
+    const result = await response.json()
+    assert.equal(result.job.id, legacy.id)
+    assert.equal(result.job.payload.browserProfileId, 'xiaohongshu-ops:' + second.browserProfileId)
+    assert.equal(db.getJob(legacy.id)?.payload.browserProfileId, result.job.payload.browserProfileId)
+    assert.deepEqual(result.browserTarget, { url: config.xhs.creatorUrl, browserProfileId: second.browserProfileId })
+    assert.ok(result.prompt.includes(JSON.stringify({ url: config.xhs.creatorUrl, profileId: result.job.payload.browserProfileId })))
+    assert.match(result.prompt, /必须显式传入此 tabId/)
+    assert.match(result.prompt, /不要让用户退出其他已登录账号/)
+    assert.deepEqual(db.getAccount(first.id), unchanged)
+    const oldResponse = await app.request(`/api/accounts/${first.id}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: config.origin }, body: JSON.stringify({ sessionId: 'session-a' }) })
+    const old = await oldResponse.json()
+    assert.deepEqual(old.browserTarget, { url: config.xhs.creatorUrl })
+    assert.equal(old.job.payload.browserProfileId, null)
+  } finally { db.close() }
+})
+
 
 test('verified platform avatars persist and deletion requires a local origin', async () => {
   const db = new OpsDatabase(':memory:')

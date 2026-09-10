@@ -23,7 +23,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.18' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.19' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -222,10 +222,13 @@
       if (!sessionId || !host.hostCapabilities?.message) throw new Error('请先打开一个可对话的会话，再从右侧打开运营台')
       const verification = await request(`/api/accounts/${button.dataset.verifyAccount}/verify`, { method: 'POST', body: JSON.stringify({ sessionId, syncAnalytics: button.hasAttribute('data-sync-analytics') }) })
       if (verification.prompt) {
+        if (verification.browserTarget.browserProfileId && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles']) throw new Error('请更新并重启软件后使用多账号同步')
+        const opened = await hostRequest('ui/open-link', verification.browserTarget)
+        if (opened?.isError) throw new Error('无法打开所选账号的浏览器，请重新打开运营台后重试')
         const sent = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: verification.prompt }] })
         if (sent?.isError) throw new Error('验证已准备好，但当前会话未接收任务；请在会话空闲后重新点击验证')
       }
-      toast('已绑定当前会话，请按左侧提示完成只读验证')
+      toast(button.hasAttribute('data-sync-analytics') ? '已打开所选账号，正在同步可见数据' : '已打开所选账号，正在核对登录状态')
       window.setTimeout(() => window.location.reload(), 450)
     } catch (error) { verificationPending = false; toast(error.message, true); restore() }
   }))

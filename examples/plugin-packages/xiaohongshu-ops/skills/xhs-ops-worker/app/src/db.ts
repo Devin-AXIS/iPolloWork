@@ -607,7 +607,7 @@ export class OpsDatabase {
     const account = job && this.getAccount(job.accountId)
     if (!job || job.type !== 'verify_session' || !account?.enabled || !account.workerThreadId) throw new Error('验证任务或绑定账号不可用')
     if (job.status !== 'running') {
-      this.database.prepare('UPDATE browser_jobs SET payload_json = ? WHERE id = ?').run(JSON.stringify({ ...job.payload, evidence: { ...job.payload.evidence, requireProfileId: true } }), id)
+      this.database.prepare('UPDATE browser_jobs SET payload_json = ? WHERE id = ?').run(JSON.stringify({ ...job.payload, browserProfileId: account.browserProfileId ? `xiaohongshu-ops:${account.browserProfileId}` : null, evidence: { ...job.payload.evidence, requireProfileId: true } }), id)
     }
     this.database.prepare("UPDATE browser_jobs SET status = 'dispatched', worker_thread_id = ?, updated_at = ? WHERE id = ? AND status = 'queued'").run(account.workerThreadId, now(), id)
     return this.getJob(id) as BrowserJob
