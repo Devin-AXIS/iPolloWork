@@ -559,7 +559,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     if (!workspaceId) {
       throw new ApiError(400, "engine_host_workspace_required", "The engine host MCP requires a workspaceId");
     }
-    await resolveWorkspace(config, workspaceId);
+    const workspace = await resolveWorkspace(config, workspaceId);
     const server = new McpServer(
       { name: "ipollowork-host", version: serverVersion },
       { capabilities: { tools: {} } },
@@ -581,7 +581,15 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         );
       }
       const args = isRecord(request.params.arguments) ? request.params.arguments : {};
-      const value = await engineHostToolHandlers[descriptor.name](ctx, args, { workspaceId });
+      // Codex attaches the calling thread to MCP request metadata, outside model arguments.
+      // Keep it request-scoped so concurrent manual and scheduled sessions cannot share a lease.
+      const threadId = request.params._meta?.threadId;
+      const sessionId = typeof threadId === "string" ? threadId.trim() : "";
+      const value = await engineHostToolHandlers[descriptor.name](ctx, args, {
+        workspaceId,
+        directory: workspace.path,
+        ...(sessionId ? { sessionId } : {}),
+      });
       return {
         content: [{
           type: "text",

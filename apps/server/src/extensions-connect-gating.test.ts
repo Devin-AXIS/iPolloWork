@@ -353,6 +353,21 @@ describe("extension and engine host tool gating", () => {
           expect.objectContaining({ extensionId: "storage" }),
         ]),
       });
+      const callInThread = (threadId?: string) => client.callTool({
+        name: "ipollowork_extension_call",
+        arguments: { extensionId: "storage", action: "status", args: { sessionId: "model-supplied-id" } },
+        ...(threadId === undefined ? {} : { _meta: { threadId } }),
+      });
+      const [manual, scheduled] = await Promise.all([
+        callInThread("manual-session"), callInThread("schedule-session"),
+      ]);
+      expect(manual.structuredContent).toMatchObject({ context: { workspaceId: "ws_1", sessionId: "manual-session" } });
+      expect(scheduled.structuredContent).toMatchObject({ context: { workspaceId: "ws_1", sessionId: "schedule-session" } });
+      for (const threadId of [undefined, "  "]) {
+        const withoutThread = await callInThread(threadId);
+        expect(withoutThread.structuredContent).toMatchObject({ context: { workspaceId: "ws_1" } });
+        expect(withoutThread.structuredContent).not.toHaveProperty("context.sessionId");
+      }
     } finally {
       await client.close();
     }
