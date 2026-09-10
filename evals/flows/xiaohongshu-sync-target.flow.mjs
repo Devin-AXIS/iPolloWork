@@ -59,8 +59,7 @@ export default {
         ctx.assert(ready, 'The real workbench sync button did not load.');
         let selectedTab;
         let syncJob;
-        const beforeJobs = new Set(db.prepare("SELECT id FROM browser_jobs WHERE account_id = ? AND type = 'verify_session'").all(accountId).map(job => job.id));
-        await ctx.prove('在当前会话点击同步成功创建任务并打开所选账号，无需返回旧会话', {
+        await ctx.prove('在当前会话点击同步成功发起或继续任务并打开所选账号，无需返回旧会话', {
           voiceover: '换到当前会话后，点击同步数据就能打开所选账号并开始同步，另一个账号保持登录。',
           action: async () => {
             await frameEval(`document.querySelector('[data-sync-analytics]').click()`);
@@ -69,15 +68,27 @@ export default {
               active = await app('window.__IPOLLOWORK_ELECTRON__.browser.getState()');
               selectedTab = active.tabs.find(t => t.profileId === account.browserProfileId);
               syncJob = db.prepare("SELECT id, status, worker_thread_id, payload_json FROM browser_jobs WHERE account_id = ? AND type = 'verify_session' ORDER BY created_at DESC LIMIT 1").get(accountId);
-              if (selectedTab && active.activeTabId === selectedTab.id && syncJob && !beforeJobs.has(syncJob.id)) break;
+              if (selectedTab && active.activeTabId === selectedTab.id && syncJob?.worker_thread_id === sessionId) break;
               await new Promise(resolve => setTimeout(resolve, 200));
             }
             ctx.assert(selectedTab && active.activeTabId === selectedTab.id, 'Sync did not select the stored account profile.');
-            ctx.assert(syncJob && !beforeJobs.has(syncJob.id) && syncJob.worker_thread_id === sessionId && ['dispatched', 'running', 'succeeded'].includes(syncJob.status), 'Sync was not assigned to the current session.');
+            ctx.assert(syncJob?.worker_thread_id === sessionId && ['dispatched', 'running', 'succeeded'].includes(syncJob.status), 'Sync was not assigned to the current session.');
             ctx.assert(JSON.parse(syncJob.payload_json).browserProfileId === account.browserProfileId, 'Sync job did not retain the selected browser profile.');
+            let received = false;
+            for (let i = 0; i < 40; i++) {
+              received = await app('document.body.innerText.includes(' + JSON.stringify(syncJob.id) + ')');
+              if (received) break;
+              await new Promise(resolve => setTimeout(resolve, 150));
+            }
+            ctx.assert(received, 'The current conversation did not receive the sync task after clicking.');
           },
           assert: async () => {
-            const actual = await app('window.__IPOLLOWORK_ELECTRON__.browser.snapshot(' + JSON.stringify({ tabId: selectedTab.id }) + ')');
+            let actual;
+            for (let i = 0; i < 20; i++) {
+              actual = await app('window.__IPOLLOWORK_ELECTRON__.browser.snapshot(' + JSON.stringify({ tabId: selectedTab.id }) + ')');
+              if (actual.tree.includes(account.expectedProfileId)) break;
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
             const retained = await app('window.__IPOLLOWORK_ELECTRON__.browser.snapshot(' + JSON.stringify({ tabId: otherTab.id }) + ')');
             ctx.assert(actual.tree.includes(account.expectedProfileId) && actual.tree.includes(account.handle), 'Sync targeted the wrong visible account.');
             ctx.assert(retained.tree.includes(other.expectedProfileId), 'Sync changed the other account login.');

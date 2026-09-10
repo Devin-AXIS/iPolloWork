@@ -219,7 +219,7 @@
   document.querySelectorAll('[data-verify-account]').forEach((button) => button.addEventListener('click', async () => {
     if (verificationPending) return
     verificationPending = true
-    const restore = busy(button, '正在发起验证')
+    const restore = busy(button, button.hasAttribute('data-sync-analytics') ? '正在发起同步' : '正在发起验证')
     try {
       const host = await getHost()
       const sessionId = host.hostContext?.['ai.ipollo/workspace']?.sessionId
@@ -227,10 +227,11 @@
       const verification = await request(`/api/accounts/${button.dataset.verifyAccount}/verify`, { method: 'POST', body: JSON.stringify({ sessionId, syncAnalytics: button.hasAttribute('data-sync-analytics') }) })
       if (verification.prompt) {
         if (verification.browserTarget.browserProfileId && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles']) throw new Error('请更新并重启软件后使用多账号同步')
-        const opened = await hostRequest('ui/open-link', verification.browserTarget)
-        if (opened?.isError) throw new Error('无法打开所选账号的浏览器，请重新打开运营台后重试')
+        // Send while the workbench is active; opening the browser switches the host panel.
         const sent = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: verification.prompt }] })
-        if (sent?.isError) throw new Error('验证已准备好，但当前会话未接收任务；请在会话空闲后重新点击验证')
+        if (sent?.isError) throw new Error('任务已准备好，但当前会话未接收；请在会话空闲后重新点击同步或验证')
+        const opened = await hostRequest('ui/open-link', verification.browserTarget)
+        if (opened?.isError) throw new Error('任务已发起，但无法打开所选账号的浏览器；请重新打开运营台后重试')
       }
       toast(button.hasAttribute('data-sync-analytics') ? '已打开所选账号，正在同步可见数据' : '已打开所选账号，正在核对登录状态')
       window.setTimeout(() => window.location.reload(), 450)
