@@ -55,6 +55,8 @@ export default {
           action: async () => {
             await ui(`document.querySelector('#post-draft-form button[type="submit"]').click()`);
             await wait(`Boolean(document.querySelector('#post-draft-form')) && document.readyState === 'complete' && JSON.parse(document.querySelector('#page-data').textContent).draft.updatedAt !== ${JSON.stringify(before.updatedAt)}`);
+            await ctx.eval(`document.querySelector('[aria-label="Select tab: 小红书运营台"]').click()`);
+            await new Promise(resolve => setTimeout(resolve, 500));
           },
           assert: async () => {
             const after = await ui(`({draft:JSON.parse(document.querySelector('#page-data').textContent).draft, title:document.querySelector('[name="title"]').value, body:document.querySelector('[name="body"]').value, preview:document.querySelector('[data-preview-title]').textContent})`);
