@@ -141,7 +141,8 @@ export default function createWorkbench(runtime) {
     // Credentials and leases stay in the service; model tools receive only job data.
     actions: {
       ...Object.fromEntries(['studio-state', 'save-post-draft', 'create-post-search', 'save-search-results', 'update-comment-candidates', 'set-search-error', 'prepare-draft-publish', 'prepare-comment-batch'].map(action => [action, (input, context) => {
-        if (!context.sessionId || !context.workspaceId) throw new Error('请从项目会话或日程执行任务');
+        // Drafting is local workspace data; only execution needs a session lease.
+        if (!context.workspaceId || (action.startsWith('prepare-') && !context.sessionId)) throw new Error('请从项目会话或日程执行任务');
         return operationRequest(`/api/executor/studio/${action}`, { ...input, sessionId: context.sessionId });
       }])),
       'import-media': async input => {

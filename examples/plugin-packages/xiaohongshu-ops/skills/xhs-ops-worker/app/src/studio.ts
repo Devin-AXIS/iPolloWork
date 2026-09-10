@@ -97,6 +97,8 @@ export class StudioService {
     if (!input.id && dedupeId && this.ops.db.database.prepare('SELECT id FROM post_drafts WHERE id=?').get(dedupeId)) return this.draft(dedupeId, account.id)
     const previous = input.id ? this.draft(input.id, account.id) : null
     if (previous?.jobId) throw new Error('该草稿已进入发布流程；请另存一份再修改')
+    // Updates only replace supplied fields, so AI copy edits preserve the brief and media.
+    if (previous) input = { ...previous, ...input }
     const assetIds = [...new Set(array(input.assetIds ?? [], 9).map(value => text(value, '素材 ID', 80, true)))]
     const assets = this.ops.db.getAssets(assetIds)
     if (assets.length !== assetIds.length) throw new Error('部分素材不存在')
@@ -107,6 +109,12 @@ export class StudioService {
       id: previous?.id ?? dedupeId ?? randomUUID(), accountId: account.id, name: text(input.name, '预设名称', 80) || '未命名草稿',
       title: text(input.title, '标题', 100), body: text(input.body, '描述', 10000), brief: text(input.brief, '创作要求', 4000),
       topics: array(input.topics ?? [], 10).map(value => text(value, '话题', 50, true)), assetIds, mediaKind, updatedAt: stamp(), jobId: null, status: 'draft',
+    }
+    for (const value of [draft.name, draft.title, draft.body, draft.brief, ...draft.topics]) {
+      const questionCount = value.match(/\?/g)?.length ?? 0
+      if (value.includes('\uFFFD') || (/\?{4,}/.test(value) && questionCount > value.length / 3)) {
+        throw new Error('草稿包含疑似编码损坏的文字，未覆盖原内容。请使用插件 save-post-draft 操作以 UTF-8 保存，并重新读取核对。')
+      }
     }
     this.ops.db.database.prepare('INSERT INTO post_drafts(id,account_id,data_json,updated_at) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json,updated_at=excluded.updated_at')
       .run(draft.id, account.id, JSON.stringify(draft), draft.updatedAt)
@@ -233,11 +241,12 @@ export class StudioService {
   prompt(input: Record<string, unknown>): string {
     const account = this.account(input.accountId)
     const kind = text(input.kind, '操作', 40, true)
-    const base = `使用小红书运营台插件，先阅读 xhs-ops-worker 技能。仅操作账号 ${account.displayName}（小红书号 ${account.expectedProfileId}，accountId=${account.id}）。浏览器打开时必须传 ${JSON.stringify({ url: account.profileUrl, ...(account.browserProfileId ? { profileId: `xiaohongshu-ops:${account.browserProfileId}` } : {}) })} 并保存返回的 tabId；后续快照与操作显式使用这个 tabId。不得退出另一个账号。\n通过原生 ipollowork_extension_call 调用下面的小红书插件操作，将结果写回界面；不要仅在聊天中回答。\n`
+    const browser = `浏览器打开时必须传 ${JSON.stringify({ url: account.profileUrl, ...(account.browserProfileId ? { profileId: `xiaohongshu-ops:${account.browserProfileId}` } : {}) })} 并保存返回的 tabId；后续快照与操作显式使用这个 tabId。不得退出另一个账号。\n`
+    const base = `使用小红书运营台插件，先阅读 xhs-ops-worker 技能。仅操作账号 ${account.displayName}（小红书号 ${account.expectedProfileId}，accountId=${account.id}）。\n通过原生 ipollowork_extension_call（extensionId="xiaohongshu-ops", action=下述操作名, args=结构化参数）将结果写回界面。草稿编辑和素材生成不需要打开浏览器或验证登录。保存后用 studio-state 重新读取，核对中文与素材一致再报告完成；不要直接修改数据库或通过 PowerShell 拼接 HTTP 请求。\n${['draft', 'image', 'video'].includes(kind) ? '' : browser}`
     if (['draft', 'image', 'video', 'publish'].includes(kind)) {
       const draft = this.draft(input.draftId, account.id)
       const data = `草稿：${JSON.stringify(draft)}。\n`
-      if (kind === 'draft') return base + data + '根据创作要求和账号定位完成标题、描述与话题，保留已有素材和帖子类型。调用 save-post-draft 保存（id、accountId、name、title、body、topics、mediaKind、assetIds、brief）。只准备草稿，不发布。'
+      if (kind === 'draft') return base + data + '根据创作要求和账号定位完成标题、描述与话题。调用 save-post-draft 仅传 id、accountId、title、body、topics，保留预设名称、创作要求、素材和帖子类型。只准备草稿，不发布。'
       if (kind === 'image' || kind === 'video') return base + data + `为这篇帖子生成${kind === 'image' ? '图片' : '视频'}素材。先检查${kind === 'image' ? '图片工作台 image-studio 的 status 和 generate-image' : '视频工作台 video-console 的 status、submit、jobs'}接口和已配置模型，再调用相应工作台完成生成。${kind === 'video' ? '保持同一个 requestId，等待任务完成并获取实际输出的工作区路径。' : ''}若模型不可用，报告实际原因，不伪造素材。生成完成后调用小红书 import-media（sourcePath=真实工作区文件路径），再调用 save-post-draft 将返回 asset.id 绑定到草稿的 assetIds（保留标题描述等字段；${kind === 'image' ? 'mediaKind=image，可生成多张，总数不超过9' : 'mediaKind=video，只绑定1个MP4'}）。只准备素材，不发布。`
       return base + data + '用户已点击发布帖子，授权发布这个草稿。调用 prepare-draft-publish（accountId、draftId），按返回的锁定内容与素材执行；图文和视频使用对应发布入口。先核对实际账号再 claim-job；只提交一次，看到成功记录才 complete-job。遇阻 block-job，结果不确定 uncertain-job。已有成功结果直接返回，不重复发布。'
     }

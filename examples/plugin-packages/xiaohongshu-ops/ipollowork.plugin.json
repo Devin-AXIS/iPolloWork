@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.4.3",
+    "version": "0.4.4",
     "publisher": {
       "id": "local",
       "name": "本地插件"
@@ -440,7 +440,7 @@
         {
           "id": "save-post-draft",
           "title": "保存发帖草稿 / 预设",
-          "description": "保存完整草稿，不发布。提供 id 更新；省略 id 新建。已准备发布的草稿内容锁定。生成图片或视频后 import-media，再把素材ID写入 assetIds。",
+          "description": "保存草稿或预设，不发布。传 id 更新，省略的字段保留原值。AI 写文案仅需 id/accountId/title/body/topics。已准备发布的草稿内容锁定。生成素材后 import-media，再更新 assetIds。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -499,12 +499,7 @@
               }
             },
             "required": [
-              "accountId",
-              "name",
-              "title",
-              "body",
-              "mediaKind",
-              "assetIds"
+              "accountId"
             ],
             "additionalProperties": false
           }

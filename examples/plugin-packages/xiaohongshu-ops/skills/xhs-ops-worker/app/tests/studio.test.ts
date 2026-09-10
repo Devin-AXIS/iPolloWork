@@ -31,6 +31,28 @@ function fixture() {
   return { db, ops, studio, app, author, other, search, results, post }
 }
 
+test('native draft writes preserve Unicode and omitted fields without a session, and reject lossy overwrites atomically', async () => {
+  const f = fixture()
+  try {
+    const original = f.studio.saveDraft({ accountId: f.author.id, name: '新品体验', brief: '做一个小米 n90 的体验图', title: '原始标题', body: '原始描述', topics: ['体验'] })
+    const input = { accountId: f.author.id, id: original.id, title: '桌面上的新灵感｜中文 ✅', body: '第一行：你好，小红书！\n第二行 📸\nWhy???', topics: ['中文话题'] }
+    const response = await f.app.request('/api/executor/studio/save-post-draft', { method: 'POST', headers: { Authorization: 'Bearer ' + config.apiToken, 'Content-Type': 'application/json; charset=utf-8' }, body: JSON.stringify(input) })
+    assert.equal(response.status, 200)
+    const { draft } = await response.json()
+    assert.equal(draft.title, input.title)
+    assert.equal(draft.body, input.body)
+    assert.equal(draft.name, original.name)
+    assert.equal(draft.brief, original.brief)
+    assert.deepEqual(draft.topics, input.topics)
+    for (const body of ['???????N90,???????????!', '文字\uFFFD损坏']) {
+      assert.throws(() => f.studio.saveDraft({ accountId: f.author.id, id: original.id, body }), /未覆盖原内容/)
+      assert.equal(f.studio.draft(original.id).body, input.body)
+    }
+    await assert.rejects(f.studio.execute('prepare-draft-publish', { accountId: f.author.id, draftId: original.id }), /会话/)
+    assert.equal(f.db.listJobs().length, 0)
+  } finally { f.db.close() }
+})
+
 test('drafts persist presets, isolate accounts, lock after publishing and resume only unclaimed operations', async () => {
   const f = fixture()
   try {
@@ -140,7 +162,9 @@ test('studio UI and host APIs preserve account scope and separate drafting from 
       const prompt = f.studio.prompt({ accountId: f.author.id, draftId: draft.id, kind })
       assert.match(prompt, /只准备/)
       assert.match(prompt, /save-post-draft/)
-      assert.match(prompt, /profileId/)
+      assert.match(prompt, /结构化参数/)
+      assert.doesNotMatch(prompt, /浏览器打开时必须传/)
+      assert.match(prompt, /studio-state/)
     }
     const auto = f.studio.prompt({ accountId: f.author.id, searchId: f.search.id, kind: 'auto-comment' })
     assert.match(auto, /prepare-comment-batch/)
