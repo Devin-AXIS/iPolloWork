@@ -143,6 +143,22 @@ it("creates bounded semantic snapshots with stable refs and protected-value reda
   assert.notEqual(first.snapshotId, second.snapshotId);
 });
 
+it("retains complete accessible link destinations without activating cards or exposing non-navigation values", async () => {
+  const fixture = createFixture();
+  const href = 'https://www.xiaohongshu.com/search_result/real-note?xsec_token=visible&xsec_source=pc_search';
+  const urls = [href, 'javascript:alert(1)', 'https://name:password@example.test/', 'not-a-url', 'https://example.test/' + 'x'.repeat(2048)];
+  for (const [index, url] of urls.entries()) fixture.nodes.push(axNode({
+    nodeId: `link-${index}`, role: 'link', name: `Candidate ${index}`, backendDOMNodeId: 30 + index,
+    properties: [{ name: 'url', value: { value: url } }],
+  }));
+  fixture.nodes.push(axNode({nodeId:'non-link',role:'textbox',name:'Other',backendDOMNodeId:40,properties:[{name:'url',value:{value:'https://private.example/'}}]}));
+  const snapshot = await fixture.runtime.snapshot({tabId:'tab-1'});
+  assert.ok(snapshot.tree.includes(`link "Candidate 0" url=${JSON.stringify(href)}`));
+  assert.equal((snapshot.tree.match(/ url=/g) ?? []).length, 1);
+  assert.doesNotMatch(snapshot.tree, /javascript:|name:password|private\.example|not-a-url/);
+  assert.deepEqual(fixture.inputEvents, []);
+});
+
 it("promotes visible pointer controls without ARIA roles into safe named refs", async () => {
   const fixture = createFixture();
   fixture.nodes[0].childIds.push("publish-card");

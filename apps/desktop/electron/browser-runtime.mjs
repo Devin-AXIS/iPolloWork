@@ -159,6 +159,15 @@ function snapshotLine(node, ref, depth) {
   const details = [];
   if (name) details.push(quote(name));
   if (value && value !== name) details.push(`value=${quote(value)}`);
+  // Links already exposed by Chromium's accessibility tree must retain their
+  // destination, so read-only discovery does not have to activate every card.
+  const href = role === "link" ? axProperty(node, "url") : null;
+  if (typeof href === "string" && href.length <= 2048) {
+    try {
+      const url = new URL(href);
+      if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) details.push(`url=${quote(href)}`);
+    } catch { /* Invalid page-provided URLs are not usable navigation targets. */ }
+  }
   for (const property of ["checked", "disabled", "expanded", "focused", "required", "selected"]) {
     const propertyValue = axProperty(node, property);
     if (propertyValue !== undefined && propertyValue !== false) details.push(`${property}=${String(propertyValue)}`);
