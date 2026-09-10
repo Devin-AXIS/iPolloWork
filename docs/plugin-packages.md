@@ -10,8 +10,8 @@ The operations plugins below are maintained in separate repositories and are not
 
 | Plugin | Source repository | Stable plugin ID |
 | --- | --- | --- |
-| Xiaohongshu Operations | [ipollo-rednote-plugin](https://github.com/zjy-web222/ipollo-rednote-plugin) | `xiaohongshu-ops` |
-| Douyin Operations | [ipollo-tiktok-plugin](https://github.com/zjy-web222/ipollo-tiktok-plugin) | `douyin-ops` |
+| Xiaohongshu Operations | `../ipollo-rednote-plugin` (local) | `xiaohongshu-ops` |
+| Douyin Operations | `../ipollo-tiktok-plugin` (local) | `douyin-ops` |
 
 Their services, skills, UI, platform adapters, and plugin-specific tests belong to those repositories. The host owns only the generic installer, authorization, browser, scheduling, and workbench integration. Existing installations continue to use their immutable artifacts and private data directories; removing bundled sources does not uninstall them or delete account data. New executable packages must use the existing trusted-publisher signing and import process. A source repository URL alone does not bypass executable-import checks.
 
@@ -265,8 +265,8 @@ Only server-allowlisted bundle IDs can use these routes. The Figma bundle is cop
 
 ## Release and catalog contract
 
-The Xiaohongshu and Douyin catalog entries resolve the latest stable GitHub Release from `zjy-web222/ipollo-rednote-plugin` and `zjy-web222/ipollo-tiktok-plugin`. The host downloads the release's `plugin-package.json` through GitHub's asset API, validates its plugin ID/version, then uses the existing checksum, Ed25519 signature, installation and rollback lifecycle. Installation resolves latest again even if the catalog was opened earlier. Network failure or an invalid package preserves the installed version and is reported in the catalog; the host does not substitute an old local bundle. These entries contain only repository metadata, never plugin business code.
+The Xiaohongshu and Douyin catalog entries read local signed packages from `~/.ipollowork/local-plugin-packages/<plugin-id>/plugin-package.json`. `IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR` can select another local package directory. Every catalog refresh and installation reads the current package snapshot; neither operation fetches these plugins from GitHub. Missing or invalid packages are reported without replacing the installed version. The host retains checksum, signature, installation and rollback verification.
 
-Each plugin repository owns its checks and signing/publishing command. After a version bump and source push, `pnpm release` publishes a clean source snapshot with the same signed `.ipollowork-plugin` manual-import archive and machine-readable `plugin-package.json`. GitHub Actions provides the equivalent workflow when available. The `zjy-web222/social-plugins-2026` public key is shipped with the host; its private key belongs to the publisher and stays outside source control. Never disable signature verification to install a source checkout.
+Each independent local plugin repository owns `pnpm package:local`: check and test current working files, build as needed, and atomically publish the machine-installable JSON snapshot beside a signed `.ipollowork-plugin` archive. Source commits and network access are not required. After a local version bump and package build, update through the host plugin list. The `zjy-web222/social-plugins-2026` public key is shipped with the host; its private key stays outside source control. Automatic GitHub synchronization and publishing are disabled by user preference.
 
 A hosted marketplace can use the same validated manifest and immutable artifact. A release record should contain `updateId`, version, publisher identity, artifact URL, SHA-256 checksum, signature/review status, compatibility ranges, release notes, and rollout channel. The desktop must download to a temporary directory, verify identity and checksum, preview the exact writes and permissions, and then call the canonical package lifecycle. This keeps hosted distribution behind one lifecycle and avoids a second installer format.

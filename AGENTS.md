@@ -71,7 +71,7 @@ Feature work starts with the demo, not a PRD:
 
 ### Independent social plugins
 
-Xiaohongshu and Douyin business code belongs in https://github.com/zjy-web222/ipollo-rednote-plugin and https://github.com/zjy-web222/ipollo-tiktok-plugin. The user explicitly authorized committing, pushing, and publishing each completed change to those repositories without repeated confirmation. Increment the plugin version, run its checks, push the validated default branch, and verify its signed GitHub Release succeeds. Use the repository's `pnpm release` when the owner's GitHub Actions are unavailable. Keep the host's GitHub catalog/install integration here; do not copy plugin business code back into this repository. Host installation must fetch the latest stable release and retain signature and checksum verification.
+Maintain Xiaohongshu and Douyin in the independent local sibling directories `../ipollo-rednote-plugin` and `../ipollo-tiktok-plugin`. The user cancelled automatic GitHub pushes and publishing; do not push or publish plugin changes unless explicitly requested again. After each change, run the plugin repository's `pnpm package:local` and install/update its local package in the host. Keep plugin business code outside this repository, and preserve accounts, drafts, signatures and checksums. The host reads `~/.ipollowork/local-plugin-packages/<plugin-id>/plugin-package.json` (or `IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR`), without fetching these plugins from GitHub.
 
 ### Mandatory AI Code Gate
 
