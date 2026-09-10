@@ -65,7 +65,7 @@ export default {
             ctx.assert(after.draft.updatedAt !== before.updatedAt, 'The save action did not persist the draft.');
             await ctx.output('unicode-save', JSON.stringify({ draftId, accountId, title: after.title, fieldsVerified: ['name', 'brief', 'title', 'body', 'topics', 'mediaKind', 'assetIds'], assets: before.assetIds.length }));
           },
-          screenshot: { name: 'unicode-draft-preserved', requireText: ['小红书运营台'] },
+          screenshot: { name: 'unicode-draft-preserved', fromSurface: false, textTargetId: target.id, requireText: [before.title, 'AI 写标题和描述'] },
         });
       } finally { frame?.close(); }
     },
