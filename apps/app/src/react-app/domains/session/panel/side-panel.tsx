@@ -81,6 +81,7 @@ type SidePanelProps = {
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
   onEditImage?: (target: OpenTarget) => void;
+  onGenerateVideo?: (path:string, sourceSessionId:string) => void;
   onSaveAsTemplate?: () => void;
   aiEditing?: boolean;
   expanded?: boolean;
@@ -189,7 +190,14 @@ function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
   return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
 }
 
+function studioLabel(id: string, label: string) {
+  if (id === "image-studio") return t("side_panel.image_studio");
+  if (id === "video-console") return t("side_panel.video_studio");
+  return label;
+}
+
 function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
+  const label = tab.type === "workspace-app" ? studioLabel(tab.surface.pluginId, tab.label) : tab.label;
   const dragControls = useDragControls();
   const tabRef = React.useRef<HTMLDivElement>(null);
 
@@ -236,16 +244,16 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
             event.preventDefault();
             showBrowserTabContextMenu();
           } : undefined}
-          title={tab.label}
-          aria-label={`Select tab: ${tab.label}`}
+          title={label}
+          aria-label={`Select tab: ${label}`}
           aria-selected={active}
         >
           <SidePanelTabIcon tab={tab} />
-          <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
+          <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         </PanelTab>
         <PanelTabClose
           active={active}
-          label={tab.label}
+          label={label}
           onClose={() => onClose(tab)}
         />
       </div>
@@ -597,6 +605,7 @@ export function SidePanel({
   onAskAi,
   onSendWorkspaceAppMessage,
   onEditImage,
+  onGenerateVideo,
   onSaveAsTemplate,
   aiEditing = false,
   expanded = false,
@@ -807,7 +816,7 @@ export function SidePanel({
                               className="h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!"
                             >
                               <SidePanelLauncherIcon item={item} />
-                              <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{item.label}</span>
+                              <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{studioLabel(item.icon, item.label)}</span>
                               {item.shortcut ? <span className="text-xs font-normal text-muted-foreground">{item.shortcut}</span> : null}
                             </DropdownMenuItem>
                           </React.Fragment>
@@ -869,6 +878,7 @@ export function SidePanel({
               placement="workspace"
               displayMode={expanded ? "fullscreen" : "inline"}
               onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
+              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
               onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
               onSendMessage={onSendWorkspaceAppMessage}
               onRequestClose={() => closeTab(tab)}

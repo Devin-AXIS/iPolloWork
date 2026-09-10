@@ -1,6 +1,8 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
+import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
+import { withStudioResults } from "../sync/message-merge";
 import { useQuery } from "@tanstack/react-query";
 import type { TemplateCatalogItem } from "@ipollowork/types/templates";
 import { Check, Minimize2, Sparkles, X } from "lucide-react";
@@ -1038,6 +1040,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
   );
+  const studioArtifacts = useSessionArtifacts(props.client, props.workspaceId, props.sessionId);
+  const imageResultLabel = t("session.outputs.image_generated");
+  const videoResultLabel = t("session.outputs.video_generated");
+  const displayMessages = useMemo(() => withStudioResults(
+    renderedMessages, studioArtifacts.data?.pages.flatMap(page => page.items) ?? [],
+    { image: imageResultLabel, video: videoResultLabel },
+  ), [renderedMessages, studioArtifacts.data, imageResultLabel, videoResultLabel]);
   const visibleUserRequestCount = useMemo(
     () => renderedMessages.filter(
       (message) => message.role === "user" && message.parts.length > 0,
@@ -1084,10 +1093,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
     props.onConversationMessagesChange?.(props.sessionId, renderedMessages);
   }, [props.onConversationMessagesChange, props.sessionId, renderedMessages]);
   const openTargets = useMemo(
-    () => deriveOpenTargets(renderedMessages, {
+    () => deriveOpenTargets(displayMessages, {
       supplementalFiles: props.artifactFiles ?? (props.templateEntryPath ? [props.templateEntryPath] : undefined),
     }),
-    [props.artifactFiles, props.templateEntryPath, renderedMessages],
+    [props.artifactFiles, props.templateEntryPath, displayMessages],
   );
   const openTargetsFingerprint = useMemo(
     () => openTargets.map((target) => `${target.kind}:${target.value}:${target.confidence}`).join("|"),
@@ -1098,7 +1107,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (snapshotQuery.isLoading) return;
     props.onLoadSettled?.(props.sessionId);
   }, [props.onLoadSettled, props.sessionId, snapshotQuery.isLoading]);
-  const isEmptyConversation = renderedMessages.length === 0
+  const isEmptyConversation = displayMessages.length === 0
     && !chatStreaming
     && !pendingSessionLoad
     && !error
@@ -2503,11 +2512,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   </div>
                 )}
               </div>
-            ) : renderedMessages.length === 0 && effectiveActivityStatus !== "idle" ? (
+            ) : displayMessages.length === 0 && effectiveActivityStatus !== "idle" ? (
               <div className="px-6 py-12">
                 <AssistantWaitingCard label={props.assistantWaitLabel ?? getSessionActivityStatusLabel(effectiveActivityStatus)} />
               </div>
-            ) : renderedMessages.length === 0 && snapshot && snapshot.messages.length === 0 && error ? (
+            ) : displayMessages.length === 0 && snapshot && snapshot.messages.length === 0 && error ? (
               <SessionErrorCard
                 error={error}
                 onDismiss={handleDismissError}
@@ -2545,7 +2554,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       onEditUserMessage={handleEditUserMessage}
                     >
                       <MessageList
-                        messages={renderedMessages}
+                        messages={displayMessages}
                         status={status}
                         retryStatus={liveStatus.type === "retry" ? liveStatus : null}
                         templateEntryPath={props.templateEntryPath}

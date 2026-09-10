@@ -1381,7 +1381,7 @@ export function ReactSessionComposer(props: ComposerProps) {
       <div className="max-w-[800px] mx-auto">
         {/* Main composer panel */}
         <div
-          className={`@container/composer relative overflow-visible rounded-[18px] border bg-dls-surface transition-all ${engineSelectedAppearance ? "border-sky-8 shadow-[var(--dls-card-shadow)]" : "border-transparent shadow-[0_4px_12.9px_rgba(80,130,222,0.20)]"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434] ${engineSelectedAppearance ? "" : "dark:shadow-[0_4px_9.5px_rgba(113,156,234,0.53)]"}` : ""} ${panelRoundedClass}`}
+          className={`@container/composer composer-card relative flex flex-col overflow-visible rounded-[18px] border bg-dls-surface ${engineSelectedAppearance ? "border-sky-8" : "border-transparent"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434]` : ""} ${panelRoundedClass}`}
           style={engineSelectedAppearance ? undefined : {
             backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
             backgroundOrigin: "border-box",
@@ -1394,7 +1394,7 @@ export function ReactSessionComposer(props: ComposerProps) {
           {renderSlashMenu()}
 
           {props.attachments.length > 0 ? (
-            <div className="mx-5 mt-5 flex flex-wrap gap-2 md:mx-6">
+            <div className="mx-5 mt-3 flex max-h-16 shrink-0 flex-wrap gap-2 overflow-y-auto md:mx-6">
               {props.attachments.map((attachment) => (
                 <div key={attachment.id} className="flex items-center gap-2 rounded-2xl border border-gray-6 bg-gray-2 px-3 py-2 text-xs text-gray-10">
                   {isImageAttachment(attachment) && attachment.previewUrl ? (
@@ -1442,7 +1442,7 @@ export function ReactSessionComposer(props: ComposerProps) {
             </div>
           ) : null}
 
-          <div className="px-4 pt-3 pb-2">
+          <div className="flex min-h-0 flex-1 flex-col px-4 pt-3 pb-2">
             {/* Editor */}
             <LexicalPromptEditor
               ref={editorRef}
@@ -1530,7 +1530,7 @@ export function ReactSessionComposer(props: ComposerProps) {
             />
 
             {/* Action row — attachments, quick actions, model controls, and send */}
-            <div className="mt-2 flex min-w-0 items-end justify-between gap-2">
+            <div className="mt-2 flex min-w-0 shrink-0 items-end justify-between gap-2">
               <div className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible">
                 <input
                   ref={(element) => {

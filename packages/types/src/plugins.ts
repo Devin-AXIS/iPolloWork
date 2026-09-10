@@ -156,6 +156,7 @@ const pluginUiInspectorFieldSchema = z.object({
   value: z.string(),
   live: z.boolean().optional(),
   advanced: z.boolean().optional(),
+  customRatio: z.boolean().optional(),
   placeholder: z.string().optional(),
   media: z.object({
     kind: z.enum(["image", "video", "audio"]),

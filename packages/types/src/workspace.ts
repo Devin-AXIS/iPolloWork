@@ -18,6 +18,15 @@ export type WorkspaceKind = "local" | "remote";
 export type SessionArtifact = {
   path: string;
   previousPaths?: string[];
+  generation?: {
+    id: string;
+    kind: "image" | "video";
+    model: string;
+    completedAt: number;
+    width?: number;
+    height?: number;
+    duration?: number;
+  };
   size: number;
   updatedAt: number;
 };

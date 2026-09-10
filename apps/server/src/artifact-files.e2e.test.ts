@@ -101,11 +101,13 @@ describe("artifact file routes", () => {
     const { base, token, config } = await startiPolloWorkServer(root);
     const workspace = config.workspaces[0];
     const path = "reports/artifact-eval.md";
+    const generation = { id: "receipt-1", kind: "image", model: "Test image model", completedAt: 1000 } satisfies NonNullable<import("@ipollowork/types/workspace").SessionArtifact["generation"]>;
+    await recordSessionArtifact(config, workspace, "session-a", path, undefined, generation);
     await Promise.all(Array.from({ length: 5 }, () => recordSessionArtifact(config, workspace, "session-a", path)));
     await recordSessionArtifact(config, workspace, "session-b", "reports/artifact-eval.csv");
     const response = await fetch(`${base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(token) });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ items: [{ path }], nextCursor: null });
+    expect(await response.json()).toMatchObject({ items: [{ path, generation }], nextCursor: null });
     expect((await listSessionArtifacts(config, "ws_1", "session-b")).items.map((item) => item.path)).toEqual(["reports/artifact-eval.csv"]);
     expect((await listSessionArtifacts(config, "another-workspace", "session-a")).items).toEqual([]);
     expect((await listSessionArtifacts(config, "ws_1", "empty-session")).items).toEqual([]);
@@ -119,7 +121,7 @@ describe("artifact file routes", () => {
     await stops.pop()?.();
     const restarted = await startiPolloWorkServer(root);
     expect(await (await fetch(`${restarted.base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(restarted.token) })).json())
-      .toMatchObject({ items: [{ path }], nextCursor: null });
+      .toMatchObject({ items: [{ path, generation }], nextCursor: null });
   });
 
   test("pages saved outputs without duplicates or scanning unrelated workspace files", async () => {
