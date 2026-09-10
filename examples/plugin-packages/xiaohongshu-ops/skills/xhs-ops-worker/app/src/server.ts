@@ -1,6 +1,7 @@
-import { createHash, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync } from 'node:fs'
-import { basename, extname, resolve } from 'node:path'
+import { timingSafeEqual } from 'node:crypto'
+import { createReadStream, existsSync, statSync } from 'node:fs'
+import { isAbsolute, relative, resolve } from 'node:path'
+import { Readable } from 'node:stream'
 import { pathToFileURL } from 'node:url'
 import { serve } from '@hono/node-server'
 import { serveStatic } from '@hono/node-server/serve-static'
@@ -8,14 +9,15 @@ import { Hono } from 'hono'
 import type { MiddlewareHandler } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { secureHeaders } from 'hono/secure-headers'
-import sharp from 'sharp'
+import { storeMedia } from './assets.js'
+import { StudioService } from './studio.js'
 import { config } from './config.js'
 import { analyticsCsvHeader, parsePlatformCsv } from './analytics.js'
 import { observeBrowserSession, prepareSessionVerification } from './verification.js'
 import { OpsDatabase } from './db.js'
 import { OpsService, startContentScheduler } from './service.js'
 import type { AccountSessionStatus, CampaignSchedule, CampaignStatus, DiscoveredComment, KnowledgeItem, SessionOperation } from './types.js'
-import { renderAccounts, renderAnalytics, renderBrand, renderError, renderInteractions, renderJobs } from './views.js'
+import { renderAccounts, renderAnalytics, renderBrand, renderError, renderPublishing, renderComments, renderJobs } from './views.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误'
@@ -88,11 +90,12 @@ function validateSchedule(value: unknown): CampaignSchedule {
 
 function state(service: OpsService): string {
   const db = service.db
-  return JSON.stringify({ counts: db.counts(), accounts: db.listAccounts().map((item) => [item.id, item.sessionStatus, item.updatedAt]), campaigns: db.listCampaigns().map((item) => [item.id, item.status, item.updatedAt]), jobs: db.listJobs(100).map((item) => [item.id, item.status, item.updatedAt]) })
+  return JSON.stringify({ counts: db.counts(), accounts: db.listAccounts().map((item) => [item.id, item.sessionStatus, item.updatedAt]), campaigns: db.listCampaigns().map((item) => [item.id, item.status, item.updatedAt]), jobs: db.listJobs(100).map((item) => [item.id, item.status, item.updatedAt]), studio: db.database.prepare('SELECT max(updated_at) AS updated, count(*) AS count FROM post_drafts UNION ALL SELECT max(updated_at), count(*) FROM post_searches UNION ALL SELECT max(created_at), count(*) FROM assets').all() })
 }
 
 export function createApp(service: OpsService): Hono {
   const app = new Hono()
+  const studio = new StudioService(service)
 
   app.use('*', secureHeaders({
     contentSecurityPolicy: {
@@ -102,7 +105,9 @@ export function createApp(service: OpsService): Hono {
     referrerPolicy: 'no-referrer',
     xFrameOptions: config.embedOrigins.length ? false : 'SAMEORIGIN',
   }))
-  app.use('*', bodyLimit({ maxSize: 20 * 1024 * 1024, onError: (c) => c.json({ error: '请求内容超过 20 MB' }, 413) }))
+  const uploadLimit = bodyLimit({ maxSize: 201 * 1024 * 1024, onError: c => c.json({ error: '素材文件过大' }, 413) })
+  const jsonLimit = bodyLimit({ maxSize: 20 * 1024 * 1024, onError: c => c.json({ error: '请求内容过大' }, 413) })
+  app.use('*', (c, next) => (c.req.path === '/api/assets' ? uploadLimit : jsonLimit)(c, next))
   app.use('*', async (c, next) => {
     if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(c.req.method)) return next()
     if (hasApiToken(c.req.header('Authorization'))) return next()
@@ -153,17 +158,33 @@ export function createApp(service: OpsService): Hono {
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
   app.get('/brand', (c) => c.html(renderBrand({ brand: service.db.getBrand(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets() })))
-  app.get('/interactions', (c) => {
+  app.get('/interactions', (c) => c.redirect('/comments' + (c.req.query('account') ? `?account=${encodeURIComponent(c.req.query('account')!)}` : '')))
+  for (const panel of ['publishing', 'comments']) app.get(`/${panel}`, (c) => {
     const accounts = service.db.listAccounts()
     const accountId = c.req.query('account')
     const account = accountId === undefined ? accounts[0] : accounts.find(item => String(item.id) === accountId)
-    if (accountId !== undefined && !account) return c.html(renderError('账号不存在', '请返回互动页选择已接入的账号。', 404), 404)
+    if (accountId !== undefined && !account) return c.html(renderError('账号不存在', '请选择已接入的账号。', 404), 404)
     c.header('Cache-Control', 'no-store')
-    return c.html(renderInteractions({
-      accounts, account,
+    const data = account?.enabled ? studio.state(account.id, { draftId: c.req.query('draft'), searchId: c.req.query('search') }) : null
+    return c.html(panel === 'publishing' ? renderPublishing({ accounts, account, data, revision: state(service), draftId: c.req.query('draft') }) : renderComments({
+      accounts, account, data, revision: state(service), searchId: c.req.query('search'),
       interactions: account ? service.db.listInteractions(100, account.id) : [],
       reviews: account ? service.db.listReviews(100, account.id) : [],
     }))
+  })
+  app.post('/api/studio/:action', async c => {
+    try {
+      const action = c.req.param('action')
+      if (action.startsWith('prepare-')) throw new Error('请通过主软件执行发布和评论')
+      return c.json(await studio.execute(action, await c.req.json<Record<string, unknown>>()))
+    } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
+  })
+  app.post('/api/executor/studio/:action', async c => {
+    if (!hasApiToken(c.req.header('Authorization'))) return c.json({ error: '需要执行器授权' }, 401)
+    try {
+      const input = await c.req.json<Record<string, unknown>>()
+      return c.json(await studio.execute(c.req.param('action'), input, optionalText(input.sessionId, 200) ?? ''))
+    } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
   app.get('/jobs', (c) => c.html(renderJobs({ jobs: service.db.listJobs(), accounts: service.db.listAccounts(), audit: service.db.listAudit() })))
 
@@ -171,8 +192,15 @@ export function createApp(service: OpsService): Hono {
     const asset = service.db.getAssets([c.req.param('id')])[0]
     if (!asset) return c.notFound()
     const path = resolve(config.assetDir, asset.relativePath)
-    if (!path.startsWith(`${config.assetDir}/`) || !existsSync(path)) return c.notFound()
-    return new Response(readFileSync(path), { headers: { 'Content-Type': asset.mimeType, 'Cache-Control': 'private, max-age=300' } })
+    const local = relative(resolve(config.assetDir), path)
+    if (!local || local.startsWith('..') || isAbsolute(local) || !existsSync(path)) return c.notFound()
+    const size = statSync(path).size
+    const range = c.req.header('Range')
+    const match = range?.match(/^bytes=(\d+)-(\d*)$/)
+    const start = match ? Number(match[1]) : 0
+    const end = match?.[2] ? Math.min(Number(match[2]), size - 1) : size - 1
+    if (range && (!match || start > end || start >= size)) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } })
+    return new Response(Readable.toWeb(createReadStream(path, { start, end })) as ReadableStream, { status: range ? 206 : 200, headers: { 'Content-Type': asset.mimeType, 'Content-Length': String(end - start + 1), 'Accept-Ranges': 'bytes', 'Cache-Control': 'private, max-age=300', ...(range ? { 'Content-Range': `bytes ${start}-${end}/${size}` } : {}) } })
   })
 
   app.put('/api/brand', async (c) => {
@@ -204,19 +232,8 @@ export function createApp(service: OpsService): Hono {
     try {
       const body = await c.req.parseBody()
       const file = body.file
-      if (!(file instanceof File)) throw new Error('请选择图片文件')
-      if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) throw new Error('只支持 PNG、JPEG 或 WebP')
-      if (file.size > 15 * 1024 * 1024) throw new Error('图片不能超过 15 MB')
-      const bytes = Buffer.from(await file.arrayBuffer())
-      const metadata = await sharp(bytes).metadata()
-      if (!metadata.width || !metadata.height) throw new Error('无法读取图片尺寸')
-      const extension = extname(file.name).toLowerCase() || (file.type === 'image/png' ? '.png' : file.type === 'image/webp' ? '.webp' : '.jpg')
-      const hash = createHash('sha256').update(bytes).digest('hex')
-      const relativePath = `uploads/${hash.slice(0, 20)}${extension}`
-      const path = resolve(config.assetDir, relativePath)
-      mkdirSync(resolve(config.assetDir, 'uploads'), { recursive: true, mode: 0o700 })
-      await sharp(bytes).rotate().toFile(path)
-      const asset = service.db.createAsset({ kind: 'upload', filename: basename(file.name).slice(0, 200), mimeType: file.type, relativePath, sha256: hash, width: metadata.width, height: metadata.height })
+      if (!(file instanceof File)) throw new Error('请选择素材文件')
+      const asset = await storeMedia(service.db, file)
       return c.json({ asset }, 201)
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
@@ -381,8 +398,10 @@ export function createApp(service: OpsService): Hono {
         const url = new URL(targetUrl)
         if (url.origin !== new URL(config.xhs.webUrl).origin || url.username || url.password || url.pathname === '/') throw new Error('目标必须是小红书帖子地址')
       }
-      if (type === 'publish_note' && (!Array.isArray(input.cards) || input.cards.length !== 3)) throw new Error('发布图文需要三张内容卡，封面会自动生成')
-      const cards = type === 'publish_note' && Array.isArray(input.cards) ? input.cards.map(card => {
+      const mediaAssetIds = input.mediaAssetIds === undefined ? undefined : stringArray(input.mediaAssetIds, '素材', 9)
+      if (input.mediaKind !== undefined && input.mediaKind !== 'image' && input.mediaKind !== 'video') throw new Error('帖子类型无效')
+      if (type === 'publish_note' && !mediaAssetIds?.length && (!Array.isArray(input.cards) || input.cards.length !== 3)) throw new Error('请提供素材或三张内容卡')
+      const cards = type === 'publish_note' && !mediaAssetIds?.length && Array.isArray(input.cards) ? input.cards.map(card => {
         if (!card || typeof card !== 'object' || !('heading' in card) || !('body' in card)) throw new Error('图文卡片格式无效')
         return { heading: text(card.heading, '卡片标题', 100), body: text(card.body, '卡片正文', 600) }
       }) : []
@@ -393,7 +412,7 @@ export function createApp(service: OpsService): Hono {
         title: type === 'publish_note' ? text(input.title, '标题', 100) : '',
         body: text(input.body, '正文', type === 'publish_note' ? 10000 : 1000),
         topics: type === 'publish_note' ? stringArray(input.topics ?? [], '话题', 10).map(topic => text(topic, '话题', 50)) : [],
-        cards, targetUrl,
+        cards, targetUrl, ...(mediaAssetIds === undefined ? {} : { mediaAssetIds }), ...(input.mediaKind === undefined ? {} : { mediaKind: input.mediaKind }),
         targetCommentText: type === 'reply_comment' ? text(input.targetCommentText, '目标评论原文', 2000) : '',
         targetAuthor: type === 'reply_comment' ? text(input.targetAuthor, '目标评论作者', 200) : '',
       }

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import { cp, mkdir, access, readFile, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
+import { cp, mkdir, access, readFile, writeFile, realpath, stat } from 'node:fs/promises';
+import { basename, dirname, extname, isAbsolute, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
@@ -96,6 +96,7 @@ export default function createWorkbench(runtime) {
   }
 
   async function browserJobResult(result) {
+    if (result.jobs) return { ...result, jobs: await Promise.all(result.jobs.map(async job => (await browserJobResult({ job })).job)) };
     const job = result.job;
     if (!job?.payload?.mediaPaths?.length) return result;
     if (!/^[a-f0-9-]{36}$/i.test(job.id)) throw new Error('任务 ID 无效');
@@ -106,7 +107,7 @@ export default function createWorkbench(runtime) {
     const mediaPaths = await Promise.all(job.payload.mediaPaths.map(async source => {
       const sourcePath = resolve(source);
       const local = relative(resolve(dataDir, 'assets'), sourcePath);
-      if (!local || local.startsWith('..') || isAbsolute(local) || !/\.png$/i.test(sourcePath)) throw new Error('任务图片不在插件素材目录');
+      if (!local || local.startsWith('..') || isAbsolute(local) || !/\.(png|jpe?g|webp|mp4)$/i.test(sourcePath)) throw new Error('任务素材不在插件素材目录');
       const destination = resolve(mediaDir, basename(sourcePath));
       await cp(sourcePath, destination);
       return destination;
@@ -139,6 +140,28 @@ export default function createWorkbench(runtime) {
   return {
     // Credentials and leases stay in the service; model tools receive only job data.
     actions: {
+      ...Object.fromEntries(['studio-state', 'save-post-draft', 'create-post-search', 'save-search-results', 'update-comment-candidates', 'set-search-error', 'prepare-draft-publish', 'prepare-comment-batch'].map(action => [action, (input, context) => {
+        if (!context.sessionId || !context.workspaceId) throw new Error('请从项目会话或日程执行任务');
+        return operationRequest(`/api/executor/studio/${action}`, { ...input, sessionId: context.sessionId });
+      }])),
+      'import-media': async input => {
+        if (typeof input.sourcePath !== 'string' || !input.sourcePath.trim()) throw new Error('请提供工作区内的素材路径');
+        const root = await realpath(runtime.workspace.root);
+        const source = await realpath(resolve(root, input.sourcePath));
+        const local = relative(root, source);
+        if (!local || local.startsWith('..') || isAbsolute(local)) throw new Error('只能导入当前工作区内的素材');
+        const mimeType = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.mp4': 'video/mp4' }[extname(source).toLowerCase()];
+        const metadata = await stat(source);
+        if (!mimeType || !metadata.isFile() || metadata.size > (mimeType === 'video/mp4' ? 200 : 15) * 1024 * 1024) throw new Error('不支持的素材格式或文件过大');
+        await ensureStarted();
+        const token = (await readFile(resolve(dataDir, 'api-token'), 'utf8')).trim();
+        const form = new FormData();
+        form.set('file', new Blob([await readFile(source)], { type: mimeType }), basename(source));
+        const response = await fetch(`${origin}/api/assets`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body: form, signal: AbortSignal.timeout(60_000) });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '导入素材失败');
+        return result;
+      },
       'list-accounts': () => operationRequest('/api/executor/accounts'),
       'prepare-job': (input, context) => {
         if (!context.sessionId || !context.workspaceId) throw new Error('请从项目会话或日程执行任务');

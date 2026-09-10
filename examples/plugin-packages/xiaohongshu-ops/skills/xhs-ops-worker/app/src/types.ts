@@ -134,6 +134,7 @@ export interface ContentItem {
 }
 
 export interface BrowserJobPayload {
+  mediaKind?: 'image' | 'video'
   destinationUrl: string
   expectedHandle: string
   expectedProfileId: string
@@ -218,6 +219,8 @@ export interface DiscoveredComment {
 }
 
 export interface SessionOperation {
+  mediaAssetIds?: string[]
+  mediaKind?: 'image' | 'video'
   accountId: number
   sessionId: string
   runKey: string

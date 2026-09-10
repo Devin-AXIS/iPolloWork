@@ -93,6 +93,17 @@ const SCHEMA = `
     snapshot_json TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS post_drafts (
+    id TEXT PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
+    data_json TEXT NOT NULL, job_id TEXT REFERENCES browser_jobs(id), updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS post_drafts_account ON post_drafts(account_id, updated_at);
+  CREATE TABLE IF NOT EXISTS post_searches (
+    id TEXT PRIMARY KEY, account_id INTEGER NOT NULL REFERENCES accounts(id),
+    data_json TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS post_searches_account ON post_searches(account_id, updated_at);
+
   CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -451,16 +462,22 @@ export class OpsDatabase {
     return this.database.prepare('DELETE FROM knowledge_items WHERE id = ?').run(id).changes === 1
   }
 
-  listAssets(): MediaAsset[] {
-    return (this.database.prepare('SELECT * FROM assets ORDER BY created_at DESC').all() as Row[]).map((row) => ({
+  listAssets(limit = 1000): MediaAsset[] {
+    return (this.database.prepare('SELECT * FROM assets ORDER BY created_at DESC LIMIT ?').all(limit) as Row[]).map((row) => this.assetFromRow(row))
+  }
+
+  private assetFromRow(row: Row): MediaAsset {
+    return {
       id: String(row.id), kind: String(row.kind) as MediaAsset['kind'], filename: String(row.filename), mimeType: String(row.mime_type),
       relativePath: String(row.relative_path), sha256: String(row.sha256), width: row.width === null ? null : Number(row.width),
       height: row.height === null ? null : Number(row.height), createdAt: String(row.created_at),
-    }))
+    }
   }
 
   getAssets(ids: string[]): MediaAsset[] {
-    const byId = new Map(this.listAssets().map((item) => [item.id, item]))
+    if (!ids.length) return []
+    const assets = (this.database.prepare(`SELECT * FROM assets WHERE id IN (${ids.map(() => '?').join(',')})`).all(...ids) as Row[]).map(row => this.assetFromRow(row))
+    const byId = new Map(assets.map((item) => [item.id, item]))
     return ids.flatMap((id) => byId.has(id) ? [byId.get(id) as MediaAsset] : [])
   }
 
@@ -750,7 +767,7 @@ export class OpsDatabase {
       if (existing) {
         const job = jobFromRow(existing)
         if (job.accountId !== input.accountId || job.type !== input.type || job.payload.evidence?.inputHash !== payload.evidence?.inputHash) throw new Error('同一次操作已锁定账号和内容，不能更换操作标识绕过已有记录')
-        if (job.attempts === 0 && ['queued', 'dispatched'].includes(job.status)) this.database.prepare('UPDATE browser_jobs SET worker_thread_id = ? WHERE id = ?').run(input.sessionId, job.id)
+        this.resumePreparedSessionJob(job.id, input.sessionId)
         this.database.exec('COMMIT')
         return this.getJob(job.id) as BrowserJob
       }
@@ -771,6 +788,13 @@ export class OpsDatabase {
       this.database.exec('COMMIT')
       return this.getJob(job.id) as BrowserJob
     } catch (error) { this.database.exec('ROLLBACK'); throw error }
+  }
+
+  resumePreparedSessionJob(id: string, sessionId: string): BrowserJob {
+    const job = this.getJob(id)
+    if (!job || job.payload.evidence?.sessionExecution !== true) throw new Error('找不到当前会话操作')
+    if (job.attempts === 0 && ['queued', 'dispatched'].includes(job.status)) this.database.prepare('UPDATE browser_jobs SET worker_thread_id = ? WHERE id = ?').run(sessionId, id)
+    return this.getJob(id)!
   }
 
   setSessionJobMedia(id: string, mediaPaths: string[]): void {

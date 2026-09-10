@@ -1634,7 +1634,7 @@ describe("plugin package lifecycle", () => {
     try {
       const catalog = await fetch(`${base}/catalog`, { headers });
       expect(catalog.status).toBe(200);
-      expect((await catalog.json()).items).toContainEqual(expect.objectContaining({ pluginId: "xiaohongshu-ops", version: "0.3.19" }));
+      expect((await catalog.json()).items).toContainEqual(expect.objectContaining({ pluginId: "xiaohongshu-ops", version: "0.4.0" }));
       const installation = await fetch(`${base}/catalog/xiaohongshu-ops/install`, { method: "POST", headers });
       expect(installation.status).toBe(200);
       expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/src/server.ts"), "utf8"))
@@ -1679,10 +1679,10 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "image-studio", version: "0.1.29", installedVersion: "0.1.29", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.54", installedVersion: "0.1.54", updateAvailable: false },
           { pluginId: "video-console", version: "0.2.4", installedVersion: "0.2.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.3.19", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.4.0", installedVersion: null, updateAvailable: false },
         ],
       });
 

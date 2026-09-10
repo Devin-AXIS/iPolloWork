@@ -36,6 +36,11 @@ export class OpsService {
   async prepareSessionOperation(input: SessionOperation): Promise<BrowserJob> {
     const account = this.db.getAccount(input.accountId)
     if (!account?.enabled) throw new Error('账号不存在、已解除绑定或已停用')
+    const suppliedAssets = input.mediaAssetIds?.length ? this.db.getAssets(input.mediaAssetIds) : []
+    if (input.mediaAssetIds?.length && suppliedAssets.length !== input.mediaAssetIds.length) throw new Error('部分素材不存在，请重新选择')
+    if (input.type === 'publish_note' && suppliedAssets.length) {
+      if (input.mediaKind === 'video' ? suppliedAssets.length !== 1 || suppliedAssets[0]?.mimeType !== 'video/mp4' : suppliedAssets.length > 9 || suppliedAssets.some(asset => !asset.mimeType.startsWith('image/'))) throw new Error('图文需 1–9 张图片；视频帖需 1 个 MP4 文件')
+    } else if (input.type === 'publish_note' && input.mediaKind === 'video') throw new Error('请先生成或导入视频素材')
     const brand = this.db.getBrand()
     const banned = findBannedPhrases([input.title, input.body, ...input.cards.flatMap(card => [card.heading, card.body])].join('\n'), [...brand.bannedPhrases, ...account.bannedTopics])
     if (banned.length) throw new Error(`内容命中账号禁用表述：${banned.join('、')}`)
@@ -44,14 +49,14 @@ export class OpsService {
       destinationUrl: input.type === 'publish_note' ? config.xhs.creatorUrl : input.targetUrl,
       expectedHandle: account.handle, expectedProfileId: account.expectedProfileId, expectedProfileUrl: account.profileUrl,
       browserProfileId: account.browserProfileId ? `xiaohongshu-ops:${account.browserProfileId}` : null,
-      ...(input.type === 'publish_note' ? { title: input.title, body: input.body, topics: input.topics } : { targetUrl: input.targetUrl, commentBody: input.body, targetCommentText: input.targetCommentText, targetAuthor: input.targetAuthor }),
+      ...(input.type === 'publish_note' ? { title: input.title, body: input.body, topics: input.topics, mediaKind: input.mediaKind ?? 'image' } : { targetUrl: input.targetUrl, commentBody: input.body, targetCommentText: input.targetCommentText, targetAuthor: input.targetAuthor }),
       evidence: { sessionExecution: true, inputHash: createHash('sha256').update(JSON.stringify(locked)).digest('hex') },
     })
     if (job.status === 'queued' && job.type === 'publish_note' && job.contentItemId && this.db.markContentGenerating(job.contentItemId)) {
       const content = this.db.getContent(job.contentItemId)
       if (!content) throw new Error('找不到文章记录')
       try {
-        const assets = (await renderCardSet(content, brand)).map(asset => this.db.createAsset(asset))
+        const assets = suppliedAssets.length ? suppliedAssets : (await renderCardSet(content, brand)).map(asset => this.db.createAsset(asset))
         this.db.setContentGenerated(content.id, { title: input.title, body: input.body, topics: input.topics, cardData: input.cards, mediaAssetIds: assets.map(asset => asset.id), sourceKnowledgeIds: [], contentHash: contentHash(locked) })
         this.db.setSessionJobMedia(job.id, assets.map(asset => resolve(config.assetDir, asset.relativePath)))
       } catch (error) {

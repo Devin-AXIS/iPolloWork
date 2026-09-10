@@ -68,7 +68,7 @@ test('scheduled sessions prepare and complete comments and replies without rebin
     assert.equal(record?.status, 'published')
     assert.equal(record?.resultUrl, complete.resultUrl)
     assert.equal(f.db.listInteractions(100, f.other.id).length, 0)
-    assert.match(await (await f.app.request(`/interactions?account=${f.author.id}`)).text(), /这条经验很实用/)
+    assert.match(await (await f.app.request(`/comments?account=${f.author.id}`)).text(), /这条经验很实用/)
     const reply = await f.prepare({ ...f.operation, accountId: f.other.id, sessionId: 'next-scheduled-session', runKey: 'schedule-two:occurrence-one', type: 'reply_comment', targetCommentText: '具体怎么使用？', targetAuthor: 'reader', body: '可以先按文章的第一步操作。' })
     assert.equal(reply.payload.targetCommentText, '具体怎么使用？')
     const replyClaim = await (await f.claim(reply)).json() as { leaseToken: string }
