@@ -3,11 +3,13 @@ import { resolve } from 'node:path'
 import type { OpsDatabase } from './db.js'
 import { config } from './config.js'
 
-export function observeBrowserSession(db: OpsDatabase, sessionId: string, address: string, tree: string) {
+export function observeBrowserSession(db: OpsDatabase, sessionId: string, address: string, tree: string, browserProfileId: string | null = null) {
   const url = new URL(address)
   if (url.origin !== 'https://creator.xiaohongshu.com' || url.username || url.password) throw new Error('不是小红书创作平台页面')
   const accounts = db.listAccounts()
-  const bound = accounts.find(account => account.workerThreadId === sessionId)
+  const bound = browserProfileId
+    ? accounts.find(account => account.browserProfileId === browserProfileId)
+    : accounts.find(account => !account.browserProfileId && account.workerThreadId === sessionId)
   if (url.pathname === '/login') {
     if (bound && bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '请登录小红书，返回运营台后会自动连接' })
     return { connected: false }
@@ -24,6 +26,7 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
     if (bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '当前浏览器登录了其他账号，请切换回此账号' })
     return { connected: false }
   }
+  if (account && account.browserProfileId !== browserProfileId) return { connected: false }
   if (!account || !actualName || actualName.toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) return { connected: false }
   db.bindAccountWorker(account.id, sessionId)
   if (account.sessionStatus !== 'healthy' || !account.lastVerifiedAt) {

@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.3.10",
+    "version": "0.3.11",
     "publisher": {
       "id": "local",
       "name": "本地插件"
@@ -170,6 +170,10 @@
           "inputSchema": {
             "type": "object",
             "properties": {
+              "browserProfileId": {
+                "type": "string",
+                "format": "uuid"
+              },
               "url": {
                 "type": "string",
                 "maxLength": 2000
@@ -189,6 +193,11 @@
       ],
       "required": true,
       "browserSession": {
+        "loginUi": {
+          "path": "/login",
+          "whenText": "短信登录",
+          "selector": "div:has(button.beer-login-btn) > img"
+        },
         "origin": "https://creator.xiaohongshu.com",
         "observeAction": "observe-browser-session",
         "paths": [

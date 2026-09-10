@@ -70,6 +70,7 @@ const SCHEMA = `
     profile_url TEXT NOT NULL,
     avatar_url TEXT,
     worker_thread_id TEXT UNIQUE,
+    browser_profile_id TEXT,
     position TEXT NOT NULL,
     audience TEXT NOT NULL,
     note_tone TEXT NOT NULL,
@@ -234,6 +235,7 @@ function accountFromRow(row: Row): AccountBinding {
     profileUrl: String(row.profile_url),
     avatarUrl: row.avatar_url === null ? null : String(row.avatar_url),
     workerThreadId: row.worker_thread_id === null ? null : String(row.worker_thread_id),
+    browserProfileId: row.browser_profile_id === null ? null : String(row.browser_profile_id),
     position: String(row.position),
     audience: String(row.audience),
     noteTone: String(row.note_tone),
@@ -354,6 +356,11 @@ export class OpsDatabase {
   constructor(path: string) {
     this.database = new DatabaseSync(path)
     this.database.exec(SCHEMA)
+    const columns = this.database.prepare('PRAGMA table_info(accounts)').all()
+    if (!columns.some(column => column.name === 'browser_profile_id')) {
+      this.database.exec('ALTER TABLE accounts ADD COLUMN browser_profile_id TEXT')
+    }
+    this.database.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_browser_profile_idx ON accounts(browser_profile_id)')
     this.seedBrand()
   }
 
@@ -454,16 +461,16 @@ export class OpsDatabase {
 
   createAccount(input: {
     handle: string; displayName: string; expectedProfileId: string; profileUrl: string; avatarUrl?: string | null;
-    workerThreadId?: string | null; position: string; audience: string; noteTone: string; commentTone: string;
+    workerThreadId?: string | null; browserProfileId?: string | null; position: string; audience: string; noteTone: string; commentTone: string;
     contentColumns: string[]; bannedTopics: string[]; dailyLimit: number;
   }): AccountBinding {
     const timestamp = now()
     const result = this.database.prepare(`INSERT INTO accounts
-      (handle, display_name, expected_profile_id, profile_url, avatar_url, worker_thread_id, position, audience,
+      (handle, display_name, expected_profile_id, profile_url, avatar_url, worker_thread_id, browser_profile_id, position, audience,
        note_tone, comment_tone, content_columns_json, banned_topics_json, daily_limit, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       .run(input.handle, input.displayName, input.expectedProfileId, input.profileUrl, input.avatarUrl ?? null,
-        input.workerThreadId ?? null, input.position, input.audience, input.noteTone, input.commentTone,
+        input.workerThreadId ?? null, input.browserProfileId ?? null, input.position, input.audience, input.noteTone, input.commentTone,
         JSON.stringify(input.contentColumns), JSON.stringify(input.bannedTopics), input.dailyLimit, timestamp, timestamp)
     const account = this.getAccount(Number(result.lastInsertRowid)) as AccountBinding
     this.audit({ accountId: account.id, action: 'account_create', status: 'succeeded', detail: { handle: account.handle } })

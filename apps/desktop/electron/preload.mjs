@@ -124,7 +124,7 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
   browser: {
     show(bounds) { return ipcRenderer.invoke("ipollowork:browser:show", bounds); },
     hide() { return ipcRenderer.invoke("ipollowork:browser:hide"); },
-    openUrl(url) { return ipcRenderer.invoke("ipollowork:browser:openUrl", url); },
+    openUrl(url, options) { return ipcRenderer.invoke("ipollowork:browser:openUrl", url, options); },
     snapshot(payload) { return ipcRenderer.invoke("ipollowork:browser:snapshot", payload); },
     act(payload) { return ipcRenderer.invoke("ipollowork:browser:act", payload); },
     navigate(url) { return ipcRenderer.invoke("ipollowork:browser:navigate", url); },

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import { AppBridge, PostMessageTransport } from "@modelcontextprotocol/ext-apps/app-bridge";
+import { AppBridge, PostMessageTransport, McpUiOpenLinkRequestSchema } from "@modelcontextprotocol/ext-apps/app-bridge";
 import { PLUGIN_UI_HOST_CONTEXT_KEY, type PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 import type { WorkspaceAppModelContext, WorkspaceAppMessageResult } from "./workspace-app-frame";
 import { Loader2, RotateCw } from "lucide-react";
@@ -9,6 +9,10 @@ import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PluginUiSurface } from "./plugin-ui-contributions";
+
+const browserOpenLinkSchema = McpUiOpenLinkRequestSchema.extend({
+  params: McpUiOpenLinkRequestSchema.shape.params.passthrough(),
+});
 
 export function ServiceWorkbenchFrame(props: {
   surface: PluginUiSurface;
@@ -62,16 +66,22 @@ export function ServiceWorkbenchFrame(props: {
       sessionId: props.sessionId ?? null,
     };
     const bridge = new AppBridge(null, { name: "iPolloWork", version: "0.21.2" }, {
+      experimental: { "ai.ipollo/browser-profiles": {} },
       ...(sendMessageRef.current ? { message: { text: {} } } : {}),
     }, { hostContext: { [PLUGIN_UI_HOST_CONTEXT_KEY]: context } });
-    bridge.onopenlink = async ({ url }) => {
+    bridge.setRequestHandler(browserOpenLinkSchema, async ({ params: { url, browserProfileId } }) => {
+      if (browserProfileId !== undefined && (typeof browserProfileId !== "string"
+        || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(browserProfileId))) return { isError: true };
       const login = props.surface.resource.browserSession;
       if (!login || new URL(url).origin !== login.origin) return { isError: true };
       const browser = window.__IPOLLOWORK_ELECTRON__?.browser;
       if (!browser?.openUrl) return { isError: true };
-      await browser.openUrl(url);
+      await browser.openUrl(url, browserProfileId ? {
+        profileId: `${props.surface.pluginId}:${browserProfileId}`,
+        ...(login.loginUi ? { loginUi: { ...login.loginUi, origin: login.origin } } : {}),
+      } : undefined);
       return {};
-    };
+    });
     bridge.onmessage = async ({ content }) => {
       const text = content.flatMap(item => item.type === "text" ? [item.text] : []).join("\n").trim();
       if (!text || text.length > 30_000 || !sendMessageRef.current) return { isError: true };
@@ -109,11 +119,13 @@ export function ServiceWorkbenchFrame(props: {
         const tab = state?.tabs?.find(item => item.id === state.activeTabId);
         if (!tab?.url || tab.status !== "ready" || new URL(tab.url).origin !== login.origin
           || !login.paths.includes(new URL(tab.url).pathname)) return;
+        const profilePrefix = `${props.surface.pluginId}:`;
+        if (tab.profileId && !tab.profileId.startsWith(profilePrefix)) return;
         const snapshot = await browser.snapshot!({ tabId: tab.id });
         if (stopped || new URL(snapshot.url).origin !== login.origin) return;
         const response = await props.client.callExtensionAction({
           extensionId: props.surface.pluginId, action: login.observeAction,
-          args: { url: snapshot.url, tree: snapshot.tree },
+          args: { url: snapshot.url, tree: snapshot.tree, ...(tab.profileId ? { browserProfileId: tab.profileId.slice(profilePrefix.length) } : {}) },
           context: { directory: props.workspaceRoot, workspaceId: props.workspaceId, sessionId: props.sessionId ?? undefined },
         });
         if (response.ok && response.result && typeof response.result === "object"
@@ -122,8 +134,9 @@ export function ServiceWorkbenchFrame(props: {
       finally { busy = false; }
     };
     void observe();
-    const timer = window.setInterval(() => { if (stopped || checks >= 15) window.clearInterval(timer); else void observe(); }, 2000);
-    return () => { stopped = true; window.clearInterval(timer); };
+    const timer = window.setInterval(() => { void observe(); }, 2000);
+    const unsubscribe = browser.onStateChange?.(() => { stopped = false; checks = 0; void observe(); });
+    return () => { stopped = true; window.clearInterval(timer); unsubscribe?.(); };
   }, [frameLoad, workbench.data, props.sessionId, props.workspaceId, props.workspaceRoot, props.client, props.surface]);
 
   if (workbench.isPending || workbench.isFetching) {

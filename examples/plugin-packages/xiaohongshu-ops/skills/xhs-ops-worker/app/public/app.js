@@ -1,6 +1,8 @@
 (() => {
   let hostPromise
   let verificationPending = false
+  let loginPending = false
+  let newAccountProfileId = sessionStorage.getItem('xhs-new-account-profile')
   const hostRequests = new Map()
   let hostRequestId = 0
   window.addEventListener('message', event => {
@@ -21,20 +23,28 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.3' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.11' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
     return hostPromise
   }
   document.querySelectorAll('[data-account-login]').forEach(link => link.addEventListener('click', async event => {
-    if (window === parent) return
     event.preventDefault()
+    if (loginPending) return
+    loginPending = true
     try {
-      await getHost()
-      const result = await hostRequest('ui/open-link', { url: link.href })
+      if (link.hasAttribute('data-new-account-login')) {
+        newAccountProfileId ||= crypto.randomUUID()
+        sessionStorage.setItem('xhs-new-account-profile', newAccountProfileId)
+      }
+      const browserProfileId = link.hasAttribute('data-new-account-login') ? newAccountProfileId : link.dataset.browserProfileId
+      const host = await getHost()
+      if (browserProfileId && !host.hostCapabilities?.experimental?.['ai.ipollo/browser-profiles']) throw new Error('请更新并重启软件后使用多账号扫码接入')
+      const result = await hostRequest('ui/open-link', { url: link.href, ...(browserProfileId ? { browserProfileId } : {}) })
       if (result?.isError) throw new Error('无法打开软件内登录页，请重新打开运营台')
     } catch (error) { toast(error.message, true) }
+    finally { loginPending = false }
   }))
   document.querySelector('[data-analytics-account]')?.addEventListener('change', event => event.target.form.requestSubmit())
   document.querySelector('[data-analytics-import]')?.addEventListener('submit', async event => {
@@ -257,9 +267,18 @@
       window.setTimeout(() => document.querySelector('#account-name')?.focus(), 120)
     }
   }
-  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', () => setAccountPanel(true)))
-  document.querySelector('[data-close-account-form]')?.addEventListener('click', () => setAccountPanel(false))
-  if (new URLSearchParams(window.location.search).get('connect') === '1') setAccountPanel(true)
+  function startAccountLogin() {
+    setAccountPanel(true)
+    document.querySelector('[data-new-account-login]')?.click()
+  }
+  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', startAccountLogin))
+  document.querySelector('[data-close-account-form]')?.addEventListener('click', () => {
+    setAccountPanel(false)
+    sessionStorage.removeItem('xhs-new-account-profile')
+    newAccountProfileId = null
+    document.querySelector('#account-form')?.reset()
+  })
+  if (new URLSearchParams(window.location.search).get('connect') === '1') startAccountLogin()
 
   const accountForm = document.querySelector('#account-form')
   accountForm?.addEventListener('submit', async (event) => {
@@ -272,9 +291,12 @@
       const result = await request('/api/accounts', { method: 'POST', body: JSON.stringify({
         handle: String(form.get('handle') || '').trim() || displayName, displayName,
         expectedProfileId: form.get('expectedProfileId'), profileUrl: form.get('profileUrl'), workerThreadId: form.get('workerThreadId') || null,
+        browserProfileId: newAccountProfileId,
         position: form.get('position'), audience: form.get('audience'), noteTone: form.get('noteTone'), commentTone: form.get('commentTone'),
         contentColumns: lines(form.get('contentColumns')), bannedTopics: lines(form.get('bannedTopics')), dailyLimit: Number(form.get('dailyLimit')),
       }) })
+      sessionStorage.removeItem('xhs-new-account-profile')
+      newAccountProfileId = null
       toast('账号已保存，登录后返回运营台即可自动连接')
       window.setTimeout(() => { window.location.href = '/accounts' }, 500)
     } catch (error) { toast(error.message, true); restore() }

@@ -1625,6 +1625,33 @@ describe("plugin package lifecycle", () => {
     }
   });
 
+  test("installs the Xiaohongshu plugin with isolated browser login configuration", async () => {
+    const workspaceRoot = await createRoot("ipollowork-xhs-catalog-api-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const server = await startServer(serverConfig(workspaceRoot));
+    const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`;
+    const headers = { authorization: "Bearer token", "content-type": "application/json" };
+    try {
+      const catalog = await fetch(`${base}/catalog`, { headers });
+      expect(catalog.status).toBe(200);
+      expect((await catalog.json()).items).toContainEqual(expect.objectContaining({ pluginId: "xiaohongshu-ops", version: "0.3.11" }));
+      const installation = await fetch(`${base}/catalog/xiaohongshu-ops/install`, { method: "POST", headers });
+      expect(installation.status).toBe(200);
+      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/src/server.ts"), "utf8"))
+        .toContain("export function startServer()");
+      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/public/app.js"), "utf8"))
+        .toContain("browserProfileId");
+      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/scripts/start.mjs"), "utf8"))
+        .toContain("homedir()");
+      const removal = await fetch(`${base}/xiaohongshu-ops`, { method: "DELETE", headers });
+      expect(removal.status).toBe(200);
+      const refreshed = await fetch(`${base}/catalog`, { headers });
+      expect((await refreshed.json()).items).toContainEqual(expect.objectContaining({
+        pluginId: "xiaohongshu-ops", installedVersion: null, updateAvailable: false,
+      }));
+    } finally { await server.stop(); }
+  });
+
   test("lists and installs every bundled service plugin through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -1655,26 +1682,9 @@ describe("plugin package lifecycle", () => {
           { pluginId: "image-studio", version: "0.1.29", installedVersion: "0.1.29", updateAvailable: false },
           { pluginId: "video-console", version: "0.2.4", installedVersion: "0.2.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.3.10", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.3.11", installedVersion: null, updateAvailable: false },
         ],
       });
-
-      const xhsInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/xiaohongshu-ops/install`, {
-        method: "POST", headers,
-      });
-      expect(xhsInstallation.status).toBe(200);
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/src/server.ts"), "utf8"))
-        .toContain("export function startServer()");
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/scripts/start.mjs"), "utf8"))
-        .toContain("homedir()");
-      const xhsRemoval = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/xiaohongshu-ops`, {
-        method: "DELETE", headers,
-      });
-      expect(xhsRemoval.status).toBe(200);
-      const refreshedCatalog = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers });
-      expect((await refreshedCatalog.json()).items).toContainEqual(expect.objectContaining({
-        pluginId: "xiaohongshu-ops", installedVersion: null, updateAvailable: false,
-      }));
 
       const dshInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/deepseek-harness/install`, {
         method: "POST",

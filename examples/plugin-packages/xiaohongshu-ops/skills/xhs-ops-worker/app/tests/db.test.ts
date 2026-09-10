@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { OpsDatabase } from '../src/db.js'
+
+test('migrates existing account databases without changing the old login and persists new profiles', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'xhs-profile-test-'))
+  const file = join(directory, 'ops.sqlite')
+  let db = new OpsDatabase(file)
+  try {
+    const old = account(db, 'legacy')
+    db.database.exec('DROP INDEX accounts_browser_profile_idx; ALTER TABLE accounts DROP COLUMN browser_profile_id')
+    db.close()
+    db = new OpsDatabase(file)
+    assert.equal(db.getAccount(old.id)?.browserProfileId, null)
+    assert.equal(db.getAccount(old.id)?.sessionStatus, 'healthy')
+    const next = db.createAccount({ ...old, handle: 'isolated', expectedProfileId: 'isolated', workerThreadId: 'isolated-session', browserProfileId: '11111111-1111-4111-8111-111111111111' })
+    db.close()
+    db = new OpsDatabase(file)
+    assert.equal(db.getAccount(next.id)?.browserProfileId, next.browserProfileId)
+    assert.equal(db.getAccount(old.id)?.workerThreadId, old.workerThreadId)
+  } finally { db.close(); rmSync(directory, { recursive: true, force: true }) }
+})
 
 function account(db: OpsDatabase, handle: string) {
   const result = db.createAccount({

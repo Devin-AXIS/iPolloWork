@@ -196,6 +196,13 @@ export function parsePluginUiInspectorContext(value: unknown): PluginUiInspector
   return result.success ? result.data : null;
 }
 
+const browserLoginUiSchema = z.object({
+  path: z.string().startsWith('/'),
+  whenText: z.string().min(1).max(100),
+  selector: z.string().min(1).max(300),
+}).strict();
+export type BrowserLoginUi = z.infer<typeof browserLoginUiSchema>;
+
 const resourceSchema = z.object({
   type: resourceTypeSchema,
   id: z.string().min(1),
@@ -214,6 +221,7 @@ const resourceSchema = z.object({
     origin: secureUrlSchema.refine(value => new URL(value).origin === value, "must be an exact origin"),
     paths: z.array(z.string().startsWith('/')).min(1).max(10),
     observeAction: z.string().regex(SIMPLE_ID_RE),
+    loginUi: browserLoginUiSchema.optional(),
   }).strict().optional(),
   environment: z.array(z.string().regex(ENV_KEY_RE)).optional(),
   requires: z.array(relationSchema).optional(),

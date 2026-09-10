@@ -43,6 +43,7 @@ import type {
   WorkspaceList,
 } from "./desktop-types";
 import type { BrowserPanelTab } from "./desktop-types";
+import type { BrowserLoginUi } from "@ipollowork/types/plugins";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
 export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
@@ -130,7 +131,7 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string) => Promise<{
+        openUrl?: (url: string, options?: { profileId?: string; loginUi?: BrowserLoginUi & { origin: string } }) => Promise<{
           provider: "builtin";
           tabId: string;
           url: string;

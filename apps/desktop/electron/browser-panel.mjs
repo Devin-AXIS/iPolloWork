@@ -2,6 +2,7 @@
 // proxy configuration, and browser IPC registrations. Extracted from
 // main.mjs as a factory so the main process only owns window creation.
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { app, WebContentsView, clipboard, session, shell } from "electron";
@@ -109,10 +110,47 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     });
   }
 
-  async function openBrowserUrlForAutomation(rawUrl) {
+  async function openBrowserUrlForAutomation(rawUrl, { profileId = null, loginUi = null } = {}) {
+    if (profileId !== null && (typeof profileId !== "string" || !/^[a-zA-Z0-9:_-]{1,200}$/.test(profileId))) {
+      throw new Error("Invalid browser profile ID");
+    }
     const url = normalizeBrowserUrl(rawUrl);
-    const tab = createBrowserTab("about:blank", { select: true });
+    // Reopening an account focuses its page without resetting an in-flight QR login.
+    const existing = profileId && [...browserTabs.values()].find(tab => tab.profileId === profileId
+      && !tab.view.webContents.isDestroyed() && /^https?:/.test(tab.view.webContents.getURL())
+      && new URL(tab.view.webContents.getURL()).origin === new URL(url).origin);
+    if (existing) {
+      selectBrowserTab(existing.tabId);
+      sendToRenderer("ipollowork:browser:panel-opened");
+      return { provider: "builtin", tabId: existing.tabId, url: existing.view.webContents.getURL() };
+    }
+    const partition = profileId
+      ? `persist:ipollowork-browser-${createHash("sha256").update(profileId).digest("hex")}`
+      : BROWSER_SESSION_PARTITION;
+    if (profileId) await applyBrowserProxy(session.fromPartition(partition), browserProxy);
+    const tab = createBrowserTab("about:blank", { select: true, profileId, partition });
+    await tab.initialLoad;
     await tab.view.webContents.loadURL(url);
+    if (profileId && loginUi) {
+      // Only switch a declared login mode. Never inspect credentials or submit a login form.
+      await tab.view.webContents.executeJavaScript(`new Promise(resolve => {
+        const { origin, path, whenText, selector } = ${JSON.stringify(loginUi)};
+        if (location.origin !== origin || location.pathname !== path) return resolve(false);
+        let observer;
+        const finish = value => { clearTimeout(timer); observer?.disconnect(); resolve(value); };
+        const check = () => {
+          if (!document.body?.innerText.includes(whenText)) return;
+          const matches = Array.from(document.querySelectorAll(selector)).filter(node => node instanceof HTMLElement && node.getBoundingClientRect().width > 0);
+          if (matches.length !== 1) return;
+          matches[0].click();
+          finish(true);
+        };
+        const timer = setTimeout(() => finish(false), 5000);
+        observer = new MutationObserver(check);
+        observer.observe(document.documentElement, { childList: true, subtree: true });
+        check();
+      })`);
+    }
     return {
       provider: "builtin",
       tabId: tab.tabId,
@@ -192,6 +230,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       type: "browser",
       label: getBrowserTabLabel(title, url),
       url,
+      profileId: tab.profileId,
       favicon: tab.favicon ?? null,
       status: isLoading ? "loading" : "ready",
       canGoBack: webContents.canGoBack(),
@@ -441,17 +480,22 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     };
   }
 
-  async function setBrowserProxy(proxyInput) {
-    const browserSession = session.fromPartition(BROWSER_SESSION_PARTITION);
-    const parsed = parseBrowserProxyInput(proxyInput);
+  async function applyBrowserProxy(browserSession, parsed) {
     if (parsed) {
       await browserSession.setProxy({ proxyRules: parsed.rules, proxyBypassRules: "<local>" });
     } else {
       await browserSession.setProxy({ mode: "system" });
     }
-    browserProxy = parsed;
     // Drop keep-alive connections so existing tabs cannot bypass the new proxy.
     await browserSession.closeAllConnections();
+  }
+
+  async function setBrowserProxy(proxyInput) {
+    const parsed = parseBrowserProxyInput(proxyInput);
+    const sessions = new Set([session.fromPartition(BROWSER_SESSION_PARTITION),
+      ...[...browserTabs.values()].map(tab => tab.view.webContents.session)]);
+    await Promise.all([...sessions].map(browserSession => applyBrowserProxy(browserSession, parsed)));
+    browserProxy = parsed;
     return browserProxyState();
   }
 
@@ -461,7 +505,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     callback(browserProxy.username, browserProxy.password);
   });
 
-  function createBrowserTab(url = "about:blank", { select = true } = {}) {
+  function createBrowserTab(url = "about:blank", { select = true, profileId = null, partition = BROWSER_SESSION_PARTITION } = {}) {
     const tabId = createBrowserTabId();
     const view = new WebContentsView({
       webPreferences: {
@@ -470,16 +514,19 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         contextIsolation: true,
         nodeIntegration: false,
         preload: path.join(__dirname, "browser-content-preload.cjs"),
-        partition: BROWSER_SESSION_PARTITION,
+        partition,
       },
     });
-    const tab = { tabId, view, favicon: null };
+    const tab = { tabId, view, favicon: null, profileId, initialLoad: view.webContents.loadURL("about:blank") };
     browserTabs.set(tabId, tab);
     browserTabOrder.push(tabId);
     // Load about:blank immediately to preempt persistent-session restore.
     // Cookies live on the session object, not the document — they survive this.
-    view.webContents.loadURL("about:blank");
     view.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+      if (profileId && /^https?:\/\//i.test(targetUrl)) {
+        createBrowserTab(targetUrl, { select: true, profileId, partition });
+        return { action: "deny" };
+      }
       void shell.openExternal(targetUrl);
       return { action: "deny" };
     });
@@ -548,7 +595,9 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     }
     const finalUrl = normalizeBrowserUrl(url, "about:blank");
     if (finalUrl !== "about:blank") {
-      view.webContents.loadURL(finalUrl);
+      void tab.initialLoad.then(() => view.webContents.loadURL(finalUrl)).catch(error => {
+        console.warn("[browser] failed to load tab", error);
+      });
     }
     return tab;
   }
@@ -747,7 +796,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
   function registerIpc(ipcMain) {
     ipcMain.handle("ipollowork:browser:show", (_event, bounds) => attachBrowserView(bounds));
     ipcMain.handle("ipollowork:browser:hide", () => hideBrowserView());
-    ipcMain.handle("ipollowork:browser:openUrl", (_event, url) => openBrowserUrlForAutomation(url));
+    ipcMain.handle("ipollowork:browser:openUrl", (_event, url, options) => openBrowserUrlForAutomation(url, options));
     ipcMain.handle("ipollowork:browser:snapshot", (_event, payload) => browserRuntime.snapshot(payload));
     ipcMain.handle("ipollowork:browser:act", (_event, payload) => browserRuntime.act(payload));
     ipcMain.handle("ipollowork:browser:navigate", (_event, url) => {

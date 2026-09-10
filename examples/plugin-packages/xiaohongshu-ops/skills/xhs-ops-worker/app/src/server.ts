@@ -221,8 +221,10 @@ export function createApp(service: OpsService): Hono {
       const input = await c.req.json<Record<string, unknown>>()
       const handle = text(input.handle, '账号标识', 100).replace(/^@/, '')
       const profileUrl = xiaohongshuUrl(input.profileUrl)
+      const browserProfileId = optionalText(input.browserProfileId, 36)
+      if (browserProfileId && !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(browserProfileId)) throw new Error('登录会话无效，请重新接入账号')
       const account = service.db.createAccount({
-        handle, displayName: text(input.displayName, '显示名称', 100), expectedProfileId: text(input.expectedProfileId, '公开主页 ID', 200), profileUrl,
+        handle, displayName: text(input.displayName, '显示名称', 100), expectedProfileId: text(input.expectedProfileId, '公开主页 ID', 200), profileUrl, browserProfileId,
         workerThreadId: optionalText(input.workerThreadId, 200), position: text(input.position, '矩阵定位', 300), audience: text(input.audience, '目标受众', 300),
         noteTone: text(input.noteTone, '笔记语气', 300), commentTone: text(input.commentTone, '评论语气', 300),
         contentColumns: stringArray(input.contentColumns, '内容栏目', 30), bannedTopics: stringArray(input.bannedTopics, '禁用主题', 50),
@@ -298,7 +300,7 @@ export function createApp(service: OpsService): Hono {
     if (!hasApiToken(c.req.header('Authorization'))) return c.json({ error: '需要执行器授权' }, 401)
     try {
       const input = await c.req.json<Record<string, unknown>>()
-      return c.json(observeBrowserSession(service.db, text(input.sessionId, '会话 ID', 200), text(input.url, '页面地址', 2000), text(input.tree, '页面内容', 100_000)))
+      return c.json(observeBrowserSession(service.db, text(input.sessionId, '会话 ID', 200), text(input.url, '页面地址', 2000), text(input.tree, '页面内容', 100_000), optionalText(input.browserProfileId, 36)))
     } catch (error) { return c.json({ error: errorMessage(error) }, 409) }
   })
 

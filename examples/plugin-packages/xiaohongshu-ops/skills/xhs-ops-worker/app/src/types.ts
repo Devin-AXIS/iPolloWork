@@ -26,6 +26,7 @@ export interface AccountBinding {
   profileUrl: string
   avatarUrl: string | null
   workerThreadId: string | null
+  browserProfileId: string | null
   position: string
   audience: string
   noteTone: string

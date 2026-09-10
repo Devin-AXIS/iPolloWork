@@ -12,6 +12,38 @@ const generator: ContentGenerator = {
   async generateReplies() { return new Map() },
 }
 
+test('new account browser profiles are saved and never invalidate a different signed-in account', async () => {
+  const db = new OpsDatabase(':memory:')
+  try {
+    const app = createApp(new OpsService(db, generator))
+    const old = db.createAccount({ handle: '已有账号', displayName: '已有账号', expectedProfileId: 'old', profileUrl: 'https://creator.xiaohongshu.com/new/home', workerThreadId: 'old-session', position: '产品', audience: '用户', noteTone: '自然', commentTone: '自然', contentColumns: [], bannedTopics: [], dailyLimit: 2 })
+    db.setAccountSession(old.id, 'healthy', { verified: true })
+    const browserProfileId = '11111111-1111-4111-8111-111111111111'
+    const input = { ...old, handle: '新账号', displayName: '新账号', expectedProfileId: 'new', workerThreadId: null, browserProfileId }
+    const create = (body: unknown) => app.request('/api/accounts', { method: 'POST', headers: { Origin: config.origin, 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
+    assert.equal((await create({ ...input, browserProfileId: '../shared' })).status, 400)
+    assert.equal((await create(input)).status, 201)
+    const account = db.listAccounts().find(value => value.handle === '新账号')!
+    assert.equal(account.browserProfileId, browserProfileId)
+    assert.match(await (await app.request('/accounts')).text(), new RegExp(`data-browser-profile-id="${browserProfileId}"`))
+    const observe = (sessionId: string, url: string, tree = '', profile = browserProfileId) => app.request('/api/executor/browser-session', {
+      method: 'POST', headers: { Origin: config.origin, 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiToken}` },
+      body: JSON.stringify({ sessionId, url, tree, browserProfileId: profile }),
+    })
+    await observe('old-session', 'https://creator.xiaohongshu.com/login')
+    assert.equal(db.getAccount(old.id)?.sessionStatus, 'healthy')
+    const tree = 'StaticText "创作服务平台"\nStaticText "新账号"\nStaticText "小红书账号: new"'
+    assert.deepEqual(await (await observe('new-session', old.profileUrl, tree, '22222222-2222-4222-8222-222222222222')).json(), { connected: false })
+    assert.deepEqual(await (await observe('new-session', old.profileUrl, tree)).json(), { connected: true, accountId: account.id })
+    assert.equal(db.getAccount(old.id)?.sessionStatus, 'healthy')
+    assert.equal(db.getAccount(account.id)?.workerThreadId, 'new-session')
+    await observe('new-session', old.profileUrl, tree.replace('新账号', '已有账号').replace('new', 'old'))
+    assert.equal(db.getAccount(account.id)?.sessionStatus, 'reauthorize')
+    assert.equal(db.getAccount(old.id)?.sessionStatus, 'healthy')
+    assert.equal((await create({ ...input, handle: '重复分区', expectedProfileId: 'duplicate' })).status, 400)
+  } finally { db.close() }
+})
+
 test('login identity automatically connects without a verification job and rejects wrong pages or accounts', async () => {
   const db = new OpsDatabase(':memory:')
   try {
