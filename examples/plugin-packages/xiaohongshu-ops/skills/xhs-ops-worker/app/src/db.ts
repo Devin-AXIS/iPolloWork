@@ -599,34 +599,37 @@ export class OpsDatabase {
     return this.getAccount(id) as AccountBinding
   }
 
-  pendingVerification(accountId: number): BrowserJob | null {
+  pendingVerification(accountId: number, sessionId: string, syncAnalytics: boolean): BrowserJob | null {
     this.database.prepare("UPDATE browser_jobs SET status = 'failed', error_code = 'verification_timeout', error = '验证超时，请重新发起', lease_token_hash = NULL, lease_until = NULL, updated_at = ? WHERE account_id = ? AND type = 'verify_session' AND status = 'running' AND lease_until < ?")
       .run(now(), accountId, now())
-    const row = this.database.prepare("SELECT * FROM browser_jobs WHERE account_id = ? AND type = 'verify_session' AND status IN ('queued', 'dispatched', 'running') ORDER BY created_at DESC LIMIT 1").get(accountId) as Row | undefined
+    const row = this.database.prepare("SELECT * FROM browser_jobs WHERE account_id = ? AND type = 'verify_session' AND (worker_thread_id = ? OR worker_thread_id IS NULL) AND coalesce(json_extract(payload_json, '$.evidence.syncAnalytics'), 0) = ? AND status IN ('queued', 'dispatched', 'running') ORDER BY created_at DESC LIMIT 1").get(accountId, sessionId, syncAnalytics ? 1 : 0) as Row | undefined
     return row ? jobFromRow(row) : null
   }
 
   rebindWorkerSession(previous: string, current: string): void {
     if (previous === current) return
     const account = this.database.prepare('SELECT id FROM accounts WHERE worker_thread_id = ? LIMIT 1').get(previous) as Row | undefined
-    if (!account) return
-    if (this.database.prepare('SELECT id FROM accounts WHERE worker_thread_id = ? LIMIT 1').get(current)) throw new Error('目标会话已绑定账号')
+    if (account && this.database.prepare('SELECT id FROM accounts WHERE worker_thread_id = ? LIMIT 1').get(current)) throw new Error('目标会话已绑定账号')
     this.database.exec('BEGIN IMMEDIATE')
     try {
-      this.database.prepare('UPDATE accounts SET worker_thread_id = ?, updated_at = ? WHERE id = ?').run(current, now(), Number(account.id))
-      this.database.prepare("UPDATE browser_jobs SET worker_thread_id = ?, updated_at = ? WHERE account_id = ? AND worker_thread_id = ? AND status IN ('queued', 'dispatched', 'running')").run(current, now(), Number(account.id), previous)
+      if (account) {
+        this.database.prepare('UPDATE accounts SET worker_thread_id = ?, updated_at = ? WHERE id = ?').run(current, now(), Number(account.id))
+        this.database.prepare("UPDATE browser_jobs SET worker_thread_id = ?, updated_at = ? WHERE account_id = ? AND worker_thread_id = ? AND status IN ('queued', 'dispatched', 'running')").run(current, now(), Number(account.id), previous)
+      }
+      this.database.prepare("UPDATE browser_jobs SET worker_thread_id = ?, updated_at = ? WHERE type = 'verify_session' AND worker_thread_id = ? AND status IN ('queued', 'dispatched', 'running')").run(current, now(), previous)
       this.database.exec('COMMIT')
     } catch (error) { this.database.exec('ROLLBACK'); throw error }
   }
 
-  dispatchVerification(id: string): BrowserJob {
+  dispatchVerification(id: string, sessionId: string): BrowserJob {
     const job = this.getJob(id)
     const account = job && this.getAccount(job.accountId)
-    if (!job || job.type !== 'verify_session' || !account?.enabled || !account.workerThreadId) throw new Error('验证任务或绑定账号不可用')
+    if (!job || job.type !== 'verify_session' || !account?.enabled) throw new Error('验证任务或账号不可用')
+    if (job.workerThreadId && job.workerThreadId !== sessionId) throw new Error('验证任务属于另一个会话')
     if (job.status !== 'running') {
       this.database.prepare('UPDATE browser_jobs SET payload_json = ? WHERE id = ?').run(JSON.stringify({ ...job.payload, browserProfileId: account.browserProfileId ? `xiaohongshu-ops:${account.browserProfileId}` : null, evidence: { ...job.payload.evidence, requireProfileId: true } }), id)
     }
-    this.database.prepare("UPDATE browser_jobs SET status = 'dispatched', worker_thread_id = ?, updated_at = ? WHERE id = ? AND status = 'queued'").run(account.workerThreadId, now(), id)
+    this.database.prepare("UPDATE browser_jobs SET status = 'dispatched', worker_thread_id = ?, updated_at = ? WHERE id = ? AND status = 'queued'").run(sessionId, now(), id)
     return this.getJob(id) as BrowserJob
   }
 
@@ -899,8 +902,8 @@ export class OpsDatabase {
     const account = this.getAccount(job.accountId)
     if (job.payload.evidence?.sessionExecution === true && (!account || input.actualProfileId !== account.expectedProfileId || !input.resultUrl)) throw new Error('完成操作需要匹配的小红书号和已确认的结果地址')
     if (job.type === 'verify_session' && job.payload.evidence?.requireProfileId === true
-      && (!account || input.actualProfileId !== account.expectedProfileId || account.workerThreadId !== job.workerThreadId)) {
-      this.stopJob(id, token, 'blocked', { code: 'identity_mismatch', message: '未观察到匹配的小红书号，或账号绑定已变更' })
+      && (!account?.enabled || input.actualProfileId !== account.expectedProfileId)) {
+      this.stopJob(id, token, 'blocked', { code: 'identity_mismatch', message: '未观察到匹配的小红书号，或账号已停用' })
       throw new Error('小红书号验证失败，不能将账号标记为已连接')
     }
     if (!account || input.actualAccount.trim().toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) {

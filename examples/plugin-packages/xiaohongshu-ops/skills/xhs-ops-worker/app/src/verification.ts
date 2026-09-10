@@ -48,18 +48,18 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
 }
 
 export function prepareSessionVerification(db: OpsDatabase, accountId: number, sessionId: string, syncAnalytics = false) {
-  const account = db.bindAccountWorker(accountId, sessionId)
-  const pending = db.pendingVerification(accountId)
-  if (pending && Boolean(pending.payload.evidence?.syncAnalytics) !== syncAnalytics) throw new Error('账号已有验证或同步任务，请完成后再发起另一项操作')
+  const account = db.getAccount(accountId)
+  if (!account?.enabled) throw new Error('账号不存在或已停用，请先启用账号')
+  // Login belongs to the browser profile; read-only sync belongs to its initiating session.
+  const pending = db.pendingVerification(accountId, sessionId, syncAnalytics)
   const job = pending ?? db.createJob({
     type: 'verify_session', accountId, scheduledAt: new Date().toISOString(), idempotencyKey: `verify:${accountId}:${randomUUID()}`,
     payload: { destinationUrl: config.xhs.creatorUrl, expectedHandle: account.handle, expectedProfileId: account.expectedProfileId, expectedProfileUrl: account.profileUrl, evidence: { requireProfileId: true, syncAnalytics } },
   })
-  if (pending && pending.workerThreadId && pending.workerThreadId !== sessionId) throw new Error('已有其他会话的验证任务，请先完成该任务')
-  const dispatched = db.dispatchVerification(job.id)
+  const dispatched = db.dispatchVerification(job.id, sessionId)
   const browserTarget = { url: dispatched.payload.destinationUrl, ...(account.browserProfileId ? { browserProfileId: account.browserProfileId } : {}) }
   const browserOpenArgs = { url: browserTarget.url, ...(account.browserProfileId ? { profileId: `xiaohongshu-ops:${account.browserProfileId}` } : {}) }
-  if (!pending) db.setAccountSession(accountId, 'setup', { error: '验证任务已创建，等待当前会话核对浏览器身份' })
+  if (!pending && account.sessionStatus !== 'healthy') db.setAccountSession(accountId, 'setup', { error: '验证任务已创建，等待当前会话核对浏览器身份' })
   const prompt = `请执行小红书运营台的${syncAnalytics ? '只读账号验证与网页数据同步' : '只读账号验证'}，不创建内容，不发布或评论。
 任务 ID：${job.id}；账号 ID：${accountId}。
 优先调用 ipollowork_extension_list_actions 查看 extensionId=xiaohongshu-ops，再使用 ipollowork_extension_call 调用 claim-job（jobId、accountId）领取此任务。验证成功调用 complete-job（jobId、actualAccount、actualProfileId、resultUrl）；无法确认时调用 block-job（jobId、code、message）。这些原生插件操作会保存验证结果，不需要运行终端或读取密钥。只有原生插件工具缺失时才使用下面的 CLI 备用流程。

@@ -438,7 +438,7 @@ export function createApp(service: OpsService): Hono {
       const job = service.db.getJob(c.req.param('id'))
       const sessionExecution = job?.payload.evidence?.sessionExecution === true
       if (input.pluginSession === true && !sessionExecution && job?.type !== 'verify_session') throw new Error('此入口只允许当前会话准备的操作或账号验证')
-      if (input.workerSessionId !== undefined && (sessionExecution ? job?.workerThreadId : service.db.getAccount(accountId)?.workerThreadId) !== input.workerSessionId) throw new Error('当前会话与账号绑定不一致，请回到绑定会话执行')
+      if (input.workerSessionId !== undefined && (sessionExecution || job?.type === 'verify_session' ? job?.workerThreadId : service.db.getAccount(accountId)?.workerThreadId) !== input.workerSessionId) throw new Error('当前会话与执行任务不一致，请在发起任务的会话执行')
       const result = service.db.claimJob(c.req.param('id'), accountId, sessionExecution ? {
         sessionId: text(input.workerSessionId, '执行会话', 200),
         actualAccount: text(input.actualAccount, '观察到的账号', 100),

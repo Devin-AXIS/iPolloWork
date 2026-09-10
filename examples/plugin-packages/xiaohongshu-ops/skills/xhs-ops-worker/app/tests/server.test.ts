@@ -313,7 +313,7 @@ test('platform CSV handles quoted fields and rejects broken or unsafe data', () 
   assert.equal(unlinked.articles[0]?.views, 16)
 })
 
-test('current-session verification binds once, dispatches only its own job and requires observed profile identity', async () => {
+test('current-session verification works across accounts and sessions and requires observed profile identity', async () => {
   const db = new OpsDatabase(':memory:')
   try {
     const app = createApp(new OpsService(db, generator))
@@ -328,11 +328,14 @@ test('current-session verification binds once, dispatches only its own job and r
     const first = await response.json() as { job: { id: string; status: string }; prompt: string }
     assert.equal(first.job.status, 'dispatched')
     assert.match(first.prompt, /observed-profile-id/)
-    assert.equal(db.getAccount(account.id)?.workerThreadId, 'session-validation')
+    assert.equal(db.getAccount(account.id)?.workerThreadId, null)
+    assert.equal(db.getJob(first.job.id)?.workerThreadId, 'session-validation')
     const duplicate = await (await prepare()).json() as { job: { id: string } }
     assert.equal(duplicate.job.id, first.job.id)
-    assert.equal((await post(`/api/accounts/${second.id}/verify`, { sessionId: 'session-validation' })).status, 400)
-    assert.equal((await post(`/api/accounts/${account.id}/verify`, { sessionId: 'another-session' })).status, 400)
+    assert.equal((await post(`/api/accounts/${second.id}/verify`, { sessionId: 'session-validation' })).status, 202)
+    const another = await post(`/api/accounts/${account.id}/verify`, { sessionId: 'another-session' })
+    assert.equal(another.status, 202)
+    assert.notEqual((await another.json()).job.id, first.job.id)
     const claim = await (await post(`/api/executor/jobs/${first.job.id}/claim`, { accountId: account.id }, true)).json() as { leaseToken: string }
     const running = await (await prepare()).json() as { prompt: string | null }
     assert.equal(running.prompt, null)
@@ -351,7 +354,7 @@ test('current-session verification binds once, dispatches only its own job and r
   } finally { db.close() }
 })
 
-test('session replacement preserves binding and browser sync writes validated data only after identity verification', async () => {
+test('session replacement migrates unbound sync jobs and browser sync requires validated data and identity', async () => {
   const db = new OpsDatabase(':memory:')
   try {
     const app = createApp(new OpsService(db, generator))
@@ -364,7 +367,7 @@ test('session replacement preserves binding and browser sync writes validated da
     const bind = { previousSessionId: 'draft-id', sessionId: 'actual-id' }
     assert.equal((await post('/api/executor/rebind-session', bind)).status, 401)
     assert.equal((await post('/api/executor/rebind-session', bind, true)).status, 200)
-    assert.equal(db.getAccount(account.id)?.workerThreadId, 'actual-id')
+    assert.equal(db.getAccount(account.id)?.workerThreadId, null)
     assert.equal(db.getJob(started.job.id)?.workerThreadId, 'actual-id')
     assert.equal((await post(`/api/executor/jobs/${started.job.id}/claim`, { accountId: account.id, workerSessionId: 'draft-id' }, true)).status, 409)
     const claim = await (await post(`/api/executor/jobs/${started.job.id}/claim`, { accountId: account.id, workerSessionId: 'actual-id', verificationOnly: true }, true)).json() as { leaseToken: string }
@@ -380,6 +383,67 @@ test('session replacement preserves binding and browser sync writes validated da
     assert.match(page, /浏览器可见页面/)
     assert.match(page, /同步数据/)
     assert.equal((await post(`/api/executor/jobs/${started.job.id}/complete`, { ...complete, analyticsCsv: csv }, true)).status, 409)
+  } finally { db.close() }
+})
+
+test('sync ignores old worker bindings and active jobs while deduplicating only the same session and mode', async () => {
+  const db = new OpsDatabase(':memory:')
+  try {
+    const app = createApp(new OpsService(db, generator))
+    const base = { profileUrl: config.xhs.creatorUrl, position: '产品', audience: '用户', noteTone: '自然', commentTone: '自然', contentColumns: [], bannedTopics: [], dailyLimit: 2 }
+    const account = db.createAccount({ ...base, handle: '同步账号', displayName: '同步账号', expectedProfileId: '123', workerThreadId: 'old-session', browserProfileId: '11111111-1111-4111-8111-111111111111' })
+    const other = db.createAccount({ ...base, handle: '另一个账号', displayName: '另一个账号', expectedProfileId: '456', workerThreadId: 'current-session' })
+    db.setAccountSession(account.id, 'healthy', { verified: true })
+    db.setAccountSession(other.id, 'healthy', { verified: true })
+    const accountsBefore = db.listAccounts()
+    const headers = { 'Content-Type': 'application/json', Origin: config.origin }
+    const post = (path: string, body: unknown, worker = false) => app.request(path, { method: 'POST', headers: worker ? { ...headers, Authorization: `Bearer ${config.apiToken}` } : headers, body: JSON.stringify(body) })
+    const prepare = (sessionId: string, syncAnalytics = true) => post(`/api/accounts/${account.id}/verify`, { sessionId, syncAnalytics })
+    const old = await (await prepare('old-session')).json()
+    assert.equal((await post(`/api/executor/jobs/${old.job.id}/claim`, { accountId: account.id, workerSessionId: 'old-session', verificationOnly: true }, true)).status, 200)
+    const oldJob = db.getJob(old.job.id)
+    const identity = await (await prepare('current-session', false)).json()
+    const response = await prepare('current-session')
+    assert.equal(response.status, 202)
+    const sync = await response.json()
+    assert.notEqual(sync.job.id, old.job.id)
+    assert.notEqual(sync.job.id, identity.job.id)
+    assert.equal(sync.job.workerThreadId, 'current-session')
+    assert.equal(sync.job.payload.browserProfileId, 'xiaohongshu-ops:' + account.browserProfileId)
+    assert.equal((await (await prepare('current-session')).json()).job.id, sync.job.id)
+    assert.deepEqual(db.listAccounts(), accountsBefore)
+    assert.deepEqual(db.getJob(old.job.id), oldJob)
+    assert.equal((await post(`/api/executor/jobs/${sync.job.id}/claim`, { accountId: account.id, workerSessionId: 'old-session', verificationOnly: true }, true)).status, 409)
+    const claimed = await post(`/api/executor/jobs/${sync.job.id}/claim`, { accountId: account.id, workerSessionId: 'current-session', verificationOnly: true }, true)
+    assert.equal(claimed.status, 200)
+    const { leaseToken } = await claimed.json()
+    assert.equal((await (await prepare('current-session')).json()).prompt, null)
+    const analyticsCsv = analyticsCsvHeader + '\n账号,123,,,100,,0,2,'
+    assert.equal((await post(`/api/executor/jobs/${sync.job.id}/complete`, { leaseToken, actualAccount: account.handle, actualProfileId: '123', analyticsCsv }, true)).status, 200)
+    assert.equal(db.getPlatformSnapshot(account.id)?.source, 'browser')
+    assert.equal(db.getAccount(account.id)?.workerThreadId, 'old-session')
+    assert.equal(db.getPlatformSnapshot(other.id), null)
+    assert.deepEqual(db.getJob(old.job.id), oldJob)
+    const next = await prepare('current-session')
+    assert.equal(next.status, 202)
+    assert.notEqual((await next.json()).job.id, sync.job.id)
+  } finally { db.close() }
+})
+
+test('session replacement keeps legacy worker migration and includes syncs for other accounts', async () => {
+  const db = new OpsDatabase(':memory:')
+  try {
+    const app = createApp(new OpsService(db, generator))
+    const base = { profileUrl: config.xhs.creatorUrl, position: '产品', audience: '用户', noteTone: '自然', commentTone: '自然', contentColumns: [], bannedTopics: [], dailyLimit: 2 }
+    const bound = db.createAccount({ ...base, handle: '绑定账号', displayName: '绑定账号', expectedProfileId: '123', workerThreadId: 'draft-session' })
+    const other = db.createAccount({ ...base, handle: '同步账号', displayName: '同步账号', expectedProfileId: '456', workerThreadId: 'other-session' })
+    const response = await app.request(`/api/accounts/${other.id}/verify`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: config.origin }, body: JSON.stringify({ sessionId: 'draft-session', syncAnalytics: true }) })
+    assert.equal(response.status, 202)
+    const { job } = await response.json()
+    db.rebindWorkerSession('draft-session', 'actual-session')
+    assert.equal(db.getAccount(bound.id)?.workerThreadId, 'actual-session')
+    assert.equal(db.getAccount(other.id)?.workerThreadId, 'other-session')
+    assert.equal(db.getJob(job.id)?.workerThreadId, 'actual-session')
   } finally { db.close() }
 })
 
