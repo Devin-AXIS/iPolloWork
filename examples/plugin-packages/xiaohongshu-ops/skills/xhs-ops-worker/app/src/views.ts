@@ -4,7 +4,7 @@ import { searchSorts, type PostDraft, type StudioService } from './studio.js'
 
 type Nav = 'accounts' | 'publishing' | 'comments' | 'analytics'
 
-const assetVersion = '20260910.10'
+const assetVersion = '20260910.11'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -70,7 +70,7 @@ function shell(title: string, active: Nav, body: string, pageData?: unknown, acc
       <nav aria-label="主要导航">${nav.map(([id, href, iconName, label]) => `<a href="${href}" ${active === id ? 'aria-current="page"' : ''}>${icon(iconName)}<span>${label}</span></a>`).join('')}</nav>
       <a class="sidebar-profile" href="/accounts" aria-label="查看账号">d</a>
     </aside>
-    <main class="app-main">${body}</main>
+    <main class="app-main"><p class="workbench-entry-notice" data-workbench-entry-notice role="status" hidden></p>${body}</main>
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
     ${pageData === undefined ? '' : `<script type="application/json" id="page-data">${jsonScript(pageData)}</script>`}
     <script src="/assets/app.js?v=${assetVersion}" defer></script>

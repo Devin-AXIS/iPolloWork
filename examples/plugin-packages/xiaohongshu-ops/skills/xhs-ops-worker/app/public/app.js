@@ -1,4 +1,7 @@
 (() => {
+  const workbenchEntryHint = '当前是浏览器页面，尚未连接对话。请打开 iPolloWork 对话，点击右侧「＋」→「小红书运营台」使用 AI、同步和发布功能；无需手动验证账号。'
+  const entryNotice = document.querySelector('[data-workbench-entry-notice]')
+  if (window === parent && entryNotice) { entryNotice.textContent = workbenchEntryHint; entryNotice.hidden = false }
   let hostPromise
   let verificationPending = false
   let loginPending = false
@@ -17,7 +20,7 @@
     event.data.error ? pending.reject(new Error(event.data.error.message)) : pending.resolve(event.data.result)
   })
   function hostRequest(method, params) {
-    if (window === parent) return Promise.reject(new Error('请在软件右侧运营台中验证，独立浏览器页面没有绑定会话'))
+    if (window === parent) return Promise.reject(new Error(workbenchEntryHint))
     return new Promise((resolve, reject) => {
       const id = ++hostRequestId
       const timer = setTimeout(() => { hostRequests.delete(id); reject(new Error('当前会话未响应，请确认会话空闲后重试')) }, 15000)
@@ -26,7 +29,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.3' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.5' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -365,8 +368,6 @@
     markEdited(); updateSelection()
   })
   async function askStudio(kind) {
-    const host = await getHost()
-    if (!host.hostContext?.['ai.ipollo/workspace']?.sessionId || !host.hostCapabilities?.message) throw new Error('请先在主软件打开一个可对话的会话')
     let data
     if (draftForm) {
       const draft = await saveDraft()
@@ -386,6 +387,14 @@
       }
       data = { searchId: pageData.search.id }
     }
+    if (window === parent) {
+      feedback('内容已保存。请从对话右侧「＋」→「小红书运营台」继续。')
+      entryNotice?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      toast('内容已保存，请从对话右侧「＋」打开小红书运营台。')
+      return
+    }
+    const host = await getHost()
+    if (!host.hostContext?.['ai.ipollo/workspace']?.sessionId || !host.hostCapabilities?.message) throw new Error('内容已保存。请先在主软件打开一个可对话的会话，再从右侧「＋」打开小红书运营台。')
     const { prompt } = await studioApi('request-action', { kind, ...data })
     previousState = (await request('/api/state')).state
     const result = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: prompt }] })
