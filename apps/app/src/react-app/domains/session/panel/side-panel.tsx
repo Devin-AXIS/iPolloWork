@@ -438,20 +438,6 @@ function BrowserPanelContent({
       return;
     }
 
-    let disposed = false;
-
-    const resetNativeView = async () => {
-      await browser.hide?.();
-
-      if (disposed) {
-        return;
-      }
-
-      shownRef.current = false;
-      lastBoundsRef.current = null;
-      boundsFrameRef.current = window.requestAnimationFrame(watchBounds);
-    };
-
     const syncBounds = () => {
       const bounds = computeBounds(content);
 
@@ -483,7 +469,9 @@ function BrowserPanelContent({
       boundsFrameRef.current = window.requestAnimationFrame(watchBounds);
     };
 
-    void resetNativeView();
+    shownRef.current = false;
+    lastBoundsRef.current = null;
+    watchBounds();
 
     const observer = new ResizeObserver(syncBounds);
 
@@ -492,7 +480,6 @@ function BrowserPanelContent({
     window.addEventListener("scroll", syncBounds, true);
 
     return () => {
-      disposed = true;
       observer.disconnect();
       window.removeEventListener("resize", syncBounds);
       window.removeEventListener("scroll", syncBounds, true);

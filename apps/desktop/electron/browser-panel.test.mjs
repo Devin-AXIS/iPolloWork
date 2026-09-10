@@ -32,7 +32,7 @@ if (!process.versions.electron) {
       return;
     }
     response.setHeader("Content-Type", "text/html; charset=utf-8");
-    response.end('<!doctype html><title>Account login</title><img class="avatar" src="/avatar.svg" width="64" height="64"><img id="hidden-avatar" src="/avatar.svg" style="display:none"><p>短信登录</p><button id="qr">显示二维码</button><script>document.querySelector("#qr").onclick=()=>{document.querySelector("p").textContent="扫码登录"}</script>');
+    response.end('<!doctype html><title>Account login</title><img class="avatar" src="/avatar.svg" width="64" height="64"><img id="hidden-avatar" src="/avatar.svg" style="display:none"><p>短信登录</p><button id="qr">显示二维码</button><label>标题<input id="title" value="Previous title"></label><label>正文<textarea id="body">Previous body</textarea></label><script>document.querySelector("#qr").onclick=()=>{document.querySelector("p").textContent="扫码登录"}</script>');
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
@@ -56,6 +56,12 @@ if (!process.versions.electron) {
     const avatar = await call('snapshot', { tabId: first.tabId, imageSelector: 'img.avatar' });
     assert.equal(avatar.imageUrl, new URL('/avatar.svg', url).href);
     assert.match(avatar.tree, /扫码登录/);
+    const fieldRef = name => avatar.tree.split('\n').find(line => line.includes(`textbox "${name}"`))?.match(/\[(@e\d+)\]/)?.[1];
+    await call('act', { tabId: first.tabId, snapshotId: avatar.snapshotId, actions: [
+      { type: 'fill', ref: fieldRef('标题'), value: '真实填写标题' },
+      { type: 'fill', ref: fieldRef('正文'), value: '真实填写正文。' },
+    ] });
+    assert.deepEqual(await firstView.executeJavaScript("[document.querySelector('#title').value,document.querySelector('#body').value]"), ['真实填写标题', '真实填写正文。']);
     for (const imageSelector of ['#hidden-avatar', 'img', '#qr', '.missing']) {
       assert.equal((await call('snapshot', { tabId: first.tabId, imageSelector })).imageUrl, null);
     }

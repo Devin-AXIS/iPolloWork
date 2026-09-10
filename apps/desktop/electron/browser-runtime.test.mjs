@@ -100,6 +100,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
   const webContents = {
     debugger: debuggerApi,
     focus() {},
+    selectAll() { commands.push({ method: 'selectAll' }); },
     getTitle() { return "Fixture"; },
     getURL() { return url; },
     isDestroyed() { return false; },
@@ -199,9 +200,7 @@ it("executes a bounded batch with real text and pointer input", async () => {
   assert.equal(result.ok, true);
   assert.equal(result.results.length, 2);
   assert.ok(fixture.commands.some((command) => (
-    command.method === "Input.dispatchKeyEvent"
-      && command.params.type === "rawKeyDown"
-      && command.params.code === "KeyA"
+    command.method === "selectAll"
   )));
   assert.deepEqual(
     fixture.commands.find((command) => command.method === "Input.insertText")?.params,

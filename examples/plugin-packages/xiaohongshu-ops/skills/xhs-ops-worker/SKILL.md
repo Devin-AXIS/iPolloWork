@@ -32,7 +32,7 @@ description: Execute authorized Xiaohongshu publishing, comments and replies fro
 6. 返回 job 后，以其锁定的 payload 为准。若状态 succeeded，直接报告已有结果；若 running、failed、blocked 或 needs_reconcile，报告现状，不重新提交；queued 表示准备尚未完成，可用 get-job 查看，不另建操作。
 7. job 为 dispatched 时，调用 `claim-job`，带 jobId、accountId 以及步骤 3 实际观察到的 actualAccount、actualProfileId。新日程会话只领取自身操作，不修改账号原来的 workerThreadId。
 8. 使用 `ipollowork_browser_snapshot` 和 `ipollowork_browser_act` 的最新语义引用执行页面操作。发文按 payload.mediaPaths 顺序上传图片，upload 动作带 `extensionId: "xiaohongshu-ops"`，以访问本插件私有图片目录；填写标题正文话题。评论或回复按锁定目标定位。最终提交前再次核对当前账号和内容，仅提交一次。遵循宿主当前的操作审批设置，不绕过审批；需要人工批准时明确报告等待批准。
-9. 明确看到发布记录、成功提示或新增评论后，调用 `complete-job`，提供 jobId、actualAccount、actualProfileId、resultUrl。文章和互动结果会写回运营台，并在日程会话中报告结果地址。
+9. 上传、点击或页面变化后检查 browser_act 返回的 results 和 snapshotRequired；批次可能只执行了前面几项，必须重新 snapshot 再执行剩余步骤。明确看到发布记录、成功提示或新增评论后，调用 `complete-job`，提供 jobId、actualAccount、actualProfileId、resultUrl。输入框里已填好的文字不是发布成功证据。文章和互动结果会写回运营台，并在日程会话中报告结果地址。
 10. 已领取但未提交遇到登录/验证码阻塞，用 block-job；明确失败用 fail-job；点击提交后无法确认结果用 uncertain-job。用 get-job 查询后续状态，不把“已点击”当成成功，也不重试发送。浏览器或插件不可用时，让日程会话明确报告失败原因。
 
 电脑需要保持开机，iPolloWork 本机服务和桌面浏览器需要运行，账号需要保持有效登录。

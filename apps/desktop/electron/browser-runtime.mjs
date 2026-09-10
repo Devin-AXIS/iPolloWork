@@ -783,21 +783,7 @@ export function createBrowserRuntime({
       if (value.length > MAX_FILL_TEXT) throw new Error("Browser fill text is too long.");
       focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
-      const modifiers = platform === "darwin" ? 4 : 2;
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "a",
-        code: "KeyA",
-        modifiers,
-        windowsVirtualKeyCode: 65,
-      });
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "a",
-        code: "KeyA",
-        modifiers,
-        windowsVirtualKeyCode: 65,
-      });
+      tab.view.webContents.selectAll();
       await debuggerCommand(debuggerApi, "Input.insertText", { text: value });
       return { type: "fill", ref, characters: Array.from(value).length };
     }

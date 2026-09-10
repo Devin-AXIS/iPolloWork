@@ -42,7 +42,6 @@ export default {
         const target = (await listTargets(process.env.XHS_EVAL_DESKTOP_CDP)).find(target => target.type === 'page' && target.url.includes('localhost:5173'));
         if (!target) throw new Error('Open the iPolloWork desktop conversation before running this proof.');
         desktop = await connect(target.webSocketDebuggerUrl);
-        const native = (method, ...args) => evaluate(desktop, `window.__IPOLLOWORK_ELECTRON__.browser[${JSON.stringify(method)}](...${JSON.stringify(args)})`, { awaitPromise: true });
         const control = async (name, args) => {
           const result = await evaluate(desktop, `window.__ipolloworkControl.execute(${JSON.stringify(name)}, ${JSON.stringify(args)})`, { awaitPromise: true });
           if (!result?.ok) throw new Error(result?.error || 'Desktop control failed');
@@ -85,19 +84,33 @@ export default {
         };
         const call = (name, input, sessionId) => bridge.actions[name](input, { workspaceId: 'proof', sessionId });
         const open = async (account, url) => {
-          const result = await native('openUrl', url, { profileId: 'xiaohongshu-ops:' + account.browserProfileId });
+          const result = await control('browser.open_url', { url, profileId: 'xiaohongshu-ops:' + account.browserProfileId });
           tabs.add(result.tabId);
           await control('browser.snapshot', { tabId: result.tabId });
           await evaluate(desktop, `new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))`, { awaitPromise: true });
-          await evaluate(desktop, `document.getElementById(${JSON.stringify(result.tabId)})?.querySelector('button')?.click()`);
+          const pageTarget = (await listTargets(process.env.XHS_EVAL_DESKTOP_CDP)).find(target => target.url === result.url);
+          if (!pageTarget) throw new Error('The account browser target was not created.');
+          const page = await connect(pageTarget.webSocketDebuggerUrl);
+          try {
+            let ready = false;
+            for (let attempt = 0; attempt < 50; attempt++) {
+              ready = await evaluate(page, 'innerWidth > 300 && innerHeight > 300');
+              if (ready) break;
+              await new Promise(done => setTimeout(done, 100));
+            }
+            ctx.assert(ready, 'The native account browser did not acquire visible panel bounds.');
+          } finally { page.close(); }
           return result.tabId;
         };
-        const snapshot = async (tabId, text) => {
+        const snapshot = async (tabId, text, submitted = false) => {
+          let lastState;
           for (let attempt = 0; attempt < 30; attempt++) {
             const state = await control('browser.snapshot', { tabId });
-            if (!text || state.tree?.includes(text)) return state;
+            lastState = state;
+            if (!text || (submitted ? state.tree?.split('\n').some(line => line.includes('StaticText') && line.includes(text)) : state.tree?.includes(text))) return state;
             await new Promise(done => setTimeout(done, 150));
           }
+          await ctx.output('unexpected-browser-page', JSON.stringify(lastState, null, 2));
           throw new Error('The native browser did not show ' + text);
         };
         const act = async (tabId, fields) => {
@@ -121,6 +134,8 @@ export default {
           ctx.assert(result.ok !== false, JSON.stringify(result));
         };
         const view = async url => {
+          await ctx.client.send('Page.navigate', { url: 'about:blank' });
+          await ctx.waitFor('location.href === "about:blank"');
           await ctx.client.send('Page.navigate', { url });
           await ctx.waitFor('document.readyState === "complete" && location.href === ' + JSON.stringify(url));
         };
@@ -146,7 +161,7 @@ export default {
               const observation = { actualAccount: account.handle, actualProfileId: account.expectedProfileId };
               await call('claim-job', { jobId: job.id, accountId: account.id, ...observation }, sessionId);
               await perform(tabId, job);
-              const after = await snapshot(tabId, operation.body);
+              const after = await snapshot(tabId, operation.body, true);
               const result = await call('complete-job', { jobId: job.id, ...observation, resultUrl: after.url }, sessionId);
               ctx.assert(result.job.status === 'succeeded', 'The operation result was not persisted.');
               const duplicate = await call('prepare-job', input, 'retry-' + randomUUID());
@@ -168,11 +183,13 @@ export default {
           }, async (tabId, job) => {
             await act(tabId, [
               { type: 'upload', name: '图片素材', filePaths: job.payload.mediaPaths, extensionId: 'xiaohongshu-ops' },
+            ]);
+            await act(tabId, [
               { type: 'fill', name: '标题', value: job.payload.title },
               { type: 'fill', name: '正文', value: job.payload.body },
               { type: 'fill', name: '话题', value: job.payload.topics.join(' ') },
             ]);
-            await act(tabId, [{ type: 'click', name: '确认发布', expectedName: '确认发布' }]);
+            await act(tabId, [{ type: 'press', key: 'Enter', name: '确认发布', expectedName: '确认发布' }]);
           }),
           assert: async () => { const state = await platformState(); ctx.assert(state.publishSubmissions === 1 && state.posts[0].imageNames.length === 4 && state.posts[0].author === author.handle, 'Publishing produced the wrong article or duplicate submissions.'); },
           screenshot: { name: 'scheduled-publish', requireText: ['把使用经验记录下来', '发布成功', '@matrix_author'] },
@@ -182,7 +199,7 @@ export default {
           voiceover: vo[1],
           action: () => runScheduled(editor, { type: 'create_comment', targetUrl, body: '记录使用场景这个方法很实用，谢谢分享。' }, async (tabId, job) => {
             await act(tabId, [{ type: 'fill', name: '发表评论', value: job.payload.commentBody }]);
-            await act(tabId, [{ type: 'click', name: '发送评论', expectedName: '发送评论' }]);
+            await act(tabId, [{ type: 'press', key: 'Enter', name: '发送评论', expectedName: '发送评论' }]);
           }),
           assert: async () => { const state = await platformState(); ctx.assert(state.commentSubmissions === 1 && state.posts[0].comments[0].author === editor.handle && db.listInteractions(100, editor.id)[0].status === 'published', 'The comment was not written as the selected account.'); },
           screenshot: { name: 'scheduled-comment', requireText: ['@matrix_editor', '记录使用场景这个方法很实用，谢谢分享。'] },
@@ -193,7 +210,7 @@ export default {
           voiceover: vo[2],
           action: () => runScheduled(editor, { type: 'reply_comment', targetUrl, targetAuthor: 'real_reader', targetCommentText: '第一次记录时应该关注什么？', body: '可以先记录使用场景和实际遇到的问题。' }, async (tabId, job) => {
             await act(tabId, [{ type: 'fill', name: '回复 @real_reader', value: job.payload.commentBody }]);
-            await act(tabId, [{ type: 'click', name: '发送给 @real_reader', expectedName: '发送给 @real_reader' }]);
+            await act(tabId, [{ type: 'press', key: 'Enter', name: '发送给 @real_reader', expectedName: '发送给 @real_reader' }]);
           }),
           assert: async () => { const state = await platformState(); const reply = state.posts[0].comments.find(comment => comment.author === 'real_reader')?.replies[0]; ctx.assert(state.replySubmissions === 1 && reply?.author === editor.handle && db.listInteractions(100, editor.id).length === 2, 'Reply target or account ownership was lost.'); },
           screenshot: { name: 'scheduled-reply', requireText: ['第一次记录时应该关注什么？', '可以先记录使用场景和实际遇到的问题。'] },
@@ -218,7 +235,7 @@ export default {
       } finally {
         if (desktop) { for (const tabId of tabs) await evaluate(desktop, `window.__IPOLLOWORK_ELECTRON__.browser.closeTab(${JSON.stringify(tabId)})`, { awaitPromise: true }).catch(() => {}); desktop.close(); }
         bridge?.dispose();
-        for (const server of [opsServer, mockServer]) if (server) await new Promise(done => server.close(done));
+        for (const server of [opsServer, mockServer]) if (server) { server.closeAllConnections(); await new Promise(done => server.close(done)); }
         db?.close();
         if (work) await work.disposeWorkItemStore({ configPath: resolve(ctx.outDir, 'server.json') });
         for (const [key, value] of Object.entries(previous)) { if (value === undefined) delete process.env[key]; else process.env[key] = value; }
