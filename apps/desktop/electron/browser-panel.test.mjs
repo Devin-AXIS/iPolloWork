@@ -88,6 +88,10 @@ if (!process.versions.electron) {
     const loginReopen = await call('openUrl', url, { profileId: 'plugin:account-a', loginUi: { origin: new URL(url).origin, path: '/login', whenText: '短信登录', selector: '#qr' } });
     assert.equal(loginReopen.tabId, reopened.tabId);
     assert.equal(loginReopen.url, postUrl);
+    window.minimize();
+    assert.equal(window.isMinimized(), true);
+    await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
+    assert.equal(window.isMinimized(), false);
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
     assert.equal((await call("state")).tabs.some(tab => tab.id === shared.tabId), true);
     process.stdout.write("browser-profile-checks-passed\n");

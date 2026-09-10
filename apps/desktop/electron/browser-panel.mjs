@@ -40,6 +40,13 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     return getWindow?.() ?? null;
   }
 
+  function focusBrowserWindow() {
+    const win = window();
+    if (win?.isMinimized()) win.restore();
+    win?.show();
+    win?.focus();
+  }
+
   function resetMenuOverlayReady({ resolvePending = false } = {}) {
     menuOverlayReady = false;
     if (resolvePending) {
@@ -115,6 +122,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       throw new Error("Invalid browser profile ID");
     }
     const url = normalizeBrowserUrl(rawUrl);
+    focusBrowserWindow();
     // Reopening an account focuses its page without resetting an in-flight QR login.
     const existing = profileId && [...browserTabs.values()].find(tab => tab.profileId === profileId
       && !tab.view.webContents.isDestroyed() && /^https?:/.test(tab.view.webContents.getURL())
@@ -174,7 +182,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
   const browserRuntime = createBrowserRuntime({
     getTab: (tabId) => getBrowserTab(tabId || undefined),
     selectTab: (tabId) => selectBrowserTab(tabId),
-    focusWindow: () => window()?.focus(),
+    focusWindow: focusBrowserWindow,
     listLocalWorkspaces,
     getUserDataPath: () => app.getPath("userData"),
   });
