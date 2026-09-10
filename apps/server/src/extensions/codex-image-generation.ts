@@ -147,7 +147,7 @@ export async function runCodexImageTurn(
   // Attach before starting the turn so an early notification cannot reject unhandled.
   void completed.catch(() => undefined);
   try {
-    const prompt = `${input.prompt}\n\nUse image generation to return one PNG. Requested size: ${input.size}; quality: ${input.quality}.`;
+    const prompt = `${input.prompt}\n\nUse image generation to return one PNG. Requested aspect ratio preference: ${input.size.replace("x", ":")}; this is composition guidance, not an exact pixel size. Quality: ${input.quality}.`;
     await rpc.call("turn/start", {
       threadId,
       input: [

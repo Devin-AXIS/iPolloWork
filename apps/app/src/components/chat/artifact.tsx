@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 
 import type { UIMessage } from "ai";
-import { ArrowUpRightIcon, ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
+import { ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -73,7 +73,6 @@ interface ArtifactButtonProps {
   sessionId?: string
   artifactContext?: ArtifactInteractionContext
   onOpenVideoStudio?: (displayName?: string) => void
-  compact?: boolean
 }
 
 const MAX_ARTIFACT_TITLE_LENGTH = 32;
@@ -256,7 +255,7 @@ function compactArtifactTitle(name: string) {
     : name;
 }
 
-function ArtifactButton({ artifact, displayName, description, client, workspaceId, sessionId, artifactContext, onOpenVideoStudio, compact = false }: ArtifactButtonProps) {
+function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId, artifactContext, onOpenVideoStudio }: ArtifactButtonProps) {
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
   const [downloading, setDownloading] = useState(false);
@@ -295,7 +294,7 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
     : { ...artifact, name: presentedName, target: { ...artifact.target, name: presentedName } };
   const title = compactArtifactTitle(presentedName);
   const typeLabel = getArtifactTypeLabel(studioTarget?.surface === "video" ? "video" : artifact.type);
-  const cardDescription = description || typeLabel;
+  const extension = artifact.name.includes(".") ? artifact.name.slice(artifact.name.lastIndexOf(".") + 1).toUpperCase() : typeLabel;
   const canDownload = Boolean(client && workspaceId && artifact.target.kind === "file");
 
   const download = async () => {
@@ -324,42 +323,36 @@ function ArtifactButton({ artifact, displayName, description, client, workspaceI
 
   const content = (
     <>
-      <DescriptiveButtonIcon className={cn(compact ? "size-5" : "size-12 rounded-2xl bg-muted/55")}>
-        <ArtifactIcon className={cn("shrink-0", compact ? "size-4" : "size-5")} type={artifact.type} />
+      <DescriptiveButtonIcon className={cn("chat-output-icon")}>
+        <ArtifactIcon className={cn("shrink-0", "size-4")} type={artifact.type} />
       </DescriptiveButtonIcon>
-      <DescriptiveButtonContent className={cn("min-w-0", compact && "flex-none")}>
+      <DescriptiveButtonContent className={cn("min-w-0", "chat-output-content")}>
         <div className="flex min-w-0 items-center gap-1.5">
-          <DescriptiveButtonTitle className={cn(compact ? "max-w-48 text-xs font-medium" : "max-w-full text-sm font-medium")} data-testid="artifact-file-title" title={presentedName}>{title}</DescriptiveButtonTitle>
-          {compact ? (
-            <span className="shrink-0 rounded-md bg-muted/70 px-1.5 py-0.5 text-[9px] font-medium leading-none text-muted-foreground">
-              {typeLabel}
-            </span>
-          ) : null}
+          <DescriptiveButtonTitle className={cn("chat-output-title")} data-testid="artifact-file-title" title={presentedName}>{title}</DescriptiveButtonTitle>
         </div>
-        {!compact ? (
-          <DescriptiveButtonDescription className={cn(compact ? "text-[10px] leading-3" : "text-xs leading-4")} data-testid="artifact-file-description">
-            {cardDescription}
+        {(
+          <DescriptiveButtonDescription className={cn("chat-output-description")} data-testid="artifact-file-description">
+            {extension}
           </DescriptiveButtonDescription>
-        ) : null}
+        )}
       </DescriptiveButtonContent>
-      {compact && canActivate ? <ArrowUpRightIcon className="size-3.5 shrink-0 text-muted-foreground" /> : null}
     </>
   );
 
   if (!canActivate && !(client && workspaceId && sessionId && artifact.target.kind === "file")) {
     return (
-      <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", compact ? "w-full flex-none shrink-0 border-transparent px-2 py-1.5" : "h-20 w-full min-w-0 gap-4 border-border px-5 py-4")}>
+      <div data-testid="artifact-file-card" className={cn("flex h-auto max-w-full items-center justify-start gap-1.5 rounded-xl border text-left whitespace-nowrap", "chat-output-card")}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={cn("group/output relative max-w-full", compact ? "w-full" : "h-20 w-full min-w-0")} data-testid="artifact-file-shell">
+    <div className={cn("group/output relative max-w-full", "h-14 w-full min-w-0")} data-testid="artifact-file-shell">
       <DescriptiveButton
         disabled={!canActivate}
         data-testid="artifact-file-card"
-        className={cn("max-w-full items-center whitespace-nowrap", compact ? "w-full flex-none justify-start gap-1.5 rounded-xl pl-2 pr-20 py-1.5 hover:bg-muted/70" : "h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20")}
+        className={cn("max-w-full items-center whitespace-nowrap", "chat-output-card pr-20")}
         onClick={() => {
           if (opensCurrentVideoStudio) {
             onOpenVideoStudio?.(presentedName);
@@ -586,7 +579,7 @@ export function ArtifactList({ messages, client, workspaceId, sessionId, session
     <div className="w-full">
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
       <div
-        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-2 pb-2"
+        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),20rem))] gap-2 pb-2"
         aria-label={t("session.outputs.title")}
       >
         {displayedArtifacts.map((artifact) => (
@@ -775,7 +768,7 @@ function ConversationOutputPanelContent({ messages, sessionId, sessionTitle, cli
                     </summary>
                     <div className="mt-2 grid gap-2">
                       {group.artifacts.slice(1).map((artifact) => (
-                        <ArtifactButton key={artifact.id} artifact={artifact} displayName={outputDisplayNames.get(artifact.id)} client={client} workspaceId={workspaceId} sessionId={sessionId} compact />
+                        <ArtifactButton key={artifact.id} artifact={artifact} displayName={outputDisplayNames.get(artifact.id)} client={client} workspaceId={workspaceId} sessionId={sessionId} />
                       ))}
                     </div>
                   </details>

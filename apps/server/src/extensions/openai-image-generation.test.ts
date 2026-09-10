@@ -212,6 +212,8 @@ describe("OpenAI image editing", () => {
       prompt: "Make it blue", sourcePath: generated.path, filename: "sun",
     }, { workspaceId: "workspace", sessionId: "session-original" });
     if (!edited || !("path" in edited) || !edited.path) throw new Error("Expected edit result");
+    expect((await listSessionArtifacts(serverConfig, "workspace", "session-original")).items.find(item => item.path === generated.path))
+      .toMatchObject({ generation: { kind: "image", model: expect.any(String), id: expect.any(String) } });
     expect(edited.path).not.toBe(generated.path);
     expect(await readFile(join(root, generated.path), "utf8")).toBe("generated-image");
     expect(await readFile(join(root, edited.path), "utf8")).toBe("edited-image");
@@ -457,7 +459,7 @@ describe("OpenAI image editing", () => {
       for (const model of models) {
         for (const key of ["size", "quality"] as const) {
           const schema = Reflect.get(action.inputSchema.properties, key);
-          for (const value of model.parameters[key]?.values ?? []) expect(schema.enum).toContain(value);
+          for (const value of model.parameters[key]?.values ?? []) { if(key === "size") expect(new RegExp(schema.pattern).test(value)).toBe(true); else expect(schema.enum).toContain(value); }
         }
       }
     }
@@ -499,6 +501,8 @@ describe("OpenAI image editing", () => {
         { model: "volcengine/seedream-5", size: "1024x1024" },
         { model: "openai/gpt-image-2", size: "3K" },
         { model: "openai/gpt-image-2", size: 123 },
+        { model: "openai/gpt-image-2", size: "3x2" },
+
         { model: "openai/gpt-image-2", quality: "ultra" },
         { model: "openai/gpt-image-2-codex", quality: "high" },
       ]) {

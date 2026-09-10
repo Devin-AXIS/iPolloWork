@@ -62,6 +62,13 @@ describe("ChatGPT image generation", () => {
     expect(rpc.subscribed()).toBe(false);
   });
 
+  test("sends custom ratios as composition guidance rather than exact pixels", async () => {
+    const rpc=fakeRpc();
+    await runCodexImageTurn(rpc,tmpdir(),{prompt:"A landscape",size:"7x5",quality:"auto"});
+    expect(JSON.stringify(rpc.calls[2])).toContain("not an exact pixel size");
+    expect(rpc.calls[2]).toMatchObject({method:"turn/start",params:{input:[{type:"text",text:expect.stringContaining("aspect ratio preference: 7:5")}]}});
+  });
+
   test("rejects an unsupported runtime before starting a turn", async () => {
     const rpc = fakeRpc({ capability: false });
     await expect(runCodexImageTurn(rpc, tmpdir(), { prompt: "bird", size: "auto", quality: "auto" })).rejects.toMatchObject({ code: "codex_image_unavailable" });

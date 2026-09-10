@@ -318,7 +318,12 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
       await rename(partial, destination);
     } finally { await file.close().catch(() => undefined); await rm(partial, { force: true }); }
   } else if (!existing.isFile() || existing.size === 0) throw new Error("产出路径已存在异常文件，不能覆盖。");
-  await recordSessionArtifact(config, workspace, job.sessionId, path);
+  // Optional inspection must not turn an already saved provider result into a failed job.
+  const media = await inspectLocalVideo(workspace, path).catch(() => null);
+  await recordSessionArtifact(config, workspace, job.sessionId, path, undefined, {
+    id: job.id, kind: "video", model: job.model, completedAt: Date.now(),
+    ...(media ? { width: media.width, height: media.height, duration: media.duration } : {}),
+  });
   return path;
 }
 

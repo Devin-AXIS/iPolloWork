@@ -51,7 +51,8 @@ function imageMimeType(path) {
     case ".jpg":
     case ".jpeg": return "image/jpeg";
     case ".webp": return "image/webp";
-    default: throw new Error("Only PNG, JPEG, and WebP images are supported");
+    case ".svg": return "image/svg+xml";
+    default: throw new Error("Only PNG, JPEG, WebP, and SVG images are supported");
   }
 }
 
