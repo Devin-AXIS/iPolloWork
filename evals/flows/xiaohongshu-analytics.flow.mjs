@@ -74,7 +74,7 @@ export default {
             await ctx.client.send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
             ctx.assert(await ctx.eval("!document.querySelector('.account-picker').open && document.activeElement.matches('.account-switcher')"), 'Escape did not close the list and return focus.');
             await ctx.trustedClick('.account-switcher');
-            await ctx.trustedClick('.simple-heading');
+            await ctx.trustedClick('.analytics-profile h2');
             ctx.assert(await ctx.eval("!document.querySelector('.account-picker').open"), 'Clicking outside did not close the list.');
             await ctx.trustedClick('.account-switcher');
           },
