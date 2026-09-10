@@ -94,8 +94,8 @@ describe("plugin UI contributions", () => {
 
   test("discovers installed UI resources without explicit contributions and respects placement and availability", async () => {
     const canvas = await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json();
-    const manifest = parsePluginPackageManifest({ ...canvas, id: "xiaohongshu-ops", name: "小红书运营台", contributions: [],
-      resources: canvas.resources.map(resource => ({ ...resource, id: "workbench", label: "小红书运营台", path: "ui/workbench.html" })),
+    const manifest = parsePluginPackageManifest({ ...canvas, id: "operations-console", name: "运营工作台", contributions: [],
+      resources: canvas.resources.map(resource => ({ ...resource, id: "workbench", label: "运营工作台", path: "ui/workbench.html" })),
     });
     const item: iPolloWorkPluginPackageItem = {
       pluginId: manifest.id, name: manifest.name, version: "0.2.0", enabled: true,
@@ -104,8 +104,8 @@ describe("plugin UI contributions", () => {
     };
     const surfaces = resolveInstalledPluginContributions([item]).workspaceApps;
     expect(surfaces).toMatchObject([{
-      id: "xiaohongshu-ops:workspace-app:workbench",
-      pluginId: "xiaohongshu-ops", label: "小红书运营台",
+      id: "operations-console:workspace-app:workbench",
+      pluginId: "operations-console", label: "运营工作台",
       resource: { type: "ui", id: "workbench", path: "ui/workbench.html" },
     }]);
     expect(resolveInstalledPluginContributions([]).workspaceApps).toEqual([]);
@@ -125,7 +125,7 @@ describe("plugin UI contributions", () => {
     expect(settingsOnly.workspaceApps).toEqual([]);
     expect(settingsOnly.settingsPages).toHaveLength(1);
     expect(resolveInstalledPluginContributions([{ ...item, activeEngineId: "opencode", engineCompatibility: [{
-      engineId: "opencode", status: "partial", supportedResourceIds: ["xhs-ops-worker"],
+      engineId: "opencode", status: "partial", supportedResourceIds: ["operations-worker"],
       unsupportedResourceIds: ["workbench"], unsupportedRequiredResourceIds: [],
       unsupportedCapabilityIds: [], nativeEngineOnly: false,
     }] }]).workspaceApps).toEqual([]);

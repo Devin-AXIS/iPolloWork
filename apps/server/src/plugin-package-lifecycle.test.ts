@@ -1625,62 +1625,6 @@ describe("plugin package lifecycle", () => {
     }
   });
 
-  test("installs the Xiaohongshu plugin with isolated browser login configuration", async () => {
-    const workspaceRoot = await createRoot("ipollowork-xhs-catalog-api-");
-    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-    const server = await startServer(serverConfig(workspaceRoot));
-    const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`;
-    const headers = { authorization: "Bearer token", "content-type": "application/json" };
-    try {
-      const catalog = await fetch(`${base}/catalog`, { headers });
-      expect(catalog.status).toBe(200);
-      expect((await catalog.json()).items).toContainEqual(expect.objectContaining({ pluginId: "xiaohongshu-ops", version: "0.4.5" }));
-      const installation = await fetch(`${base}/catalog/xiaohongshu-ops/install`, { method: "POST", headers });
-      expect(installation.status).toBe(200);
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/src/server.ts"), "utf8"))
-        .toContain("export function startServer()");
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/app/public/app.js"), "utf8"))
-        .toContain("browserProfileId");
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/xhs-ops-worker/scripts/start.mjs"), "utf8"))
-        .toContain("homedir()");
-      const removal = await fetch(`${base}/xiaohongshu-ops`, { method: "DELETE", headers });
-      expect(removal.status).toBe(200);
-      const refreshed = await fetch(`${base}/catalog`, { headers });
-      expect((await refreshed.json()).items).toContainEqual(expect.objectContaining({
-        pluginId: "xiaohongshu-ops", installedVersion: null, updateAvailable: false,
-      }));
-    } finally { await server.stop(); }
-  });
-
-  test("installs and launches Douyin with all runtime and UI files from its immutable package", async () => {
-    const workspaceRoot = await createRoot("ipollowork-douyin-catalog-api-");
-    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-    const server = await startServer(serverConfig(workspaceRoot));
-    const base = `http://127.0.0.1:${server.port}`;
-    const headers = { authorization: "Bearer token", "content-type": "application/json" };
-    try {
-      const install = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/douyin-ops/install`, { method: "POST", headers });
-      expect(install.status).toBe(200);
-      expect(await readFile(join(workspaceRoot, ".opencode/skills/douyin-ops-worker/SKILL.md"), "utf8")).toContain("video.create.bind");
-      const launch = await fetch(`${base}/experimental/extensions/call`, {
-        method: "POST", headers,
-        body: JSON.stringify({ extensionId: "douyin-ops", action: "open-workbench", args: {}, context: { directory: workspaceRoot } }),
-      });
-      expect(launch.status).toBe(200);
-      const { result } = await launch.json();
-      const url = new URL(result.url);
-      expect(url.hostname).toBe("127.0.0.1");
-      expect(await (await fetch(url.origin)).text()).toContain("抖音运营台");
-      expect((await fetch(url.origin + "/app.js")).status).toBe(200);
-      const token = new URLSearchParams(url.hash.slice(1)).get("token");
-      expect(await (await fetch(url.origin + "/api/state", { headers: { authorization: `Bearer ${token}` } })).json())
-        .toMatchObject({ accounts: [], drafts: [], settings: { secretConfigured: false } });
-      const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/douyin-ops`, { method: "DELETE", headers });
-      expect(removal.status).toBe(200);
-      await expectMissing(join(workspaceRoot, ".opencode/skills/douyin-ops-worker/SKILL.md"));
-    } finally { await server.stop(); }
-  }, 25_000);
-
   test("lists and installs every bundled service plugin through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -1711,8 +1655,6 @@ describe("plugin package lifecycle", () => {
           { pluginId: "image-studio", version: "0.1.54", installedVersion: "0.1.54", updateAvailable: false },
           { pluginId: "video-console", version: "0.2.4", installedVersion: "0.2.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.4.5", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.1.0", installedVersion: null, updateAvailable: false },
         ],
       });
 

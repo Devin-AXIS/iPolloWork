@@ -221,7 +221,7 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
   test("forwards the selected persistent account profile to the shared browser host", async () => {
     const fake = startFakeiPolloWorkServer();
     const plugin = await iPolloWorkExtensionsPreview();
-    const args = { url: "https://creator.xiaohongshu.com/new/home", profileId: "xiaohongshu-ops:11111111-1111-4111-8111-111111111111" };
+    const args = { url: "https://creator.example.com/home", profileId: "operations-console:11111111-1111-4111-8111-111111111111" };
     await plugin.tool.ipollowork_browser_open_url.execute(args, { directory: "/tmp/main" });
     expect(fake.requests.find(request => request.pathname === "/engine-tools/call")?.body).toMatchObject({
       name: "ipollowork_browser_open_url", args,

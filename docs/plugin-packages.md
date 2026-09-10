@@ -4,6 +4,19 @@ For the complete Chinese developer handbook, see [`specs/plugin-developer-guide.
 
 iPolloWork plugin packages combine portable skills, MCP servers, services, UI contributions, authorization, and optional engine-native capabilities. Engine-specific behavior stays inside `engineBindings`; the package's portable capabilities do not depend on an engine directory layout.
 
+## Independently maintained operations plugins
+
+The operations plugins below are maintained in separate repositories and are not bundled with iPolloWork:
+
+| Plugin | Source repository | Stable plugin ID |
+| --- | --- | --- |
+| Xiaohongshu Operations | [ipollo-rednote-plugin](https://github.com/zjy-web222/ipollo-rednote-plugin) | `xiaohongshu-ops` |
+| Douyin Operations | [ipollo-tiktok-plugin](https://github.com/zjy-web222/ipollo-tiktok-plugin) | `douyin-ops` |
+
+Their services, skills, UI, platform adapters, and plugin-specific tests belong to those repositories. The host owns only the generic installer, authorization, browser, scheduling, and workbench integration. Existing installations continue to use their immutable artifacts and private data directories; removing bundled sources does not uninstall them or delete account data. New executable packages must use the existing trusted-publisher signing and import process. A source repository URL alone does not bypass executable-import checks.
+
+The host's generic launcher proof accepts `IPOLLOWORK_EVAL_WORKBENCHES` as a JSON array of `{ pluginId, resourceId, label, requireText, external? }` objects. Run `plugin-workbench-launcher` against an app with those plugins installed; `external: true` also verifies that the package is absent from the bundled catalog. Plugin-specific proof flows live in the external repositories.
+
 ## Package layout
 
 Every unpacked package starts with `ipollowork.plugin.json`. Resource paths are relative to that directory and may not escape it.

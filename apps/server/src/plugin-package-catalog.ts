@@ -18,8 +18,6 @@ export const bundledPluginPackageIds = [
   "image-studio",
   "video-console",
   "deepseek-harness",
-  "xiaohongshu-ops",
-  "douyin-ops",
 ] as const;
 
 export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
