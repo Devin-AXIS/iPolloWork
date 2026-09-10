@@ -18,6 +18,8 @@ description: Dispatch due Xiaohongshu browser jobs to locked account workers.
 
 # 小红书任务调度器
 
+用户在 iPolloWork 日程安排的发布、评论和回复由到点创建的会话直接按 `xhs-ops-worker` 的“日程与当前会话执行”处理，调用本插件的 list-accounts、prepare-job、claim-job 和结果操作，不需要启动下面的旧队列分发器或绑定 Worker。
+
 此任务只分发管理台已经锁定的到期任务，不操作浏览器、不生成或修改内容。
 
 ## 每次唤醒

@@ -138,6 +138,7 @@ import {
   resolveProjectExecutionPlan,
   startProjectSessionExecution,
   startWorkItemAutomationScheduler,
+  workItemAutomationPrompt,
 } from "./work-items.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
@@ -967,7 +968,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       await startProjectSessionExecution(config, workspace.id, item.title, execution);
       try {
         const promptedSessionId = await sessionRuntime.prompt(workspace, session.id, {
-          text: item.description?.trim() || item.title,
+          text: workItemAutomationPrompt(item),
           ...(execution.runtime.model ? {
             model: {
               providerID: execution.runtime.model.providerId,

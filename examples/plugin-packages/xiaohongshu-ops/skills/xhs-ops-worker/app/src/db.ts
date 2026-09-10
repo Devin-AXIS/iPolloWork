@@ -13,6 +13,7 @@ import type {
   DiscoveredComment,
   Interaction,
   JobStatus,
+  SessionOperation,
   JobType,
   KnowledgeItem,
   MediaAsset,
@@ -116,7 +117,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS content_items (
     id TEXT PRIMARY KEY,
-    campaign_id TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    campaign_id TEXT REFERENCES campaigns(id) ON DELETE CASCADE,
     account_id INTEGER NOT NULL REFERENCES accounts(id),
     status TEXT NOT NULL CHECK (status IN ('planned', 'generating', 'ready', 'scheduled', 'publishing', 'published', 'failed', 'missed', 'cancelled')),
     scheduled_at TEXT NOT NULL,
@@ -160,7 +161,7 @@ const SCHEMA = `
 
   CREATE TABLE IF NOT EXISTS interactions (
     id TEXT PRIMARY KEY,
-    content_item_id TEXT NOT NULL REFERENCES content_items(id) ON DELETE CASCADE,
+    content_item_id TEXT REFERENCES content_items(id) ON DELETE CASCADE,
     kind TEXT NOT NULL CHECK (kind IN ('managed_comment', 'organic_comment', 'reply')),
     account_id INTEGER REFERENCES accounts(id),
     remote_author TEXT,
@@ -282,7 +283,7 @@ function campaignFromRow(row: Row): Campaign {
 function contentFromRow(row: Row): ContentItem {
   return {
     id: String(row.id),
-    campaignId: String(row.campaign_id),
+    campaignId: row.campaign_id === null ? null : String(row.campaign_id),
     accountId: Number(row.account_id),
     status: String(row.status) as ContentItem['status'],
     scheduledAt: String(row.scheduled_at),
@@ -329,7 +330,7 @@ function jobFromRow(row: Row): BrowserJob {
 
 function interactionFromRow(row: Row): Interaction {
   return {
-    id: String(row.id), contentItemId: String(row.content_item_id), kind: String(row.kind) as Interaction['kind'],
+    id: String(row.id), contentItemId: row.content_item_id === null ? null : String(row.content_item_id), kind: String(row.kind) as Interaction['kind'],
     accountId: row.account_id === null ? null : Number(row.account_id),
     remoteAuthor: row.remote_author === null ? null : String(row.remote_author),
     remoteCommentId: row.remote_comment_id === null ? null : String(row.remote_comment_id),
@@ -356,16 +357,33 @@ export class OpsDatabase {
 
   constructor(path: string) {
     this.database = new DatabaseSync(path)
-    this.database.exec(SCHEMA)
-    const columns = this.database.prepare('PRAGMA table_info(accounts)').all()
-    if (!columns.some(column => column.name === 'browser_profile_id')) {
-      this.database.exec('ALTER TABLE accounts ADD COLUMN browser_profile_id TEXT')
-    }
-    if (!columns.some(column => column.name === 'deleted_at')) {
-      this.database.exec('ALTER TABLE accounts ADD COLUMN deleted_at TEXT')
-    }
-    this.database.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_browser_profile_idx ON accounts(browser_profile_id)')
-    this.seedBrand()
+    try {
+      this.database.exec(SCHEMA)
+      // Session-authored posts have no campaign; comments on external posts have no local content item.
+      for (const [table, column] of [['content_items', 'campaign_id'], ['interactions', 'content_item_id']]) {
+        if (!table || !column || !this.database.prepare(`PRAGMA table_info(${table})`).all().some(item => item.name === column && item.notnull === 1)) continue
+        const row = this.database.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)
+        if (typeof row?.sql !== 'string') throw new Error('找不到待迁移的数据表')
+        const definition = row.sql.replace(new RegExp('^CREATE TABLE "?' + table + '"?'), `CREATE TABLE ${table}_session_migration`).replace(`${column} TEXT NOT NULL`, `${column} TEXT`)
+        this.database.exec('PRAGMA foreign_keys = OFF; BEGIN IMMEDIATE')
+        try {
+          this.database.exec(`${definition}; INSERT INTO ${table}_session_migration SELECT * FROM ${table}; DROP TABLE ${table}; ALTER TABLE ${table}_session_migration RENAME TO ${table};`)
+          if (this.database.prepare('PRAGMA foreign_key_check').all().length) throw new Error('迁移后关联记录校验失败')
+          this.database.exec('COMMIT')
+        } catch (error) { this.database.exec('ROLLBACK'); throw error }
+        finally { this.database.exec('PRAGMA foreign_keys = ON') }
+      }
+      this.database.exec(SCHEMA)
+      const columns = this.database.prepare('PRAGMA table_info(accounts)').all()
+      if (!columns.some(column => column.name === 'browser_profile_id')) {
+        this.database.exec('ALTER TABLE accounts ADD COLUMN browser_profile_id TEXT')
+      }
+      if (!columns.some(column => column.name === 'deleted_at')) {
+        this.database.exec('ALTER TABLE accounts ADD COLUMN deleted_at TEXT')
+      }
+      this.database.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_browser_profile_idx ON accounts(browser_profile_id)')
+      this.seedBrand()
+    } catch (error) { this.database.close(); throw error }
   }
 
   close(): void {
@@ -380,7 +398,7 @@ export class OpsDatabase {
       .run(JSON.stringify({ background: '#f2f4ef', foreground: '#171a18', accent: '#1769e0' }), timestamp)
   }
 
-  audit(input: { accountId?: number; campaignId?: string; contentItemId?: string; jobId?: string; action: string; status: string; detail?: unknown }): void {
+  audit(input: { accountId?: number; campaignId?: string; contentItemId?: string | null; jobId?: string; action: string; status: string; detail?: unknown }): void {
     this.database.prepare(`INSERT INTO audit_log
       (account_id, campaign_id, content_item_id, job_id, action, status, detail_json, created_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -666,7 +684,7 @@ export class OpsDatabase {
     return row ? contentFromRow(row) : null
   }
 
-  createPlannedContent(campaignId: string, accountId: number, scheduledAt: string): ContentItem {
+  createPlannedContent(campaignId: string | null, accountId: number, scheduledAt: string): ContentItem {
     const existing = this.database.prepare('SELECT * FROM content_items WHERE campaign_id = ? AND account_id = ? AND scheduled_at = ?')
       .get(campaignId, accountId, scheduledAt) as Row | undefined
     if (existing) return contentFromRow(existing)
@@ -724,21 +742,61 @@ export class OpsDatabase {
     return (this.database.prepare('SELECT * FROM browser_jobs ORDER BY scheduled_at DESC LIMIT ?').all(limit) as Row[]).map(jobFromRow)
   }
 
+  createSessionJob(input: SessionOperation, payload: BrowserJobPayload): BrowserJob {
+    const key = 'session:' + createHash('sha256').update(JSON.stringify([input.runKey, input.operationKey])).digest('hex')
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const existing = this.database.prepare('SELECT * FROM browser_jobs WHERE idempotency_key = ?').get(key) as Row | undefined
+      if (existing) {
+        const job = jobFromRow(existing)
+        if (job.accountId !== input.accountId || job.type !== input.type || job.payload.evidence?.inputHash !== payload.evidence?.inputHash) throw new Error('同一次操作已锁定账号和内容，不能更换操作标识绕过已有记录')
+        if (job.attempts === 0 && ['queued', 'dispatched'].includes(job.status)) this.database.prepare('UPDATE browser_jobs SET worker_thread_id = ? WHERE id = ?').run(input.sessionId, job.id)
+        this.database.exec('COMMIT')
+        return this.getJob(job.id) as BrowserJob
+      }
+      const account = this.getAccount(input.accountId)
+      if (!account?.enabled) throw new Error('账号不存在、已解除绑定或已停用')
+      const scheduledAt = now()
+      const content = input.type === 'publish_note' ? this.createPlannedContent(null, account.id, scheduledAt) : null
+      if (content) this.database.prepare('UPDATE content_items SET title = ?, body = ?, topics_json = ?, card_data_json = ? WHERE id = ?')
+        .run(input.title, input.body, JSON.stringify(input.topics), JSON.stringify(input.cards), content.id)
+      const job = this.createJob({ type: input.type, accountId: account.id, contentItemId: content?.id ?? null, scheduledAt, payload, idempotencyKey: key })
+      this.database.prepare('UPDATE browser_jobs SET worker_thread_id = ? WHERE id = ?').run(input.sessionId, job.id)
+      if (!content) this.createInteraction({
+        contentItemId: null, kind: input.type === 'reply_comment' ? 'reply' : 'managed_comment', accountId: account.id,
+        remoteAuthor: input.targetAuthor || null, remoteCommentId: `job:${job.id}`, body: input.body,
+        status: 'queued', riskLabels: [], scheduledAt, resultUrl: input.targetUrl,
+      })
+      this.audit({ accountId: account.id, contentItemId: content?.id ?? null, jobId: job.id, action: 'session_operation_prepared', status: 'queued' })
+      this.database.exec('COMMIT')
+      return this.getJob(job.id) as BrowserJob
+    } catch (error) { this.database.exec('ROLLBACK'); throw error }
+  }
+
+  setSessionJobMedia(id: string, mediaPaths: string[]): void {
+    const job = this.getJob(id)
+    if (!job || job.status !== 'queued') throw new Error('任务已变更')
+    this.database.prepare('UPDATE browser_jobs SET payload_json = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify({ ...job.payload, mediaPaths }), now(), id)
+  }
+
   getJob(id: string): BrowserJob | null {
     const row = this.database.prepare('SELECT * FROM browser_jobs WHERE id = ?').get(id) as Row | undefined
     return row ? jobFromRow(row) : null
   }
 
-  dispatchDue(at = new Date()): BrowserJob[] {
+  dispatchDue(at = new Date(), jobId?: string): BrowserJob[] {
     const timestamp = at.toISOString()
-    const rows = this.database.prepare("SELECT * FROM browser_jobs WHERE status = 'queued' AND scheduled_at <= ? ORDER BY scheduled_at, id")
-      .all(timestamp) as Row[]
+    const rows = this.database.prepare("SELECT * FROM browser_jobs WHERE status = 'queued' AND scheduled_at <= ? AND (? IS NULL OR id = ?) ORDER BY scheduled_at, id")
+      .all(timestamp, jobId ?? null, jobId ?? null) as Row[]
     const dispatched: BrowserJob[] = []
     for (const row of rows) {
       const job = jobFromRow(row)
       const account = this.getAccount(job.accountId)
+      const sessionExecution = job.payload.evidence?.sessionExecution === true
+      if (sessionExecution && job.type === 'publish_note' && !job.payload.mediaPaths?.length) continue
       const canVerify = job.type === 'verify_session' && account?.enabled && Boolean(account.workerThreadId)
-      const canExecute = account?.enabled && Boolean(account.workerThreadId) && account.sessionStatus === 'healthy'
+      const canExecute = account?.enabled && (sessionExecution ? Boolean(job.workerThreadId) : Boolean(account.workerThreadId) && account.sessionStatus === 'healthy')
       if (!canVerify && !canExecute) {
         this.database.prepare("UPDATE browser_jobs SET status = 'blocked', error_code = 'account_not_ready', error = ?, updated_at = ? WHERE id = ? AND status = 'queued'")
           .run(job.type === 'verify_session' ? '账号未启用或未绑定独立任务' : '账号未启用、未绑定任务或登录状态不健康', now(), job.id)
@@ -773,17 +831,24 @@ export class OpsDatabase {
         }
       }
       const result = this.database.prepare("UPDATE browser_jobs SET status = 'dispatched', worker_thread_id = ?, updated_at = ? WHERE id = ? AND status = 'queued'")
-        .run(account.workerThreadId, now(), job.id)
+        .run(sessionExecution ? job.workerThreadId : account.workerThreadId, now(), job.id)
       if (result.changes === 1) dispatched.push(this.getJob(job.id) as BrowserJob)
     }
     return dispatched
   }
 
-  claimJob(id: string, accountId: number): { job: BrowserJob; leaseToken: string } {
+  claimJob(id: string, accountId: number, observation?: { sessionId: string; actualAccount: string; actualProfileId: string }): { job: BrowserJob; leaseToken: string } {
     const job = this.getJob(id)
     if (!job) throw new Error('任务不存在')
     if (job.accountId !== accountId) throw new Error('任务账号与执行账号不一致')
     if (job.status !== 'dispatched') throw new Error('任务当前不可领取')
+    const account = this.getAccount(accountId)
+    if (!account?.enabled) throw new Error('账号已停用或解除绑定')
+    if (job.payload.evidence?.sessionExecution === true) {
+      if (!observation || observation.sessionId !== job.workerThreadId) throw new Error('当前会话与执行任务不一致')
+      if (observation.actualProfileId !== account.expectedProfileId || observation.actualAccount.trim().toLocaleLowerCase() !== account.handle.toLocaleLowerCase()) throw new Error('浏览器身份与指定账号不一致，不能发布或回复')
+    }
+    if (job.type !== 'verify_session' && this.database.prepare("SELECT id FROM browser_jobs WHERE account_id = ? AND id != ? AND status IN ('running', 'needs_reconcile') LIMIT 1").get(accountId, id)) throw new Error('该账号还有正在执行或结果待核对的操作，请先处理，避免重复发送')
     const token = randomBytes(24).toString('base64url')
     const leaseUntil = new Date(Date.now() + 10 * 60_000).toISOString()
     const result = this.database.prepare(`UPDATE browser_jobs SET status = 'running', lease_token_hash = ?, lease_until = ?,
@@ -808,6 +873,7 @@ export class OpsDatabase {
     if (!job || job.status !== 'running') throw new Error('任务不在执行中')
     this.assertLease(job, token)
     const account = this.getAccount(job.accountId)
+    if (job.payload.evidence?.sessionExecution === true && (!account || input.actualProfileId !== account.expectedProfileId || !input.resultUrl)) throw new Error('完成操作需要匹配的小红书号和已确认的结果地址')
     if (job.type === 'verify_session' && job.payload.evidence?.requireProfileId === true
       && (!account || input.actualProfileId !== account.expectedProfileId || account.workerThreadId !== job.workerThreadId)) {
       this.stopJob(id, token, 'blocked', { code: 'identity_mismatch', message: '未观察到匹配的小红书号，或账号绑定已变更' })
@@ -840,6 +906,10 @@ export class OpsDatabase {
       this.setAccountSession(job.accountId, sessionStatus, { error: input.message })
     }
     this.audit({ accountId: job.accountId, ...(job.contentItemId ? { contentItemId: job.contentItemId } : {}), jobId: id, action: job.type, status, detail: { code: input.code } })
+    if (job.payload.evidence?.sessionExecution === true) {
+      if (job.contentItemId) this.database.prepare("UPDATE content_items SET status = 'failed', error = ?, updated_at = ? WHERE id = ?").run(input.message, now(), job.contentItemId)
+      this.updateInteractionByJob(this.getJob(id) as BrowserJob)
+    }
     return this.getJob(id) as BrowserJob
   }
 
@@ -897,13 +967,18 @@ export class OpsDatabase {
     // Incoming reader comments belong to the content owner; managed actions belong to the acting account.
     const rows = accountId === undefined
       ? this.database.prepare('SELECT * FROM interactions ORDER BY created_at DESC LIMIT ?').all(limit)
-      : this.database.prepare(`SELECT i.* FROM interactions i JOIN content_items c ON c.id = i.content_item_id
+      : this.database.prepare(`SELECT i.* FROM interactions i LEFT JOIN content_items c ON c.id = i.content_item_id
           WHERE i.account_id = ? OR (i.account_id IS NULL AND c.account_id = ?)
           ORDER BY i.created_at DESC LIMIT ?`).all(accountId, accountId, limit)
     return (rows as Row[]).map(interactionFromRow)
   }
 
   updateInteractionByJob(job: BrowserJob): void {
+    if (job.payload.evidence?.sessionExecution === true && !job.contentItemId) {
+      this.database.prepare("UPDATE interactions SET status = ?, result_url = COALESCE(?, result_url), updated_at = ? WHERE remote_comment_id = ? AND content_item_id IS NULL AND account_id = ?")
+        .run(job.status === 'succeeded' ? 'published' : 'failed', job.resultUrl, now(), `job:${job.id}`, job.accountId)
+      return
+    }
     if (!job.contentItemId) return
     const status = job.status === 'succeeded' ? 'published' : job.status === 'failed' || job.status === 'blocked' ? 'failed' : null
     if (!status) return

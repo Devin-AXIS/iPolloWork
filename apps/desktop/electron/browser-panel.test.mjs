@@ -73,6 +73,15 @@ if (!process.versions.electron) {
     assert.notEqual(reopened.tabId, first.tabId);
     const reopenedView = webContents.getAllWebContents().find(item => item !== window.webContents && item !== sharedView && item !== secondView && item.getURL() === url);
     assert.deepEqual(await reopenedView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["login=a", "a"]);
+    const postUrl = new URL('/note/test-post', url).href;
+    const openedPost = await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
+    assert.equal(openedPost.tabId, reopened.tabId);
+    assert.equal(openedPost.url, postUrl);
+    assert.equal(reopenedView.getURL(), postUrl);
+    assert.deepEqual(await reopenedView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["login=a", "a"]);
+    const loginReopen = await call('openUrl', url, { profileId: 'plugin:account-a', loginUi: { origin: new URL(url).origin, path: '/login', whenText: '短信登录', selector: '#qr' } });
+    assert.equal(loginReopen.tabId, reopened.tabId);
+    assert.equal(loginReopen.url, postUrl);
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
     assert.equal((await call("state")).tabs.some(tab => tab.id === shared.tabId), true);
     process.stdout.write("browser-profile-checks-passed\n");

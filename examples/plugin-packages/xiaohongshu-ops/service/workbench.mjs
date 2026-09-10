@@ -1,11 +1,13 @@
 import { spawn } from 'node:child_process';
 import { cp, mkdir, access, readFile, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const origin = 'http://127.0.0.1:4790';
+const origin = process.env.XHS_OPS_ORIGIN || 'http://127.0.0.1:4790';
+if (!['127.0.0.1', 'localhost', '[::1]'].includes(new URL(origin).hostname)) throw new Error('运营台必须使用本机服务地址');
+const dataDir = resolve(process.env.XHS_OPS_DATA_DIR || resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops'));
 
 async function healthy() {
   try {
@@ -57,8 +59,8 @@ export default function createWorkbench(runtime) {
     child = spawn(node, [resolve(packageRoot, 'skills/xhs-ops-worker/scripts/start.mjs')], {
       cwd: appRoot, windowsHide: true, stdio: ['ignore', 'ignore', 'pipe'],
       env: { ...process.env, XHS_OPS_APP_ROOT: appRoot,
-        XHS_OPS_DATA_DIR: resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops'),
-        XHS_OPS_HOST: '127.0.0.1', XHS_OPS_PORT: '4790', XHS_OPS_ORIGIN: origin,
+        XHS_OPS_DATA_DIR: dataDir,
+        XHS_OPS_HOST: new URL(origin).hostname, XHS_OPS_PORT: new URL(origin).port || '4790', XHS_OPS_ORIGIN: origin,
         XHS_OPS_EMBED_ORIGINS: 'http://localhost:* http://127.0.0.1:* file:',
       },
     });
@@ -74,12 +76,51 @@ export default function createWorkbench(runtime) {
     throw new Error('运营台启动超时，请确认 Node.js 22.22 或更新版本可用。');
   }
 
+  function ensureStarted() {
+    starting ??= start().finally(() => { starting = undefined; });
+    return starting;
+  }
+
+  async function operationRequest(path, body) {
+    await ensureStarted();
+    const token = (await readFile(resolve(dataDir, 'api-token'), 'utf8')).trim();
+    const response = await fetch(origin + path, {
+      method: body === undefined ? 'GET' : 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '小红书操作失败');
+    return browserJobResult(result);
+  }
+
+  async function browserJobResult(result) {
+    const job = result.job;
+    if (!job?.payload?.mediaPaths?.length) return result;
+    if (!/^[a-f0-9-]{36}$/i.test(job.id)) throw new Error('任务 ID 无效');
+    // The host browser accepts uploads from this workspace's plugin storage.
+    // Keep the shared account database in place and expose only rendered images.
+    const mediaDir = resolve(runtime.storage.dataDir, 'media', job.id);
+    await mkdir(mediaDir, { recursive: true });
+    const mediaPaths = await Promise.all(job.payload.mediaPaths.map(async source => {
+      const sourcePath = resolve(source);
+      const local = relative(resolve(dataDir, 'assets'), sourcePath);
+      if (!local || local.startsWith('..') || isAbsolute(local) || !/\.png$/i.test(sourcePath)) throw new Error('任务图片不在插件素材目录');
+      const destination = resolve(mediaDir, basename(sourcePath));
+      await cp(sourcePath, destination);
+      return destination;
+    }));
+    return { ...result, job: { ...job, payload: { ...job.payload, mediaPaths } } };
+  }
+
   async function executor(action, input, context) {
+    if (!context.sessionId) throw new Error('执行操作需要当前会话');
     if (typeof input.jobId !== 'string' || !/^[a-f0-9-]{36}$/i.test(input.jobId)) throw new Error('任务 ID 无效');
-    const token = (await readFile(resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops/api-token'), 'utf8')).trim();
+    const token = (await readFile(resolve(dataDir, 'api-token'), 'utf8')).trim();
     const lease = leases.get(input.jobId);
     if (action !== 'claim' && (!lease || lease.sessionId !== context.sessionId)) throw new Error('请先在当前会话领取任务，或在运营台重新发起验证');
-    const body = action === 'claim' ? { accountId: input.accountId, workerSessionId: context.sessionId, verificationOnly: true }
+    const body = action === 'claim' ? { accountId: input.accountId, workerSessionId: context.sessionId, pluginSession: true, actualAccount: input.actualAccount, actualProfileId: input.actualProfileId }
       : { ...input, leaseToken: lease.token };
     const response = await fetch(`${origin}/api/executor/jobs/${input.jobId}/${action}`, {
       method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -92,15 +133,27 @@ export default function createWorkbench(runtime) {
       leases.set(input.jobId, { token: result.leaseToken, sessionId: context.sessionId, createdAt: Date.now() });
     }
     else leases.delete(input.jobId);
-    return { job: result.job };
+    return browserJobResult({ job: result.job });
   }
 
   return {
     // Credentials and leases stay in the service; model tools receive only job data.
     actions: {
+      'list-accounts': () => operationRequest('/api/executor/accounts'),
+      'prepare-job': (input, context) => {
+        if (!context.sessionId || !context.workspaceId) throw new Error('请从项目会话或日程执行任务');
+        return operationRequest('/api/executor/operations', {
+          ...input, sessionId: context.sessionId,
+          runKey: input.runKey || `${context.workspaceId}:${context.sessionId}`,
+        });
+      },
+      'get-job': input => {
+        if (typeof input.jobId !== 'string' || !/^[a-f0-9-]{36}$/i.test(input.jobId)) throw new Error('任务 ID 无效');
+        return operationRequest(`/api/executor/jobs/${input.jobId}`);
+      },
       'observe-browser-session': async (input, context) => {
         if (!context.sessionId) throw new Error('请先打开一个会话');
-        const token = (await readFile(resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops/api-token'), 'utf8')).trim();
+        const token = (await readFile(resolve(dataDir, 'api-token'), 'utf8')).trim();
         const response = await fetch(`${origin}/api/executor/browser-session`, {
           method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
           body: JSON.stringify({ ...input, sessionId: context.sessionId }), signal: AbortSignal.timeout(5000),
@@ -112,20 +165,19 @@ export default function createWorkbench(runtime) {
       'claim-job': (input, context) => executor('claim', input, context),
       'complete-job': (input, context) => executor('complete', input, context),
       'block-job': (input, context) => executor('block', input, context),
+      'fail-job': (input, context) => executor('fail', input, context),
+      'uncertain-job': (input, context) => executor('uncertain', { ...input, code: 'result_uncertain' }, context),
       'rebind-session': async (input, context) => {
       if (typeof input.previousSessionId !== 'string' || typeof input.sessionId !== 'string' || input.sessionId !== context.sessionId) throw new Error('会话绑定参数不匹配');
       await start();
-      const token = (await readFile(resolve(homedir(), '.ipollowork/plugin-data/xiaohongshu-ops/api-token'), 'utf8')).trim();
+      const token = (await readFile(resolve(dataDir, 'api-token'), 'utf8')).trim();
       const response = await fetch(`${origin}/api/executor/rebind-session`, {
         method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(input), signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) throw new Error('更新账号绑定会话失败，请重新打开运营台检查绑定状态');
       return { ok: true };
-    }, 'open-workbench': () => {
-      starting ??= start().finally(() => { starting = undefined; });
-      return starting;
-    } },
+    }, 'open-workbench': ensureStarted },
     dispose() { disposed = true; leases.clear(); stopChild(child); },
   };
 }

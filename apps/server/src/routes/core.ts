@@ -482,7 +482,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }),
     [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args) => executeUiControlAction(
       "browser.open_url",
-      { url: typeof args.url === "string" ? args.url : "" },
+      { url: typeof args.url === "string" ? args.url : "", ...(typeof args.profileId === "string" ? { profileId: args.profileId } : {}) },
     ),
     [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(
       "browser.snapshot",

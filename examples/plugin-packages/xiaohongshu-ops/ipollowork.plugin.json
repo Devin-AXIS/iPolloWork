@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "xiaohongshu-ops",
   "name": "小红书运营台",
-  "description": "管理小红书账号、内容、任务排期与互动。附带本地运营台源码和账号执行、任务调度技能。",
+  "description": "管理小红书账号、内容与互动；支持 iPolloWork 日程按指定账号自动发文、评论和回复。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.3.17",
+    "version": "0.3.18",
     "publisher": {
       "id": "local",
       "name": "本地插件"
@@ -21,7 +21,7 @@
     "updateId": "local/xiaohongshu-ops"
   },
   "composer": {
-    "prompt": "使用 open-workbench 直接打开小红书运营台。首次使用请先完成账号接入；只执行用户明确要求的运营任务。"
+    "prompt": "打开界面使用 open-workbench。执行用户授权的日程或运营任务时，先读取 xhs-ops-worker 技能，再用 list-accounts 选择用户指定账号，用 prepare-job、claim-job 和 complete-job 完成发文、评论或回复；使用任务返回的独立浏览器 profileId。"
   },
   "resources": [
     {
@@ -56,6 +56,141 @@
           }
         },
         {
+          "id": "list-accounts",
+          "title": "列出小红书账号",
+          "description": "返回已接入账号的小红书号、独立浏览器 profileId 和内容要求。日程执行时先按用户指定的小红书号选定账号，不自行换号。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "prepare-job",
+          "title": "准备发文或互动",
+          "description": "把用户授权的发文、评论或回复锁定为当前会话的操作。日程须原样传入调度提示的 runKey；每个操作使用稳定 operationKey，重复调用不会新增。publish_note 需要标题、正文和三张内容卡；create_comment 需要帖子地址和正文；reply_comment 另需目标评论原文与作者。返回账号浏览器环境与待执行内容。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "publish_note",
+                  "create_comment",
+                  "reply_comment"
+                ]
+              },
+              "runKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "日程提示中的 runKey；普通手动会话可省略。"
+              },
+              "operationKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "本次任务内稳定的操作编号，例如 post-1 或 reply-评论ID。重试时不可更换。"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 10000
+              },
+              "topics": {
+                "type": "array",
+                "maxItems": 10,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 50
+                }
+              },
+              "cards": {
+                "type": "array",
+                "minItems": 3,
+                "maxItems": 3,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "heading": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "body": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 600
+                    }
+                  },
+                  "required": [
+                    "heading",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "targetUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "description": "目标小红书帖子的完整地址。"
+              },
+              "targetCommentText": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000,
+                "description": "可见的目标评论原文。"
+              },
+              "targetAuthor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "description": "可见的目标评论作者。"
+              }
+            },
+            "required": [
+              "accountId",
+              "type",
+              "operationKey",
+              "body"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "get-job",
+          "title": "查看执行结果",
+          "description": "读取已有操作的锁定内容、执行状态和结果地址。任务已成功或结果不确定时，不得再次提交。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              }
+            },
+            "required": [
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
           "id": "rebind-session",
           "title": "更新账号绑定会话",
           "description": "首次发送消息生成正式会话后更新已绑定账号的会话 ID。",
@@ -79,8 +214,8 @@
         },
         {
           "id": "claim-job",
-          "title": "领取账号验证任务",
-          "description": "当前绑定会话领取指定的只读账号验证或数据同步任务。",
+          "title": "领取小红书执行任务",
+          "description": "领取当前会话准备的发文或互动任务，或已绑定会话的账号验证任务。发文互动前必须打开返回的账号独立浏览器，从实际可见页面读出 actualAccount 和 actualProfileId；不可把配置值当作观察结果。账号不匹配、另有操作执行中或待核对时会拒绝。",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -91,6 +226,16 @@
               "accountId": {
                 "type": "integer",
                 "minimum": 1
+              },
+              "actualAccount": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "actualProfileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
               }
             },
             "required": [
@@ -103,8 +248,8 @@
         },
         {
           "id": "complete-job",
-          "title": "回写账号验证及数据",
-          "description": "以实际观察到的账号名称、小红书号和页面URL完成已领取的任务；数据同步任务需携带 analyticsCsv。",
+          "title": "回写小红书执行结果",
+          "description": "仅在浏览器页面确认操作成功后回写匹配的账号、小红书号和真实结果地址。发文会进入文章记录，评论回复会进入互动记录。验证任务保持原行为。提交后无法确认成功时调用 uncertain-job，不能重发。",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -137,8 +282,8 @@
         },
         {
           "id": "block-job",
-          "title": "报告账号验证阻塞",
-          "description": "登录失效、验证码、账号不匹配或无法读取数据时，将具体原因写回运营台。",
+          "title": "报告小红书执行阻塞",
+          "description": "登录失效、验证码、身份不匹配或页面无法操作时回写具体原因。",
           "inputSchema": {
             "type": "object",
             "properties": {
@@ -190,6 +335,62 @@
             "required": [
               "url",
               "tree"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "fail-job",
+          "title": "报告执行失败",
+          "description": "确定尚未提交且操作失败时记录错误。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              },
+              "code": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "jobId",
+              "code",
+              "message"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "uncertain-job",
+          "title": "报告结果待核对",
+          "description": "已经点击提交，但未看到明确成功证据时记录待核对；禁止再次发送。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "pattern": "^[a-fA-F0-9-]{36}$"
+              },
+              "message": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "jobId",
+              "message"
             ],
             "additionalProperties": false
           }

@@ -218,6 +218,17 @@ describe("iPolloWorkExtensionsPreview session tools", () => {
 });
 
 describe("iPolloWorkExtensionsPreview UI control tools", () => {
+  test("forwards the selected persistent account profile to the shared browser host", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    const args = { url: "https://creator.xiaohongshu.com/new/home", profileId: "xiaohongshu-ops:11111111-1111-4111-8111-111111111111" };
+    await plugin.tool.ipollowork_browser_open_url.execute(args, { directory: "/tmp/main" });
+    expect(fake.requests.find(request => request.pathname === "/engine-tools/call")?.body).toMatchObject({
+      name: "ipollowork_browser_open_url", args,
+    });
+    expect(() => z.object(plugin.tool.ipollowork_browser_open_url.args).parse({ ...args, profileId: "../other" })).toThrow();
+  });
+
   test("omits UI-control tools and steering by default", async () => {
     delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
     const plugin = await iPolloWorkExtensionsPreview();

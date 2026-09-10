@@ -3777,6 +3777,7 @@ export function SessionPage(props: SessionPageProps) {
     requiresArgs: true,
     args: [
       { name: "url", type: "string", required: true, description: "The website URL to open." },
+      { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
     ],
     previewArgs: { url: "https://example.com" },
     disabled: !isElectronRuntime(),
@@ -3784,7 +3785,8 @@ export function SessionPage(props: SessionPageProps) {
       const url = controlStringArg(args, "url");
       if (!url) return { ok: false, error: "Missing URL." };
       setCurrentSidePanel("panel");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url);
+      const profileId = controlStringArg(args, "profileId");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId ? { profileId } : undefined);
       return result;
     },
   }), [setCurrentSidePanel]);

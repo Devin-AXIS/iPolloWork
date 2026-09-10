@@ -14,7 +14,7 @@ import { analyticsCsvHeader, parsePlatformCsv } from './analytics.js'
 import { observeBrowserSession, prepareSessionVerification } from './verification.js'
 import { OpsDatabase } from './db.js'
 import { OpsService, startContentScheduler } from './service.js'
-import type { AccountSessionStatus, CampaignSchedule, CampaignStatus, DiscoveredComment, KnowledgeItem } from './types.js'
+import type { AccountSessionStatus, CampaignSchedule, CampaignStatus, DiscoveredComment, KnowledgeItem, SessionOperation } from './types.js'
 import { renderAccounts, renderAnalytics, renderBrand, renderError, renderInteractions, renderJobs } from './views.js'
 
 function errorMessage(error: unknown): string {
@@ -355,12 +355,56 @@ export function createApp(service: OpsService): Hono {
     catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
 
-  app.post('/api/executor/dispatch', (c) => c.json({ jobs: service.dispatch().map((job) => ({ id: job.id, type: job.type, accountId: job.accountId, workerThreadId: job.workerThreadId, scheduledAt: job.scheduledAt })) }))
-
   const requireWorkerToken: MiddlewareHandler = async (c, next) => {
     if (!hasApiToken(c.req.header('Authorization'))) return c.json({ error: '执行接口需要本机 worker token' }, 401)
     await next()
   }
+  app.use('/api/executor/dispatch', requireWorkerToken)
+  app.use('/api/executor/accounts', requireWorkerToken)
+  app.use('/api/executor/operations', requireWorkerToken)
+  app.use('/api/executor/jobs/:id', requireWorkerToken)
+  app.post('/api/executor/dispatch', (c) => c.json({ jobs: service.dispatch().map((job) => ({ id: job.id, type: job.type, accountId: job.accountId, workerThreadId: job.workerThreadId, scheduledAt: job.scheduledAt })) }))
+  app.get('/api/executor/accounts', (c) => c.json({ accounts: service.db.listAccounts().map(account => ({
+    id: account.id, displayName: account.displayName, handle: account.handle, expectedProfileId: account.expectedProfileId,
+    profileUrl: account.profileUrl, browserProfileId: account.browserProfileId ? `xiaohongshu-ops:${account.browserProfileId}` : null,
+    enabled: account.enabled, sessionStatus: account.sessionStatus, position: account.position, audience: account.audience,
+    noteTone: account.noteTone, commentTone: account.commentTone, contentColumns: account.contentColumns,
+    bannedTopics: account.bannedTopics, dailyLimit: account.dailyLimit,
+  })) }))
+  app.post('/api/executor/operations', async (c) => {
+    try {
+      const input = await c.req.json<Record<string, unknown>>()
+      if (input.type !== 'publish_note' && input.type !== 'create_comment' && input.type !== 'reply_comment') throw new Error('不支持的执行类型')
+      const type = input.type
+      const targetUrl = type === 'publish_note' ? '' : text(input.targetUrl, '目标帖子地址', 2000)
+      if (targetUrl) {
+        const url = new URL(targetUrl)
+        if (url.origin !== new URL(config.xhs.webUrl).origin || url.username || url.password || url.pathname === '/') throw new Error('目标必须是小红书帖子地址')
+      }
+      if (type === 'publish_note' && (!Array.isArray(input.cards) || input.cards.length !== 3)) throw new Error('发布图文需要三张内容卡，封面会自动生成')
+      const cards = type === 'publish_note' && Array.isArray(input.cards) ? input.cards.map(card => {
+        if (!card || typeof card !== 'object' || !('heading' in card) || !('body' in card)) throw new Error('图文卡片格式无效')
+        return { heading: text(card.heading, '卡片标题', 100), body: text(card.body, '卡片正文', 600) }
+      }) : []
+      const operation: SessionOperation = {
+        accountId: integer(input.accountId, '账号 ID', 1, Number.MAX_SAFE_INTEGER),
+        sessionId: text(input.sessionId, '执行会话', 200), runKey: text(input.runKey, '本次运行标识', 500),
+        operationKey: text(input.operationKey, '操作标识', 200), type,
+        title: type === 'publish_note' ? text(input.title, '标题', 100) : '',
+        body: text(input.body, '正文', type === 'publish_note' ? 10000 : 1000),
+        topics: type === 'publish_note' ? stringArray(input.topics ?? [], '话题', 10).map(topic => text(topic, '话题', 50)) : [],
+        cards, targetUrl,
+        targetCommentText: type === 'reply_comment' ? text(input.targetCommentText, '目标评论原文', 2000) : '',
+        targetAuthor: type === 'reply_comment' ? text(input.targetAuthor, '目标评论作者', 200) : '',
+      }
+      return c.json({ job: await service.prepareSessionOperation(operation) })
+    } catch (error) { return c.json({ error: errorMessage(error) }, 409) }
+  })
+  app.get('/api/executor/jobs/:id', (c) => {
+    const job = service.db.getJob(c.req.param('id'))
+    return job ? c.json({ job }) : c.json({ error: '任务不存在' }, 404)
+  })
+
   app.use('/api/executor/jobs/:id/claim', requireWorkerToken)
   app.use('/api/executor/jobs/:id/complete', requireWorkerToken)
   app.use('/api/executor/jobs/:id/block', requireWorkerToken)
@@ -372,8 +416,15 @@ export function createApp(service: OpsService): Hono {
       const input = await c.req.json<Record<string, unknown>>()
       const accountId = integer(input.accountId, '账号 ID', 1, Number.MAX_SAFE_INTEGER)
       if (input.verificationOnly === true && service.db.getJob(c.req.param('id'))?.type !== 'verify_session') throw new Error('此入口只允许只读验证和数据同步任务')
-      if (input.workerSessionId !== undefined && service.db.getAccount(accountId)?.workerThreadId !== input.workerSessionId) throw new Error('当前会话与账号绑定不一致，请回到绑定会话执行')
-      const result = service.db.claimJob(c.req.param('id'), accountId)
+      const job = service.db.getJob(c.req.param('id'))
+      const sessionExecution = job?.payload.evidence?.sessionExecution === true
+      if (input.pluginSession === true && !sessionExecution && job?.type !== 'verify_session') throw new Error('此入口只允许当前会话准备的操作或账号验证')
+      if (input.workerSessionId !== undefined && (sessionExecution ? job?.workerThreadId : service.db.getAccount(accountId)?.workerThreadId) !== input.workerSessionId) throw new Error('当前会话与账号绑定不一致，请回到绑定会话执行')
+      const result = service.db.claimJob(c.req.param('id'), accountId, sessionExecution ? {
+        sessionId: text(input.workerSessionId, '执行会话', 200),
+        actualAccount: text(input.actualAccount, '观察到的账号', 100),
+        actualProfileId: text(input.actualProfileId, '观察到的小红书号', 200),
+      } : undefined)
       return c.json(result)
     } catch (error) { return c.json({ error: errorMessage(error) }, 409) }
   })

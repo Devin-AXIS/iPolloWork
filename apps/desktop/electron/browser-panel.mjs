@@ -121,6 +121,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       && new URL(tab.view.webContents.getURL()).origin === new URL(url).origin);
     if (existing) {
       selectBrowserTab(existing.tabId);
+      if (!loginUi && existing.view.webContents.getURL() !== url) await existing.view.webContents.loadURL(url);
       sendToRenderer("ipollowork:browser:panel-opened");
       return { provider: "builtin", tabId: existing.tabId, url: existing.view.webContents.getURL() };
     }

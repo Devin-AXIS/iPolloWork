@@ -1,4 +1,5 @@
 import { resolve } from 'node:path'
+import { createHash } from 'node:crypto'
 import { config } from './config.js'
 import { parsePlatformCsv } from './analytics.js'
 import type { ContentGenerator, GeneratedNote } from './content-generator.js'
@@ -7,7 +8,7 @@ import { OpsDatabase } from './db.js'
 import { renderCardSet } from './card-renderer.js'
 import { assertGeneratedContent, contentHash, findBannedPhrases, normalizeTopics } from './safety.js'
 import { expandSchedule, nextCommentScanTimes, spreadCommentTimes } from './scheduling.js'
-import type { BrowserJob, Campaign, DiscoveredComment } from './types.js'
+import type { BrowserJob, Campaign, DiscoveredComment, SessionOperation } from './types.js'
 
 function now(): string {
   return new Date().toISOString()
@@ -32,6 +33,40 @@ export class OpsService {
 
   constructor(readonly db: OpsDatabase, readonly generator: ContentGenerator = codexContentGenerator) {}
 
+  async prepareSessionOperation(input: SessionOperation): Promise<BrowserJob> {
+    const account = this.db.getAccount(input.accountId)
+    if (!account?.enabled) throw new Error('账号不存在、已解除绑定或已停用')
+    const brand = this.db.getBrand()
+    const banned = findBannedPhrases([input.title, input.body, ...input.cards.flatMap(card => [card.heading, card.body])].join('\n'), [...brand.bannedPhrases, ...account.bannedTopics])
+    if (banned.length) throw new Error(`内容命中账号禁用表述：${banned.join('、')}`)
+    const { sessionId: _session, runKey: _run, operationKey: _operation, ...locked } = input
+    const job = this.db.createSessionJob(input, {
+      destinationUrl: input.type === 'publish_note' ? config.xhs.creatorUrl : input.targetUrl,
+      expectedHandle: account.handle, expectedProfileId: account.expectedProfileId, expectedProfileUrl: account.profileUrl,
+      browserProfileId: account.browserProfileId ? `xiaohongshu-ops:${account.browserProfileId}` : null,
+      ...(input.type === 'publish_note' ? { title: input.title, body: input.body, topics: input.topics } : { targetUrl: input.targetUrl, commentBody: input.body, targetCommentText: input.targetCommentText, targetAuthor: input.targetAuthor }),
+      evidence: { sessionExecution: true, inputHash: createHash('sha256').update(JSON.stringify(locked)).digest('hex') },
+    })
+    if (job.status === 'queued' && job.type === 'publish_note' && job.contentItemId && this.db.markContentGenerating(job.contentItemId)) {
+      const content = this.db.getContent(job.contentItemId)
+      if (!content) throw new Error('找不到文章记录')
+      try {
+        const assets = (await renderCardSet(content, brand)).map(asset => this.db.createAsset(asset))
+        this.db.setContentGenerated(content.id, { title: input.title, body: input.body, topics: input.topics, cardData: input.cards, mediaAssetIds: assets.map(asset => asset.id), sourceKnowledgeIds: [], contentHash: contentHash(locked) })
+        this.db.setSessionJobMedia(job.id, assets.map(asset => resolve(config.assetDir, asset.relativePath)))
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '准备文章失败'
+        this.db.failContent(content.id, message)
+        this.db.database.prepare("UPDATE browser_jobs SET status = 'failed', error_code = 'preparation_failed', error = ?, updated_at = ? WHERE id = ? AND status = 'queued'").run(message, now(), job.id)
+        throw error
+      }
+    }
+    this.db.dispatchDue(new Date(), job.id)
+    const prepared = this.db.getJob(job.id)
+    if (!prepared) throw new Error('找不到执行记录')
+    return prepared
+  }
+
   materializeCampaigns(at = new Date()): number {
     const from = new Date(at.getTime() - 15 * 60_000)
     const until = new Date(at.getTime() + 30 * 24 * 60 * 60_000)
@@ -53,7 +88,7 @@ export class OpsService {
     const content = this.db.getContent(contentId)
     if (!content) throw new Error('内容不存在')
     if (!this.db.markContentGenerating(content.id)) throw new Error('内容当前不能生成')
-    const campaign = this.db.getCampaign(content.campaignId)
+    const campaign = (content.campaignId ? this.db.getCampaign(content.campaignId) : null)
     const author = this.db.getAccount(content.accountId)
     if (!campaign || !author) {
       this.db.failContent(content.id, '活动或账号已不存在')
@@ -116,7 +151,7 @@ export class OpsService {
       const materialized = this.materializeCampaigns(at)
       const due = this.db.listContent(500).filter((content) => {
         if (content.status !== 'planned') return false
-        const campaign = this.db.getCampaign(content.campaignId)
+        const campaign = (content.campaignId ? this.db.getCampaign(content.campaignId) : null)
         if (!campaign || campaign.status !== 'active') return false
         return new Date(content.scheduledAt).getTime() - campaign.generateLeadMinutes * 60_000 <= at.getTime()
       })
@@ -144,9 +179,25 @@ export class OpsService {
     discoveredComments?: DiscoveredComment[];
   }): Promise<BrowserJob> {
     const pending = this.db.getJob(input.jobId)
+    if (pending?.payload.evidence?.sessionExecution === true) {
+      const result = new URL(input.resultUrl || '')
+      const allowedOrigins = [new URL(config.xhs.webUrl).origin, new URL(config.xhs.creatorUrl).origin]
+      if (!allowedOrigins.includes(result.origin) || result.username || result.password) throw new Error('结果地址必须是小红书页面')
+      if (pending.type !== 'publish_note' && new URL(pending.payload.targetUrl || '').pathname !== result.pathname) throw new Error('结果地址与目标帖子不一致')
+    }
     const account = pending && this.db.getAccount(pending.accountId)
     const snapshot = pending?.payload.evidence?.syncAnalytics === true && account
       ? parsePlatformCsv(input.analyticsCsv ?? '', account.expectedProfileId) : null
+    if (pending?.payload.evidence?.sessionExecution === true) {
+      this.db.database.exec('BEGIN IMMEDIATE')
+      try {
+        const job = this.db.completeJob(input.jobId, input.leaseToken, input)
+        if (job.type === 'publish_note' && job.contentItemId && job.resultUrl) this.db.markContentPublished(job.contentItemId, job.resultUrl)
+        else this.db.updateInteractionByJob(job)
+        this.db.database.exec('COMMIT')
+        return job
+      } catch (error) { this.db.database.exec('ROLLBACK'); throw error }
+    }
     let job = this.db.completeJob(input.jobId, input.leaseToken, {
       actualAccount: input.actualAccount,
       ...(input.actualProfileId !== undefined ? { actualProfileId: input.actualProfileId } : {}),
@@ -156,14 +207,14 @@ export class OpsService {
     if (snapshot) this.db.savePlatformSnapshot(job.accountId, { ...snapshot, source: 'browser' })
     if (job.type === 'publish_note' && job.contentItemId && job.resultUrl) {
       const content = this.db.markContentPublished(job.contentItemId, job.resultUrl)
-      const campaign = this.db.getCampaign(content.campaignId)
+      const campaign = (content.campaignId ? this.db.getCampaign(content.campaignId) : null)
       if (campaign) this.createPostFollowups(job, campaign, content.publishedAt ?? now())
     } else if (job.type === 'create_comment' || job.type === 'reply_comment') {
       this.db.updateInteractionByJob(job)
     } else if (job.type === 'scan_comments' && job.contentItemId) {
       const comments = input.discoveredComments ?? []
       const content = this.db.getContent(job.contentItemId)
-      const campaign = content ? this.db.getCampaign(content.campaignId) : null
+      const campaign = content ? (content.campaignId ? this.db.getCampaign(content.campaignId) : null) : null
       const account = this.db.getAccount(job.accountId)
       if (content && campaign && account && comments.length) {
         const replies = await this.generator.generateReplies({

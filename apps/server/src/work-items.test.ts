@@ -23,6 +23,7 @@ import {
   listWorkItems,
   readWorkBoardConfig,
   runDueWorkItemAutomationsOnce,
+  workItemAutomationPrompt,
   startProjectSessionExecution,
   updateWorkItem,
   writeWorkBoardConfig,
@@ -297,6 +298,10 @@ describe("work item store", () => {
         now,
         dispatch: async (item) => {
           expect(item.status).toBe("running");
+          const prompt = workItemAutomationPrompt(item);
+          expect(prompt).toContain(`runKey: project_one:${created.id}:${scheduledAt}`);
+          expect(prompt).toContain("stable operationKey");
+          expect(workItemAutomationPrompt({ ...item, startAt: scheduledAt + 86_400_000 })).not.toBe(prompt);
           dispatched.push({ id: item.id, model: item.automation?.model ?? null });
           await startProjectSessionExecution(config, "project_one", item.title, execution);
           return execution.sessionId;

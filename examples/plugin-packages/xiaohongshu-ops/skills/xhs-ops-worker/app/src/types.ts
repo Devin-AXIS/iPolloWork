@@ -115,7 +115,7 @@ export interface GeneratedCard {
 
 export interface ContentItem {
   id: string
-  campaignId: string
+  campaignId: string | null
   accountId: number
   status: ContentStatus
   scheduledAt: string
@@ -145,6 +145,9 @@ export interface BrowserJobPayload {
   targetUrl?: string
   commentBody?: string
   scanLimit?: number
+  browserProfileId?: string | null
+  targetCommentText?: string
+  targetAuthor?: string
   evidence?: Record<string, unknown>
 }
 
@@ -172,7 +175,7 @@ export interface BrowserJob {
 
 export interface Interaction {
   id: string
-  contentItemId: string
+  contentItemId: string | null
   kind: 'managed_comment' | 'organic_comment' | 'reply'
   accountId: number | null
   remoteAuthor: string | null
@@ -212,4 +215,19 @@ export interface DiscoveredComment {
   remoteAuthor: string
   body: string
   targetUrl: string
+}
+
+export interface SessionOperation {
+  accountId: number
+  sessionId: string
+  runKey: string
+  operationKey: string
+  type: 'publish_note' | 'create_comment' | 'reply_comment'
+  title: string
+  body: string
+  topics: string[]
+  cards: GeneratedCard[]
+  targetUrl: string
+  targetCommentText: string
+  targetAuthor: string
 }

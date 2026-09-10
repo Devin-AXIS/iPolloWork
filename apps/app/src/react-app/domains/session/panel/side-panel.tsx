@@ -506,7 +506,7 @@ function BrowserPanelContent({
       shownRef.current = false;
       lastBoundsRef.current = null;
     };
-  }, [isAvailable]);
+  }, [isAvailable, tab.id]);
 
   return (
     <>
