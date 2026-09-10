@@ -124,12 +124,6 @@ input, select { min-height: 42px; padding: 9px 11px; }
 textarea { min-height: 72px; padding: 10px 11px; resize: vertical; line-height: 1.55; }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text-muted) 72%, transparent); }
-.optional-settings { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-.optional-settings > summary { display: flex; align-items: center; justify-content: space-between; padding: 15px 16px; cursor: pointer; font-size: 11px; font-weight: 720; list-style: none; }
-.optional-settings > summary::-webkit-details-marker { display: none; }
-.optional-settings[open] > summary .ti { transform: rotate(90deg); }
-.optional-settings > div { display: grid; gap: 12px; padding: 0 16px 16px; }
-.optional-settings p { margin: 0; color: var(--text-muted); font-size: 9px; line-height: 1.5; }
 .form-safety-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 11px 12px; border-radius: 9px; color: var(--text-muted); background: var(--surface-muted); font-size: 9px; line-height: 1.5; }
 .form-safety-note .ti { flex: 0 0 auto; color: var(--success); }
 
@@ -180,7 +174,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text
 .connect-step strong { font-size: 11px; }
 .connect-step p { margin: 0; color: var(--text-muted); font-size: 9px; line-height: 1.55; }
 .connect-panel form { display: grid; }
-.connect-panel .optional-settings, .connect-panel .form-safety-note { margin: 14px 18px 0; }
+.connect-panel .form-safety-note { margin: 14px 18px 0; }
 .connect-panel form > .button-block { width: calc(100% - 36px); margin: 14px 18px 18px; }
 
 .simple-page { max-width: 1080px; }

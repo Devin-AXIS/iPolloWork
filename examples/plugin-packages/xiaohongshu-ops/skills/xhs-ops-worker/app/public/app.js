@@ -23,7 +23,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.12' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.13' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -132,8 +132,8 @@
     const displayName = String(form.get('displayName') || '').trim()
     try {
       const result = await request('/api/accounts', { method: 'POST', body: JSON.stringify({
-        handle: String(form.get('handle') || '').trim() || displayName, displayName,
-        expectedProfileId: form.get('expectedProfileId'), profileUrl: form.get('profileUrl'), workerThreadId: form.get('workerThreadId') || null,
+        handle: displayName, displayName,
+        expectedProfileId: form.get('expectedProfileId'), profileUrl: form.get('profileUrl'), workerThreadId: null,
         browserProfileId: newAccountProfileId,
         position: form.get('position'), audience: form.get('audience'), noteTone: form.get('noteTone'), commentTone: form.get('commentTone'),
         contentColumns: lines(form.get('contentColumns')), bannedTopics: lines(form.get('bannedTopics')), dailyLimit: Number(form.get('dailyLimit')),

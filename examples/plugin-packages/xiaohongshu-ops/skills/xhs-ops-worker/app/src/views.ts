@@ -3,7 +3,7 @@ import type { OpsDatabase } from './db.js'
 
 type Nav = 'accounts' | 'interactions' | 'analytics'
 
-const assetVersion = '20260910.1'
+const assetVersion = '20260910.2'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -137,7 +137,7 @@ export function renderAccounts(accounts: AccountBinding[]): string {
         <form id="account-form">
           <section class="connect-step"><span>2</span><div><strong>确认页面上的公开身份</strong><p>把创作服务平台可见的名称和小红书号填在这里，保存后会自动识别软件内已登录账号。</p><div class="setting-grid"><div class="field"><label for="account-name">页面显示名称</label><input id="account-name" name="displayName" placeholder="例如：devin&佳佳" required autocomplete="off"></div><div class="field"><label for="profile-id">小红书号</label><input id="profile-id" name="expectedProfileId" placeholder="例如：107818063" required autocomplete="off"></div></div></div></section>
           <section class="connect-step"><span>3</span><div><strong>定义这个账号做什么</strong><p>这些信息用于确定内容方向和写作边界。</p><div class="field"><label for="position">账号定位</label><input id="position" name="position" value="品牌日常与产品实践" required></div><div class="field"><label for="audience">主要受众</label><input id="audience" name="audience" value="关注产品体验和实用技巧的用户" required></div><div class="field"><label for="columns">内容栏目</label><textarea id="columns" name="contentColumns" rows="3" required>品牌日常\n产品体验\n使用技巧</textarea><small>每行一个栏目，用于确定内容方向。</small></div></div></section>
-          <details class="optional-settings"><summary>高级设置${icon('chevron-right')}</summary><div><input name="handle" type="hidden"><input name="profileUrl" type="hidden" value="https://creator.xiaohongshu.com/new/home"><div class="field"><label>独立 Codex 任务 ID<input name="workerThreadId"><small>若已有账号专属 Worker 可在此绑定；不填写时会在登录后自动绑定当前会话。</small></label></div><input name="noteTone" type="hidden" value="真实、清楚、自然"><input name="commentTone" type="hidden" value="友好、具体、不夸张"><input name="bannedTopics" type="hidden" value="未核实承诺\n站外导流"><input name="dailyLimit" type="hidden" value="2"></div></details>
+          <input name="profileUrl" type="hidden" value="https://creator.xiaohongshu.com/new/home"><input name="noteTone" type="hidden" value="真实、清楚、自然"><input name="commentTone" type="hidden" value="友好、具体、不夸张"><input name="bannedTopics" type="hidden" value="未核实承诺\n站外导流"><input name="dailyLimit" type="hidden" value="2">
           <p class="form-safety-note">${icon('shield-check')} 保存不会发布、评论或切换账号；只有身份匹配后才会显示“已连接”。</p><button class="button button-primary button-block" type="submit">保存账号</button>
         </form>
       </aside>
