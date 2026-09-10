@@ -69,6 +69,10 @@ Feature work starts with the demo, not a PRD:
 
 ## Coding Guidelines
 
+### Independent social plugins
+
+Xiaohongshu and Douyin business code belongs in https://github.com/zjy-web222/ipollo-rednote-plugin and https://github.com/zjy-web222/ipollo-tiktok-plugin. The user explicitly authorized committing, pushing, and publishing each completed change to those repositories without repeated confirmation. Increment the plugin version, run its checks, push the validated default branch, and verify its signed GitHub Release succeeds. Use the repository's `pnpm release` when the owner's GitHub Actions are unavailable. Keep the host's GitHub catalog/install integration here; do not copy plugin business code back into this repository. Host installation must fetch the latest stable release and retain signature and checksum verification.
+
 ### Mandatory AI Code Gate
 
 - For every code addition, edit, deletion, or refactor, load

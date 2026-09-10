@@ -3,6 +3,8 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { ApiError } from "./errors.js";
+import { githubReleasePlugins, resolveGitHubReleasePluginBundle, withMaterializedCompatibleGitHubPluginBundle } from "./github-plugin-source.js";
+import { assertPluginPackageSafeForImport, previewPluginPackage } from "./plugin-package-lifecycle.js";
 
 export const bundledPluginPackageIds = [
   "figma",
@@ -21,6 +23,19 @@ export const bundledPluginPackageIds = [
 ] as const;
 
 export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
+
+export const catalogPluginPackageIds = [...bundledPluginPackageIds, ...githubReleasePlugins.map(item => item.pluginId)];
+
+export async function withPluginPackageCatalogRoot<T>(pluginId: string, operation: (root: string, source: string) => Promise<T>): Promise<T> {
+  const releaseSource = githubReleasePlugins.find(item => item.pluginId === pluginId);
+  if (!releaseSource) return operation(await resolveBundledPluginPackageRoot(pluginId), `bundled:${pluginId}`);
+  const bundle = await resolveGitHubReleasePluginBundle(pluginId);
+  return withMaterializedCompatibleGitHubPluginBundle(bundle, async root => {
+    const preview = await previewPluginPackage({ packageRoot: root });
+    await assertPluginPackageSafeForImport({ packageRoot: root, preview, purpose: "install" });
+    return operation(root, `https://github.com/${releaseSource.owner}/${releaseSource.repo}/releases/tag/${bundle.preview.source.ref}`);
+  });
+}
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

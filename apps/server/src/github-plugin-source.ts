@@ -5,7 +5,61 @@ import { dirname, join } from "node:path";
 
 import { ApiError } from "./errors.js";
 import { buildFrontmatter, parseFrontmatter } from "./frontmatter.js";
-import type { PluginPackageManifest } from "./plugin-package-manifest.js";
+import { parsePluginPackageManifest, type PluginPackageManifest } from "./plugin-package-manifest.js";
+import { parsePluginPackageUpload } from "./plugin-package-upload.js";
+
+export const githubReleasePlugins = [
+  { pluginId: "xiaohongshu-ops", owner: "zjy-web222", repo: "ipollo-rednote-plugin" },
+  { pluginId: "douyin-ops", owner: "zjy-web222", repo: "ipollo-tiktok-plugin" },
+];
+
+/** Download only a published, versioned package; installation still verifies its signature. */
+export async function resolveGitHubReleasePluginBundle(pluginId: string): Promise<CompatibleGitHubPluginBundle> {
+  const source = githubReleasePlugins.find(item => item.pluginId === pluginId);
+  if (!source) throw new ApiError(404, "plugin_package_catalog_not_found", "GitHub plugin package was not found");
+  const repoUrl = `${githubApiBase()}/repos/${source.owner}/${source.repo}`;
+  const release = await fetchGithubJson(`${repoUrl}/releases/latest`);
+  if (!isRecord(release) || release.draft !== false || release.prerelease !== false || typeof release.tag_name !== "string" || !/^v\d+\.\d+\.\d+$/.test(release.tag_name)) {
+    throw new ApiError(502, "plugin_release_invalid", "GitHub did not return a stable plugin release");
+  }
+  const asset = Array.isArray(release.assets) ? release.assets.find((item: unknown) => isRecord(item) && item.name === "plugin-package.json") : undefined;
+  if (!isRecord(asset) || typeof asset.id !== "number" || !Number.isSafeInteger(asset.id) || asset.id < 1 || typeof asset.size !== "number" || asset.size < 1 || asset.size > 15 * 1024 * 1024) {
+    throw new ApiError(502, "plugin_release_asset_missing", "The latest release has no valid plugin-package.json asset");
+  }
+  const response = await fetch(`${repoUrl}/releases/assets/${asset.id}`, {
+    headers: { Accept: "application/octet-stream", "User-Agent": "ipollowork-server" },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok || !response.body) throw new ApiError(502, "plugin_fetch_failed", `Could not download the latest plugin package (${response.status})`);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > 15 * 1024 * 1024) throw new ApiError(413, "plugin_package_upload_too_large", "Plugin download exceeds 15 MB");
+      chunks.push(value);
+    }
+  } finally { await reader.cancel(); reader.releaseLock(); }
+  let payload: unknown;
+  try { payload = JSON.parse(Buffer.concat(chunks).toString("utf8")); }
+  catch { throw new ApiError(502, "plugin_release_invalid", "GitHub returned an invalid plugin package"); }
+  const upload = parsePluginPackageUpload(payload);
+  const files = upload.files.map(file => ({ path: file.path, content: Buffer.from(file.contentBase64, "base64") }));
+  const manifestFile = files.find(file => file.path === "ipollowork.plugin.json")!;
+  const manifest = parsePluginPackageManifest(JSON.parse(manifestFile.content.toString("utf8")));
+  if (manifest.id !== pluginId || `v${manifest.package?.version}` !== release.tag_name || !manifest.package?.signature) {
+    throw new ApiError(502, "plugin_release_mismatch", "Plugin identity, version or signature does not match the selected GitHub release");
+  }
+  return {
+    manifest,
+    files,
+    preview: { pluginId, name: manifest.name, description: manifest.description ?? null, version: manifest.package.version,
+      source: { owner: source.owner, repo: source.repo, ref: release.tag_name, dir: null }, components: [], warnings: [] },
+  };
+}
 
 export type CompatibleGitHubPluginSource = {
   owner: string;
@@ -342,6 +396,8 @@ function mcpConfigReferencesPluginRoot(config: unknown): boolean {
 
 export async function resolveCompatibleGitHubPluginBundle(input: { url: string; ref?: string }): Promise<CompatibleGitHubPluginBundle> {
   const source = parseCompatibleGitHubPluginSource(input.url);
+  const released = githubReleasePlugins.find(item => item.owner.toLowerCase() === source.owner.toLowerCase() && item.repo.toLowerCase() === source.repo.toLowerCase());
+  if (released && !input.ref && !source.treeSegments) return resolveGitHubReleasePluginBundle(released.pluginId);
   const { ref, dir, tree } = await resolveRefAndTree(source, input.ref?.trim() || undefined);
   const root = locatePluginRoot(tree, dir);
   const treeByPath = new Map(tree.map((entry) => [entry.path, entry]));

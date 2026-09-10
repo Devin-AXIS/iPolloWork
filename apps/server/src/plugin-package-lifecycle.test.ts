@@ -29,6 +29,7 @@ const WORKSPACE_ID = "ws_plugin_package";
 const ENGINE_ID = "opencode";
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+const previousGithubApi = process.env.IPOLLOWORK_GITHUB_API_BASE;
 
 function serverConfig(root: string): ServerConfig {
   return {
@@ -188,6 +189,8 @@ afterEach(async () => {
   }
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
+  if (previousGithubApi === undefined) delete process.env.IPOLLOWORK_GITHUB_API_BASE;
+  else process.env.IPOLLOWORK_GITHUB_API_BASE = previousGithubApi;
   while (roots.length) {
     const root = roots.pop();
     if (root) await removeTestRoot(root);
@@ -1626,6 +1629,7 @@ describe("plugin package lifecycle", () => {
   });
 
   test("lists and installs every bundled service plugin through the user catalog API", async () => {
+    process.env.IPOLLOWORK_GITHUB_API_BASE = 'http://127.0.0.1:1';
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const figmaPackageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/figma", import.meta.url));
