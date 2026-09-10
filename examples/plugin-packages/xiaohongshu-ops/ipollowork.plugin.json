@@ -10,7 +10,7 @@
     "trusted": false
   },
   "package": {
-    "version": "0.3.13",
+    "version": "0.3.14",
     "publisher": {
       "id": "local",
       "name": "本地插件"
@@ -181,6 +181,10 @@
               "tree": {
                 "type": "string",
                 "maxLength": 100000
+              },
+              "avatarUrl": {
+                "type": "string",
+                "maxLength": 2048
               }
             },
             "required": [
@@ -203,7 +207,8 @@
         "paths": [
           "/login",
           "/new/home"
-        ]
+        ],
+        "avatarSelector": "img.user_avatar"
       }
     }
   ],

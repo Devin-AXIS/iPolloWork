@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import type { OpsDatabase } from './db.js'
 import { config } from './config.js'
 
-export function observeBrowserSession(db: OpsDatabase, sessionId: string, address: string, tree: string, browserProfileId: string | null = null) {
+export function observeBrowserSession(db: OpsDatabase, sessionId: string, address: string, tree: string, browserProfileId: string | null = null, avatarUrl: string | null = null) {
   const url = new URL(address)
   if (url.origin !== 'https://creator.xiaohongshu.com' || url.username || url.password) throw new Error('不是小红书创作平台页面')
   const accounts = db.listAccounts()
@@ -22,6 +22,14 @@ export function observeBrowserSession(db: OpsDatabase, sessionId: string, addres
   const brandIndex = texts.indexOf('创作服务平台')
   const actualName = brandIndex >= 0 ? texts[brandIndex + 1] : undefined
   const account = accounts.find(item => item.enabled && item.expectedProfileId === profileId)
+  if (avatarUrl && account && actualName?.toLocaleLowerCase() === account.handle.toLocaleLowerCase()) {
+    const avatar = new URL(avatarUrl)
+    if (avatar.protocol !== 'https:' || avatar.username || avatar.password || (avatar.port && avatar.port !== '443')
+      || !['.xhscdn.com', '.xiaohongshu.com'].some(domain => avatar.hostname.endsWith(domain)) || !avatar.pathname.startsWith('/avatar/')) {
+      throw new Error('头像地址不是小红书平台图片')
+    }
+    db.setAccountAvatar(account.id, avatarUrl)
+  }
   if (bound && bound.expectedProfileId !== profileId) {
     if (bound.sessionStatus !== 'reauthorize') db.setAccountSession(bound.id, 'reauthorize', { error: '当前浏览器登录了其他账号，请切换回此账号' })
     return { connected: false }

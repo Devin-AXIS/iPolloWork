@@ -23,7 +23,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.13' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.3.14' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -100,6 +100,34 @@
     button.textContent = label
     return () => { button.disabled = false; button.innerHTML = original }
   }
+
+  document.querySelectorAll('[data-account-avatar]').forEach(img => {
+    const fallback = () => { img.hidden = true; img.nextElementSibling.hidden = false }
+    img.addEventListener('error', fallback, { once: true })
+    if (img.complete && !img.naturalWidth) fallback()
+  })
+
+  const deleteDialog = document.querySelector('#account-delete-dialog')
+  let deletingAccountId = null
+  document.querySelectorAll('[data-delete-account]').forEach(button => button.addEventListener('click', () => {
+    deletingAccountId = button.dataset.deleteAccount
+    deleteDialog.querySelector('[data-delete-account-name]').textContent = button.dataset.accountName
+    deleteDialog.querySelector('[data-delete-account-error]').textContent = ''
+    deleteDialog.showModal()
+  }))
+  deleteDialog?.addEventListener('close', () => { deletingAccountId = null })
+  document.querySelector('[data-confirm-delete-account]')?.addEventListener('click', async event => {
+    const id = deletingAccountId
+    if (!id) return
+    const restore = busy(event.currentTarget, '正在删除')
+    try {
+      await request('/api/accounts/' + id, { method: 'DELETE' })
+      window.location.reload()
+    } catch (error) {
+      deleteDialog.querySelector('[data-delete-account-error]').textContent = error.message
+      restore()
+    }
+  })
 
   const accountPanel = document.querySelector('#account-onboarding')
   function setAccountPanel(open) {
@@ -199,10 +227,10 @@
     let polls = 0
     const timer = setInterval(async () => {
       if (++polls > 200) return clearInterval(timer)
-      if (verificationPending || editing || document.hidden || document.querySelector('form:focus-within')) return
+      if (verificationPending || editing || document.hidden || deleteDialog?.open || document.querySelector('form:focus-within')) return
       try {
         const result = await request('/api/state', { method: 'GET' })
-        if (verificationPending || editing) return
+        if (verificationPending || editing || deleteDialog?.open) return
         if ((renderedAccounts && renderedAccounts !== JSON.stringify(JSON.parse(result.state).accounts)) || (previousState && previousState !== result.state)) window.location.reload()
         previousState = result.state
       } catch { /* A transient network failure must not discard the page or user input. */ }

@@ -3,7 +3,7 @@ import type { OpsDatabase } from './db.js'
 
 type Nav = 'accounts' | 'interactions' | 'analytics'
 
-const assetVersion = '20260910.2'
+const assetVersion = '20260910.3'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -81,7 +81,7 @@ function empty(title: string, detail: string, action = ''): string {
 }
 
 function accountAvatar(account: AccountBinding): string {
-  return `<span class="account-avatar" aria-hidden="true">${escapeHtml(account.displayName.slice(0, 1) || account.handle.slice(0, 1) || '小')}</span>`
+  return `<span class="account-avatar" aria-hidden="true">${account.avatarUrl ? `<img data-account-avatar src="${escapeHtml(account.avatarUrl)}" alt="" referrerpolicy="no-referrer">` : ''}<span data-avatar-fallback ${account.avatarUrl ? 'hidden' : ''}>${escapeHtml(account.displayName.slice(0, 1) || account.handle.slice(0, 1) || '小')}</span></span>`
 }
 
 function accountBar(accounts: AccountBinding[], selectedAccount?: AccountBinding): string {
@@ -95,11 +95,11 @@ function accountBar(accounts: AccountBinding[], selectedAccount?: AccountBinding
 
 function accountCard(account: AccountBinding): string {
   const ready = account.enabled && account.sessionStatus === 'healthy'
-  return `<article class="account-card surface">
+  return `<article class="account-card surface" data-account-id="${account.id}">
     <header>${accountAvatar(account)}<div><div><strong>${escapeHtml(account.displayName)}</strong>${status(account.sessionStatus)}</div><span>小红书号 ${escapeHtml(account.expectedProfileId)}</span></div><button class="icon-button" type="button" data-toggle-account-details aria-label="展开账号设置">${icon('chevron-down')}</button></header>
     <div class="account-summary-grid"><div><span>账号定位</span><strong>${escapeHtml(account.position)}</strong></div><div><span>内容栏目</span><p>${account.contentColumns.map((column) => `<b>${escapeHtml(column)}</b>`).join('') || '<b>待设置</b>'}</p></div><div><span>执行状态</span><strong class="${ready ? 'is-ready' : 'is-warning'}">${ready ? '可以安排任务' : '登录后即可安排任务'}</strong></div></div>
     ${account.lastError ? `<p class="account-error">${icon('alert-circle')} ${escapeHtml(account.lastError)}</p>` : ''}
-    <div class="account-actions"><a class="button button-secondary" href="https://creator.xiaohongshu.com/new/home" data-account-login ${account.browserProfileId ? `data-browser-profile-id="${escapeHtml(account.browserProfileId)}"` : ''} target="_blank" rel="noreferrer">${icon('external-link')} 打开创作台</a></div>
+    <div class="account-actions"><a class="button button-secondary" href="https://creator.xiaohongshu.com/new/home" data-account-login ${account.browserProfileId ? `data-browser-profile-id="${escapeHtml(account.browserProfileId)}"` : ''} target="_blank" rel="noreferrer">${icon('external-link')} 打开创作台</a><button class="button button-ghost delete-account-trigger" type="button" data-delete-account="${account.id}" data-account-name="${escapeHtml(account.displayName)}">${icon('trash')} 删除绑定</button></div>
     <p class="analytics-note">${account.workerThreadId ? '已连接专属会话；登录状态由程序自动核对，无需手动验证。' : '在软件内登录此账号，返回运营台后自动连接当前会话。'}</p>
     <form class="account-edit-form" data-account-edit="${account.id}" hidden>
       <div class="setting-grid"><div class="field"><label>显示名称<input name="displayName" value="${escapeHtml(account.displayName)}" required></label></div><div class="field"><label>创作台地址<input name="profileUrl" type="url" value="${escapeHtml(account.profileUrl)}" required></label></div></div>
@@ -143,7 +143,8 @@ export function renderAccounts(accounts: AccountBinding[]): string {
       </aside>
     </section>
   </div>`
-  return shell('账号管理', 'accounts', body, { accounts })
+  const deleteDialog = `<dialog id="account-delete-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description"><form method="dialog"><h2 id="delete-account-title">删除账号绑定</h2><p>确定删除「<strong data-delete-account-name></strong>」的绑定？</p><p id="delete-account-description">删除后停止此账号的后续任务，历史记录保留。之后可重新接入。</p><p data-delete-account-error role="alert"></p><footer><button class="button button-secondary" value="cancel">取消</button><button class="button button-danger" type="button" data-confirm-delete-account>删除绑定</button></footer></form></dialog>`
+  return shell('账号管理', 'accounts', body + deleteDialog, { accounts })
 }
 
 export function renderInteractions(input: { interactions: Interaction[]; reviews: ReviewItem[]; accounts: AccountBinding[] }): string {

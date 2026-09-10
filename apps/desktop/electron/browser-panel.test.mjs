@@ -26,8 +26,13 @@ if (!process.versions.electron) {
   app.setPath("userData", process.env.IPOLLOWORK_BROWSER_TEST_DATA);
   await app.whenReady();
   const server = createServer((_request, response) => {
+    if (_request.url === '/avatar.svg') {
+      response.setHeader('Content-Type', 'image/svg+xml');
+      response.end('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="red"/></svg>');
+      return;
+    }
     response.setHeader("Content-Type", "text/html; charset=utf-8");
-    response.end('<!doctype html><title>Account login</title><p>短信登录</p><button id="qr">显示二维码</button><script>document.querySelector("#qr").onclick=()=>{document.querySelector("p").textContent="扫码登录"}</script>');
+    response.end('<!doctype html><title>Account login</title><img class="avatar" src="/avatar.svg" width="64" height="64"><img id="hidden-avatar" src="/avatar.svg" style="display:none"><p>短信登录</p><button id="qr">显示二维码</button><script>document.querySelector("#qr").onclick=()=>{document.querySelector("p").textContent="扫码登录"}</script>');
   });
   await new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(undefined)));
   const address = server.address();
@@ -47,6 +52,14 @@ if (!process.versions.electron) {
     const firstView = webContents.getAllWebContents().find(item => item !== window.webContents && item !== sharedView && item.getURL() === url);
     assert.deepEqual(await firstView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["", null]);
     assert.equal(await firstView.executeJavaScript("document.querySelector('p').textContent"), "扫码登录");
+    await call('show', { x: 0, y: 0, width: 800, height: 600 });
+    const avatar = await call('snapshot', { tabId: first.tabId, imageSelector: 'img.avatar' });
+    assert.equal(avatar.imageUrl, new URL('/avatar.svg', url).href);
+    assert.match(avatar.tree, /扫码登录/);
+    for (const imageSelector of ['#hidden-avatar', 'img', '#qr', '.missing']) {
+      assert.equal((await call('snapshot', { tabId: first.tabId, imageSelector })).imageUrl, null);
+    }
+    await assert.rejects(call('snapshot', { tabId: first.tabId, imageSelector: 'x'.repeat(201) }), /selector is invalid/);
     assert.equal(await sharedView.executeJavaScript("document.querySelector('p').textContent"), "短信登录");
     assert.equal((await call("openUrl", url, { profileId: "plugin:account-a" })).tabId, first.tabId);
     await firstView.executeJavaScript("document.cookie='login=a'; localStorage.setItem('account','a')");

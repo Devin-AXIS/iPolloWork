@@ -136,7 +136,7 @@ declare global {
           tabId: string;
           url: string;
         }>;
-        snapshot?: (payload: { tabId: string }) => Promise<{
+        snapshot?: (payload: { tabId: string; imageSelector?: string }) => Promise<{
           ok: true;
           provider: "builtin";
           tabId: string;
@@ -144,6 +144,7 @@ declare global {
           url: string;
           title: string;
           tree: string;
+          imageUrl?: string | null;
           elementCount: number;
           truncated: boolean;
         }>;

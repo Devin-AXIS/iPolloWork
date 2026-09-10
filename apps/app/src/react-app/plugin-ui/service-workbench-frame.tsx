@@ -121,15 +121,15 @@ export function ServiceWorkbenchFrame(props: {
           || !login.paths.includes(new URL(tab.url).pathname)) return;
         const profilePrefix = `${props.surface.pluginId}:`;
         if (tab.profileId && !tab.profileId.startsWith(profilePrefix)) return;
-        const snapshot = await browser.snapshot!({ tabId: tab.id });
+        const snapshot = await browser.snapshot!({ tabId: tab.id, ...(login.avatarSelector ? { imageSelector: login.avatarSelector } : {}) });
         if (stopped || new URL(snapshot.url).origin !== login.origin) return;
         const response = await props.client.callExtensionAction({
           extensionId: props.surface.pluginId, action: login.observeAction,
-          args: { url: snapshot.url, tree: snapshot.tree, ...(tab.profileId ? { browserProfileId: tab.profileId.slice(profilePrefix.length) } : {}) },
+          args: { url: snapshot.url, tree: snapshot.tree, ...(snapshot.imageUrl ? { avatarUrl: snapshot.imageUrl } : {}), ...(tab.profileId ? { browserProfileId: tab.profileId.slice(profilePrefix.length) } : {}) },
           context: { directory: props.workspaceRoot, workspaceId: props.workspaceId, sessionId: props.sessionId ?? undefined },
         });
         if (response.ok && response.result && typeof response.result === "object"
-          && "connected" in response.result && response.result.connected === true) stopped = true;
+          && "connected" in response.result && response.result.connected === true && (!login.avatarSelector || snapshot.imageUrl)) stopped = true;
       } catch { /* Navigation and transient page loading can be retried on the next observation. */ }
       finally { busy = false; }
     };

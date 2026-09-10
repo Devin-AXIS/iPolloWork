@@ -71,6 +71,7 @@ const SCHEMA = `
     avatar_url TEXT,
     worker_thread_id TEXT UNIQUE,
     browser_profile_id TEXT,
+    deleted_at TEXT,
     position TEXT NOT NULL,
     audience TEXT NOT NULL,
     note_tone TEXT NOT NULL,
@@ -360,6 +361,9 @@ export class OpsDatabase {
     if (!columns.some(column => column.name === 'browser_profile_id')) {
       this.database.exec('ALTER TABLE accounts ADD COLUMN browser_profile_id TEXT')
     }
+    if (!columns.some(column => column.name === 'deleted_at')) {
+      this.database.exec('ALTER TABLE accounts ADD COLUMN deleted_at TEXT')
+    }
     this.database.exec('CREATE UNIQUE INDEX IF NOT EXISTS accounts_browser_profile_idx ON accounts(browser_profile_id)')
     this.seedBrand()
   }
@@ -451,11 +455,11 @@ export class OpsDatabase {
   }
 
   listAccounts(): AccountBinding[] {
-    return (this.database.prepare('SELECT * FROM accounts ORDER BY enabled DESC, updated_at DESC').all() as Row[]).map(accountFromRow)
+    return (this.database.prepare('SELECT * FROM accounts WHERE deleted_at IS NULL ORDER BY enabled DESC, updated_at DESC').all() as Row[]).map(accountFromRow)
   }
 
   getAccount(id: number): AccountBinding | null {
-    const row = this.database.prepare('SELECT * FROM accounts WHERE id = ?').get(id) as Row | undefined
+    const row = this.database.prepare('SELECT * FROM accounts WHERE id = ? AND deleted_at IS NULL').get(id) as Row | undefined
     return row ? accountFromRow(row) : null
   }
 
@@ -468,11 +472,19 @@ export class OpsDatabase {
     const result = this.database.prepare(`INSERT INTO accounts
       (handle, display_name, expected_profile_id, profile_url, avatar_url, worker_thread_id, browser_profile_id, position, audience,
        note_tone, comment_tone, content_columns_json, banned_topics_json, daily_limit, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(input.handle, input.displayName, input.expectedProfileId, input.profileUrl, input.avatarUrl ?? null,
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(expected_profile_id) DO UPDATE SET
+        handle = excluded.handle, display_name = excluded.display_name, profile_url = excluded.profile_url, avatar_url = excluded.avatar_url,
+        worker_thread_id = excluded.worker_thread_id, browser_profile_id = excluded.browser_profile_id,
+        position = excluded.position, audience = excluded.audience, note_tone = excluded.note_tone, comment_tone = excluded.comment_tone,
+        content_columns_json = excluded.content_columns_json, banned_topics_json = excluded.banned_topics_json, daily_limit = excluded.daily_limit,
+        enabled = 1, session_status = 'setup', last_verified_at = NULL, last_error = NULL, deleted_at = NULL, updated_at = excluded.updated_at
+      WHERE accounts.deleted_at IS NOT NULL RETURNING id`)
+      .get(input.handle, input.displayName, input.expectedProfileId, input.profileUrl, input.avatarUrl ?? null,
         input.workerThreadId ?? null, input.browserProfileId ?? null, input.position, input.audience, input.noteTone, input.commentTone,
         JSON.stringify(input.contentColumns), JSON.stringify(input.bannedTopics), input.dailyLimit, timestamp, timestamp)
-    const account = this.getAccount(Number(result.lastInsertRowid)) as AccountBinding
+    if (!result) throw new Error('此小红书账号已经接入')
+    const account = this.getAccount(Number(result.id)) as AccountBinding
     this.audit({ accountId: account.id, action: 'account_create', status: 'succeeded', detail: { handle: account.handle } })
     return account
   }
@@ -484,7 +496,7 @@ export class OpsDatabase {
   }): AccountBinding {
     this.database.prepare(`UPDATE accounts SET display_name = ?, profile_url = ?, avatar_url = ?, worker_thread_id = ?,
       position = ?, audience = ?, note_tone = ?, comment_tone = ?, content_columns_json = ?, banned_topics_json = ?,
-      daily_limit = ?, enabled = ?, updated_at = ? WHERE id = ?`)
+      daily_limit = ?, enabled = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
       .run(input.displayName, input.profileUrl, input.avatarUrl, input.workerThreadId, input.position, input.audience,
         input.noteTone, input.commentTone, JSON.stringify(input.contentColumns), JSON.stringify(input.bannedTopics),
         input.dailyLimit, input.enabled ? 1 : 0, now(), id)
@@ -494,8 +506,38 @@ export class OpsDatabase {
     return account
   }
 
+  setAccountAvatar(id: number, avatarUrl: string): void {
+    this.database.prepare('UPDATE accounts SET avatar_url = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL AND avatar_url IS NOT ?')
+      .run(avatarUrl, now(), id, avatarUrl)
+  }
+
+  deleteAccount(id: number): void {
+    this.database.exec('BEGIN IMMEDIATE')
+    try {
+      const account = this.getAccount(id)
+      if (!account) { this.database.exec('COMMIT'); return }
+      const timestamp = now()
+      const running = this.database.prepare("SELECT id FROM browser_jobs WHERE account_id = ? AND status = 'running' AND (lease_until IS NULL OR lease_until > ?) LIMIT 1").get(id, timestamp)
+      if (running) throw new Error('此账号有正在执行的任务，请等待执行结束后再删除绑定')
+      this.database.prepare("UPDATE accounts SET deleted_at = ?, enabled = 0, worker_thread_id = NULL, browser_profile_id = NULL, session_status = 'offline', updated_at = ? WHERE id = ?").run(timestamp, timestamp, id)
+      this.database.prepare("UPDATE browser_jobs SET status = 'cancelled', worker_thread_id = NULL, lease_token_hash = NULL, lease_until = NULL, error_code = 'account_unbound', error = '账号已解除绑定', updated_at = ? WHERE account_id = ? AND status NOT IN ('succeeded', 'skipped', 'cancelled')").run(timestamp, id)
+      this.database.prepare("UPDATE content_items SET status = 'cancelled', error = '账号已解除绑定', updated_at = ? WHERE account_id = ? AND status IN ('planned', 'generating', 'ready', 'scheduled', 'publishing')").run(timestamp, id)
+      this.database.prepare("UPDATE interactions SET status = 'skipped', updated_at = ? WHERE (account_id = ? AND status IN ('planned', 'queued', 'review')) OR id IN (SELECT interaction_id FROM review_items WHERE account_id = ? AND status = 'pending')").run(timestamp, id, id)
+      this.database.prepare("UPDATE review_items SET status = 'rejected', updated_at = ? WHERE account_id = ? AND status = 'pending'").run(timestamp, id)
+      for (const campaign of this.listCampaigns()) {
+        if (!campaign.accountIds.includes(id) && !campaign.commentAccountIds.includes(id)) continue
+        const accountIds = campaign.accountIds.filter(value => value !== id)
+        const commentAccountIds = campaign.commentAccountIds.filter(value => value !== id)
+        this.database.prepare('UPDATE campaigns SET account_ids_json = ?, comment_account_ids_json = ?, status = ?, updated_at = ? WHERE id = ?')
+          .run(JSON.stringify(accountIds), JSON.stringify(commentAccountIds), campaign.status === 'active' && !accountIds.length ? 'paused' : campaign.status, timestamp, campaign.id)
+      }
+      this.audit({ accountId: id, action: 'account_unbind', status: 'succeeded' })
+      this.database.exec('COMMIT')
+    } catch (error) { this.database.exec('ROLLBACK'); throw error }
+  }
+
   setAccountEnabled(id: number, enabled: boolean): AccountBinding {
-    this.database.prepare('UPDATE accounts SET enabled = ?, updated_at = ? WHERE id = ?').run(enabled ? 1 : 0, now(), id)
+    this.database.prepare('UPDATE accounts SET enabled = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL').run(enabled ? 1 : 0, now(), id)
     const account = this.getAccount(id)
     if (!account) throw new Error('账号不存在')
     this.audit({ accountId: id, action: enabled ? 'account_enable' : 'account_pause', status: 'succeeded' })
@@ -504,7 +546,7 @@ export class OpsDatabase {
 
   setAccountSession(id: number, status: AccountSessionStatus, values: { verified?: boolean; error?: string | null } = {}): AccountBinding {
     this.database.prepare(`UPDATE accounts SET session_status = ?, last_verified_at = CASE WHEN ? = 1 THEN ? ELSE last_verified_at END,
-      last_error = ?, updated_at = ? WHERE id = ?`)
+      last_error = ?, updated_at = ? WHERE id = ? AND deleted_at IS NULL`)
       .run(status, values.verified ? 1 : 0, now(), values.error ?? null, now(), id)
     const account = this.getAccount(id)
     if (!account) throw new Error('账号不存在')
@@ -664,6 +706,8 @@ export class OpsDatabase {
     type: JobType; accountId: number; contentItemId?: string | null; parentJobId?: string | null;
     scheduledAt: string; payload: BrowserJobPayload; idempotencyKey: string;
   }): BrowserJob {
+    if (!this.getAccount(input.accountId)) throw new Error('账号已解除绑定')
+    if (input.contentItemId && this.getContent(input.contentItemId)?.status === 'cancelled') throw new Error('内容已取消')
     const existing = this.database.prepare('SELECT * FROM browser_jobs WHERE idempotency_key = ?').get(input.idempotencyKey) as Row | undefined
     if (existing) return jobFromRow(existing)
     const id = randomUUID()

@@ -324,3 +324,39 @@ test('session replacement preserves binding and browser sync writes validated da
     assert.equal((await post(`/api/executor/jobs/${started.job.id}/complete`, { ...complete, analyticsCsv: csv }, true)).status, 409)
   } finally { db.close() }
 })
+
+
+test('verified platform avatars persist and deletion requires a local origin', async () => {
+  const db = new OpsDatabase(':memory:')
+  try {
+    const app = createApp(new OpsService(db, generator))
+    const owner = db.createAccount({ handle: '头像账号', displayName: '头像账号', expectedProfileId: 'avatar-profile', profileUrl: 'https://creator.xiaohongshu.com/new/home', position: '产品', audience: '用户', noteTone: '自然', commentTone: '友好', contentColumns: [], bannedTopics: [], dailyLimit: 2 })
+    const avatarUrl = 'https://sns-avatar-qc.xhscdn.com/avatar/observed-profile?imageView2/2/w/80/format/jpg'
+    const tree = 'StaticText "创作服务平台"\nStaticText "头像账号"\nStaticText "小红书账号: avatar-profile"'
+    const observe = (avatar = avatarUrl, content = tree, browserProfileId: string | null = null) => app.request('/api/executor/browser-session', { method: 'POST', headers: { Origin: config.origin, Authorization: 'Bearer ' + config.apiToken, 'Content-Type': 'application/json' }, body: JSON.stringify({ sessionId: 'avatar-session', url: owner.profileUrl, tree: content, avatarUrl: avatar, browserProfileId }) })
+    await observe(avatarUrl, tree.replace('avatar-profile', 'another-profile'))
+    assert.equal(db.getAccount(owner.id)?.avatarUrl, null)
+    for (const value of ['https://evil.example/avatar/profile', 'javascript:alert(1)', 'https://xhscdn.com.evil.example/avatar/profile', 'https://user:pass@sns-avatar-qc.xhscdn.com/avatar/profile']) assert.equal((await observe(value)).status, 409)
+    const differentBrowser = await observe(avatarUrl, tree, '11111111-1111-4111-8111-111111111111')
+    assert.equal((await differentBrowser.json()).connected, false)
+    assert.equal(db.getAccount(owner.id)?.avatarUrl, avatarUrl)
+    assert.equal(db.getAccount(owner.id)?.workerThreadId, null)
+    assert.equal((await observe()).status, 200)
+    const saved = db.getAccount(owner.id)
+    assert.equal(saved?.avatarUrl, avatarUrl)
+    await observe()
+    assert.equal(db.getAccount(owner.id)?.updatedAt, saved?.updatedAt)
+    const page = await app.request('/accounts')
+    assert.match(page.headers.get('content-security-policy') || '', /https:\/\/\*\.xhscdn\.com/)
+    const html = await page.text()
+    assert.ok(html.includes('data-account-avatar src="' + avatarUrl + '"'))
+    const remove = (origin: string) => app.request('/api/accounts/' + owner.id, { method: 'DELETE', headers: { Origin: origin } })
+    assert.equal((await remove('https://evil.example')).status, 403)
+    assert.ok(db.getAccount(owner.id))
+    assert.equal((await remove(config.origin)).status, 200)
+    assert.equal(db.getAccount(owner.id), null)
+    await observe()
+    assert.equal(db.listAccounts().length, 0)
+    assert.equal((await remove(config.origin)).status, 200)
+  } finally { db.close() }
+})

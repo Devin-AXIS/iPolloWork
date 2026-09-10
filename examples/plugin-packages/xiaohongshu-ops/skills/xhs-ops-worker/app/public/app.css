@@ -92,7 +92,7 @@ button { cursor: pointer; }
 .account-switcher.is-empty { color: var(--text-muted); }
 .add-account-link { font-size: 13px; font-weight: 700; }
 .add-account-link .ti { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--surface-muted); font-size: 16px; }
-.account-avatar { width: 38px; height: 38px; flex: 0 0 auto; font-size: 13px; }
+.account-avatar { overflow: hidden; width: 38px; height: 38px; flex: 0 0 auto; font-size: 13px; }
 
 .simple-heading h1 { margin: 0; font-size: clamp(32px, 3.2vw, 44px); font-weight: 760; letter-spacing: -.055em; line-height: 1.08; }
 .simple-heading p { margin: 8px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
@@ -271,3 +271,14 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text
 .analytics-error { color: var(--danger); font-size: 12px; }
 .analytics-pagination { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 14px; padding-top: 18px; font-size: 12px; }
 @media (max-width: 900px) { .analytics-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.account-avatar img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.delete-account-trigger { color: var(--danger); }
+.button-danger { color: #fff; background: var(--danger); }
+#account-delete-dialog { width: min(420px, calc(100% - 32px)); padding: 24px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--text); background: var(--surface); box-shadow: var(--shadow); }
+#account-delete-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+#account-delete-dialog h2 { margin: 0 0 16px; font-size: 20px; }
+#account-delete-dialog p { font-size: 13px; line-height: 1.7; overflow-wrap: anywhere; }
+#delete-account-description { color: var(--text-muted); }
+[data-delete-account-error] { color: var(--danger); }
+#account-delete-dialog footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }

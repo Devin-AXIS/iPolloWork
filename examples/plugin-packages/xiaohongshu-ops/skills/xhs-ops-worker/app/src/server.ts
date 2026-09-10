@@ -96,7 +96,7 @@ export function createApp(service: OpsService): Hono {
 
   app.use('*', secureHeaders({
     contentSecurityPolicy: {
-      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:'], styleSrc: ["'self'"], scriptSrc: ["'self'"],
+      defaultSrc: ["'self'"], imgSrc: ["'self'", 'data:', 'https://*.xhscdn.com', 'https://*.xiaohongshu.com'], styleSrc: ["'self'"], scriptSrc: ["'self'"],
       connectSrc: ["'self'"], frameAncestors: config.embedOrigins.length ? config.embedOrigins : ["'none'"], formAction: ["'self'"],
     },
     referrerPolicy: 'no-referrer',
@@ -210,6 +210,12 @@ export function createApp(service: OpsService): Hono {
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
 
+  app.delete('/api/accounts/:id', (c) => {
+    try {
+      service.db.deleteAccount(integer(c.req.param('id'), '账号 ID', 1, Number.MAX_SAFE_INTEGER))
+      return c.json({ ok: true })
+    } catch (error) { return c.json({ error: errorMessage(error) }, 409) }
+  })
   app.post('/api/accounts', async (c) => {
     try {
       const input = await c.req.json<Record<string, unknown>>()
@@ -294,7 +300,7 @@ export function createApp(service: OpsService): Hono {
     if (!hasApiToken(c.req.header('Authorization'))) return c.json({ error: '需要执行器授权' }, 401)
     try {
       const input = await c.req.json<Record<string, unknown>>()
-      return c.json(observeBrowserSession(service.db, text(input.sessionId, '会话 ID', 200), text(input.url, '页面地址', 2000), text(input.tree, '页面内容', 100_000), optionalText(input.browserProfileId, 36)))
+      return c.json(observeBrowserSession(service.db, text(input.sessionId, '会话 ID', 200), text(input.url, '页面地址', 2000), text(input.tree, '页面内容', 100_000), optionalText(input.browserProfileId, 36), optionalText(input.avatarUrl, 2048)))
     } catch (error) { return c.json({ error: errorMessage(error) }, 409) }
   })
 

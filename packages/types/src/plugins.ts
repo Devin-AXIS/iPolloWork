@@ -222,6 +222,7 @@ const resourceSchema = z.object({
     paths: z.array(z.string().startsWith('/')).min(1).max(10),
     observeAction: z.string().regex(SIMPLE_ID_RE),
     loginUi: browserLoginUiSchema.optional(),
+    avatarSelector: z.string().trim().min(1).max(200).optional(),
   }).strict().optional(),
   environment: z.array(z.string().regex(ENV_KEY_RE)).optional(),
   requires: z.array(relationSchema).optional(),

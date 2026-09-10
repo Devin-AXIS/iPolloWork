@@ -224,6 +224,7 @@ function automationMetadataFunction() {
       disabled: Boolean(this.disabled || this.readOnly || this.getAttribute?.("aria-disabled") === "true"),
       fileInput: tag === "INPUT" && type === "file",
       nativeSelect: tag === "SELECT",
+      imageSrc: tag === "IMG" ? String(this.currentSrc || this.src || "").slice(0, 2048) : null,
       visible: rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0
         && rect.left < viewportWidth && rect.top < viewportHeight
         && style.display !== "none" && style.visibility !== "hidden" && style.pointerEvents !== "none",
@@ -355,6 +356,10 @@ export function createBrowserRuntime({
   }
 
   async function snapshot(payload = {}) {
+    const imageSelector = payload.imageSelector;
+    if (imageSelector !== undefined && (typeof imageSelector !== "string" || !imageSelector.trim() || imageSelector.length > 200)) {
+      throw new Error("Browser image selector is invalid.");
+    }
     const tab = resolveTab(payload.tabId);
     return withDebugger(tab, async (debuggerApi) => {
       const trees = await readAccessibilityTrees(debuggerApi);
@@ -457,6 +462,19 @@ export function createBrowserRuntime({
         emitted += 1;
       }
 
+      let imageUrl = null;
+      if (imageSelector) {
+        const { root } = await debuggerCommand(debuggerApi, "DOM.getDocument", { depth: 0 });
+        const { nodeIds } = await debuggerCommand(debuggerApi, "DOM.querySelectorAll", { nodeId: root.nodeId, selector: imageSelector });
+        // A configured profile selector must identify exactly one visible image.
+        if (nodeIds.length === 1) {
+          const { node } = await debuggerCommand(debuggerApi, "DOM.describeNode", { nodeId: nodeIds[0] });
+          const objectId = await resolvedNode(debuggerApi, { backendNodeId: node.backendNodeId });
+          const metadata = await inspectElement(debuggerApi, objectId);
+          if (metadata.visible && metadata.unobstructed && /^https?:\/\//.test(metadata.imageSrc || "")) imageUrl = metadata.imageSrc;
+        }
+        if (tab.view.webContents.getURL() !== state.url) throw new Error("Browser page changed during snapshot.");
+      }
       let tree = lines.join("\n");
       if (tree.length > MAX_SNAPSHOT_TEXT) {
         tree = `${tree.slice(0, MAX_SNAPSHOT_TEXT - 25)}\n… snapshot truncated`;
@@ -470,6 +488,7 @@ export function createBrowserRuntime({
         url: state.url,
         title: tab.view.webContents.getTitle(),
         tree: tree || "(No accessible page content)",
+        ...(imageSelector ? { imageUrl } : {}),
         elementCount: state.refs.size,
         truncated,
       };
