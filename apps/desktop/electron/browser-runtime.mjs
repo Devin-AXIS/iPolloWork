@@ -708,6 +708,8 @@ export function createBrowserRuntime({
         key: eventKey,
         code,
         windowsVirtualKeyCode,
+        text: key === "Enter" ? "\r" : " ",
+        unmodifiedText: key === "Enter" ? "\r" : " ",
       });
       await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
         type: "keyUp",

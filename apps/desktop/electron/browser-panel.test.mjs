@@ -62,6 +62,15 @@ if (!process.versions.electron) {
       { type: 'fill', ref: fieldRef('正文'), value: '真实填写正文。' },
     ] });
     assert.deepEqual(await firstView.executeJavaScript("[document.querySelector('#title').value,document.querySelector('#body').value]"), ['真实填写标题', '真实填写正文。']);
+    await firstView.executeJavaScript("window.activations=0; document.querySelector('#qr').onclick=()=>{window.activations++}; null");
+    let activations = 0;
+    for (const action of [{ type: 'press', key: 'Enter' }, { type: 'click' }]) {
+      const before = await call('snapshot', { tabId: first.tabId });
+      const ref = before.tree.split('\n').find(line => line.includes('button "显示二维码"'))?.match(/\[(@e\d+)\]/)?.[1];
+      await call('act', { tabId: first.tabId, snapshotId: before.snapshotId, actions: [{ ...action, ref, expectedName: '显示二维码' }] });
+      assert.equal(await firstView.executeJavaScript('window.activations'), ++activations, action.type);
+    }
+    assert.equal(await firstView.executeJavaScript('window.activations'), 2);
     for (const imageSelector of ['#hidden-avatar', 'img', '#qr', '.missing']) {
       assert.equal((await call('snapshot', { tabId: first.tabId, imageSelector })).imageUrl, null);
     }
