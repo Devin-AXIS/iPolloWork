@@ -279,7 +279,9 @@ test('interaction switching filters reader comments, managed actions and reviews
     assert.equal(db.listInteractions().length, 100)
     assert.equal(db.listReviews().length, 100)
     const defaultPage = await (await app.request('/interactions')).text()
-    assert.match(defaultPage, new RegExp(`href="/interactions\\?account=${db.listAccounts()[0].id}" aria-current="true"`))
+    const defaultAccount = db.listAccounts()[0]
+    assert.ok(defaultAccount)
+    assert.match(defaultPage, new RegExp(`href="/interactions\\?account=${defaultAccount.id}" aria-current="true"`))
     const firstPage = await (await app.request(`/interactions?account=${first.id}`)).text()
     for (const text of ['FIRST_READER_COMMENT', 'FIRST_MANAGED_ACTION', 'FIRST_PENDING_REVIEW']) assert.ok(firstPage.includes(text))
     assert.doesNotMatch(firstPage, /SECOND_READER_COMMENT|SECOND_REPLY_ACTION|SECOND_PENDING_REVIEW/)
@@ -376,7 +378,7 @@ test('session replacement preserves binding and browser sync writes validated da
     assert.equal(db.getPlatformSnapshot(account.id)?.articles[0]?.collections, 0)
     const page = await (await app.request('/analytics')).text()
     assert.match(page, /浏览器可见页面/)
-    assert.match(page, /从当前账号同步/)
+    assert.match(page, /同步数据/)
     assert.equal((await post(`/api/executor/jobs/${started.job.id}/complete`, { ...complete, analyticsCsv: csv }, true)).status, 409)
   } finally { db.close() }
 })

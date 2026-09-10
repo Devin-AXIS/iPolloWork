@@ -85,6 +85,20 @@ export default {
           },
           screenshot: { name: 'analytics-account-menu-narrow', requireText: ['账号与文章数据', first.name, second.name] },
         });
+        await ctx.prove('同步数据位于标题右侧，替代管理账号入口', {
+          voiceover: '数据页标题右侧显示蓝色的同步数据按钮，仍对应当前选中的账号。平台数据区域保留数据展示。',
+          action: async () => {
+            await ctx.trustedClick('.account-switcher');
+            await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 1000, deviceScaleFactor: 1, mobile: false });
+            await ctx.eval('window.scrollTo(0, 0)');
+          },
+          assert: async () => {
+            const state = await ctx.eval("(() => { const button = document.querySelector('.simple-heading [data-sync-analytics]'); const title = document.querySelector('.simple-heading h1').getBoundingClientRect(); return { text: button?.textContent, account: button?.dataset.verifyAccount, primary: button?.classList.contains('button-primary'), count: document.querySelectorAll('[data-sync-analytics]').length, right: button?.getBoundingClientRect().left > title.right, oldEntry: document.body.innerText.includes('管理账号'), oldLabel: document.body.innerText.includes('从当前账号同步') }; })()");
+            ctx.assert(state.text === '同步数据' && state.account === first.id && state.primary, 'The heading action lost its label, style or selected account.');
+            ctx.assert(state.count === 1 && state.right && !state.oldEntry && !state.oldLabel, 'The sync action is duplicated or still in its old position.');
+          },
+          screenshot: { name: 'analytics-heading-sync', requireText: ['同步数据', '账号与文章数据', '平台数据'], rejectText: ['管理账号', '从当前账号同步'] },
+        });
       } finally {
         await ctx.client.send('Emulation.clearDeviceMetricsOverride');
       }
