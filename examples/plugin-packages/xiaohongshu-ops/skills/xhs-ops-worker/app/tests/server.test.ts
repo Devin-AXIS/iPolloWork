@@ -79,20 +79,26 @@ test('login identity automatically connects without a verification job and rejec
   } finally { db.close() }
 })
 
-test('renders the simplified task, account, and interaction surfaces', async () => {
+test('opens account management and redirects retired task pages', async () => {
   const db = new OpsDatabase(':memory:')
   const app = createApp(new OpsService(db, generator))
-  for (const path of ['/', '/tasks', '/accounts', '/interactions', '/analytics', '/brand', '/calendar', '/jobs']) {
+  for (const path of ['/accounts', '/interactions', '/analytics', '/brand', '/jobs']) {
     const response = await app.request(path)
     assert.equal(response.status, 200)
-    assert.match(await response.text(), /小红书运营台/)
+    const html = await response.text()
+    assert.match(html, /小红书运营台/)
+    assert.doesNotMatch(html, /href="\/tasks"|任务看板|data-open-task-panel|data-drop-column|id="campaign-form"/)
   }
-  const tasks = await app.request('/tasks')
-  const taskHtml = await tasks.text()
-  assert.match(taskHtml, /任务看板/)
-  assert.match(taskHtml, /data-drop-column="draft"/)
-  assert.match(taskHtml, /按步骤创建并安排内容任务/)
-  assert.doesNotMatch(taskHtml, />品牌资料库</)
+  for (const path of ['/', '/tasks', '/calendar']) {
+    const response = await app.request(path)
+    assert.equal(response.status, 302)
+    assert.equal(response.headers.get('location'), '/accounts')
+  }
+  const accountHtml = await (await app.request('/accounts')).text()
+  assert.match(accountHtml, /账号接入步骤/)
+  assert.match(accountHtml, /data-new-account-login/)
+  assert.match(accountHtml, /name="expectedProfileId"/)
+  assert.match(accountHtml, /name="position"/)
   const health = await app.request('/healthz')
   assert.equal(health.status, 200)
   const healthBody = await health.json() as { ok: boolean; codexAvailable: boolean; wakeLockEnabled: boolean }
@@ -108,7 +114,7 @@ test('embedded workbench permits only configured frame ancestors and keeps mutat
   const db = new OpsDatabase(':memory:')
   try {
     const app = createApp(new OpsService(db, generator))
-    const page = await app.request('/tasks')
+    const page = await app.request('/accounts')
     assert.equal(page.status, 200)
     assert.equal(page.headers.get('x-frame-options'), null)
     assert.match(page.headers.get('content-security-policy') ?? '', /frame-ancestors http:\/\/localhost:\* http:\/\/127\.0\.0\.1:\* file:/)
@@ -282,8 +288,6 @@ test('current-session verification binds once, dispatches only its own job and r
     assert.equal(verified.status, 200)
     assert.equal(db.getAccount(account.id)?.sessionStatus, 'healthy')
     assert.ok(db.getAccount(account.id)?.lastVerifiedAt)
-    const tasks = await (await app.request('/tasks')).text()
-    assert.doesNotMatch(tasks, /value="active" disabled/)
     assert.equal((await post(`/api/accounts/${second.id}/session`, { status: 'healthy' })).status, 400)
     assert.equal(db.getAccount(second.id)?.sessionStatus, 'setup')
   } finally { db.close() }

@@ -8,7 +8,7 @@ description: Dispatch due Xiaohongshu browser jobs to locked account workers.
 - 首选右侧加号的小红书运营台入口，或调用本插件 open-workbench 操作。宿主会直接启动服务并嵌入页面，不需要向 AI 发送启动任务。
 
 - 运营台源码随本插件提供，位于 xhs-ops-worker 技能目录下的 app/，不要使用其他电脑的绝对路径。
-- 用户要求打开运营台时，先检查 http://127.0.0.1:4790/healthz。服务正常则直接打开 http://127.0.0.1:4790/tasks。
+- 用户要求打开运营台时，先检查 http://127.0.0.1:4790/healthz。服务正常则直接打开 http://127.0.0.1:4790/accounts。
 - 首次启动需要 Node.js 22.22+ 和 pnpm。在 app/ 运行 `pnpm install --ignore-workspace --frozen-lockfile --registry=https://registry.npmjs.org`，然后用 Node.js 22.22+ 运行该技能的 `scripts/start.mjs`，保持服务在后台运行。
 - 优先使用当前宿主提供的 Node 运行时和 Codex 可执行文件；通过 XHS_OPS_CODEX_PATH 指定实际 Codex 路径，不猜测平台安装目录。未配置 Codex 时仍可打开页面进行账号和任务管理。
 - 数据保存在用户主目录下 .ipollowork/plugin-data/xiaohongshu-ops，独立于插件版本和安装目录。

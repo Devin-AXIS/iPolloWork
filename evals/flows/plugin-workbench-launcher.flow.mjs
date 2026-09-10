@@ -27,8 +27,8 @@ export default {
         },
         screenshot: "installed-workbench-menu",
       });
-      await ctx.prove("点击入口直接打开小红书任务看板，不向 AI 发送消息", {
-        voiceover: "选择小红书运营台，右侧直接显示任务看板，左侧不会进入思考；再次选择会回到已有页面。",
+      await ctx.prove("点击入口直接打开小红书账号管理，不向 AI 发送消息", {
+        voiceover: "选择小红书运营台，右侧直接显示账号管理，左侧不会进入思考；再次选择会回到已有页面。",
         action: async () => {
           await ctx.eval(`${xhsEntry}.click()`);
           await ctx.waitFor(`Boolean(${xhsFrame}?.src)`);
@@ -41,7 +41,7 @@ export default {
         },
         assert: async () => {
           ctx.assert(await ctx.eval(`document.querySelectorAll('[aria-label="Select tab: 小红书运营台"]').length === 1`), "Repeated selection created a duplicate tab.");
-          await assertWorkbenchPage(ctx, xhsFrame, ['任务看板', '添加账号', '新建任务']);
+          await assertWorkbenchPage(ctx, xhsFrame, ['账号管理', '已接入账号', '接入账号']);
           ctx.assert(await ctx.eval(`!document.querySelector('button[aria-label="停止"]')`), 'Opening the workbench started an AI turn.');
         },
         screenshot: "xiaohongshu-right-workbench",

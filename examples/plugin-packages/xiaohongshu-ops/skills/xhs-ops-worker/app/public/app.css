@@ -46,7 +46,6 @@
 [hidden] { display: none !important; }
 html { min-width: 320px; background: var(--bg); }
 body { min-height: 100dvh; margin: 0; color: var(--text); background: var(--bg); text-rendering: optimizeLegibility; }
-body.drawer-open { overflow: hidden; }
 a { color: inherit; text-decoration: none; }
 button, input, textarea, select { color: inherit; font: inherit; }
 button, a, input, textarea, select { -webkit-tap-highlight-color: transparent; }
@@ -77,9 +76,6 @@ button { cursor: pointer; }
 .app-main { min-height: 100dvh; margin-left: 98px; }
 .surface { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 
-.workspace-shell { min-height: 100dvh; }
-.workspace-content { min-width: 0; padding: 22px 36px 40px; transition: margin-right .22s ease; }
-body.drawer-open .workspace-content { margin-right: 394px; }
 .account-bar {
   display: inline-grid; grid-template-columns: minmax(285px, auto) 220px; min-height: 64px; overflow: hidden;
   border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
@@ -97,12 +93,9 @@ body.drawer-open .workspace-content { margin-right: 394px; }
 .add-account-link { font-size: 13px; font-weight: 700; }
 .add-account-link .ti { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: var(--surface-muted); font-size: 16px; }
 .account-avatar { width: 38px; height: 38px; flex: 0 0 auto; font-size: 13px; }
-.account-avatar.is-small { width: 26px; height: 26px; font-size: 10px; }
 
-.task-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin: 30px 0 24px; }
-.task-heading h1, .simple-heading h1 { margin: 0; font-size: clamp(32px, 3.2vw, 44px); font-weight: 760; letter-spacing: -.055em; line-height: 1.08; }
-.task-heading p, .simple-heading p { margin: 8px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
-.heading-actions { display: flex; gap: 10px; }
+.simple-heading h1 { margin: 0; font-size: clamp(32px, 3.2vw, 44px); font-weight: 760; letter-spacing: -.055em; line-height: 1.08; }
+.simple-heading p { margin: 8px 0 0; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
 .button {
   display: inline-flex; min-height: 43px; align-items: center; justify-content: center; gap: 8px; padding: 9px 16px;
   border: 1px solid transparent; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 730; line-height: 1.15; white-space: nowrap;
@@ -117,118 +110,28 @@ body.drawer-open .workspace-content { margin-right: 394px; }
 .icon-button { display: grid; width: 34px; height: 34px; flex: 0 0 auto; place-items: center; padding: 0; border: 0; border-radius: 8px; color: var(--text-muted); background: transparent; }
 .icon-button:hover { color: var(--text); background: var(--surface-muted); }
 
-.filter-bar { display: flex; align-items: flex-end; gap: 10px; margin: -10px 0 18px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
-.filter-bar label { display: grid; gap: 5px; color: var(--text-muted); font-size: 10px; font-weight: 700; }
-.filter-bar select { min-width: 150px; min-height: 36px; }
-.attention-strip {
-  display: grid; grid-template-columns: auto auto minmax(0, 1fr); align-items: center; gap: 18px; margin-bottom: 22px; padding: 15px 18px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
-}
-.attention-strip > strong { display: inline-flex; align-items: center; gap: 8px; color: var(--accent); font-size: 12px; }
-.attention-strip > span { color: var(--text-muted); font-size: 11px; }
-.attention-strip > div { display: flex; min-width: 0; justify-content: flex-end; gap: 4px; overflow: hidden; }
-.attention-strip button { display: inline-flex; min-width: 0; align-items: center; gap: 5px; padding: 6px 9px; border: 0; background: transparent; font-size: 11px; white-space: nowrap; }
-.attention-strip button:hover { color: var(--accent); }
-
-.kanban-board { display: grid; grid-template-columns: repeat(4, minmax(228px, 1fr)); gap: 14px; min-height: calc(100dvh - 254px); }
-.kanban-column { min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 13px; background: color-mix(in srgb, var(--surface-muted) 60%, transparent); transition: border-color .16s, background .16s; }
-.kanban-column.is-drag-over { border-color: var(--accent); background: var(--accent-soft); }
-.kanban-column > header { display: grid; grid-template-columns: auto auto 1fr auto; align-items: center; gap: 7px; min-height: 46px; padding: 0 5px; }
-.kanban-column > header strong { font-size: 13px; }
-.kanban-column > header > span { color: var(--text-muted); font-size: 11px; }
-.kanban-column > header .icon-button { grid-column: 4; width: 28px; height: 28px; }
-.kanban-stack { display: grid; align-content: start; gap: 10px; }
-.task-card { position: relative; min-width: 0; padding: 15px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); box-shadow: 0 1px 0 rgba(23, 26, 24, .02); transition: opacity .16s, transform .16s, box-shadow .16s, border-color .16s; }
-.task-card[draggable="true"] { cursor: grab; }
-.task-card[draggable="true"]:active { cursor: grabbing; }
-.task-card:hover { border-color: var(--border-strong); box-shadow: 0 8px 24px rgba(37, 47, 39, .06); }
-.task-card.is-dragging, .task-card.is-updating { opacity: .48; transform: scale(.985); }
-.task-card.is-highlighted { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft); }
-.task-card.has-error { border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); }
-.task-card > header { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: start; gap: 9px; }
-.task-card > header > div { display: grid; min-width: 0; gap: 5px; }
-.task-card > header strong, .task-card > header span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-card > header strong { font-size: 12px; }
-.task-card > header span { color: var(--text-muted); font-size: 10px; }
-.task-menu-button { width: 26px; height: 26px; margin: -5px -6px 0 0; }
-.task-card-status { min-height: 56px; padding-top: 18px; }
-.task-pill { display: inline-flex; min-height: 26px; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 999px; color: var(--text-muted); background: var(--surface-muted); font-size: 10px; font-weight: 730; }
-.task-pill.is-scheduled { color: var(--accent); background: var(--accent-soft); }
-.task-pill.is-running { color: var(--success); background: color-mix(in srgb, var(--success) 11%, var(--surface)); }
-.task-pill.is-success { color: var(--success); background: transparent; padding-inline: 0; }
-.task-error { display: flex; align-items: flex-start; gap: 6px; margin: -4px 0 12px; color: var(--danger); font-size: 9px; line-height: 1.45; }
-.task-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 9px; }
-.drag-hint { display: inline-flex; align-items: center; opacity: 0; transition: opacity .15s; }
-.task-card:hover .drag-hint { opacity: .75; }
-.task-menu { position: absolute; top: 42px; right: 8px; z-index: 8; display: grid; min-width: 170px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
-.task-menu button, .task-menu a { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; text-align: left; font-size: 11px; }
-.task-menu button:hover, .task-menu a:hover { background: var(--surface-muted); }
-.menu-caption { padding: 7px 10px 4px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: 9px; }
-.kanban-column .empty-state { min-height: 150px; padding: 24px 12px; }
-
 .empty-state { display: grid; min-height: 160px; place-content: center; justify-items: center; padding: 32px; text-align: center; }
 .empty-state > .ti { display: grid; width: 38px; height: 38px; place-items: center; margin-bottom: 10px; border-radius: 50%; color: var(--text-muted); background: var(--surface-muted); font-size: 18px; }
 .empty-state strong { font-size: 12px; }
 .empty-state p { max-width: 40ch; margin: 6px 0 13px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
 
-.task-drawer {
-  position: fixed; inset: 0 0 0 auto; z-index: 45; width: 394px; overflow-y: auto; border-left: 1px solid var(--border);
-  background: var(--surface); box-shadow: -16px 0 44px rgba(35, 45, 37, .06); transform: translateX(100%); transition: transform .22s ease;
-}
-.task-drawer.is-open { transform: translateX(0); }
-.task-drawer > header { position: sticky; top: 0; z-index: 2; display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 24px 20px 17px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 94%, transparent); backdrop-filter: blur(14px); }
-.task-drawer > header h2 { margin: 0; font-size: 19px; }
-.task-drawer > header p { margin: 5px 0 0; color: var(--text-muted); font-size: 10px; }
-.task-form { display: grid; gap: 14px; padding: 14px 12px 24px; }
-.task-form-section { display: grid; gap: 15px; padding: 17px; border: 1px solid var(--border); border-radius: 13px; }
-.step-heading { display: flex; align-items: center; gap: 10px; }
-.step-heading > span, .connect-step > span { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: var(--accent); font-size: 10px; font-weight: 800; }
-.step-heading h3 { margin: 0; font-size: 14px; }
+.connect-step > span { display: grid; width: 24px; height: 24px; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: var(--accent); font-size: 10px; font-weight: 800; }
 .field { display: grid; gap: 7px; }
-.field > label, .field label, fieldset legend, .review-card label { font-size: 10px; font-weight: 720; }
+.field > label, .field label, .review-card label { font-size: 10px; font-weight: 720; }
 .field small { color: var(--text-muted); font-size: 9px; line-height: 1.5; }
 input, textarea, select { width: 100%; border: 1px solid var(--border-strong); border-radius: 9px; outline: 0; background: var(--surface); }
 input, select { min-height: 42px; padding: 9px 11px; }
 textarea { min-height: 72px; padding: 10px 11px; resize: vertical; line-height: 1.55; }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text-muted) 72%, transparent); }
-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-fieldset legend { margin-bottom: 9px; }
-.direction-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-.direction-grid button { display: grid; min-height: 82px; place-items: center; align-content: center; gap: 9px; border: 1px solid var(--border); border-radius: 10px; color: var(--text-muted); background: var(--surface); font-size: 10px; font-weight: 700; }
-.direction-grid button .ti { font-size: 20px; }
-.direction-grid button.is-selected { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.account-choice-list { display: grid; gap: 7px; }
-.account-choice-list label { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; cursor: pointer; }
-.account-choice-list input { position: absolute; opacity: 0; pointer-events: none; }
-.account-choice-list label > span { display: grid; grid-template-columns: 26px minmax(0, 1fr); align-items: center; gap: 9px; min-width: 0; padding: 9px; border: 1px solid var(--border); border-radius: 9px; }
-.account-choice-list label > span strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.account-choice-list label > span small { grid-column: 2; margin-top: -6px; overflow: hidden; color: var(--text-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
-.account-choice-list label:has(input:checked) > span { border-color: var(--accent); background: var(--accent-soft); }
-.empty-account-link { color: var(--accent); font-size: 11px; font-weight: 700; }
-.segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.segmented label, .day-check { cursor: pointer; }
-.segmented input, .day-check input { position: absolute; opacity: 0; pointer-events: none; }
-.segmented span, .day-check span { display: grid; min-height: 38px; place-items: center; border: 1px solid var(--border); border-radius: 8px; color: var(--text-muted); font-size: 10px; font-weight: 700; }
-.segmented label:has(input:checked) span, .day-check:has(input:checked) span { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.weekday-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 5px; }
-.day-check span { min-height: 31px; font-size: 9px; }
-.input-with-icon { position: relative; }
-.input-with-icon > .ti { position: absolute; top: 50%; left: 12px; z-index: 1; color: var(--text-muted); transform: translateY(-50%); }
-.input-with-icon input { padding-left: 36px; }
 .optional-settings { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); }
 .optional-settings > summary { display: flex; align-items: center; justify-content: space-between; padding: 15px 16px; cursor: pointer; font-size: 11px; font-weight: 720; list-style: none; }
 .optional-settings > summary::-webkit-details-marker { display: none; }
 .optional-settings[open] > summary .ti { transform: rotate(90deg); }
 .optional-settings > div { display: grid; gap: 12px; padding: 0 16px 16px; }
 .optional-settings p { margin: 0; color: var(--text-muted); font-size: 9px; line-height: 1.5; }
-.compact-check-list { display: flex; flex-wrap: wrap; gap: 7px; }
-.compact-check-list label { display: inline-flex; align-items: center; gap: 6px; padding: 7px 8px; border: 1px solid var(--border); border-radius: 8px; font-size: 9px; }
-.compact-check-list input { width: auto; min-height: auto; }
 .form-safety-note { display: flex; align-items: flex-start; gap: 8px; margin: 0; padding: 11px 12px; border-radius: 9px; color: var(--text-muted); background: var(--surface-muted); font-size: 9px; line-height: 1.5; }
 .form-safety-note .ti { flex: 0 0 auto; color: var(--success); }
-.task-form > footer { position: sticky; bottom: 0; z-index: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; margin: 0 -12px -24px; padding: 12px; border-top: 1px solid var(--border); background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(14px); }
-.drawer-backdrop { position: fixed; inset: 0; z-index: 40; border: 0; background: rgba(20, 26, 21, .2); }
 
 .account-page, .simple-page { width: min(1180px, calc(100% - 56px)); margin: 0 auto; padding: 40px 0 72px; }
 .simple-page .account-bar { margin-bottom: 34px; }
@@ -316,17 +219,6 @@ fieldset legend { margin-bottom: 9px; }
 .toast { max-width: 360px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); font-size: 11px; }
 .toast.is-error { color: var(--danger); }
 
-@media (min-width: 1101px) {
-  .drawer-backdrop { display: none !important; }
-}
-
-@media (max-width: 1250px) {
-  .workspace-content { padding-inline: 24px; }
-  body.drawer-open .workspace-content { margin-right: 0; }
-  .kanban-board { overflow-x: auto; grid-template-columns: repeat(4, minmax(250px, 1fr)); }
-  .task-drawer { width: min(420px, calc(100vw - 98px)); }
-}
-
 @media (max-width: 900px) {
   .accounts-layout, .interaction-layout { grid-template-columns: 1fr; }
   .connect-panel { position: static; }
@@ -336,32 +228,21 @@ fieldset legend { margin-bottom: 9px; }
 @media (max-width: 680px) {
   .app-sidebar { inset: auto 0 0 0; width: auto; height: 70px; flex-direction: row; border-top: 1px solid var(--border); border-right: 0; }
   .brand-mark, .sidebar-profile { display: none; }
-  .app-sidebar nav { display: grid; width: 100%; grid-template-columns: repeat(4, 1fr); gap: 4px; margin: 0; padding: 6px 10px; }
+  .app-sidebar nav { display: grid; width: 100%; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: 0; padding: 6px 10px; }
   .app-sidebar nav a { min-height: 57px; gap: 3px; }
   .app-sidebar nav a .ti { font-size: 19px; }
   .app-main { margin-left: 0; padding-bottom: 70px; }
-  .workspace-content { padding: 16px 14px 28px; }
   .account-bar { display: grid; width: 100%; grid-template-columns: minmax(0, 1fr) auto; }
   .add-account-link { width: 52px; padding-inline: 10px; }
   .add-account-link > span { display: none; }
   .account-switcher { min-width: 0; }
-  .task-heading, .simple-heading { align-items: flex-start; flex-direction: column; }
-  .task-heading { margin-top: 24px; }
-  .task-heading h1, .simple-heading h1 { font-size: 34px; }
-  .heading-actions { width: 100%; }
-  .heading-actions .button-primary { flex: 1; }
-  .attention-strip { grid-template-columns: 1fr auto; }
-  .attention-strip > div { grid-column: 1 / -1; justify-content: flex-start; overflow-x: auto; }
-  .kanban-board { grid-template-columns: repeat(4, 270px); min-height: 500px; scroll-snap-type: x proximity; }
-  .kanban-column { scroll-snap-align: start; }
-  .task-drawer { inset: 0; width: 100%; }
-  .drawer-backdrop { display: none; }
+  .simple-heading { align-items: flex-start; flex-direction: column; }
+  .simple-heading h1 { font-size: 34px; }
   .account-page, .simple-page { width: calc(100% - 28px); padding-top: 26px; }
   .account-summary-grid, .setting-grid { grid-template-columns: 1fr; }
   .account-actions { flex-wrap: wrap; }
   .onboarding-overview { margin-inline: -2px; padding-inline: 14px; }
   .reference-grid { grid-template-columns: 1fr; }
-  .filter-bar { align-items: stretch; flex-direction: column; }
 }
 
 @media (prefers-reduced-motion: reduce) {

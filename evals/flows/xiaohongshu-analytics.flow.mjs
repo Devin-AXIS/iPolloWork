@@ -42,15 +42,15 @@ export default {
           },
           screenshot: 'account-analytics',
         });
-        await ctx.prove('窄面板仍能完整显示数据与四个导航入口', {
-          voiceover: '面板缩窄后，统计卡片分为两列，四个导航入口排列在底部。',
+        await ctx.prove('窄面板仍能完整显示数据与三个导航入口', {
+          voiceover: '面板缩窄后，统计卡片分为两列，三个导航入口排列在底部。',
           action: async () => {
             await ctx.eval(`${frame}.style.width = '390px'`);
             await waitFor('innerWidth === 390');
           },
           assert: async () => {
             const state = await evaluate(`({width:innerWidth,overflow:document.documentElement.scrollWidth > innerWidth + 1, nav:getComputedStyle(document.querySelector('.app-sidebar')).position, links:document.querySelectorAll('.app-sidebar nav a').length})`);
-            ctx.assert(state.width === 390 && !state.overflow && state.links === 4, 'Narrow layout lost navigation or overflowed.');
+            ctx.assert(state.width === 390 && !state.overflow && state.links === 3, 'Narrow layout lost navigation or overflowed.');
           },
           screenshot: 'account-analytics-narrow',
         });

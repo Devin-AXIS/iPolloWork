@@ -17,4 +17,4 @@ const app = startServer();
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.once(signal, () => { void app.close().then(() => process.exit(0)); });
 }
-console.log('小红书运营台已启动：http://127.0.0.1:4790/tasks');
+console.log('小红书运营台已启动：http://127.0.0.1:4790/accounts');

@@ -34,7 +34,7 @@ export default function createWorkbench(runtime) {
 
   async function start() {
     if (disposed) throw new Error('插件已关闭，请重新打开工作台。');
-    if (await healthy()) return { url: `${origin}/tasks` };
+    if (await healthy()) return { url: `${origin}/accounts` };
     await mkdir(appRoot, { recursive: true });
     await cp(resolve(packageRoot, 'skills/xhs-ops-worker/app'), appRoot, { recursive: true });
     const ready = resolve(appRoot, '.dependencies-ready');
@@ -66,7 +66,7 @@ export default function createWorkbench(runtime) {
     child.stderr.on('data', chunk => { failure = (failure + chunk.toString()).slice(-1500); });
     for (let attempt = 0; attempt < 40; attempt++) {
       if (disposed) throw new Error('插件已关闭。');
-      if (await healthy()) return { url: `${origin}/tasks` };
+      if (await healthy()) return { url: `${origin}/accounts` };
       if (child.exitCode !== null) throw new Error(`运营台启动失败：${failure || '进程提前退出'}`);
       await new Promise(resolveWait => setTimeout(resolveWait, 200));
     }

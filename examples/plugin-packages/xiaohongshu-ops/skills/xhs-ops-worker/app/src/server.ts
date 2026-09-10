@@ -15,7 +15,7 @@ import { observeBrowserSession, prepareSessionVerification } from './verificatio
 import { OpsDatabase } from './db.js'
 import { OpsService, startContentScheduler } from './service.js'
 import type { AccountSessionStatus, CampaignSchedule, CampaignStatus, DiscoveredComment, KnowledgeItem } from './types.js'
-import { renderAccounts, renderAnalytics, renderBrand, renderCalendar, renderError, renderInteractions, renderJobs, renderTasks } from './views.js'
+import { renderAccounts, renderAnalytics, renderBrand, renderError, renderInteractions, renderJobs } from './views.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误'
@@ -122,12 +122,10 @@ export function createApp(service: OpsService): Hono {
   }))
   app.get('/api/state', (c) => { c.header('Cache-Control', 'no-store'); return c.json({ state: state(service) }) })
 
-  const taskView = () => renderTasks({
-    accounts: service.db.listAccounts(), campaigns: service.db.listCampaigns(), content: service.db.listContent(),
-    jobs: service.db.listJobs(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets(),
-  })
-  app.get('/', (c) => c.html(taskView()))
-  app.get('/tasks', (c) => c.html(taskView()))
+  // Previously opened workbench tabs may still point to the retired task routes.
+  app.get('/', (c) => c.redirect('/accounts'))
+  app.get('/tasks', (c) => c.redirect('/accounts'))
+  app.get('/calendar', (c) => c.redirect('/accounts'))
   app.get('/accounts', (c) => c.html(renderAccounts(service.db.listAccounts())))
   app.get('/analytics', (c) => {
     const accounts = service.db.listAccounts()
@@ -155,10 +153,6 @@ export function createApp(service: OpsService): Hono {
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
   app.get('/brand', (c) => c.html(renderBrand({ brand: service.db.getBrand(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets() })))
-  app.get('/calendar', (c) => c.html(renderCalendar({
-    accounts: service.db.listAccounts(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets(),
-    campaigns: service.db.listCampaigns(), content: service.db.listContent(),
-  })))
   app.get('/interactions', (c) => c.html(renderInteractions({ interactions: service.db.listInteractions(), reviews: service.db.listReviews(), accounts: service.db.listAccounts() })))
   app.get('/jobs', (c) => c.html(renderJobs({ jobs: service.db.listJobs(), accounts: service.db.listAccounts(), audit: service.db.listAudit() })))
 
