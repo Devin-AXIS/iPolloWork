@@ -35,7 +35,8 @@ export default {
             await ctx.eval(`document.querySelector(${JSON.stringify(entry)}).click()`);
           }
           await ctx.waitFor(`Boolean(document.querySelector(${JSON.stringify(frame)})?.src)`, { timeoutMs: 45_000, label: 'WeChat Studio frame' });
-          const origin = new URL(await ctx.eval(`document.querySelector(${JSON.stringify(frame)}).src`)).origin;
+          const frameSrc = await ctx.eval(`document.querySelector(${JSON.stringify(frame)}).src`);
+          const origin = new URL(frameSrc).origin;
           for (let attempt = 0; attempt < 40; attempt++) {
             const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.type === 'iframe' && item.url.startsWith(`${origin}/`));
             if (target) {
@@ -44,7 +45,15 @@ export default {
                 for (let read = 0; read < 40; read++) {
                   const text = await evaluate(client, 'document.body?.innerText || ""');
                   if (text.includes('公众号 Studio') && text.includes('运营总览') && text.includes('图文草稿')) {
-                    ctx.wechatStudioTargetId = target.id;
+                    ctx.assert(await ctx.eval(`document.querySelector('iframe[title=${JSON.stringify(LABEL)}]')?.getBoundingClientRect().width > 280`), '公众号 Studio iframe is not visible');
+                    await ctx.eval(`setTimeout(() => window.open(${JSON.stringify(frameSrc)}, '_blank'), 500); true`);
+                    const proofTarget = await ctx.switchToNewTab({
+                      match: item => item.url.startsWith(`${origin}/`),
+                      timeoutMs: 30_000,
+                      label: 'WeChat Studio proof window',
+                    });
+                    ctx.wechatStudioTargetId = proofTarget.id;
+                    await ctx.waitFor(`document.body?.innerText.includes('公众号 Studio') && document.body?.innerText.includes('运营总览')`, { timeoutMs: 30_000, label: 'WeChat Studio proof content' });
                     return;
                   }
                   await new Promise(resolve => setTimeout(resolve, 250));
@@ -57,22 +66,13 @@ export default {
         },
         assert: async () => {
           ctx.assert(Boolean(ctx.wechatStudioTargetId), '公众号 Studio target was not found');
-          const frameVisible = await ctx.eval(`document.querySelector('iframe[title=${JSON.stringify(LABEL)}]')?.getBoundingClientRect().width > 280`);
-          ctx.assert(frameVisible, '公众号 Studio iframe is not visible');
-          const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.id === ctx.wechatStudioTargetId);
-          ctx.assert(Boolean(target), '公众号 Studio target disappeared before assertion');
-          const client = await connect(target.webSocketDebuggerUrl);
-          try {
-            const text = await evaluate(client, 'document.body?.innerText || ""');
-            for (const label of ['公众号 Studio', '运营总览', '图文草稿', '评论管理', '自定义菜单', '添加账号']) {
-              ctx.assert(text.includes(label), `公众号 Studio 缺少“${label}”`);
-            }
-          } finally { client.close(); }
+          const text = await ctx.eval('document.body?.innerText || ""');
+          for (const label of ['公众号 Studio', '运营总览', '图文草稿', '评论管理', '自定义菜单', '添加账号']) {
+            ctx.assert(text.includes(label), `公众号 Studio 缺少“${label}”`);
+          }
         },
         screenshot: {
           name: 'wechat-official-studio',
-          fromSurface: false,
-          get textTargetId() { return ctx.wechatStudioTargetId; },
           requireText: ['公众号 Studio', '运营总览', '图文草稿'],
           rejectText: ['Something went wrong', '无法加载'],
         },
@@ -84,37 +84,23 @@ export default {
       await ctx.prove('用户可以直接在公众号 Studio 添加独立账号，并看到账号标识、AppID 与 AppSecret 输入项', {
         voiceover: '点击添加账号后，可以为每个公众号设置独立标识和凭据；凭据会进入 iPolloWork 的加密授权仓库。',
         action: async () => {
-          const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.id === ctx.wechatStudioTargetId);
-          ctx.assert(Boolean(target), '公众号 Studio target was not found');
-          const client = await connect(target.webSocketDebuggerUrl);
-          try {
-            await evaluate(client, `document.querySelector('#add-account')?.click()`);
-            for (let attempt = 0; attempt < 40; attempt++) {
-              if (await evaluate(client, `document.querySelector('#account-dialog')?.open === true`)) return;
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
-          } finally { client.close(); }
-          ctx.assert(false, '多账号管理弹窗没有打开');
+          await ctx.eval(`document.querySelector('#add-account')?.click()`);
+          await ctx.waitFor(`document.querySelector('#account-dialog')?.open === true`, { timeoutMs: 10_000, label: 'multi-account dialog' });
         },
         assert: async () => {
-          const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.id === ctx.wechatStudioTargetId);
-          ctx.assert(Boolean(target), '公众号 Studio target disappeared before account assertion');
-          const client = await connect(target.webSocketDebuggerUrl);
-          try {
-            const text = await evaluate(client, 'document.body?.innerText || ""');
-            for (const label of ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存', '加密授权仓库']) {
-              ctx.assert(text.includes(label), `账号管理弹窗缺少“${label}”`);
-            }
-          } finally { client.close(); }
+          const text = await ctx.eval('document.body?.innerText || ""');
+          for (const label of ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存', '加密授权仓库']) {
+            ctx.assert(text.includes(label), `账号管理弹窗缺少“${label}”`);
+          }
         },
         screenshot: {
           name: 'wechat-official-multi-account',
-          fromSurface: false,
-          get textTargetId() { return ctx.wechatStudioTargetId; },
           requireText: ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存'],
           rejectText: ['Something went wrong', '无法加载'],
         },
       });
+      await ctx.eval('window.close()').catch(() => undefined);
+      await ctx.switchBack();
     },
   }],
 };
