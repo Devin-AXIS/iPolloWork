@@ -1392,7 +1392,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
             <MessageComponent
               message={item.message}
               isLastMessage={isLastMessage}
-              isStreaming={isLastMessage && isStreaming}
+              isStreaming={isLastMessage && isStreaming && !isStudioResultMessage(item.message)}
               isLastStep={isLastStep}
               showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
               requestNaming={item.message.role === "assistant"
