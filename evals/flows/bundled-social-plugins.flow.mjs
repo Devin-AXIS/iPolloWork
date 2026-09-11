@@ -1,6 +1,6 @@
 const plugins = [
   { id: "xiaohongshu-ops", name: "小红书运营台", version: "0.4.17" },
-  { id: "douyin-ops", name: "抖音运营台", version: "0.1.10" },
+  { id: "douyin-ops", name: "抖音运营台", version: "0.1.11" },
 ];
 
 export default {
