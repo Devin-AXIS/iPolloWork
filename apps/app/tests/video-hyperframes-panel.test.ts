@@ -1123,6 +1123,9 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("cumulative shifts");
     expect(contract).toContain("Keep narrated text visible");
     expect(contract).toContain("voiceover_timeline_validate");
+    expect(contract).toContain("Video HTML must load GSAP explicitly before inline animation code");
+    expect(contract).toContain("window.__timelines = window.__timelines || {}");
+    expect(contract).toContain("fix all reported errors before claiming completion");
     expect(contract).toContain("not complete when synthesis returns");
     expect(contract).toContain("Never use cross-session search/read to recover this task");
     expect(contract).toContain("fix all reported issues together");

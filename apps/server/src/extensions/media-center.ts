@@ -1,4 +1,5 @@
 import { ApiError, isApiError } from "../errors.js";
+import { repairVideoTimelineRegistry, validateVideoHtmlScripts, validateVideoScriptAssets } from "../video-html-validation.js";
 import type { AuthorizationAccess } from "../authorization-center.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
@@ -441,7 +442,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
   requirements?: VideoTimelineRequirements;
 } = {}) {
   const epsilon = 0.001;
-  const issues: VoiceoverTimelineIssue[] = [];
+  const issues: VoiceoverTimelineIssue[] = validateVideoHtmlScripts(html);
   const nodes = timelineNodes(html);
   const composition = nodes.find((node) => node.attributes.has("data-composition-id"));
   const compositionDuration = composition ? finiteTimelineNumber(composition, "data-duration") : null;
@@ -767,7 +768,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "voiceover_timeline_validate",
     title: "Validate a video voiceover timeline",
-    description: "Validate local scene, narration, and composition timing before completing a video task. This action uses no provider quota.",
+    description: "Validate local scene, narration, composition timing, inline JavaScript syntax and animation dependencies before completing a video task. Safely adds missing window.__timelines initialization to the source HTML; other errors must be fixed before delivery. This action uses no provider quota.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1642,7 +1643,10 @@ export async function callMediaExtensionAction(
     const mediaAssets = await listWorkspaceAssets(workspace.path, assetsDirectory, (path) => /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(path));
     const voiceoverAssets = mediaAssets.filter(isVoiceoverAssetPath);
     const requirementInput = readRecord(args, "requirements");
-    const output = validateVoiceoverTimelineHtml(await readFile(source.absolutePath, "utf8"), {
+    const originalHtml = await readFile(source.absolutePath, "utf8");
+    const html = repairVideoTimelineRegistry(originalHtml);
+    if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
+    const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
       mediaAssets,
       requirements: {
@@ -1654,6 +1658,7 @@ export async function callMediaExtensionAction(
         targetDurationSeconds: readOptionalNumber(requirementInput, "targetDurationSeconds") ?? undefined,
       },
     });
+    const issues = [...output.issues, ...await validateVideoScriptAssets(html, dirname(source.absolutePath))];
     return {
       ok: true,
       extensionId: MEDIA_EXTENSION_ID,
@@ -1661,7 +1666,7 @@ export async function callMediaExtensionAction(
       result: {
         provider: "local",
         operation: action,
-        output: { sourcePath: source.relativePath, ...output },
+        output: { sourcePath: source.relativePath, ...output, valid: issues.length === 0, issues },
       },
       context,
     };
