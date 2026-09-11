@@ -62,7 +62,7 @@
     });
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.6' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.7' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
     }).catch(error => { hostPromise = undefined; throw error; });
     return hostPromise;
@@ -88,6 +88,7 @@
   function view(name) {
     document.querySelectorAll('.view').forEach(item => { item.hidden = item.id !== `view-${name}`; });
     document.querySelectorAll('.tabs [data-view]').forEach(item => { if (item.dataset.view === name) item.setAttribute('aria-current', 'page'); else item.removeAttribute('aria-current'); });
+    document.body.dataset.view = name;
   }
   function options(select, items, prompt, value) {
     select.replaceChildren(); if (prompt) select.add(new Option(prompt, ''));
@@ -111,6 +112,8 @@
   function render() {
     options($('#account'), state.accounts.map(item => ({ id: item.id, label: item.nickname || item.openId })), state.accounts.length ? null : '尚未授权账号', accountId);
     text('#connection-status', state.settings.secretConfigured ? `官方 API · ${state.accounts.length} 个已授权账号` : '本地服务已连接 · 请配置官方 API');
+    $('#connection').dataset.status = state.accounts.length ? 'authorized' : 'ready';
+    text('#sidebar-account-meta', state.accounts.length ? `已授权 ${state.accounts.length} 个账号` : '当前抖音账号');
     text('#secret-status', state.settings.secretConfigured ? '密钥已保存' : '未配置');
     if (!settingsLoaded) {
       $('#client-key').value = state.settings.clientKey || ''; $('#redirect-uri').value = state.settings.redirectUri || '';
@@ -134,7 +137,24 @@
       $('#accounts-list').append(card);
     }
     if (!state.accounts.length) empty('#accounts-list', '尚未连接抖音账号。配置应用后，扫码完成官方授权。');
-    renderDraftPicker(); renderJobs(); renderCapabilities(); updatePublish();
+    renderDraftPicker(); renderJobs(); renderOverview(); renderCapabilities(); updatePublish();
+  }
+  function renderOverview() {
+    const drafts = state.drafts.filter(item => item.accountId === accountId);
+    const jobs = state.jobs.filter(item => !accountId || item.accountId === accountId);
+    const attention = jobs.filter(item => ['uncertain', 'pending', 'running', 'submitting'].includes(item.status));
+    text('#overview-account-count', state.accounts.length);
+    text('#overview-draft-count', drafts.length);
+    text('#overview-job-count', attention.length);
+    const output = $('#overview-drafts'); output.replaceChildren();
+    if (!accountId) { output.append(node('p', 'empty', '尚未连接抖音账号，连接后即可开始创作。')); return; }
+    for (const draft of drafts.slice(0, 4)) {
+      const row = node('button', 'overview-item'); row.type = 'button';
+      const copy = node('span'); copy.append(node('strong', '', draft.title || '未命名草稿'), node('small', '', `${labels[draft.status] || draft.status || '草稿'} · ${date(draft.updatedAt)}`));
+      row.append(copy, node('b', '', '继续编辑'));
+      row.addEventListener('click', () => { view('studio'); loadDraft(draft.id); }); output.append(row);
+    }
+    if (!output.childElementCount) output.append(node('p', 'empty', '当前账号还没有草稿，点击「开始创作」准备第一条内容。'));
   }
   function renderDraftPicker() {
     options($('#draft-picker'), state.drafts.filter(item => item.accountId === accountId).map(item => ({ id: item.id, label: item.title || '未命名草稿' })), '新草稿', draftId);
@@ -158,7 +178,7 @@
   async function saveDraft() {
     requireAccount();
     const { draft } = await action('save-draft', { id: draftId || undefined, accountId, title: $('#draft-title').value.trim() || '未命名草稿', text: $('#draft-text').value, assetId: $('#draft-asset').value || undefined });
-    state.drafts = [draft, ...state.drafts.filter(item => item.id !== draft.id)]; renderDraftPicker(); loadDraft(draft.id); return draft;
+    state.drafts = [draft, ...state.drafts.filter(item => item.id !== draft.id)]; renderDraftPicker(); loadDraft(draft.id); renderOverview(); return draft;
   }
   function markDirty() { dirty = true; text('#draft-save-state', '有未保存的修改'); updatePublish(); }
   const publishKey = () => draftId ? `publish:${accountId}:${draftId}` : '';
@@ -182,7 +202,7 @@
     try {
       const { job } = await action(name, { ...args, operationKey: operation.operationKey });
       operation.status = job.status; saveOperations();
-      state.jobs = [job, ...state.jobs.filter(item => item.id !== job.id)]; renderJobs();
+      state.jobs = [job, ...state.jobs.filter(item => item.id !== job.id)]; renderJobs(); renderOverview();
       notify(job.message || labels[job.status] || '操作已提交', ['failed', 'uncertain'].includes(job.status)); return job;
     } catch (error) { operation.status = error.code === 'NETWORK' || error.code === 'UNCERTAIN' ? 'uncertain' : 'failed'; saveOperations(); throw error; }
   }

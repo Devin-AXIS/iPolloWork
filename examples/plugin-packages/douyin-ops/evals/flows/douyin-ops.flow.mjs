@@ -32,14 +32,16 @@ export default {
       await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 920, deviceScaleFactor: 1, mobile: false });
       await ctx.client.send('Page.navigate', { url: `${service.origin}/#token=${service.token}` });
       await has('本地服务已连接'); await settled();
-      await ctx.prove('未配置时给出真实空状态和接入入口', {
+      await ctx.prove('统一运营布局先展示概览、侧边导航和真实空状态', {
         voiceover: vo[0], assert: async () => {
           ctx.assert(service.operations.state().accounts.length === 0, 'No fake accounts ship with the workbench');
-          ctx.assert(await ctx.eval(`document.querySelectorAll('.tabs button').length === 6`), 'All six workbench sections are reachable');
-        }, screenshot: { name: 'empty-workbench', requireText: ['尚未连接抖音账号', '开放平台应用配置'] },
+          ctx.assert(await ctx.eval(`document.querySelectorAll('.tabs button').length === 7`), 'Overview and all six workbench sections are reachable');
+          ctx.assert(await ctx.eval(`!document.querySelector('#view-overview').hidden && getComputedStyle(document.querySelector('.app-shell')).gridTemplateColumns.split(' ').length === 2`), 'Desktop layout opens on overview with sidebar and workspace columns');
+        }, screenshot: { name: 'empty-workbench', requireText: ['运营总览', '尚未连接抖音账号', '开始创作'] },
       });
       await ctx.prove('配置与测试授权经 UI 持久化，密钥不回显', {
         voiceover: vo[1], action: async () => {
+          await click('.tabs [data-view=accounts]');
           await ctx.fill('#client-key', 'fixture-client'); await ctx.fill('#client-secret', 'fixture-client-secret');
           await ctx.fill('#redirect-uri', 'https://example.com/callback');
           await ctx.fill('#requested-scopes', 'user_info,video.create.bind,video.list,video.data,item.comment');
