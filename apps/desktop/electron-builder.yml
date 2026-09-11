@@ -31,6 +31,27 @@ extraResources:
     to: plugin-packages/github
   - from: ../../examples/plugin-packages/wechat-official
     to: plugin-packages/wechat-official
+  - from: ../../examples/plugin-packages/xiaohongshu-ops
+    to: plugin-packages/xiaohongshu-ops
+    filter:
+      - "ipollowork.plugin.json"
+      - "LICENSE"
+      - "LICENSES/**/*"
+      - "service/**/*"
+      - "skills/**/*"
+      - "!skills/**/node_modules/**/*"
+      - "!skills/**/app/data/**/*"
+      - "!skills/**/app/dist/**/*"
+  - from: ../../examples/plugin-packages/douyin-ops
+    to: plugin-packages/douyin-ops
+    filter:
+      - "ipollowork.plugin.json"
+      - "LICENSE"
+      - "LICENSES/**/*"
+      - "service/**/*"
+      - "skills/**/*"
+      - "ui/**/*"
+      - "!**/node_modules/**/*"
   - from: ../../examples/plugin-packages/design-agent
     to: plugin-packages/design-agent
   - from: ../../examples/plugin-packages/video-agent

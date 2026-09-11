@@ -69,9 +69,9 @@ Feature work starts with the demo, not a PRD:
 
 ## Coding Guidelines
 
-### Independent social plugins
+### Bundled social plugins
 
-Maintain Xiaohongshu and Douyin in the independent local sibling directories `../ipollo-rednote-plugin` and `../ipollo-tiktok-plugin`. The user cancelled automatic GitHub pushes and publishing; do not push or publish plugin changes unless explicitly requested again. After each change, run the plugin repository's `pnpm package:local` and install/update its local package in the host. Keep plugin business code outside this repository, and preserve accounts, drafts, signatures and checksums. The host reads `~/.ipollowork/local-plugin-packages/<plugin-id>/plugin-package.json` (or `IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR`), without fetching these plugins from GitHub.
+Maintain Xiaohongshu and Douyin in `examples/plugin-packages/xiaohongshu-ops` and `examples/plugin-packages/douyin-ops`. These directories are the authoritative source; the sibling repositories are recovery copies only. Do not push or publish plugin changes unless the user explicitly requests it. Keep the stable plugin IDs and user data paths so accounts, drafts, credentials and browser profiles survive updates. After each change, run the plugin package's own checks and tests, then verify installation or update through the host catalog and the affected fraimz flow. Desktop builds copy both packages into `plugin-packages/`; the catalog must not depend on `~/.ipollowork/local-plugin-packages`.
 
 ### Mandatory AI Code Gate
 

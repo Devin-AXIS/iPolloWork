@@ -1,0 +1,23 @@
+{
+  "name": "xiaohongshu-ops",
+  "version": "0.4.14",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "examples/plugin-packages/xiaohongshu-ops"
+  },
+  "scripts": {
+    "setup": "pnpm --dir skills/xhs-ops-worker/app install --ignore-workspace --frozen-lockfile --ignore-scripts",
+    "dev": "pnpm --dir skills/xhs-ops-worker/app dev",
+    "start": "pnpm --dir skills/xhs-ops-worker/app start",
+    "build": "pnpm --dir skills/xhs-ops-worker/app build",
+    "check": "node --check service/workbench.mjs && node --check skills/xhs-ops-worker/scripts/start.mjs && node --check skills/xhs-ops-worker/app/public/app.js && pnpm --dir skills/xhs-ops-worker/app typecheck",
+    "test": "pnpm --dir skills/xhs-ops-worker/app test"
+  },
+  "packageManager": "pnpm@11.13.0"
+}

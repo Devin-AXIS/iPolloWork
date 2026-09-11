@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -13,7 +13,7 @@ import {
   PluginEngineAdapterRegistry,
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
-import { bundledPluginPackageIds, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
 import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
 import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import {
@@ -29,7 +29,6 @@ const WORKSPACE_ID = "ws_plugin_package";
 const ENGINE_ID = "opencode";
 const roots: string[] = [];
 const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
-const previousLocalPackages = process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
 
 function serverConfig(root: string): ServerConfig {
   return {
@@ -177,10 +176,6 @@ async function removeTestRoot(root: string): Promise<void> {
   }
 }
 
-beforeEach(() => {
-  process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = join(tmpdir(), 'ipollowork-absent-local-packages-' + process.pid);
-});
-
 afterEach(async () => {
   for (const root of roots) {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -193,8 +188,6 @@ afterEach(async () => {
   }
   if (previousRuntimeDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousRuntimeDb;
-  if (previousLocalPackages === undefined) delete process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR;
-  else process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = previousLocalPackages;
   while (roots.length) {
     const root = roots.pop();
     if (root) await removeTestRoot(root);
@@ -1658,6 +1651,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.1.4", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.4.14", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "image-studio", version: "0.1.54", installedVersion: "0.1.54", updateAvailable: false },
@@ -1805,6 +1800,31 @@ describe("plugin package lifecycle", () => {
         .toMatchObject({ extensionId: "wechat-official", action: "reply-comment", effect: "write" });
       expect(wechatActionsBody.actions.find((action: { action: string }) => action.action === "delete-comment"))
         .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
+
+      const socialServices = [
+        { id: "xiaohongshu-ops", version: "0.4.14", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
+        { id: "douyin-ops", version: "0.1.4", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+      ];
+      for (const service of socialServices) {
+        const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
+          method: "POST",
+          headers,
+        });
+        expect(socialInstallation.status).toBe(200);
+        expect(await socialInstallation.json()).toMatchObject({
+          result: { status: "installed", pluginId: service.id, version: service.version },
+          item: { pluginId: service.id, manifest: { source: { origin: "builtin", trusted: true } } },
+        });
+        expect(await readFile(join(workspaceRoot, ".opencode", "skills", service.skill, "SKILL.md"), "utf8"))
+          .toContain(service.heading);
+        const socialActions = await fetch(
+          `${base}/experimental/extensions/actions?extensionId=${service.id}&directory=${encodeURIComponent(workspaceRoot)}`,
+          { headers },
+        );
+        expect(socialActions.status).toBe(200);
+        expect((await socialActions.json()).actions.find((action: { action: string }) => action.action === service.action))
+          .toMatchObject({ extensionId: service.id, action: service.action, effect: "read" });
+      }
 
       const disabled = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/figma/resources/figma-design-to-code`, {
         method: "PATCH",
@@ -1985,119 +2005,4 @@ describe("plugin package lifecycle", () => {
     await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "acme-research" });
     expect((await readRuntimeOpencodeConfig(config, WORKSPACE_ID)).mcp?.["acme-research"]).toBeUndefined();
   });
-});
-
-// Public signed fixtures; no private signing material is stored in the test suite.
-const localPackageSignatures = {
-  "1.0.0": {
-    "checksum": {
-      "algorithm": "sha256",
-      "value": "4f78cbe79d91a22dc24430675e7662cd8a94d8c4ea3f3f51760f329223875e6b"
-    },
-    "signature": {
-      "algorithm": "ed25519",
-      "keyId": "social-plugins-2026",
-      "value": "GYUb/YdSBMAManZJM5h52q4cYPIT0j86Bf9f/H3GeAirPSR072f2nf67AHm5Ccw6S3Y5fMn9CKEVafaoaa5bBg=="
-    }
-  },
-  "1.0.1": {
-    "checksum": {
-      "algorithm": "sha256",
-      "value": "81cf72e936903beba2871c771f2aaff9a12c4ec07fe1ef697eba02ca000da831"
-    },
-    "signature": {
-      "algorithm": "ed25519",
-      "keyId": "social-plugins-2026",
-      "value": "/guQd9Bfr0bR5i0V6GEPcGRn9U6+4n1qZLqSQefrGlvgymXk9TecRVc4hIRQa2AiIt4bTwBFD0qpp2FSvJGSBA=="
-    }
-  }
-};
-function localPackageUpload(version: keyof typeof localPackageSignatures) {
-  const manifest = {
-  "schemaVersion": 2,
-  "id": "xiaohongshu-ops",
-  "name": "Release fixture",
-  "description": "Signed release fixture",
-  "source": {
-    "format": "ipollowork-extension-manifest",
-    "origin": "local",
-    "trusted": false
-  },
-  "package": {
-    "version": "1.0.0",
-    "updateId": "zjy-web222/release-fixture",
-    "publisher": {
-      "id": "zjy-web222",
-      "name": "zjy-web222"
-    }
-  },
-  "resources": [
-    {
-      "type": "skill",
-      "id": "release-fixture",
-      "path": "skills/release-fixture/SKILL.md"
-    }
-  ]
-};
-  return { archiveName: "xiaohongshu-ops.ipollowork-plugin", files: [
-    { path: "ipollowork.plugin.json", contentBase64: Buffer.from(JSON.stringify({ ...manifest, package: { ...manifest.package, version, ...localPackageSignatures[version] } })).toString("base64") },
-    { path: "skills/release-fixture/SKILL.md", contentBase64: Buffer.from("# Release fixture\n").toString("base64") },
-  ] };
-}
-
-
-test('local catalog reads the latest signed package at installation and preserves the installed version on failure', async () => {
-  const workspaceRoot = await createRoot('ipollowork-local-catalog-');
-  const packages = await createRoot('ipollowork-local-packages-');
-  process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, 'runtime.sqlite');
-  process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = packages;
-  const packagePath = join(packages, 'xiaohongshu-ops', 'plugin-package.json');
-  await mkdir(dirname(packagePath), {recursive: true});
-  const save = (version: keyof typeof localPackageSignatures) => writeFile(packagePath, JSON.stringify(localPackageUpload(version)));
-  await save('1.0.0');
-  const config = serverConfig(workspaceRoot);
-  const server = await startServer(config);
-  const base = 'http://127.0.0.1:' + server.port + '/workspace/' + WORKSPACE_ID + '/plugin-packages';
-  const headers = {authorization: 'Bearer token', 'content-type': 'application/json'};
-  const install = () => fetch(base + '/catalog/xiaohongshu-ops/install', {method: 'POST', headers});
-  try {
-    const catalog = await (await fetch(base + '/catalog', {headers})).json();
-    expect(catalog.items).toContainEqual(expect.objectContaining({pluginId: 'xiaohongshu-ops', version: '1.0.0', integrity: expect.objectContaining({status: 'verified'})}));
-    expect(catalog.errors.some((error: string) => error.startsWith('douyin-ops:'))).toBe(true);
-    await save('1.0.1');
-    const installed = await install();
-    expect(installed.status).toBe(200);
-    expect((await installed.json()).result).toMatchObject({pluginId: 'xiaohongshu-ops', version: '1.0.1'});
-    await save('1.0.0');
-    expect((await install()).status).toBe(409);
-    const tampered = localPackageUpload('1.0.1');
-    tampered.files[1]!.contentBase64 = Buffer.from('Changed content').toString('base64');
-    await writeFile(packagePath, JSON.stringify(tampered));
-    const invalid = await install();
-    expect(invalid.status).toBe(400);
-    expect((await invalid.json()).code).toBe('plugin_package_checksum_mismatch');
-    await rm(packagePath);
-    expect((await install()).status).toBe(404);
-    const missing = await (await fetch(base + '/catalog', {headers})).json();
-    expect(missing.items.some((item: {pluginId: string}) => item.pluginId === 'figma')).toBe(true);
-    expect(missing.errors.some((error: string) => error.startsWith('xiaohongshu-ops:'))).toBe(true);
-    const retained = await (await fetch(base, {headers})).json();
-    expect(retained.items).toContainEqual(expect.objectContaining({pluginId: 'xiaohongshu-ops', version: '1.0.1'}));
-  } finally { await server.stop(); }
-});
-
-test('local catalog rejects excessive files, traversal and mismatched plugin identities before installation', async () => {
-  const packages = await createRoot('ipollowork-local-package-validation-');
-  process.env.IPOLLOWORK_LOCAL_PLUGIN_PACKAGES_DIR = packages;
-  const path = join(packages, 'douyin-ops', 'plugin-package.json');
-  await mkdir(dirname(path), {recursive: true});
-  await writeFile(path, 'x'.repeat(15 * 1024 * 1024 + 1));
-  const read = () => withPluginPackageCatalogRoot('douyin-ops', async () => { throw new Error('Must not reach installation'); });
-  await expect(read()).rejects.toMatchObject({code: 'plugin_package_upload_too_large'});
-  const payload = localPackageUpload('1.0.0');
-  payload.files[1]!.path = '../outside.md';
-  await writeFile(path, JSON.stringify(payload));
-  await expect(read()).rejects.toMatchObject({code: 'plugin_package_upload_path_invalid'});
-  await writeFile(path, JSON.stringify(localPackageUpload('1.0.0')));
-  await expect(read()).rejects.toMatchObject({code: 'plugin_package_identity_mismatch'});
 });

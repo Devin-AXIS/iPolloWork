@@ -1,0 +1,528 @@
+{
+  "schemaVersion": 2,
+  "id": "douyin-ops",
+  "name": "抖音运营台",
+  "description": "参考小红书运营台的多账号抖音插件：官方 API 授权、视频草稿和发布、作品数据、评论回复与搜索，支持 AI 会话和日程调用。",
+  "category": "营销",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "package": {
+    "version": "0.1.4",
+    "publisher": {
+      "id": "zjy-web222",
+      "name": "zjy-web222"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "local/douyin-ops"
+  },
+  "composer": {
+    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker；账号以 list-accounts 的 OAuth openId 为准。优先调用官方API，按实际scope执行；草稿不自动发布。日程传稳定runKey及operationKey；待核对不可重发。密钥和授权回调仅在工作台输入。"
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "douyin-ops-worker",
+      "label": "抖音运营执行",
+      "path": "skills/douyin-ops-worker",
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "douyin-ops-dispatcher",
+      "label": "抖音日程调度",
+      "path": "skills/douyin-ops-dispatcher",
+      "required": true
+    },
+    {
+      "type": "local-service",
+      "id": "workbench",
+      "label": "抖音运营台",
+      "path": "service/workbench.mjs",
+      "required": true,
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开抖音运营台",
+          "description": "启动本机工作台。应用密钥只在工作台设置中填写。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "studio-state",
+          "title": "查看运营台状态",
+          "description": "读取账号、最近草稿、素材和执行结果，不返回平台令牌。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-accounts",
+          "title": "列出抖音账号",
+          "description": "按用户指定账号选择；返回真实 OAuth 身份和已授予权限。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "start-authorization",
+          "title": "开始抖音授权",
+          "description": "生成官方扫码授权地址；完成后在工作台粘贴回调地址。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import-media",
+          "title": "导入视频工作台素材",
+          "description": "导入当前工作区内真实 MP4 文件，最多128 MiB；返回素材ID。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "sourcePath"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "save-draft",
+          "title": "保存抖音视频草稿",
+          "description": "保存文案和素材，不发布。日程runKey使用原始运行标识加稳定操作后缀；重试复用。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "title": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "assetId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "runKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "title",
+              "text"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "publish-draft",
+          "title": "发布抖音视频",
+          "description": "仅在用户授权发布已保存内容后执行；要求video.create.bind。operationKey重试不可改变。超时返回待核对，禁止重发。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "draftId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "operationKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "draftId",
+              "operationKey"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-videos",
+          "title": "查询授权账号作品",
+          "description": "官方历史video.list接口，仅适用已开通权限的应用。每页最多20条。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  }
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": [
+              "accountId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "video-data",
+          "title": "查询作品数据",
+          "description": "官方历史video.data接口，查询1至20个属于授权账号的作品。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "itemIds": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 20,
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                }
+              }
+            },
+            "required": [
+              "accountId",
+              "itemIds"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-comments",
+          "title": "查询作品评论",
+          "description": "官方历史item.comment接口，查询授权账号自己的公开视频评论。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "itemId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  }
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": [
+              "accountId",
+              "itemId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "reply-comment",
+          "title": "回复作品评论",
+          "description": "仅按用户授权回复指定评论；要求item.comment。operationKey必须稳定，不重复提交。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "itemId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "commentId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "operationKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "itemId",
+              "commentId",
+              "content",
+              "operationKey"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "search-videos",
+          "title": "搜索抖音视频",
+          "description": "使用官方应用令牌和aweme.dy.video_search能力。deviceId填写平台要求的设备标识；翻页必须原样传回searchId和cursor。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "keyword": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "deviceId": {
+                "type": "string",
+                "pattern": "^[0-9]{1,19}$"
+              },
+              "searchId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "cursor": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  }
+                ]
+              },
+              "count": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 20
+              }
+            },
+            "required": [
+              "keyword",
+              "deviceId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "browser-target",
+          "title": "打开抖音网页入口",
+          "description": "返回创作者中心或搜索页面地址及账号独立浏览器环境。网页打开不代表登录验证或发布成功。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "creator",
+                  "search"
+                ]
+              },
+              "keyword": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "get-job",
+          "title": "查看操作结果",
+          "description": "先读取现有回执和待核对状态，再决定后续操作。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "resolve-job",
+          "title": "回写人工核对结果",
+          "description": "只在用户或实际浏览器证据确认待核对操作是否成功后调用；记录依据，不重新发送。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "succeeded",
+                  "failed"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "jobId",
+              "outcome",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ]
+    },
+    {
+      "type": "file",
+      "id": "runtime-files",
+      "label": "抖音服务模块",
+      "path": "service",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "workbench-files",
+      "label": "抖音工作台页面",
+      "path": "ui",
+      "required": true
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Douyin Operations",
+        "description": "Official API account authorization, video drafts and publishing, analytics, comment replies and search, with AI and scheduled tasks.",
+        "category": "Marketing",
+        "composer": {
+          "prompt": "Open the console with open-workbench and read douyin-ops-worker. Use official APIs with granted scopes. Keep operation identifiers stable and reconcile uncertain submissions before further writes."
+        },
+        "resources": {
+          "douyin-ops-worker": {
+            "label": "Douyin operations worker"
+          },
+          "douyin-ops-dispatcher": {
+            "label": "Douyin scheduled operations"
+          },
+          "workbench": {
+            "label": "Douyin Operations"
+          },
+          "runtime-files": {
+            "label": "Douyin runtime modules"
+          },
+          "workbench-files": {
+            "label": "Douyin workbench files"
+          }
+        }
+      }
+    }
+  }
+}
