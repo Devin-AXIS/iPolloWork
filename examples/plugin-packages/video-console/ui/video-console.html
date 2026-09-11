@@ -383,7 +383,7 @@ SOFTWARE.
     function allowedRatios() { return ["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:(model()?.ratios||state.ratios); }
     function normalized() {
       const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
-      if(!model()) set("model",state.models[0]?.id||"");
+      if(!model()) set("model",state.models.find(item=>item.id==="minimax-h3")?.id||state.models[0]?.id||"");
       const current=model(); if(!current) return changed;
       if(state.ai&&!current.operations.some(op=>editOps.includes(op)))set("ai",false);
       if(!allowedOps().includes(state.operation)) set("operation",allowedOps()[0]);
@@ -532,7 +532,7 @@ SOFTWARE.
         render();tell(`已导入 ${filename}，素材将在提交时发送给服务商。`);
       } finally {state.busy=false;render();publish();}
     }
-    function openSettings(){if(state.mode==="edit")useSource(state.previewPath);else{state.openRequest=crypto.randomUUID();publish();}}
+    function openSettings(){if(state.mode==="edit"&&state.previewPath)useSource(state.previewPath);else{mode("generate");state.openRequest=crypto.randomUUID();publish();}}
     $("#refreshMedia").onclick=()=>post({type:"ipollowork:video-console:list-media"});
     const galleryUrls=new Map();let galleryEpoch=0,galleryBytes=0;
     async function galleryMedia(path,maxBytes=100*1024*1024) {

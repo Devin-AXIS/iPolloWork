@@ -62,6 +62,7 @@ const LEGACY_RESOURCE_KEYS = [
   "ui",
 ] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
+  ["zjy-web222/social-plugins-2026", ["MCowBQYDK2VwAyEALRoUrXZv4MA0yQNSErqW6OZlXxLgchbfZF8eZyqhU5s="]],
   [
     "smart-future-school/smart-future-school-2026",
     [

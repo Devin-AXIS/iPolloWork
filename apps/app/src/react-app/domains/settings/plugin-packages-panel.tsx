@@ -220,7 +220,10 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
           return previous ? [[item.pluginId, previous]] : [];
         })));
       }
-      if (catalogResult.status === "fulfilled") setCatalogItems(catalogResult.value.items);
+      if (catalogResult.status === "fulfilled") {
+        setCatalogItems(catalogResult.value.items);
+        if (catalogResult.value.errors?.length) setError(catalogResult.value.errors.join("\n"));
+      }
 
       const failedResult = [packagesResult, catalogResult].find((result) => result.status === "rejected");
       if (failedResult?.status === "rejected") {

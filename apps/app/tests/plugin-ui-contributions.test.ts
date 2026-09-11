@@ -92,6 +92,72 @@ describe("plugin UI contributions", () => {
     expect(resolveInstalledPluginContributions([{ ...item, disabledResourceIds: ["canvas"] }]).workspaceApps).toHaveLength(0);
   });
 
+  test("discovers installed UI resources without explicit contributions and respects placement and availability", async () => {
+    const canvas = await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json();
+    const manifest = parsePluginPackageManifest({ ...canvas, id: "operations-console", name: "运营工作台", contributions: [],
+      resources: canvas.resources.map(resource => ({ ...resource, id: "workbench", label: "运营工作台", path: "ui/workbench.html" })),
+    });
+    const item: iPolloWorkPluginPackageItem = {
+      pluginId: manifest.id, name: manifest.name, version: "0.2.0", enabled: true,
+      disabledResourceIds: [], previousVersion: null, manifest,
+      integrity: { sha256: "0".repeat(64), status: "unsigned" },
+    };
+    const surfaces = resolveInstalledPluginContributions([item]).workspaceApps;
+    expect(surfaces).toMatchObject([{
+      id: "operations-console:workspace-app:workbench",
+      pluginId: "operations-console", label: "运营工作台",
+      resource: { type: "ui", id: "workbench", path: "ui/workbench.html" },
+    }]);
+    expect(resolveInstalledPluginContributions([]).workspaceApps).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, enabled: false }]).workspaceApps).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, disabledResourceIds: ["workbench"] }]).workspaceApps).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, manifest: {
+      ...manifest, resources: manifest.resources.filter((entry) => entry.type !== "ui"),
+    } }]).workspaceApps).toEqual([]);
+    const explicitlyPlaced = resolveInstalledPluginContributions([{ ...item, manifest: {
+      ...manifest, contributions: [{ type: "workspace-app", ref: "workbench", label: "运营工作台" }],
+    } }]).workspaceApps;
+    expect(explicitlyPlaced).toHaveLength(1);
+    expect(explicitlyPlaced[0]).toMatchObject({ id: surfaces[0].id, label: "运营工作台" });
+    const settingsOnly = resolveInstalledPluginContributions([{ ...item, manifest: {
+      ...manifest, contributions: [{ type: "settings-page", ref: "workbench" }],
+    } }]);
+    expect(settingsOnly.workspaceApps).toEqual([]);
+    expect(settingsOnly.settingsPages).toHaveLength(1);
+    expect(resolveInstalledPluginContributions([{ ...item, activeEngineId: "opencode", engineCompatibility: [{
+      engineId: "opencode", status: "partial", supportedResourceIds: ["operations-worker"],
+      unsupportedResourceIds: ["workbench"], unsupportedRequiredResourceIds: [],
+      unsupportedCapabilityIds: [], nativeEngineOnly: false,
+    }] }]).workspaceApps).toEqual([]);
+  });
+
+  test("discovers service workbenches without a UI resource and never bypasses disabled UI", async () => {
+    const canvas = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/workspace-canvas/ipollowork.plugin.json", import.meta.url)).json());
+    const manifest = parsePluginPackageManifest({
+      ...canvas, id: "labelu-data-annotation", name: "数据标注实训云", contributions: [],
+      resources: [{ type: "local-service", id: "annotation-service", path: "service/dist/data-annotation.mjs",
+        actions: [{ id: "open-workbench", title: "打开工作台", description: "启动工作台并返回地址", effect: "read", inputSchema: { type: "object", properties: {} } }] }],
+    });
+    const item: iPolloWorkPluginPackageItem = {
+      pluginId: manifest.id, name: manifest.name, version: "0.3.0", enabled: true,
+      disabledResourceIds: [], previousVersion: null, manifest,
+      integrity: { sha256: "0".repeat(64), status: "verified" },
+    };
+    expect(resolveInstalledPluginContributions([item]).workspaceApps).toMatchObject([{
+      pluginId: manifest.id, label: "数据标注实训云", action: "open-workbench",
+      resource: { type: "local-service", id: "annotation-service" },
+    }]);
+    expect(resolveInstalledPluginContributions([{ ...item, enabled: false }]).workspaceApps).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, disabledResourceIds: ["annotation-service"] }]).workspaceApps).toEqual([]);
+    expect(resolveInstalledPluginContributions([{ ...item, manifest: { ...manifest,
+      resources: manifest.resources.map(resource => ({ ...resource, actions: [] })),
+    } }]).workspaceApps).toEqual([]);
+    const withUi = { ...item, manifest: { ...manifest, resources: [...manifest.resources, ...canvas.resources] } };
+    expect(resolveInstalledPluginContributions([withUi]).workspaceApps).toHaveLength(1);
+    expect(resolveInstalledPluginContributions([withUi]).workspaceApps[0].resource.type).toBe("ui");
+    expect(resolveInstalledPluginContributions([{ ...withUi, disabledResourceIds: ["canvas"] }]).workspaceApps).toEqual([]);
+  });
+
   test("does not treat built-in Design and Video workspaces as plugin contributions", async () => {
     const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json());
     const legacyManifest = parsePluginPackageManifest({

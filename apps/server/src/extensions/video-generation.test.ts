@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -36,8 +36,6 @@ function workflowFixture() {
     "10": { class_type: "BasicGuider", inputs: { conditioning: ["17",0] } },
     "9": { class_type: "BasicScheduler", inputs: { steps: 25 } },
     "16": { class_type: "RandomNoise", inputs: { noise_seed: 42 } },
-    "24": { class_type: "LoadImage", inputs: { image: "template-first.png" } },
-    "25": { class_type: "LoadImage", inputs: { image: "template-last.png" } },
   }) } };
 }
 afterEach(async () => {
@@ -83,7 +81,7 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
   const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
   expect(frames.url).toEndWith("/task/openapi/create");
-  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084511826766811137",instanceType:"plus"});
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2097511747551842305",instanceType:"plus"});
   if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
   const graph=JSON.parse(frames.body.workflow);
   expect(graph["24"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
@@ -222,7 +220,7 @@ test("H3 refuses a changed public graph before billing and never resubmits an un
     expect(job.status).toBe(changed?"failed":"uncertain");
     expect(creates).toBe(changed?0:1);
     expect(job.message).not.toContain("test-rh-secret");
-    expect(job.workflowId).toBe("2084511826766811137");
+    expect(job.workflowId).toBe("2097511747551842305");
   }
 });
 
@@ -240,16 +238,20 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
 });
 
-test("existing H3 workflow jobs still download output node 92",async()=>{
+test.each([
+  ["2084935567606894593", "92"],
+  ["2084511826766811137", "7"],
+  ["2097511747551842305", "7"],
+])("H3 workflow %s keeps its saved output node %s",async(workflowId, nodeId)=>{
   const {config,call}=await setup();
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>url.endsWith("getJsonApiFormat")?Response.json(workflowFixture()):Response.json({code:0,data:{taskId:"old-h3-task",taskStatus:"QUEUED"}}));
   const args=submission({model:"minimax-h3",resolution:"0.5MP"});
   await call("submit",args);
   const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
-  await updateVideoJob(config,job,{workflowId:"2084935567606894593"});
+  await updateVideoJob(config,job,{workflowId});
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
     if(String(url).endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
-    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId:"92"}]});
+    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId}]});
     expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/old.mp4");return new Response(mp4);
   });
   await pollVideoJobs(config,auth);
@@ -305,7 +307,7 @@ test("read-only and path escapes are rejected; preview is chunked",async()=>{
   await expect(call("read",{path:"outside/clip.mp4"})).rejects.toThrow("escapes");
   await symlink(outside,join(root,"video"),process.platform==="win32"?"junction":"dir");
   await expect(call("import",{filename:"clip.mp4",dataUrl:`data:video/mp4;base64,${mp4.toString("base64")}`})).rejects.toThrow("escapes");
-  await rm(join(root,"outside"));await rm(join(root,"video"));
+  await unlink(join(root,"outside"));await unlink(join(root,"video"));
 });
 
 test("plugin manifest is valid and advertises only host-backed actions",async()=>{
@@ -313,6 +315,21 @@ test("plugin manifest is valid and advertises only host-backed actions",async()=
   const result=validatePluginPackageManifest(manifest);expect(result.success).toBe(true);
   if(!result.success)throw new Error(JSON.stringify(result.issues));
   expect(result.manifest.contributions).toContainEqual(expect.objectContaining({type:"workspace-app",ref:"console"}));
+});
+
+test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
+  const start=html.indexOf("function openSettings()");
+  const callback=html.slice(start,html.indexOf("\n",start));
+  const edits:string[]=[];
+  const state={mode:"edit",previewPath:"",model:"minimax-h3",openRequest:""};
+  const sandbox={state,crypto:{randomUUID:()=> "open-settings"},publish:()=>{},mode:(value:string)=>{state.mode=value;},useSource:(path:string)=>edits.push(path)};
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(state).toMatchObject({mode:"generate",model:"minimax-h3",openRequest:"open-settings"});
+  expect(edits).toEqual([]);
+  state.mode="edit";state.previewPath="video/original.mp4";
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(edits).toEqual(["video/original.mp4"]);
 });
 
 test("video inspector resets incompatible fields and publishes the real host contract",async()=>{
@@ -327,9 +344,14 @@ test("video inspector resets incompatible fields and publishes the real host con
   };
   runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
-  expect(result.model).toBe("seedance-2.5");
+  expect(result.model).toBe("minimax-h3");
+  expect(runInNewContext("state.resolution",sandbox)).toBe("0.5MP");
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.filter(field=>field.control==="select").map(field=>field.id)).toEqual(["operation","resolution","duration","ratio"]);
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.advanced)).toBe(false);
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
+  const unavailable=runInNewContext("state.model='';state.models=provider.models.filter(item=>item.id!=='minimax-h3');normalized();state.model",sandbox);
+  expect(unavailable).toBe("seedance-2.5");
+  runInNewContext("state.models=provider.models;",sandbox);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='generate';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
   const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");

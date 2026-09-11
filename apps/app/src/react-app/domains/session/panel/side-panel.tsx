@@ -59,7 +59,7 @@ import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
-import { WorkspaceAppFrame, type WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
@@ -79,7 +79,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
-  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => boolean | Promise<boolean>;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onGenerateVideo?: (path:string, sourceSessionId:string) => void;
   onSaveAsTemplate?: () => void;
@@ -98,6 +98,69 @@ export type SidePanelLauncherItem = {
   disabled?: boolean;
   onClick: () => void;
 };
+
+export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrowserAvailable = false, onCreateBrowser }: {
+  launcherItems: SidePanelLauncherItem[];
+  expanded?: boolean;
+  isBrowserAvailable?: boolean;
+  onCreateBrowser?: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={(
+            <DropdownMenuTrigger
+              render={(
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={t("side_panel.add_entry")}
+                >
+                  <Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+                </Button>
+              )}
+            />
+          )}
+        />
+        <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        positionerClassName={expanded ? "z-[70]" : undefined}
+        className="w-56"
+      >
+        {launcherItems.map((item, index) => {
+          return (
+            <React.Fragment key={item.id}>
+              {index > 0 && launcherItems[index - 1]?.group !== item.group ? <DropdownMenuSeparator className="my-1" /> : null}
+              <DropdownMenuItem
+                data-testid={`side-panel-launcher-${item.id}`}
+                disabled={item.disabled}
+                onClick={item.onClick}
+                className="h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!"
+              >
+                <SidePanelLauncherIcon item={item} />
+                <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{studioLabel(item.icon, item.label)}</span>
+                {item.shortcut ? <span className="text-xs font-normal text-muted-foreground">{item.shortcut}</span> : null}
+              </DropdownMenuItem>
+            </React.Fragment>
+          );
+        })}
+        {launcherItems.length === 0 && isBrowserAvailable ? (
+          <DropdownMenuItem
+            onClick={onCreateBrowser}
+            className="h-9 gap-3 px-2.5 py-0 text-sm font-normal text-foreground"
+          >
+            <Globe className="size-[18px] text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+            <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem }) {
   const icon = item.icon === "web"
@@ -780,59 +843,7 @@ export function SidePanel({
                   ))}
                 </PanelTabList>
                 {isBrowserAvailable || launcherItems.length > 0 ? (
-                  <DropdownMenu>
-                    <Tooltip>
-                      <TooltipTrigger
-                        render={(
-                          <DropdownMenuTrigger
-                            render={(
-                              <Button
-                                variant="ghost"
-                                size="icon-sm"
-                                className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
-                                aria-label={t("side_panel.add_entry")}
-                              >
-                                <Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
-                              </Button>
-                            )}
-                          />
-                        )}
-                      />
-                      <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
-                    </Tooltip>
-                    <DropdownMenuContent
-                      align="end"
-                      positionerClassName={expanded ? "z-[70]" : undefined}
-                      className="w-56"
-                    >
-                      {launcherItems.map((item, index) => {
-                        return (
-                          <React.Fragment key={item.id}>
-                            {index > 0 && launcherItems[index - 1]?.group !== item.group ? <DropdownMenuSeparator className="my-1" /> : null}
-                            <DropdownMenuItem
-                              data-testid={`side-panel-launcher-${item.id}`}
-                              disabled={item.disabled}
-                              onClick={item.onClick}
-                              className="h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!"
-                            >
-                              <SidePanelLauncherIcon item={item} />
-                              <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{studioLabel(item.icon, item.label)}</span>
-                              {item.shortcut ? <span className="text-xs font-normal text-muted-foreground">{item.shortcut}</span> : null}
-                            </DropdownMenuItem>
-                          </React.Fragment>
-                        );
-                      })}
-                      {launcherItems.length === 0 && isBrowserAvailable ? (
-                        <DropdownMenuItem
-                          onClick={() => createTab()}
-                          className="h-9 gap-3 px-2.5 py-0 text-sm font-normal text-foreground"
-                        >
-                          <Globe className="size-[18px] text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
-                          <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
-                        </DropdownMenuItem>
-                      ) : null}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <SidePanelLauncherMenu launcherItems={launcherItems} expanded={expanded} isBrowserAvailable={isBrowserAvailable} onCreateBrowser={() => createTab()} />
                 ) : null}
               </div>
             </div>
@@ -932,7 +943,10 @@ export function SidePanel({
               workspaceRoot={workspaceRoot}
               aiEditing={aiEditing}
               expanded={expanded}
-              onSendMessage={onSendWorkspaceAppMessage}
+              onSendMessage={onSendWorkspaceAppMessage ? async input => {
+                const result = await onSendWorkspaceAppMessage(input);
+                return typeof result === "boolean" ? result : result.accepted;
+              } : undefined}
             />
           </div>
         ) : activeTab?.type === "artifact" ? (

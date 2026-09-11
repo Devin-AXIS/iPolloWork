@@ -1692,7 +1692,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken, timeoutMs: timeouts.config },
       ),
     listBundledPluginPackages: (workspaceId: string) =>
-      requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
+      requestJson<{ items: iPolloWorkBundledPluginPackageItem[]; errors?: string[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
         token,
         hostToken,
         timeoutMs: timeouts.config,

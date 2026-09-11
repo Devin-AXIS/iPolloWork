@@ -18,7 +18,7 @@ import { inspectLocalVideo, localVideoEditSchema, saveLocalVideo } from "./video
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
 const RH = "https://www.runninghub.ai";
-const H3_WORKFLOW = "2084511826766811137";
+const H3_WORKFLOW = "2097511747551842305";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
@@ -44,7 +44,7 @@ const catalog = [
 ];
 // Source of truth for both the inspector and validation. Do not send unsupported knobs.
 // Ark: https://www.volcengine.com/docs/82379/1520757
-// H3: https://www.runninghub.cn/post/2084511826766811137 (native 25-step workflow).
+// H3: https://www.runninghub.cn/post/2097511747551842305 (native 25-step workflow).
 export function videoModelDefinition(id: string) {
   const model = catalog.find(item => item.id === id);
   if (!model) throw new ApiError(400, "video_model_invalid", "请选择已支持的视频模型。");
@@ -209,8 +209,8 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
     || node("9", "BasicScheduler").steps !== 25) {
     throw new ApiError(400, "video_workflow_changed", "H3 工作流的模型或生成连接已变化，已停止提交以避免错误生成。");
   }
-  node("24", "LoadImage"); node("25", "LoadImage");
-  if (graph["300"] || graph["301"]) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
+  // This published text-to-video graph has no image loaders. Add them only for frame modes.
+  if (["24", "25", "300", "301"].some(id => graph[id])) throw new ApiError(400, "video_workflow_changed", "H3 工作流节点编号已变化，请更新软件后重试。");
   target.prompt = args.prompt;
   // Explicit conditioning: never retain the author's prompt, duration or reference images.
   const frames = Math.max(5, Math.round(Number(args.duration) * 24));
@@ -334,7 +334,8 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   const result = await jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal);
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
   const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
-  const outputNode = job.workflowId === H3_WORKFLOW ? "7" : "92";
+  // Persisted jobs from the previous native workflow still finish on node 7.
+  const outputNode = [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
   const video = outputs.find(item => item.nodeId === outputNode && item.fileType.toLowerCase() === "mp4");
   if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
   return { status, results: [{ url: video.fileUrl }] };

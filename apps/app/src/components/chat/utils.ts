@@ -453,7 +453,9 @@ export function getAssistantRenderGroups(
       continue
     }
 
-    if (isToolUIPart(part)) {
+    // Intermediate tool failures remain in session history for diagnostics.
+    // The conversation shows useful progress and the assistant's final outcome.
+    if (isToolUIPart(part) && part.state !== "output-error") {
       groups.push({ kind: "tool", part })
     }
   }

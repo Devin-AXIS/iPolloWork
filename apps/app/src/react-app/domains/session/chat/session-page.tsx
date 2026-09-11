@@ -167,7 +167,7 @@ import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
-import { SidePanel, SidePanelLauncherIcon, type SidePanelLauncherItem } from "../panel/side-panel";
+import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -879,6 +879,15 @@ function InitialProjectTaskStarter({
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [toolImportedPlugins, setToolImportedPlugins] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
+
+  // Keep the unsent starter input available when a workbench creates a session.
+  useEffect(() => {
+    const scope = `new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`;
+    const store = useComposerStateStore.getState();
+    store.setDraft(scope, draft);
+    store.setAttachments(scope, attachments);
+    store.setPasteParts(scope, pastedText);
+  }, [workspaceId, engineId, draft, attachments, pastedText]);
 
   const opencodeClient = useMemo(
     () => opencodeBaseUrl && ipolloworkToken
@@ -3582,12 +3591,12 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     const restoredPanel = lastRightPanelViewRef.current;
-    if (restoredPanel === "launcher") {
+    if (!props.selectedSessionId || restoredPanel === "launcher") {
       setSessionPanelView("launcher");
       return;
     }
     setCurrentSidePanel(restoredPanel);
-  }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     openDesignTab();
@@ -3769,6 +3778,7 @@ export function SessionPage(props: SessionPageProps) {
     requiresArgs: true,
     args: [
       { name: "url", type: "string", required: true, description: "The website URL to open." },
+      { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
     ],
     previewArgs: { url: "https://example.com" },
     disabled: !isElectronRuntime(),
@@ -3776,7 +3786,8 @@ export function SessionPage(props: SessionPageProps) {
       const url = controlStringArg(args, "url");
       if (!url) return { ok: false, error: "Missing URL." };
       setCurrentSidePanel("panel");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url);
+      const profileId = controlStringArg(args, "profileId");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId ? { profileId } : undefined);
       return result;
     },
   }), [setCurrentSidePanel]);
@@ -3996,7 +4007,7 @@ export function SessionPage(props: SessionPageProps) {
         instruction: context,
       },
     }, props.selectedSessionId);
-    return outcome ? promptWasDispatched(outcome) : false;
+    return { accepted: outcome ? promptWasDispatched(outcome) : false, sessionId: typeof outcome === "object" ? outcome.sessionId ?? props.selectedSessionId : props.selectedSessionId };
   }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
   const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
   const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
@@ -4009,7 +4020,10 @@ export function SessionPage(props: SessionPageProps) {
   const designOpen = Boolean(launcherDesignTabId && sessionPanelState.tabs.some((tab) => tab.id === launcherDesignTabId));
   const videoOpen = Boolean(launcherVideoSessionId && sessionPanelState.tabs.some((tab) => tab.id === `video:${launcherVideoSessionId}`));
   const filesOpen = sessionPanelState.tabs.some((tab) => tab.type === "artifact" && launcherArtifactTargetIds.has(tab.id));
-  const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
+  const [pendingLauncher, setPendingLauncher] = useState<{ itemId: string; sessionId: string; workspaceId: string } | null>(null);
+  const [launcherBusy, setLauncherBusy] = useState(false);
+  const launcherCreationRef = useRef(false);
+  const rawSidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
       label: t("session.side_panel.web"),
@@ -4017,7 +4031,7 @@ export function SessionPage(props: SessionPageProps) {
       shortcut: "⌘T",
       icon: "web",
       onClick: addBrowserPanelTab,
-      disabled: !isElectronRuntime(),
+      disabled: !props.selectedWorkspaceId || !isElectronRuntime(),
     },
     {
       id: "design",
@@ -4025,7 +4039,7 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       icon: "design",
       onClick: showDesignRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
+      disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
     },
     {
       id: "files",
@@ -4042,7 +4056,7 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       icon: "video",
       onClick: showVideoRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
+      disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
     {
       id: "plugin-workshop",
@@ -4058,9 +4072,58 @@ export function SessionPage(props: SessionPageProps) {
       group: "studio",
       icon: surface.pluginId === "image-studio" ? "image-studio" : surface.pluginId === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedSessionId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
+      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
     })),
   ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
+  const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
+    ...item,
+    disabled: item.disabled || launcherBusy,
+    onClick: () => {
+      if (item.disabled || launcherCreationRef.current) return;
+      if (props.selectedSessionId) {
+        item.onClick();
+        return;
+      }
+      launcherCreationRef.current = true;
+      setLauncherBusy(true);
+      const workspaceId = props.selectedWorkspaceId;
+      const scope = `new-task:${workspaceId ?? "new-project"}:${props.selectedWorkspaceDisplay.engineId?.trim() || DEFAULT_ENGINE_ID}`;
+      void (async () => {
+        try {
+          const sessionId = await props.sidebar.onCreateTaskInWorkspace(workspaceId, "work");
+          if (!sessionId) throw new Error(t("plugin_workshop.create_session_failed"));
+          const store = useComposerStateStore.getState();
+          const draft = store.sessions[scope];
+          if (draft) store.restoreSessionIfEmpty(sessionId, draft);
+          setPendingLauncher({ itemId: item.id, sessionId, workspaceId });
+        } catch (error) {
+          launcherCreationRef.current = false;
+          setLauncherBusy(false);
+          toast.error(error instanceof Error ? error.message : t("plugin_workshop.create_session_failed"));
+        }
+      })();
+    },
+  }));
+  useEffect(() => {
+    if (!pendingLauncher) return;
+    if (pendingLauncher.workspaceId !== props.selectedWorkspaceId) {
+      setPendingLauncher(null);
+      launcherCreationRef.current = false;
+      setLauncherBusy(false);
+      return;
+    }
+    // Run with the new session's callbacks, never the blank conversation's closures.
+    if (pendingLauncher.sessionId !== props.selectedSessionId) return;
+    setPendingLauncher(null);
+    launcherCreationRef.current = false;
+    setLauncherBusy(false);
+    if (pendingLauncher.itemId === "plugin-workshop") {
+      setSessionPanelView(null);
+      openPluginWorkshopForSession(pendingLauncher.sessionId);
+    } else {
+      rawSidePanelLauncherItems.find((item) => item.id === pendingLauncher.itemId)?.onClick();
+    }
+  }, [pendingLauncher, props.selectedSessionId, props.selectedWorkspaceId, rawSidePanelLauncherItems, openPluginWorkshopForSession]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -4382,9 +4445,9 @@ export function SessionPage(props: SessionPageProps) {
   }, [props.selectedSessionId]);
 
   useEffect(() => {
-    if (!showProjectNoTasksState || !sidePanelOpen) return;
+    if (!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher") return;
     closeRightPane();
-  }, [closeRightPane, showProjectNoTasksState, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, showProjectNoTasksState, sidePanelOpen]);
 
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
@@ -4730,7 +4793,6 @@ export function SessionPage(props: SessionPageProps) {
                           aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           aria-pressed={sidePanelOpen}
-                          disabled={!props.selectedSessionId && !sidePanelOpen}
                           onClick={toggleRightPanel}
                           data-testid="right-panel-toggle"
                         >
@@ -5137,22 +5199,10 @@ export function SessionPage(props: SessionPageProps) {
                   }}
                 >
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
-                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
-                      <div className="w-full max-w-[240px] space-y-5">
-                        {sidePanelLauncherItems.map((item) => {
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                              onClick={item.onClick}
-                              disabled={item.disabled}
-                            >
-                              <SidePanelLauncherIcon item={item} />
-                              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                            </button>
-                          );
-                        })}
+                    <div className="flex h-full flex-col bg-background">
+                      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
+                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} />
+                        {launcherBusy ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" role="status" aria-label={t("templates.starter.loading")} /> : null}
                       </div>
                     </div>
                   ) : sidePanelOpen && activeSidePanel === "voice" ? (

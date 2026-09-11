@@ -13,6 +13,8 @@ export const bundledPluginPackageIds = [
   "context7",
   "github",
   "wechat-official",
+  "xiaohongshu-ops",
+  "douyin-ops",
   "design-agent",
   "video-agent",
   "image-studio",
@@ -21,6 +23,12 @@ export const bundledPluginPackageIds = [
 ] as const;
 
 export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
+
+export const catalogPluginPackageIds = [...bundledPluginPackageIds];
+
+export async function withPluginPackageCatalogRoot<T>(pluginId: string, operation: (root: string, source: string) => Promise<T>): Promise<T> {
+  return operation(await resolveBundledPluginPackageRoot(pluginId), `bundled:${pluginId}`);
+}
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

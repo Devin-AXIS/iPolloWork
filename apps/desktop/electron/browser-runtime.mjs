@@ -159,6 +159,15 @@ function snapshotLine(node, ref, depth) {
   const details = [];
   if (name) details.push(quote(name));
   if (value && value !== name) details.push(`value=${quote(value)}`);
+  // Links already exposed by Chromium's accessibility tree must retain their
+  // destination, so read-only discovery does not have to activate every card.
+  const href = role === "link" ? axProperty(node, "url") : null;
+  if (typeof href === "string" && href.length <= 2048) {
+    try {
+      const url = new URL(href);
+      if (["http:", "https:"].includes(url.protocol) && !url.username && !url.password) details.push(`url=${quote(href)}`);
+    } catch { /* Invalid page-provided URLs are not usable navigation targets. */ }
+  }
   for (const property of ["checked", "disabled", "expanded", "focused", "required", "selected"]) {
     const propertyValue = axProperty(node, property);
     if (propertyValue !== undefined && propertyValue !== false) details.push(`${property}=${String(propertyValue)}`);
@@ -224,6 +233,7 @@ function automationMetadataFunction() {
       disabled: Boolean(this.disabled || this.readOnly || this.getAttribute?.("aria-disabled") === "true"),
       fileInput: tag === "INPUT" && type === "file",
       nativeSelect: tag === "SELECT",
+      imageSrc: tag === "IMG" ? String(this.currentSrc || this.src || "").slice(0, 2048) : null,
       visible: rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0
         && rect.left < viewportWidth && rect.top < viewportHeight
         && style.display !== "none" && style.visibility !== "hidden" && style.pointerEvents !== "none",
@@ -355,6 +365,10 @@ export function createBrowserRuntime({
   }
 
   async function snapshot(payload = {}) {
+    const imageSelector = payload.imageSelector;
+    if (imageSelector !== undefined && (typeof imageSelector !== "string" || !imageSelector.trim() || imageSelector.length > 200)) {
+      throw new Error("Browser image selector is invalid.");
+    }
     const tab = resolveTab(payload.tabId);
     return withDebugger(tab, async (debuggerApi) => {
       const trees = await readAccessibilityTrees(debuggerApi);
@@ -457,6 +471,19 @@ export function createBrowserRuntime({
         emitted += 1;
       }
 
+      let imageUrl = null;
+      if (imageSelector) {
+        const { root } = await debuggerCommand(debuggerApi, "DOM.getDocument", { depth: 0 });
+        const { nodeIds } = await debuggerCommand(debuggerApi, "DOM.querySelectorAll", { nodeId: root.nodeId, selector: imageSelector });
+        // A configured profile selector must identify exactly one visible image.
+        if (nodeIds.length === 1) {
+          const { node } = await debuggerCommand(debuggerApi, "DOM.describeNode", { nodeId: nodeIds[0] });
+          const objectId = await resolvedNode(debuggerApi, { backendNodeId: node.backendNodeId });
+          const metadata = await inspectElement(debuggerApi, objectId);
+          if (metadata.visible && metadata.unobstructed && /^https?:\/\//.test(metadata.imageSrc || "")) imageUrl = metadata.imageSrc;
+        }
+        if (tab.view.webContents.getURL() !== state.url) throw new Error("Browser page changed during snapshot.");
+      }
       let tree = lines.join("\n");
       if (tree.length > MAX_SNAPSHOT_TEXT) {
         tree = `${tree.slice(0, MAX_SNAPSHOT_TEXT - 25)}\n… snapshot truncated`;
@@ -470,6 +497,7 @@ export function createBrowserRuntime({
         url: state.url,
         title: tab.view.webContents.getTitle(),
         tree: tree || "(No accessible page content)",
+        ...(imageSelector ? { imageUrl } : {}),
         elementCount: state.refs.size,
         truncated,
       };
@@ -689,6 +717,8 @@ export function createBrowserRuntime({
         key: eventKey,
         code,
         windowsVirtualKeyCode,
+        text: key === "Enter" ? "\r" : " ",
+        unmodifiedText: key === "Enter" ? "\r" : " ",
       });
       await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
         type: "keyUp",
@@ -764,21 +794,7 @@ export function createBrowserRuntime({
       if (value.length > MAX_FILL_TEXT) throw new Error("Browser fill text is too long.");
       focusBrowserTarget(tab);
       await debuggerCommand(debuggerApi, "DOM.focus", { backendNodeId: entry.backendNodeId });
-      const modifiers = platform === "darwin" ? 4 : 2;
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "rawKeyDown",
-        key: "a",
-        code: "KeyA",
-        modifiers,
-        windowsVirtualKeyCode: 65,
-      });
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: "a",
-        code: "KeyA",
-        modifiers,
-        windowsVirtualKeyCode: 65,
-      });
+      tab.view.webContents.selectAll();
       await debuggerCommand(debuggerApi, "Input.insertText", { text: value });
       return { type: "fill", ref, characters: Array.from(value).length };
     }
@@ -870,27 +886,33 @@ export function createBrowserRuntime({
       if (!snapshotId || snapshotId !== state.latestSnapshotId || state.url !== tab.view.webContents.getURL()) {
         throw new Error("Browser snapshot is stale. Take a new snapshot before acting.");
       }
-      const results = [];
-      for (const action of actions) {
-        if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
-        results.push(await performAction({
-          action,
-          debuggerApi,
-          state,
-          tab,
-          workspaceRoot: payload.workspaceRoot,
-        }));
-        if (state.latestSnapshotId !== snapshotId) break;
+      // Windows may deny foreground focus to a scheduled background task. Keep
+      // Chromium input active for this bounded batch, then release it again.
+      await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: true });
+      try {
+        const results = [];
+        for (const action of actions) {
+          if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
+          results.push(await performAction({
+            action,
+            debuggerApi,
+            state,
+            tab,
+            workspaceRoot: payload.workspaceRoot,
+          }));
+          if (state.latestSnapshotId !== snapshotId) break;
+        }
+        return {
+          ok: true,
+          provider: "builtin",
+          tabId: tab.tabId,
+          url: tab.view.webContents.getURL(),
+          results,
+          snapshotRequired: state.latestSnapshotId !== snapshotId,
+        };
+      } finally {
+        await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
       }
-      const snapshotRequired = state.latestSnapshotId !== snapshotId;
-      return {
-        ok: true,
-        provider: "builtin",
-        tabId: tab.tabId,
-        url: tab.view.webContents.getURL(),
-        results,
-        snapshotRequired,
-      };
     });
   }
 

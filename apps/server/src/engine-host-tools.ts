@@ -246,6 +246,7 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
     description: `Open an external website in a new iPolloWork built-in browser tab. Returns tabId for ipollowork_browser_snapshot. ${ENGINE_BROWSER_INSTRUCTION}`,
     parameters: objectParameters({
       url: { type: "string", description: "HTTP or HTTPS website URL." },
+      profileId: { type: "string", pattern: "^[a-zA-Z0-9:_-]{1,200}$", description: "Persistent browser profile returned by an account plugin. Omit for the default browser session." },
     }, ["url"]),
   },
   {

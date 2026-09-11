@@ -1,8 +1,21 @@
-# Independent plugin packages
+# Plugin packages
 
 For the complete Chinese developer handbook, see [`specs/plugin-developer-guide.zh-CN.md`](../specs/plugin-developer-guide.zh-CN.md).
 
 iPolloWork plugin packages combine portable skills, MCP servers, services, UI contributions, authorization, and optional engine-native capabilities. Engine-specific behavior stays inside `engineBindings`; the package's portable capabilities do not depend on an engine directory layout.
+
+## Bundled operations plugins
+
+The operations plugins below are maintained in the main iPolloWork plugin collection and shipped with desktop builds:
+
+| Plugin | Authoritative source | Stable plugin ID |
+| --- | --- | --- |
+| Xiaohongshu Operations | `examples/plugin-packages/xiaohongshu-ops` | `xiaohongshu-ops` |
+| Douyin Operations | `examples/plugin-packages/douyin-ops` | `douyin-ops` |
+
+Their services, skills, UI, platform adapters and plugin-specific tests live beside the other built-in packages. The host still owns the generic installer, authorization, browser, scheduling and workbench integration. Stable plugin IDs and data directories let existing installations keep their accounts, drafts and private data when updating from the bundled catalog.
+
+The host's generic launcher proof accepts `IPOLLOWORK_EVAL_WORKBENCHES` as a JSON array of `{ pluginId, resourceId, label, requireText, external? }` objects. Run `plugin-workbench-launcher` against an app with those plugins installed. Plugin-specific proof flows live inside each package's `evals/flows` directory.
 
 ## Package layout
 
@@ -248,8 +261,10 @@ GET  /workspace/:id/plugin-packages/catalog
 POST /workspace/:id/plugin-packages/catalog/:pluginId/install
 ```
 
-Only server-allowlisted bundle IDs can use these routes. The Figma bundle is copied into the desktop resources at build time and uses the same preview, checksum, approval, install, update, rollback, and uninstall lifecycle as a local package.
+Only server-allowlisted bundle IDs can use these routes. Reviewed bundles are copied into the desktop resources at build time and use the same preview, approval, install, update, rollback and uninstall lifecycle as imported packages.
 
 ## Release and catalog contract
+
+The Xiaohongshu and Douyin catalog entries resolve the reviewed package directories under `examples/plugin-packages` during development and under the desktop `plugin-packages` resource directory after packaging. Catalog refresh and installation do not read `~/.ipollowork/local-plugin-packages` and do not fetch source from GitHub. A plugin change must bump its manifest and package versions, pass the package checks, and then be installed or updated through the normal catalog lifecycle. Publishing remains a separate, explicit release action.
 
 A hosted marketplace can use the same validated manifest and immutable artifact. A release record should contain `updateId`, version, publisher identity, artifact URL, SHA-256 checksum, signature/review status, compatibility ranges, release notes, and rollout channel. The desktop must download to a temporary directory, verify identity and checksum, preview the exact writes and permissions, and then call the canonical package lifecycle. This keeps hosted distribution behind one lifecycle and avoids a second installer format.

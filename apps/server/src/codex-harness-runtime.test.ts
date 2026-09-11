@@ -1359,6 +1359,86 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 
 describe("Codex provider protocol gateway", () => {
+  test.each(["openai", "anthropic"])("preserves namespaced tool identity through %s responses and history", async (api) => {
+    const receivedBodies: unknown[] = [];
+    const namespace = "mcp__ipollowork";
+    const names = ["ipollowork_workspace_app_call_tool", "custom_prompt"];
+    const aliases = names.map((name) => `${namespace}__${name}`);
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      request.on("end", () => {
+        receivedBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.writeHead(200, { "content-type": "application/json" });
+        const args = [{ name: "accept_expanded_prompt", arguments: { requestId: "pending", prompt: "expanded" } }, { input: "expanded" }];
+        response.end(JSON.stringify(api === "openai" ? {
+          choices: [{ message: { role: "assistant", tool_calls: aliases.map((name, index) => ({
+            id: `call_${index}`, type: "function", function: { name, arguments: JSON.stringify(args[index]) },
+          })) } }],
+        } : {
+          content: aliases.map((name, index) => ({ type: "tool_use", id: `call_${index}`, name, input: args[index] })),
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+    const gateway = new CodexProviderGateway();
+    try {
+      const route = (await gateway.configure([{
+        providerId: api,
+        protocol: api === "openai" ? "openai-completions" : "anthropic-messages",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "fixture",
+      }])).get(api);
+      if (!route) throw new Error("Gateway route was not created");
+      const tools = [{ type: "namespace", name: namespace, tools: [
+        { type: "function", name: names[0], parameters: { type: "object", properties: {} } },
+        { type: "custom", name: names[1] },
+      ] }];
+      const send = async (input: unknown[]) => {
+        const response = await fetch(`${route.baseURL}/responses`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${route.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "fixture", tools, input, stream: true }),
+        });
+        expect(response.status).toBe(200);
+        const events = (await response.text()).split("\n").flatMap((line): Record<string, unknown>[] => {
+          if (!line.startsWith("data: {")) return [];
+          const value: unknown = JSON.parse(line.slice(6));
+          return isRecord(value) ? [value] : [];
+        });
+        for (const type of ["response.output_item.added", "response.output_item.done"]) {
+          expect(events.filter((event) => event.type === type).map((event) => event.item)).toMatchObject([
+            { type: "function_call", name: names[0], namespace },
+            { type: "custom_tool_call", name: names[1], namespace },
+          ]);
+        }
+        const completed = events.find((event) => event.type === "response.completed");
+        if (!isRecord(completed?.response) || !Array.isArray(completed.response.output)) throw new Error("Missing response output");
+        return completed.response.output;
+      };
+      const output = await send([{ role: "user", content: "Expand this prompt" }]);
+      expect(output).toMatchObject([
+        { type: "function_call", name: names[0], namespace, call_id: "call_0" },
+        { type: "custom_tool_call", name: names[1], namespace, input: "expanded", call_id: "call_1" },
+      ]);
+      await send([...output,
+        { type: "function_call_output", call_id: "call_0", output: "accepted" },
+        { type: "custom_tool_call_output", call_id: "call_1", output: "accepted" },
+      ]);
+      const followUp = receivedBodies[1];
+      if (!isRecord(followUp) || !Array.isArray(followUp.messages)) throw new Error("Missing upstream history");
+      const assistants = followUp.messages.filter((message) => isRecord(message) && message.role === "assistant");
+      expect(assistants).toMatchObject(api === "openai"
+        ? [{ role: "assistant", tool_calls: aliases.map((name) => ({ function: { name } })) }]
+        : aliases.map((name) => ({ role: "assistant", content: [{ type: "tool_use", name }] })));
+    } finally {
+      await gateway.close();
+    }
+  });
+
   test("translates Responses requests to OpenAI chat completions and back", async () => {
     let receivedPath = "";
     let receivedAuthorization = "";

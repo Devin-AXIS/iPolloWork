@@ -36,6 +36,8 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   ]);
   assert.doesNotMatch(builderConfig, /from: dsh-runtime\s+to: dsh-runtime/);
   assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/deepseek-harness/);
+  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/xiaohongshu-ops\s+to: plugin-packages\/xiaohongshu-ops/);
+  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/douyin-ops\s+to: plugin-packages\/douyin-ops/);
   assert.doesNotMatch(builderConfig, /from: codex-runtime\s+to: codex-runtime/);
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
   const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";

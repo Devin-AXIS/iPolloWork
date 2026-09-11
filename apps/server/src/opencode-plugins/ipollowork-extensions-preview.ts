@@ -76,6 +76,7 @@ const uiExecuteArgsSchema = z.object({
 
 const browserOpenUrlArgsSchema = z.object({
   url: z.string().describe("The website URL to open in the iPolloWork built-in browser."),
+  profileId: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional().describe("Persistent browser profile returned by the account plugin."),
 });
 
 const browserSnapshotArgsSchema = z.object({

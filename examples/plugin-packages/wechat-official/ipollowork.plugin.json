@@ -14,7 +14,7 @@
     "simpleIconSlug": "wechat"
   },
   "composer": {
-    "prompt": "使用微信公众号运营插件，先检查账号能力与草稿状态，再按确认范围处理内容、评论、菜单或粉丝互动。"
+    "prompt": "使用微信公众号运营插件；需要可视化操作时先调用 open-workbench 打开公众号 Studio。先检查账号能力与草稿状态，再按确认范围处理内容、评论、菜单或粉丝互动。"
   },
   "localization": {
     "defaultLocale": "zh",
@@ -28,6 +28,10 @@
           "wechat-official-service": {
             "label": "WeChat Official Account Operations Service",
             "description": "Call WeChat Official Account content and operations APIs through controlled, confirmable actions."
+          },
+          "wechat-official-studio": {
+            "label": "WeChat Official Account Studio",
+            "description": "Responsive local workbench for drafts, publishing, comments, menus, followers, and customer messages."
           },
           "wechat-official-content": {
             "label": "Official Account Content Creation",
@@ -75,13 +79,13 @@
     }
   },
   "package": {
-    "version": "0.1.4",
+    "version": "0.2.2",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.28"
+      "ipollowork": ">=0.21.0"
     },
     "updateId": "ipollowork/wechat-official"
   },
@@ -129,11 +133,10 @@
       "id": "wechat-official-service",
       "label": "微信公众号运营服务",
       "description": "以受控、可确认的动作调用微信公众号内容与运营 API。",
-      "path": "service/wechat-official.ts",
-      "requires": [
-        "authorization:wechat-official-account"
-      ],
+      "path": "service/wechat-official.mjs",
       "provides": [
+        "action:open-workbench",
+        "action:studio-state",
         "action:connection-status",
         "action:upload-article-image",
         "action:upload-cover-image",
@@ -155,6 +158,20 @@
       ],
       "required": true,
       "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开公众号 Studio",
+          "description": "启动受令牌保护的本机公众号工作台，不会自动执行任何发布或互动操作。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+        },
+        {
+          "id": "studio-state",
+          "title": "读取公众号 Studio 状态",
+          "description": "验证公众号连接并读取最多 20 篇草稿摘要，不返回 AppSecret 或访问令牌。",
+          "effect": "read",
+          "inputSchema": { "type": "object", "properties": { "offset": { "type": "number" }, "limit": { "type": "number" } }, "additionalProperties": false }
+        },
         {
           "id": "connection-status",
           "title": "检查公众号连接",
@@ -282,6 +299,14 @@
           "inputSchema": { "type": "object", "properties": { "openId": { "type": "string" }, "content": { "type": "string" } }, "required": ["openId", "content"], "additionalProperties": false }
         }
       ]
+    },
+    {
+      "type": "file",
+      "id": "wechat-official-studio",
+      "label": "公众号 Studio 页面",
+      "description": "公众号运营台的本机静态界面资源。",
+      "path": "ui",
+      "required": true
     },
     {
       "type": "skill",

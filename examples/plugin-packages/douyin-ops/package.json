@@ -1,0 +1,20 @@
+{
+  "name": "douyin-ops",
+  "version": "0.1.6",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "scripts": {
+    "start": "node service/server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "check": "node --check service/api.mjs && node --check service/store.mjs && node --check service/operations.mjs && node --check service/server.mjs && node --check service/workbench.mjs && node --check ui/app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "examples/plugin-packages/douyin-ops"
+  },
+  "packageManager": "pnpm@11.13.0"
+}

@@ -1480,6 +1480,8 @@ export function SessionRoute() {
           parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
         }
         const capabilitySystemContext = draft.capability?.instruction ?? null;
+        // A workbench owns its request; template inference must not add a second task.
+        const workspaceAppRequest = draft.capability?.id.split("+").some((id) => id.startsWith("workspace-app:")) === true;
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
@@ -1494,7 +1496,7 @@ export function SessionRoute() {
         ]);
         if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
-          isConversationTemplateSessionId(targetSessionId, template.sessionId),
+          !workspaceAppRequest && isConversationTemplateSessionId(targetSessionId, template.sessionId),
         );
         const activePanelState = usePanelTabStore.getState().sessions[targetSessionId];
         const activePanelTab = activePanelState?.tabs.find((tab) => tab.id === activePanelState.activeTabId);
@@ -1527,7 +1529,7 @@ export function SessionRoute() {
         );
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
-        const automaticTemplateIntents = inferConversationTemplateIntents(text);
+        const automaticTemplateIntents = workspaceAppRequest ? [] : inferConversationTemplateIntents(text);
         if (
           explicitlyTargetedTemplateSessionIds.size === 0
           && automaticTemplateIntents.length > 0
@@ -1612,6 +1614,7 @@ export function SessionRoute() {
         if (
           sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
+          && !workspaceAppRequest
           && selectedWorkspaceEndpoint
           && readSessionType(targetSessionId) === "video"
         ) {
@@ -1624,6 +1627,7 @@ export function SessionRoute() {
         const videoSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "video");
         const isLegacyVideoTask = sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
+          && !workspaceAppRequest
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
         const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
@@ -1795,6 +1799,12 @@ export function SessionRoute() {
         });
         const effectiveSessionId = promptResult.sessionId.trim() || targetSessionId;
         if (effectiveSessionId !== targetSessionId) {
+          const panelStore = usePanelTabStore.getState();
+          const previousPanel = panelStore.sessions[targetSessionId];
+          for (const tab of previousPanel?.tabs ?? []) {
+            if (tab.type === "workspace-app") panelStore.openTab(effectiveSessionId, { ...tab, sessionId: effectiveSessionId });
+          }
+          if (previousPanel?.activeTabId) panelStore.selectTab(effectiveSessionId, previousPanel.activeTabId);
           let replacementTitle = sessionTitleFromFirstPrompt(text) || t("session.untitled");
           setSessionsByWorkspaceId((current) => {
             const sessions = current[selectedWorkspaceId] ?? [];
@@ -1830,9 +1840,7 @@ export function SessionRoute() {
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
-        return artifactCompletionTargets.length > 0
-          ? { dispatched: true, artifactCompletionTargets }
-          : true;
+        return { dispatched: true, sessionId: effectiveSessionId, ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}) };
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
           throw error;
