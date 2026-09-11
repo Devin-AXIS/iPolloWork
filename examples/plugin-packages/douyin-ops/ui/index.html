@@ -19,6 +19,7 @@
         <span>抖音</span>
         <select id="account" aria-label="切换抖音账号" disabled><option value="">尚未授权账号</option></select>
         <button id="add-account" type="button"><b aria-hidden="true">＋</b> 添加账号</button>
+        <button id="manage-account" type="button" aria-label="管理当前抖音账号">⋯</button>
       </section>
       <span id="connection" class="connection" data-status="connecting"><i></i><span id="connection-status">正在连接本地服务…</span></span>
       <button id="refresh" class="quiet" type="button">刷新</button>
@@ -29,7 +30,6 @@
     <aside class="sidebar">
       <nav class="tabs" aria-label="运营功能">
         <button type="button" data-view="overview" aria-current="page"><span class="nav-icon" aria-hidden="true">⌂</span><span>概览</span></button>
-        <button type="button" data-view="accounts"><span class="nav-icon" aria-hidden="true">人</span><span>账号</span></button>
         <button type="button" data-view="studio"><span class="nav-icon" aria-hidden="true">＋</span><span>创作</span></button>
         <button type="button" data-view="videos"><span class="nav-icon" aria-hidden="true">▶</span><span>作品</span></button>
         <button type="button" data-view="comments"><span class="nav-icon" aria-hidden="true">评</span><span>评论</span></button>
@@ -64,45 +64,12 @@
             <div id="overview-drafts" class="overview-list"><p class="empty">尚未连接抖音账号，连接后即可开始创作。</p></div>
           </section>
           <section class="surface capability-snapshot">
-            <div class="surface-heading"><div><p class="eyebrow">ACCESS</p><h3>当前账号能力</h3></div><button type="button" class="quiet" data-view="accounts">管理授权</button></div>
+            <div class="surface-heading"><div><p class="eyebrow">ACCESS</p><h3>当前账号能力</h3></div></div>
             <p class="capability-row" data-capability="publish"><strong>发布权限</strong><span>正在核对当前账号授权…</span></p>
             <p class="capability-row" data-capability="listVideos"><strong>作品权限</strong><span>正在核对当前账号授权…</span></p>
             <p class="capability-row" data-capability="comments"><strong>评论权限</strong><span>正在核对当前账号授权…</span></p>
             <p class="capability-row" data-capability="searchVideos"><strong>搜索权限</strong><span>正在核对应用配置…</span></p>
           </section>
-        </div>
-      </section>
-
-      <section id="view-accounts" class="view" aria-labelledby="accounts-heading" hidden>
-        <div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h2 id="accounts-heading">账号与授权</h2><p>使用抖音开放平台的官方授权与 API。</p></div></div>
-        <div class="accounts-grid">
-          <section class="surface">
-            <div class="surface-heading"><div><h3>已连接账号</h3><p>账号能力以实际授权结果为准。</p></div></div>
-            <div id="accounts-list" class="record-list"><p class="empty">正在读取账号…</p></div>
-          </section>
-          <div class="setup-column">
-            <details id="settings-panel" class="surface" open>
-              <summary>开放平台应用配置 <span id="secret-status" class="muted">未配置</span></summary>
-              <p class="hint">在 <a href="https://developer.open-douyin.com/" target="_blank" rel="noopener noreferrer">抖音开放平台 ↗</a> 创建应用、开通所需权限，并登记 HTTPS 授权回调地址。</p>
-              <form id="settings-form"><fieldset>
-                <label>Client Key<input name="clientKey" id="client-key" autocomplete="off" required></label>
-                <label>Client Secret<input name="clientSecret" id="client-secret" type="password" autocomplete="new-password" placeholder="留空保留已保存的密钥"></label>
-                <label>已登记的 HTTPS 回调地址<input name="redirectUri" id="redirect-uri" type="url" placeholder="https://你的域名/回调路径" required></label>
-                <label>申请的权限 scopes<input name="scopes" id="requested-scopes" placeholder="以英文逗号分隔" required></label>
-                <p class="hint">配置仅提交给本地服务，密钥不会发送到当前 AI 会话。填写申请权限后，仍需平台审核和账号授权。</p>
-                <button class="primary" type="submit">保存应用配置</button>
-              </fieldset></form>
-            </details>
-            <section id="authorization-panel" class="surface stack">
-              <div><p class="eyebrow">OAUTH</p><h3>授权新账号</h3></div>
-              <p class="hint">打开官方授权页面，扫码并同意授权。跳转后，复制浏览器地址栏的完整回调地址到下方。</p>
-              <button id="start-authorization" class="primary" type="button">打开官方授权页</button>
-              <form id="authorization-form"><fieldset>
-                <label>完整回调地址<input id="callback-url" type="url" autocomplete="off" placeholder="粘贴授权后的完整 URL" required></label>
-                <button type="submit">完成账号授权</button>
-              </fieldset></form>
-            </section>
-          </div>
         </div>
       </section>
 
@@ -165,5 +132,34 @@
       </section>
     </main>
   </div>
+      <dialog id="account-dialog" class="account-dialog" aria-labelledby="accounts-heading">
+        <div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h2 id="accounts-heading">添加抖音账号</h2><p>使用抖音开放平台的官方授权与 API。</p></div><button id="close-account-dialog" type="button" aria-label="关闭账号弹窗">×</button></div>
+        <p id="account-feedback" class="feedback" role="status" aria-live="polite" hidden></p><div class="accounts-grid">
+          <div class="setup-column">
+            <details id="settings-panel" class="surface" open>
+              <summary>开放平台应用配置 <span id="secret-status" class="muted">未配置</span></summary>
+              <p class="hint">在 <a href="https://developer.open-douyin.com/" target="_blank" rel="noopener noreferrer">抖音开放平台 ↗</a> 创建应用、开通所需权限，并登记 HTTPS 授权回调地址。</p>
+              <form id="settings-form"><fieldset>
+                <label>Client Key<input name="clientKey" id="client-key" autocomplete="off" required></label>
+                <label>Client Secret<input name="clientSecret" id="client-secret" type="password" autocomplete="new-password" placeholder="留空保留已保存的密钥"></label>
+                <label>已登记的 HTTPS 回调地址<input name="redirectUri" id="redirect-uri" type="url" placeholder="https://你的域名/回调路径" required></label>
+                <label>申请的权限 scopes<input name="scopes" id="requested-scopes" placeholder="以英文逗号分隔" required></label>
+                <p class="hint">配置仅提交给本地服务，密钥不会发送到当前 AI 会话。填写申请权限后，仍需平台审核和账号授权。</p>
+                <button class="primary" type="submit">保存应用配置</button>
+              </fieldset></form>
+            </details>
+            <section id="authorization-panel" class="surface stack">
+              <div><p class="eyebrow">OAUTH</p><h3>授权新账号</h3></div>
+              <p class="hint">打开官方授权页面，扫码并同意授权。跳转后，复制浏览器地址栏的完整回调地址到下方。</p>
+              <button id="start-authorization" class="primary" type="button">打开官方授权页</button>
+              <form id="authorization-form"><fieldset>
+                <label>完整回调地址<input id="callback-url" type="url" autocomplete="off" placeholder="粘贴授权后的完整 URL" required></label>
+                <button type="submit">完成账号授权</button>
+              </fieldset></form>
+            </section>
+          </div>
+        </div>
+      </dialog>
+<dialog id="account-details-dialog" class="account-dialog" aria-label="当前账号授权信息"><div class="page-heading"><h2>账号授权信息</h2><button id="close-account-details" type="button" aria-label="关闭账号信息">×</button></div><div id="accounts-list" class="record-list"></div></dialog>
 </body>
 </html>

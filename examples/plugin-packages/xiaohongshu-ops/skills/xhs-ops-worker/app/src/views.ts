@@ -2,9 +2,9 @@ import type { AccountBinding, BrandProfile, BrowserJob, Interaction, KnowledgeIt
 import type { OpsDatabase } from './db.js'
 import { searchSorts, type PostDraft, type StudioService } from './studio.js'
 
-type Nav = 'accounts' | 'publishing' | 'comments' | 'analytics'
+type Nav = 'publishing' | 'comments' | 'analytics'
 
-const assetVersion = '20260911.1'
+const assetVersion = '20260911.2'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -48,7 +48,6 @@ function status(value: string): string {
 
 function shell(title: string, active: Nav, body: string, pageData?: unknown, accountId?: number, accounts: AccountBinding[] = []): string {
   const nav: Array<[Nav, string, string, string]> = [
-    ['accounts', '/accounts', 'user-circle', '账号'],
     ['publishing', '/publishing' + (accountId === undefined ? '' : `?account=${accountId}`), 'edit', '发帖'],
     ['comments', '/comments' + (accountId === undefined ? '' : `?account=${accountId}`), 'messages', '评论'],
     ['analytics', '/analytics' + (accountId === undefined ? '' : `?account=${accountId}`), 'chart-bar', '数据'],
@@ -66,15 +65,16 @@ function shell(title: string, active: Nav, body: string, pageData?: unknown, acc
   </head>
   <body data-page="${active}">
     <aside class="app-sidebar">
-      <a class="brand-mark" href="/accounts" aria-label="小红书运营台">小红书</a>
+      <a class="brand-mark" href="/publishing" aria-label="小红书运营台">小红书</a>
       <nav aria-label="主要导航">${nav.map(([id, href, iconName, label]) => `<a href="${href}" ${active === id ? 'aria-current="page"' : ''}>${icon(iconName)}<span>${label}</span></a>`).join('')}</nav>
-      <a class="sidebar-profile" href="/accounts" aria-label="查看账号">d</a>
+      <a class="sidebar-profile" href="/publishing" aria-label="查看账号">d</a>
     </aside>
     <header class="app-topbar">
-      <a class="app-identity" href="/accounts" aria-label="小红书运营台账号管理"><span>小红书</span><div><strong>小红书运营台</strong><small>发帖、评论与数据，在一个工作台完成</small></div></a>
+      <a class="app-identity" href="/publishing" aria-label="小红书运营台"><span>小红书</span><div><strong>小红书运营台</strong><small>发帖、评论与数据，在一个工作台完成</small></div></a>
       ${accountBar(accounts, active, accounts.find(item => item.id === accountId) ?? accounts[0])}
     </header>
     <main class="app-main"><p class="workbench-entry-notice" data-workbench-entry-notice role="status" hidden></p>${body}</main>
+    ${accountDialogs(accounts.find(item => item.id === accountId) ?? accounts[0])}
     <div id="toast-region" class="toast-region" aria-live="polite"></div>
     ${pageData === undefined ? '' : `<script type="application/json" id="page-data">${jsonScript(pageData)}</script>`}
     <script src="/assets/app.js?v=${assetVersion}" defer></script>
@@ -92,11 +92,11 @@ function accountAvatar(account: AccountBinding): string {
 
 function accountBar(accounts: AccountBinding[], panel: Nav, primary: AccountBinding | undefined): string {
   const label = primary ? `${accountAvatar(primary)}<span><strong>${escapeHtml(primary.displayName)}</strong><small>${primary.sessionStatus === 'healthy' ? '<b></b> 已登录' : escapeHtml(statusLabel(primary.sessionStatus))}</small></span>${icon('chevron-down')}` : ''
-  const accountHref = (id: number) => panel === 'accounts' ? `/accounts?account=${id}` : `/${panel}?account=${id}`
+  const accountHref = (id: number) => `/${panel}?account=${id}`
   return `<section class="account-bar" aria-label="当前账号">
     <span class="account-platform">小红书</span>
     ${primary ? `<details class="account-picker"><summary class="account-switcher" aria-label="切换账号">${label}</summary><nav class="account-menu" aria-label="选择账号">${accounts.map(item => `<a href="${accountHref(item.id)}" ${item.id === primary.id ? 'aria-current="true"' : ''}>${accountAvatar(item)}<span><strong>${escapeHtml(item.displayName)}</strong><small>小红书号 ${escapeHtml(item.expectedProfileId)} · ${escapeHtml(statusLabel(item.sessionStatus))}</small></span>${item.id === primary.id ? icon('check', '当前账号') : ''}</a>`).join('')}</nav></details>` : '<span class="account-switcher is-empty">尚未添加账号</span>'}
-    <a class="add-account-link" href="/accounts?connect=1" data-open-account-form>${icon('plus')}<span>添加账号</span></a>
+    <button class="add-account-link" type="button" data-open-account-form>${icon('plus')}<span>添加账号</span></button>${primary ? '<button class="icon-button" type="button" data-account-settings aria-label="管理当前账号">⋯</button>' : ''}
   </section>`
 }
 
@@ -108,7 +108,7 @@ function accountCard(account: AccountBinding): string {
     ${account.lastError ? `<p class="account-error">${icon('alert-circle')} ${escapeHtml(account.lastError)}</p>` : ''}
     <div class="account-actions"><a class="button button-secondary" href="https://creator.xiaohongshu.com/new/home" data-account-login ${account.browserProfileId ? `data-browser-profile-id="${escapeHtml(account.browserProfileId)}"` : ''} target="_blank" rel="noreferrer">${icon('external-link')} 打开创作台</a><button class="button button-ghost delete-account-trigger" type="button" data-delete-account="${account.id}" data-account-name="${escapeHtml(account.displayName)}">${icon('trash')} 删除绑定</button></div>
     <p class="analytics-note">${loggedIn ? '已确认此账号登录，登录状态由程序自动核对。' : '在软件内打开此账号的创作台，返回运营台后自动核对登录状态。'}</p>
-    <form class="account-edit-form" data-account-edit="${account.id}" hidden>
+    <form class="account-edit-form" data-account-edit="${account.id}">
       <div class="setting-grid"><div class="field"><label>显示名称<input name="displayName" value="${escapeHtml(account.displayName)}" required></label></div><div class="field"><label>创作台地址<input name="profileUrl" type="url" value="${escapeHtml(account.profileUrl)}" required></label></div></div>
       <div class="setting-grid"><div class="field"><label>账号定位<input name="position" value="${escapeHtml(account.position)}" required></label></div><div class="field"><label>目标受众<input name="audience" value="${escapeHtml(account.audience)}" required></label></div></div>
       <div class="field"><label>内容栏目<textarea name="contentColumns" rows="3" required>${escapeHtml(lines(account.contentColumns))}</textarea></label></div>
@@ -133,12 +133,9 @@ export function renderAnalytics(input: { accounts: AccountBinding[]; account: Ac
   return shell('数据', 'analytics', `<div class="simple-page analytics-page">${heading}${profile}${platformView}${local}</div>`, { accounts }, account.id, accounts)
 }
 
-export function renderAccounts(accounts: AccountBinding[], account: AccountBinding | undefined = accounts[0]): string {
-  const body = `<div class="account-page">
-    <header class="simple-heading"><div><span class="eyebrow">账号管理</span><h1>先接入账号，再安排内容</h1><p>扫码接入并设置账号定位，在这里管理登录状态和内容方向。</p></div></header>
-    <section class="onboarding-overview" aria-label="账号接入步骤"><div class="is-current"><span>1</span><strong>扫码登录</strong><small>在小红书页面完成</small></div><i></i><div><span>2</span><strong>确认身份</strong><small>只记录公开信息</small></div><i></i><div><span>3</span><strong>定义账号</strong><small>定位与内容栏目</small></div><i></i><div><span>4</span><strong>自动连接</strong><small>返回后自动识别</small></div></section>
-    <section class="accounts-layout"><div class="account-list"><header><h2>已接入账号</h2><span>${accounts.length} 个账号</span></header>${accounts.length ? accounts.map(accountCard).join('') : empty('还没有账号', '请使用顶部“添加账号”，按照引导完成第一个账号。')}</div>
-      <aside id="account-onboarding" class="connect-panel surface" ${accounts.length ? 'hidden' : ''}>
+function accountDialogs(account: AccountBinding | undefined): string {
+  const deleteDialog = `<dialog id="account-delete-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description"><form method="dialog"><h2 id="delete-account-title">删除账号绑定</h2><p>确定删除「<strong data-delete-account-name></strong>」的绑定？</p><p id="delete-account-description">删除后停止此账号的后续任务，历史记录保留。之后可重新接入。</p><p data-delete-account-error role="alert"></p><footer><button class="button button-secondary" value="cancel">取消</button><button class="button button-danger" type="button" data-confirm-delete-account>删除绑定</button></footer></form></dialog>`
+  return `      <dialog id="account-onboarding" class="account-dialog connect-panel" aria-label="添加小红书账号">
         <header><div><span>接入新账号</span><h2>按步骤完成接入</h2></div><button class="icon-button" type="button" data-close-account-form aria-label="关闭接入表单">${icon('x')}</button></header>
         <div class="connect-step"><span>1</span><div><strong>扫码登录新账号</strong><p>使用小红书 App 扫码，无需退出已接入账号。</p><a class="button button-secondary" href="https://creator.xiaohongshu.com/login" data-account-login data-new-account-login target="_blank" rel="noreferrer">${icon('external-link')} 打开扫码登录页</a></div></div>
         <form id="account-form">
@@ -147,11 +144,9 @@ export function renderAccounts(accounts: AccountBinding[], account: AccountBindi
           <input name="profileUrl" type="hidden" value="https://creator.xiaohongshu.com/new/home"><input name="noteTone" type="hidden" value="真实、清楚、自然"><input name="commentTone" type="hidden" value="友好、具体、不夸张"><input name="bannedTopics" type="hidden" value="未核实承诺\n站外导流"><input name="dailyLimit" type="hidden" value="2">
           <p class="form-safety-note">${icon('shield-check')} 保存不会发布、评论或切换账号；只有身份匹配后才会显示“已连接”。</p><button class="button button-primary button-block" type="submit">保存账号</button>
         </form>
-      </aside>
-    </section>
-  </div>`
-  const deleteDialog = `<dialog id="account-delete-dialog" aria-labelledby="delete-account-title" aria-describedby="delete-account-description"><form method="dialog"><h2 id="delete-account-title">删除账号绑定</h2><p>确定删除「<strong data-delete-account-name></strong>」的绑定？</p><p id="delete-account-description">删除后停止此账号的后续任务，历史记录保留。之后可重新接入。</p><p data-delete-account-error role="alert"></p><footer><button class="button button-secondary" value="cancel">取消</button><button class="button button-danger" type="button" data-confirm-delete-account>删除绑定</button></footer></form></dialog>`
-  return shell('账号管理', 'accounts', body + deleteDialog, { accounts }, account?.id, accounts)
+      </dialog>
+    ${account ? `<dialog id="account-settings-dialog" class="account-dialog" aria-label="账号设置"><header><h2>账号设置</h2><button type="button" class="icon-button" data-close-account-settings aria-label="关闭账号设置">${icon('x')}</button></header>${accountCard(account)}</dialog>` : ''}
+    ${deleteDialog}`
 }
 
 function interactionHistory(input: { interactions: Interaction[]; reviews: ReviewItem[]; accounts: AccountBinding[]; account: AccountBinding | undefined }): string {
@@ -196,15 +191,15 @@ export function renderComments(input: StudioPage & { searchId?: string | undefin
 }
 
 export function renderBrand(input: { accounts: AccountBinding[]; brand: BrandProfile; knowledge: KnowledgeItem[]; assets: MediaAsset[] }): string {
-  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">高级设置</span><h1>内容参考</h1><p>在这里查看内容创作所需的事实、规则与素材。</p></div><a class="button button-secondary" href="/accounts">返回账号</a></header><section class="surface panel"><h2>${escapeHtml(input.brand.name)}</h2><p class="muted-copy">${escapeHtml(input.brand.description || '暂无品牌说明')}</p><div class="reference-grid">${input.knowledge.map((item) => `<article><span>${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body)}</p></article>`).join('') || empty('没有内容参考', '没有参考资料也可以创建通用内容任务；系统不会编造产品事实。')}</div></section></div>`
-  return shell('内容参考', 'accounts', body, undefined, input.accounts[0]?.id, input.accounts)
+  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">高级设置</span><h1>内容参考</h1><p>在这里查看内容创作所需的事实、规则与素材。</p></div><a class="button button-secondary" href="/publishing">返回发帖</a></header><section class="surface panel"><h2>${escapeHtml(input.brand.name)}</h2><p class="muted-copy">${escapeHtml(input.brand.description || '暂无品牌说明')}</p><div class="reference-grid">${input.knowledge.map((item) => `<article><span>${escapeHtml(item.kind)}</span><strong>${escapeHtml(item.title)}</strong><p>${escapeHtml(item.body)}</p></article>`).join('') || empty('没有内容参考', '没有参考资料也可以创建通用内容任务；系统不会编造产品事实。')}</div></section></div>`
+  return shell('内容参考', 'publishing', body, undefined, input.accounts[0]?.id, input.accounts)
 }
 
 export function renderJobs(input: { jobs: BrowserJob[]; accounts: AccountBinding[]; audit: Array<Record<string, unknown>> }): string {
-  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">执行明细</span><h1>任务记录</h1><p>查看执行结果和错误信息，用于排查运行问题。</p></div><a class="button button-secondary" href="/accounts">返回账号</a></header><section class="surface panel"><div class="activity-list">${input.jobs.map((job) => { const account = input.accounts.find((item) => item.id === job.accountId); return `<article><span class="activity-icon">${icon('browser')}</span><div><strong>${escapeHtml(statusLabel(job.type))} · ${escapeHtml(account?.displayName ?? '账号已移除')}</strong><p>${escapeHtml(job.error ?? job.resultUrl ?? '等待执行')}</p><small>${formatDate(job.updatedAt)}</small></div>${status(job.status)}</article>` }).join('') || empty('还没有执行记录', '安排任务后，执行过程会记录在这里。')}</div></section></div>`
-  return shell('任务记录', 'accounts', body, undefined, input.accounts[0]?.id, input.accounts)
+  const body = `<div class="simple-page"><header class="simple-heading"><div><span class="eyebrow">执行明细</span><h1>任务记录</h1><p>查看执行结果和错误信息，用于排查运行问题。</p></div><a class="button button-secondary" href="/publishing">返回账号</a></header><section class="surface panel"><div class="activity-list">${input.jobs.map((job) => { const account = input.accounts.find((item) => item.id === job.accountId); return `<article><span class="activity-icon">${icon('browser')}</span><div><strong>${escapeHtml(statusLabel(job.type))} · ${escapeHtml(account?.displayName ?? '账号已移除')}</strong><p>${escapeHtml(job.error ?? job.resultUrl ?? '等待执行')}</p><small>${formatDate(job.updatedAt)}</small></div>${status(job.status)}</article>` }).join('') || empty('还没有执行记录', '安排任务后，执行过程会记录在这里。')}</div></section></div>`
+  return shell('任务记录', 'publishing', body, undefined, input.accounts[0]?.id, input.accounts)
 }
 
 export function renderError(title: string, message: string, statusCode: number): string {
-  return shell(title, 'accounts', `<section class="error-page"><span>${statusCode}</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><a class="button button-primary" href="/accounts">返回账号</a></section>`)
+  return shell(title, 'publishing', `<section class="error-page"><span>${statusCode}</span><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><a class="button button-primary" href="/publishing">返回账号</a></section>`)
 }

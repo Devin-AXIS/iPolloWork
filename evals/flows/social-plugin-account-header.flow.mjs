@@ -78,9 +78,9 @@ export default {
         try {
           await waitForFrame(client, "Boolean(document.querySelector('.app-topbar .account-picker'))", "Xiaohongshu account header");
           await ctx.prove("小红书只在顶部标题栏切换和添加账号", {
-            voiceover: "小红书的当前账号、切换入口和添加账号已经统一放到运营台标题栏。账号、发帖、评论和数据页共用这一处入口。",
+            voiceover: "小红书已移除账号页面。顶部下拉查看账号和登录状态，添加账号打开弹窗，关闭后继续当前创作。",
             action: async () => {
-              for (const path of ["/accounts", "/publishing", "/comments", "/analytics"]) {
+              for (const path of ["/publishing", "/comments", "/analytics"]) {
                 await evaluate(client, `document.querySelector(${JSON.stringify(`nav a[href^="${path}"]`)})?.click()`);
                 await waitForFrame(client, `location.pathname === ${JSON.stringify(path)}`, `Xiaohongshu ${path}`);
                 const state = await evaluate(client, `({
@@ -94,6 +94,21 @@ export default {
               }
               await evaluate(client, `document.querySelector('nav a[href^="/publishing"]')?.click()`);
               await waitForFrame(client, "location.pathname === '/publishing'", "Xiaohongshu publishing page");
+              ctx.assert(await evaluate(client, "!document.querySelector('.app-sidebar nav a[href^=\"/accounts\"]')"), "Account navigation remains");
+              await evaluate(client, "document.querySelector('.account-picker summary').click()");
+              const entries = await evaluate(client, "[...document.querySelectorAll('.account-menu a')].map(a => ({href:a.href, text:a.innerText}))");
+              ctx.assert(entries.length > 0 && entries.every(a => a.text.includes('·')), "Dropdown lacks account status");
+              const other = entries[1];
+              if (other) {
+                await client.send("Page.navigate", { url: other.href });
+                await waitForFrame(client, "location.pathname === '/publishing' && Boolean(document.querySelector('.account-picker'))", "Switch account");
+                ctx.assert(await evaluate(client, "location.href") === other.href, "Account switch failed");
+              }
+              await evaluate(client, "document.querySelector('[data-open-account-form]').click()");
+              await waitForFrame(client, "document.querySelector('#account-onboarding').open", "Add account dialog");
+              await evaluate(client, "document.querySelector('[data-close-account-form]').click()");
+              ctx.assert(await evaluate(client, "!document.querySelector('#account-onboarding').open && location.pathname === '/publishing'"), "Closing dialog left module");
+              await evaluate(client, "document.querySelector('[data-open-account-form]').click()");
             },
             assert: async () => {
               const placement = await evaluate(client, `({
@@ -105,11 +120,12 @@ export default {
               ctx.assert(placement.title === "小红书运营台", "Xiaohongshu title bar is missing");
               ctx.assert(placement.pickerInHeader && placement.addInHeader, "Xiaohongshu account controls are outside the title bar");
               ctx.assert(placement.pageDuplicates === 0, "Xiaohongshu module page still duplicates account controls");
+              ctx.assert(await evaluate(client, "document.querySelector('#account-onboarding').open"), "Add dialog is not open");
             },
             screenshot: {
               name: "xiaohongshu-account-header",
               textTargetId: target.id,
-              requireText: ["小红书运营台", "添加账号", "发帖"],
+              requireText: ["小红书运营台", "扫码登录新账号", "保存账号"],
               rejectText: ["Something went wrong"],
             },
           });
@@ -126,7 +142,7 @@ export default {
         try {
           await waitForFrame(client, "Boolean(document.querySelector('.topbar-account #account'))", "Douyin account header");
           await ctx.prove("抖音只在顶部标题栏切换和添加账号", {
-            voiceover: "抖音也使用同一套位置规则。切换账号和添加账号位于标题栏，概览、创作、作品、评论、搜索和记录页不再各自提供账号入口。",
+            voiceover: "抖音已移除账号页面。顶部下拉显示账号与授权状态，新增账号在弹窗中完成配置和授权，关闭后保留当前模块。",
             action: async () => {
               const views = await evaluate(client, "[...document.querySelectorAll('.tabs [data-view]')].map((entry) => entry.dataset.view)");
               for (const view of views) {
@@ -142,6 +158,12 @@ export default {
               }
               await evaluate(client, "document.querySelector('.tabs [data-view=studio]')?.click()");
               await waitForFrame(client, "!document.querySelector('#view-studio')?.hidden", "Douyin studio view");
+              ctx.assert(await evaluate(client, "!document.querySelector('[data-view=accounts], #view-accounts')"), "Account module remains");
+              await evaluate(client, "document.querySelector('#add-account').click()");
+              await waitForFrame(client, "document.querySelector('#account-dialog').open", "Douyin add dialog");
+              await evaluate(client, "document.querySelector('#close-account-dialog').click()");
+              ctx.assert(await evaluate(client, "!document.querySelector('#account-dialog').open && !document.querySelector('#view-studio').hidden"), "Closing add dialog left studio");
+              await evaluate(client, "document.querySelector('#add-account').click()");
             },
             assert: async () => {
               const placement = await evaluate(client, `({
@@ -157,11 +179,12 @@ export default {
             screenshot: {
               name: "douyin-account-header",
               textTargetId: target.id,
-              requireText: ["抖音运营台", "添加账号", "视频创作"],
+              requireText: ["抖音运营台", "添加抖音账号", "保存应用配置"],
               rejectText: ["Something went wrong"],
             },
           });
         } finally {
+          await evaluate(client, "document.querySelector('#account-dialog')?.close()").catch(() => {});
           client.close();
         }
       },

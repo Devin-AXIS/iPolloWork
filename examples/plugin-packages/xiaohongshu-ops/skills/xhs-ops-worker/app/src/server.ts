@@ -17,7 +17,7 @@ import { observeBrowserSession, prepareSessionVerification } from './verificatio
 import { OpsDatabase } from './db.js'
 import { OpsService, startContentScheduler } from './service.js'
 import type { AccountSessionStatus, CampaignSchedule, CampaignStatus, DiscoveredComment, KnowledgeItem, SessionOperation } from './types.js'
-import { renderAccounts, renderAnalytics, renderBrand, renderError, renderPublishing, renderComments, renderJobs } from './views.js'
+import { renderAnalytics, renderBrand, renderError, renderPublishing, renderComments, renderJobs } from './views.js'
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : '未知错误'
@@ -128,15 +128,16 @@ export function createApp(service: OpsService): Hono {
   app.get('/api/state', (c) => { c.header('Cache-Control', 'no-store'); return c.json({ state: state(service) }) })
 
   // Previously opened workbench tabs may still point to the retired task routes.
-  app.get('/', (c) => c.redirect('/accounts'))
-  app.get('/tasks', (c) => c.redirect('/accounts'))
-  app.get('/calendar', (c) => c.redirect('/accounts'))
+  app.get('/', (c) => c.redirect('/publishing'))
+  app.get('/tasks', (c) => c.redirect('/publishing'))
+  app.get('/calendar', (c) => c.redirect('/publishing'))
   app.get('/accounts', (c) => {
     const accounts = service.db.listAccounts()
     const accountId = c.req.query('account')
     const account = accountId === undefined ? accounts[0] : accounts.find(item => String(item.id) === accountId)
     if (accountId !== undefined && !account) return c.html(renderError('账号不存在', '请选择已接入的账号。', 404), 404)
-    return c.html(renderAccounts(accounts, account))
+    const query = new URLSearchParams(c.req.query())
+    return c.redirect('/publishing' + (query.size ? '?' + query.toString() : ''))
   })
   app.get('/analytics', (c) => {
     const accounts = service.db.listAccounts()
