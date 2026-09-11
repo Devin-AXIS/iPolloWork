@@ -188,7 +188,7 @@ SOFTWARE.
     const $ = selector => document.querySelector(selector);
     const HOST = "ai.ipollo/workspace", INSPECTOR = "ai.ipollo/inspector";
     const pending = new Map(); let requestId = 0, pollTimer, disposed = false, previewUrl = "", previewEpoch = 0;
-    const state = { mode:"edit", ai:false, model:"", operation:"text", prompt:"", resolution:"", duration:"5", ratio:"adaptive", firstFrame:"", lastFrame:"", imageRefs:"", videoRefs:"", audioRefs:"", generateAudio:"true", watermark:"true", models:[], ratios:[], jobs:[], host:{}, busy:false, message:"", error:false, requestKey:"", openRequest:"", localVideoReady:false, previewPath:"", metadata:null, edit:null, undo:[], redo:[], tool:"", saveId:"", saveMode:"", activeJobId:"" };
+    const state = { mode:"edit", ai:false, model:"", operation:"text", prompt:"", resolution:"", duration:"5", ratio:"adaptive", firstFrame:"", lastFrame:"", imageRefs:"", videoRefs:"", audioRefs:"", generateAudio:"true", watermark:"true", models:[], ratios:[], jobs:[], host:{}, busy:false, message:"", error:false, requestKey:"", openRequest:"", localVideoReady:false, previewPath:"", metadata:null, edit:null, undo:[], redo:[], tool:"", saveId:"", saveMode:"", activeJobId:"", promptedLaunch:"" };
     const names = { text:"文生视频", first:"首帧生视频", "first-last":"首尾帧生视频", reference:"多模态参考", edit:"编辑原视频", extend:"延长原视频", regenerate:"参考原视频重新生成" };
     const editOps = ["edit","extend","regenerate"];
     const refOps = ["reference",...editOps];
@@ -254,6 +254,9 @@ SOFTWARE.
   "音频输出暂不可用，请重启客户端后重试。": "Audio output is unavailable. Restart the client and try again.",
   "当前播放器不支持此视频编码，可从本会话产出文件下载后播放。": "This video encoding is not supported by the player. Download it from outputs to play it.",
   "当前模型不支持此类参考素材，请切换模型。": "This model does not support this reference type. Choose another model.",
+  "请选择一个已配置的视频模型。": "Choose a configured video model.",
+  "模型只能由你在视频工作台顶部选择。": "Only you can choose the model from the top of Video Studio.",
+  "所选模型不支持当前视频编辑，请选择支持编辑的模型。": "The selected model cannot edit this video. Choose a model that supports editing.",
   "当前模式不支持此素材，请重新选择生成方式。": "This media is not supported in the current mode. Choose another generation mode.",
   "已达到参考素材数量上限": "Reference limit reached",
   "已达到当前模型的参考素材数量上限，请先移除部分素材。": "Reference limit reached. Remove a reference first.",
@@ -338,7 +341,7 @@ SOFTWARE.
   "生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。": "Your provider bills actual usage. Results are saved as new conversation outputs.",
   "AI 结果已保存到本会话产出；当前未保存的剪辑已保留。": "The AI result was saved to outputs. Your unsaved edits are preserved.",
   "AI 内容编辑需要支持编辑原视频的模型，请在授权中心绑定 Seedance。常规剪辑可直接使用工具栏。": "AI editing needs a model that supports video editing. Connect Seedance in Authorizations. Standard edits are available in the toolbar.",
-  "请连接支持首帧参考的视频模型。": "Connect a model that supports a first frame.",
+  "请选择支持首帧参考的视频模型。": "Choose a configured model that supports a first frame.",
   "当前任务处理中，完成后可切换模型": "Wait for the current task before switching models",
   "文件信息": "File information"
 };
@@ -393,10 +396,10 @@ SOFTWARE.
     function allowedRatios() { return ["first","first-last","edit","extend"].includes(state.operation)?["adaptive"]:(model()?.ratios||state.ratios); }
     function normalized() {
       const changed=[]; const set=(key,value)=>{if(state[key]!==value){state[key]=value;changed.push(key);}};
-      if(!model()) set("model",state.models.find(item=>item.id==="minimax-h3")?.id||state.models[0]?.id||"");
+      if(state.model&&!model())set("model","");
       const current=model(); if(!current) return changed;
-      if(state.ai&&!current.operations.some(op=>editOps.includes(op)))set("ai",false);
-      if(!allowedOps().includes(state.operation)) set("operation",allowedOps()[0]);
+      const operations=allowedOps(); if(!operations.length)return changed;
+      if(!operations.includes(state.operation)) set("operation",operations[0]);
       if(!current.resolutions.includes(state.resolution)) set("resolution",current.defaultResolution);
       if(!current.durations.includes(state.duration)) set("duration","5");
       if(state.operation==="edit") set("duration","-1");
@@ -409,9 +412,11 @@ SOFTWARE.
       }
       return changed;
     }
-    function update(args) {
+    function update(args, userSelectedModel=false) {
+      if(typeof args.model==="string"&&!userSelectedModel)throw new Error(tr("模型只能由你在视频工作台顶部选择。"));
       for(const [key,option] of Object.entries(creativeOptions))if(option.values.includes(args[key]))state[key]=args[key];
-      for(const key of params) if(typeof args[key]==="string")state[key]=args[key];
+      for(const key of params) if(key!=="model"&&typeof args[key]==="string")state[key]=args[key];
+      if(userSelectedModel&&state.models.some(item=>item.id===args.model))state.model=args.model;
       if(state.operation==="text"&&args.firstFrame&&model()?.operations.includes("first"))state.operation="first";
       const changed=normalized();
       if(changed.length||(state.error&&Object.keys(args).length))tell("");
@@ -426,15 +431,16 @@ SOFTWARE.
       if(state.mode==="edit"&&!state.ai){void request("ui/update-model-context",{content:[{type:"text",text:"视频工作台：本地工具栏编辑，不调用 AI。"}],structuredContent:{}}).catch(()=>{});return;}
       const current=model();
       const fields=[];
-      if(current) {
-        fields.push(select("operation","生成方式",allowedOps().map(value=>({value,label:names[value]}))),textarea("prompt",state.mode==="edit"?"编辑指令":"视频描述",state.operation==="extend"?"向后延长 @video1，描述接下来发生的情节…":state.operation==="edit"?"修改 @video1 的背景为…":"添加参考素材或直接描述想生成的画面、动作与声音…"));
+      if(current&&allowedOps().length)fields.push(select("operation","生成方式",allowedOps().map(value=>({value,label:names[value]}))));
+      fields.push(textarea("prompt",state.mode==="edit"?"编辑指令":"视频描述",state.operation==="extend"?"向后延长 @video1，描述接下来发生的情节…":state.operation==="edit"?"修改 @video1 的背景为…":"添加参考素材或直接描述想生成的画面、动作与声音…"));
+      if(current&&allowedOps().length) {
         if(["first","first-last"].includes(state.operation)&&current.operations.includes("first"))fields.push(mediaField("firstFrame","首帧图片","image","image"));
         if(state.operation==="first-last")fields.push(mediaField("lastFrame","尾帧图片","image","image"));
         if(refOps.includes(state.operation))fields.push(mediaField("imageRefs",(document.documentElement.lang.startsWith("en")?`Reference images · up to ${current.imageLimit}`:`参考图片 · 最多 ${current.imageLimit} 张`),"image"),mediaField("videoRefs",(document.documentElement.lang.startsWith("en")?`Reference videos · up to ${current.videoLimit}`:`${state.mode==="edit"?"原视频 / ":""}参考视频 · 最多 ${current.videoLimit} 个`),"video"),mediaField("audioRefs",(document.documentElement.lang.startsWith("en")?`Reference audio · up to ${current.audioLimit}`:`参考音频 · 最多 ${current.audioLimit} 个`),"audio"));
         fields.push(select("resolution","分辨率",current.resolutions),select("duration",state.operation==="extend"?"生成时长（秒）":"时长（秒）",(state.operation==="edit"?["-1"]:current.durations).map(value=>({value,label:value==="-1"?(state.operation==="edit"?"跟随原视频":"自动"):value}))),select("ratio","画幅",allowedRatios().map(value=>({value,label:value==="adaptive"?"自适应 / 跟随输入":value}))));
       }
-      const notice=!current?"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。":current.id==="minimax-h3"?"H3 原生工作流：文生、首帧、首尾帧。使用普通工作流密钥；0.5MP / 1MP 为像素总量，画幅对齐 32 像素，时长按 24fps 帧网格取整。包含声音，不提供声音或水印开关。云端排队和生成可能需要数分钟，按 RunningHub 用量计费。":state.operation==="edit"?"Seedance 编辑：原视频 4–30 秒，画幅与时长跟随输入。指令需明确增加、删除或修改的内容。":"生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。";
-      void request("ui/update-model-context",{content:[{type:"text",text:`视频工作台：${state.mode}；模型 ${current?.label||"未绑定"}；任务属于当前会话。风格、镜头、光线、节奏是提示词偏好，不是模型原生参数。`}],structuredContent:{[INSPECTOR]:{schemaVersion:1,title:tr("视频参数"),description:tr(notice),advancedLabel:"更多设置",updateTool:"set_parameters",submitTool:"generate_or_edit",submitLabel:tr(state.busy?"处理中…":"生成视频"),submitDisabled:state.busy||!current||!state.host.sessionId,...(state.openRequest?{openRequestId:state.openRequest}:{}),fields,status:{message:tr(state.message||"使用当前描述和参数直接生成；需要润色时可先优化提示词。"),tone:state.error?"error":"info"}}}}).catch(()=>{});
+      const notice=!current?(state.models.length?"请选择一个已配置的视频模型。":"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。"):!allowedOps().length?"所选模型不支持当前视频编辑，请选择支持编辑的模型。":current.id==="minimax-h3"?"H3 原生工作流：文生、首帧、首尾帧。使用普通工作流密钥；0.5MP / 1MP 为像素总量，画幅对齐 32 像素，时长按 24fps 帧网格取整。包含声音，不提供声音或水印开关。云端排队和生成可能需要数分钟，按 RunningHub 用量计费。":state.operation==="edit"?"Seedance 编辑：原视频 4–30 秒，画幅与时长跟随输入。指令需明确增加、删除或修改的内容。":"生成按服务商实际用量计费。结果另存到本会话产出，不覆盖原视频。";
+      void request("ui/update-model-context",{content:[{type:"text",text:`视频工作台：${state.mode}；用户选择的模型 ${current?.label||"无"}；任务属于当前会话。AI 不得代替用户选择或切换模型。`}],structuredContent:{model:state.model||null,[INSPECTOR]:{schemaVersion:1,title:tr("视频参数"),description:tr(notice),advancedLabel:"更多设置",updateTool:"set_parameters",submitTool:"generate_or_edit",submitLabel:tr(state.busy?"处理中…":"生成视频"),submitDisabled:state.busy||!current||!allowedOps().length||!state.host.sessionId,...(state.openRequest?{openRequestId:state.openRequest}:{}),fields,status:{message:tr(state.message||notice),tone:state.error?"error":"info"}}}}).catch(()=>{});
     }
     function render() {renderWorkbench(state.host.launch);
       $("#generateMode").setAttribute("aria-pressed",String(state.mode==="generate")); $("#editMode").setAttribute("aria-pressed",String(state.mode==="edit"));
@@ -444,11 +450,6 @@ SOFTWARE.
     async function refresh() {
       const response=await call("status"); state.models=response.models||[]; state.ratios=response.ratios||[]; state.localVideoReady=response.localVideoReady===true; state.statusLoaded=true;
       const result=await call("jobs"); state.jobs=result.jobs||[];
-      if(!state.jobsLoaded&&!state.model){
-        const source=state.host.launch?.source?.path;
-        const previous=state.jobs.find(job=>source&&job.path===source)||state.jobs.reduce((latest,job)=>!latest||job.createdAt>latest.createdAt?job:latest,null);
-        if(previous&&state.models.some(item=>item.id===previous.model))state.model=previous.model;
-      }
       normalized(); if(!$('#toolPanel').contains(document.activeElement))render(); publish();
       await applyLaunch();
       if(!state.jobsLoaded){state.jobsLoaded=true;state.activeJobId||=state.jobs.find(job=>!["failed","succeeded"].includes(job.status))?.id||"";}
@@ -476,20 +477,21 @@ SOFTWARE.
       try{const metadata=await call("inspect",{path});if(disposed||epoch!==previewEpoch)return;state.metadata=metadata;state.edit=defaults();render();tell("");}catch(error){if(!disposed&&epoch===previewEpoch)tell(error.message,true);}
     }
     function useSource(path) {
-      const editable=state.models.find(item=>item.operations.some(op=>editOps.includes(op)));
-      if(!model()?.operations.some(op=>editOps.includes(op))) {
-        if(!editable){tell("AI 内容编辑需要支持编辑原视频的模型，请在授权中心绑定 Seedance。常规剪辑可直接使用工具栏。",true);return;}
-        state.model=editable.id;
-      }
       state.mode="edit";state.ai=true;normalized();state.videoRefs=path;state.openRequest=crypto.randomUUID();render();publish();
+      if(!model()){tell(state.models.length?"请选择一个已配置的视频模型。":"AI 内容编辑需要支持编辑原视频的模型，请在授权中心绑定 Seedance。常规剪辑可直接使用工具栏。",true);openModelMenu();return;}
+      if(!allowedOps().length){tell("所选模型不支持当前视频编辑，请选择支持编辑的模型。",true);openModelMenu();}
     }
     async function applyLaunch() {
       const launch=state.host.launch;
       const key=launch?.requestId||launch?.source?.path;
       if(state.statusLoaded&&launch?.intent==="generate-video"&&launch.source?.path&&state.appliedLaunch!==key){
-        const target=model()?.operations.includes("first")?model():state.models.find(entry=>entry.operations.includes("first"));
-        if(!target)throw new Error(document.documentElement.lang.startsWith("en")?"Connect a model that supports a first frame.":"请连接支持首帧参考的视频模型。");
-        state.appliedLaunch=key;update({model:target.id,operation:"first",firstFrame:launch.source.path,lastFrame:"",imageRefs:"",videoRefs:"",audioRefs:""});mode("generate");return;
+        if(state.mode!=="generate")mode("generate");
+        const promptKey=`${key}:${state.model}`;
+        if(!model()?.operations.includes("first")){
+          if(state.promptedLaunch!==promptKey){state.promptedLaunch=promptKey;tell(state.models.length?"请选择支持首帧参考的视频模型。":"请在设置 → 授权中心绑定火山引擎 Ark 或 RunningHub。模型授权不代表账户一定有调用权限或足够余额。",true);openModelMenu();}
+          return;
+        }
+        state.appliedLaunch=key;update({operation:"first",firstFrame:launch.source.path,lastFrame:"",imageRefs:"",videoRefs:"",audioRefs:""});return;
       }
       if(!state.statusLoaded||launch?.intent!=="edit-video"||!launch.source?.path||state.appliedLaunch===key)return;
       state.appliedLaunch=key;
@@ -497,6 +499,8 @@ SOFTWARE.
     }
     async function run() {
       if(state.busy)throw new Error(tr("任务处理中，本次未提交新任务。请查询已有任务状态。"));
+      if(!model()){openModelMenu();throw new Error(tr("请选择一个已配置的视频模型。"));}
+      if(!allowedOps().length){openModelMenu();throw new Error(tr("所选模型不支持当前视频编辑，请选择支持编辑的模型。"));}
       if(!state.prompt.trim())throw new Error(tr("请先填写视频描述或编辑指令。"));
       if(!state.host.sessionId)throw new Error(tr("请先打开一个会话，再生成视频。"));
       state.busy=true;render();publish();tell("正在提交视频生成…");
@@ -589,8 +593,9 @@ SOFTWARE.
         catch(error){if(epoch!==galleryEpoch)return;select.append(node('span','点击预览查看素材'));}
       }
     });
-    $("#modelMenu").onclick=()=>{const rect=$("#modelMenu").getBoundingClientRect();post({type:"ipollowork:video-console:model-menu",value:state.model,manageLabel:tr("管理模型连接"),options:state.models.map(item=>({id:item.id,label:item.label,disabled:false})),left:rect.left,top:rect.top,width:rect.width,height:rect.height});};
-    window.addEventListener("message",event=>{if(event.source!==parent||event.data?.type!=="ipollowork:video-console:select-model")return;if(state.models.some(item=>item.id===event.data.value))update({model:event.data.value});});
+    function openModelMenu(){if(state.busy)return;const rect=$("#modelMenu").getBoundingClientRect();post({type:"ipollowork:video-console:model-menu",value:state.model,manageLabel:tr("管理模型连接"),options:state.models.map(item=>({id:item.id,label:item.label,disabled:false})),left:rect.left,top:rect.top,width:rect.width,height:rect.height});}
+    $("#modelMenu").onclick=openModelMenu;
+    window.addEventListener("message",event=>{if(event.source!==parent||event.data?.type!=="ipollowork:video-console:select-model")return;if(state.models.some(item=>item.id===event.data.value)){update({model:event.data.value},true);void applyLaunch();}});
     async function recover(upstreamId){const job=state.jobs.find(item=>item.id===state.activeJobId);if(!job||state.busy)return;state.busy=true;render();try{await call('recover',{id:job.id,...(upstreamId?{upstreamId}:{})});await refresh();}catch(error){tell(error.message,true);}finally{state.busy=false;render();}}
     $('#recover').onclick=()=>{const job=state.jobs.find(item=>item.id===state.activeJobId);if(job?.upstreamId)void recover();else{$('#upstreamId').value='';$('#recoverDialog').showModal();}};
     $('#recoverDialog').onclose=()=>{if($('#recoverDialog').returnValue==='recover')void recover($('#upstreamId').value.trim());};
@@ -636,8 +641,8 @@ SOFTWARE.
       $("#downloadVideo").disabled=state.busy||!state.edit;
       $("#settings").hidden=!state.previewPath||state.mode==="generate";
       $("#mediaGallery").hidden=state.mode!=="generate";
-      $("#modelName").textContent=model()?.label||tr("连接视频模型");
-      document.querySelectorAll("[data-model-logo]").forEach(icon=>{icon.style.display=icon.dataset.modelLogo===(model()?.id||"seedance-2.5")?"flex":"none";});
+      $("#modelName").textContent=model()?.label||tr("请选择一个已配置的视频模型。");
+      document.querySelectorAll("[data-model-logo]").forEach(icon=>{icon.style.display=icon.dataset.modelLogo===(model()?.id||"")?"flex":"none";});
       $(".connection-dot").classList.toggle("connected",Boolean(model()));
       $("#modelMenu").disabled=state.busy;
       $("#modelMenu").title=`${model()?.label||tr("连接视频模型")} · ${tr(state.busy?"当前任务处理中，完成后可切换模型":"切换视频模型")}`;
@@ -703,7 +708,7 @@ SOFTWARE.
     addEventListener('message',event=>{if(event.source===parent&&event.data?.type==='ipollowork:video-console:save-copy')void save('copy');});
     $('#openVideo').onclick=$('#importVideo').onclick=()=>{if(!state.busy)$('#videoFile').click();};$('#videoFile').onchange=async()=>{const file=$('#videoFile').files?.[0];$('#videoFile').value='';if(!file)return;if(!/\.(mp4|mov)$/i.test(file.name)||file.size>20*1024*1024){tell('导入支持 20 MB 以内的 MP4 / MOV；工作区已有视频可从素材入口打开。',true);return;}state.busy=true;render();try{const dataUrl=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error(tr("读取失败")));reader.readAsDataURL(file);});const result=await call('import',{filename:file.name,dataUrl});await preview(result.path);}catch(error){tell(error.message,true);}finally{state.busy=false;render();}};
     $('#start').onclick=()=>{mode('generate');openSettings();};
-    const toolDefinitions=[{name:"get_parameters",description:"Read selected model, supported operations and current video parameters before editing.",inputSchema:{type:"object",properties:{}}},{name:"get_job_status",description:"Read actual video jobs and output paths; use job id and status to verify submission and completion.",inputSchema:{type:"object",properties:{}}},{name:"set_parameters",description:"Update video parameters and prompt preferences.",inputSchema:{type:"object",properties:{...Object.fromEntries(params.map(key=>[key,{type:"string"}])),...Object.fromEntries(Object.entries(creativeOptions).map(([key,option])=>[key,{type:"string",enum:option.values}]))}}},{name:"generate_or_edit",description:"Generate video directly using the current prompt, references and selected settings.",inputSchema:{type:"object",properties:{}}},{name:"open_video",description:"Preview a workspace video.",inputSchema:{type:"object",properties:{path:{type:"string"}},required:["path"]}}];
+    const toolDefinitions=[{name:"get_parameters",description:"Read the model selected by the user, supported operations and current video parameters before editing.",inputSchema:{type:"object",properties:{}}},{name:"get_job_status",description:"Read actual video jobs and output paths; use job id and status to verify submission and completion.",inputSchema:{type:"object",properties:{}}},{name:"set_parameters",description:"Update video parameters and prompt preferences without changing the model. Only the user may choose a model from the workbench menu.",inputSchema:{type:"object",properties:{...Object.fromEntries(params.filter(key=>key!=="model").map(key=>[key,{type:"string"}])),...Object.fromEntries(Object.entries(creativeOptions).map(([key,option])=>[key,{type:"string",enum:option.values}]))},additionalProperties:false}},{name:"generate_or_edit",description:"Generate video only after the user has selected a configured model in the workbench.",inputSchema:{type:"object",properties:{},additionalProperties:false}},{name:"open_video",description:"Preview a workspace video.",inputSchema:{type:"object",properties:{path:{type:"string"}},required:["path"]}}];
     toolDefinitions.push({name:"import_media",description:"Import a user-selected file into the matching video parameter.",inputSchema:{type:"object",properties:{fieldId:{type:"string",enum:["firstFrame","lastFrame","imageRefs","videoRefs","audioRefs"]},filename:{type:"string"},dataUrl:{type:"string"}},required:["fieldId","filename","dataUrl"]}},{name:"read_media",description:"Read a selected frame image for preview.",inputSchema:{type:"object",properties:{path:{type:"string"},offset:{type:"number"}},required:["path"]}});
     addEventListener("message",event=>{
       if(event.source!==parent||event.data?.jsonrpc!=="2.0")return;const message=event.data;
@@ -722,7 +727,7 @@ SOFTWARE.
       if(message.method==="ui/resource-teardown") {disposed=true;galleryEpoch++;for(const url of galleryUrls.values())URL.revokeObjectURL(url);galleryUrls.clear();clearTimeout(pollTimer);clearInterval(generationTimer);resizeObserver.disconnect();$('#player').pause();$('#player').removeAttribute('src');$('#player').load();if(previewUrl)URL.revokeObjectURL(previewUrl);for(const handler of pending.values()){clearTimeout(handler.timer);handler.reject(new Error(tr("工作台已关闭")));}pending.clear();respond({});}
     });
     async function poll(){try{if(!state.busy&&!document.hidden)await refresh();}catch(error){tell(error.message,true);}finally{if(!disposed)pollTimer=setTimeout(poll,10000);}}
-    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Workbench",version:"0.2.18"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
+    request("ui/initialize",{protocolVersion:"2025-11-21",appInfo:{name:"iPolloWork Video Workbench",version:"0.2.43"},appCapabilities:{tools:{},availableDisplayModes:["inline","fullscreen"]}}).then(async host=>{
       post({jsonrpc:"2.0",method:"ui/notifications/initialized",params:{}});state.host=host.hostContext?.[HOST]||{};document.documentElement.lang=host.hostContext?.locale||"zh";translateLaunch();document.documentElement.style.colorScheme=host.hostContext?.theme||"light dark";
       await refresh();await applyLaunch();post({type:"ipollowork:video-console:list-media"});pollTimer=setTimeout(poll,10000);
     }).catch(error=>tell(error.message,true));

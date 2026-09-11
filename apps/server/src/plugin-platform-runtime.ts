@@ -23,7 +23,9 @@ export type BoundPluginAuthorizationRuntime = {
   listConnections(): Promise<ConnectionStatus[]>;
   getCredential(methodId: string, accountId?: string): Promise<Readonly<Record<string, string>> | null>;
   readCredential(accountId: string, methodId: string): Promise<Readonly<Record<string, string>> | null>;
+  saveCredential(methodId: string, accountId: string, values: Record<string, string>): Promise<ConnectionStatus>;
   setActiveAccount(methodId: string, accountId: string): Promise<boolean>;
+  revokeAccount(accountId: string): Promise<boolean>;
 };
 
 type BoundPluginAuthorizationOptions = {
@@ -73,6 +75,10 @@ export async function bindPluginAuthorizationRuntime(
     ))).flat(),
     getCredential,
     readCredential: (accountId, methodId) => getCredential(methodId, accountId),
+    saveCredential: async (methodId, accountId, values) => {
+      const saved = await saveSecretCredential({ manifest, store, consumerId, methodId, accountId, values });
+      return saved.status;
+    },
     setActiveAccount: (methodId, accountId) => {
       const method = authorizationMethod(manifest, methodId);
       return store.setActiveAccount({
@@ -82,6 +88,11 @@ export async function bindPluginAuthorizationRuntime(
         methodFingerprint: authorizationMethodFingerprint(method),
         accountId,
       });
+    },
+    revokeAccount: async (accountId) => {
+      const connectionIds = [...new Set((manifest.authorization?.methods ?? []).map((method) => method.connectionId))];
+      const removed = await Promise.all(connectionIds.map((connectionId) => store.revokeAccount({ connectionId, accountId })));
+      return removed.some(Boolean);
     },
   };
 }
@@ -108,6 +119,40 @@ function stringRecord(value: unknown): Record<string, string> {
     output[key] = entry;
   }
   return output;
+}
+
+async function saveSecretCredential(input: {
+  manifest: PluginPackageManifest;
+  store: AuthorizationVault;
+  consumerId: string;
+  methodId: string;
+  accountId: string;
+  values: unknown;
+}) {
+  const method = authorizationMethod(input.manifest, input.methodId);
+  if (method.kind !== "secret-form") throw new ApiError(400, "plugin_authorization_method_invalid", "This method does not accept a secret form");
+  const values = stringRecord(input.values);
+  const allowedFields = new Set(method.fields.map((field) => field.id));
+  const unexpected = Object.keys(values).filter((field) => !allowedFields.has(field));
+  if (unexpected.length) throw new ApiError(400, "plugin_authorization_field_unknown", `Unknown authorization field: ${unexpected[0]}`);
+  const missing = method.fields.filter((field) => field.required !== false && !values[field.id]?.trim());
+  if (missing.length) throw new ApiError(400, "plugin_authorization_field_required", `${missing[0]?.label ?? "Authorization field"} is required`);
+  const saved = await input.store.saveCredential({
+    connectionId: method.connectionId,
+    accountId: input.accountId,
+    methodId: input.methodId,
+    methodFingerprint: authorizationMethodFingerprint(method),
+    values,
+    secretFields: method.fields.filter((field) => field.secret !== false).map((field) => field.id),
+  });
+  await input.store.setActiveAccount({
+    consumerId: input.consumerId,
+    connectionId: method.connectionId,
+    methodId: method.id,
+    methodFingerprint: authorizationMethodFingerprint(method),
+    accountId: input.accountId,
+  });
+  return saved;
 }
 
 export async function listPluginAuthorization(config: ServerConfig, pluginId: string) {
@@ -143,29 +188,14 @@ export async function savePluginSecretAuthorization(input: {
   values: unknown;
 }) {
   const manifest = await installedManifest(input.config, input.pluginId);
-  const method = authorizationMethod(manifest, input.methodId);
-  if (method.kind !== "secret-form") throw new ApiError(400, "plugin_authorization_method_invalid", "This method does not accept a secret form");
-  const values = stringRecord(input.values);
-  const allowedFields = new Set(method.fields.map((field) => field.id));
-  const unexpected = Object.keys(values).filter((field) => !allowedFields.has(field));
-  if (unexpected.length) throw new ApiError(400, "plugin_authorization_field_unknown", `Unknown authorization field: ${unexpected[0]}`);
-  const missing = method.fields.filter((field) => field.required !== false && !values[field.id]?.trim());
-  if (missing.length) throw new ApiError(400, "plugin_authorization_field_required", `${missing[0]?.label ?? "Authorization field"} is required`);
   const store = await authorizationVault(input.config);
-  const saved = await store.saveCredential({
-    connectionId: method.connectionId,
-    accountId: input.accountId,
-    methodId: input.methodId,
-    methodFingerprint: authorizationMethodFingerprint(method),
-    values,
-    secretFields: method.fields.filter((field) => field.secret !== false).map((field) => field.id),
-  });
-  await store.setActiveAccount({
+  const saved = await saveSecretCredential({
+    manifest,
+    store,
     consumerId: pluginAuthorizationConsumerId(input.pluginId),
-    connectionId: method.connectionId,
-    methodId: method.id,
-    methodFingerprint: authorizationMethodFingerprint(method),
+    methodId: input.methodId,
     accountId: input.accountId,
+    values: input.values,
   });
   return saved.status;
 }

@@ -64,6 +64,8 @@ h3 { font-size: 17px; line-height: 1.35; }
 .brand-mark i::after, .brand-mark b::after { position: absolute; content: ""; width: 5px; height: 5px; background: inherit; transform: rotate(45deg); }
 .brand-mark i::after { left: 3px; bottom: -2px; }.brand-mark b::after { right: 1px; bottom: -3px; }
 .topbar-actions { gap: 8px; }
+.account-switcher { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; font-weight: 600; }
+.account-switcher select { width: min(220px, 26vw); min-height: 38px; padding-block: 7px; background: var(--surface-muted); }
 .connection { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 999px; background: var(--surface-muted); color: var(--muted); font-size: 12px; }
 .connection i { width: 7px; height: 7px; border-radius: 50%; background: var(--warning); }
 .connection.connected { background: var(--wechat-soft); color: #078847; }.connection.connected i { background: var(--wechat); }
@@ -80,7 +82,17 @@ h3 { font-size: 17px; line-height: 1.35; }
 .account-card { gap: 10px; padding: 12px 9px; border-top: 1px solid var(--border); }
 .account-avatar, .wechat-placeholder { display: grid; place-items: center; border-radius: 8px; background: var(--wechat); color: #fff; font-weight: 700; }
 .account-avatar { width: 34px; height: 34px; flex: 0 0 auto; }
-.account-card div { min-width: 0; }.account-card small { display: block; color: var(--muted); font-size: 10px; }.account-card strong { display: block; overflow: hidden; margin-top: 1px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.account-card div { min-width: 0; flex: 1 1 auto; }.account-card small { display: block; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.account-card strong { display: block; overflow: hidden; margin-top: 1px; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+
+.account-dialog { width: min(480px, calc(100vw - 28px)); padding: 0; border: 0; border-radius: 16px; background: var(--surface); box-shadow: 0 24px 80px rgba(0, 0, 0, .2); }
+.account-dialog::backdrop { background: rgba(25, 25, 25, .42); backdrop-filter: blur(2px); }
+.account-dialog form { display: grid; gap: 16px; padding: 22px; }
+.account-dialog header, .account-dialog footer, .account-dialog footer > div { display: flex; align-items: center; }
+.account-dialog header, .account-dialog footer { justify-content: space-between; gap: 12px; }
+.account-dialog header .eyebrow { margin-bottom: 2px; }
+.account-dialog form > p { color: var(--muted); font-size: 12px; }
+.account-dialog footer { padding-top: 4px; border-top: 1px solid var(--border); }
+.account-dialog footer > div { gap: 6px; margin-left: auto; }
 
 main { min-width: 0; width: 100%; max-width: 1180px; margin: 0 auto; padding: 36px 34px 64px; }
 .view { display: grid; gap: 20px; }
@@ -151,12 +163,14 @@ body[data-busy="true"] .button { pointer-events: none; }
 }
 @media (max-width: 620px) {
   .topbar { min-height: 66px; padding: 10px 14px; }.brand-mark { width: 38px; height: 38px; }.brand p, .connection { display: none; }
+  .brand h1, .account-switcher > span { display: none; }.account-switcher select { width: min(42vw, 180px); }.topbar-actions { gap: 4px; }.topbar-actions #add-account { padding-inline: 9px; }
   .sidebar { top: 66px; }.topbar-actions .button { padding-inline: 10px; }
   main { padding: 22px 14px 44px; }.welcome { min-height: 190px; align-items: flex-start; flex-direction: column; padding: 23px; }.welcome .button { align-self: stretch; }
   h2 { font-size: 24px; }.metric-grid { grid-template-columns: 1fr; }.metric { grid-template-columns: 1fr auto; align-items: center; }.metric strong { grid-row: 1 / 3; grid-column: 2; }.metric small { grid-column: 1; }
   .page-heading { align-items: stretch; flex-direction: column; }.publish-check, .publish-check form, .inline-form, .two-columns, .audience-grid { grid-template-columns: 1fr; }
   .editor, .surface { padding: 16px; }.asset-upload, .editor-footer, .menu-editor footer { align-items: stretch; flex-direction: column; }.asset-upload .button, .editor-footer .button { width: 100%; }.editor-footer > div { display: grid; width: 100%; }
   .switch-row { align-items: flex-start; flex-direction: column; }.comments-toolbar { align-items: flex-start; flex-direction: column; }
+  .account-dialog form { padding: 18px; }.account-dialog footer { align-items: stretch; flex-direction: column-reverse; }.account-dialog footer > div, .account-dialog footer .button { width: 100%; }.account-dialog footer > div { display: grid; grid-template-columns: 1fr 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; transition-duration: 0s !important; } }

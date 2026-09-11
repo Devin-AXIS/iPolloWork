@@ -25,7 +25,7 @@ test('new account browser profiles are saved and never invalidate a different si
     assert.equal((await create(input)).status, 201)
     const account = db.listAccounts().find(value => value.handle === '新账号')!
     assert.equal(account.browserProfileId, browserProfileId)
-    assert.match(await (await app.request('/accounts')).text(), new RegExp(`data-browser-profile-id="${browserProfileId}"`))
+    assert.match(await (await app.request('/publishing')).text(), new RegExp(`data-browser-profile-id="${browserProfileId}"`))
     const observe = (sessionId: string, url: string, tree = '', profile = browserProfileId) => app.request('/api/executor/browser-session', {
       method: 'POST', headers: { Origin: config.origin, 'Content-Type': 'application/json', Authorization: `Bearer ${config.apiToken}` },
       body: JSON.stringify({ sessionId, url, tree, browserProfileId: profile }),
@@ -42,7 +42,7 @@ test('new account browser profiles are saved and never invalidate a different si
     assert.ok(db.getAccount(account.id)?.lastVerifiedAt)
     assert.deepEqual(db.getAccount(old.id), previous)
     assert.deepEqual(db.listJobs(), jobs)
-    const html = await (await app.request('/accounts')).text()
+    const html = await (await app.request('/publishing')).text()
     const card = html.split(`data-account-id="${account.id}"`)[1]?.split('</article>')[0] ?? ''
     assert.match(card, /已登录|登录正常/)
     assert.doesNotMatch(card, /未登录|登录后即可安排任务|可以安排任务/)
@@ -82,7 +82,7 @@ test('login identity automatically connects without a verification job and rejec
     assert.equal(db.listJobs().length, 0)
     await observe(account.profileUrl)
     assert.equal(db.getAccount(account.id)?.updatedAt, connected?.updatedAt)
-    const html = await (await app.request('/accounts')).text()
+    const html = await (await app.request('/publishing')).text()
     assert.match(html, /data-account-login/)
     assert.doesNotMatch(html, /data-verify-account|保存账号并进入验证/)
     await observe('https://creator.xiaohongshu.com/login')
@@ -94,23 +94,25 @@ test('login identity automatically connects without a verification job and rejec
   } finally { db.close() }
 })
 
-test('opens account management and redirects retired task pages', async () => {
+test('opens publishing with account dialogs and redirects retired account and task pages', async () => {
   const db = new OpsDatabase(':memory:')
   const app = createApp(new OpsService(db, generator))
-  for (const path of ['/accounts', '/comments', '/analytics', '/brand', '/jobs']) {
+  for (const path of ['/publishing', '/comments', '/analytics', '/brand', '/jobs']) {
     const response = await app.request(path)
     assert.equal(response.status, 200)
     const html = await response.text()
     assert.match(html, /小红书运营台/)
     assert.doesNotMatch(html, /href="\/tasks"|任务看板|data-open-task-panel|data-drop-column|id="campaign-form"/)
   }
-  for (const path of ['/', '/tasks', '/calendar']) {
+  for (const path of ['/', '/accounts', '/tasks', '/calendar']) {
     const response = await app.request(path)
     assert.equal(response.status, 302)
-    assert.equal(response.headers.get('location'), '/accounts')
+    assert.equal(response.headers.get('location'), '/publishing')
   }
-  const accountHtml = await (await app.request('/accounts')).text()
-  assert.match(accountHtml, /账号接入步骤/)
+  const accountHtml = await (await app.request('/publishing')).text()
+  assert.match(accountHtml, /<dialog id="account-onboarding"/)
+  assert.doesNotMatch(accountHtml, /账号接入步骤|href="\/accounts"/)
+  assert.equal((await app.request('/accounts?account=999')).status, 404)
   assert.match(accountHtml, /data-new-account-login/)
   assert.match(accountHtml, /name="expectedProfileId"/)
   assert.match(accountHtml, /name="position"/)
@@ -129,7 +131,7 @@ test('embedded workbench permits only configured frame ancestors and keeps mutat
   const db = new OpsDatabase(':memory:')
   try {
     const app = createApp(new OpsService(db, generator))
-    const page = await app.request('/accounts')
+    const page = await app.request('/publishing')
     assert.equal(page.status, 200)
     assert.equal(page.headers.get('x-frame-options'), null)
     assert.match(page.headers.get('content-security-policy') ?? '', /frame-ancestors http:\/\/localhost:\* http:\/\/127\.0\.0\.1:\* file:/)
@@ -196,9 +198,9 @@ test('account onboarding supports editing and queues a real session verification
   assert.equal(db.listJobs().filter((job) => job.type === 'verify_session').length, 1)
   assert.equal(db.dispatchDue().length, 1)
 
-  const page = await app.request('/accounts')
+  const page = await app.request('/publishing')
   const html = await page.text()
-  assert.match(html, /自动连接/)
+  assert.match(html, /保存后会自动识别/)
   assert.doesNotMatch(html, /标记已登录/)
   db.close()
 })
@@ -284,6 +286,11 @@ test('interaction switching filters reader comments, managed actions and reviews
     assert.match(defaultPage, new RegExp(`href="/comments\\?account=${defaultAccount.id}" aria-current="true"`))
     const firstPage = await (await app.request(`/comments?account=${first.id}`)).text()
     for (const text of ['FIRST_READER_COMMENT', 'FIRST_MANAGED_ACTION', 'FIRST_PENDING_REVIEW']) assert.ok(firstPage.includes(text))
+    assert.equal(firstPage.match(/class="account-bar"/g)?.length, 1)
+    assert.doesNotMatch(firstPage, /class="account-platform"/)
+    assert.match(firstPage, /class="add-account-link"[^>]*aria-label="添加账号"/)
+    assert.ok(firstPage.indexOf('class="app-topbar"') < firstPage.indexOf('class="app-main"'))
+    assert.doesNotMatch(firstPage.slice(firstPage.indexOf('class="app-main"')), /class="account-bar"|class="add-account-link"/)
     assert.doesNotMatch(firstPage, /SECOND_READER_COMMENT|SECOND_REPLY_ACTION|SECOND_PENDING_REVIEW/)
     const secondPage = await (await app.request(`/comments?account=${second.id}`)).text()
     assert.match(secondPage, /SECOND_READER_COMMENT|SECOND_REPLY_ACTION/)
@@ -497,7 +504,7 @@ test('verified platform avatars persist and deletion requires a local origin', a
     assert.equal(saved?.avatarUrl, avatarUrl)
     await observe()
     assert.equal(db.getAccount(owner.id)?.updatedAt, saved?.updatedAt)
-    const page = await app.request('/accounts')
+    const page = await app.request('/publishing')
     assert.match(page.headers.get('content-security-policy') || '', /https:\/\/\*\.xhscdn\.com/)
     const html = await page.text()
     assert.ok(html.includes('data-account-avatar src="' + avatarUrl + '"'))

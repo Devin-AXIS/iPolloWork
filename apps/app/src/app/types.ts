@@ -98,10 +98,6 @@ export type PlaceholderMessageInfo = {
   };
 };
 
-export type PlaceholderAssistantMessage = PlaceholderMessageInfo & {
-  role: "assistant";
-};
-
 export type MessageInfo = Message | PlaceholderMessageInfo;
 
 export type MessageWithParts = {
@@ -117,12 +113,6 @@ export type SessionErrorTurn = {
 };
 
 export const SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX = "session-error:";
-
-export type StepGroupMode = "exploration" | "standalone";
-
-export type MessageGroup =
-  | { kind: "text"; part: Part; segment: "intent" | "result" }
-  | { kind: "steps"; id: string; parts: Part[]; segment: "execution"; mode: StepGroupMode };
 
 export type PromptMode = "prompt" | "shell";
 
@@ -154,6 +144,7 @@ export type ImageStudioAiReference = {
   sourceName: string;
   imageWidth: number;
   imageHeight: number;
+  model?: string;
   kind: "selection" | "point";
   selection?: { left: number; top: number; right: number; bottom: number };
   point?: { x: number; y: number };
@@ -212,15 +203,6 @@ export type PromptDispatchResult = {
 };
 
 export type PromptDispatchOutcome = boolean | PromptDispatchResult;
-
-export type ArtifactItem = {
-  id: string;
-  name: string;
-  path?: string;
-  kind: "file" | "text";
-  size?: string;
-  messageId?: string;
-};
 
 export type OpencodeEvent = {
   type: string;

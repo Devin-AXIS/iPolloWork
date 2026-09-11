@@ -1,4 +1,26 @@
 import { describe, expect, test } from "bun:test";
+
+test("Codex transport retries are non-terminal and clear when output resumes", () => {
+  const state = createCodexLiveState();
+  mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: {
+    threadId: "thread", turn: { id: "turn" },
+  } }, state);
+  const retry = mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: true,
+    error: { message: "Reconnecting... waiting for network" },
+  } }, state);
+  expect(retry).toEqual([expect.objectContaining({ type: "session.status", status: expect.objectContaining({ type: "retry" }) })]);
+  const recovered = mapCodexHarnessEvent({ type: "notification", method: "item/agentMessage/delta", params: {
+    threadId: "thread", turnId: "turn", itemId: "answer", delta: "Video submitted",
+  } }, state);
+  expect(recovered[0]).toEqual({ type: "session.status", sessionId: "thread", status: { type: "busy" } });
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "old-turn", willRetry: true, error: { message: "retry" },
+  } }, state)).toEqual([]);
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: false, error: { message: "Unauthorized" },
+  } }, state)).toEqual([expect.objectContaining({ type: "session.error" })]);
+});
 import {
   CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
@@ -8,6 +30,7 @@ import {
 
 import {
   ConversationEngineAdapterRegistry,
+  conversationWaitingFor,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationEvent,
@@ -31,6 +54,7 @@ import {
 import {
   createCodexLiveState,
   mapCodexHarnessEvent,
+  mapCodexHarnessSnapshot,
 } from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
 
 function permissionMemoryTestStorage() {
@@ -47,6 +71,24 @@ function permissionMemoryTestStorage() {
     },
   };
 }
+
+test("Codex snapshots and live status expose approval waits without treating idle as waiting", () => {
+  const snapshot = mapCodexHarnessSnapshot({
+    session: { id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnApproval"] } },
+    status: { type: "busy" }, messages: [], todos: [],
+  });
+  expect(conversationWaitingFor(snapshot.session)).toBe("approval");
+  const events = mapCodexHarnessEvent({
+    type: "notification", method: "thread/status/changed",
+    params: { threadId: "waiting", status: { type: "active", activeFlags: ["waitingOnUserInput"] } },
+  }, createCodexLiveState());
+  expect(events).toEqual([{ type: "session.updated", sessionId: "waiting", info: {
+    id: "waiting", codex: { status: "active", activeFlags: ["waitingOnUserInput"] },
+  } }]);
+  expect(conversationWaitingFor({ id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnUserInput"] } })).toBe("input");
+  expect(conversationWaitingFor({ ...snapshot.session, codex: { status: "idle", activeFlags: ["waitingOnApproval"] } })).toBeNull();
+  expect(conversationWaitingFor(undefined)).toBeNull();
+});
 
 function permissionMemoryTestAdapter(
   id: string,

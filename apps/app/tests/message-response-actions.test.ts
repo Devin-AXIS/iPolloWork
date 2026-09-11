@@ -77,10 +77,25 @@ describe("studio result receipts", () => {
     expect(groupMessages(result)).toHaveLength(3);
     expect(isStudioResultMessage(result[1])).toBe(true);
   });
-  test("does not duplicate outputs already delivered in the transcript, including renamed files", () => {
+  test("keeps a delivery receipt even when the transcript mentions or previews the file", () => {
     const messages: UIMessage[] = [{ id: "answer", role: "assistant", parts: [{ type: "text", text: `[Video](${artifact.path})` }] }];
-    expect(withStudioResults(messages, [artifact], labels)).toEqual(messages);
-    expect(withStudioResults(messages, [{ ...artifact, path: "renamed.mp4", previousPaths: [artifact.path] }], labels)).toEqual(messages);
+    const result = withStudioResults(messages, [artifact], labels);
+    expect(result).toHaveLength(2);
+    expect(withStudioResults(result, [artifact], labels)).toEqual(result);
+    expect(withStudioResults(messages, [{ ...artifact, path: "renamed.mp4", previousPaths: [artifact.path] }], labels).at(-1)?.parts)
+      .toEqual([{ type: "text", text: expect.stringContaining("renamed.mp4") }]);
+  });
+  test("delivers image and video independently, despite inline image previews and tool paths", () => {
+    const image: SessionArtifact = { ...artifact, path: "artifacts/poster.png", generation: {
+      id: "image-1", kind: "image", completedAt: 15, model: "Image model", width: 941, height: 1672,
+    } };
+    const messages: UIMessage[] = [{ id: "preview", role: "assistant", parts: [
+      { type: "text", text: "![Poster](artifacts/poster.png)" },
+    ] }];
+    const result = withStudioResults(messages, [artifact, image, image], labels);
+    expect(result.filter(isStudioResultMessage).map(message => message.id).sort())
+      .toEqual(["studio-result:image-1", "studio-result:job-1"]);
+    expect(withStudioResults(result, [artifact, image], labels)).toEqual(result);
   });
   test("shows only successful generation receipts, including an otherwise empty conversation", () => {
     expect(withStudioResults([], [{ path: "input.png", size: 100, updatedAt: 1 }], labels)).toEqual([]);

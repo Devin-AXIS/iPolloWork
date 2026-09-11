@@ -5,6 +5,7 @@ import type { ConversationPermission } from "../src/react-app/domains/session/en
 
 import {
   PermissionApprovalPanel,
+  PendingConfirmationNotice,
   permissionDetailRows,
 } from "../src/react-app/domains/session/chat/permission-approval-modal";
 
@@ -28,6 +29,16 @@ function pendingPermission(overrides: Partial<ConversationPermission> = {}): Con
 }
 
 describe("permission approval modal helpers", () => {
+  test("a missing approval has an explicit waiting notice and a stop action, never an allow action", () => {
+    let stops = 0;
+    const html = renderToStaticMarkup(React.createElement(PendingConfirmationNotice, { waitingFor: "approval", onStop: () => { stops += 1; } }));
+    expect(html).toContain('role="status"');
+    expect(html).toContain('data-testid="pending-confirmation-notice"');
+    expect(html).toContain("Waiting for your approval");
+    expect(html).toContain("Stop this run");
+    expect(html).not.toContain("Allow once");
+    expect(stops).toBe(0);
+  });
   test("surfaces risk-bearing metadata as review rows", () => {
     expect(
       permissionDetailRows({

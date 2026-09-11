@@ -422,6 +422,21 @@ export function PermissionApprovalModal(props: PermissionApprovalModalProps) {
   );
 }
 
+export function PendingConfirmationNotice(props: { waitingFor: "approval" | "input"; onStop: () => void }) {
+  return (
+    <div role="status" data-testid="pending-confirmation-notice" className="mx-4 my-3 rounded-xl border border-border bg-muted/40 p-4">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <Clock3 className="size-4 shrink-0" aria-hidden />
+        {t(props.waitingFor === "approval" ? "session.waiting_approval" : "session.waiting_input")}
+      </div>
+      <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{t("session.confirmation_missing")}</p>
+      <Button type="button" variant="outline" size="sm" className="mt-3" onClick={props.onStop}>
+        {t("session.stop_waiting_run")}
+      </Button>
+    </div>
+  );
+}
+
 export function PermissionApprovalPanel(props: PermissionApprovalModalProps) {
   const presentation = useMemo(() => describePermissionRequest(props.permission), [props.permission]);
   const metadata =

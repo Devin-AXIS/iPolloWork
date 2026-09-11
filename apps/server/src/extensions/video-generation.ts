@@ -63,6 +63,10 @@ function fail(message: string): never { throw new ApiError(400, "video_invalid_p
 function lines(text: string) { return text.split(/\r?\n/).map(line => line.trim()).filter(Boolean); }
 function isReference(operation: string) { return ["reference", "edit", "extend", "regenerate"].includes(operation); }
 export function validateVideoSubmission(input: unknown): Submission {
+  const selection = z.object({ model: z.string().trim().min(1) }).passthrough().safeParse(input);
+  if (!selection.success) {
+    throw new ApiError(400, "video_model_selection_required", "请先让用户从已配置的视频模型中选择一个，再提交生成或编辑。");
+  }
   const parsed = submissionSchema.safeParse(input);
   if (!parsed.success) fail("视频参数无效，请检查提示词和参数类型。");
   const args = parsed.data;
@@ -95,8 +99,18 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "inspect", title: "Inspect a local video for toolbar editing", effect: "read", properties: { path: stringProperty } },
   { action: "local-edit", title: "Save local toolbar video edits without AI", effect: "write", properties: z.toJSONSchema(localVideoEditSchema).properties ?? {} },
 ].map(action => ({ extensionId: VIDEO_GENERATION_EXTENSION_ID, action: action.action, title: action.title,
-  description: action.title, effect: action.effect === "read" ? "read" as const : "write" as const,
-  inputSchema: { type: "object", properties: action.properties, additionalProperties: false } }));
+  description: action.action === "status"
+    ? "List the configured video models the user can choose from. Do not treat the first result as consent."
+    : action.action === "submit"
+      ? "Generate or edit video with the configured model explicitly selected by the user. Never choose or infer a model for them."
+      : action.title,
+  effect: action.effect === "read" ? "read" as const : "write" as const,
+  inputSchema: {
+    type: "object",
+    properties: action.properties,
+    ...(action.action === "submit" ? { required: ["requestId", "model", "operation", "prompt", "resolution", "duration", "ratio"] } : {}),
+    additionalProperties: false,
+  } }));
 
 async function credential(authorization: AuthorizationAccess, model: string) {
   const values = await authorization.read(model === "seedance-2.5" ? "volcengine-video" : "runninghub-video");

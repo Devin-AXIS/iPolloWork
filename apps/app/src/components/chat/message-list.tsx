@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  Clock3,
   ChevronDown,
   Copy,
   Download,
@@ -103,6 +104,7 @@ import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buil
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
+const StudioDeliveryPaths = React.createContext<readonly string[]>([])
 
 type RenderAssistantGroupOptions = {
   highlightQuery?: string
@@ -502,6 +504,8 @@ function AssistantProcessDisclosure(props: {
   contentClassName?: string
 }) {
   const { groups, isStreaming, hasError = false, durationMs, children, contentClassName } = props
+  const { waitingLabel } = useMessageList()
+  const awaitingConfirmation = isStreaming && Boolean(waitingLabel)
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -515,7 +519,7 @@ function AssistantProcessDisclosure(props: {
   }, [isStreaming])
 
   const processState = getAssistantProcessState(isStreaming, hasError)
-  const label = processState === "streaming"
+  const label = awaitingConfirmation ? waitingLabel : processState === "streaming"
     ? t("message.process_in_progress")
     : processState === "failed"
       ? t("message.process_failed")
@@ -533,7 +537,9 @@ function AssistantProcessDisclosure(props: {
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
         onClick={() => setIsOpen((open) => !open)}
       >
-        {processState === "streaming" ? (
+        {awaitingConfirmation ? (
+          <Clock3 className="size-3.5 shrink-0" aria-hidden />
+        ) : processState === "streaming" ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
         ) : processState === "failed" ? (
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
@@ -575,6 +581,7 @@ function AssistantProcessSection(props: {
 
 const AssistantMessage = React.memo(
   ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
+    const deliveredPaths = React.useContext(StudioDeliveryPaths)
     const { client, workspaceId, showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -620,6 +627,7 @@ const AssistantMessage = React.memo(
           {!isStreaming ? (
             <ArtifactList
               messages={artifactMessages ?? [message]}
+              excludedPaths={isStudioResultMessage(message) ? undefined : deliveredPaths}
               client={client}
               workspaceId={workspaceId}
               sessionId={sessionId}
@@ -943,16 +951,16 @@ const MessageComponent = React.memo(
 
 MessageComponent.displayName = "MessageComponent"
 
-const LoadingMessage = React.memo(({ label }: { label?: string }) => (
+const LoadingMessage = React.memo(({ label, paused = false }: { label?: string; paused?: boolean }) => (
   <Message className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10">
     <div className="group flex w-full flex-col gap-0">
       <div className="flex items-center gap-2 px-1 py-1 text-sm text-muted-foreground">
-        <img
+        {paused ? <Clock3 className="size-4 shrink-0" aria-hidden /> : <img
           src={publicAssetUrl("ipollowork-thinking-logo-v2.gif")}
           alt=""
           aria-hidden="true"
           className="size-6 shrink-0 object-contain"
-        />
+        />}
         <span>{label ?? t("session.assistant_thinking")}</span>
       </div>
     </div>
@@ -1005,7 +1013,9 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
     return () => window.clearInterval(timer)
   }, [status])
 
-  const info = seconds > 0
+  const info = status.attempt === 0 && status.next === 0
+    ? t("session.model_connection_retry_wait")
+    : seconds > 0
     ? `Retrying in ${seconds}s · attempt ${status.attempt}`
     : `Retrying · attempt ${status.attempt}`
   const action = status.action
@@ -1037,6 +1047,22 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
 })
 
 RetryMessage.displayName = "RetryMessage"
+
+export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/workspace").SessionArtifactPage["videoJobs"] }) {
+  return (jobs ?? []).filter(job => job.status !== "succeeded").map(job => {
+    const failed = job.status === "failed" || job.status === "save_failed";
+    const label = job.status === "submitting" ? "submitting"
+      : job.status === "running" ? "running"
+      : job.status === "saving" ? "saving"
+      : job.status === "uncertain" ? "uncertain"
+      : job.status === "save_failed" ? "save_failed" : "failed";
+    return <div key={job.id} role="status" data-video-job-status={job.status}
+      className={cn("mx-auto w-full max-w-[800px] px-0 py-2 text-sm md:px-10", failed ? "text-destructive" : "text-muted-foreground")}>
+      <p>{t(`session.video_job.${label}`)}</p>
+      <p className="break-all text-xs">{job.model} · {job.id}</p>
+    </div>;
+  });
+}
 
 const isMessageEmptyGroup = (messages: UIMessageWithIndex[]) =>
   messages.every(message => isEmptyMessage(message.message));
@@ -1294,7 +1320,8 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
-  const { sessionTitle } = useMessageList()
+  const { sessionTitle, waitingLabel } = useMessageList()
+  const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const supplementalArtifactFiles = React.useMemo(
@@ -1330,6 +1357,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     : null
 
   return (
+    <StudioDeliveryPaths.Provider value={deliveredPaths}>
     <div className={cn("flex flex-col gap-2 @container/message-list")}>
       {items.map((item) => {
         if (isMessageGroup(item)) {
@@ -1369,7 +1397,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
             <MessageComponent
               message={item.message}
               isLastMessage={isLastMessage}
-              isStreaming={isLastMessage && isStreaming}
+              isStreaming={isLastMessage && isStreaming && !isStudioResultMessage(item.message)}
               isLastStep={isLastStep}
               showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}
               requestNaming={item.message.role === "assistant"
@@ -1378,7 +1406,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               requestOrdinal={requestOrdinal}
               artifactRequestOwnership={resolvedArtifactRequestOwnership}
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
-              artifactFiles={requestArtifactFiles}
+              artifactFiles={isStudioResultMessage(item.message) ? undefined : requestArtifactFiles}
               artifactContext={artifactContext}
             />
           </div>
@@ -1386,10 +1414,11 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
       })}
 
       {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
-        ? <LoadingMessage label={liveActionLabel ?? assistantWaitLabel ?? undefined} />
+        ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} />
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
     </div>
+    </StudioDeliveryPaths.Provider>
   )
 }

@@ -1,4 +1,5 @@
 import type { UIMessage } from "ai";
+import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types";
 
 import { mergeSnapshotAndLiveMessages } from "../sync/message-merge";
 import { applyRevertCursor } from "../sync/transcript-reconcile";
@@ -41,7 +42,18 @@ export function deriveRenderedSessionMessages(input: {
     ? mergeSnapshotAndLiveMessages(snapshotMessages, liveMessages, { appendLiveOnlyMessages: true })
     : liveMessages;
 
-  return applyRevertCursor(messages, revertMessageId, { preserveOptimisticUserMessages: true });
+  // Older clients cached this retry notification as a terminal error. Drop
+  // only that exact client-only notice once an authoritative snapshot exists;
+  // native/persisted failures and all other errors must remain visible.
+  const snapshotIds = new Set(snapshotMessages.map(message => message.id));
+  const repaired = input.snapshot ? messages.filter(message => !(
+    message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
+    && !snapshotIds.has(message.id)
+    && message.parts.length === 1
+    && message.parts[0].type === "text"
+    && /^Reconnecting(?:\.{3}|…)\s*waiting for network\s*$/i.test(message.parts[0].text.trim())
+  )) : messages;
+  return applyRevertCursor(repaired, revertMessageId, { preserveOptimisticUserMessages: true });
 }
 
 export function deriveComposerInputHistory(messages: UIMessage[]): string[] {

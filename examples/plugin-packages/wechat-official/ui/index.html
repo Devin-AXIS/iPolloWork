@@ -15,6 +15,8 @@
       <div><h1>公众号 Studio</h1><p>内容、互动与菜单，在一个工作台完成</p></div>
     </div>
     <div class="topbar-actions">
+      <label class="account-switcher"><span>公众号</span><select id="account-select" aria-label="切换公众号账号"><option value="">尚未添加账号</option></select></label>
+      <button id="add-account" class="button secondary" type="button">添加账号</button>
       <span id="connection" class="connection"><i></i>正在连接</span>
       <button id="refresh" class="button quiet" type="button" aria-label="刷新数据">刷新</button>
     </div>
@@ -31,7 +33,8 @@
       </nav>
       <section class="account-card">
         <span class="account-avatar">公</span>
-        <div><small>当前公众号</small><strong id="account-id">读取中…</strong></div>
+        <div><small id="account-app-id">当前公众号</small><strong id="account-id">读取中…</strong></div>
+        <button id="manage-account" class="button icon" type="button" aria-label="管理当前公众号账号">⋯</button>
       </section>
     </aside>
 
@@ -115,5 +118,19 @@
       </section>
     </main>
   </div>
+
+  <dialog id="account-dialog" class="account-dialog">
+    <form id="account-form" method="dialog">
+      <header><div><span class="eyebrow">账号管理</span><h3 id="account-dialog-title">添加公众号</h3></div><button id="close-account-dialog" class="button icon" type="button" aria-label="关闭">×</button></header>
+      <p id="account-dialog-hint">每个账号的 AppID 和 AppSecret 会独立保存在 iPolloWork 加密授权仓库中。</p>
+      <label>账号标识 <span>用于切换和定时任务，例如“品牌主号”</span><input id="account-name" maxlength="80" autocomplete="off" placeholder="品牌主号" required></label>
+      <label>AppID<input id="account-appid" maxlength="128" autocomplete="off" placeholder="wx…"></label>
+      <label>AppSecret<input id="account-secret" type="password" maxlength="256" autocomplete="new-password" placeholder="请输入 AppSecret"></label>
+      <footer>
+        <button id="delete-account" class="button quiet danger" type="button" hidden>删除绑定</button>
+        <div><button id="cancel-account" class="button quiet" type="button">取消</button><button class="button primary" type="submit">验证并保存</button></div>
+      </footer>
+    </form>
+  </dialog>
 </body>
 </html>

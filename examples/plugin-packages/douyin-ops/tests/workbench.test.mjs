@@ -15,6 +15,14 @@ test('HTTP API requires its local token, rejects cross-origin and unknown paths,
   assert.equal((await fetch(origin + '/api/state', { headers: { ...headers, Origin: 'https://untrusted.example' } })).status, 403);
   const html = await fetch(origin + '/'), htmlText = await html.text();
   assert.match(htmlText, /抖音运营台/);
+  assert.match(htmlText, /class="app-shell"/);
+  assert.match(htmlText, /class="sidebar"/);
+  assert.doesNotMatch(htmlText, /<span>抖音<\/span>/);
+  assert.match(htmlText, /id="add-account"[^>]*aria-label="添加账号"/);
+  assert.match(htmlText, /id="manage-account"/);
+  assert.match(htmlText, /id="view-overview"/);
+  assert.match(htmlText, /data-view="overview" aria-current="page"/);
+  assert.match(htmlText, /让下一条内容/);
   for (const capability of ['publish', 'listVideos', 'comments', 'searchVideos']) assert.match(htmlText, new RegExp(`data-capability="${capability}"`));
   assert.match(html.headers.get('content-security-policy'), /script-src 'self'/);
   const initialState = await (await fetch(origin + '/api/state', { headers })).json();

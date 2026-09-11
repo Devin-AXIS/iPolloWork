@@ -1,5 +1,6 @@
 import type { DynamicToolUIPart, UIMessage } from "ai";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { t } from "@/i18n";
 
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
 import type {
@@ -21,6 +22,7 @@ type CodexLiveState = {
   visibleResultTurns: Set<string>;
   activeTurnByThread: Map<string, string>;
   parentUserMessageIdByTurn: Map<string, string>;
+  retryingThreads: Set<string>;
 };
 
 export function createCodexLiveState(): CodexLiveState {
@@ -31,6 +33,7 @@ export function createCodexLiveState(): CodexLiveState {
     visibleResultTurns: new Set(),
     activeTurnByThread: new Map(),
     parentUserMessageIdByTurn: new Map(),
+    retryingThreads: new Set(),
   };
 }
 
@@ -359,10 +362,23 @@ export function mapCodexHarnessEvent(
       info: { id: threadId, title: stringValue(params.threadName) ?? "New conversation" },
     }];
   }
+  if (method === "thread/status/changed" && threadId && isRecord(params.status)) {
+    return [{
+      type: "session.updated",
+      sessionId: threadId,
+      info: { id: threadId, codex: {
+        status: stringValue(params.status.type),
+        activeFlags: Array.isArray(params.status.activeFlags)
+          ? params.status.activeFlags.filter((flag): flag is string => typeof flag === "string")
+          : [],
+      } },
+    }];
+  }
   if ((method === "thread/deleted" || method === "thread/archived") && threadId) {
     return [{ type: "session.deleted", sessionId: threadId }];
   }
   if (method === "turn/started" && threadId && isRecord(params.turn)) {
+    state.retryingThreads.delete(threadId);
     const turnId = stringValue(params.turn.id);
     if (turnId) {
       const turnKey = `${threadId}:${turnId}`;
@@ -396,6 +412,7 @@ export function mapCodexHarnessEvent(
     const activeTurnId = state.activeTurnByThread.get(threadId);
     const supersededByNewTurn = Boolean(turnId && activeTurnId && activeTurnId !== turnId);
     if (supersededByNewTurn) return completed;
+    state.retryingThreads.delete(threadId);
     if (!turnId || activeTurnId === turnId) state.activeTurnByThread.delete(threadId);
     if (turn.status === "failed") {
       const error = isRecord(turn.error) ? stringValue(turn.error.message) : null;
@@ -448,7 +465,10 @@ export function mapCodexHarnessEvent(
       && turnKey
       && state.visibleResultTurns.has(turnKey)
     ) return [];
-    return [{ type: "message.upsert", sessionId: threadId, message }];
+    const recovered: ConversationEvent[] = state.retryingThreads.delete(threadId)
+      ? [{ type: "session.status", sessionId: threadId, status: { type: "busy" } }]
+      : [];
+    return [...recovered, { type: "message.upsert", sessionId: threadId, message }];
   }
   if (threadId && typeof params.itemId === "string" && typeof params.delta === "string") {
     const turnId = stringValue(params.turnId);
@@ -462,7 +482,10 @@ export function mapCodexHarnessEvent(
           : state.itemTurnKeys.get(params.itemId);
         if (turnKey) state.visibleResultTurns.add(turnKey);
       }
-      return [{
+      const recovered: ConversationEvent[] = state.retryingThreads.delete(threadId)
+        ? [{ type: "session.status", sessionId: threadId, status: { type: "busy" } }]
+        : [];
+      return [...recovered, {
         type: "message.chunk",
         sessionId: threadId,
         messageId: params.itemId,
@@ -480,6 +503,17 @@ export function mapCodexHarnessEvent(
   if (method === "error" && threadId) {
     const error = isRecord(params.error) ? params.error : null;
     const activeTurnId = state.activeTurnByThread.get(threadId);
+    const turnId = stringValue(params.turnId);
+    if (turnId && activeTurnId && turnId !== activeTurnId) return [];
+    // App-server emits recoverable transport errors through the same method
+    // as terminal failures. Only terminal failures belong in the transcript.
+    if (params.willRetry === true) {
+      state.retryingThreads.add(threadId);
+      return [{ type: "session.status", sessionId: threadId, status: {
+        type: "retry", attempt: 0, next: 0, message: t("session.model_connection_retry"),
+      } }];
+    }
+    state.retryingThreads.delete(threadId);
     const parentUserMessageId = activeTurnId
       ? state.parentUserMessageIdByTurn.get(`${threadId}:${activeTurnId}`)
       : undefined;

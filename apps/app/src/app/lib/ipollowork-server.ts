@@ -2,6 +2,7 @@ import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
+import { fetchWithTimeout as fetchWithRequestTimeout } from "./request-timeout";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenResourceSnapshot } from "./den-types";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
@@ -1046,32 +1047,14 @@ async function fetchWithTimeout(
     return fetchImpl(url, init);
   }
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const signal = controller?.signal;
-  const initWithSignal = signal && !init.signal ? { ...init, signal } : init;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      try {
-        controller?.abort();
-      } catch {
-        // ignore
-      }
-      reject(new Error("请求超时，请稍后重试。"));
-    }, timeoutMs);
-  });
-
   try {
-    return await Promise.race([fetchImpl(url, initWithSignal), timeoutPromise]);
+    return await fetchWithRequestTimeout(fetchImpl, url, init, timeoutMs, "请求超时，请稍后重试。");
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
     if (name === "AbortError") {
       throw new Error("请求超时，请稍后重试。");
     }
     throw new Error(serviceErrorMessage(error));
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 

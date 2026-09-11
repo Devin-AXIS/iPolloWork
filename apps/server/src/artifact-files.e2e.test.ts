@@ -8,6 +8,7 @@ import { join } from "node:path";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 import { listSessionArtifacts, recordSessionArtifact } from "./session-artifacts.js";
+import { createVideoJob, updateVideoJob } from "./extensions/video-jobs.js";
 
 type Served = { port: number; stop: (closeActiveConnections?: boolean) => void | Promise<void> };
 
@@ -63,6 +64,24 @@ function auth(token: string) {
 }
 
 describe("artifact file routes", () => {
+  test("artifact reads expose scoped live video states without prompts or upstream identifiers", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token, config } = await startiPolloWorkServer(root);
+    const now = Date.now();
+    const { job } = await createVideoJob(config, { id: "video-status-proof", workspaceId: "ws_1", sessionId: "media-session",
+      model: "test-model", operation: "text", prompt: "private prompt", fingerprint: "test", upstreamId: "private-id",
+      status: "running", path: "", message: "waiting", createdAt: now, updatedAt: now, nextPoll: now + 3600000,
+    });
+    const read = (session: string) => fetch(`${base}/workspace/ws_1/artifacts?sessionId=${session}`, { headers: auth(token) }).then(r => r.json());
+    const page = await read("media-session");
+    expect(page.videoJobs).toEqual([{ id: job.id, model: job.model, status: "running", updatedAt: now }]);
+    expect(JSON.stringify(page)).not.toContain("private");
+    expect((await read("other-session")).videoJobs).toEqual([]);
+    await updateVideoJob(config, job, { status: "succeeded", path: "video/result.mp4" });
+    expect((await read("media-session")).videoJobs[0].status).toBe("succeeded");
+    expect((await fetch(`${base}/workspace/ws_1/artifacts?sessionId=media-session`)).status).toBe(401);
+  });
+
   test("serves bounded image, SVG and video thumbnails without exposing outside files", async () => {
     const root = await createWorkspaceRoot();
     const { base, token } = await startiPolloWorkServer(root);
@@ -82,8 +101,8 @@ describe("artifact file routes", () => {
     expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=reports/artifact-eval.md`, { headers: auth(token) })).status).toBe(415);
     const outside = await mkdtemp(join(tmpdir(), "thumbnail-outside-")); roots.push(outside);
     await writeFile(join(outside, "image.png"), await readFile(join(root, "image.png")));
-    await symlink(join(outside, "image.png"), join(root, "escape.png"));
-    expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=escape.png`, { headers: auth(token) })).status).not.toBe(200);
+    await symlink(outside, join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
+    expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=escape/image.png`, { headers: auth(token) })).status).not.toBe(200);
   });
 
   test("imports bounded media into its workspace path without overwriting an existing asset", async () => {

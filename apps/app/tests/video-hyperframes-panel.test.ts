@@ -397,7 +397,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sidePanelSource).toContain("px-2 mac:titlebar-drag");
+    expect(sidePanelSource).toMatch(/<div className="[^"\n]*\bpx-2\b[^"\n]*\bmac:titlebar-drag\b[^"\n]*"/);
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
     expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');
@@ -1123,6 +1123,9 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("cumulative shifts");
     expect(contract).toContain("Keep narrated text visible");
     expect(contract).toContain("voiceover_timeline_validate");
+    expect(contract).toContain("Video HTML must load GSAP explicitly before inline animation code");
+    expect(contract).toContain("window.__timelines = window.__timelines || {}");
+    expect(contract).toContain("fix all reported errors before claiming completion");
     expect(contract).toContain("not complete when synthesis returns");
     expect(contract).toContain("Never use cross-session search/read to recover this task");
     expect(contract).toContain("fix all reported issues together");

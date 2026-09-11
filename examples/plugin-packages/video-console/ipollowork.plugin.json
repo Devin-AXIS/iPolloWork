@@ -101,7 +101,7 @@
         {
           "id": "submit",
           "title": "生成或编辑视频",
-          "description": "生成或编辑视频",
+          "description": "使用用户明确选择的已配置视频模型生成或编辑视频。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -149,6 +149,15 @@
                 "type": "string"
               }
             },
+            "required": [
+              "requestId",
+              "model",
+              "operation",
+              "prompt",
+              "resolution",
+              "duration",
+              "ratio"
+            ],
             "additionalProperties": false
           }
         },

@@ -32,37 +32,43 @@ export default {
       await ctx.client.send('Emulation.setDeviceMetricsOverride', { width: 1100, height: 920, deviceScaleFactor: 1, mobile: false });
       await ctx.client.send('Page.navigate', { url: `${service.origin}/#token=${service.token}` });
       await has('本地服务已连接'); await settled();
-      await ctx.prove('未配置时给出真实空状态和接入入口', {
+      await ctx.prove('统一运营布局先展示概览、侧边导航和真实空状态', {
         voiceover: vo[0], assert: async () => {
           ctx.assert(service.operations.state().accounts.length === 0, 'No fake accounts ship with the workbench');
-          ctx.assert(await ctx.eval(`document.querySelectorAll('.tabs button').length === 6`), 'All six workbench sections are reachable');
-        }, screenshot: { name: 'empty-workbench', requireText: ['尚未连接抖音账号', '开放平台应用配置'] },
+          ctx.assert(await ctx.eval(`document.querySelectorAll('.tabs button').length === 6`), 'Overview and all five workbench sections are reachable');
+          ctx.assert(await ctx.eval(`!document.querySelector('#view-overview').hidden && getComputedStyle(document.querySelector('.app-shell')).gridTemplateColumns.split(' ').length === 2`), 'Desktop layout opens on overview with sidebar and workspace columns');
+          ctx.assert(await ctx.eval(`Boolean(document.querySelector('.topbar-account #account') && document.querySelector('.topbar-account #add-account') && !document.querySelector('.sidebar #account'))`), 'Account switch and add controls are not confined to the title bar');
+        }, screenshot: { name: 'empty-workbench', requireText: ['运营总览', '尚未连接抖音账号', '开始创作'] },
       });
       await ctx.prove('配置与测试授权经 UI 持久化，密钥不回显', {
         voiceover: vo[1], action: async () => {
+          await click('#add-account');
+          await ctx.waitFor(`document.querySelector('#account-dialog').open && document.activeElement === document.querySelector('#client-key')`);
           await ctx.fill('#client-key', 'fixture-client'); await ctx.fill('#client-secret', 'fixture-client-secret');
           await ctx.fill('#redirect-uri', 'https://example.com/callback');
           await ctx.fill('#requested-scopes', 'user_info,video.create.bind,video.list,video.data,item.comment');
           await click('#settings-form button[type=submit]'); await settled(); await has('应用配置已保存');
           for (identity of ['fixture-account-a', 'fixture-account-b']) {
+            if (!await ctx.eval(`document.querySelector('#account-dialog').open`)) await click('#add-account');
             await click('#start-authorization'); await settled();
-            const authUrl = await ctx.eval(`document.querySelector('#feedback a').href`);
+            const authUrl = await ctx.eval(`document.querySelector('#account-feedback a').href`);
             const callback = new URL('https://example.com/callback');
             callback.search = new URLSearchParams({ code: 'fixture-code', state: new URL(authUrl).searchParams.get('state') }).toString();
             await ctx.fill('#callback-url', callback.href); await click('#authorization-form button[type=submit]'); await settled();
           }
-          await ctx.eval(`document.querySelector('#settings-panel').open = false`);
+          await click('#manage-account');
         }, assert: async () => {
           ctx.assert(service.operations.state().accounts.length === 2, 'Both identities are stored after actual UI callback submission');
           ctx.assert(await ctx.eval(`document.querySelector('#client-secret').value === ''`), 'Secret field is cleared');
           ctx.assert(!JSON.stringify(service.operations.state()).includes('fixture-client-secret'), 'Public state contains no app secret');
-        }, screenshot: { name: 'connected-test-accounts', requireText: ['桌面日记 · 测试账号', '生活记录 · 测试账号', 'video.create.bind'] },
+          ctx.assert(await ctx.eval(`document.querySelector('#account').closest('.topbar-account') !== null`), 'Account selector is not in the title bar');
+        }, screenshot: { name: 'connected-test-accounts', requireText: ['生活记录 · 测试账号', 'video.create.bind'] },
       });
       const a = service.operations.state().accounts.find(item => item.openId === 'fixture-account-a');
       const b = service.operations.state().accounts.find(item => item.openId === 'fixture-account-b');
       await ctx.prove('草稿、素材与切换账号前的修改保存到各自账号', {
         voiceover: vo[2], action: async () => {
-          await select('#account', a.id); await click('.tabs [data-view=studio]');
+          await click('#close-account-details'); await select('#account', a.id); await click('.tabs [data-view=studio]');
           await ctx.fill('#draft-title', '把桌面留给喜欢的东西'); await ctx.fill('#draft-text', '按使用频率分区，让常用物品伸手可及。 #桌面收纳');
           await ctx.eval(`document.querySelector('#media-form').closest('details').open = true`);
           await ctx.fill('#media-path', path); await click('#media-form button'); await settled();

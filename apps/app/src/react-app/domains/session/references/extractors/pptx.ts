@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent, ReferenceChunk } from "../types";
 
@@ -18,6 +17,7 @@ function textFromSlideXml(xml: string) {
 }
 
 export async function extractPptxReference(file: File): Promise<ExtractedReferenceContent> {
+  const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const slideFiles = Object.keys(zip.files)
     .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))

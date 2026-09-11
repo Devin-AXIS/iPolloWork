@@ -1136,6 +1136,26 @@ describe("template installations", () => {
     expect(await readFile(join(ws.path, instantiated.state.entry), "utf8")).toBe(sourceEntry);
   });
 
+  test("blocks broken video delivery and repairs registry initialization in exported packages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-script-export-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "script_export", category: "video" });
+    const path = join(ws.path, "video", "script_export", "index.html");
+    const broken = (await readFile(path, "utf8")).replace("</body>", '<script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script></body>');
+    await writeFile(path, broken);
+    expect(await validateTemplateFromSession(serverConfig, ws, "script_export")).toMatchObject({ ready: false, issues: [{ code: "missing_video_gsap" }] });
+    const input = { sessionId: "script_export", category: "video", title: "Script validation" } satisfies Parameters<typeof exportTemplateFromSession>[2];
+    await expect(exportTemplateFromSession(serverConfig, ws, input)).rejects.toThrow("Fix template validation issues");
+    await writeFile(path, broken.replace("<head>", '<head><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>'));
+    const exported = await exportTemplateFromSession(serverConfig, ws, input);
+    const imported = await importTemplate(serverConfig, ws.id, exported.archive, "video");
+    const snapshot = await materializeTemplate(serverConfig, ws, imported.manifest.id, "script_roundtrip");
+    expect(await readFile(join(ws.path, snapshot.state.entry), "utf8")).toContain("window.__timelines = window.__timelines || {};");
+    expect(await readFile(path, "utf8")).not.toContain("window.__timelines = window.__timelines || {};");
+  });
+
   test("exports a current video session without installing it in My templates", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-video-session-export-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");

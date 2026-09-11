@@ -109,6 +109,11 @@ function packageAuthorization(
   state: iPolloWorkPluginAuthorizationState | undefined,
   mcpStatuses: McpStatusMap,
 ) {
+  // List readiness describes opening the plugin, not authorization of a
+  // particular Official Account. Accounts are connected inside its workbench.
+  if (item.pluginId === "wechat-official") {
+    return { required: false, connected: false, connectionMcpResources: [] };
+  }
   const pluginAuthorizationRequired = (item.manifest.authorization?.methods?.length ?? 0) > 0;
   const hasGuidedSetup = Boolean(item.manifest.setup?.instructions?.trim());
   const connectionMcpResources = item.manifest.resources.filter((resource) =>
@@ -384,6 +389,9 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
       catalogItems.find((catalogItem) => catalogItem.pluginId === selectedSourceItem.pluginId)?.manifest.localization,
     );
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
+    // This plugin manages multiple accounts in its Studio; keep its manifest
+    // authorization methods intact for the host-backed credential store.
+    const managesAccountsInWorkbench = item.pluginId === "wechat-official";
     const auth = authorizations[item.pluginId];
     const methods = item.manifest.authorization?.methods ?? [];
     const authorization = pluginPackageAuthorization(item, auth, props.mcpStatuses);
@@ -462,7 +470,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                 />
               </label>
             </div>
-            {authorization.required && !connected ? (
+            {!managesAccountsInWorkbench && authorization.required && !connected ? (
               <div className="flex items-center gap-1.5 rounded-lg border border-amber-6 bg-amber-2 px-2.5 py-1.5 text-xs font-medium text-amber-11">
                 <KeyRound size={13} />
                 {t("plugin_platform.status.needs_authorization")}
@@ -532,7 +540,15 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
             </div>
           ) : null}
 
-          {(authorization.connectionMcpResources.length > 0 || methods.length > 0) ? (
+          {managesAccountsInWorkbench ? (
+            <div data-testid="plugin-workbench-accounts-hint" className="mt-6 rounded-2xl border border-dls-border bg-dls-hover/25 p-4 sm:p-5">
+              <div className="flex items-center gap-2 text-sm font-semibold text-dls-text">
+                <AppWindow size={16} />
+                {t("plugin_platform.workbench_accounts_title")}
+              </div>
+              <p className="mt-2 text-xs leading-5 text-dls-secondary">{t("plugin_platform.wechat_workbench_accounts_hint")}</p>
+            </div>
+          ) : (authorization.connectionMcpResources.length > 0 || methods.length > 0) ? (
             <div className="mt-6 rounded-2xl border border-dls-border bg-dls-hover/25 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2 text-sm font-semibold text-dls-text">
                 <KeyRound size={16} />

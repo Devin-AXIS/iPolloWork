@@ -229,8 +229,9 @@ describe("plugin package manifest", () => {
     expect(result.manifest.id).toBe("wechat-official");
     expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(7);
     const service = result.manifest.resources.find((resource) => resource.type === "local-service");
-    expect(service?.actions).toHaveLength(20);
+    expect(service?.actions).toHaveLength(21);
     expect(service?.actions?.find((action) => action.id === "open-workbench")).toMatchObject({ effect: "read" });
+    expect(service?.actions?.find((action) => action.id === "select-account")).toMatchObject({ effect: "write" });
     expect(result.manifest.resources.find((resource) => resource.id === "wechat-official-studio"))
       .toMatchObject({ type: "file", path: "ui" });
     expect(service?.actions?.find((action) => action.id === "reply-comment")).toMatchObject({ effect: "write" });
@@ -373,7 +374,7 @@ describe("plugin package manifest", () => {
     expect(editingSkill).toContain("both an image preview and a reusable file card");
   });
 
-  test("Image Studio lists the full catalog, selects a connected model, and marks authorization actions", async () => {
+  test("Image Studio lists the full catalog but waits for the user to select a configured model", async () => {
     const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
     const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
     expect(apply).toBeDefined();
@@ -400,8 +401,8 @@ describe("plugin package manifest", () => {
     ];
     runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "api" })})`, context);
     expect(state.models).toEqual(catalog.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
-    expect(state.model).toBe("browser");
-    expect(state.providerReady).toBe(true);
+    expect(state.model).toBe("");
+    expect(state.providerReady).toBe(false);
     state.model = "ark";
     runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "browser" })})`, context);
     expect(state.model).toBe("ark");
@@ -411,7 +412,11 @@ describe("plugin package manifest", () => {
     expect(state.providerReady).toBe(false);
     expect(ui).toContain('id="modelMenu"');
     expect(ui).toContain('ipollowork:image-studio:model-menu');
-    expect(ui).toContain("disabled: !entry.available");
+    expect(ui).toContain("filter(entry => entry.available && entry.configured)");
+    expect(ui).toContain('model: ""');
+    expect(ui).not.toContain('model: "openai/gpt-image-2"');
+    expect(ui).not.toContain('properties: { prompt: { type: "string" }, model:');
+    expect(ui).toContain('Never choose or change the model for the user.');
   });
 
   test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {

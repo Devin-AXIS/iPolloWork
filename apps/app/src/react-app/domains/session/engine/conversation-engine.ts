@@ -24,6 +24,14 @@ export type ConversationSession = {
 
 export type ConversationSessionUpdate = Partial<ConversationSession> & Pick<ConversationSession, "id">;
 
+export function conversationWaitingFor(session: ConversationSession | undefined): "approval" | "input" | null {
+  const codex = recordValue(session?.codex);
+  if (codex?.status !== "active" || !Array.isArray(codex.activeFlags)) return null;
+  if (codex.activeFlags.includes("waitingOnApproval")) return "approval";
+  if (codex.activeFlags.includes("waitingOnUserInput")) return "input";
+  return null;
+}
+
 /**
  * Apply a live engine update without discarding native session metadata that
  * was omitted from the event. Harness lifecycle events intentionally publish

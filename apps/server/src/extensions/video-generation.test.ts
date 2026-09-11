@@ -53,6 +53,7 @@ test("only bound video models appear, without credentials or unsupported knobs",
 });
 
 test("rejects unsupported mode combinations before any network call",()=>{
+  expect(()=>validateVideoSubmission({prompt:"missing model"})).toThrow("用户");
   for(const patch of [
     {model:"minimax-h3",operation:"edit",resolution:"2K"},
     {operation:"edit",videoRefs:"https://example.com/input.mp4"},
@@ -315,6 +316,7 @@ test("plugin manifest is valid and advertises only host-backed actions",async()=
   const result=validatePluginPackageManifest(manifest);expect(result.success).toBe(true);
   if(!result.success)throw new Error(JSON.stringify(result.issues));
   expect(result.manifest.contributions).toContainEqual(expect.objectContaining({type:"workspace-app",ref:"console"}));
+  expect(JSON.stringify(manifest)).toContain('"required":["requestId","model","operation","prompt","resolution","duration","ratio"]');
 });
 
 test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
@@ -344,13 +346,18 @@ test("video inspector resets incompatible fields and publishes the real host con
   };
   runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
-  expect(result.model).toBe("minimax-h3");
+  expect(result.model).toBe("");
+  expect(parsePluginUiInspectorContext(result.inspector)?.submitDisabled).toBe(true);
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.map(field=>field.id)).toEqual(["prompt"]);
+  runInNewContext("state.model='minimax-h3';normalized();publish();",sandbox);
+  const selected=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
+  expect(selected.model).toBe("minimax-h3");
   expect(runInNewContext("state.resolution",sandbox)).toBe("0.5MP");
-  expect(parsePluginUiInspectorContext(result.inspector)?.fields.filter(field=>field.control==="select").map(field=>field.id)).toEqual(["operation","resolution","duration","ratio"]);
-  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.advanced)).toBe(false);
-  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.filter(field=>field.control==="select").map(field=>field.id)).toEqual(["operation","resolution","duration","ratio"]);
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.some(field=>field.advanced)).toBe(false);
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
   const unavailable=runInNewContext("state.model='';state.models=provider.models.filter(item=>item.id!=='minimax-h3');normalized();state.model",sandbox);
-  expect(unavailable).toBe("seedance-2.5");
+  expect(unavailable).toBe("");
   runInNewContext("state.models=provider.models;",sandbox);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='generate';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
@@ -375,18 +382,20 @@ test("video inspector resets incompatible fields and publishes the real host con
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
   expect(html).not.toContain('"ui/message"');
   expect(html).not.toContain('call("prepare-prompt"');
+  expect(html).toContain('params.filter(key=>key!=="model")');
 });
 
 test("generate directly submits the current prompt and settings without chat expansion", async () => {
   const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
+  const selectors = html.slice(html.indexOf("function model()"), html.indexOf("function normalized()"));
   const runner = html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
   const calls: Array<{ action: string; args: Record<string, unknown> }> = [];
-  const sandbox = { document:{documentElement:{lang:"zh"}}, crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
+  const sandbox = { document:{documentElement:{lang:"zh"}}, crypto: { randomUUID }, render() {}, publish() {}, tell() {}, openModelMenu() {}, refresh: async () => {},
     request() { throw new Error("Generation must not send chat messages"); },
     call: async (action: string, args: Record<string, unknown>) => { calls.push({ action, args }); return { job: { id: "job", status: "running", message: "submitted" } }; },
   };
-  runInNewContext(definitions+"\n"+runner+"\nglobalThis.state=state;state.model='minimax-h3';state.prompt='夸父追日';state.duration='5';state.ratio='16:9';state.host={sessionId:'session'};", sandbox);
+  runInNewContext(definitions+"\n"+selectors+"\n"+runner+"\nglobalThis.state=state;state.models=[{id:'minimax-h3',operations:['text']}];state.model='minimax-h3';state.prompt='夸父追日';state.duration='5';state.ratio='16:9';state.host={sessionId:'session'};", sandbox);
   expect(await runInNewContext("run()", sandbox)).toMatchObject({ job: { id: "job", status: "running" } });
   expect(calls).toHaveLength(1);
   expect(calls[0]).toMatchObject({ action: "submit", args: { prompt: "夸父追日", duration: "5", ratio: "16:9", model: "minimax-h3" } });
@@ -396,6 +405,9 @@ test("generate directly submits the current prompt and settings without chat exp
   expect(runInNewContext("state.prompt", sandbox)).toBe("夸父追日");
   runInNewContext("state.busy=true", sandbox);
   await expect(runInNewContext("run()", sandbox)).rejects.toThrow("本次未提交新任务");
+  expect(calls).toHaveLength(2);
+  runInNewContext("state.busy=false;state.model=''", sandbox);
+  await expect(runInNewContext("run()", sandbox)).rejects.toThrow("已配置的视频模型");
   expect(calls).toHaveLength(2);
   expect(html).not.toContain("accept_expanded_prompt");
 });
@@ -483,7 +495,7 @@ test("Ark local video reuses default storage with a 24-hour signed read URL",asy
 });
 
 
-test("video model defaults to prior generation without overriding explicit selection", async () => {
+test("video model never defaults to a prior generation", async () => {
   const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
   const refresh = html.slice(html.indexOf("async function refresh()"), html.indexOf("function node("));
   const state = { model: "", jobsLoaded: false, activeJobId: "", host: { launch: { source: { path: "" } } } };
@@ -494,7 +506,7 @@ test("video model defaults to prior generation without overriding explicit selec
     ] },
   };
   await runInNewContext(refresh + "\nrefresh()", sandbox);
-  expect(state.model).toBe("minimax-h3");
+  expect(state.model).toBe("");
   state.model = "seedance-2.5";
   await runInNewContext(refresh + "\nrefresh()", sandbox);
   expect(state.model).toBe("seedance-2.5");
@@ -502,5 +514,5 @@ test("video model defaults to prior generation without overriding explicit selec
   state.jobsLoaded = false;
   state.host.launch.source.path = "old.mp4";
   await runInNewContext(refresh + "\nrefresh()", sandbox);
-  expect(state.model).toBe("seedance-2.5");
+  expect(state.model).toBe("");
 });

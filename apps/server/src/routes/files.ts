@@ -13,6 +13,7 @@ import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { FileSessionStore } from "../file-sessions.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
+import { listVideoJobs } from "../extensions/video-jobs.js";
 import { renameArtifact } from "../artifact-rename.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
@@ -809,7 +810,14 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const sessionId = ctx.url.searchParams.get("sessionId");
     if (sessionId !== null) {
       const cursor = ctx.url.searchParams.get("cursor");
-      return jsonResponse(await listSessionArtifacts(config, workspace.id, sessionId, cursor === null ? null : Number(cursor)));
+      const page = await listSessionArtifacts(config, workspace.id, sessionId, cursor === null ? null : Number(cursor));
+      // Only the first artifact page carries live jobs. Never expose prompts or
+      // upstream credentials through the presentation read model.
+      if (cursor === null) {
+        page.videoJobs = (await listVideoJobs(config, workspace.id, sessionId))
+          .map(({ id, model, status, updatedAt }) => ({ id, model, status, updatedAt }));
+      }
+      return jsonResponse(page);
     }
     if (!resolveOutboxEnabled()) {
       return jsonResponse({ items: [] });

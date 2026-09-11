@@ -1650,13 +1650,13 @@ describe("plugin package lifecycle", () => {
           { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.2.2", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.4.14", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.1.6", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "image-studio", version: "0.1.75", installedVersion: "0.1.75", updateAvailable: false },
-          { pluginId: "video-console", version: "0.2.42", installedVersion: "0.2.42", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.76", installedVersion: "0.1.76", updateAvailable: false },
+          { pluginId: "video-console", version: "0.2.43", installedVersion: "0.2.43", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
@@ -1779,7 +1779,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.2.2" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.3.0" },
         item: {
           pluginId: "wechat-official",
           manifest: {
@@ -1802,8 +1802,8 @@ describe("plugin package lifecycle", () => {
         .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
 
       const socialServices = [
-        { id: "xiaohongshu-ops", version: "0.4.14", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
-        { id: "douyin-ops", version: "0.1.6", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+        { id: "xiaohongshu-ops", version: "0.4.17", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
+        { id: "douyin-ops", version: "0.1.11", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
       ];
       for (const service of socialServices) {
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {

@@ -29,7 +29,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.14' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.17' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -93,7 +93,9 @@
     const item = document.createElement('div')
     item.className = `toast${error ? ' is-error' : ''}`
     item.textContent = message
-    toastRegion.append(item)
+    const dialog = document.querySelector('dialog[open]')
+    if (dialog) dialog.append(item)
+    else toastRegion.append(item)
     window.setTimeout(() => item.remove(), 4200)
   }
 
@@ -140,27 +142,37 @@
     const restore = busy(event.currentTarget, '正在删除')
     try {
       await request('/api/accounts/' + id, { method: 'DELETE' })
-      window.location.reload()
+      const url = new URL(location.href)
+      url.searchParams.delete('account')
+      url.searchParams.delete('draft')
+      url.searchParams.delete('search')
+      window.location.href = url.href
     } catch (error) {
       deleteDialog.querySelector('[data-delete-account-error]').textContent = error.message
       restore()
     }
   })
 
+  const settingsDialog = document.querySelector('#account-settings-dialog')
+  document.querySelector('[data-account-settings]')?.addEventListener('click', () => settingsDialog.showModal())
+  document.querySelector('[data-close-account-settings]')?.addEventListener('click', () => settingsDialog.close())
   const accountPanel = document.querySelector('#account-onboarding')
   function setAccountPanel(open) {
     if (!accountPanel) return
-    accountPanel.hidden = !open
+    if (open && !accountPanel.open) accountPanel.showModal()
+    else if (!open && accountPanel.open) accountPanel.close()
     if (open) {
-      accountPanel.scrollIntoView({ behavior: 'smooth', block: 'start' })
       window.setTimeout(() => document.querySelector('#account-name')?.focus(), 120)
     }
   }
   function startAccountLogin() {
     setAccountPanel(true)
-    document.querySelector('[data-new-account-login]')?.click()
+
   }
-  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', startAccountLogin))
+  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', event => {
+    event.preventDefault()
+    startAccountLogin()
+  }))
   document.querySelector('[data-close-account-form]')?.addEventListener('click', () => {
     setAccountPanel(false)
     sessionStorage.removeItem('xhs-new-account-profile')
@@ -187,7 +199,13 @@
       sessionStorage.removeItem('xhs-new-account-profile')
       newAccountProfileId = null
       toast('账号已保存，登录后返回运营台即可自动连接')
-      window.setTimeout(() => { window.location.href = '/accounts' }, 500)
+      setAccountPanel(false)
+      const url = new URL(location.href)
+      url.searchParams.set('account', result.account.id)
+      url.searchParams.delete('connect')
+      url.searchParams.delete('draft')
+      url.searchParams.delete('search')
+      window.location.href = url.href
     } catch (error) { toast(error.message, true); restore() }
   })
 
@@ -437,10 +455,10 @@
     let polls = 0
     const timer = setInterval(async () => {
       if (++polls > (document.querySelector('.studio-page') ? 1200 : 200)) return clearInterval(timer)
-      if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || (document.hidden && !document.querySelector('.studio-page')) || deleteDialog?.open) return
+      if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || (document.hidden && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
       try {
         const result = await request('/api/state', { method: 'GET' })
-        if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || deleteDialog?.open) return
+        if (verificationPending || studioBusy || studioDirty || (editing && !document.querySelector('.studio-page')) || deleteDialog?.open || accountPanel?.open || settingsDialog?.open) return
         if ((renderedAccounts && renderedAccounts !== JSON.stringify(JSON.parse(result.state).accounts)) || (previousState && previousState !== result.state)) window.location.reload()
         previousState = result.state
       } catch { /* A transient network failure must not discard the page or user input. */ }

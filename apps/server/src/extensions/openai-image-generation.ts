@@ -181,7 +181,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_generate",
     title: "Generate image artifact",
-    description: "Generate and save a PNG workspace artifact without opening Image Studio. If model is omitted, use the first available connected image model.",
+    description: "Generate and save a PNG workspace artifact without opening Image Studio. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
     inputSchema: {
       type: "object",
       properties: {
@@ -190,7 +190,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
         filename: { type: "string", description: "Optional output filename without extension." },
         ...imageParameterSchemas,
       },
-      required: ["prompt"],
+      required: ["prompt", "model"],
       additionalProperties: false,
     },
   },
@@ -198,7 +198,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit",
     title: "Edit image artifact",
-    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. Works without opening Image Studio; omit model to use an available connected image model.",
+    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
     effect: "write" as const,
     inputSchema: {
       type: "object",
@@ -226,7 +226,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
         filename: { type: "string", description: "Optional output filename without extension." },
         ...imageParameterSchemas,
       },
-      required: ["sourcePath", "prompt"],
+      required: ["sourcePath", "prompt", "model"],
       additionalProperties: false,
     },
   },
@@ -283,7 +283,21 @@ function slugifyImageArtifactName(value: string) {
 }
 
 async function modelForId(value: string, authorization: AuthorizationAccess): Promise<ImageModelDefinition> {
-  const requested = value || (await openAiImageGenerationStatus(authorization)).defaultModel;
+  if (!value) {
+    const status = await openAiImageGenerationStatus(authorization);
+    const models = status.models
+      .filter((model) => model.available && model.configured)
+      .map((model) => ({ id: model.id, label: model.label }));
+    throw new ApiError(
+      400,
+      "image_model_selection_required",
+      models.length
+        ? "请先让用户从已配置的图片模型中选择一个，再提交生成或编辑。"
+        : "当前没有已配置的图片模型，请先在授权中心完成连接。",
+      { models },
+    );
+  }
+  const requested = value;
   const model = IMAGE_MODELS.find((entry) => entry.id === requested);
   if (!model) throw new ApiError(400, "image_model_unknown", `Unknown image model: ${requested}`);
   if (!model.available) {

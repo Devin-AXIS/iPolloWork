@@ -104,6 +104,7 @@ export default {
       }, assert: async () => {
         ctx.assert(studio.state(account.id).drafts[0]?.body.includes('两分钟'), 'AI result was not persisted.');
         ctx.assert(await ui('return !!d.querySelector("nav a[href^=\\"/comments\\"]") && !d.querySelector("nav a[href^=\\"/interactions\\"]")'), 'Modules were not split.');
+        ctx.assert(await ui('return !!d.querySelector(".app-topbar .account-picker") && !!d.querySelector(".app-topbar .add-account-link") && !d.querySelector(".app-main .account-bar")'), 'Account controls are not confined to the title bar.');
       }, screenshot: shot('draft-saved') });
       await ctx.prove('图片素材回填、预览和发布完成状态形成闭环', { voiceover: vo[1], action: async () => {
         await click('[data-studio-action="image"]'); await wait('d.querySelector("[data-preview-media] img")?.complete && d.querySelector("[data-preview-media] img").naturalWidth > 0');

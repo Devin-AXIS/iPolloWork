@@ -8,6 +8,27 @@ import { fileURLToPath } from 'node:url';
 
 import createWeChatOfficialService from './wechat-official.mjs';
 
+function authorizationFixture(initial = {}, selectedAccountId = Object.keys(initial)[0] ?? null) {
+  const credentials = new Map(Object.entries(initial));
+  let active = selectedAccountId;
+  return {
+    async listConnections() {
+      return [...credentials.keys()].sort().map(accountId => ({ accountId, methodId: 'wechat-official-account', status: 'connected', fields: { appId: true, appSecret: true }, updatedAt: 1_788_000_000_000 }));
+    },
+    async getCredential(_methodId, accountId) { return credentials.get(accountId ?? active) ?? null; },
+    async readCredential(accountId) { return credentials.get(accountId) ?? null; },
+    async saveCredential(_methodId, accountId, values) {
+      credentials.set(accountId, { ...values }); active = accountId;
+      return { accountId, methodId: 'wechat-official-account', status: 'connected', fields: { appId: true, appSecret: true }, updatedAt: Date.now() };
+    },
+    async setActiveAccount(_methodId, accountId) {
+      if (!credentials.has(accountId)) return false;
+      active = accountId; return true;
+    },
+    async revokeAccount(accountId) { return credentials.delete(accountId); },
+  };
+}
+
 async function listen(server) {
   await new Promise((done, reject) => {
     server.once('error', reject);
@@ -20,8 +41,8 @@ async function listen(server) {
 
 test('Studio remains available before account authorization and reports an empty disconnected state', async t => {
   const service = await createWeChatOfficialService({
-    plugin: { id: 'wechat-official', version: '0.2.2' },
-    authorization: { async getCredential() { return null; } },
+    plugin: { id: 'wechat-official', version: '0.3.0' },
+    authorization: authorizationFixture(),
     workspace: { root: process.cwd() },
   });
   t.after(() => service.dispose());
@@ -38,11 +59,12 @@ test('Studio reuses declared service actions behind a protected local-only HTTP 
     const url = new URL(request.url, 'http://fixture.local');
     response.setHeader('Content-Type', 'application/json');
     if (url.pathname === '/cgi-bin/token') {
-      response.end(JSON.stringify({ access_token: 'fixture-access-token', expires_in: 7200 }));
+      response.end(JSON.stringify({ access_token: `fixture-token-${url.searchParams.get('appid')}`, expires_in: 7200 }));
       return;
     }
     if (url.pathname === '/cgi-bin/draft/batchget') {
-      response.end(JSON.stringify({ total_count: 3, item_count: 1, item: [{ media_id: 'draft-1', update_time: 1_788_000_000, content: { news_item: [{ title: '九月运营手记' }] } }] }));
+      const account = url.searchParams.get('access_token')?.endsWith('-b') ? 'B' : url.searchParams.get('access_token')?.endsWith('-c') ? 'C' : 'A';
+      response.end(JSON.stringify({ total_count: 3, item_count: 1, item: [{ media_id: `draft-${account}`, update_time: 1_788_000_000, content: { news_item: [{ title: `九月运营手记 ${account}` }] } }] }));
       return;
     }
     response.end(JSON.stringify({ errcode: 0 }));
@@ -51,8 +73,11 @@ test('Studio reuses declared service actions behind a protected local-only HTTP 
   const previousApiBase = process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE;
   process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE = apiBase;
   const service = await createWeChatOfficialService({
-    plugin: { id: 'wechat-official', version: '0.2.2' },
-    authorization: { async getCredential() { return { appId: 'wx-fixture-account', appSecret: 'never-expose-this' }; } },
+    plugin: { id: 'wechat-official', version: '0.3.0' },
+    authorization: authorizationFixture({
+      'brand-a': { appId: 'wx-fixture-account-a', appSecret: 'never-expose-a' },
+      'brand-b': { appId: 'wx-fixture-account-b', appSecret: 'never-expose-b' },
+    }, 'brand-a'),
     workspace: { root },
   });
   t.after(async () => {
@@ -79,9 +104,34 @@ test('Studio reuses declared service actions behind a protected local-only HTTP 
   const stateResponse = await fetch(new URL('/api/state', studio), { headers: { Authorization: `Bearer ${token}` } });
   assert.equal(stateResponse.status, 200);
   const stateText = await stateResponse.text();
-  assert.match(stateText, /九月运营手记/);
-  assert.match(stateText, /wx-.*unt/);
-  assert.doesNotMatch(stateText, /never-expose-this|fixture-access-token/);
+  assert.match(stateText, /九月运营手记 A/);
+  assert.match(stateText, /brand-a/);
+  assert.match(stateText, /brand-b/);
+  assert.doesNotMatch(stateText, /never-expose|fixture-token/);
+
+  const switched = await fetch(new URL('/api/actions/select-account', studio), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'brand-b' }),
+  });
+  assert.equal(switched.status, 200);
+  const switchedState = await fetch(new URL('/api/state', studio), { headers: { Authorization: `Bearer ${token}` } });
+  assert.match(await switchedState.text(), /九月运营手记 B/);
+
+  const added = await fetch(new URL('/api/accounts', studio), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ accountId: 'brand-c', appId: 'wx-fixture-account-c', appSecret: 'never-expose-c' }),
+  });
+  assert.equal(added.status, 200);
+  const addedText = await added.text();
+  assert.match(addedText, /brand-c/);
+  assert.match(addedText, /九月运营手记 C/);
+  assert.doesNotMatch(addedText, /never-expose|fixture-token/);
+
+  const removed = await fetch(new URL('/api/accounts/brand-c', studio), { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  assert.equal(removed.status, 200);
+  assert.doesNotMatch(await removed.text(), /brand-c/);
 
   const manifestPath = resolve(dirname(fileURLToPath(import.meta.url)), '../ipollowork.plugin.json');
   const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
