@@ -1651,8 +1651,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
-          { pluginId: "xiaohongshu-ops", version: "0.4.14", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.1.7", installedVersion: null, updateAvailable: false },
+          { pluginId: "xiaohongshu-ops", version: "0.4.15", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: "0.1.8", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "image-studio", version: "0.1.75", installedVersion: "0.1.75", updateAvailable: false },
@@ -1802,8 +1802,8 @@ describe("plugin package lifecycle", () => {
         .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
 
       const socialServices = [
-        { id: "xiaohongshu-ops", version: "0.4.14", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
-        { id: "douyin-ops", version: "0.1.7", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+        { id: "xiaohongshu-ops", version: "0.4.15", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
+        { id: "douyin-ops", version: "0.1.8", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
       ];
       for (const service of socialServices) {
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
