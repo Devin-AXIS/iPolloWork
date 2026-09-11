@@ -109,6 +109,11 @@ function packageAuthorization(
   state: iPolloWorkPluginAuthorizationState | undefined,
   mcpStatuses: McpStatusMap,
 ) {
+  // List readiness describes opening the plugin, not authorization of a
+  // particular Official Account. Accounts are connected inside its workbench.
+  if (item.pluginId === "wechat-official") {
+    return { required: false, connected: false, connectionMcpResources: [] };
+  }
   const pluginAuthorizationRequired = (item.manifest.authorization?.methods?.length ?? 0) > 0;
   const hasGuidedSetup = Boolean(item.manifest.setup?.instructions?.trim());
   const connectionMcpResources = item.manifest.resources.filter((resource) =>
