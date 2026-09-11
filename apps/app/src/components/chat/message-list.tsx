@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CalendarDays,
   Check,
+  Clock3,
   ChevronDown,
   Copy,
   Download,
@@ -502,6 +503,8 @@ function AssistantProcessDisclosure(props: {
   contentClassName?: string
 }) {
   const { groups, isStreaming, hasError = false, durationMs, children, contentClassName } = props
+  const { waitingLabel } = useMessageList()
+  const awaitingConfirmation = isStreaming && Boolean(waitingLabel)
   const [isOpen, setIsOpen] = React.useState(isStreaming)
   const previousStreamingRef = React.useRef(isStreaming)
 
@@ -515,7 +518,7 @@ function AssistantProcessDisclosure(props: {
   }, [isStreaming])
 
   const processState = getAssistantProcessState(isStreaming, hasError)
-  const label = processState === "streaming"
+  const label = awaitingConfirmation ? waitingLabel : processState === "streaming"
     ? t("message.process_in_progress")
     : processState === "failed"
       ? t("message.process_failed")
@@ -533,7 +536,9 @@ function AssistantProcessDisclosure(props: {
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
         onClick={() => setIsOpen((open) => !open)}
       >
-        {processState === "streaming" ? (
+        {awaitingConfirmation ? (
+          <Clock3 className="size-3.5 shrink-0" aria-hidden />
+        ) : processState === "streaming" ? (
           <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
         ) : processState === "failed" ? (
           <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
@@ -943,16 +948,16 @@ const MessageComponent = React.memo(
 
 MessageComponent.displayName = "MessageComponent"
 
-const LoadingMessage = React.memo(({ label }: { label?: string }) => (
+const LoadingMessage = React.memo(({ label, paused = false }: { label?: string; paused?: boolean }) => (
   <Message className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10">
     <div className="group flex w-full flex-col gap-0">
       <div className="flex items-center gap-2 px-1 py-1 text-sm text-muted-foreground">
-        <img
+        {paused ? <Clock3 className="size-4 shrink-0" aria-hidden /> : <img
           src={publicAssetUrl("ipollowork-thinking-logo-v2.gif")}
           alt=""
           aria-hidden="true"
           className="size-6 shrink-0 object-contain"
-        />
+        />}
         <span>{label ?? t("session.assistant_thinking")}</span>
       </div>
     </div>
@@ -1294,7 +1299,7 @@ interface MessageListProps {
 }
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
-  const { sessionTitle } = useMessageList()
+  const { sessionTitle, waitingLabel } = useMessageList()
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const supplementalArtifactFiles = React.useMemo(
@@ -1386,7 +1391,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
       })}
 
       {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
-        ? <LoadingMessage label={liveActionLabel ?? assistantWaitLabel ?? undefined} />
+        ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} />
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}

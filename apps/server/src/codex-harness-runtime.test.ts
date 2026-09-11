@@ -88,6 +88,77 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("replays unresolved approvals and questions on reconnect without approving or reviving resolved requests", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-confirmation-fixture.js");
+    await writeFile(fixturePath, String.raw`
+const readline = require("node:readline");
+let replies = 0;
+const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
+readline.createInterface({ input: process.stdin }).on("line", line => {
+  const message = JSON.parse(line);
+  if (!message.method) { replies += 1; return; }
+  if (message.method === "initialized") return;
+  if (message.method === "test/emit") for (const event of message.params.events) emit(event);
+  if (message.method === "test/marker") emit({ method: "test/marker", params: {} });
+  emit({ id: message.id, result: { replies } });
+});
+`, "utf8");
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({ config, env: new EnvService({ path: join(root, "env.json") }), workspace: {
+      id: "confirmation-replay", name: "Confirmation replay", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness",
+    } });
+    const emit = (events: unknown[]) => runtime.call("test/emit", { events });
+    const readWindow = async () => {
+      const controller = new AbortController();
+      const response = await runtime.events(controller.signal);
+      const reader = response.body!.getReader();
+      const events = [];
+      try {
+        await runtime.call("test/marker");
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Stream closed before marker");
+          const event = JSON.parse(new TextDecoder().decode(chunk.value).slice(6).trim());
+          if (event.method === "test/marker") break;
+          events.push(event);
+        }
+        return events;
+      } finally { controller.abort(); reader.releaseLock(); }
+    };
+    const approval = { id: 1, method: "item/commandExecution/requestApproval", params: { threadId: "thread-a", turnId: "turn-a", command: "read brief" } };
+    const question = { id: "question-2", method: "item/tool/requestUserInput", params: { threadId: "thread-b", turnId: "turn-b", questions: [] } };
+    try {
+      await emit([approval, question]);
+      const expected = [{ ...approval, type: "request" }, { ...question, type: "request" }];
+      expect(await readWindow()).toEqual(expected);
+      expect(await readWindow()).toEqual(expected);
+      expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 0 });
+      await runtime.respond(1, { decision: "decline" });
+      expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 1 });
+      await expect(runtime.respond(1, { decision: "accept" })).rejects.toThrow("no longer pending");
+      expect(await readWindow()).toEqual([{ ...question, type: "request" }]);
+      await emit([{ method: "serverRequest/resolved", params: { requestId: "question-2" } }]);
+      expect(await readWindow()).toEqual([]);
+      const later = { ...approval, id: 3, params: { ...approval.params, turnId: "turn-later" } };
+      await emit([approval, later, { method: "turn/completed", params: { threadId: "thread-a", turn: { id: "turn-a", status: "interrupted" } } }]);
+      expect(await readWindow()).toEqual([{ ...later, type: "request" }]);
+      await emit([{ method: "thread/closed", params: { threadId: "thread-a" } }]);
+      expect(await readWindow()).toEqual([]);
+      await emit([approval]);
+      await runtime.close();
+      expect(await readWindow()).toEqual([]);
+      await expect(runtime.respond(1, { decision: "accept" })).rejects.toThrow("no longer pending");
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  }, 20_000);
+
   test("maps access modes to trusted Codex turn policies", () => {
     expect(codexHarnessTurnAccessPolicy("read-only", "C:\\workspace")).toEqual({
       approvalPolicy: "on-request",

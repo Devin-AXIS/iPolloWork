@@ -41,7 +41,7 @@ export type CodexThread = {
   cwd?: string;
   createdAt?: number;
   updatedAt?: number;
-  status?: { type?: string };
+  status?: { type?: string; activeFlags?: string[] };
   turns?: CodexTurn[];
 };
 
@@ -94,7 +94,7 @@ export function mapCodexThread(thread: CodexThread, archived = false) {
     ...(thread.parentThreadId ? { parentID: thread.parentThreadId } : {}),
     ...(thread.cwd ? { directory: thread.cwd } : {}),
     time: { created, updated, ...(archived ? { archived: updated } : {}) },
-    codex: { status: thread.status?.type ?? "notLoaded" },
+    codex: { status: thread.status?.type ?? "notLoaded", activeFlags: thread.status?.activeFlags ?? [] },
   };
 }
 

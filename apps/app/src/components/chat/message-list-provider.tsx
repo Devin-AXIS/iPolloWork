@@ -11,6 +11,7 @@ interface MessageListContextValue {
   sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
+  waitingLabel?: string
   developerMode: boolean
   displaySuggestions: boolean
   providerConnectedCount: number
@@ -33,6 +34,7 @@ interface MessageListProviderProps {
   sessionTitle: string
   showThinking: boolean
   highlightQuery?: string
+  waitingLabel?: string
   developerMode: boolean
   onRevertToUserMessage: (messageId: string) => void
   onForkAtMessage: (messageId: string) => void
@@ -59,6 +61,7 @@ export function MessageListProvider({
   sessionTitle,
   showThinking,
   highlightQuery,
+  waitingLabel,
   developerMode,
   displaySuggestions,
   providerConnectedCount,
@@ -78,6 +81,7 @@ export function MessageListProvider({
       sessionTitle,
       showThinking,
       highlightQuery,
+      waitingLabel,
       developerMode,
       displaySuggestions,
       providerConnectedCount,
@@ -96,6 +100,7 @@ export function MessageListProvider({
       sessionTitle,
       showThinking,
       highlightQuery,
+      waitingLabel,
       developerMode,
       displaySuggestions,
       providerConnectedCount,

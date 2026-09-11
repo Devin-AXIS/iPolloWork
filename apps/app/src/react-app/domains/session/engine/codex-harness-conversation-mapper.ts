@@ -359,6 +359,18 @@ export function mapCodexHarnessEvent(
       info: { id: threadId, title: stringValue(params.threadName) ?? "New conversation" },
     }];
   }
+  if (method === "thread/status/changed" && threadId && isRecord(params.status)) {
+    return [{
+      type: "session.updated",
+      sessionId: threadId,
+      info: { id: threadId, codex: {
+        status: stringValue(params.status.type),
+        activeFlags: Array.isArray(params.status.activeFlags)
+          ? params.status.activeFlags.filter((flag): flag is string => typeof flag === "string")
+          : [],
+      } },
+    }];
+  }
   if ((method === "thread/deleted" || method === "thread/archived") && threadId) {
     return [{ type: "session.deleted", sessionId: threadId }];
   }

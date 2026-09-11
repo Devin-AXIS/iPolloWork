@@ -8,6 +8,7 @@ import {
 
 import {
   ConversationEngineAdapterRegistry,
+  conversationWaitingFor,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationEvent,
@@ -31,6 +32,7 @@ import {
 import {
   createCodexLiveState,
   mapCodexHarnessEvent,
+  mapCodexHarnessSnapshot,
 } from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
 
 function permissionMemoryTestStorage() {
@@ -47,6 +49,24 @@ function permissionMemoryTestStorage() {
     },
   };
 }
+
+test("Codex snapshots and live status expose approval waits without treating idle as waiting", () => {
+  const snapshot = mapCodexHarnessSnapshot({
+    session: { id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnApproval"] } },
+    status: { type: "busy" }, messages: [], todos: [],
+  });
+  expect(conversationWaitingFor(snapshot.session)).toBe("approval");
+  const events = mapCodexHarnessEvent({
+    type: "notification", method: "thread/status/changed",
+    params: { threadId: "waiting", status: { type: "active", activeFlags: ["waitingOnUserInput"] } },
+  }, createCodexLiveState());
+  expect(events).toEqual([{ type: "session.updated", sessionId: "waiting", info: {
+    id: "waiting", codex: { status: "active", activeFlags: ["waitingOnUserInput"] },
+  } }]);
+  expect(conversationWaitingFor({ id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnUserInput"] } })).toBe("input");
+  expect(conversationWaitingFor({ ...snapshot.session, codex: { status: "idle", activeFlags: ["waitingOnApproval"] } })).toBeNull();
+  expect(conversationWaitingFor(undefined)).toBeNull();
+});
 
 function permissionMemoryTestAdapter(
   id: string,

@@ -51,7 +51,7 @@ import type {
   ConversationSnapshot,
   ConversationStatus,
 } from "../engine/conversation-engine";
-import { conversationMessageContextUsage } from "../engine/conversation-engine";
+import { conversationMessageContextUsage, conversationWaitingFor } from "../engine/conversation-engine";
 import {
   publishInspectorSlice,
   recordInspectorEvent,
@@ -100,7 +100,7 @@ import { SessionScrollOverlay } from "./scroll-overlay";
 import { SessionFindBar } from "./find-bar";
 import { useSessionFindStore } from "./find-store";
 import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionActivityStatus } from "@/react-app/domains/session/status/session-activity-store";
-import { PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
+import { PendingConfirmationNotice, PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
 import { createWorkspaceFileOpenTarget, deriveOpenTargets, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
@@ -1021,6 +1021,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
   const chatStreaming = !stopAcknowledged
     && (sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive);
+  const waitingFor = stopAcknowledged ? null
+    : props.activePermission ? "approval"
+    : props.activeQuestion ? "input"
+    : chatStreaming ? conversationWaitingFor(snapshot?.session) : null;
+  const waitingLabel = waitingFor
+    ? t(waitingFor === "approval" ? "session.waiting_approval" : "session.waiting_input")
+    : undefined;
   const status = useMemo((): ThreadStatus => {
     if (stopAcknowledged) {
       return "ready";
@@ -1665,6 +1672,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       || props.activeQuestion
       || hasOpenTodos
       || props.activePermission
+      || waitingFor
       || queuedMessages.length > 0,
   );
 
@@ -2310,7 +2318,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           queuedCount={queuedMessages.length}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
           modelUnavailable={Boolean(props.modelUnavailable)}
-          statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
+          statusLabel={waitingLabel ?? statusLabel(snapshot ?? undefined, chatStreaming)}
           modelPickerOpen={props.modelPickerOpen}
           selectedModel={props.selectedModel}
           onModelPickerOpenChange={props.onModelPickerOpenChange}
@@ -2367,6 +2375,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           topAccessory={
             composerTopAccessoryVisible ? (
               <div>
+                {waitingFor && !props.activePermission && !props.activeQuestion ? (
+                  <PendingConfirmationNotice waitingFor={waitingFor} onStop={() => { void handleAbort(); }} />
+                ) : null}
                 {starterCapability || selectedAnimations.length || selectedVoiceReference || selectedImageReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">
                     {starterCapability ? <StarterCapabilityChip capability={starterCapability} onClear={() => setStarterCapability(null)} /> : null}
@@ -2540,6 +2551,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                     onApplyChanges={props.onApplyEnvironmentChanges}
                   >
                     <MessageListProvider
+                      waitingLabel={waitingLabel}
                       client={props.client}
                       workspaceId={props.workspaceId}
                       sessionId={props.sessionId}

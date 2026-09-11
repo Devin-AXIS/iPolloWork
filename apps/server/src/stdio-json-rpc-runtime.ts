@@ -83,6 +83,10 @@ export class StdioJsonRpcProcess {
     )));
   }
 
+  get running(): boolean {
+    return this.#child?.exitCode === null;
+  }
+
   subscribe(listener: (event: StdioJsonRpcEvent) => void): () => void {
     this.#listeners.add(listener);
     return () => this.#listeners.delete(listener);
