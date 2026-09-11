@@ -60,7 +60,7 @@ export default {
           ctx.assert(service.operations.state().accounts.length === 2, 'Both identities are stored after actual UI callback submission');
           ctx.assert(await ctx.eval(`document.querySelector('#client-secret').value === ''`), 'Secret field is cleared');
           ctx.assert(!JSON.stringify(service.operations.state()).includes('fixture-client-secret'), 'Public state contains no app secret');
-          ctx.assert(await ctx.eval(`document.querySelector('#account').closest('.topbar-account') !== null`), 'Account selector moved out of the title bar');
+          ctx.assert(await ctx.eval(`document.querySelector('#account').closest('.topbar-account') !== null`), 'Account selector is not in the title bar');
         }, screenshot: { name: 'connected-test-accounts', requireText: ['桌面日记 · 测试账号', '生活记录 · 测试账号', 'video.create.bind'] },
       });
       const a = service.operations.state().accounts.find(item => item.openId === 'fixture-account-a');
