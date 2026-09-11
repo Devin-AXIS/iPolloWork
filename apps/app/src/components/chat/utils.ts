@@ -336,6 +336,10 @@ export function getActiveAssistantMessageId(
   )?.id
 }
 
+export function isStudioResultMessage(message: UIMessage) {
+  return message.id.startsWith("studio-result:")
+}
+
 export function groupMessages(messages: UIMessage[]): MessageListItem[] {
   const items: MessageListItem[] = []
   const visibleMessages = messages.flatMap((message, index) =>
@@ -352,9 +356,15 @@ export function groupMessages(messages: UIMessage[]): MessageListItem[] {
       continue
     }
 
+    if (isStudioResultMessage(item.message)) {
+      items.push({ messages: [item] })
+      index++
+      continue
+    }
+
     const assistantMessages: UIMessageWithIndex[] = []
 
-    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant") {
+    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant" && !isStudioResultMessage(visibleMessages[index].message)) {
       assistantMessages.push(visibleMessages[index])
       index++
     }

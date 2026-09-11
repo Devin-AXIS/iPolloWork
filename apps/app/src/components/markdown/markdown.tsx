@@ -211,6 +211,7 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
 export function sanitizeMarkdownHtml(value: string) {
   return DOMPurify.sanitize(value, {
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$)|data:image\/(?:avif|bmp|gif|jpeg|jpg|png|svg\+xml|webp|x-icon);base64,)/i,
+    ADD_URI_SAFE_ATTR: ["d"],
     ADD_ATTR: [
       "checked",
       "class",
@@ -294,13 +295,14 @@ const baseMarkedOptions = {
       const safe = escapeAttribute(safeHref(href));
       const originalHref = escapeAttribute(href);
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
-      const isFilePath = Boolean(localFilePathFromHref(href));
+      const filePath = localFilePathFromHref(href);
+      const isFilePath = Boolean(filePath);
 
       if (isFilePath) {
-        const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
-        const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m6 9 6 6 6-6"/></svg>`;
-
-        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><button type="button" data-ipollowork-link-href="${originalHref}"${titleAttr} class="inline-flex items-center gap-1 px-1.5 py-0.5 text-left transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</button><button type="button" data-ipollowork-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
+        const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
+        const more = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>`;
+        const extension = filePath?.match(/\.([a-z0-9]{1,10})(?::\d+)?$/i)?.[1]?.toUpperCase() ?? "FILE";
+        return `<span class="chat-output-card align-middle"><button type="button" data-ipollowork-link-href="${originalHref}"${titleAttr} class="chat-output-open"><span class="chat-output-icon">${fileIcon}</span><span class="chat-output-content"><span class="chat-output-title">${this.parser.parseInline(tokens)}</span><span class="chat-output-description">${escapeHtml(extension)}</span></span></button><button type="button" data-ipollowork-link-chevron="${originalHref}" class="chat-output-more" aria-label="${escapeAttribute(t("session.outputs.more_actions"))}">${more}</button></span>`;
       }
 
       return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;

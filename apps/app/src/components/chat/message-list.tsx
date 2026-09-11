@@ -99,7 +99,7 @@ import {
   getActiveToolLabel,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
@@ -298,7 +298,7 @@ function isSessionErrorMessage(message: UIMessage) {
 
 export function getLatestArtifactAssistantMessageId(messages: UIMessage[]) {
   return messages.findLast(
-    (message) => message.role === "assistant" && !isSessionErrorMessage(message),
+    (message) => message.role === "assistant" && !isSessionErrorMessage(message) && !isStudioResultMessage(message),
   )?.id
 }
 
@@ -1082,7 +1082,7 @@ function MessageGroup({
   // Branch/revert must target a real server-side message id. Synthetic
   // client-side messages (e.g. session errors) don't exist on the server and
   // silently corrupt fork/revert boundaries.
-  const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message))
+  const lastRealItem = items.findLast((item) => !isSessionErrorMessage(item.message) && !isStudioResultMessage(item.message))
   const isLatestAssistantGroup = items.some(
     (item) => item.message.id === latestAssistantMessageId,
   )
@@ -1320,7 +1320,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     [messages],
   )
   const activeAssistantMessageId = React.useMemo(
-    () => isStreaming ? getActiveAssistantMessageId(messages, activeMessageBaseline) : undefined,
+    () => isStreaming ? getActiveAssistantMessageId(messages.filter(message => !isStudioResultMessage(message)), activeMessageBaseline) : undefined,
     [activeMessageBaseline, isStreaming, messages],
   )
   const error = useSessionErrorMessage();

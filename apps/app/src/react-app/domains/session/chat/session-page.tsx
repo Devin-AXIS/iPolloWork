@@ -3369,6 +3369,7 @@ export function SessionPage(props: SessionPageProps) {
     }
     openWorkspaceApp(surface, {
       intent: "edit-image",
+      requestId: crypto.randomUUID(),
       source: {
         kind: "workspace-file",
         path: target.value,
@@ -4071,7 +4072,7 @@ export function SessionPage(props: SessionPageProps) {
       group: "studio",
       icon: surface.pluginId === "image-studio" ? "image-studio" : surface.pluginId === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedWorkspaceId,
+      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
     })),
   ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
@@ -5246,6 +5247,7 @@ export function SessionPage(props: SessionPageProps) {
                         aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
+                        onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}
                         onEditImage={openImageStudio}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}

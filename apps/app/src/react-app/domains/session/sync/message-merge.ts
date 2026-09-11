@@ -1,4 +1,7 @@
 import type { UIMessage } from "ai";
+import type { SessionArtifact } from "@ipollowork/types/workspace";
+import { getArtifactsFromMessages } from "@/lib/artifacts";
+import { formatFileSize } from "@/lib/utils";
 
 function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage) {
   const parts = snapshotMessage.parts.map((part, index) => {
@@ -141,4 +144,31 @@ export function mergeSnapshotIntoCachedMessages(snapshotMessages: UIMessage[], c
   }
 
   return sortFullyTimestampedMessages(merged);
+}
+
+/** Presentation only: these receipts must never be sent back to the conversation engine. */
+export function withStudioResults(messages: UIMessage[], artifacts: SessionArtifact[], labels: { image: string; video: string }) {
+  const paths = new Set(getArtifactsFromMessages(messages).map(artifact => artifact.path));
+  const seen = new Set<string>();
+  const results: UIMessage[] = [];
+  for (const artifact of artifacts) {
+    const generation = artifact.generation;
+    if (!generation || seen.has(generation.id)) continue;
+    seen.add(generation.id);
+    if ([artifact.path, ...(artifact.previousPaths ?? [])].some(path => paths.has(path))) continue;
+    const details = [
+      formatFileSize(artifact.size),
+      generation.width && generation.height ? `${generation.width} × ${generation.height}` : null,
+      generation.duration ? `${Number(generation.duration.toFixed(1))} s` : null,
+      generation.model,
+    ].filter(Boolean).join(" · ");
+    const filename = artifact.path.split("/").pop() ?? artifact.path;
+    results.push({
+      id: `studio-result:${generation.id}`,
+      role: "assistant",
+      metadata: { ipollowork: { created: generation.completedAt, completed: generation.completedAt } },
+      parts: [{ type: "text", text: `${labels[generation.kind]}\n\n${details}\n\n[${filename.replace(/[\[\]\\]/g, "\\$&")}](${encodeURI(artifact.path).replace(/\(/g, "%28").replace(/\)/g, "%29")})` }],
+    });
+  }
+  return mergeSnapshotAndLiveMessages(messages, sortFullyTimestampedMessages(results), { appendLiveOnlyMessages: true });
 }

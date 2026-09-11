@@ -1655,8 +1655,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "douyin-ops", version: "0.1.6", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "image-studio", version: "0.1.54", installedVersion: "0.1.54", updateAvailable: false },
-          { pluginId: "video-console", version: "0.2.4", installedVersion: "0.2.4", updateAvailable: false },
+          { pluginId: "image-studio", version: "0.1.75", installedVersion: "0.1.75", updateAvailable: false },
+          { pluginId: "video-console", version: "0.2.42", installedVersion: "0.2.42", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });

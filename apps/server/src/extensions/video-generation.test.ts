@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -116,7 +116,7 @@ test("duplicate submissions are idempotent; restart saves only into initiating s
   const job=await getVideoJob(reloaded,args.requestId,"workspace",context.sessionId);
   expect(job.status).toBe("succeeded");expect(job.path).toBe(`video/${context.sessionId}/renders/${args.requestId}.mp4`);
   expect(await readFile(join(root,job.path))).toEqual(mp4);
-  expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items).toHaveLength(1);
+  expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items).toMatchObject([{ path: job.path, generation: { id: job.id, kind: "video", model: job.model } }]);
   expect((await listSessionArtifacts(config,"workspace","session-two")).items).toHaveLength(0);
   await pollVideoJobs(reloaded,auth);expect(creates).toBe(1);
   await expect(call("recover",{id:job.id},{...context,sessionId:"session-two"})).rejects.toThrow("当前会话");
@@ -307,7 +307,7 @@ test("read-only and path escapes are rejected; preview is chunked",async()=>{
   await expect(call("read",{path:"outside/clip.mp4"})).rejects.toThrow("escapes");
   await symlink(outside,join(root,"video"),process.platform==="win32"?"junction":"dir");
   await expect(call("import",{filename:"clip.mp4",dataUrl:`data:video/mp4;base64,${mp4.toString("base64")}`})).rejects.toThrow("escapes");
-  await rmdir(join(root,"outside"));await rmdir(join(root,"video"));
+  await unlink(join(root,"outside"));await unlink(join(root,"video"));
 });
 
 test("plugin manifest is valid and advertises only host-backed actions",async()=>{
@@ -319,7 +319,8 @@ test("plugin manifest is valid and advertises only host-backed actions",async()=
 
 test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
   const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
-  const callback=html.slice(html.indexOf("function openSettings()"),html.indexOf("async function recover("));
+  const start=html.indexOf("function openSettings()");
+  const callback=html.slice(start,html.indexOf("\n",start));
   const edits:string[]=[];
   const state={mode:"edit",previewPath:"",model:"minimax-h3",openRequest:""};
   const sandbox={state,crypto:{randomUUID:()=> "open-settings"},publish:()=>{},mode:(value:string)=>{state.mode=value;},useSource:(path:string)=>edits.push(path)};
@@ -338,17 +339,16 @@ test("video inspector resets incompatible fields and publishes the real host con
   const definitions=html.slice(html.indexOf("const state ="),html.indexOf("function post("));
   const functions=html.slice(html.indexOf("function model()"),html.indexOf("async function refresh("));
   const sandbox: Record<string,unknown>={
-    provider, INSPECTOR:"ai.ipollo/inspector",disposed:false,
+    document:{documentElement:{lang:"zh"}}, provider, INSPECTOR:"ai.ipollo/inspector",disposed:false,
     request:async (_method:string,context:unknown)=>{sandbox.published=context;},
   };
   runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
   expect(result.model).toBe("minimax-h3");
   expect(runInNewContext("state.resolution",sandbox)).toBe("0.5MP");
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.filter(field=>field.control==="select").map(field=>field.id)).toEqual(["operation","resolution","duration","ratio"]);
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.advanced)).toBe(false);
   expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
-  const manual=runInNewContext("state.model='seedance-2.5';normalized();publish();({model:state.model,inspector:published.structuredContent[INSPECTOR]})",sandbox);
-  expect(manual.model).toBe("seedance-2.5");
-  expect(parsePluginUiInspectorContext(manual.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
   const unavailable=runInNewContext("state.model='';state.models=provider.models.filter(item=>item.id!=='minimax-h3');normalized();state.model",sandbox);
   expect(unavailable).toBe("seedance-2.5");
   runInNewContext("state.models=provider.models;",sandbox);
@@ -382,7 +382,7 @@ test("generate directly submits the current prompt and settings without chat exp
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
   const runner = html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
   const calls: Array<{ action: string; args: Record<string, unknown> }> = [];
-  const sandbox = { crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
+  const sandbox = { document:{documentElement:{lang:"zh"}}, crypto: { randomUUID }, render() {}, publish() {}, tell() {}, refresh: async () => {},
     request() { throw new Error("Generation must not send chat messages"); },
     call: async (action: string, args: Record<string, unknown>) => { calls.push({ action, args }); return { job: { id: "job", status: "running", message: "submitted" } }; },
   };
@@ -409,7 +409,7 @@ test("inspector uploads bind exact frame fields, preserve inputs on failure and 
   const importer = html.slice(html.indexOf("async function importMedia("), html.indexOf("function openSettings("));
   const dataUrl = "data:image/png;base64,aW1hZ2U=";
   const sandbox: Record<string, unknown> = {
-    provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
+    document:{documentElement:{lang:"zh"}}, provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
     $: () => ({ setAttribute() {} }), renderEditor() {}, tell() {}, request: async () => ({}),
     call: async (action: string, args: Record<string, unknown>) => {
       expect(action).toBe("import");

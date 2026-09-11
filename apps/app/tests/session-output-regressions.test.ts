@@ -59,7 +59,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain('mediaKindForPath(target.value) === "video"');
     expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("video-console", {');
     expect(sessionPageSource).toContain('intent: "edit-video"');
-    expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("image-studio", {');
+    expect(sessionPageSource).toContain("await openImageStudio(target, sourceId ?? undefined);");
     expect(sessionPageSource).toContain('options?.viewer === "video" && videoArtifactSessionId');
   });
   test("empty projects hide task controls and render the no-task state", () => {
@@ -193,7 +193,7 @@ describe("session output issue regressions", () => {
     expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
     expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
     expect(artifactSource).toContain("minmax(220px,1fr)");
-    expect(artifactSource).toContain('"h-full w-full min-w-0 gap-4 rounded-2xl py-4 pl-5 pr-20"');
+    expect(artifactSource).toContain('"chat-output-card pr-20"');
     expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
     expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
@@ -477,8 +477,8 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(source).toContain('compact ? "w-full" : "h-20 w-full min-w-0"');
-    expect(source).toContain("grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))]");
+    expect(source).toContain('"h-14 w-full min-w-0"');
+    expect(source).toContain("grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),20rem))]");
     expect(source).not.toContain("overflow-x-auto overscroll-x-contain");
     expect(source).not.toContain("snap-proximity");
   });

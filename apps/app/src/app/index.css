@@ -763,3 +763,59 @@ select:disabled {
     @apply font-sans;
   }
 }
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .media-composer-controls :is(button, input, textarea, legend, [role="option"]) {
+  font-weight: 500;
+}
+
+/* Keep chat and media composer cards aligned at every viewport size. */
+.composer-card {
+  /* Original chat card: 60px editor + 20px padding + 8px gap + 32px actions + 2px border. */
+  height: 122px;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+
+@container media-reference-row (max-height: 50px) {
+  .media-reference-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .media-reference-card svg { width: 18px; height: 18px; }
+}
+
+.media-control-short, .media-output-compact { display: none; }
+@container media-composer (max-width: 620px) {
+  .media-composer-footer .media-control-full,
+  .media-composer-footer .media-action-label { display: none; }
+  .media-composer-footer .media-control-short { display: inline; }
+  .media-composer-footer .media-icon-action { width: 28px; min-width: 28px; padding: 0; }
+  .media-composer-footer .media-generate-action { min-width: 0; }
+}
+@container media-composer (max-width: 480px) {
+  .media-composer-footer .media-output-value { display: none; }
+  .media-composer-footer .media-output-compact { display: inline; }
+}
+
+/* Chat file links and response outputs share one visual specification. */
+.chat-output-card { position:relative; display:inline-flex; align-items:center; gap:10px; width:320px; max-width:100%; height:56px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--background); color:var(--foreground); box-shadow:none; vertical-align:middle; text-align:left; }
+.chat-output-card:hover { background:var(--muted); }
+.chat-output-open { display:flex; align-items:center; gap:10px; flex:1; min-width:0; height:100%; padding:0; text-align:left; }
+.chat-output-icon { display:grid; place-items:center; width:32px; height:32px; flex-shrink:0; border-radius:8px; background:var(--muted); color:var(--muted-foreground); }
+.chat-output-content { display:flex; flex:1; min-width:0; flex-direction:column; gap:2px; }
+.chat-output-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; line-height:16px; }
+.chat-output-description { display:block; font-size:10px; font-weight:400; line-height:14px; color:var(--muted-foreground); }
+.chat-output-more { display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; border-radius:8px; color:var(--muted-foreground); }
+.chat-output-more:hover { background:var(--background); color:var(--foreground); }
+
+[data-testid="artifact-file-shell"] > .chat-output-card { padding-right:76px; }
+.chat-output-title code { font:inherit; background:transparent; padding:0; }
+
+/* File list actions stay inside the same card at every panel width. */
+[data-testid="artifact-file-shell"] > .chat-output-card { width:100%; }
+.chat-output-icon svg { color:var(--muted-foreground); stroke-width:1.8; }
+[data-testid="artifact-file-actions"] { right:10px; }

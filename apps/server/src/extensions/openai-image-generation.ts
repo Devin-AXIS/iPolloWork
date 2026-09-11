@@ -1,4 +1,5 @@
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { basename, extname, resolve, sep } from "node:path";
 
@@ -23,6 +24,7 @@ type ImageParameter = {
   default: string;
   delivery: "native" | "prompt";
   experimentalValues?: readonly string[];
+  customRatio?: boolean;
 };
 
 type ImageModelDefinition = {
@@ -84,7 +86,7 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     available: true,
     // The app-server adapter accepts a prompt, not native image size/quality settings.
     parameters: {
-      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536"], default: "auto", delivery: "prompt" },
+      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536", "16x9", "9x16", "4x3", "3x4", "21x9"], default: "auto", delivery: "prompt", customRatio:true },
       quality: null,
     },
     capabilities: { generate: true, edit: true, mask: false, region: true },
@@ -128,7 +130,7 @@ const DEFAULT_IMAGE_MODEL_ID = IMAGE_MODELS[0].id;
 const imageParameterSchemas = Object.fromEntries(["size", "quality"].map((key) => [key, {
   type: "string",
   description: `Use values from status.models[].parameters.${key} for the selected model. Omit unsupported parameters; auto uses the model default. Prompt-delivered settings are intent, not exact controls.`,
-  enum: [...new Set(["auto", ...IMAGE_MODELS.flatMap((model) => model.parameters[key === "size" ? "size" : "quality"]?.values ?? [])])],
+  ...(key === "size" ? { pattern: "^(auto|2K|3K|[1-9][0-9]{0,3}x[1-9][0-9]{0,3})$" } : { enum: [...new Set(["auto", ...IMAGE_MODELS.flatMap(model => model.parameters.quality?.values ?? [])])] }),
 }]));
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
@@ -494,7 +496,7 @@ function imageOption(model: ImageModelDefinition, args: Record<string, unknown>,
   const parameter = model.parameters[key];
   // Existing callers send auto for omitted controls; resolve it to this model's default.
   if (value === undefined || value === "auto") return parameter?.default ?? "auto";
-  if (typeof value !== "string" || !parameter?.values.includes(value)) {
+  if (typeof value !== "string" || !(parameter?.values.includes(value) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(value)))) {
     throw new ApiError(400, "image_parameter_unsupported", `${model.label} does not support ${key}=${String(value)}. Allowed: ${parameter?.values.join(", ") || "auto (provider managed)"}.`);
   }
   return value;
@@ -713,11 +715,15 @@ async function generateImageArtifact(config: ServerConfig, authorization: Author
   const payload = await generateWithModel(model, apiKey, args, prompt, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
   const relativePath = await saveImageArtifact(workspace, fileName, bytes);
+  const dimensions = await sharp(bytes).metadata().catch(() => null);
 
   return {
     path: relativePath,
     bytes: bytes.byteLength,
+    width: dimensions?.width,
+    height: dimensions?.height,
     model: model.id,
+    modelLabel: model.label,
     provider: model.provider,
     workspaceId: workspace.id,
   };
@@ -772,8 +778,9 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   const generated = await imageDataFromPayload(payload, model.providerLabel);
   const bytes = selection ? await selection.composite(generated) : generated;
   const relativePath = await saveImageArtifact(workspace, fileName, bytes);
+  const dimensions = await sharp(bytes).metadata().catch(() => null);
   const reviewInfo = sourceHash ? await rememberImageEditResult(config, workspace, context.sessionId, sourcePath, sourceHash, relativePath, bytes) : {};
-  return { path: relativePath, bytes: bytes.byteLength, model: model.id, provider: model.provider, workspaceId: workspace.id, ...reviewInfo };
+  return { path: relativePath, bytes: bytes.byteLength, width: dimensions?.width, height: dimensions?.height, model: model.id, modelLabel: model.label, provider: model.provider, workspaceId: workspace.id, ...reviewInfo };
 }
 
 export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
@@ -828,7 +835,9 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_generate") {
     const result = await generateImageArtifact(config, authorization, args, context);
-    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path, undefined, {
+      id: randomUUID(), kind: "image", model: result.modelLabel, completedAt: Date.now(), width: result.width, height: result.height,
+    });
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
@@ -840,7 +849,9 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_edit") {
     const result = await editImageArtifact(config, authorization, args, context);
-    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path, undefined, {
+      id: randomUUID(), kind: "image", model: result.modelLabel, completedAt: Date.now(), width: result.width, height: result.height,
+    });
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
