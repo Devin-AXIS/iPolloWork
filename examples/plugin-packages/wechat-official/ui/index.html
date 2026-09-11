@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>公众号 Studio</title>
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"><i></i><b></b></span>
+      <div><h1>公众号 Studio</h1><p>内容、互动与菜单，在一个工作台完成</p></div>
+    </div>
+    <div class="topbar-actions">
+      <span id="connection" class="connection"><i></i>正在连接</span>
+      <button id="refresh" class="button quiet" type="button" aria-label="刷新数据">刷新</button>
+    </div>
+  </header>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <nav aria-label="公众号运营功能">
+        <button type="button" data-view="overview" aria-current="page"><span>◫</span>概览</button>
+        <button type="button" data-view="drafts"><span>✎</span>图文草稿</button>
+        <button type="button" data-view="comments"><span>◌</span>评论管理</button>
+        <button type="button" data-view="menu"><span>≡</span>自定义菜单</button>
+        <button type="button" data-view="audience"><span>♙</span>粉丝与消息</button>
+      </nav>
+      <section class="account-card">
+        <span class="account-avatar">公</span>
+        <div><small>当前公众号</small><strong id="account-id">读取中…</strong></div>
+      </section>
+    </aside>
+
+    <main>
+      <p id="feedback" class="feedback" role="status" aria-live="polite" hidden></p>
+
+      <section id="view-overview" class="view" aria-labelledby="overview-title">
+        <div class="welcome">
+          <div><span class="eyebrow">运营总览</span><h2 id="overview-title">今天，从一篇好内容开始。</h2><p>连接微信公众号官方 API，清楚地准备、核对和执行每一步。</p></div>
+          <button class="button primary" type="button" data-view="drafts">新建图文</button>
+        </div>
+        <div class="metric-grid">
+          <article class="metric"><span>草稿总数</span><strong id="draft-total">—</strong><small>公众号草稿箱</small></article>
+          <article class="metric"><span>本次读取</span><strong id="draft-count">—</strong><small>最多显示 20 篇</small></article>
+          <article class="metric"><span>服务状态</span><strong id="service-state">连接中</strong><small id="plugin-version">本机安全服务</small></article>
+        </div>
+        <section class="surface">
+          <div class="section-heading"><div><span class="eyebrow">最近内容</span><h3>草稿箱</h3></div><button class="button quiet" type="button" data-view="drafts">查看全部</button></div>
+          <div id="recent-drafts" class="draft-list"><p class="empty">正在读取草稿…</p></div>
+        </section>
+        <section class="surface publish-check">
+          <div><span class="eyebrow">发布查询</span><h3>核对发布进度</h3><p>提交后使用返回的 Publish ID 查询状态，避免重复发布。</p></div>
+          <form id="publish-status-form"><label>Publish ID<input id="publish-id" autocomplete="off" placeholder="粘贴发布任务 ID" required></label><button class="button secondary" type="submit">查询状态</button></form>
+          <div id="publish-status-result" class="result-box" hidden></div>
+        </section>
+      </section>
+
+      <section id="view-drafts" class="view" aria-labelledby="drafts-title" hidden>
+        <div class="page-heading"><div><span class="eyebrow">内容创作</span><h2 id="drafts-title">图文草稿</h2><p>编辑内容、上传素材并保存到公众号草稿箱，发布前再次确认。</p></div><button id="new-draft" class="button primary" type="button">新建图文</button></div>
+        <div class="studio-grid">
+          <aside class="surface draft-rail">
+            <div class="section-heading"><h3>草稿箱</h3><button id="refresh-drafts" class="button icon" type="button" aria-label="刷新草稿">↻</button></div>
+            <div id="draft-list" class="draft-list"><p class="empty">正在读取草稿…</p></div>
+          </aside>
+          <form id="article-form" class="surface editor">
+            <fieldset>
+              <div class="editor-title"><div><span id="editor-mode" class="eyebrow">新图文</span><h3>文章内容</h3></div><span id="save-state" class="save-state">尚未保存</span></div>
+              <label>标题 <span>最多 128 字</span><input id="article-title" maxlength="128" placeholder="用一句话说清文章价值" required></label>
+              <div class="two-columns"><label>作者<input id="article-author" maxlength="64" placeholder="选填"></label><label>原文链接<input id="article-source" type="url" placeholder="https://…"></label></div>
+              <label>摘要 <span>最多 120 字</span><textarea id="article-digest" rows="3" maxlength="120" placeholder="用于分享卡片和文章列表"></textarea></label>
+              <div class="asset-box">
+                <label>封面 Media ID<input id="cover-media-id" maxlength="256" placeholder="上传封面后自动填入" required></label>
+                <div class="asset-upload"><input id="cover-path" placeholder="工作区相对路径，例如 assets/cover.jpg"><button id="upload-cover" class="button secondary" type="button">上传封面</button></div>
+              </div>
+              <label>正文 HTML <span id="content-count">0 字符</span><textarea id="article-content" class="content-editor" rows="14" maxlength="200000" placeholder="输入公众号正文 HTML，或粘贴已经排版好的内容" required></textarea></label>
+              <div class="asset-upload body-image"><input id="body-image-path" placeholder="上传正文图片：工作区相对路径"><button id="upload-body-image" class="button secondary" type="button">上传并插入 URL</button></div>
+              <div class="switch-row">
+                <label><input id="show-cover" type="checkbox">正文显示封面</label>
+                <label><input id="open-comment" type="checkbox">开启评论</label>
+                <label><input id="fans-comment" type="checkbox">仅粉丝可评论</label>
+              </div>
+              <footer class="editor-footer"><p>保存只进入草稿箱，不会自动发布。</p><div><button id="publish-draft" class="button secondary danger-aware" type="button" disabled>提交发布</button><button class="button primary" type="submit">保存草稿</button></div></footer>
+            </fieldset>
+          </form>
+        </div>
+      </section>
+
+      <section id="view-comments" class="view" aria-labelledby="comments-title" hidden>
+        <div class="page-heading"><div><span class="eyebrow">互动管理</span><h2 id="comments-title">文章评论</h2><p>读取评论后逐条回复、精选或删除，每次写操作都会先确认。</p></div></div>
+        <form id="comments-form" class="surface inline-form"><label>文章 Msg Data ID<input id="comment-msg-id" inputmode="numeric" placeholder="例如 2247484731" required></label><label>图文序号<input id="comment-index" type="number" min="0" value="0" required></label><button class="button primary" type="submit">读取评论</button></form>
+        <div class="surface comments-toolbar"><span id="comment-summary">输入文章 ID 后读取评论</span><div><button id="open-comments" class="button quiet" type="button">开启评论</button><button id="close-comments" class="button quiet" type="button">关闭评论</button></div></div>
+        <div id="comments-list" class="record-list"><p class="empty">评论会显示在这里。</p></div>
+      </section>
+
+      <section id="view-menu" class="view" aria-labelledby="menu-title" hidden>
+        <div class="page-heading"><div><span class="eyebrow">公众号入口</span><h2 id="menu-title">自定义菜单</h2><p>读取当前菜单，核对完整 JSON 后再更新。最多三级一级菜单，每个一级菜单最多五个子菜单。</p></div><button id="load-menu" class="button secondary" type="button">读取当前菜单</button></div>
+        <section class="menu-grid">
+          <form id="menu-form" class="surface menu-editor"><label>菜单 JSON <span>仅提交 button 对象</span><textarea id="menu-json" rows="22" spellcheck="false" required>{
+  "button": []
+}</textarea></label><footer><p>更新后会覆盖公众号当前自定义菜单。</p><button class="button primary" type="submit">预览并更新</button></footer></form>
+          <aside class="phone-preview"><div class="phone-status"><span>9:41</span><span>•••</span></div><div class="phone-title">公众号</div><div class="phone-body"><span class="wechat-placeholder">公</span><p>菜单预览</p></div><div id="menu-preview" class="menu-preview"><span>暂无菜单</span></div></aside>
+        </section>
+      </section>
+
+      <section id="view-audience" class="view" aria-labelledby="audience-title" hidden>
+        <div class="page-heading"><div><span class="eyebrow">用户触达</span><h2 id="audience-title">粉丝与客服消息</h2><p>查看授权范围内的 OpenID，并在平台允许的客服消息窗口内发送文本。</p></div><button id="load-followers" class="button primary" type="button">读取粉丝</button></div>
+        <div class="audience-grid">
+          <section class="surface"><div class="section-heading"><div><h3>粉丝列表</h3><p id="followers-summary">尚未读取</p></div></div><div id="followers-list" class="follower-list"><p class="empty">点击右上角读取粉丝。</p></div><button id="more-followers" class="button quiet load-more" type="button" hidden>读取下一页</button></section>
+          <form id="message-form" class="surface message-card"><span class="eyebrow">客服消息</span><h3>发送文本</h3><label>接收人 OpenID<input id="message-open-id" maxlength="256" placeholder="从左侧选择或手动粘贴" required></label><label>消息内容 <span>最多 2000 字</span><textarea id="message-content" rows="8" maxlength="2000" placeholder="输入经确认的回复内容" required></textarea></label><p>只可在微信规定的客服消息窗口内发送。</p><button class="button primary" type="submit">确认并发送</button></form>
+        </div>
+      </section>
+    </main>
+  </div>
+</body>
+</html>
