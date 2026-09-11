@@ -1,4 +1,26 @@
 import { describe, expect, test } from "bun:test";
+
+test("Codex transport retries are non-terminal and clear when output resumes", () => {
+  const state = createCodexLiveState();
+  mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: {
+    threadId: "thread", turn: { id: "turn" },
+  } }, state);
+  const retry = mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: true,
+    error: { message: "Reconnecting... waiting for network" },
+  } }, state);
+  expect(retry).toEqual([expect.objectContaining({ type: "session.status", status: expect.objectContaining({ type: "retry" }) })]);
+  const recovered = mapCodexHarnessEvent({ type: "notification", method: "item/agentMessage/delta", params: {
+    threadId: "thread", turnId: "turn", itemId: "answer", delta: "Video submitted",
+  } }, state);
+  expect(recovered[0]).toEqual({ type: "session.status", sessionId: "thread", status: { type: "busy" } });
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "old-turn", willRetry: true, error: { message: "retry" },
+  } }, state)).toEqual([]);
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: false, error: { message: "Unauthorized" },
+  } }, state)).toEqual([expect.objectContaining({ type: "session.error" })]);
+});
 import {
   CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,

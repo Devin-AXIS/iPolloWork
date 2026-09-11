@@ -142,6 +142,15 @@ function snapshotWithMessages(
 }
 
 const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+test("repairs legacy client-only reconnect errors but preserves authoritative and terminal errors", () => {
+  const retry = uiMessage("session-error:retry", "assistant", "Reconnecting... waiting for network");
+  const failure = uiMessage("session-error:failure", "assistant", "Unauthorized");
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry, failure], snapshot: snapshotWithMessages([]) }))
+    .toEqual([failure]);
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry], snapshot: null })).toEqual([retry]);
+  const snapshot = { ...snapshotWithMessages([]), messages: [retry] };
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry], snapshot })).toEqual([retry]);
+});
 const testConnection = {
   subscribe: ({ signal }: { signal: AbortSignal }) => new Promise<void>((resolve) => {
     signal.addEventListener("abort", () => resolve(), { once: true });

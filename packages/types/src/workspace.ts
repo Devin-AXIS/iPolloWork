@@ -34,6 +34,13 @@ export type SessionArtifact = {
 export type SessionArtifactPage = {
   items: SessionArtifact[];
   nextCursor: number | null;
+  /** Latest backend job states, independent of the conversation turn lifecycle. */
+  videoJobs?: Array<{
+    id: string;
+    model: string;
+    status: "submitting" | "running" | "saving" | "succeeded" | "failed" | "uncertain" | "save_failed";
+    updatedAt: number;
+  }>;
 };
 
 export type WorkspaceRemoteKind = "opencode" | "ipollowork";

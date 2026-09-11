@@ -124,7 +124,7 @@ import {
   getComposerQueuedDrafts,
   useComposerStateStore,
 } from "./composer-state-store";
-import { MessageList } from "@/components/chat/message-list";
+import { MessageList, VideoJobStatus } from "@/components/chat/message-list";
 import {
   assignArtifactRequestOwnership,
   artifactDirectoryPath,
@@ -2580,6 +2580,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         activeMessageBaseline={awaitingAssistantBaseline}
                         assistantWaitLabel={props.assistantWaitLabel}
                       />
+                      <VideoJobStatus jobs={studioArtifacts.data?.pages[0]?.videoJobs} />
                     </MessageListProvider>
                   </EnvironmentVariableProvider>
                 </OpenTargetProvider>

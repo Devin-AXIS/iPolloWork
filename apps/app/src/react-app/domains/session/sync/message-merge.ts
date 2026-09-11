@@ -1,6 +1,5 @@
 import type { UIMessage } from "ai";
 import type { SessionArtifact } from "@ipollowork/types/workspace";
-import { getArtifactsFromMessages } from "@/lib/artifacts";
 import { formatFileSize } from "@/lib/utils";
 
 function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage) {
@@ -148,14 +147,14 @@ export function mergeSnapshotIntoCachedMessages(snapshotMessages: UIMessage[], c
 
 /** Presentation only: these receipts must never be sent back to the conversation engine. */
 export function withStudioResults(messages: UIMessage[], artifacts: SessionArtifact[], labels: { image: string; video: string }) {
-  const paths = new Set(getArtifactsFromMessages(messages).map(artifact => artifact.path));
   const seen = new Set<string>();
   const results: UIMessage[] = [];
   for (const artifact of artifacts) {
     const generation = artifact.generation;
     if (!generation || seen.has(generation.id)) continue;
     seen.add(generation.id);
-    if ([artifact.path, ...(artifact.previousPaths ?? [])].some(path => paths.has(path))) continue;
+    // A path in a tool result or inline preview is not a delivery card.
+    // Receipts use stable generation IDs so refreshes remain idempotent.
     const details = [
       formatFileSize(artifact.size),
       generation.width && generation.height ? `${generation.width} × ${generation.height}` : null,

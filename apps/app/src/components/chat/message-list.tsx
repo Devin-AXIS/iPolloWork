@@ -1010,7 +1010,9 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
     return () => window.clearInterval(timer)
   }, [status])
 
-  const info = seconds > 0
+  const info = status.attempt === 0 && status.next === 0
+    ? t("session.model_connection_retry_wait")
+    : seconds > 0
     ? `Retrying in ${seconds}s · attempt ${status.attempt}`
     : `Retrying · attempt ${status.attempt}`
   const action = status.action
@@ -1042,6 +1044,22 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
 })
 
 RetryMessage.displayName = "RetryMessage"
+
+export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/workspace").SessionArtifactPage["videoJobs"] }) {
+  return (jobs ?? []).filter(job => job.status !== "succeeded").map(job => {
+    const failed = job.status === "failed" || job.status === "save_failed";
+    const label = job.status === "submitting" ? "submitting"
+      : job.status === "running" ? "running"
+      : job.status === "saving" ? "saving"
+      : job.status === "uncertain" ? "uncertain"
+      : job.status === "save_failed" ? "save_failed" : "failed";
+    return <div key={job.id} role="status" data-video-job-status={job.status}
+      className={cn("mx-auto w-full max-w-[800px] px-0 py-2 text-sm md:px-10", failed ? "text-destructive" : "text-muted-foreground")}>
+      <p>{t(`session.video_job.${label}`)}</p>
+      <p className="break-all text-xs">{job.model} · {job.id}</p>
+    </div>;
+  });
+}
 
 const isMessageEmptyGroup = (messages: UIMessageWithIndex[]) =>
   messages.every(message => isEmptyMessage(message.message));
