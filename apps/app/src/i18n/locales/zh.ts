@@ -148,6 +148,8 @@ export default {
   "plugin_platform.permissions": "所需权限",
   "plugin_platform.advanced": "高级操作",
   "plugin_platform.authorization": "插件自己的授权",
+  "plugin_platform.workbench_accounts_title": "在运营台管理账号",
+  "plugin_platform.wechat_workbench_accounts_hint": "请打开微信公众号运营台，在账号管理中添加、授权、切换或移除公众号。多个账号分别管理，无需在插件详情页重复配置；已有账号与授权保持不变。",
   "plugin_platform.disable": "停用",
   "plugin_platform.enable": "启用",
   "plugin_platform.rollback": "回退版本",

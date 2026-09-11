@@ -145,6 +145,8 @@ export default {
   "plugin_platform.permissions": "Permissions",
   "plugin_platform.advanced": "Advanced controls",
   "plugin_platform.authorization": "Plugin authorization",
+  "plugin_platform.workbench_accounts_title": "Manage accounts in the workbench",
+  "plugin_platform.wechat_workbench_accounts_hint": "Open the WeChat Official Account workbench to add, authorize, switch, or remove accounts. Manage each account separately without configuring authorization again here. Existing accounts and credentials are preserved.",
   "plugin_platform.disable": "Disable",
   "plugin_platform.enable": "Enable",
   "plugin_platform.rollback": "Roll back",

@@ -36,6 +36,18 @@ const manifest = {
 };
 
 describe("plugin developer and user flow", () => {
+  test("keeps WeChat account authorization in the workbench without removing credential methods", async () => {
+    const source = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
+    expect(source).toContain('const managesAccountsInWorkbench = item.pluginId === "wechat-official"');
+    expect(source).toContain("!managesAccountsInWorkbench && authorization.required && !connected");
+    expect(source).toContain("{managesAccountsInWorkbench ? (");
+    expect(source).toContain('data-testid="plugin-workbench-accounts-hint"');
+    expect(source).toContain(") : (authorization.connectionMcpResources.length > 0 || methods.length > 0) ? (");
+    expect(zh["plugin_platform.wechat_workbench_accounts_hint"]).toContain("已有账号与授权保持不变");
+    expect(en["plugin_platform.wechat_workbench_accounts_hint"]).toContain("Existing accounts and credentials are preserved");
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/wechat-official/ipollowork.plugin.json", import.meta.url)).json();
+    expect(manifest.authorization.methods).toContainEqual(expect.objectContaining({ id: "wechat-official-account", kind: "secret-form" }));
+  });
   test("keeps plugin package loading resilient during a transient server restart", async () => {
     const source = await Bun.file(new URL("../src/react-app/domains/settings/plugin-packages-panel.tsx", import.meta.url)).text();
 
