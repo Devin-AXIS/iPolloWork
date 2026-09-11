@@ -4,7 +4,7 @@ import { searchSorts, type PostDraft, type StudioService } from './studio.js'
 
 type Nav = 'publishing' | 'comments' | 'analytics'
 
-const assetVersion = '20260911.2'
+const assetVersion = '20260911.3'
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;')
@@ -94,9 +94,8 @@ function accountBar(accounts: AccountBinding[], panel: Nav, primary: AccountBind
   const label = primary ? `${accountAvatar(primary)}<span><strong>${escapeHtml(primary.displayName)}</strong><small>${primary.sessionStatus === 'healthy' ? '<b></b> 已登录' : escapeHtml(statusLabel(primary.sessionStatus))}</small></span>${icon('chevron-down')}` : ''
   const accountHref = (id: number) => `/${panel}?account=${id}`
   return `<section class="account-bar" aria-label="当前账号">
-    <span class="account-platform">小红书</span>
     ${primary ? `<details class="account-picker"><summary class="account-switcher" aria-label="切换账号">${label}</summary><nav class="account-menu" aria-label="选择账号">${accounts.map(item => `<a href="${accountHref(item.id)}" ${item.id === primary.id ? 'aria-current="true"' : ''}>${accountAvatar(item)}<span><strong>${escapeHtml(item.displayName)}</strong><small>小红书号 ${escapeHtml(item.expectedProfileId)} · ${escapeHtml(statusLabel(item.sessionStatus))}</small></span>${item.id === primary.id ? icon('check', '当前账号') : ''}</a>`).join('')}</nav></details>` : '<span class="account-switcher is-empty">尚未添加账号</span>'}
-    <button class="add-account-link" type="button" data-open-account-form>${icon('plus')}<span>添加账号</span></button>${primary ? '<button class="icon-button" type="button" data-account-settings aria-label="管理当前账号">⋯</button>' : ''}
+    <button class="add-account-link" type="button" data-open-account-form aria-label="添加账号" title="添加账号">${icon('plus')}<span>添加账号</span></button>${primary ? '<button class="icon-button" type="button" data-account-settings aria-label="管理当前账号" title="管理当前账号">⋯</button>' : ''}
   </section>`
 }
 

@@ -17,6 +17,9 @@ test('HTTP API requires its local token, rejects cross-origin and unknown paths,
   assert.match(htmlText, /抖音运营台/);
   assert.match(htmlText, /class="app-shell"/);
   assert.match(htmlText, /class="sidebar"/);
+  assert.doesNotMatch(htmlText, /<span>抖音<\/span>/);
+  assert.match(htmlText, /id="add-account"[^>]*aria-label="添加账号"/);
+  assert.match(htmlText, /id="manage-account"/);
   assert.match(htmlText, /id="view-overview"/);
   assert.match(htmlText, /data-view="overview" aria-current="page"/);
   assert.match(htmlText, /让下一条内容/);

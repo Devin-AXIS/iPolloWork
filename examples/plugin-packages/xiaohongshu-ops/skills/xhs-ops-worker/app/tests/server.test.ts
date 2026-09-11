@@ -287,6 +287,8 @@ test('interaction switching filters reader comments, managed actions and reviews
     const firstPage = await (await app.request(`/comments?account=${first.id}`)).text()
     for (const text of ['FIRST_READER_COMMENT', 'FIRST_MANAGED_ACTION', 'FIRST_PENDING_REVIEW']) assert.ok(firstPage.includes(text))
     assert.equal(firstPage.match(/class="account-bar"/g)?.length, 1)
+    assert.doesNotMatch(firstPage, /class="account-platform"/)
+    assert.match(firstPage, /class="add-account-link"[^>]*aria-label="添加账号"/)
     assert.ok(firstPage.indexOf('class="app-topbar"') < firstPage.indexOf('class="app-main"'))
     assert.doesNotMatch(firstPage.slice(firstPage.indexOf('class="app-main"')), /class="account-bar"|class="add-account-link"/)
     assert.doesNotMatch(firstPage, /SECOND_READER_COMMENT|SECOND_REPLY_ACTION|SECOND_PENDING_REVIEW/)

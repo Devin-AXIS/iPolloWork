@@ -75,13 +75,13 @@ button { cursor: pointer; }
 }
 .sidebar-profile { width: 42px; height: 42px; margin: auto 0 28px; border: 8px solid var(--surface-muted); font-size: 11px; }
 .app-topbar {
-  position: sticky; top: 0; z-index: 25; display: grid; min-height: 82px; grid-template-columns: minmax(220px, 1fr) auto;
+  position: sticky; top: 0; z-index: 25; display: grid; min-height: 82px; grid-template-columns: minmax(0, 1fr) minmax(280px, 440px);
   align-items: center; gap: 24px; margin-left: 98px; padding: 12px 28px; border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 96%, transparent); backdrop-filter: blur(14px);
 }
 .app-identity { display: flex; min-width: 0; align-items: center; gap: 12px; }
 .app-identity > span {
-  display: grid; width: 44px; height: 44px; flex: 0 0 auto; place-items: center; border-radius: 13px;
+  display: none; width: 40px; height: 40px; flex: 0 0 auto; place-items: center; border-radius: 12px;
   color: #fff; background: var(--brand); box-shadow: 0 8px 20px rgba(255, 36, 66, .16); font-size: 10px; font-weight: 800;
 }
 .app-identity > div { display: grid; min-width: 0; gap: 3px; }
@@ -91,9 +91,9 @@ button { cursor: pointer; }
 .surface { border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface); }
 
 .account-bar {
-  display: grid; min-width: min(100%, 520px); grid-template-columns: auto minmax(220px, 320px) auto; min-height: 48px; align-items: stretch;
+  display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto auto; min-height: 44px; align-items: stretch; gap: 8px;
 }
-.account-platform { display: flex; align-items: center; padding: 0 10px 0 0; color: var(--text-muted); font-size: 10px; white-space: nowrap; }
+.account-bar > .icon-button { width: 44px; min-height: 44px; align-self: stretch; font-size: 20px; }
 .account-switcher, .add-account-link { display: flex; align-items: center; gap: 10px; padding: 7px 13px; border: 1px solid var(--border-strong); background: var(--surface); }
 .account-picker { position: relative; min-width: 0; }
 .account-switcher { position: relative; min-width: 0; height: 100%; border-radius: 10px; cursor: pointer; list-style: none; }
@@ -114,7 +114,7 @@ button { cursor: pointer; }
 .account-switcher small b { width: 7px; height: 7px; border-radius: 50%; background: var(--success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--success) 12%, transparent); }
 .account-switcher > .ti { margin-left: auto; }
 .account-switcher.is-empty { cursor: default; color: var(--text-muted); }
-.add-account-link { min-width: 116px; justify-content: center; margin-left: 10px; border-radius: 10px; font-size: 12px; font-weight: 700; }
+.add-account-link { min-width: 0; justify-content: center; border-radius: 10px; font-size: 12px; font-weight: 700; white-space: nowrap; }
 .add-account-link:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
 .add-account-link .ti { font-size: 16px; }
 .account-avatar { overflow: hidden; width: 38px; height: 38px; flex: 0 0 auto; font-size: 13px; }
@@ -241,10 +241,7 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text
   .accounts-layout, .interaction-layout { grid-template-columns: 1fr; }
   .connect-panel { position: static; }
   .onboarding-overview { overflow-x: auto; grid-template-columns: repeat(7, max-content); }
-  .app-topbar { gap: 14px; padding-inline: 18px; }
-  .app-identity small { display: none; }
-  .account-bar { min-width: 0; grid-template-columns: minmax(190px, 1fr) auto; }
-  .account-platform { display: none; }
+  .app-topbar { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-inline: 18px; }
 }
 
 @media (max-width: 680px) {
@@ -255,8 +252,8 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text
   .app-sidebar nav a .ti { font-size: 19px; }
   .app-topbar { position: relative; margin-left: 0; grid-template-columns: 1fr; align-items: stretch; padding-block: 14px; }
   .app-main { margin-left: 0; padding-bottom: 70px; }
-  .account-bar { width: 100%; grid-template-columns: minmax(0, 1fr) auto; }
-  .add-account-link { margin-left: 8px; }
+  .app-identity > span { display: grid; }
+  .account-bar { width: 100%; }
   .account-switcher { min-width: 0; }
   .simple-heading { align-items: flex-start; flex-direction: column; }
   .simple-heading h1 { font-size: 34px; }
@@ -265,6 +262,15 @@ input::placeholder, textarea::placeholder { color: color-mix(in srgb, var(--text
   .account-actions { flex-wrap: wrap; }
   .onboarding-overview { margin-inline: -2px; padding-inline: 14px; }
   .reference-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .app-topbar { padding-inline: 14px; }
+  .app-identity small { display: none; }
+  .add-account-link { width: 44px; padding-inline: 0; }
+  .add-account-link > span { display: none; }
+  .account-switcher { gap: 8px; padding-inline: 10px; }
+  .account-avatar { width: 32px; height: 32px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

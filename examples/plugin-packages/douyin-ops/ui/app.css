@@ -102,12 +102,13 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
   position: sticky;
   top: 0;
   z-index: 20;
-  display: flex;
-  height: 74px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 460px);
+  min-height: 101px;
   align-items: center;
   justify-content: space-between;
   gap: 18px;
-  padding: 0 26px;
+  padding: 12px 26px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(14px);
@@ -131,9 +132,13 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
 }
 .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 5px; width: 7px; height: 2px; border-radius: 2px; background: var(--pink); box-shadow: -8px 0 0 var(--cyan); }
 .brand p { margin-top: 2px; color: var(--muted); font-size: 11px; }
-.topbar-actions { display: flex; min-width: 0; align-items: center; gap: 8px; }
-.topbar-account { display: grid; min-width: 390px; grid-template-columns: auto minmax(170px, 1fr) auto; align-items: center; gap: 9px; }
-.topbar-account > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.brand > div { min-width: 0; }
+.brand h1 { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-actions { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
+.topbar-account { display: grid; grid-column: 1 / -1; min-width: 0; grid-template-columns: minmax(0, 1fr) auto 42px; align-items: center; gap: 8px; }
+.topbar-account select { min-width: 0; width: 100%; text-overflow: ellipsis; }
+.topbar-account #manage-account { width: 42px; padding-inline: 0; font-size: 20px; }
+#refresh { min-height: 28px; padding-block: 3px; }
 .topbar-account select { min-height: 42px; padding-block: 7px; border-radius: 9px; background: var(--surface); font-size: 12px; font-weight: 700; }
 .topbar-account button { min-height: 42px; white-space: nowrap; }
 .topbar-account button b { margin-right: 5px; font-size: 17px; font-weight: 450; line-height: 1; }
@@ -143,13 +148,13 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
 .connection[data-status="ready"] i { background: var(--cyan); box-shadow: 0 0 0 4px color-mix(in srgb, var(--cyan) 15%, transparent); }
 .connection[data-status="authorized"] i { background: var(--pink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--pink) 14%, transparent); }
 
-.app-shell { display: grid; min-height: calc(100vh - 74px); grid-template-columns: 204px minmax(0, 1fr); }
+.app-shell { display: grid; min-height: calc(100vh - 101px); grid-template-columns: 204px minmax(0, 1fr); }
 .sidebar {
   position: sticky;
-  top: 74px;
+  top: 101px;
   z-index: 10;
   display: flex;
-  height: calc(100vh - 74px);
+  height: calc(100vh - 101px);
   flex-direction: column;
   border-right: 1px solid var(--border);
   background: var(--surface);
@@ -298,8 +303,7 @@ details > .hint { margin-bottom: 15px; }
 .record pre { max-height: 240px; margin: 0; overflow: auto; font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 900px) {
-  .topbar { position: relative; height: auto; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto; flex-wrap: wrap; padding: 10px 18px; }
-  .topbar-account { min-width: min(100%, 390px); }
+  .topbar { position: relative; grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 12px 18px; }
   .app-shell { display: block; min-height: calc(100vh - 64px); }
   .sidebar { position: sticky; top: 0; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .tabs { display: flex; gap: 3px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
@@ -334,10 +338,12 @@ details > .hint { margin-bottom: 15px; }
   .brand { gap: 9px; }
   .brand-mark { width: 36px; height: 36px; border-radius: 10px; }
   .brand p { display: none; }
-  .topbar-actions { width: 100%; flex-wrap: wrap; gap: 7px; }
-  .topbar-account { order: 2; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; }
-  .topbar-account > span { display: none; }
-  .connection { flex: 1; max-width: none; }
+  .topbar-actions { width: 100%; }
+  .topbar-account { width: 100%; grid-template-columns: minmax(0, 1fr) 42px 42px; }
+  #add-account { padding-inline: 0; }
+  #add-account > span { display: none; }
+  #add-account b { margin: 0; }
+  .connection { max-width: 100%; }
   .workspace { padding: 20px 13px 42px; }
   .page-heading { align-items: flex-start; }
   .welcome { padding: 26px 22px; border-radius: 16px; }
