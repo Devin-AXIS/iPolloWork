@@ -8,11 +8,11 @@ export default {
       await ctx.prove("公众号列表不再要求插件级授权", {
         voiceover: "公众号插件在列表中显示打开，账号授权统一在运营台内管理。",
         action: async () => {
-          await ctx.navigateHash("/settings/extensions");
+          if (!await ctx.eval('location.hash.endsWith("/settings/extensions")')) await ctx.navigateHash("/settings/extensions");
           await ctx.waitFor('Array.from(document.querySelectorAll(\'[data-testid="plugin-package-list-item"]\')).some(row => row.innerText.includes("微信公众号"))', { timeoutMs: 15000 });
         },
         assert: async () => {
-          const text = await ctx.eval('Array.from(document.querySelectorAll(\'[data-testid="plugin-package-list-item"]\')).find(row => row.innerText.includes("微信公众号"))?.innerText');
+          const text = await ctx.waitFor('(() => { const text = Array.from(document.querySelectorAll(\'[data-testid="plugin-package-list-item"]\')).find(row => row.innerText.includes("微信公众号"))?.innerText; return text?.includes("打开") && !text.includes("授权连接") ? text : false; })()', { timeoutMs: 15000 });
           ctx.assert(text?.includes("打开") && !text.includes("授权连接"), "公众号列表按钮应为打开");
         },
         screenshot: { name: "wechat-list-open", requireText: ["微信公众号", "打开"], hashIncludes: "/settings/extensions" },
