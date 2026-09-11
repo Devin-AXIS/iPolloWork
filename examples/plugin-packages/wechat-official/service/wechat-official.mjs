@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { basename, dirname, extname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 const DEFAULT_API_BASE = "https://api.weixin.qq.com";
+const AUTHORIZATION_METHOD_ID = "wechat-official-account";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_ARTICLES_PER_DRAFT = 8;
 const MAX_ARTICLE_CONTENT_LENGTH = 200_000;
@@ -185,23 +186,36 @@ function studioErrorMessage(error) {
     return error.message;
 }
 export default async function createWeChatOfficialService(runtime) {
-    let cachedToken = null;
+    const cachedTokens = new Map();
     let studioServer = null;
     let studioStart = null;
     const studioToken = randomBytes(32).toString("base64url");
-    async function credential() {
-        const stored = await runtime.authorization.getCredential("wechat-official-account");
+    async function accountConnections() {
+        return (await runtime.authorization.listConnections())
+            .filter((connection) => connection.methodId === AUTHORIZATION_METHOD_ID);
+    }
+    async function storedCredential(accountId) {
+        return accountId
+            ? runtime.authorization.readCredential(accountId, AUTHORIZATION_METHOD_ID)
+            : runtime.authorization.getCredential(AUTHORIZATION_METHOD_ID);
+    }
+    async function credential(accountId = "") {
+        const connections = await accountConnections();
+        const stored = await storedCredential(accountId);
         const appId = stored?.appId?.trim() ?? "";
         const appSecret = stored?.appSecret?.trim() ?? "";
         if (!appId || !appSecret)
-            throw new Error("Connect a WeChat Official Account before using this action");
-        return { appId, appSecret };
+            throw new Error(accountId ? `未找到公众号账号“${accountId}”，请重新选择或添加账号` : "请先添加微信公众号账号");
+        if (accountId)
+            return { accountId, appId, appSecret };
+        const matches = await Promise.all(connections.map(async (connection) => ({
+            accountId: connection.accountId,
+            values: await runtime.authorization.readCredential(connection.accountId, AUTHORIZATION_METHOD_ID),
+        })));
+        const active = matches.find((candidate) => candidate.values?.appId === appId && candidate.values?.appSecret === appSecret);
+        return { accountId: active?.accountId ?? connections[0]?.accountId ?? "default", appId, appSecret };
     }
-    async function accessToken() {
-        const account = await credential();
-        if (cachedToken && cachedToken.appId === account.appId && cachedToken.expiresAt > Date.now() + 60_000) {
-            return { value: cachedToken.value, appId: account.appId };
-        }
+    async function fetchAccessToken(account) {
         const url = new URL("/cgi-bin/token", `${apiBase()}/`);
         url.searchParams.set("grant_type", "client_credential");
         url.searchParams.set("appid", account.appId);
@@ -217,11 +231,20 @@ export default async function createWeChatOfficialService(runtime) {
         if (!value)
             throw new Error("WeChat credential validation returned no access token");
         const expiresIn = numberValue(Reflect.get(payload, "expires_in")) ?? 7_200;
-        cachedToken = { appId: account.appId, value, expiresAt: Date.now() + Math.max(60, expiresIn) * 1_000 };
-        return { value, appId: account.appId };
+        return { value, expiresAt: Date.now() + Math.max(60, expiresIn) * 1_000 };
     }
-    async function request(path, options = {}) {
-        const token = await accessToken();
+    async function accessToken(accountId = "") {
+        const account = await credential(accountId);
+        const cachedToken = cachedTokens.get(account.accountId);
+        if (cachedToken && cachedToken.appId === account.appId && cachedToken.expiresAt > Date.now() + 60_000) {
+            return { value: cachedToken.value, accountId: account.accountId, appId: account.appId };
+        }
+        const fetched = await fetchAccessToken(account);
+        cachedTokens.set(account.accountId, { appId: account.appId, ...fetched });
+        return { value: fetched.value, accountId: account.accountId, appId: account.appId };
+    }
+    async function request(accountId, path, options = {}) {
+        const token = await accessToken(accountId);
         const url = new URL(path, `${apiBase()}/`);
         url.searchParams.set("access_token", token.value);
         const multipart = options.body instanceof FormData;
@@ -242,6 +265,50 @@ export default async function createWeChatOfficialService(runtime) {
             throw error;
         return payload;
     }
+    async function accountSummaries() {
+        const connections = await accountConnections();
+        return Promise.all(connections.map(async (connection) => {
+            const stored = await runtime.authorization.readCredential(connection.accountId, AUTHORIZATION_METHOD_ID);
+            const appId = stored?.appId?.trim() ?? "";
+            return {
+                accountId: connection.accountId,
+                appId: appId ? maskAppId(appId) : "未配置",
+                updatedAt: connection.updatedAt,
+            };
+        }));
+    }
+    async function activeAccountId() {
+        try {
+            return (await credential()).accountId;
+        }
+        catch {
+            return null;
+        }
+    }
+    function requestedAccountId(input) {
+        return optionalText(input, "accountId", 80);
+    }
+    async function saveStudioAccount(input) {
+        const accountId = requiredText(input, "accountId", 80);
+        const existing = await runtime.authorization.readCredential(accountId, AUTHORIZATION_METHOD_ID);
+        const appId = optionalText(input, "appId", 128) || existing?.appId?.trim() || "";
+        const appSecret = optionalText(input, "appSecret", 256) || existing?.appSecret?.trim() || "";
+        if (!appId || !appSecret)
+            throw new Error("新增账号需要填写 AppID 和 AppSecret");
+        const token = await fetchAccessToken({ appId, appSecret });
+        await runtime.authorization.saveCredential(AUTHORIZATION_METHOD_ID, accountId, { appId, appSecret });
+        cachedTokens.set(accountId, { appId, ...token });
+        return actions["studio-state"]({ accountId }, { directory: runtime.workspace.root });
+    }
+    async function deleteStudioAccount(accountId) {
+        const normalized = accountId.trim();
+        if (!normalized)
+            throw new Error("accountId is required");
+        if (!await runtime.authorization.revokeAccount(normalized))
+            throw new Error(`未找到公众号账号“${normalized}”`);
+        cachedTokens.delete(normalized);
+        return actions["studio-state"]({}, { directory: runtime.workspace.root });
+    }
     async function uploadImage(input, context, kind) {
         const source = await resolveWorkspaceImage(input, context);
         const information = await stat(source.path);
@@ -252,7 +319,7 @@ export default async function createWeChatOfficialService(runtime) {
         const bytes = await readFile(source.path);
         const form = new FormData();
         form.append("media", new Blob([bytes], { type: mimeType(source.fileName) }), source.fileName);
-        const payload = await request(kind === "article" ? "/cgi-bin/media/uploadimg" : "/cgi-bin/material/add_material?type=image", { body: form });
+        const payload = await request(requestedAccountId(input), kind === "article" ? "/cgi-bin/media/uploadimg" : "/cgi-bin/material/add_material?type=image", { body: form });
         return kind === "article"
             ? { sourcePath: requiredText(input, "sourcePath", 1_000), url: text(Reflect.get(payload, "url")) }
             : {
@@ -262,28 +329,58 @@ export default async function createWeChatOfficialService(runtime) {
             };
     }
     const actions = {
-        "open-workbench": async () => ensureStudioStarted(),
-        "connection-status": async () => {
-            const token = await accessToken();
-            return { connected: true, account: { appId: maskAppId(token.appId) }, pluginVersion: runtime.plugin.version };
+        "open-workbench": async (input) => {
+            const studio = await ensureStudioStarted();
+            const hash = new URLSearchParams({ token: studioToken });
+            const accountId = requestedAccountId(input);
+            if (accountId)
+                hash.set("accountId", accountId);
+            return { url: `${studio.origin}/#${hash}` };
+        },
+        "connection-status": async (input) => {
+            const token = await accessToken(requestedAccountId(input));
+            return {
+                connected: true,
+                account: { accountId: token.accountId, appId: maskAppId(token.appId) },
+                accounts: await accountSummaries(),
+                pluginVersion: runtime.plugin.version,
+            };
+        },
+        "select-account": async (input) => {
+            const accountId = requiredText(input, "accountId", 80);
+            if (!await runtime.authorization.setActiveAccount(AUTHORIZATION_METHOD_ID, accountId))
+                throw new Error(`未找到公众号账号“${accountId}”`);
+            const connection = await actions["connection-status"]({ accountId }, {});
+            return { selected: true, ...connection };
         },
         "studio-state": async (input, context) => {
+            const accounts = await accountSummaries();
+            const selectedAccountId = requestedAccountId(input) || await activeAccountId() || accounts[0]?.accountId || null;
             let connection;
             try {
-                connection = await actions["connection-status"](input, context);
+                connection = await actions["connection-status"](selectedAccountId ? { ...input, accountId: selectedAccountId } : input, context);
             }
             catch (error) {
                 return {
                     connection: { connected: false, message: studioErrorMessage(error), pluginVersion: runtime.plugin.version },
+                    accounts,
+                    activeAccountId: selectedAccountId,
                     drafts: { totalCount: 0, itemCount: 0, items: [] },
                 };
             }
             try {
-                return { connection, drafts: await actions["list-drafts"](input, context) };
+                return {
+                    connection,
+                    accounts,
+                    activeAccountId: connection.account.accountId,
+                    drafts: await actions["list-drafts"]({ ...input, accountId: connection.account.accountId }, context),
+                };
             }
             catch (error) {
                 return {
                     connection,
+                    accounts,
+                    activeAccountId: connection.account.accountId,
                     drafts: { totalCount: 0, itemCount: 0, items: [] },
                     draftsError: studioErrorMessage(error),
                 };
@@ -292,15 +389,15 @@ export default async function createWeChatOfficialService(runtime) {
         "upload-article-image": async (input, context) => uploadImage(input, context, "article"),
         "upload-cover-image": async (input, context) => uploadImage(input, context, "cover"),
         "create-draft": async (input) => {
-            const payload = await request("/cgi-bin/draft/add", { body: { articles: articleList(input) } });
+            const payload = await request(requestedAccountId(input), "/cgi-bin/draft/add", { body: { articles: articleList(input) } });
             return { mediaId: text(Reflect.get(payload, "media_id")) };
         },
         "get-draft": async (input) => {
-            const payload = await request("/cgi-bin/draft/get", { body: { media_id: requiredText(input, "mediaId", 256) } });
+            const payload = await request(requestedAccountId(input), "/cgi-bin/draft/get", { body: { media_id: requiredText(input, "mediaId", 256) } });
             return { newsItem: records(Reflect.get(payload, "news_item")) };
         },
         "list-drafts": async (input) => {
-            const payload = await request("/cgi-bin/draft/batchget", {
+            const payload = await request(requestedAccountId(input), "/cgi-bin/draft/batchget", {
                 body: {
                     offset: boundedInteger(input, "offset", 0, 100_000),
                     count: Math.max(1, Math.min(20, boundedInteger(input, "limit", 20, 20))),
@@ -317,7 +414,7 @@ export default async function createWeChatOfficialService(runtime) {
             const articleInput = record(field(input, "article"));
             if (!articleInput)
                 throw new Error("article must be an object");
-            await request("/cgi-bin/draft/update", {
+            await request(requestedAccountId(input), "/cgi-bin/draft/update", {
                 body: {
                     media_id: requiredText(input, "mediaId", 256),
                     index: requiredInteger(input, "index"),
@@ -327,11 +424,11 @@ export default async function createWeChatOfficialService(runtime) {
             return { updated: true };
         },
         "submit-publish": async (input) => {
-            const payload = await request("/cgi-bin/freepublish/submit", { body: { media_id: requiredText(input, "mediaId", 256) } });
+            const payload = await request(requestedAccountId(input), "/cgi-bin/freepublish/submit", { body: { media_id: requiredText(input, "mediaId", 256) } });
             return { publishId: text(Reflect.get(payload, "publish_id")) };
         },
         "get-publish-status": async (input) => {
-            const payload = await request("/cgi-bin/freepublish/get", { body: { publish_id: requiredText(input, "publishId", 256) } });
+            const payload = await request(requestedAccountId(input), "/cgi-bin/freepublish/get", { body: { publish_id: requiredText(input, "publishId", 256) } });
             return {
                 publishId: text(Reflect.get(payload, "publish_id")),
                 publishStatus: numberValue(Reflect.get(payload, "publish_status")),
@@ -341,7 +438,7 @@ export default async function createWeChatOfficialService(runtime) {
             };
         },
         "list-comments": async (input) => {
-            const payload = await request("/cgi-bin/comment/list", {
+            const payload = await request(requestedAccountId(input), "/cgi-bin/comment/list", {
                 body: {
                     msg_data_id: requiredInteger(input, "msgDataId", 1),
                     index: boundedInteger(input, "index", 0, 10_000),
@@ -355,7 +452,7 @@ export default async function createWeChatOfficialService(runtime) {
             };
         },
         "reply-comment": async (input) => {
-            await request("/cgi-bin/comment/reply/add", {
+            await request(requestedAccountId(input), "/cgi-bin/comment/reply/add", {
                 body: {
                     msg_data_id: requiredInteger(input, "msgDataId", 1),
                     index: requiredInteger(input, "index"),
@@ -367,7 +464,7 @@ export default async function createWeChatOfficialService(runtime) {
         },
         "set-comment-featured": async (input) => {
             const featured = requiredBoolean(input, "featured");
-            await request(featured ? "/cgi-bin/comment/markelect" : "/cgi-bin/comment/unmarkelect", {
+            await request(requestedAccountId(input), featured ? "/cgi-bin/comment/markelect" : "/cgi-bin/comment/unmarkelect", {
                 body: {
                     msg_data_id: requiredInteger(input, "msgDataId", 1),
                     index: requiredInteger(input, "index"),
@@ -377,7 +474,7 @@ export default async function createWeChatOfficialService(runtime) {
             return { featured };
         },
         "delete-comment": async (input) => {
-            await request("/cgi-bin/comment/delete", {
+            await request(requestedAccountId(input), "/cgi-bin/comment/delete", {
                 body: {
                     msg_data_id: requiredInteger(input, "msgDataId", 1),
                     index: requiredInteger(input, "index"),
@@ -388,7 +485,7 @@ export default async function createWeChatOfficialService(runtime) {
         },
         "set-comment-state": async (input) => {
             const open = requiredBoolean(input, "open");
-            await request(open ? "/cgi-bin/comment/open" : "/cgi-bin/comment/close", {
+            await request(requestedAccountId(input), open ? "/cgi-bin/comment/open" : "/cgi-bin/comment/close", {
                 body: {
                     msg_data_id: requiredInteger(input, "msgDataId", 1),
                     index: requiredInteger(input, "index"),
@@ -398,7 +495,7 @@ export default async function createWeChatOfficialService(runtime) {
         },
         "list-followers": async (input) => {
             const nextOpenId = optionalText(input, "nextOpenId", 256);
-            const payload = await request(`/cgi-bin/user/get${nextOpenId ? `?next_openid=${encodeURIComponent(nextOpenId)}` : ""}`, { method: "GET" });
+            const payload = await request(requestedAccountId(input), `/cgi-bin/user/get${nextOpenId ? `?next_openid=${encodeURIComponent(nextOpenId)}` : ""}`, { method: "GET" });
             const data = record(Reflect.get(payload, "data"));
             return {
                 total: numberValue(Reflect.get(payload, "total")),
@@ -407,18 +504,18 @@ export default async function createWeChatOfficialService(runtime) {
                 openIds: data ? (Array.isArray(Reflect.get(data, "openid")) ? Reflect.get(data, "openid") : []) : [],
             };
         },
-        "get-menu": async () => request("/cgi-bin/menu/get", { method: "GET" }),
+        "get-menu": async (input) => request(requestedAccountId(input), "/cgi-bin/menu/get", { method: "GET" }),
         "update-menu": async (input) => {
             const menu = record(field(input, "menu"));
             if (!menu)
                 throw new Error("menu must be an object");
             if (JSON.stringify(menu).length > MAX_MENU_JSON_LENGTH)
                 throw new Error("menu is too large");
-            await request("/cgi-bin/menu/create", { body: menu });
+            await request(requestedAccountId(input), "/cgi-bin/menu/create", { body: menu });
             return { updated: true };
         },
         "send-customer-text": async (input) => {
-            await request("/cgi-bin/message/custom/send", {
+            await request(requestedAccountId(input), "/cgi-bin/message/custom/send", {
                 body: {
                     touser: requiredText(input, "openId", 256),
                     msgtype: "text",
@@ -472,7 +569,21 @@ export default async function createWeChatOfficialService(runtime) {
                 }
                 const studioContext = { directory: runtime.workspace.root };
                 if (request.method === "GET" && url.pathname === "/api/state") {
-                    const result = await actions["studio-state"]({}, studioContext);
+                    const accountId = url.searchParams.get("accountId")?.trim() ?? "";
+                    const result = await actions["studio-state"](accountId ? { accountId } : {}, studioContext);
+                    json(200, { result });
+                    return;
+                }
+                if (request.method === "POST" && url.pathname === "/api/accounts") {
+                    if (!request.headers["content-type"]?.toLowerCase().startsWith("application/json"))
+                        throw new Error("请求必须使用 application/json");
+                    const result = await saveStudioAccount(await readStudioJson(request));
+                    json(200, { result });
+                    return;
+                }
+                if (request.method === "DELETE" && url.pathname.startsWith("/api/accounts/")) {
+                    const accountId = decodeURIComponent(url.pathname.slice("/api/accounts/".length));
+                    const result = await deleteStudioAccount(accountId);
                     json(200, { result });
                     return;
                 }
@@ -508,7 +619,7 @@ export default async function createWeChatOfficialService(runtime) {
         }
         studioServer = server;
         origin = `http://127.0.0.1:${address.port}`;
-        return { url: `${origin}/#token=${studioToken}` };
+        return { origin };
     }
     function ensureStudioStarted() {
         if (!studioStart) {

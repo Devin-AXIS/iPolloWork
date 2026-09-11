@@ -977,6 +977,12 @@ await service.dispose();
     expect(freshB?.accessToken).toBe("fresh-token");
     expect(refreshRequests).toBe(1);
 
+    await authorization.saveCredential("api-key", "work", { apiKey: "alpha-work-secret" });
+    expect(await authorization.readCredential("work", "api-key")).toEqual({ apiKey: "alpha-work-secret" });
+    expect((await authorization.listConnections()).filter((connection) => connection.methodId === "api-key").map((connection) => connection.accountId)).toEqual(["default", "work"]);
+    expect(await authorization.revokeAccount("work")).toBe(true);
+    expect(await authorization.readCredential("work", "api-key")).toBeNull();
+
     expect(await disposePluginServices(serverConfig, WORKSPACE_ID, "alpha-service")).toBe(1);
     expect(Reflect.get(globalThis, "ipollowork-test-service-instance:alpha-service:disposed")).toBe(1);
     expect(await disposeAllPluginServices(serverConfig)).toBe(1);
@@ -1101,7 +1107,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "upload-cover-image",
-      args: { sourcePath: "cover.png" },
+      args: { accountId: "default", sourcePath: "cover.png" },
       context: { directory: workspaceRoot },
     });
     const draft = await callPluginServiceAction({
@@ -1109,7 +1115,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "create-draft",
-      args: { articles: [{ title: "A careful article", content: "<p>Body</p>", thumbMediaId: "cover-media-id" }] },
+      args: { accountId: "default", articles: [{ title: "A careful article", content: "<p>Body</p>", thumbMediaId: "cover-media-id" }] },
       context: {},
     });
     const published = await callPluginServiceAction({
@@ -1117,7 +1123,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "submit-publish",
-      args: { mediaId: "draft-media-id" },
+      args: { accountId: "default", mediaId: "draft-media-id" },
       context: {},
     });
     const publishStatus = await callPluginServiceAction({
@@ -1125,7 +1131,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "get-publish-status",
-      args: { publishId: "publish-id" },
+      args: { accountId: "default", publishId: "publish-id" },
       context: {},
     });
     const comments = await callPluginServiceAction({
@@ -1133,7 +1139,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "list-comments",
-      args: { msgDataId: 12 },
+      args: { accountId: "default", msgDataId: 12 },
       context: {},
     });
     const reply = await callPluginServiceAction({
@@ -1141,7 +1147,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "reply-comment",
-      args: { msgDataId: 12, index: 0, userCommentId: 9, content: "Thank you" },
+      args: { accountId: "default", msgDataId: 12, index: 0, userCommentId: 9, content: "Thank you" },
       context: {},
     });
     const menu = await callPluginServiceAction({
@@ -1149,7 +1155,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "get-menu",
-      args: {},
+      args: { accountId: "default" },
       context: {},
     });
     const updatedMenu = await callPluginServiceAction({
@@ -1157,7 +1163,7 @@ await service.dispose();
       workspaceId: WORKSPACE_ID,
       pluginId: "wechat-official",
       action: "update-menu",
-      args: { menu: { button: [{ type: "view", name: "Read", url: "https://example.com" }] } },
+      args: { accountId: "default", menu: { button: [{ type: "view", name: "Read", url: "https://example.com" }] } },
       context: {},
     });
 

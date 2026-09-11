@@ -1650,7 +1650,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "stripe", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "context7", version: "1.0.2", installedVersion: null, updateAvailable: false },
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-official", version: "0.2.2", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.14", installedVersion: null, updateAvailable: false },
           { pluginId: "douyin-ops", version: "0.1.7", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
@@ -1779,7 +1779,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(wechatInstallation.status).toBe(200);
       expect(await wechatInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "wechat-official", version: "0.2.2" },
+        result: { status: "installed", pluginId: "wechat-official", version: "0.3.0" },
         item: {
           pluginId: "wechat-official",
           manifest: {

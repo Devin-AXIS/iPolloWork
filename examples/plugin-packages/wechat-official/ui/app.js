@@ -1,8 +1,10 @@
 (() => {
-  const token = new URLSearchParams(location.hash.slice(1)).get('token') || '';
+  const launch = new URLSearchParams(location.hash.slice(1));
+  const token = launch.get('token') || '';
+  const launchedAccountId = launch.get('accountId') || '';
   history.replaceState(null, '', location.pathname);
   const $ = selector => document.querySelector(selector);
-  const state = { connection: null, drafts: { totalCount: 0, itemCount: 0, items: [] } };
+  const state = { connection: null, accounts: [], activeAccountId: launchedAccountId, drafts: { totalCount: 0, itemCount: 0, items: [] } };
   let selectedMediaId = '';
   let selectedIndex = 0;
   let dirty = false;
@@ -18,7 +20,10 @@
     if (!response.ok) throw new Error(payload.error || '操作失败，请稍后重试。');
     return payload.result;
   }
-  const action = (name, args = {}) => request(`/api/actions/${name}`, { method: 'POST', body: JSON.stringify(args) });
+  const action = (name, args = {}) => request(`/api/actions/${name}`, {
+    method: 'POST',
+    body: JSON.stringify({ ...(state.activeAccountId ? { accountId: state.activeAccountId } : {}), ...args }),
+  });
   function node(tag, className = '', value = '') {
     const element = document.createElement(tag);
     if (className) element.className = className;
@@ -70,7 +75,17 @@
     const connected = Boolean(state.connection?.connected);
     $('#connection').className = `connection ${connected ? 'connected' : 'error'}`;
     $('#connection').lastChild.textContent = connected ? '已连接' : '连接异常';
-    $('#account-id').textContent = state.connection?.account?.appId || '未连接';
+    const accounts = Array.isArray(state.accounts) ? state.accounts : [];
+    const accountSelect = $('#account-select'); accountSelect.replaceChildren();
+    for (const account of accounts) {
+      const option = node('option', '', `${account.accountId} · ${account.appId}`); option.value = account.accountId; accountSelect.append(option);
+    }
+    if (!accounts.length) { const option = node('option', '', '尚未添加账号'); option.value = ''; accountSelect.append(option); }
+    accountSelect.value = state.activeAccountId || '';
+    accountSelect.disabled = accounts.length < 2;
+    $('#account-id').textContent = state.activeAccountId || '未连接';
+    $('#account-app-id').textContent = state.connection?.account?.appId || '当前公众号';
+    $('#manage-account').disabled = !state.activeAccountId;
     $('#draft-total').textContent = String(state.drafts.totalCount ?? 0);
     $('#draft-count').textContent = String(state.drafts.itemCount ?? state.drafts.items.length);
     $('#service-state').textContent = connected ? '运行正常' : '需要检查';
@@ -78,10 +93,58 @@
     renderDrafts('#recent-drafts', state.drafts.items, 4);
     renderDrafts('#draft-list', state.drafts.items, 20);
   }
-  async function refresh() {
-    const value = await request('/api/state');
+  async function refresh(accountId = state.activeAccountId) {
+    const query = accountId ? `?accountId=${encodeURIComponent(accountId)}` : '';
+    const value = await request(`/api/state${query}`);
     Object.assign(state, value);
     renderState();
+  }
+
+  function clearAccountData() {
+    selectedMediaId = ''; selectedIndex = 0; dirty = false; followersCursor = '';
+    $('#article-form').reset(); $('#comments-list').replaceChildren(node('p', 'empty', '评论会显示在这里。'));
+    $('#followers-list').replaceChildren(node('p', 'empty', '点击右上角读取粉丝。'));
+    $('#followers-summary').textContent = '尚未读取'; $('#more-followers').hidden = true;
+    $('#menu-json').value = '{\n  "button": []\n}'; renderMenuPreview();
+    $('#publish-status-result').hidden = true;
+  }
+  async function switchAccount(accountId) {
+    if (!accountId || accountId === state.activeAccountId) return;
+    if (dirty && !confirm('当前有未保存修改，确定切换公众号账号吗？')) { $('#account-select').value = state.activeAccountId; return; }
+    await action('select-account', { accountId });
+    state.activeAccountId = accountId; clearAccountData(); await refresh(accountId);
+  }
+
+  function openAccountDialog(editing) {
+    const accountId = editing ? state.activeAccountId : '';
+    $('#account-dialog-title').textContent = editing ? '管理公众号' : '添加公众号';
+    $('#account-dialog-hint').textContent = editing
+      ? 'AppID 或 AppSecret 留空会保留原值；保存前会先验证账号凭据。'
+      : '每个账号的 AppID 和 AppSecret 会独立保存在 iPolloWork 加密授权仓库中。';
+    $('#account-name').value = accountId; $('#account-name').readOnly = editing;
+    $('#account-appid').value = ''; $('#account-secret').value = '';
+    $('#account-appid').required = !editing; $('#account-secret').required = !editing;
+    $('#delete-account').hidden = !editing;
+    $('#account-dialog').showModal();
+    (editing ? $('#account-appid') : $('#account-name')).focus();
+  }
+  function closeAccountDialog() { $('#account-dialog').close(); $('#account-form').reset(); }
+  async function saveAccount() {
+    const result = await request('/api/accounts', {
+      method: 'POST',
+      body: JSON.stringify({
+        accountId: $('#account-name').value.trim(),
+        appId: $('#account-appid').value.trim(),
+        appSecret: $('#account-secret').value.trim(),
+      }),
+    });
+    closeAccountDialog(); clearAccountData(); Object.assign(state, result); renderState();
+  }
+  async function deleteAccount() {
+    const accountId = state.activeAccountId;
+    if (!accountId || !confirm(`删除“${accountId}”的绑定凭据后，该账号将无法继续操作。确定删除吗？`)) return false;
+    const result = await request(`/api/accounts/${encodeURIComponent(accountId)}`, { method: 'DELETE' });
+    closeAccountDialog(); clearAccountData(); Object.assign(state, result); renderState();
   }
 
   function setChecked(selector, value) { $(selector).checked = value === true || value === 1; }
@@ -231,6 +294,13 @@
   async function loadFollowers(append = false) { renderFollowers(await action('list-followers', append ? { nextOpenId: followersCursor } : {}), append); }
 
   document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => view(button.dataset.view)));
+  $('#account-select').addEventListener('change', event => run(() => switchAccount(event.target.value), '已切换公众号账号。'));
+  $('#add-account').addEventListener('click', () => openAccountDialog(false));
+  $('#manage-account').addEventListener('click', () => openAccountDialog(true));
+  $('#close-account-dialog').addEventListener('click', closeAccountDialog);
+  $('#cancel-account').addEventListener('click', closeAccountDialog);
+  $('#account-form').addEventListener('submit', event => { event.preventDefault(); run(saveAccount, '公众号账号已保存。'); });
+  $('#delete-account').addEventListener('click', () => run(deleteAccount, '公众号账号绑定已删除。'));
   $('#refresh').addEventListener('click', () => run(refresh, '数据已刷新。'));
   $('#refresh-drafts').addEventListener('click', () => run(refresh, '草稿箱已刷新。'));
   $('#new-draft').addEventListener('click', () => { if (!dirty || confirm('放弃当前未保存修改并新建图文吗？')) resetEditor(); });

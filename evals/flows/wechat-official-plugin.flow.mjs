@@ -81,13 +81,13 @@ export default {
           },
           assert: async () => {
             await ctx.expectText("微信公众号");
-            await ctx.expectText("管理公众号图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。");
+            await ctx.expectText("集中管理多个公众号账号的图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。");
             await ctx.expectText("安装");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
             name: "wechat-official-catalog",
-            requireText: ["独立插件包", "微信公众号", "管理公众号图文、草稿、发布、评论", "安装"],
+            requireText: ["独立插件包", "微信公众号", "集中管理多个公众号账号", "安装"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions",
           },

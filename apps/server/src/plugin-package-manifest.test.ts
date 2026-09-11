@@ -229,8 +229,9 @@ describe("plugin package manifest", () => {
     expect(result.manifest.id).toBe("wechat-official");
     expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(7);
     const service = result.manifest.resources.find((resource) => resource.type === "local-service");
-    expect(service?.actions).toHaveLength(20);
+    expect(service?.actions).toHaveLength(21);
     expect(service?.actions?.find((action) => action.id === "open-workbench")).toMatchObject({ effect: "read" });
+    expect(service?.actions?.find((action) => action.id === "select-account")).toMatchObject({ effect: "write" });
     expect(result.manifest.resources.find((resource) => resource.id === "wechat-official-studio"))
       .toMatchObject({ type: "file", path: "ui" });
     expect(service?.actions?.find((action) => action.id === "reply-comment")).toMatchObject({ effect: "write" });

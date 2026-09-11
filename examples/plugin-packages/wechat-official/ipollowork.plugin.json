@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "wechat-official",
   "name": "微信公众号",
-  "description": "管理公众号图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。",
+  "description": "集中管理多个公众号账号的图文、草稿、发布、评论、消息、粉丝、菜单与运营工作流。",
   "category": "商业与运营",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -14,16 +14,16 @@
     "simpleIconSlug": "wechat"
   },
   "composer": {
-    "prompt": "使用微信公众号运营插件；需要可视化操作时先调用 open-workbench 打开公众号 Studio。先检查账号能力与草稿状态，再按确认范围处理内容、评论、菜单或粉丝互动。"
+    "prompt": "使用微信公众号运营插件；需要可视化操作时先调用 open-workbench 打开公众号 Studio。先用 connection-status 确认 accountId，并在每个操作中明确指定目标账号，再按确认范围处理内容、评论、菜单或粉丝互动。"
   },
   "localization": {
     "defaultLocale": "zh",
     "translations": {
       "en": {
         "name": "WeChat Official Account",
-        "description": "Manage WeChat Official Account articles, drafts, publishing, comments, messages, followers, menus, and operational workflows.",
+        "description": "Manage articles, drafts, publishing, comments, messages, followers, and menus across multiple WeChat Official Accounts.",
         "category": "Business & Operations",
-        "composer": { "prompt": "Use the WeChat Official Account operations plugin to check account capabilities and draft status before handling content, comments, menus, or follower interactions within the confirmed scope." },
+        "composer": { "prompt": "Use the WeChat Official Account operations plugin to confirm the target accountId and its capabilities before handling content, comments, menus, or follower interactions within the confirmed scope." },
         "resources": {
           "wechat-official-service": {
             "label": "WeChat Official Account Operations Service",
@@ -69,7 +69,7 @@
         "authorizationMethods": {
           "wechat-official-account": {
             "label": "Connect WeChat Official Account",
-            "description": "Enter the service account AppID and AppSecret. Credentials are stored only in iPolloWork's encrypted authorization store; the account must be verified and have the required API publishing permissions.",
+            "description": "Add one or more service accounts with independent AppID and AppSecret credentials. Each account is stored only in iPolloWork's encrypted authorization store.",
             "fields": {
               "appSecret": { "placeholder": "Enter the Official Account AppSecret" }
             }
@@ -79,7 +79,7 @@
     }
   },
   "package": {
-    "version": "0.2.2",
+    "version": "0.3.0",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -107,7 +107,7 @@
         "connectionId": "wechat-official",
         "kind": "secret-form",
         "label": "连接微信公众号",
-        "description": "填写服务号的 AppID 与 AppSecret。凭据仅保存在 iPolloWork 加密授权仓库中；需要具备相应 API 发布权限的认证服务号。",
+        "description": "可添加多个服务号，每个账号独立保存 AppID 与 AppSecret，并在操作时按账号切换。凭据仅保存在 iPolloWork 加密授权仓库中。",
         "fields": [
           {
             "id": "appId",
@@ -138,6 +138,7 @@
         "action:open-workbench",
         "action:studio-state",
         "action:connection-status",
+        "action:select-account",
         "action:upload-article-image",
         "action:upload-cover-image",
         "action:create-draft",
@@ -163,140 +164,147 @@
           "title": "打开公众号 Studio",
           "description": "启动受令牌保护的本机公众号工作台，不会自动执行任何发布或互动操作。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string", "description": "可选，要在 Studio 中默认选中的账号标识。" } }, "additionalProperties": false }
         },
         {
           "id": "studio-state",
           "title": "读取公众号 Studio 状态",
           "description": "验证公众号连接并读取最多 20 篇草稿摘要，不返回 AppSecret 或访问令牌。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "offset": { "type": "number" }, "limit": { "type": "number" } }, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "offset": { "type": "number" }, "limit": { "type": "number" } }, "additionalProperties": false }
         },
         {
           "id": "connection-status",
           "title": "检查公众号连接",
-          "description": "验证 AppID 与 AppSecret 是否可获取公众号接口凭据。",
+          "description": "列出已绑定账号，并验证指定 accountId 的 AppID 与 AppSecret 是否可获取公众号接口凭据。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" } }, "additionalProperties": false }
+        },
+        {
+          "id": "select-account",
+          "title": "切换默认公众号账号",
+          "description": "将指定 accountId 设为 Studio 和未显式指定账号操作的默认公众号。",
+          "effect": "write",
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" } }, "required": ["accountId"], "additionalProperties": false }
         },
         {
           "id": "upload-article-image",
           "title": "上传正文图片",
           "description": "从当前工作区上传一张图片并返回可用于公众号正文的图片 URL。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "sourcePath": { "type": "string" } }, "required": ["sourcePath"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "sourcePath": { "type": "string" } }, "required": ["accountId", "sourcePath"], "additionalProperties": false }
         },
         {
           "id": "upload-cover-image",
           "title": "上传封面图片",
           "description": "从当前工作区上传一张永久图片素材并返回封面 media ID。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "sourcePath": { "type": "string" } }, "required": ["sourcePath"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "sourcePath": { "type": "string" } }, "required": ["accountId", "sourcePath"], "additionalProperties": false }
         },
         {
           "id": "create-draft",
           "title": "创建公众号草稿",
           "description": "将已准备的图文文章写入公众号草稿箱，不会正式发布。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "articles": { "type": "array" } }, "required": ["articles"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "articles": { "type": "array" } }, "required": ["accountId", "articles"], "additionalProperties": false }
         },
         {
           "id": "get-draft",
           "title": "读取公众号草稿",
           "description": "读取一个公众号草稿的完整内容。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" } }, "required": ["mediaId"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "mediaId": { "type": "string" } }, "required": ["accountId", "mediaId"], "additionalProperties": false }
         },
         {
           "id": "list-drafts",
           "title": "列出公众号草稿",
           "description": "分页读取公众号草稿箱的有界摘要。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "offset": { "type": "number" }, "limit": { "type": "number" } }, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "offset": { "type": "number" }, "limit": { "type": "number" } }, "required": ["accountId"], "additionalProperties": false }
         },
         {
           "id": "update-draft",
           "title": "更新公众号草稿",
           "description": "更新草稿中的一篇文章；执行前应先读取当前草稿。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" }, "index": { "type": "number" }, "article": { "type": "object" } }, "required": ["mediaId", "index", "article"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "mediaId": { "type": "string" }, "index": { "type": "number" }, "article": { "type": "object" } }, "required": ["accountId", "mediaId", "index", "article"], "additionalProperties": false }
         },
         {
           "id": "submit-publish",
           "title": "提交公众号发布",
           "description": "将一个草稿提交到公众号发布队列；执行前必须获得用户明确确认。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "mediaId": { "type": "string" } }, "required": ["mediaId"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "mediaId": { "type": "string" } }, "required": ["accountId", "mediaId"], "additionalProperties": false }
         },
         {
           "id": "get-publish-status",
           "title": "查询公众号发布状态",
           "description": "读取一个发布任务的状态、文章 ID 与链接。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "publishId": { "type": "string" } }, "required": ["publishId"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "publishId": { "type": "string" } }, "required": ["accountId", "publishId"], "additionalProperties": false }
         },
         {
           "id": "list-comments",
           "title": "查看文章评论",
           "description": "分页读取指定已发布文章的评论。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "limit": { "type": "number" } }, "required": ["msgDataId"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "msgDataId": { "type": "number" }, "index": { "type": "number" }, "limit": { "type": "number" } }, "required": ["accountId", "msgDataId"], "additionalProperties": false }
         },
         {
           "id": "reply-comment",
           "title": "回复文章评论",
           "description": "回复一条公众号文章评论；执行前必须获得用户明确确认。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "content": { "type": "string" } }, "required": ["msgDataId", "index", "userCommentId", "content"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "content": { "type": "string" } }, "required": ["accountId", "msgDataId", "index", "userCommentId", "content"], "additionalProperties": false }
         },
         {
           "id": "set-comment-featured",
           "title": "设置精选评论",
           "description": "将评论设为精选或取消精选。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "featured": { "type": "boolean" } }, "required": ["msgDataId", "index", "userCommentId", "featured"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" }, "featured": { "type": "boolean" } }, "required": ["accountId", "msgDataId", "index", "userCommentId", "featured"], "additionalProperties": false }
         },
         {
           "id": "delete-comment",
           "title": "删除文章评论",
           "description": "删除一条文章评论；这是不可逆操作，执行前必须获得用户明确确认。",
           "effect": "destructive",
-          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" } }, "required": ["msgDataId", "index", "userCommentId"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "msgDataId": { "type": "number" }, "index": { "type": "number" }, "userCommentId": { "type": "number" } }, "required": ["accountId", "msgDataId", "index", "userCommentId"], "additionalProperties": false }
         },
         {
           "id": "set-comment-state",
           "title": "开启或关闭文章评论",
           "description": "为已发布文章开启或关闭评论能力。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "msgDataId": { "type": "number" }, "index": { "type": "number" }, "open": { "type": "boolean" } }, "required": ["msgDataId", "index", "open"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "msgDataId": { "type": "number" }, "index": { "type": "number" }, "open": { "type": "boolean" } }, "required": ["accountId", "msgDataId", "index", "open"], "additionalProperties": false }
         },
         {
           "id": "list-followers",
           "title": "列出公众号关注者",
           "description": "分页读取公众号关注者 OpenID 列表。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": { "nextOpenId": { "type": "string" } }, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "nextOpenId": { "type": "string" } }, "required": ["accountId"], "additionalProperties": false }
         },
         {
           "id": "get-menu",
           "title": "读取公众号菜单",
           "description": "读取当前生效的公众号自定义菜单。",
           "effect": "read",
-          "inputSchema": { "type": "object", "properties": {}, "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" } }, "required": ["accountId"], "additionalProperties": false }
         },
         {
           "id": "update-menu",
           "title": "更新公众号菜单",
           "description": "更新公众号自定义菜单；执行前必须展示并确认完整菜单。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "menu": { "type": "object" } }, "required": ["menu"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "menu": { "type": "object" } }, "required": ["accountId", "menu"], "additionalProperties": false }
         },
         {
           "id": "send-customer-text",
           "title": "发送客服文本消息",
           "description": "在平台允许的客服消息窗口内向一个已知用户发送文本。",
           "effect": "write",
-          "inputSchema": { "type": "object", "properties": { "openId": { "type": "string" }, "content": { "type": "string" } }, "required": ["openId", "content"], "additionalProperties": false }
+          "inputSchema": { "type": "object", "properties": { "accountId": { "type": "string" }, "openId": { "type": "string" }, "content": { "type": "string" } }, "required": ["accountId", "openId", "content"], "additionalProperties": false }
         }
       ]
     },

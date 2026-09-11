@@ -6,7 +6,7 @@ const LABEL = '微信公众号';
 
 export default {
   id: 'wechat-official-studio',
-  title: '从任务侧栏打开公众号 Studio',
+  title: '打开公众号 Studio 并管理多个账号',
   kind: 'user-facing',
   steps: [{
     name: '打开公众号 Studio 并显示运营入口',
@@ -64,7 +64,7 @@ export default {
           const client = await connect(target.webSocketDebuggerUrl);
           try {
             const text = await evaluate(client, 'document.body?.innerText || ""');
-            for (const label of ['公众号 Studio', '运营总览', '图文草稿', '评论管理', '自定义菜单']) {
+            for (const label of ['公众号 Studio', '运营总览', '图文草稿', '评论管理', '自定义菜单', '添加账号']) {
               ctx.assert(text.includes(label), `公众号 Studio 缺少“${label}”`);
             }
           } finally { client.close(); }
@@ -73,6 +73,43 @@ export default {
           name: 'wechat-official-studio',
           get textTargetId() { return ctx.wechatStudioTargetId; },
           requireText: ['公众号 Studio', '运营总览', '图文草稿'],
+          rejectText: ['Something went wrong', '无法加载'],
+        },
+      });
+    },
+  }, {
+    name: '打开多账号管理入口',
+    async run(ctx) {
+      await ctx.prove('用户可以直接在公众号 Studio 添加独立账号，并看到账号标识、AppID 与 AppSecret 输入项', {
+        voiceover: '点击添加账号后，可以为每个公众号设置独立标识和凭据；凭据会进入 iPolloWork 的加密授权仓库。',
+        action: async () => {
+          const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.id === ctx.wechatStudioTargetId);
+          ctx.assert(Boolean(target), '公众号 Studio target was not found');
+          const client = await connect(target.webSocketDebuggerUrl);
+          try {
+            await evaluate(client, `document.querySelector('#add-account')?.click()`);
+            for (let attempt = 0; attempt < 40; attempt++) {
+              if (await evaluate(client, `document.querySelector('#account-dialog')?.open === true`)) return;
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } finally { client.close(); }
+          ctx.assert(false, '多账号管理弹窗没有打开');
+        },
+        assert: async () => {
+          const target = (await listTargets(ctx.cdpBaseUrl)).find(item => item.id === ctx.wechatStudioTargetId);
+          ctx.assert(Boolean(target), '公众号 Studio target disappeared before account assertion');
+          const client = await connect(target.webSocketDebuggerUrl);
+          try {
+            const text = await evaluate(client, 'document.body?.innerText || ""');
+            for (const label of ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存', '加密授权仓库']) {
+              ctx.assert(text.includes(label), `账号管理弹窗缺少“${label}”`);
+            }
+          } finally { client.close(); }
+        },
+        screenshot: {
+          name: 'wechat-official-multi-account',
+          get textTargetId() { return ctx.wechatStudioTargetId; },
+          requireText: ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存'],
           rejectText: ['Something went wrong', '无法加载'],
         },
       });
