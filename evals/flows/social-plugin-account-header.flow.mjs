@@ -44,7 +44,8 @@ export default {
     name: `${plugin.title}标题栏宽度适配`,
     run: async ctx => {
       const { client, target, frame } = await ensureWorkbench(ctx, plugin);
-      const panel = `document.querySelector(${JSON.stringify(frame)}).closest('aside')`;
+      // Resize the embedded viewport without racing the host's persisted panel width.
+      const panel = `document.querySelector(${JSON.stringify(frame)})`;
       const originalStyle = await ctx.eval(`${panel}.getAttribute('style')`);
       try {
         await waitForFrame(client, `Boolean(document.querySelector('${plugin.header}'))`, plugin.title);
