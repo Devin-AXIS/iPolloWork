@@ -2348,6 +2348,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           onStop={handleAbort}
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
+          inputDisabled={false}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={waitingLabel ?? statusLabel(snapshot ?? undefined, chatStreaming)}

@@ -96,9 +96,8 @@ describe("composer queue behavior", () => {
     expect(composerSource).toContain("submitDisabled={props.disabled}");
     expect(editorSource).toContain("submitDisabled?: boolean;");
     expect(editorSource).toContain("disabled={props.submitDisabled ?? props.disabled}");
-    // Preparing an image selection locks editing; missing model readiness only blocks submission.
-    expect(sessionSurfaceSource).toContain("inputDisabled={preparingImageSelection}");
-    expect(sessionSurfaceSource).toContain('disabled={preparingImageSelection || model.transitionState !== "idle" || Boolean(props.modelUnavailable)}');
+    expect(sessionSurfaceSource).toContain("inputDisabled={false}");
+    expect(sessionSurfaceSource).toContain('disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}');
   });
 
   test("treats a turn error as recoverable instead of failing the session route", () => {

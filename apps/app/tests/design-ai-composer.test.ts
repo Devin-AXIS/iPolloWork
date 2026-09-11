@@ -153,7 +153,8 @@ describe("Design AI composer integration", () => {
     expect(surfaceSource).toContain('t("image_studio.ai.opened_result")');
     expect(surfaceSource).toContain('t("image_studio.ai.result_not_opened")');
     expect(surfaceSource).toContain("}, 30_000);");
-    expect(surfaceSource).toContain("both the image preview and its file card");
+    expect(surfaceSource).toContain("store.completeMediaEdit");
+    expect(surfaceSource).toContain("store.resumeMediaEdit");
     expect(sessionPageSource).toContain('options.viewer !== "image-studio"');
     expect(sessionPageSource).toContain('await openImageStudio(target, sourceId ?? undefined)');
     expect(sessionPageSource).toContain("resolveInstalledPluginContributions(packages.items)");
@@ -168,18 +169,19 @@ describe("Design AI composer integration", () => {
     const frameSource = await Bun.file(workspaceAppFrameUrl).text();
 
     expect(frameSource).toContain('<Textarea');
-    expect(frameSource).toContain('className="min-h-28 resize-y"');
-    expect(frameSource).toContain('className="w-full border-transparent bg-muted shadow-none hover:bg-muted/80"');
+    expect(frameSource).toContain('className={cn("min-h-28 resize-y"');
+    expect(frameSource).toContain('className={cn("w-full border-transparent bg-muted shadow-none hover:bg-muted/80"');
     expect(frameSource).not.toContain('rounded-xl bg-input/50');
-    expect(frameSource).toContain('className="text-[10px] text-muted-foreground"');
-    expect(frameSource).toContain('className="space-y-3"');
+    expect(frameSource).toContain('className={cn("text-[10px] text-muted-foreground"');
+    expect(frameSource).toContain(': "space-y-3"} onSubmit=');
   });
 
-  test("opens the Image Studio inspector below its app toolbar", async () => {
+  test("places the Image Studio inspector below its app canvas", async () => {
     const frameSource = await Bun.file(workspaceAppFrameUrl).text();
 
     expect(frameSource).toContain('props.surface.pluginId === "image-studio"');
-    expect(frameSource).toContain('className="absolute bottom-0 right-0 top-[52px] z-10"');
-    expect(frameSource).toContain('inspectorBelowAppToolbar ? "w-full" : "flex-1"');
+    expect(frameSource).toContain('inspectorBelowAppToolbar && inspectorOpen && inspectorContext && "flex-col');
+    expect(frameSource).toContain('inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1"');
+    expect(frameSource).toContain('className="z-10 flex shrink-0 justify-center px-4 pb-4"');
   });
 });

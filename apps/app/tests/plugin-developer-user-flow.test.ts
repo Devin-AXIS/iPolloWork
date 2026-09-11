@@ -42,7 +42,8 @@ describe("plugin developer and user flow", () => {
     expect(source).toContain("!managesAccountsInWorkbench && authorization.required && !connected");
     expect(source).toContain("{managesAccountsInWorkbench ? (");
     expect(source).toContain('data-testid="plugin-workbench-accounts-hint"');
-    expect(source).toContain('if (item.pluginId === "wechat-official") {\n    return { required: false, connected: false, connectionMcpResources: [] };');
+    expect(source).toContain('if (item.pluginId === "wechat-official") {');
+    expect(source).toContain("return { required: false, connected: false, connectionMcpResources: [] };");
     expect(source).toContain(") : (authorization.connectionMcpResources.length > 0 || methods.length > 0) ? (");
     expect(zh["plugin_platform.wechat_workbench_accounts_hint"]).toContain("已有账号与授权保持不变");
     expect(en["plugin_platform.wechat_workbench_accounts_hint"]).toContain("Existing accounts and credentials are preserved");
