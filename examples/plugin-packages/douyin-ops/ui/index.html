@@ -55,6 +55,7 @@
     </section>
     <section id="view-studio" class="view" aria-labelledby="studio-heading" hidden>
       <div class="section-heading"><div><h2 id="studio-heading">视频创作</h2><p>准备文案与视频，保存后通过官方 API 发布。</p></div><button id="new-draft" type="button">新建</button></div>
+      <p class="capability-banner" data-capability="publish"><strong>发布权限</strong><span>正在核对当前账号授权…</span></p>
       <label>选择草稿<select id="draft-picker"><option value="">新草稿</option></select></label>
       <form id="draft-form" class="panel"><fieldset>
         <div class="section-heading"><h3>发布内容</h3><span id="draft-status" class="muted">未保存</span></div>
@@ -72,6 +73,7 @@
     </section>
     <section id="view-videos" class="view" aria-labelledby="videos-heading" hidden>
       <div class="section-heading"><div><h2 id="videos-heading">作品与数据</h2><p>查询已授权账号的真实作品与互动数据。</p></div></div>
+      <p class="capability-banner" data-capability="listVideos"><strong>作品权限</strong><span>正在核对当前账号授权…</span></p>
       <div class="actions"><button id="load-videos" type="button" class="primary">读取作品</button><button type="button" data-browser="creator">创作者中心 ↗</button></div>
       <p class="hint">作品查询与数据统计依赖已开通的历史接口能力，是否可用以应用当前权限为准。</p>
       <div id="videos-list" class="record-list"><p class="empty">点击「读取作品」从官方 API 获取数据。</p></div>
@@ -79,12 +81,14 @@
     </section>
     <section id="view-comments" class="view" aria-labelledby="comments-heading" hidden>
       <div class="section-heading"><div><h2 id="comments-heading">评论管理</h2><p>读取作品评论，确认内容后逐条发送回复。</p></div></div>
+      <p class="capability-banner" data-capability="comments"><strong>评论权限</strong><span>正在核对当前账号授权…</span></p>
       <form id="comments-form"><fieldset><label>作品 Item ID<input id="comment-item" placeholder="从作品列表选择，或粘贴作品 Item ID" required></label><button type="submit" class="primary">读取评论</button></fieldset></form>
       <div id="comments-list" class="record-list"><p class="empty">选择作品后读取评论。是否可用取决于已获批的权限。</p></div>
       <button id="more-comments" class="load-more" type="button" hidden>加载更多评论</button>
     </section>
     <section id="view-search" class="view" aria-labelledby="search-heading" hidden>
       <div class="section-heading"><div><h2 id="search-heading">视频搜索</h2><p>优先使用开放平台 API；也可打开抖音搜索页。</p></div></div>
+      <p class="capability-banner" data-capability="searchVideos"><strong>搜索权限</strong><span>正在核对应用配置…</span></p>
       <form id="search-form"><fieldset><label>搜索关键词<input id="search-keyword" placeholder="输入选题、行业或产品关键词" required></label><label>搜索设备标识（开放平台要求）<input id="search-device" maxlength="200" placeholder="填写应用使用的设备标识" required></label><div class="actions"><button type="submit" class="primary">通过 API 搜索</button><button type="button" data-browser="search">打开抖音搜索 ↗</button></div></fieldset></form>
       <p class="hint">关键词搜索需应用获得相应开放权限。没有权限时会显示接口返回的原因。</p>
       <div id="search-list" class="record-list"><p class="empty">搜索结果将在这里显示。</p></div>

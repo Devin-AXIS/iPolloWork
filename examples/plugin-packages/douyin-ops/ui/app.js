@@ -1,7 +1,7 @@
 (() => {
   'use strict';
   const $ = selector => document.querySelector(selector);
-  const state = { settings: {}, accounts: [], drafts: [], assets: [], jobs: [] };
+  const state = { settings: {}, capabilities: {}, accounts: [], drafts: [], assets: [], jobs: [] };
   let accountId = '', draftId = '', dirty = false, busy = false, settingsLoaded = false, hostPromise;
   let videoPage, commentPage, searchPage, commentItem = '', searchInput;
   const hostRequests = new Map();
@@ -22,7 +22,17 @@
   function empty(selector, message) { $(selector).replaceChildren(node('p', 'empty', message)); }
   function notify(message, error = false) { const output = $('#feedback'); output.hidden = false; output.classList.toggle('error', error); output.textContent = message; }
   function requireAccount() { if (!accountId) throw new Error('请先在「账号」中完成官方授权。'); return accountId; }
-  function actionButton(label, action) { const result = node('button', '', label); result.type = 'button'; result.addEventListener('click', () => run(action)); return result; }
+  const routeCapabilities = { studio: 'publish', videos: 'listVideos', comments: 'comments', search: 'searchVideos' };
+  function capability(name) {
+    const result = name === 'searchVideos' ? state.capabilities?.searchVideos : account()?.capabilities?.[name];
+    return result ?? { available: false, status: accountId ? 'scope_required' : 'account_required', source: 'account', label: '当前功能', requiredScopes: [], missingScopes: [], reason: '当前权限状态不可用，请刷新运营台。' };
+  }
+  function requireCapability(name) { const result = capability(name); if (!result.available) throw Object.assign(new Error(result.reason), { code: result.status }); return result; }
+  function actionButton(label, action, capabilityName) {
+    const result = node('button', '', label); result.type = 'button';
+    if (capabilityName) { const access = capability(capabilityName); result.disabled = !access.available; result.title = access.reason; }
+    result.addEventListener('click', () => run(action)); return result;
+  }
   function badge(status) { return node('span', `badge ${status === 'failed' ? 'danger' : ['uncertain', 'pending', 'running'].includes(status) ? 'warning' : 'success'}`, labels[status] || status); }
   async function request(path, options = {}) {
     if (!token) throw new Error('缺少本地服务凭证，请从插件重新打开运营台。');
@@ -52,7 +62,7 @@
     });
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.4' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.5' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
     }).catch(error => { hostPromise = undefined; throw error; });
     return hostPromise;
@@ -68,6 +78,10 @@
     document.querySelectorAll('fieldset').forEach(item => { item.disabled = busy; });
     for (const selector of ['#account', '#refresh', '#new-draft', '#draft-picker', '#media-file']) $(selector).disabled = busy;
     $('#account').disabled = busy || !state.accounts.length;
+    $('#new-draft').disabled = $('#draft-picker').disabled = busy || !accountId;
+    $('#comments-form fieldset').disabled = busy || !capability('comments').available;
+    $('#load-videos').disabled = busy || !capability('listVideos').available;
+    $('#search-form button[type="submit"]').disabled = busy || !capability('searchVideos').available;
     updatePublish();
   }
   async function run(fn) { if (busy) return; busy = true; lock(); try { await fn(); } catch (error) { notify(error.message, true); } finally { busy = false; lock(); } }
@@ -78,6 +92,21 @@
   function options(select, items, prompt, value) {
     select.replaceChildren(); if (prompt) select.add(new Option(prompt, ''));
     items.forEach(item => select.add(new Option(item.label, item.id))); select.value = value;
+  }
+  function renderCapabilities() {
+    document.querySelectorAll('[data-capability]').forEach(output => {
+      const access = capability(output.dataset.capability);
+      output.dataset.status = access.status;
+      output.querySelector('strong').textContent = access.status === 'available' ? `${access.label} · 已授权` : access.status === 'runtime_check' ? `${access.label} · 调用时验证` : `${access.label} · 暂不可用`;
+      output.querySelector('span').textContent = access.reason;
+    });
+    document.querySelectorAll('.tabs [data-view]').forEach(button => {
+      const name = routeCapabilities[button.dataset.view];
+      if (!name) { delete button.dataset.access; button.removeAttribute('title'); return; }
+      const access = capability(name);
+      button.dataset.access = access.status === 'runtime_check' ? 'runtime' : access.available ? 'available' : 'locked';
+      button.title = access.reason;
+    });
   }
   function render() {
     options($('#account'), state.accounts.map(item => ({ id: item.id, label: item.nickname || item.openId })), state.accounts.length ? null : '尚未授权账号', accountId);
@@ -96,10 +125,16 @@
       card.append(head, node('p', 'muted', `授权到期：${date(item.expiresAt)}`), node('p', 'muted', `账号 ID：${item.openId}`));
       const scopes = node('div', 'scope-list'); (item.scopes || []).forEach(scope => scopes.append(node('span', '', scope)));
       card.append(node('p', 'hint', '实际授权权限'), scopes.childElementCount ? scopes : node('p', 'hint', '授权结果未包含权限列表。'));
+      const summary = node('div', 'capability-list');
+      for (const [name, label] of [['publish', '发布'], ['listVideos', '作品'], ['videoData', '数据'], ['comments', '评论']]) {
+        const access = item.capabilities?.[name];
+        summary.append(node('span', access?.available ? 'available' : 'locked', `${access?.available ? '可用' : '受限'} · ${label}`));
+      }
+      card.append(node('p', 'hint', '账号功能'), summary);
       $('#accounts-list').append(card);
     }
     if (!state.accounts.length) empty('#accounts-list', '尚未连接抖音账号。配置应用后，扫码完成官方授权。');
-    renderDraftPicker(); renderJobs(); updatePublish();
+    renderDraftPicker(); renderJobs(); renderCapabilities(); updatePublish();
   }
   function renderDraftPicker() {
     options($('#draft-picker'), state.drafts.filter(item => item.accountId === accountId).map(item => ({ id: item.id, label: item.title || '未命名草稿' })), '新草稿', draftId);
@@ -129,13 +164,15 @@
   const publishKey = () => draftId ? `publish:${accountId}:${draftId}` : '';
   function updatePublish() {
     const status = operations[publishKey()]?.status || currentDraft()?.status;
+    const publish = capability('publish');
     const locked = Boolean(currentDraft() && currentDraft().status !== 'draft') || ['uncertain', 'pending', 'running', 'submitting', 'succeeded', 'success', 'completed'].includes(status);
     const blocked = locked || ['uncertain', 'pending', 'running', 'submitting', 'published', 'succeeded', 'success', 'completed'].includes(status);
-    $('#draft-form fieldset').disabled = $('#media-form fieldset').disabled = busy || locked;
+    $('#draft-form fieldset').disabled = busy || locked || !accountId;
+    $('#media-form fieldset').disabled = busy || locked;
     $('#media-file').disabled = busy || locked;
-    $('#publish-draft').disabled = busy || !accountId || !$('#draft-asset').value || blocked;
+    $('#publish-draft').disabled = busy || !publish.available || !$('#draft-asset').value || blocked;
     text('#publish-draft', status === 'uncertain' ? '结果待核实' : blocked ? (labels[status] || '处理中') : '发布到抖音');
-    text('#publish-note', locked ? '这份草稿已提交并锁定。请在操作记录中查看结果；准备其他内容请新建草稿。' : '点击发布会将当前内容保存，并提交到所选抖音账号。');
+    text('#publish-note', locked ? '这份草稿已提交并锁定。请在操作记录中查看结果；准备其他内容请新建草稿。' : publish.available ? '点击发布会将当前内容保存，并提交到所选抖音账号。' : publish.reason);
   }
   function saveOperations() { try { sessionStorage.setItem('douyin-ops-operations', JSON.stringify(operations)); } catch { /* In-memory operation keys remain stable for this page. */ } }
   async function externalWrite(name, args, key) {
@@ -182,14 +219,15 @@
     if (allowActions && id) {
       const buttons = node('div', 'actions');
       buttons.append(actionButton('读取数据', async () => {
+        requireCapability('videoData');
         const result = await action('video-data', { accountId: requireAccount(), itemIds: [id] });
         const details = node('details'); details.open = true; details.append(node('summary', '', '作品数据'), node('pre', '', JSON.stringify(result.list, null, 2))); card.querySelector('details')?.remove(); card.append(details);
-      }), actionButton('查看评论', async () => { $('#comment-item').value = id; view('comments'); await loadComments(false); })); card.append(buttons);
+      }, 'videoData'), actionButton('查看评论', async () => { requireCapability('comments'); $('#comment-item').value = id; view('comments'); await loadComments(false); }, 'comments')); card.append(buttons);
     }
     $(target).append(card);
   }
   async function loadVideos(more = false) {
-    requireAccount(); if (!more) { empty('#videos-list', '正在读取作品…'); $('#more-videos').hidden = true; }
+    requireCapability('listVideos'); requireAccount(); if (!more) { empty('#videos-list', '正在读取作品…'); $('#more-videos').hidden = true; }
     let result; try { result = await action('list-videos', { accountId, count: 20, ...(more ? { cursor: videoPage.cursor } : {}) }); }
     catch (error) { if (!more) empty('#videos-list', '未能读取作品，请查看上方提示。'); throw error; }
     if (!more) $('#videos-list').replaceChildren(); result.list.forEach(item => addVideo(item, '#videos-list', true)); videoPage = result;
@@ -197,7 +235,7 @@
   }
   async function loadComments(more = false) {
     const itemId = more ? commentItem : $('#comment-item').value.trim();
-    requireAccount(); if (!more) { empty('#comments-list', '正在读取评论…'); $('#more-comments').hidden = true; }
+    requireCapability('comments'); requireAccount(); if (!more) { empty('#comments-list', '正在读取评论…'); $('#more-comments').hidden = true; }
     let result; try { result = await action('list-comments', { accountId, itemId, count: 20, ...(more ? { cursor: commentPage.cursor } : {}) }); }
     catch (error) { if (!more) empty('#comments-list', '未能读取评论，请查看上方提示。'); throw error; }
     commentItem = itemId; if (!more) $('#comments-list').replaceChildren();
@@ -220,6 +258,7 @@
     if (!$('#comments-list').childElementCount) empty('#comments-list', '官方 API 未返回评论。');
   }
   async function search(more = false) {
+    requireCapability('searchVideos');
     const input = more ? searchInput : { keyword: $('#search-keyword').value.trim(), deviceId: $('#search-device').value.trim() };
     if (!more) { empty('#search-list', '正在搜索视频…'); $('#more-search').hidden = true; }
     let result; try { result = await action('search-videos', { ...input, count: 20, ...(more ? { cursor: searchPage.cursor, searchId: searchPage.search_id || searchPage.searchId } : {}) }); }
@@ -260,7 +299,7 @@
     const result = await hostRequest('ui/message', { role: 'user', content: [{ type: 'text', text: prompt }] }); if (result?.isError) throw new Error('当前会话未接收起草请求，请在会话空闲后重试。');
     notify('已请当前 AI 会话起草文案。完成后点击刷新查看保存结果。');
   }));
-  $('#publish-draft').addEventListener('click', () => run(async () => { const draft = await saveDraft(); await externalWrite('publish-draft', { accountId: requireAccount(), draftId: draft.id }, publishKey()); await refresh(); }));
+  $('#publish-draft').addEventListener('click', () => run(async () => { requireCapability('publish'); const draft = await saveDraft(); await externalWrite('publish-draft', { accountId: requireAccount(), draftId: draft.id }, publishKey()); await refresh(); }));
   $('#load-videos').addEventListener('click', () => run(() => loadVideos(false))); $('#more-videos').addEventListener('click', () => run(() => loadVideos(true)));
   $('#comments-form').addEventListener('submit', event => { event.preventDefault(); run(() => loadComments(false)); }); $('#more-comments').addEventListener('click', () => run(() => loadComments(true)));
   $('#search-form').addEventListener('submit', event => { event.preventDefault(); run(() => search(false)); }); $('#more-search').addEventListener('click', () => run(() => search(true)));

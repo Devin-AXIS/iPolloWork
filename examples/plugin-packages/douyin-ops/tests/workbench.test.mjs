@@ -13,9 +13,13 @@ test('HTTP API requires its local token, rejects cross-origin and unknown paths,
   const { origin, token } = service, headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
   assert.equal((await fetch(origin + '/api/state')).status, 401);
   assert.equal((await fetch(origin + '/api/state', { headers: { ...headers, Origin: 'https://untrusted.example' } })).status, 403);
-  const html = await fetch(origin + '/');
-  assert.match(await html.text(), /抖音运营台/);
+  const html = await fetch(origin + '/'), htmlText = await html.text();
+  assert.match(htmlText, /抖音运营台/);
+  for (const capability of ['publish', 'listVideos', 'comments', 'searchVideos']) assert.match(htmlText, new RegExp(`data-capability="${capability}"`));
   assert.match(html.headers.get('content-security-policy'), /script-src 'self'/);
+  const initialState = await (await fetch(origin + '/api/state', { headers })).json();
+  assert.equal(initialState.capabilities.searchVideos.status, 'configuration_required');
+  assert.equal(initialState.capabilities.searchVideos.available, false);
   const save = await fetch(origin + '/api/settings', { method: 'POST', headers, body: JSON.stringify({ clientKey: 'fixture', clientSecret: 'never-expose-this', scopes: 'user_info', redirectUri: 'https://example.com/callback' }) });
   assert.equal(save.status, 200);
   assert.doesNotMatch(await save.text(), /never-expose-this/);

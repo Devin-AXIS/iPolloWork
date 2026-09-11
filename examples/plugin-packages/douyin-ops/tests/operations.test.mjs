@@ -95,10 +95,33 @@ test('missing scope fails before network I/O; renewed scope is checked again', a
   const f = await fixture(t), { account } = await f.connect();
   f.store.put('account', { ...account, scopes: ['user_info'] });
   await assert.rejects(f.ops.action('list-videos', { accountId: account.id }), /video.list/);
+  const draft = f.ops.saveDraft({ accountId: account.id, title: '受限草稿', text: '内容' }).draft;
+  await assert.rejects(f.ops.action('publish-draft', { accountId: account.id, draftId: draft.id, operationKey: 'blocked-publish' }), /video.create.bind/);
+  await assert.rejects(f.ops.action('reply-comment', { accountId: account.id, itemId: 'item', commentId: 'comment', content: '回复', operationKey: 'blocked-reply' }), /item.comment/);
   assert.equal(f.calls.length, 0);
   f.store.put('account', { ...account, expiresAt: 0 });
   f.api.refreshToken = async () => ({ access_token: 'limited', scope: 'user_info', expires_in: 3600 });
   await assert.rejects(f.ops.action('list-videos', { accountId: account.id }), /video.list/);
+});
+
+test('public state derives route capabilities from each account granted scopes', async t => {
+  const f = await fixture(t), { account } = await f.connect();
+  f.store.put('account', { ...account, scopes: ['user_info', 'item.comment'] });
+  let state = f.ops.state(), selected = state.accounts[0];
+  assert.equal(selected.capabilities.publish.available, false);
+  assert.equal(selected.capabilities.publish.status, 'scope_required');
+  assert.deepEqual(selected.capabilities.publish.missingScopes, ['video.create.bind']);
+  assert.equal(selected.capabilities.listVideos.available, false);
+  assert.equal(selected.capabilities.videoData.available, false);
+  assert.equal(selected.capabilities.comments.available, true);
+  assert.equal(state.capabilities.searchVideos.status, 'runtime_check');
+  assert.match(state.capabilities.searchVideos.reason, /官方 API 验证/);
+
+  f.store.put('account', { ...account, scopes: ['user_info', 'video.create.bind'], refreshExpiresAt: 0 });
+  state = f.ops.state(); selected = state.accounts[0];
+  assert.equal(selected.capabilities.publish.status, 'reauthorization_required');
+  assert.equal(selected.capabilities.publish.available, false);
+  assert.doesNotMatch(JSON.stringify(state), /fixture-secret|secret-access|secret-refresh/);
 });
 
 test('draft updates preserve account ownership and scheduled run keys deduplicate', async t => {

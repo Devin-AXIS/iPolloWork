@@ -17,6 +17,8 @@ iPolloWork 插件集内置的抖音运营插件，参考 `xiaohongshu-ops` 的�
 
 ## 官方接口范围
 
+开放平台的个人、企业、系统服务商属于开发者或应用准入身份，不能直接推断某个已绑定抖音账号能否发布或回复。运行时以两层结果为准：应用先在能力管理中获批，账号再通过 OAuth 授予对应 Scope。工作台始终显示全部模块；切换账号后按实际 Scope 更新可用状态，缺少权限的真实操作会同时被界面和本地服务拦截。
+
 | 功能 | 接口 | 权限 / 说明 |
 | --- | --- | --- |
 | 扫码授权 | `/platform/oauth/connect/` | `user_info` 及实际需要的权限 |
@@ -26,6 +28,18 @@ iPolloWork 插件集内置的抖音运营插件，参考 `xiaohongshu-ops` 的�
 | 作品列表 / 数据 | `/video/list/`、`/video/data/` | 历史 `video.list` / `video.data`；仅适用已开通对应权限的应用 |
 | 评论 / 回复 | `/item/comment/list/`、`/item/comment/reply/` | 历史 `item.comment`；只操作授权用户自己作品的评论 |
 | 视频搜索 | `/oauth/client_token/`、`/dy_open_api/v1/search/video/` | 应用能力 `aweme.dy.video_search`；需要真实 device_id 和翻页 search_id；不属于用户 OAuth scope |
+
+路由与操作守卫使用以下权限矩阵：
+
+| 工作台模块 | 判定来源 | 可用条件 |
+| --- | --- | --- |
+| 创作与发布 | 当前绑定账号 | `video.create.bind`；缺少时仍可进入页面查看，但发布按钮不可用 |
+| 作品列表 | 当前绑定账号 | `video.list` |
+| 单条作品数据 | 当前绑定账号 | `video.data` |
+| 评论读取与回复 | 当前绑定账号 | `item.comment` |
+| 视频搜索 | 当前应用 | 已配置应用凭据后允许调用；`aweme.dy.video_search` 的审批结果由官方 API 在调用时确认 |
+
+账号 Scope 可以在授权回执和刷新回执中确认；搜索能力使用 `client_token`，不应加入用户 OAuth Scope。抖音开放平台还规定单次用户授权项不超过三个，实际接入应只申请当前场景所需权限，并通过再次授权补充其他场景。
 
 历史权限不能自动替换为同名 `*.bind` 或小程序权限。缺少能力时返回明确提示并保留创作者中心 / 搜索网页入口。当前版本不提供任意第三方作品批量评论、图集发布、私信、直播或电商 API；网页入口本身不会自动执行或标记任务成功。
 
@@ -49,7 +63,7 @@ SQLite 保存本地记录；凭据以 AES-GCM 加密，密钥文件与数据库�
 
 插件业务源码已归回 iPolloWork 插件集。原独立目录只作为迁移后的可恢复副本，不再是维护来源。许可及署名见 [LICENSE](LICENSE) 和 [历史 MIT 许可](LICENSES/MIT-legacy.txt)。账号、令牌、应用密钥和本地数据库不随源码提交。
 
-接口核对来源（2026-09-10）：[OAuth 授权](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/douyin-get-permission-code)、[令牌交换](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/get-access-token)、[视频上传](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/video-management/douyin/create-video/upload-video)、[视频发布](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/video-management/douyin/create-video/video-create)、[官方搜索](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/douyin-search-capability/aweme-dy-video-search)、[历史作品列表](https://open.douyin.com/platform/resource/docs/openapi/video-management/douyin/search-video/account-video-list)、[历史评论接口](https://open.douyin.com/platform/resource/docs/openapi/interaction-management/comment-management-user/comment-list)。
+接口核对来源（2026-09-11）：[角色与权限](https://developer.open-douyin.com/docs/resource/zh-CN/developer/introduction/type-and-permission)、[登录与授权](https://developer.open-douyin.com/docs/resource/zh-CN/dop/ability/opensdk/user-authorization/solution)、[OAuth 授权](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/douyin-get-permission-code)、[令牌交换](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/account-permission/get-access-token)、[视频上传](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/video-management/douyin/create-video/upload-video)、[视频发布](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/video-management/douyin/create-video/video-create)、[官方搜索](https://developer.open-douyin.com/docs/resource/zh-CN/dop/develop/openapi/douyin-search-capability/aweme-dy-video-search)、[历史作品列表](https://open.douyin.com/platform/resource/docs/openapi/video-management/douyin/search-video/account-video-list)、[历史评论接口](https://open.douyin.com/platform/resource/docs/openapi/interaction-management/comment-management-user/comment-list)。
 
 ## 安装与更新
 

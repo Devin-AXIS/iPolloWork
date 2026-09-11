@@ -7,7 +7,7 @@ description: 通过 iPolloWork 已有日程和会话执行抖音运营任务，�
 
 使用宿主已有日程能力；插件不另外创建计时器或后台轮询。创建或改变日程需要用户提出对应时间和任务要求。
 
-1. 先读 `douyin-ops-worker`。调用 `list-accounts` 选择用户指定账号，记录稳定 `accountId`，不根据当前界面选中的账号临时换号。
+1. 先读 `douyin-ops-worker`。调用 `list-accounts` 选择用户指定账号，记录稳定 `accountId`，并确认目标操作的 `capabilities.*.available`；不根据当前界面选中的账号临时换号。
 2. 保留日程提示中的原始 `runKey`。保存本次草稿时用 `runKey + ":post-1"`；同次任务重试不改变该值，新一轮运行使用新的日程 runKey。
 3. `publish-draft` 的 `operationKey` 使用原始 `runKey + ":publish-1"`；评论使用 `runKey + ":reply:" + commentId`。草稿生成和提交分别保持固定标识。
 4. 日程中明确要求发布才执行发布；只要求选题、草稿或数据查询时不提交内容。没有 MP4 素材时先使用已有视频工作台生成，再导入。

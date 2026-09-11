@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "douyin-ops",
   "name": "抖音运营台",
-  "description": "参考小红书运营台的多账号抖音插件：官方 API 授权、视频草稿和发布、作品数据、评论回复与搜索，支持 AI 会话和日程调用。",
+  "description": "多账号抖音运营插件：按每个账号的官方授权权限显示发布、作品数据和评论能力，并提供应用级视频搜索、AI 会话与日程调用。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.1.4",
+    "version": "0.1.5",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -61,7 +61,7 @@
         {
           "id": "studio-state",
           "title": "查看运营台状态",
-          "description": "读取账号、最近草稿、素材和执行结果，不返回平台令牌。",
+          "description": "读取账号、实际授权能力、最近草稿、素材和执行结果，不返回平台令牌。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -73,7 +73,7 @@
         {
           "id": "list-accounts",
           "title": "列出抖音账号",
-          "description": "按用户指定账号选择；返回真实 OAuth 身份和已授予权限。",
+          "description": "按用户指定账号选择；返回真实 OAuth 身份、已授予 Scope 和逐项功能状态。",
           "effect": "read",
           "inputSchema": {
             "type": "object",

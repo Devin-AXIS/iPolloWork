@@ -61,6 +61,15 @@ summary .muted { float: right; font-size: 11px; font-weight: 400; }
 details[open] > summary { margin-bottom: 14px; }
 details > .hint { margin-bottom: 15px; }
 .hint, .muted { color: var(--muted); font-size: 11px; font-weight: 400; line-height: 1.7; overflow-wrap: anywhere; }
+.capability-banner { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 8px 12px; padding: 11px 13px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); font-size: 11px; line-height: 1.6; }
+.capability-banner strong { color: var(--success); white-space: nowrap; }
+.capability-banner span { color: var(--muted); overflow-wrap: anywhere; }
+.capability-banner[data-status="runtime_check"] strong { color: var(--warning); }
+.capability-banner[data-status="account_required"], .capability-banner[data-status="scope_required"], .capability-banner[data-status="reauthorization_required"], .capability-banner[data-status="configuration_required"] { border-color: color-mix(in srgb, var(--warning) 45%, var(--border)); }
+.capability-banner[data-status="account_required"] strong, .capability-banner[data-status="scope_required"] strong, .capability-banner[data-status="reauthorization_required"] strong, .capability-banner[data-status="configuration_required"] strong { color: var(--warning); }
+.tabs button[data-access="locked"] { color: var(--warning); }
+.tabs button[data-access="locked"]::before { content: "锁"; margin-right: 3px; font-size: 9px; font-weight: 700; }
+.tabs button[data-access="runtime"]::before { content: "验"; margin-right: 3px; color: var(--warning); font-size: 9px; font-weight: 700; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .separator { margin: 17px 0; border-top: 1px solid var(--border); }
 .publish-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 13px; padding-top: 4px; }
@@ -81,6 +90,10 @@ details > .hint { margin-bottom: 15px; }
 .badge.danger { color: var(--danger); }
 .scope-list { display: flex; flex-wrap: wrap; gap: 5px; }
 .scope-list span { max-width: 100%; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 10px; overflow-wrap: anywhere; }
+.capability-list { display: flex; flex-wrap: wrap; gap: 5px; }
+.capability-list span { padding: 2px 7px; border-radius: 999px; background: var(--subtle); color: var(--muted); font-size: 10px; }
+.capability-list span.available { color: var(--success); }
+.capability-list span.locked { color: var(--warning); }
 .empty { padding: 25px 17px; border: 1px dashed var(--border-strong); border-radius: var(--radius); text-align: center; font-size: 12px; color: var(--muted); }
 .feedback { position: sticky; top: 45px; z-index: 6; margin: 0; padding: 11px 20px; color: var(--success); background: var(--surface); border-bottom: 1px solid var(--border); font-size: 12px; overflow-wrap: anywhere; }
 .feedback.error { color: var(--danger); }

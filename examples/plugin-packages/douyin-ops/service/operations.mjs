@@ -13,6 +13,41 @@ const text = (value, label, max = 2000, optional = false) => {
 const digest = value => createHash('sha256').update(value).digest('hex');
 const scopeSet = value => [...new Set(text(value, '授权权限', 2000).split(/[\s,]+/).filter(Boolean))];
 
+const ACCOUNT_CAPABILITIES = Object.freeze({
+  publish: Object.freeze({ label: '发布视频', scopes: CAPABILITY_SCOPES.publish }),
+  listVideos: Object.freeze({ label: '读取作品', scopes: CAPABILITY_SCOPES.listVideos }),
+  videoData: Object.freeze({ label: '读取作品数据', scopes: CAPABILITY_SCOPES.videoData }),
+  comments: Object.freeze({ label: '读取与回复评论', scopes: CAPABILITY_SCOPES.listComments }),
+});
+
+function accountCapability(account, definition, now) {
+  const requiredScopes = [...definition.scopes];
+  if (!account) return { available: false, status: 'account_required', source: 'account', label: definition.label,
+    requiredScopes, missingScopes: requiredScopes, reason: '请先绑定并选择抖音账号。' };
+  const grantedScopes = Array.isArray(account.scopes) ? account.scopes : [];
+  const missingScopes = requiredScopes.filter(scope => !grantedScopes.includes(scope));
+  if (missingScopes.length) return { available: false, status: 'scope_required', source: 'account', label: definition.label,
+    requiredScopes, missingScopes, reason: `当前账号未授权 ${missingScopes.join('、')}。请先为应用开通对应能力，再重新授权这个账号。` };
+  if (Number(account.refreshExpiresAt) <= now) return { available: false, status: 'reauthorization_required', source: 'account', label: definition.label,
+    requiredScopes, missingScopes: [], reason: '当前账号授权已过期，请重新授权这个账号。' };
+  return { available: true, status: 'available', source: 'account', label: definition.label,
+    requiredScopes, missingScopes: [], reason: `当前账号已授权 ${requiredScopes.join('、')}。` };
+}
+
+export function accountCapabilities(account, now = Date.now()) {
+  return Object.fromEntries(Object.entries(ACCOUNT_CAPABILITIES).map(([name, definition]) => [name, accountCapability(account, definition, now)]));
+}
+
+export function applicationCapabilities(settings) {
+  const configured = Boolean(settings?.clientKey && settings?.secretConfigured);
+  const requiredScopes = [...CAPABILITY_SCOPES.searchVideos];
+  return { searchVideos: { available: configured, status: configured ? 'runtime_check' : 'configuration_required', source: 'application',
+    label: '搜索公开视频', requiredScopes, missingScopes: configured ? [] : requiredScopes,
+    reason: configured
+      ? '应用凭据已配置；aweme.dy.video_search 是否获批会在调用时由抖音官方 API 验证。'
+      : '请先配置抖音开放平台应用；搜索还需要应用获批 aweme.dy.video_search。' } };
+}
+
 export class Operations {
   constructor({ store, dataDir, workspaceRoot, api = new DouyinApi({ timeoutMs: 60_000 }) }) {
     this.store = store; this.dataDir = dataDir; this.workspaceRoot = workspaceRoot; this.api = api;
@@ -46,8 +81,12 @@ export class Operations {
       return { settings };
     });
   }
+  accounts() {
+    return this.store.list('account', null, 50).map(account => ({ ...account, capabilities: accountCapabilities(account) }));
+  }
   state() {
-    return { settings: this.settings(), accounts: this.store.list('account', null, 50),
+    const settings = this.settings();
+    return { settings, capabilities: applicationCapabilities(settings), accounts: this.accounts(),
       drafts: this.store.list('draft', null, 100), assets: this.store.list('asset', null, 100), jobs: this.store.list('job', null, 100) };
   }
   account(id) { return this.store.get('account', text(id, '账号 ID', 100)) ?? fail('账号不存在', 'account_not_found'); }
@@ -289,7 +328,7 @@ export class Operations {
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail('参数必须为对象');
     switch (name) {
       case 'studio-state': return this.state();
-      case 'list-accounts': return { accounts: this.store.list('account', null, 50) };
+      case 'list-accounts': return { accounts: this.accounts() };
       case 'start-authorization': return this.startAuthorization();
       case 'finish-authorization': return this.finishAuthorization(input);
       case 'import-media': return this.importMedia(input);

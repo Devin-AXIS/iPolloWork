@@ -9,15 +9,15 @@ description: 在抖音运营台管理 OAuth 账号、保存视频草稿、导入
 
 ## 账号与凭据
 
-- `list-accounts` 获取真实 OAuth `openId`、昵称、账号 ID 和已授予 `scopes`。按用户指定账号选定，不自动换号。
+- `list-accounts` 获取真实 OAuth `openId`、昵称、账号 ID、已授予 `scopes` 和逐项 `capabilities`。按用户指定账号选定，不自动换号；调用功能前先检查对应 capability，服务端仍会再次校验。
 - Client Key、Client Secret、已登记的 HTTPS 回调地址在工作台「账号」中填写。不要让用户在聊天中提供密钥，不读取数据库、密钥文件或平台令牌。
 - 使用工作台「开始官方授权」扫码后，把完整回调地址粘贴回工作台。回调必须包含本次 `state` 和 `code`，有效期十分钟且只可使用一次。
 - `openId` 是应用内的 OAuth 标识，不是用户页面展示的抖音号。不能把它当作网页登录验证依据。
-- API 按该接口精确 scope 检查授权；历史权限与 `*.bind`、小程序权限不可互换。权限不足时说明缺少的 scope，不能编造 API 数据或把网页打开视为授权完成。
+- API 按该接口精确 scope 检查授权；历史权限与 `*.bind`、小程序权限不可互换。开发者主体类型不能替代实际 Scope 判断。权限不足时说明 `capabilities.*.missingScopes`，不能编造 API 数据或把网页打开视为授权完成。
 
 ## 草稿、素材与发布
 
-1. `studio-state` 查看当前草稿、素材和执行记录。最近记录有数量上限；已知操作用 `get-job` 精确查询。
+1. `studio-state` 查看应用级搜索能力、各账号能力、当前草稿、素材和执行记录。最近记录有数量上限；已知操作用 `get-job` 精确查询。
 2. 用当前会话起草文案。`save-draft(accountId,title,text,assetId?,id?)` 保存，文案最多 1000 字。`title` 是本地草稿名；提交到抖音的是 `text`，话题直接写入 `text`。
 3. 视频由已有视频工作台生成后，`import-media(sourcePath)` 导入当前工作区真实 MP4 文件，最多 128 MiB。把返回素材 ID 写入草稿。导入不会发布，也不接受远程下载地址。
 4. 用户要求发布指定账号的这份内容后，`publish-draft(accountId,draftId,operationKey)` 上传并发布。`operationKey` 一经选定，重试必须原样使用。API 要求 `video.create.bind`；发起后草稿锁定。不要因为回复慢就创建新草稿重发。
