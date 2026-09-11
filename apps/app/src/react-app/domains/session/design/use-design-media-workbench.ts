@@ -1,4 +1,6 @@
 import * as React from "react";
+import { resolveInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { usePanelTabStore, type MediaEditBinding } from "../panel/panel-tab-store";
 import {
   MAX_VIDEO_IMAGE_BYTES,
   MAX_VIDEO_MEDIA_BYTES,
@@ -13,23 +15,13 @@ import {
   relativeDesignMediaPath,
   replaceDesignMedia,
   resolveDesignMediaPath,
-  type DesignMedia,
 } from "./design-media";
-import type {
-  MediaWorkbenchSave,
-  MediaWorkbenchSource,
-} from "@/react-app/plugin-ui/media-workbench";
 import { toast } from "@/components/ui/sonner";
 import { t } from "@/i18n";
 
-type Binding = {
-  source: MediaWorkbenchSource;
-  locator: string;
-  original: string;
-  media: DesignMedia;
-  page: string;
-};
 type Params = {
+  sessionId: string;
+  projectSessionId: string;
   client: iPolloWorkServerClient | null;
   workspaceId: string | null;
   page: string;
@@ -41,7 +33,6 @@ type Params = {
 };
 
 export function useDesignMediaWorkbench(params: Params) {
-  const [binding, setBinding] = React.useState<Binding | null>(null);
   const [busy, setBusy] = React.useState(false);
   const input = React.useRef<HTMLInputElement>(null);
   const picking = React.useRef<{ id: string; page: string; kind: MediaKind } | null>(null);
@@ -57,7 +48,6 @@ export function useDesignMediaWorkbench(params: Params) {
     };
   }, []);
   React.useEffect(() => {
-    setBinding(null);
     picking.current = null;
     return () => {
       urls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -180,13 +170,22 @@ export function useDesignMediaWorkbench(params: Params) {
           .querySelector<HTMLElement>(locator);
       }
       if (!element || !path) throw new Error(t("media.workbench.changed"));
-      setBinding({
+      const binding: MediaEditBinding = {
+        workspaceId: params.workspaceId, sessionId: params.sessionId, projectSessionId: params.projectSessionId,
+        results: [], active: true, replaced: false,
         source: { requestId: crypto.randomUUID(), path, kind: selectedMedia.kind },
         locator,
         original: element.outerHTML,
         media: designMediaTools().read(element) ?? selectedMedia,
         page: scope.page,
-      });
+      };
+      const packages = await params.client.listPluginPackages(params.workspaceId);
+      assertCurrent(scope);
+      const pluginId = selectedMedia.kind === "image" ? "image-studio" : "video-console";
+      const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => item.pluginId === pluginId);
+      if (!surface) throw new Error(t("media.workbench.unavailable"));
+      usePanelTabStore.getState().rememberMediaEdit(binding);
+      usePanelTabStore.getState().resumeMediaEdit(binding, path, surface);
     } catch (error) {
       if (active.current)
         toast.error(error instanceof Error ? error.message : t("media.workbench.failed"));
@@ -195,35 +194,6 @@ export function useDesignMediaWorkbench(params: Params) {
       if (active.current) setBusy(false);
     }
   };
-  const apply = async (save: MediaWorkbenchSave) => {
-    const scope = latest.current;
-    if (!binding || !scope.client || !scope.workspaceId || binding.page !== scope.page)
-      throw new Error(t("media.workbench.changed"));
-    if (!safeVideoMediaPath(save.path) || mediaKindForPath(save.path) !== binding.media.kind)
-      throw new Error(t("media.workbench.wrong_type"));
-    const file = await scope.client.readWorkspaceFile(scope.workspaceId, scope.page);
-    assertCurrent(scope);
-    const content =
-      save.saveMode === "overwrite"
-        ? file.content
-        : replaceDesignMedia(
-            file.content,
-            binding.locator,
-            binding.original,
-            binding.media,
-            relativeDesignMediaPath(scope.page, save.path),
-          );
-    const result =
-      content === file.content
-        ? file
-        : await scope.client.writeWorkspaceFile(scope.workspaceId, {
-            path: scope.page,
-            content,
-            baseUpdatedAt: file.updatedAt,
-          });
-    assertCurrent(scope);
-    scope.onReload(content, result.updatedAt ?? null);
-  };
   return {
     input,
     choose,
@@ -231,8 +201,5 @@ export function useDesignMediaWorkbench(params: Params) {
     canOpen,
     open,
     busy,
-    binding,
-    apply,
-    close: () => setBinding(null),
   };
 }

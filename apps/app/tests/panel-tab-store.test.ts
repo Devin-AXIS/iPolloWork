@@ -102,3 +102,53 @@ describe("panel tab store", () => {
     expect(session?.tabs[0]?.type).toBe("workspace-app");
   });
 });
+
+describe("material edit result routing", () => {
+  const surface: import("../src/react-app/plugin-ui/plugin-ui-contributions").PluginUiSurface = {
+    id:"image-studio:studio", pluginId:"image-studio", pluginName:"Image Studio", label:"Image Studio",
+    description:"",iconSrc:null,action:null,
+    resource:{id:"studio",type:"ui",path:"ui/studio.html",ui:{uri:"ui://image-studio/studio",mimeType:"text/html;profile=mcp-app"}},
+  };
+  beforeEach(() => {
+    storage.clear();
+    usePanelTabStore.setState({ sessions: {}, transcriptArtifactTargets: {}, mediaEdits: [] });
+  });
+  const edit = (): import("../src/react-app/domains/session/panel/panel-tab-store").MediaEditBinding => ({
+    workspaceId: "workspace", sessionId: "conversation", projectSessionId: "original-project",
+    source: {requestId: "edit-1", path: "design/original-project/assets/source.png", kind: "image"},
+    page: "design/original-project/index.html", locator: "#hero", original: '<img id="hero" src="assets/source.png">',
+    media: {kind:"image",source:"assets/source.png",preview:"assets/source.png",background:false},
+    results: [], active:true, replaced:false,
+  });
+  test("routes a result to its project even when the conversation has a different ID", () => {
+    const store=usePanelTabStore.getState();
+    store.rememberMediaEdit(edit());
+    expect(store.completeMediaEdit("workspace","original-project","edit-1","artifacts/result.png")).toBeNull();
+    expect(store.completeMediaEdit("workspace","conversation","other-request","artifacts/result.png")).toBeNull();
+    const result=store.completeMediaEdit("workspace","conversation","edit-1","artifacts/result.png");
+    expect(result).not.toBeNull();
+    expect(store.openMediaEditResult("workspace","conversation","artifacts/result.png",surface)).toBe(true);
+    const tab=usePanelTabStore.getState().sessions.conversation.tabs[0];
+    expect(tab.type).toBe("workspace-app");
+    if(tab.type === "workspace-app") { expect(tab.sessionId).toBe("conversation"); expect(tab.mediaEditRequestId).toBe("edit-1"); }
+    expect(usePanelTabStore.getState().sessions.conversation.tabs).toHaveLength(1);
+    expect(store.openMediaEditResult("other-workspace","conversation","artifacts/result.png",surface)).toBe(false);
+    expect(store.completeMediaEdit("workspace","conversation","edit-1","artifacts/result.mp4")).toBeNull();
+  });
+  test("restores source and replacement status after reopening a result card", async () => {
+    const store=usePanelTabStore.getState();
+    store.rememberMediaEdit(edit());
+    store.completeMediaEdit("workspace","conversation","edit-1","artifacts/result.png");
+    store.closeMediaEdit("edit-1",true);
+    const persisted=storage.get("ipollowork:panel-tabs:v1");
+    usePanelTabStore.setState({mediaEdits:[],sessions:{}});
+    storage.set("ipollowork:panel-tabs:v1",persisted!);
+    await usePanelTabStore.persist.rehydrate();
+    expect(store.openMediaEditResult("workspace","conversation","artifacts/result.png",surface)).toBe(true);
+    const restored=usePanelTabStore.getState().mediaEdits[0];
+    expect(restored.locator).toBe("#hero");
+    expect(restored.source.path).toBe(edit().source.path);
+    expect(restored.resultPath).toBe("artifacts/result.png");
+    expect(restored.replaced).toBe(true);
+  });
+});

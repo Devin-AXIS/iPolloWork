@@ -695,6 +695,12 @@ export type PluginUiHostContextV1 = {
   launch?: {
     intent: string;
     requestId?: string;
+    /** The host owns saving and replacing a selected project asset. */
+    returnToSource?: boolean;
+    returnLabel?: string;
+    workbenchMessage?: string;
+    workbenchError?: boolean;
+    workbenchBusy?: boolean;
     source?: {
       kind: "workspace-file";
       path: string;

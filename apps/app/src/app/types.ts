@@ -146,7 +146,10 @@ export type ComposerAttachment = {
   previewUrl?: string;
 };
 
+export const IMAGE_STUDIO_EDIT_RESULT = "ipollowork:image-studio:edit-result";
+
 export type ImageStudioAiReference = {
+  workbenchRequestId?: string;
   sourcePath: string;
   sourceName: string;
   imageWidth: number;
