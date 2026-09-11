@@ -37,11 +37,13 @@ export default {
           ctx.assert(service.operations.state().accounts.length === 0, 'No fake accounts ship with the workbench');
           ctx.assert(await ctx.eval(`document.querySelectorAll('.tabs button').length === 7`), 'Overview and all six workbench sections are reachable');
           ctx.assert(await ctx.eval(`!document.querySelector('#view-overview').hidden && getComputedStyle(document.querySelector('.app-shell')).gridTemplateColumns.split(' ').length === 2`), 'Desktop layout opens on overview with sidebar and workspace columns');
+          ctx.assert(await ctx.eval(`Boolean(document.querySelector('.topbar-account #account') && document.querySelector('.topbar-account #add-account') && !document.querySelector('.sidebar #account'))`), 'Account switch and add controls are not confined to the title bar');
         }, screenshot: { name: 'empty-workbench', requireText: ['运营总览', '尚未连接抖音账号', '开始创作'] },
       });
       await ctx.prove('配置与测试授权经 UI 持久化，密钥不回显', {
         voiceover: vo[1], action: async () => {
-          await click('.tabs [data-view=accounts]');
+          await click('#add-account');
+          await ctx.waitFor(`!document.querySelector('#view-accounts').hidden && document.activeElement === document.querySelector('#client-key')`);
           await ctx.fill('#client-key', 'fixture-client'); await ctx.fill('#client-secret', 'fixture-client-secret');
           await ctx.fill('#redirect-uri', 'https://example.com/callback');
           await ctx.fill('#requested-scopes', 'user_info,video.create.bind,video.list,video.data,item.comment');
@@ -58,6 +60,7 @@ export default {
           ctx.assert(service.operations.state().accounts.length === 2, 'Both identities are stored after actual UI callback submission');
           ctx.assert(await ctx.eval(`document.querySelector('#client-secret').value === ''`), 'Secret field is cleared');
           ctx.assert(!JSON.stringify(service.operations.state()).includes('fixture-client-secret'), 'Public state contains no app secret');
+          ctx.assert(await ctx.eval(`document.querySelector('#account').closest('.topbar-account') !== null`), 'Account selector moved out of the title bar');
         }, screenshot: { name: 'connected-test-accounts', requireText: ['桌面日记 · 测试账号', '生活记录 · 测试账号', 'video.create.bind'] },
       });
       const a = service.operations.state().accounts.find(item => item.openId === 'fixture-account-a');

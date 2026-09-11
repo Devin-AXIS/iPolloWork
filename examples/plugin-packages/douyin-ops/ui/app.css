@@ -132,6 +132,11 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
 .brand-mark::after { content: ""; position: absolute; right: 6px; bottom: 5px; width: 7px; height: 2px; border-radius: 2px; background: var(--pink); box-shadow: -8px 0 0 var(--cyan); }
 .brand p { margin-top: 2px; color: var(--muted); font-size: 11px; }
 .topbar-actions { display: flex; min-width: 0; align-items: center; gap: 8px; }
+.topbar-account { display: grid; min-width: 390px; grid-template-columns: auto minmax(170px, 1fr) auto; align-items: center; gap: 9px; }
+.topbar-account > span { color: var(--muted); font-size: 10px; white-space: nowrap; }
+.topbar-account select { min-height: 42px; padding-block: 7px; border-radius: 9px; background: var(--surface); font-size: 12px; font-weight: 700; }
+.topbar-account button { min-height: 42px; white-space: nowrap; }
+.topbar-account button b { margin-right: 5px; font-size: 17px; font-weight: 450; line-height: 1; }
 .connection { display: inline-flex; min-width: 0; align-items: center; gap: 7px; color: var(--muted); font-size: 11px; white-space: nowrap; }
 .connection > span { overflow: hidden; text-overflow: ellipsis; }
 .connection i { width: 7px; height: 7px; flex: 0 0 auto; border-radius: 50%; background: var(--warning); box-shadow: 0 0 0 4px color-mix(in srgb, var(--warning) 12%, transparent); }
@@ -171,12 +176,6 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
 .tabs button[data-access="locked"]::after { content: ""; width: 5px; height: 5px; margin-left: auto; border-radius: 50%; background: var(--warning); }
 .nav-icon { display: grid; width: 22px; height: 22px; flex: 0 0 auto; place-items: center; border-radius: 7px; background: var(--subtle); color: var(--text); font-size: 11px; font-weight: 800; }
 .tabs button[aria-current="page"] .nav-icon { background: var(--ink); color: #fff; text-shadow: -1px 0 var(--cyan), 1px 0 var(--pink); }
-.account-card { display: grid; grid-template-columns: 36px minmax(0, 1fr) 30px; align-items: center; gap: 9px; margin: auto 12px 14px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
-.account-avatar { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 50%; background: var(--ink); color: #fff; font-weight: 800; box-shadow: -2px 0 0 var(--cyan), 2px 0 0 var(--pink); }
-.account-card label { gap: 2px; color: var(--muted); font-size: 9px; font-weight: 600; }
-.account-card select { height: 24px; min-height: 24px; padding: 0 17px 0 0; overflow: hidden; border: 0; background: transparent; color: var(--text); font-size: 11px; font-weight: 700; text-overflow: ellipsis; }
-.account-card .icon-button { width: 30px; min-height: 30px; padding: 0; border-color: transparent; background: transparent; color: var(--muted); font-size: 20px; }
-
 .workspace { min-width: 0; padding: 32px 36px 64px; }
 .view { display: grid; max-width: 1180px; margin: 0 auto; gap: 20px; }
 .feedback { position: sticky; top: 88px; z-index: 12; max-width: 1180px; margin: 0 auto 16px; padding: 11px 14px; border: 1px solid color-mix(in srgb, var(--success) 35%, var(--border)); border-radius: 10px; background: var(--surface); color: var(--success); box-shadow: var(--shadow); font-size: 12px; overflow-wrap: anywhere; }
@@ -299,16 +298,15 @@ details > .hint { margin-bottom: 15px; }
 .record pre { max-height: 240px; margin: 0; overflow: auto; font: 11px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 900px) {
-  .topbar { height: 64px; padding-inline: 18px; }
+  .topbar { position: relative; height: auto; min-height: 64px; grid-template-columns: minmax(0, 1fr) auto; flex-wrap: wrap; padding: 10px 18px; }
+  .topbar-account { min-width: min(100%, 390px); }
   .app-shell { display: block; min-height: calc(100vh - 64px); }
-  .sidebar { position: sticky; top: 64px; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
+  .sidebar { position: sticky; top: 0; height: auto; border-right: 0; border-bottom: 1px solid var(--border); }
   .tabs { display: flex; gap: 3px; overflow-x: auto; padding: 8px 12px; scrollbar-width: none; }
   .tabs::-webkit-scrollbar { display: none; }
   .tabs button { min-width: 76px; justify-content: center; gap: 7px; padding-inline: 9px; }
   .tabs button[aria-current="page"]::before { inset: auto 10px 0; width: auto; height: 2px; box-shadow: 0 2px 0 var(--cyan); }
   .nav-icon { width: 20px; height: 20px; }
-  .account-card { margin: 0; padding: 8px 18px; border-width: 1px 0 0; border-radius: 0; background: var(--surface); }
-  .account-card label { max-width: 260px; }
   .workspace { padding: 26px 24px 54px; }
   .feedback { position: static; }
   .draft-rail { top: 188px; }
@@ -332,14 +330,15 @@ details > .hint { margin-bottom: 15px; }
 }
 
 @media (max-width: 520px) {
-  .topbar { padding-inline: 13px; }
+  .topbar { align-items: stretch; padding-inline: 13px; }
   .brand { gap: 9px; }
   .brand-mark { width: 36px; height: 36px; border-radius: 10px; }
   .brand p { display: none; }
-  .connection { max-width: 125px; }
-  .topbar-actions { gap: 2px; }
+  .topbar-actions { width: 100%; flex-wrap: wrap; gap: 7px; }
+  .topbar-account { order: 2; width: 100%; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; }
+  .topbar-account > span { display: none; }
+  .connection { flex: 1; max-width: none; }
   .workspace { padding: 20px 13px 42px; }
-  .account-card { padding-inline: 13px; }
   .page-heading { align-items: flex-start; }
   .welcome { padding: 26px 22px; border-radius: 16px; }
   .welcome-copy { padding-right: 24px; }

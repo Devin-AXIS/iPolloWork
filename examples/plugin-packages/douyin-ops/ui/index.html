@@ -15,6 +15,11 @@
       <div><h1>抖音运营台</h1><p>内容创作、互动与账号运营</p></div>
     </div>
     <div class="topbar-actions">
+      <section class="topbar-account" aria-label="当前抖音账号">
+        <span>抖音</span>
+        <select id="account" aria-label="切换抖音账号" disabled><option value="">尚未授权账号</option></select>
+        <button id="add-account" type="button"><b aria-hidden="true">＋</b> 添加账号</button>
+      </section>
       <span id="connection" class="connection" data-status="connecting"><i></i><span id="connection-status">正在连接本地服务…</span></span>
       <button id="refresh" class="quiet" type="button">刷新</button>
     </div>
@@ -31,11 +36,6 @@
         <button type="button" data-view="search"><span class="nav-icon" aria-hidden="true">⌕</span><span>搜索</span></button>
         <button type="button" data-view="jobs"><span class="nav-icon" aria-hidden="true">✓</span><span>记录</span></button>
       </nav>
-      <section class="account-card" aria-label="当前抖音账号">
-        <span class="account-avatar" aria-hidden="true">抖</span>
-        <label for="account"><span id="sidebar-account-meta">当前抖音账号</span><select id="account" disabled><option value="">尚未授权账号</option></select></label>
-        <button type="button" class="icon-button" data-view="accounts" aria-label="管理抖音账号">›</button>
-      </section>
     </aside>
 
     <main class="workspace">
@@ -93,7 +93,7 @@
                 <button class="primary" type="submit">保存应用配置</button>
               </fieldset></form>
             </details>
-            <section class="surface stack">
+            <section id="authorization-panel" class="surface stack">
               <div><p class="eyebrow">OAUTH</p><h3>授权新账号</h3></div>
               <p class="hint">打开官方授权页面，扫码并同意授权。跳转后，复制浏览器地址栏的完整回调地址到下方。</p>
               <button id="start-authorization" class="primary" type="button">打开官方授权页</button>

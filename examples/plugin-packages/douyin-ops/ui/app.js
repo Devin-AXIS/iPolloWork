@@ -62,7 +62,7 @@
     });
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.7' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.8' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
     }).catch(error => { hostPromise = undefined; throw error; });
     return hostPromise;
@@ -76,7 +76,7 @@
   function lock() {
     document.body.setAttribute('aria-busy', String(busy));
     document.querySelectorAll('fieldset').forEach(item => { item.disabled = busy; });
-    for (const selector of ['#account', '#refresh', '#new-draft', '#draft-picker', '#media-file']) $(selector).disabled = busy;
+    for (const selector of ['#account', '#add-account', '#refresh', '#new-draft', '#draft-picker', '#media-file']) $(selector).disabled = busy;
     $('#account').disabled = busy || !state.accounts.length;
     $('#new-draft').disabled = $('#draft-picker').disabled = busy || !accountId;
     $('#comments-form fieldset').disabled = busy || !capability('comments').available;
@@ -113,7 +113,6 @@
     options($('#account'), state.accounts.map(item => ({ id: item.id, label: item.nickname || item.openId })), state.accounts.length ? null : '尚未授权账号', accountId);
     text('#connection-status', state.settings.secretConfigured ? `官方 API · ${state.accounts.length} 个已授权账号` : '本地服务已连接 · 请配置官方 API');
     $('#connection').dataset.status = state.accounts.length ? 'authorized' : 'ready';
-    text('#sidebar-account-meta', state.accounts.length ? `已授权 ${state.accounts.length} 个账号` : '当前抖音账号');
     text('#secret-status', state.settings.secretConfigured ? '密钥已保存' : '未配置');
     if (!settingsLoaded) {
       $('#client-key').value = state.settings.clientKey || ''; $('#redirect-uri').value = state.settings.redirectUri || '';
@@ -290,6 +289,13 @@
   document.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => view(button.dataset.view)));
   document.querySelectorAll('[data-refresh], #refresh').forEach(button => button.addEventListener('click', () => run(async () => { await refresh(); notify('已刷新本地状态。'); })));
   document.querySelectorAll('[data-browser]').forEach(button => button.addEventListener('click', () => run(async () => { const target = await action('browser-target', { accountId: accountId || undefined, kind: button.dataset.browser, keyword: $('#search-keyword').value.trim() }); notify('浏览器入口已准备好。'); await openTarget(target); })));
+  $('#add-account').addEventListener('click', () => {
+    view('accounts');
+    const target = state.settings.secretConfigured ? $('#authorization-panel') : $('#settings-panel');
+    if (!state.settings.secretConfigured) $('#settings-panel').open = true;
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.setTimeout(() => (state.settings.secretConfigured ? $('#start-authorization') : $('#client-key')).focus(), 180);
+  });
   $('#account').addEventListener('change', event => { const next = event.target.value; event.target.value = accountId; run(async () => {
     if (dirty) await saveDraft(); accountId = next; draftId = ''; render(); loadDraft(state.drafts.find(item => item.accountId === next)?.id);
     videoPage = commentPage = undefined; $('#more-videos').hidden = $('#more-comments').hidden = true;

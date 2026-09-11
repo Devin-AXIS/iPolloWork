@@ -29,7 +29,7 @@
     })
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.14' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '小红书运营台', version: '0.4.15' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*')
       return host
     }).catch(error => { hostPromise = undefined; throw error })
@@ -160,7 +160,11 @@
     setAccountPanel(true)
     document.querySelector('[data-new-account-login]')?.click()
   }
-  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', startAccountLogin))
+  document.querySelectorAll('[data-open-account-form]').forEach((button) => button.addEventListener('click', event => {
+    event.preventDefault()
+    if (location.pathname === '/accounts') startAccountLogin()
+    else location.href = button.href
+  }))
   document.querySelector('[data-close-account-form]')?.addEventListener('click', () => {
     setAccountPanel(false)
     sessionStorage.removeItem('xhs-new-account-profile')

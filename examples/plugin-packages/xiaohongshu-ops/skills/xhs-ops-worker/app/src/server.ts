@@ -131,7 +131,13 @@ export function createApp(service: OpsService): Hono {
   app.get('/', (c) => c.redirect('/accounts'))
   app.get('/tasks', (c) => c.redirect('/accounts'))
   app.get('/calendar', (c) => c.redirect('/accounts'))
-  app.get('/accounts', (c) => c.html(renderAccounts(service.db.listAccounts())))
+  app.get('/accounts', (c) => {
+    const accounts = service.db.listAccounts()
+    const accountId = c.req.query('account')
+    const account = accountId === undefined ? accounts[0] : accounts.find(item => String(item.id) === accountId)
+    if (accountId !== undefined && !account) return c.html(renderError('账号不存在', '请选择已接入的账号。', 404), 404)
+    return c.html(renderAccounts(accounts, account))
+  })
   app.get('/analytics', (c) => {
     const accounts = service.db.listAccounts()
     const accountId = c.req.query('account')
@@ -157,7 +163,7 @@ export function createApp(service: OpsService): Hono {
       return c.json({ ok: true, importedAt: snapshot.importedAt, articles: snapshot.articles.length })
     } catch (error) { return c.json({ error: errorMessage(error) }, 400) }
   })
-  app.get('/brand', (c) => c.html(renderBrand({ brand: service.db.getBrand(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets() })))
+  app.get('/brand', (c) => c.html(renderBrand({ accounts: service.db.listAccounts(), brand: service.db.getBrand(), knowledge: service.db.listKnowledge(), assets: service.db.listAssets() })))
   app.get('/interactions', (c) => c.redirect('/comments' + (c.req.query('account') ? `?account=${encodeURIComponent(c.req.query('account')!)}` : '')))
   for (const panel of ['publishing', 'comments']) app.get(`/${panel}`, (c) => {
     const accounts = service.db.listAccounts()
