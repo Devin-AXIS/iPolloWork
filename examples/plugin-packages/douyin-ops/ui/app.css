@@ -137,7 +137,7 @@ a { color: var(--pink-deep); text-underline-offset: 3px; }
 .topbar-actions { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px 8px; }
 .topbar-account { display: grid; grid-column: 1 / -1; min-width: 0; grid-template-columns: minmax(0, 1fr) auto 42px; align-items: center; gap: 8px; }
 .topbar-account select { min-width: 0; width: 100%; text-overflow: ellipsis; }
-.topbar-account #manage-account { width: 42px; padding-inline: 0; font-size: 20px; }
+.topbar-account #manage-account { width: 42px; height: 42px; padding: 0; font-size: 20px; }
 #refresh { min-height: 28px; padding-block: 3px; }
 .topbar-account select { min-height: 42px; padding-block: 7px; border-radius: 9px; background: var(--surface); font-size: 12px; font-weight: 700; }
 .topbar-account button { min-height: 42px; white-space: nowrap; }
