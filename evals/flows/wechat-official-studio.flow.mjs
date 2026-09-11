@@ -71,6 +71,7 @@ export default {
         },
         screenshot: {
           name: 'wechat-official-studio',
+          fromSurface: false,
           get textTargetId() { return ctx.wechatStudioTargetId; },
           requireText: ['公众号 Studio', '运营总览', '图文草稿'],
           rejectText: ['Something went wrong', '无法加载'],
@@ -108,6 +109,7 @@ export default {
         },
         screenshot: {
           name: 'wechat-official-multi-account',
+          fromSurface: false,
           get textTargetId() { return ctx.wechatStudioTargetId; },
           requireText: ['添加公众号', '账号标识', 'AppID', 'AppSecret', '验证并保存'],
           rejectText: ['Something went wrong', '无法加载'],
