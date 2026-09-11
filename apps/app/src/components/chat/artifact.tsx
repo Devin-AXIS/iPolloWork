@@ -537,6 +537,7 @@ function WorkspaceFileTree({ nodes, query, onOpenTarget }: {
 
 interface ArtifactListProps {
   messages: UIMessage[]
+  excludedPaths?: readonly string[]
   client?: iPolloWorkServerClient | null
   workspaceId?: string | null
   sessionId?: string
@@ -552,10 +553,10 @@ interface ArtifactListProps {
   onOpenVideoStudio?: (displayName?: string) => void
 }
 
-export function ArtifactList({ messages, client, workspaceId, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
+export function ArtifactList({ messages, excludedPaths, client, workspaceId, sessionId, sessionTitle, requestNaming, requestOrdinal = null, artifactRequestOwnership = [], title, includeTargetFallbacks = false, entryPath, supplementalFiles, artifactContext, onOpenVideoStudio }: ArtifactListProps) {
   const artifacts = useArtifacts(messages, { includeTargetFallbacks, supplementalFiles });
   const requestArtifacts = selectArtifactsForRequest(
-    artifacts,
+    artifacts.filter(artifact => !excludedPaths?.includes(artifact.path)),
     requestOrdinal,
     artifactRequestOwnership,
   );

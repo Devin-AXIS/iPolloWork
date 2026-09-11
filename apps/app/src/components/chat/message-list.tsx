@@ -104,6 +104,7 @@ import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buil
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
+const StudioDeliveryPaths = React.createContext<readonly string[]>([])
 
 type RenderAssistantGroupOptions = {
   highlightQuery?: string
@@ -580,6 +581,7 @@ function AssistantProcessSection(props: {
 
 const AssistantMessage = React.memo(
   ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
+    const deliveredPaths = React.useContext(StudioDeliveryPaths)
     const { client, workspaceId, showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
       () => getAssistantRenderGroups(message.parts, showThinking),
@@ -625,6 +627,7 @@ const AssistantMessage = React.memo(
           {!isStreaming ? (
             <ArtifactList
               messages={artifactMessages ?? [message]}
+              excludedPaths={isStudioResultMessage(message) ? undefined : deliveredPaths}
               client={client}
               workspaceId={workspaceId}
               sessionId={sessionId}
@@ -1318,6 +1321,7 @@ interface MessageListProps {
 
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
   const { sessionTitle, waitingLabel } = useMessageList()
+  const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const supplementalArtifactFiles = React.useMemo(
@@ -1353,6 +1357,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     : null
 
   return (
+    <StudioDeliveryPaths.Provider value={deliveredPaths}>
     <div className={cn("flex flex-col gap-2 @container/message-list")}>
       {items.map((item) => {
         if (isMessageGroup(item)) {
@@ -1401,7 +1406,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               requestOrdinal={requestOrdinal}
               artifactRequestOwnership={resolvedArtifactRequestOwnership}
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
-              artifactFiles={requestArtifactFiles}
+              artifactFiles={isStudioResultMessage(item.message) ? undefined : requestArtifactFiles}
               artifactContext={artifactContext}
             />
           </div>
@@ -1414,5 +1419,6 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
     </div>
+    </StudioDeliveryPaths.Provider>
   )
 }

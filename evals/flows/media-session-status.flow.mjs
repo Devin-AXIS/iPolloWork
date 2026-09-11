@@ -12,6 +12,10 @@ async function mountProof() {
   if (!providerUrl) throw Error("Chat provider dependency was not found");
   const { MessageListProvider } = await import(providerUrl);
   const { MessageList, VideoJobStatus } = await import(`/src/components/chat/message-list.tsx?proof=${Date.now()}`);
+  const artifactSource = await (await fetch("/src/lib/artifacts.ts")).text();
+  const targetProviderUrl = artifactSource.match(/from "([^"]*target-provider\.ts[^"]*)"/)?.[1];
+  if (!targetProviderUrl) throw Error("Artifact target provider was not found");
+  const { OpenTargetProvider } = await import(targetProviderUrl);
   const { withStudioResults } = await import("/src/react-app/domains/session/sync/message-merge.ts");
   const { createCodexLiveState, mapCodexHarnessEvent } = await import("/src/react-app/domains/session/engine/codex-harness-conversation-mapper.ts");
   const host = document.createElement("section");
@@ -33,11 +37,12 @@ async function mountProof() {
       { id: "answer", role: "assistant", parts: [{ type: "text", text: "图片已保存：artifacts/poster.png。视频已提交。" }] }],
       completed ? [image, video] : [image], { image: "图片已生成", video: "视频已生成" });
     root.render(React.createElement(QueryClientProvider, { client: cache },
+      React.createElement(OpenTargetProvider, { openTargets: [image, video].map(file => ({ id: file.path, kind: "file", value: file.path, name: file.path.split("/").pop(), exists: true, preview: file.generation.kind, confidence: 100, reason: "fixture verified file" })) },
       React.createElement(MessageListProvider, { client: null, workspaceId: "proof", sessionId: "proof", sessionTitle: "素材验证", showThinking: true, developerMode: false, displaySuggestions: false, providerConnectedCount: 1,
         dispatchAction: noop, setPrompt: noop, onRevertToUserMessage: noop, onForkAtMessage: noop, onEditUserMessage: noop },
         React.createElement(MessageList, { messages, status: completed ? "ready" : "retrying", retryStatus: completed ? null : retry.status }),
         React.createElement(VideoJobStatus, { jobs: [{ id: "video", model: "MiniMax H3", status: completed ? "succeeded" : "running", updatedAt: 30 }] }),
-        React.createElement("button", { "data-proof-complete": true, className: "mx-auto mt-4 block rounded-lg border px-4 py-2", onClick: () => { completed = true; render(); } }, "模拟视频完成"))));
+        React.createElement("button", { "data-proof-complete": true, className: "mx-auto mt-4 block rounded-lg border px-4 py-2", onClick: () => { completed = true; render(); } }, "模拟视频完成")))));
   };
   window.__mediaStatusProof = { cleanup() { root.unmount(); host.remove(); cache.clear(); delete window.__mediaStatusProof; } };
   render();
@@ -66,6 +71,7 @@ export default {
         assert: async () => {
           await ctx.waitFor("document.querySelector('#media-status-proof').innerText.includes('视频已生成')");
           ctx.assert(await ctx.eval("['PNG','MP4'].every(type=>[...document.querySelectorAll('#media-status-proof [data-testid=artifact-file-card]')].some(card=>card.innerText.includes(type)))"), "Both media cards must coexist");
+          ctx.assert(await ctx.eval("document.querySelectorAll('#media-status-proof [data-testid=artifact-file-card]').length === 2"), "Exactly one delivery card per generated file");
           ctx.assert(await ctx.eval("!document.querySelector('#media-status-proof [data-video-job-status]')"), "Completed job must not show waiting");
         },
         screenshot: { name: "media-complete", requireText: ["图片已生成", "视频已生成", "PNG", "MP4"] },
