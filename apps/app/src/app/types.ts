@@ -151,6 +151,7 @@ export type ImageStudioAiReference = {
   sourceName: string;
   imageWidth: number;
   imageHeight: number;
+  model?: string;
   kind: "selection" | "point";
   selection?: { left: number; top: number; right: number; bottom: number };
   point?: { x: number; y: number };

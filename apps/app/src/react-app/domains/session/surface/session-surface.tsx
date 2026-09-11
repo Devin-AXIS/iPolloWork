@@ -660,8 +660,12 @@ function imageStudioReferenceInstruction(reference: ImageStudioAiReference | nul
     "Image Studio AI annotation:",
     `- Source image: ${reference.sourcePath}`,
     `- Image dimensions: ${reference.imageWidth} × ${reference.imageHeight}`,
+    `- User-selected image model: ${reference.model || "none"}`,
     `- ${target}`,
     "- Treat this location as the subject of the user's request and preserve unrelated parts of the image.",
+    reference.model
+      ? "- Use exactly this model ID. Do not switch models."
+      : "- No model was selected. List the configured image models and ask the user to choose one; do not generate or edit until they answer.",
     "- Use the image editing skill and save the result as a new workspace file; do not overwrite the source image.",
     "- In the final response, embed the edited image with a Markdown image link and report its exact workspace-relative path so the conversation shows both the image preview and its file card.",
   ].join("\n");
@@ -1253,7 +1257,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const videoReference = Object.keys(mentions).find(path => mentions[path] === "file" && /\.(mp4|mov)$/i.test(path));
     const videoInstruction = videoReference ? [
       "Video workbench AI annotation: source video " + JSON.stringify(videoReference),
-      "For requested video content edits, use the active Video workbench tools via workspace_app.list_tools and workspace_app.call_tool. Preserve the selected model and compatible parameters; set the user's edit prompt and the source video reference using a supported reference/edit operation, then call generate_or_edit.",
+      "For requested video content edits, use the active Video workbench tools via workspace_app.list_tools and workspace_app.call_tool. Call get_parameters first. If model is empty, ask the user to choose one from the Video workbench model menu and stop; never choose or change it with set_parameters. When a model is selected, preserve it and compatible parameters, set the user's edit prompt and source video reference using a supported reference/edit operation, then call generate_or_edit.",
       "Do not claim submission or generation unless the tool returned an actual job.id. If submission is busy, fails, or the model cannot accept video references, report that limitation; do not describe the video as generating.",
       "Use get_job_status to verify the task. Report pending status only with the real job id. Completion requires a succeeded job with an existing output path. Return that path to the user. Never overwrite the source video.",
     ].join("\n") : null;

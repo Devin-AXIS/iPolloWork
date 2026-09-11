@@ -481,7 +481,7 @@
       imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
       activeSubtract: false, temporaryTool: "", selectionTool: "smart", annotationMode: false, annotationPoint: null, busy: false, providerReady: false,
       expandDirection: "all", expandScale: 1.5,
-      locale: "zh", hostContext: null, prompt: "", model: "openai/gpt-image-2", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto", selectionBlend: "natural",
+      locale: "zh", hostContext: null, prompt: "", model: "", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto", selectionBlend: "natural",
       statusMessage: "", statusTone: "info", inspectorOpenRequest: "", inspectorRequestSequence: 0,
     };
     const pending = new Map();
@@ -507,15 +507,15 @@
         moveParameters: "移动参数浮层", openImage: "打开图片", importImage: "导入图片", replaceImage: "替换图片", downloadImage: "下载", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
         importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "添加参考图或直接描述想生成的画面内容...",
         selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
-        model: "图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
+        model: "图片模型", chooseModel: "选择图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
         imageParameters: "生成图片", generateDescription: "描述内容并设置画面参数",
         editDescription: "先预览编辑结果，再选择覆盖或另存为",
         overwriteOriginal: "覆盖原图", confirmOverwrite: "确认覆盖", saveAs: "另存为", cancel: "取消",
         reviewSaved: "编辑结果已保存为副本：{name}。另存为保留两版；覆盖原图只保留原文件名。",
         overwriteWarning: "确认用当前结果替换 {name}？旧版本将被替换，本次编辑副本将移除。",
         overwriting: "正在覆盖原图…", savingCopy: "正在另存为…", overwritten: "已覆盖 {name}，主要产出保留原文件。", copySaved: "已另存为 {name}，原图和编辑版均保留。",
-        providerNotice: "请先在设置 → 授权中心连接所选图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
-        connectedStatus: "已连接", notConnected: "未连接", notAvailable: "暂不可用",
+        providerNotice: "请先在设置 → 授权中心连接所选图片模型。", modelRequired: "请先从顶部选择一个已配置的图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
+        connectedStatus: "已连接", chooseStatus: "请选择", notConnected: "未连接", notAvailable: "暂不可用",
         midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", approximateSelection: "{name} 将按选区的大致范围编辑，边界精度取决于模型。", exactSelection: "自然融合在选区内侧渐变衔接，选区外保持不变。请给目标和光晕留出选区余量；细线、精确替换可选严格边界。风格、镜头和光线仅作提示词引导。",
         loading: "正在打开图片…", importing: "正在导入图片…", processing: "正在处理图片…",
         saved: "已另存为 {name}", selectionRequired: "请先涂抹或框选需要处理的区域。", selectionCleared: "选区已清除", smartSelected: "已生成智能选区，可继续加选或减选。", annotationPointHint: "请在图片上点击需要批注的位置。", annotationAdded: "已添加到输入框。", promptRequired: "请先描述想生成或修改的内容。", imageRequired: "请先打开一张图片，或切换到生成模式。",
@@ -528,15 +528,15 @@
         moveParameters: "Move parameters", openImage: "Open image", importImage: "Import image", replaceImage: "Replace image", downloadImage: "Download", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
         importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Add a reference image or describe the image you want to generate...",
         selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
-        model: "Image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
+        model: "Image model", chooseModel: "Choose image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
         imageParameters: "Generate image", generateDescription: "Describe the image and set visual controls",
         editDescription: "Preview the edit, then overwrite or save as a copy",
         overwriteOriginal: "Overwrite original", confirmOverwrite: "Confirm overwrite", saveAs: "Save as", cancel: "Cancel",
         reviewSaved: "Edited copy saved: {name}. Save as keeps both; overwrite keeps the original filename.",
         overwriteWarning: "Replace {name} with this result? The previous version will be replaced and this edit's copy removed.",
         overwriting: "Overwriting original…", savingCopy: "Saving copy…", overwritten: "Overwrote {name}; the original file remains in outputs.", copySaved: "Saved as {name}; both versions are kept.",
-        providerNotice: "Connect the selected image model in Settings → Authorization Center first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
-        connectedStatus: "Connected", notConnected: "Not connected", notAvailable: "Unavailable",
+        providerNotice: "Connect the selected image model in Settings → Authorization Center first.", modelRequired: "Choose a configured image model from the top menu first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
+        connectedStatus: "Connected", chooseStatus: "Choose", notConnected: "Not connected", notAvailable: "Unavailable",
         midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", approximateSelection: "{name} will edit the approximate selected region; boundary precision depends on the model.", exactSelection: "Natural blending feathers inward and preserves unselected pixels. Leave margin for the subject and glow; use Strict for fine lines or exact replacement. Style, camera and lighting are prompt guidance only.",
         loading: "Opening image…", importing: "Importing image…", processing: "Processing image…",
         saved: "Saved as {name}", selectionRequired: "Brush or select the area to process first.", selectionCleared: "Selection cleared", smartSelected: "Smart selection created. Add or subtract to refine it.", annotationPointHint: "Click the point you want to annotate.", annotationAdded: "Added to the composer.", promptRequired: "Describe what you want to generate or change first.", imageRequired: "Open an image first, or switch to Generate.",
@@ -656,16 +656,20 @@
       }
     }
     function updateParameters(args) {
-      const model = typeof args.model === "string" ? state.models.find((entry) => entry.id === args.model) : selectedModel();
-      if (!model) throw new Error(tr("providerNotice"));
-      const changedModel = model.id !== state.model;
+      const requestedModel = typeof args.model === "string";
+      const model = requestedModel ? state.models.find((entry) => entry.id === args.model) : selectedModel();
+      if (requestedModel && !model) throw new Error(tr("modelRequired"));
+      if (!model && ["size", "quality"].some((key) => args[key] !== undefined)) throw new Error(tr("modelRequired"));
+      const changedModel = Boolean(model && model.id !== state.model);
       const next = {};
-      for (const key of ["size", "quality"]) {
-        const parameter = model.parameters?.[key];
-        const value = args[key] ?? state[key];
-        if (parameter?.values.includes(value) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(value))) next[key] = value;
-        else if (changedModel || args[key] === undefined || value === "auto") next[key] = parameter?.default || "auto";
-        else throw new Error(`${model.label}: ${key}=${String(value)} is not supported.`);
+      if (model) {
+        for (const key of ["size", "quality"]) {
+          const parameter = model.parameters?.[key];
+          const value = args[key] ?? state[key];
+          if (parameter?.values.includes(value) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(value))) next[key] = value;
+          else if (changedModel || args[key] === undefined || value === "auto") next[key] = parameter?.default || "auto";
+          else throw new Error(`${model.label}: ${key}=${String(value)} is not supported.`);
+        }
       }
       const selectionBlend = args.selectionBlend ?? state.selectionBlend ?? "natural";
       if (!["natural", "strict"].includes(selectionBlend)) throw new Error("selectionBlend must be natural or strict");
@@ -674,7 +678,7 @@
         state.referencePath = args.referencePath;
         renderGallery();
       }
-      Object.assign(state, next, { model: model.id, selectionBlend });
+      Object.assign(state, next, { ...(model ? { model: model.id } : {}), selectionBlend });
       if (changedModel) state.statusMessage = "";
       for (const key of ["prompt", "style", "camera", "lighting"]) if (typeof args[key] === "string") state[key] = args[key];
       if (args.mode === "generate" || args.mode === "edit") setMode(args.mode);
@@ -687,10 +691,7 @@
         : [];
       const selected = state.models.find((model) => model.id === state.model);
       if (!selected?.available || !selected.configured) {
-        state.model = state.models.find((model) => model.id === provider.defaultModel && model.available && model.configured)?.id
-          || state.models.find((model) => model.available && model.configured)?.id
-          || state.models.find((model) => model.available)?.id
-          || "";
+        state.model = "";
       }
       normalizeModelParameters(); syncProviderState();
     }
@@ -703,7 +704,7 @@
     }
     function actionBlockedMessage() {
       const model = selectedModel();
-      if (!model) return tr("providerNotice");
+      if (!model) return tr("modelRequired");
       if (!model.available) return modelAuthorizationNotice(model);
       if (!model.configured) return modelAuthorizationNotice(model);
       if (!model.parameters) return state.locale === "en" ? "Update the image service and reopen Image Studio to load model parameters." : "请更新图片服务并重新打开工作台，以加载模型参数。";
@@ -725,9 +726,9 @@
       $("#provider").classList.toggle("ready", state.providerReady);
       const menu = $("#modelMenu");
       menu.disabled = state.busy;
-      $("#providerName").textContent = model?.label || tr("model");
-      $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("notAvailable");
-      $("#provider").title = `${model?.label || tr("model")} · ${$("#providerStatus").textContent}`;
+      $("#providerName").textContent = model?.label || tr("chooseModel");
+      $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("chooseStatus");
+      $("#provider").title = `${model?.label || tr("chooseModel")} · ${$("#providerStatus").textContent}`;
       publishContext();
     }
     function renderEmptyState() {
@@ -886,6 +887,7 @@
         sourceName: state.sourceName,
         imageWidth: state.imageWidth,
         imageHeight: state.imageHeight,
+        model: state.model,
         kind,
         ...target,
       };
@@ -1391,6 +1393,11 @@
     }
     async function run() {
       if (state.busy) return { ok: false, message: tr("processing") };
+      if (!selectedModel()) {
+        const message = tr("modelRequired");
+        setStatus(message, true); openModelMenu();
+        return { ok: false, message };
+      }
       const userPrompt = state.prompt.trim();
       if (state.mode === "generate" && !userPrompt) { setStatus(tr("promptRequired"), true); return { ok: false, message: tr("promptRequired") }; }
       if (state.mode === "edit" && !state.sourcePath) { setStatus(tr("imageRequired"), true); return { ok: false, message: tr("imageRequired") }; }
@@ -1515,10 +1522,11 @@
           ...(status ? { status } : {}),
         } : null;
         void request("ui/update-model-context", {
-          content: [{ type: "text", text: `Image Studio mode: ${state.mode}. AI edit mode: ${state.aiMode}. Source: ${state.sourcePath || "none"}. Prompt: ${state.prompt.trim() || "none"}. Selection: ${bounds ? "active" : "whole image"}.` }],
+          content: [{ type: "text", text: `Image Studio mode: ${state.mode}. User-selected model: ${selectedModel()?.label || "none"}. Source: ${state.sourcePath || "none"}. Prompt: ${state.prompt.trim() || "none"}. Selection: ${bounds ? "active" : "whole image"}. Never choose or change the model for the user.` }],
           structuredContent: {
             mode: state.mode,
             aiMode: state.aiMode,
+            model: state.model || null,
             sourcePath: state.sourcePath || null,
             prompt: state.prompt.trim(),
             selection: bounds,
@@ -1568,11 +1576,11 @@
       }
       if (message.method === "tools/list") {
         respond(message.id, { tools: [
-          { name: "set_prompt", description: "Set Image Studio parameters. Style, camera and lighting are prompt guidance. Read the current inspector options for model-specific size/quality; unsupported values are rejected. ChatGPT login only supports prompt-based aspect intent, not native size/quality controls.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, model: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, aiMode: { type: "string", enum: ["inpaint", "expand", "erase"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, selectionBlend: { type: "string", enum: ["natural", "strict"] } } } },
+          { name: "set_prompt", description: "Set Image Studio prompt and parameters without changing its model. Only the user may choose the model from the workbench menu. Model-specific size or quality values require a selected model.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, aiMode: { type: "string", enum: ["inpaint", "expand", "erase"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, selectionBlend: { type: "string", enum: ["natural", "strict"] } }, additionalProperties: false } },
           { name: "import_reference", description: "Upload a reference image for generation.", inputSchema: { type: "object", properties: { dataUrl: { type: "string" }, filename: { type: "string" } }, required: ["dataUrl", "filename"] } },
           { name: "preview_reference", description: "Read the selected reference thumbnail.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
           { name: "open_image", description: "Open a workspace-relative image in Image Studio.", inputSchema: { type: "object", properties: { sourcePath: { type: "string" } }, required: ["sourcePath"] } },
-          { name: "generate_or_edit", description: "Run the current generation or edit after the user has reviewed the prompt and selection.", inputSchema: { type: "object", properties: {} } },
+          { name: "generate_or_edit", description: "Run the current generation or edit only after the user has selected a configured image model in the workbench.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
           { name: "clear_selection", description: "Clear the active mask so the next edit applies to the whole image.", inputSchema: { type: "object", properties: {} } },
           { name: "capture_selection", description: "Freeze the exact selected image region for the current conversation without generating an image.", inputSchema: { type: "object", properties: { revision: { type: "number" } } } },
         ] }); return;
@@ -1585,6 +1593,7 @@
           return;
         }
         if (message.params?.name === "set_prompt") {
+          if (Object.prototype.hasOwnProperty.call(args, "model")) { respond(message.id, { isError: true, content: [{ type: "text", text: tr("modelRequired") }] }); return; }
           try { updateParameters(args); respond(message.id, toolResult("Image Studio parameters updated.")); }
           catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
           return;
@@ -1800,14 +1809,15 @@
       if (event.code !== "Space" || !state.temporaryTool) return;
       const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
     });
-    $("#modelMenu").addEventListener("click", () => {
+    function openModelMenu() {
       if (state.busy) return;
       const rect = $("#modelMenu").getBoundingClientRect();
       post({ type: "ipollowork:image-studio:model-menu", value: state.model,
-        options: state.models.map(entry => ({ id: entry.id, label: entry.label + (entry.configured ? "" : state.locale === "en" ? " · Not connected" : " · 未连接"), disabled: !entry.available })),
+        options: state.models.filter(entry => entry.available && entry.configured).map(entry => ({ id: entry.id, label: entry.label, disabled: false })),
         left: rect.left, top: rect.top, width: rect.width, height: rect.height,
         manageLabel: state.locale === "en" ? "Manage connections…" : "管理连接…" });
-    });
+    }
+    $("#modelMenu").addEventListener("click", openModelMenu);
     addEventListener("message", event => {
       if (event.source !== parent) return;
       if (event.data?.type === "ipollowork:image-studio:model-menu-closed") { $("#modelMenu").focus(); return; }
@@ -1842,7 +1852,7 @@
 
     request("ui/initialize", {
       protocolVersion: "2025-11-21",
-      appInfo: { name: "iPolloWork Image Studio", version: "0.1.54" },
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.76" },
       appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
     }).then(async (host) => {
       post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });

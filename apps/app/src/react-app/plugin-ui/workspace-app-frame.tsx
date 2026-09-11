@@ -101,11 +101,13 @@ function parseImageStudioAiReference(value: unknown): ImageStudioAiReference | n
   const sourceName = typeof value.sourceName === "string" ? value.sourceName.trim() : "";
   const imageWidth = typeof value.imageWidth === "number" && Number.isFinite(value.imageWidth) ? value.imageWidth : 0;
   const imageHeight = typeof value.imageHeight === "number" && Number.isFinite(value.imageHeight) ? value.imageHeight : 0;
+  const model = typeof value.model === "string" ? value.model.trim() : "";
+  const shared = { sourcePath, sourceName, imageWidth, imageHeight, ...(model ? { model } : {}) };
   if (!sourcePath || imageWidth <= 0 || imageHeight <= 0) return null;
   if (value.kind === "point" && isRecord(value.point)) {
     const x = finiteUnitValue(value.point.x);
     const y = finiteUnitValue(value.point.y);
-    return x === null || y === null ? null : { sourcePath, sourceName, imageWidth, imageHeight, kind: "point", point: { x, y } };
+    return x === null || y === null ? null : { ...shared, kind: "point", point: { x, y } };
   }
   if (value.kind === "selection" && isRecord(value.selection)) {
     const left = finiteUnitValue(value.selection.left);
@@ -113,7 +115,7 @@ function parseImageStudioAiReference(value: unknown): ImageStudioAiReference | n
     const right = finiteUnitValue(value.selection.right);
     const bottom = finiteUnitValue(value.selection.bottom);
     if (left === null || top === null || right === null || bottom === null || left >= right || top >= bottom) return null;
-    return { sourcePath, sourceName, imageWidth, imageHeight, kind: "selection", selection: { left, top, right, bottom } };
+    return { ...shared, kind: "selection", selection: { left, top, right, bottom } };
   }
   return null;
 }

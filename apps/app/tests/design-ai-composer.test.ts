@@ -137,6 +137,7 @@ describe("Design AI composer integration", () => {
 
     expect(frameSource).toContain('event.data.type !== "ipollowork:image-studio:ask-ai"');
     expect(frameSource).toContain('new CustomEvent("ipollowork:add-image-reference"');
+    expect(frameSource).toContain('const model = typeof value.model === "string"');
     expect(frameSource).not.toContain("onImageSelectionChange");
     expect(surfaceSource).toContain('window.addEventListener("ipollowork:add-image-reference"');
     expect(surfaceSource).toContain('data-composer-token="image-reference"');
@@ -144,6 +145,8 @@ describe("Design AI composer integration", () => {
     expect(surfaceSource).toContain('? "image-studio-reference"');
     expect(surfaceSource).toContain("Normalized annotation point:");
     expect(surfaceSource).toContain("Normalized selected region:");
+    expect(surfaceSource).toContain("User-selected image model:");
+    expect(surfaceSource).toContain("No model was selected. List the configured image models");
     expect(surfaceSource).toContain("pendingImageStudioRefreshRef");
     expect(surfaceSource).toContain('viewer: "image-studio"');
     expect(surfaceSource).toContain("props.onOpenTarget?.(target, options, props.sessionId)");
@@ -158,6 +161,7 @@ describe("Design AI composer integration", () => {
     expect(sessionPageSource).not.toContain("WorkspaceImageSelection");
 
     expect(frameSource).toContain('callWorkspaceAppTool("open_image", { sourcePath })');
+    expect(surfaceSource).toContain("never choose or change it with set_parameters");
   });
 
   test("uses the shared client controls for workspace app inspector fields", async () => {

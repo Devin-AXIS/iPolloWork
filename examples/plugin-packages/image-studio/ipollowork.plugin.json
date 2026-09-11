@@ -16,7 +16,7 @@
     "prompt": "打开图片工作台，在右侧生成图片，或对当前图片进行选区与涂抹编辑。"
   },
   "package": {
-    "version": "0.1.75",
+    "version": "0.1.76",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.21.0" },
     "updateId": "ipollowork/image-studio"
@@ -128,7 +128,7 @@
         {
           "id": "generate-image",
           "title": "生成图片",
-          "description": "使用已连接的图片提供方生成图片并保存到工作区。",
+          "description": "使用用户明确选择的已连接图片模型生成图片并保存到工作区。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -142,14 +142,14 @@
               "quality": { "type": "string" },
               "size": { "type": "string" }
             },
-            "required": ["prompt"],
+            "required": ["prompt", "model"],
             "additionalProperties": false
           }
         },
         {
           "id": "edit-image",
           "title": "编辑图片",
-          "description": "使用提示词和可选蒙版编辑图片，结果另存为新文件。",
+          "description": "使用用户明确选择的图片模型、提示词和可选蒙版编辑图片，结果另存为新文件。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -180,7 +180,7 @@
               "quality": { "type": "string" },
               "size": { "type": "string" }
             },
-            "required": ["sourcePath", "prompt"],
+            "required": ["sourcePath", "prompt", "model"],
             "additionalProperties": false
           }
         }
