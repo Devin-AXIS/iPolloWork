@@ -5,8 +5,13 @@ async function mountProof() {
   const { default: React } = await import(moduleUrl("react"));
   const { default: ReactDOM } = await import(moduleUrl("react-dom_client"));
   const { QueryClient, QueryClientProvider } = await import(moduleUrl("@tanstack_react-query"));
-  const { MessageList, VideoJobStatus } = await import("/src/components/chat/message-list.tsx");
-  const { MessageListProvider } = await import("/src/components/chat/message-list-provider.tsx");
+  const chatSource = await (await fetch("/src/components/chat/message-list.tsx")).text();
+  // Vite's HMR timestamp is part of context-module identity. Match the exact
+  // provider dependency used by the real component, not a second context.
+  const providerUrl = chatSource.match(/from "([^"]*message-list-provider\.tsx[^"]*)"/)?.[1];
+  if (!providerUrl) throw Error("Chat provider dependency was not found");
+  const { MessageListProvider } = await import(providerUrl);
+  const { MessageList, VideoJobStatus } = await import(`/src/components/chat/message-list.tsx?proof=${Date.now()}`);
   const { withStudioResults } = await import("/src/react-app/domains/session/sync/message-merge.ts");
   const { createCodexLiveState, mapCodexHarnessEvent } = await import("/src/react-app/domains/session/engine/codex-harness-conversation-mapper.ts");
   const host = document.createElement("section");
