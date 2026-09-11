@@ -1196,7 +1196,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-iPolloWork-Resource-Scope, X-iPolloWork-Template-Category, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
-  headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256");
+  headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256, X-Artifact-Detail");
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, headers });

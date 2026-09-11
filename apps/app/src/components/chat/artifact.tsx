@@ -2,7 +2,7 @@
 
 import type { UIMessage } from "ai";
 import { ChevronRight, Copy, Download, FileOutput, Folder, FolderOpen, Loader2, MessageSquarePlusIcon, MoreHorizontalIcon, RefreshCw, Search, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
@@ -13,11 +13,12 @@ import {
   htmlArtifactFilenameFromTitle,
   type HtmlArtifactDisplayKind,
 } from "@/app/lib/session-title";
+import { loadArtifactThumbnail, useArtifactThumbnails } from "./artifact-thumbnail";
 import { ArtifactIcon } from "@/components/chat/artifact-icon";
 import { artifactCardDescription, artifactCardTitle, buildReviseFilePrompt } from "@/components/chat/utils";
 import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { t } from "@/i18n";
-import { OpenTargetProvider, type OpenTargetOptions } from "@/lib/target-provider";
+import { OpenTargetProvider, useOpenTargets, type OpenTargetOptions } from "@/lib/target-provider";
 import { createWorkspaceFileOpenTarget, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
@@ -256,6 +257,14 @@ function compactArtifactTitle(name: string) {
 }
 
 function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId, artifactContext, onOpenVideoStudio }: ArtifactButtonProps) {
+  const thumbnailRoot = useRef<HTMLSpanElement>(null);
+  const { loadWorkspaceThumbnail } = useOpenTargets();
+  const loadThumbnail = useCallback((path: string) => {
+    if (client && workspaceId) return loadArtifactThumbnail(client, workspaceId, path);
+    if (loadWorkspaceThumbnail) return loadWorkspaceThumbnail(path);
+    return Promise.reject(new Error("Thumbnail unavailable"));
+  }, [client, workspaceId, loadWorkspaceThumbnail]);
+  useArtifactThumbnails(thumbnailRoot, loadThumbnail);
   const previewArtifact = usePreviewArtifact();
   const setDraft = useComposerStateStore((state) => state.setDraft);
   const [downloading, setDownloading] = useState(false);
@@ -323,9 +332,9 @@ function ArtifactButton({ artifact, displayName, client, workspaceId, sessionId,
 
   const content = (
     <>
-      <DescriptiveButtonIcon className={cn("chat-output-icon")}>
+      <span ref={thumbnailRoot} className="contents"><DescriptiveButtonIcon className={cn("chat-output-icon")} data-artifact-thumbnail={/\.(png|jpe?g|webp|gif|avif|svg|mp4|mov|webm)$/i.test(artifact.path) ? artifact.path : undefined}>
         <ArtifactIcon className={cn("shrink-0", "size-4")} type={artifact.type} />
-      </DescriptiveButtonIcon>
+      </DescriptiveButtonIcon></span>
       <DescriptiveButtonContent className={cn("min-w-0", "chat-output-content")}>
         <div className="flex min-w-0 items-center gap-1.5">
           <DescriptiveButtonTitle className={cn("chat-output-title")} data-testid="artifact-file-title" title={presentedName}>{title}</DescriptiveButtonTitle>
@@ -580,7 +589,7 @@ export function ArtifactList({ messages, excludedPaths, client, workspaceId, ses
     <div className="w-full">
       {title ? <div className="mb-1.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{title}</div> : null}
       <div
-        className="grid min-w-0 grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),20rem))] gap-2 pb-2"
+        className="chat-output-grid pb-2"
         aria-label={t("session.outputs.title")}
       >
         {displayedArtifacts.map((artifact) => (

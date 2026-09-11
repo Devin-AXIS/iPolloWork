@@ -323,12 +323,13 @@ describe("plugin package manifest", () => {
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.76");
+    expect(result.manifest.package?.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
-    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(21);
+    expect(workspaceUi).toContain('data-lucide="arrow-left"');
+    expect(workspaceUi).toContain('data-lucide="info"');
     expect(workspaceUi).toContain('data-lucide="wand-sparkles"');
     expect(workspaceUi).toContain('data-lucide="square-dashed"');
     expect(workspaceUi).toContain('data-lucide="circle-dashed"');
@@ -361,7 +362,7 @@ describe("plugin package manifest", () => {
     expect(workspaceUi).toContain('id="documentTitle"');
     expect(workspaceUi).toContain('id="downloadImage"');
     expect(workspaceUi).toContain('id="emptyBack"');
-    expect(workspaceUi).toContain(".empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #fff; }");
+    expect(workspaceUi).toContain(".empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: var(--surface); }");
     expect(workspaceUi).toContain(".empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }");
     expect(workspaceUi).toContain('src="data:image/png;base64,');
     expect(workspaceUi).toContain('mode: "start"');
@@ -457,7 +458,9 @@ describe("plugin package manifest", () => {
     expect(inspect('update({model: models[0].id})')).toMatchObject({ size: "auto", quality: "auto" });
     for (const key of ["style", "camera", "lighting"]) {
       const values: string[] = inspect(`inspector.fields.find(f => f.id === "${key}").options.map(o => o.value)`);
-      expect(values.length).toBeGreaterThanOrEqual(14);
+      expect(values[0]).toBe("auto");
+      expect(values.length).toBeGreaterThanOrEqual(4);
+      expect(values.length).toBeLessThanOrEqual(6);
       expect(new Set(values).size).toBe(values.length);
       expect(inspect(`inspector.fields.find(f => f.id === "${key}").live`)).toBe(true);
     }

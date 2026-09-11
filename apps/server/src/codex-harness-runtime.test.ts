@@ -1992,3 +1992,82 @@ describe("Codex provider protocol gateway", () => {
     }
   });
 });
+
+describe("Codex pending approval recovery", () => {
+  test("replays only unanswered requests across SSE reconnects and clears finished turns", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-approval-fixture.js");
+    await writeFile(fixturePath, String.raw`
+const send = (event) => process.stdout.write(JSON.stringify(event) + "\n");
+require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  const message = JSON.parse(line);
+  if (!message.method) return;
+  if (message.method === "test/emit") send(message.params);
+  if (message.method === "test/marker") send({ method: "test/marker", params: {} });
+  send({ id: message.id, result: {} });
+});
+`);
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({
+      config, env: new EnvService({ path: join(root, "env.json") }),
+      workspace: { id: "approval-test", name: "Approval test", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" },
+    });
+    const pendingIds = async () => {
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), 3_000);
+      const stream = await runtime.events(abort.signal);
+      const reader = stream.body?.getReader();
+      if (!reader) throw new Error("Missing events stream");
+      try {
+        await runtime.call("test/marker");
+        let buffer = "";
+        const ids: unknown[] = [];
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Missing end marker");
+          buffer += new TextDecoder().decode(chunk.value);
+          let end = buffer.indexOf("\n\n");
+          while (end !== -1) {
+            const event = JSON.parse(buffer.slice(0, end).replace(/^data: /, ""));
+            buffer = buffer.slice(end + 2);
+            if (event.method === "test/marker") return ids;
+            if (event.type === "request") ids.push(event.id);
+            end = buffer.indexOf("\n\n");
+          }
+        }
+      } finally {
+        clearTimeout(timeout);
+        abort.abort();
+        await reader.cancel();
+      }
+    };
+    const ask = (id: number, threadId: string, turnId = "turn-a") => runtime.call("test/emit", {
+      id, method: "mcpServer/elicitation/request",
+      params: { threadId, turnId, serverName: "ipollowork", message: "Allow image edit?", _meta: { codex_approval_kind: "mcp_tool_call" } },
+    });
+    try {
+      // No event subscriber exists when Codex asks for permission.
+      await ask(51, "thread-a");
+      await ask(52, "thread-b");
+      expect(await pendingIds()).toEqual([51, 52]);
+      expect(await pendingIds()).toEqual([51, 52]);
+      await runtime.respond(51, { action: "decline", content: null });
+      expect(await pendingIds()).toEqual([52]);
+      await ask(53, "thread-a");
+      await runtime.call("test/emit", { method: "turn/completed", params: { threadId: "thread-a", turn: { id: "turn-a", status: "interrupted" } } });
+      expect(await pendingIds()).toEqual([52]);
+      await runtime.call("test/emit", { method: "serverRequest/resolved", params: { requestId: 52 } });
+      expect(await pendingIds()).toEqual([]);
+      await ask(54, "thread-a");
+      await runtime.close();
+      expect(await pendingIds()).toEqual([]);
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  });
+});

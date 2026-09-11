@@ -1137,7 +1137,7 @@ async function requestBinary(
   baseUrl: string,
   path: string,
   options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: BodyInit; timeoutMs?: number; direct?: boolean } = {},
-): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null }>{
+): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null; detail: string | null }>{
   const url = `${baseUrl}${path}`;
   const fetchImpl = options.direct ? globalThis.fetch : resolveFetch(url);
   const response = await fetchWithTimeout(
@@ -1162,7 +1162,7 @@ async function requestBinary(
   const filenameRaw = filenameMatch?.[1] ?? filenameMatch?.[2] ?? null;
   const filename = filenameRaw ? decodeURIComponent(filenameRaw) : null;
   const data = await response.arrayBuffer();
-  return { data, contentType, filename };
+  return { data, contentType, filename, detail: response.headers.get("x-artifact-detail") };
 }
 
 async function requestRawJson<T>(
@@ -2235,6 +2235,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           },
         },
       ),
+
+    downloadWorkspaceThumbnail: (workspaceId: string, path: string) =>
+      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/files/raw?thumbnail=1&path=${encodeURIComponent(path)}`, { token, hostToken, timeoutMs: timeouts.binary }),
 
     downloadWorkspaceFile: (workspaceId: string, path: string) =>
       requestBinary(

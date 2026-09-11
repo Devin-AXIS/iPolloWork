@@ -1,3 +1,7 @@
+import { z } from "zod";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import sharp from "sharp";
 import { createReadStream } from "node:fs";
 import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
@@ -14,6 +18,9 @@ import { renameArtifact } from "../artifact-rename.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
+
+const thumbnailJobs = new Map<string, Promise<{ bytes: Buffer; detail: string }>>();
+const executeThumbnail = promisify(execFile);
 
 const FILE_SESSION_DEFAULT_TTL_MS = 15 * 60 * 1000;
 const FILE_SESSION_MIN_TTL_MS = 30 * 1000;
@@ -1269,6 +1276,52 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const info = await stat(absPath);
     if (!info.isFile()) {
       throw new ApiError(404, "file_not_found", "File not found");
+    }
+
+    if (ctx.url.searchParams.get("thumbnail") === "1") {
+      const safePath = await resolveWithinRoot(workspace.path, relativePath);
+      const image = /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(relativePath);
+      const video = /\.(mp4|mov|webm)$/i.test(relativePath);
+      if ((!image && !video) || info.size > (image ? MAX_VIDEO_IMAGE_BYTES : MAX_VIDEO_MEDIA_BYTES)) {
+        throw new ApiError(415, "thumbnail_unavailable", "Thumbnail unavailable");
+      }
+      const key = `${safePath}:${info.size}:${info.mtimeMs}`;
+      let pending = thumbnailJobs.get(key);
+      if (!pending) {
+        if (thumbnailJobs.size >= 4) throw new ApiError(429, "thumbnail_busy", "Thumbnail service is busy");
+        pending = (async () => {
+          const source = image ? safePath : (await executeThumbnail(
+            process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg",
+            ["-v", "error", "-nostdin", "-threads", "1", "-protocol_whitelist", "file,pipe", "-f", /\.webm$/i.test(relativePath) ? "matroska" : "mov", "-i", safePath, "-frames:v", "1", "-vf", "scale=160:160:force_original_aspect_ratio=decrease", "-f", "image2pipe", "-vcodec", "png", "pipe:1"],
+            { timeout: 8000, maxBuffer: 1024 * 1024, encoding: "buffer" },
+          )).stdout;
+          const thumbnail = sharp(source, { limitInputPixels: 40_000_000 });
+          let detail = "";
+          if (image) {
+            const metadata = await thumbnail.metadata();
+            if (metadata.width && metadata.height) detail = `${metadata.width} × ${metadata.height}`;
+          } else {
+            const probe = await executeThumbnail(process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe",
+              ["-v", "error", "-protocol_whitelist", "file,pipe", "-f", /\.webm$/i.test(relativePath) ? "matroska" : "mov", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", safePath],
+              { timeout: 8000, maxBuffer: 64 * 1024, encoding: "utf8" }).catch(() => null);
+            if (probe) {
+              const parsed = z.object({ format: z.object({ duration: z.coerce.number().finite().nonnegative().optional() }).optional() }).safeParse(JSON.parse(probe.stdout));
+              const duration = parsed.success ? parsed.data.format?.duration : undefined;
+              if (duration !== undefined) detail = `${Math.floor(duration / 60).toString().padStart(2, "0")}:${Math.floor(duration % 60).toString().padStart(2, "0")}`;
+            }
+          }
+          const bytes = await thumbnail.rotate().resize(80, 80, { fit: /\.svg$/i.test(relativePath) ? "contain" : "cover", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toBuffer();
+          return { bytes, detail };
+        })();
+        thumbnailJobs.set(key, pending);
+        void pending.finally(() => thumbnailJobs.delete(key)).catch(() => undefined);
+      }
+      try {
+        const { bytes, detail } = await pending;
+        return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "image/webp", "Cache-Control": "private, max-age=60", "X-Artifact-Detail": encodeURIComponent(detail) } });
+      } catch {
+        throw new ApiError(422, "thumbnail_unavailable", "Thumbnail unavailable");
+      }
     }
 
     const headers = new Headers();

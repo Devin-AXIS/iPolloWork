@@ -10,7 +10,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
-import { AlertCircle, Clock, RectangleHorizontal, RectangleVertical, Square, Scan, ChevronDown, ImagePlus, Undo2, Sparkles, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
+import { Save, Replace, AlertCircle, Clock, RectangleHorizontal, RectangleVertical, Square, Scan, ChevronDown, ImagePlus, Undo2, Sparkles, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import type {
@@ -55,6 +55,7 @@ import { ServiceWorkbenchFrame } from "./service-workbench-frame";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
 export type WorkspaceAppMessageResult = boolean | { accepted: boolean; sessionId: string };
+export type WorkspaceImageEdit = { path: string; originalPath: string; editId?: string; revision?: string };
 export type WorkspaceImageSave = { path: string; originalPath: string; saveMode: "copy" | "overwrite"; revision: string };
 export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string; saveMode?: "copy" | "overwrite"; revision?: string };
 
@@ -76,7 +77,9 @@ type WorkspaceAppFrameProps = {
   onRequestClose?: () => void;
   onEditGalleryImage?: (path: string) => void;
   onGenerateVideo?: (path: string) => void;
+  workbench?: { canSave: boolean; canReplace: boolean; busy: boolean; onAction: (action: "back" | "copy" | "replace") => void };
   onImageSaved?: (save: WorkspaceImageSave) => void;
+  onImageEdited?: (edit: WorkspaceImageEdit | null) => void;
   onVideoResult?: (result: WorkspaceVideoResult) => void;
   /** Uses an in-workspace draft resource while Plugin Studio is previewing an uninstalled package. */
   resourceOverride?: iPolloWorkPluginUiResource;
@@ -678,6 +681,10 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const onSendMessageRef = useRef(props.onSendMessage);
   const onImageSavedRef = useRef(props.onImageSaved);
   onImageSavedRef.current = props.onImageSaved;
+  const workbenchRef = useRef(props.workbench);
+  workbenchRef.current = props.workbench;
+  const onImageEditedRef = useRef(props.onImageEdited);
+  onImageEditedRef.current = props.onImageEdited;
   const onVideoResultRef = useRef(props.onVideoResult);
   onVideoResultRef.current = props.onVideoResult;
   const onRequestCloseRef = useRef(props.onRequestClose);
@@ -736,8 +743,8 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   }, [props.client, props.resourceOverride, props.surface.pluginId, props.surface.resource.id, props.workspaceId, revision]);
 
   useEffect(() => {
-    const iframe = iframeRef.current;
     const receiveImageStudioReference = (event: MessageEvent) => {
+      const iframe = iframeRef.current;
       if (!["image-studio", "video-console"].includes(props.surface.pluginId) || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
       if (event.data.type === `ipollowork:${props.surface.pluginId}:file-info-close`) { setFileInfo(null); return; }
       if (event.data.type === `ipollowork:${props.surface.pluginId}:file-info`) {
@@ -746,7 +753,11 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         setFileInfo({ rows: rows.slice(0, 16).flatMap((row: unknown) => isRecord(row) && typeof row.label === "string" && typeof row.value === "string" ? [{ label: row.label.slice(0, 80), value: row.value.slice(0, 1000) }] : []), prompt });
         return;
       }
-      if (props.surface.pluginId === "video-console" && event.data.type === "ipollowork:video-console:download-menu") {
+      if (event.data.type === "ipollowork:media-workbench:back") {
+        workbenchRef.current?.onAction("back");
+        return;
+      }
+      if (event.data.type === `ipollowork:${props.surface.pluginId}:download-menu`) {
         const { left, top, width, height } = event.data;
         if (typeof left !== "number" || typeof top !== "number" || typeof width !== "number" || typeof height !== "number" || ![left, top, width, height].every(Number.isFinite)) return;
         const bounds = iframe.getBoundingClientRect();
@@ -823,22 +834,31 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         });
         return;
       }
+      if (event.data.type === "ipollowork:image-studio:edited") {
+        const edited = event.data;
+        if (typeof edited.path === "string" && typeof edited.originalPath === "string") {
+          onImageEditedRef.current?.({ path: edited.path, originalPath: edited.originalPath,
+            ...(typeof edited.editId === "string" ? { editId: edited.editId } : {}),
+            ...(typeof edited.revision === "string" ? { revision: edited.revision } : {}) });
+        }
+        return;
+      }
       if (event.data.type !== "ipollowork:image-studio:ask-ai") return;
       const reference = parseImageStudioAiReference(event.data.reference);
       if (!reference || !props.sessionId) return;
       window.dispatchEvent(new CustomEvent("ipollowork:add-image-reference", {
-        detail: { sessionId: props.sessionId, reference },
+        detail: { sessionId: props.sessionId, reference: { ...reference, ...(props.launch?.returnToSource ? { workbenchRequestId: props.launch.requestId } : {}) } },
       }));
       props.onDisplayModeChange?.("inline");
       window.dispatchEvent(new Event("ipollowork:focusPrompt"));
     };
     window.addEventListener("message", receiveImageStudioReference);
     return () => window.removeEventListener("message", receiveImageStudioReference);
-  }, [navigate, props.client, props.workspaceId, props.onDisplayModeChange, props.onEditGalleryImage, props.onGenerateVideo, props.sessionId, props.surface.pluginId, resource]);
+  }, [navigate, props.client, props.workspaceId, props.onDisplayModeChange, props.onEditGalleryImage, props.onGenerateVideo, props.sessionId, props.surface.pluginId, props.launch, resource]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
-    if (!resource || !iframe?.contentWindow) return;
+    if (loading || error || !resource || !iframe?.contentWindow) return;
     setBridgeReady(false);
     let disposed = false;
     const transport = new PostMessageTransport(iframe.contentWindow, iframe.contentWindow);
@@ -888,6 +908,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         if (props.surface.action && name !== props.surface.action) {
           throw new Error(`Workspace App may only call ${props.surface.action}.`);
         }
+        if (props.surface.pluginId === "image-studio" && name === "edit-image") onImageEditedRef.current?.(null);
         const result = await props.client.callExtensionAction({
           extensionId: props.surface.pluginId,
           action: name,
@@ -993,7 +1014,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       void bridge.teardownResource({}).catch(() => undefined).finally(() => transport.close());
       iframe.srcdoc = "";
     };
-  }, [developmentPreviewActive, platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage, updateHostContext]);
+  }, [loading, error, developmentPreviewActive, platform, props.client, props.placement, props.sessionId, props.surface.action, props.surface.pluginId, props.surface.resource.id, props.workspaceId, props.workspaceRoot, resource, supportsDisplayModeChange, supportsMessage, updateHostContext]);
 
   useEffect(() => {
     const bridge = bridgeRef.current;
@@ -1023,7 +1044,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     const sourcePath = props.launch?.intent === "edit-image" ? props.launch.source?.path : undefined;
     if (!bridgeReady || props.surface.pluginId !== "image-studio" || !sourcePath) return;
     void callWorkspaceAppTool("open_image", { sourcePath });
-  }, [bridgeReady, callWorkspaceAppTool, props.launch, props.surface.pluginId]);
+  }, [bridgeReady, callWorkspaceAppTool, props.launch?.intent, props.launch?.source?.path, props.launch?.requestId, props.surface.pluginId]);
 
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.active === false || props.placement !== "workspace" ? [] : [
     {
@@ -1153,10 +1174,23 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       {props.active !== false && downloadMenu ? <DropdownMenu open onOpenChange={open => { if (!open) setDownloadMenu(null); }}>
         <DropdownMenuTrigger aria-label={t("media.studio.save_assets")} style={{ position: "fixed", ...downloadMenu, opacity: 0 }} />
         <DropdownMenuContent align="end" positionerClassName="z-[70]">
-          {[{ value: "video", label: t("media.studio.save_video") }, { value: "first", label: t("media.studio.save_first") }, { value: "last", label: t("media.studio.save_last") }].map(option => <DropdownMenuItem key={option.value} onClick={() => {
-            iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:download", value: option.value }, "*");
-            setDownloadMenu(null);
-          }}>{option.label}</DropdownMenuItem>)}
+          {props.workbench ? <>
+            <DropdownMenuItem data-testid="media-save-copy" disabled={props.workbench.busy || !props.workbench.canSave} onClick={() => {
+              props.workbench?.onAction("copy");
+              if (props.surface.pluginId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
+              setDownloadMenu(null);
+            }}><Save className="size-4" />{t("media.workbench.save_copy")}</DropdownMenuItem>
+            <DropdownMenuItem data-testid="media-replace-return" disabled={props.workbench.busy || !props.workbench.canReplace} onClick={() => {
+              props.workbench?.onAction("replace");
+              if (props.surface.pluginId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
+              setDownloadMenu(null);
+            }}><Replace className="size-4" />{t("media.workbench.replace_return")}</DropdownMenuItem>
+          </> : (props.surface.pluginId === "image-studio"
+            ? [{ value: "image", label: t("media.workbench.save_copy") }]
+            : [{ value: "video", label: t("media.studio.save_video") }, { value: "first", label: t("media.studio.save_first") }, { value: "last", label: t("media.studio.save_last") }]).map(option => <DropdownMenuItem key={option.value} onClick={() => {
+              iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:download`, value: option.value }, "*");
+              setDownloadMenu(null);
+            }}>{option.label}</DropdownMenuItem>)}
         </DropdownMenuContent>
       </DropdownMenu> : null}
       {props.active !== false && modelMenu ? <DropdownMenu open onOpenChange={open => {

@@ -16,7 +16,7 @@
     "prompt": "打开图片工作台，在右侧生成图片，或对当前图片进行选区与涂抹编辑。"
   },
   "package": {
-    "version": "0.1.76",
+    "version": "0.1.78",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
     "compatibility": { "ipollowork": ">=0.21.0" },
     "updateId": "ipollowork/image-studio"

@@ -819,3 +819,12 @@ html:lang(zh).ipollowork-electron.ipollowork-platform-mac .media-composer-contro
 [data-testid="artifact-file-shell"] > .chat-output-card { width:100%; }
 .chat-output-icon svg { color:var(--muted-foreground); stroke-width:1.8; }
 [data-testid="artifact-file-actions"] { right:10px; }
+
+/* File cards use the same responsive rows in Markdown and output lists. */
+.chat-output-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px; }
+.chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }
+
+.chat-output-card { padding-top:7px; padding-bottom:7px; }
+.chat-output-icon { position:relative; width:40px; height:40px; overflow:hidden; }
+.chat-output-icon .artifact-thumbnail { position:absolute; inset:0; display:block; width:40px; height:40px; max-width:none; margin:0; object-fit:cover; border-radius:8px; }
+.chat-output-icon .artifact-thumbnail-play { position:absolute; right:2px; bottom:2px; width:14px; height:14px; padding:2px; border-radius:4px; background:rgba(0,0,0,.55); color:white; fill:currentColor; stroke:none; }

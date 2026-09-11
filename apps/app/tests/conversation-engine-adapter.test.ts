@@ -946,6 +946,35 @@ describe("conversation engine adapters", () => {
     ]);
   });
 
+  test("restores replayed MCP approval and clears it when its turn is interrupted", async () => {
+    const originalFetch = globalThis.fetch;
+    const frames: unknown[] = [{
+      type: "request", id: 61, method: "mcpServer/elicitation/request",
+      params: { threadId: "approval-recovery", turnId: "turn-a", message: "Allow image edit?", _meta: { codex_approval_kind: "mcp_tool_call" } },
+    }];
+    globalThis.fetch = Object.assign(async () => new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("")), { preconnect: originalFetch.preconnect });
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test", serverBaseUrl: "http://ipollowork.test", workspaceId: "approval-recovery",
+      });
+      const events: ConversationEvent[] = [];
+      const subscribe = () => connection.subscribe({ signal: new AbortController().signal, onEvent: (event) => events.push(event) });
+      await subscribe();
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toHaveLength(1);
+      expect(await connection.listPermissions({ sessionId: "other-thread" })).toEqual([]);
+      frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "previous-turn", status: "completed" } } });
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toHaveLength(1);
+      frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "turn-a", status: "interrupted" } } });
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toEqual([]);
+      expect(events).toContainEqual({ type: "permission.replied", sessionId: "approval-recovery", requestId: "61" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   test("does not mark a Codex reasoning-only turn as successfully processed", () => {
     const state = createCodexLiveState();
     mapCodexHarnessEvent({

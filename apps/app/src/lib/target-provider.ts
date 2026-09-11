@@ -10,12 +10,14 @@ export type OpenTargetOptions = {
 };
 
 type OpenTargetHandler = (target: OpenTarget, options?: OpenTargetOptions) => void;
+export type WorkspaceThumbnailLoader = (path: string) => Promise<{ blob: Blob; detail: string }>;
 export type WorkspaceImageLoader = (path: string) => Promise<Blob>;
 
 type OpenTargetContextValue = {
   openTargets: OpenTarget[];
   onOpenTarget: OpenTargetHandler | undefined;
   loadWorkspaceImage?: WorkspaceImageLoader;
+  loadWorkspaceThumbnail?: WorkspaceThumbnailLoader;
 };
 
 type OpenTargetProviderProps = {
@@ -23,6 +25,7 @@ type OpenTargetProviderProps = {
   openTargets?: OpenTarget[] | undefined;
   onOpenTarget?: OpenTargetHandler | undefined;
   loadWorkspaceImage?: WorkspaceImageLoader;
+  loadWorkspaceThumbnail?: WorkspaceThumbnailLoader;
 };
 
 const EMPTY_OPEN_TARGETS: OpenTarget[] = [];
@@ -37,14 +40,16 @@ export function OpenTargetProvider({
   openTargets = EMPTY_OPEN_TARGETS,
   onOpenTarget,
   loadWorkspaceImage,
+  loadWorkspaceThumbnail,
 }: OpenTargetProviderProps) {
   const value = React.useMemo(
     () => ({
       openTargets,
       onOpenTarget,
       loadWorkspaceImage,
+      loadWorkspaceThumbnail,
     }),
-    [openTargets, onOpenTarget, loadWorkspaceImage],
+    [openTargets, onOpenTarget, loadWorkspaceImage, loadWorkspaceThumbnail],
   );
 
   return React.createElement(OpenTargetContext.Provider, { value }, children);

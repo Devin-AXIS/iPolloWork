@@ -1,4 +1,7 @@
 /** @jsxImportSource react */
+import { resolveInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { IMAGE_STUDIO_EDIT_RESULT } from "@/app/types";
+import { loadArtifactThumbnail } from "@/components/chat/artifact-thumbnail";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
@@ -181,6 +184,7 @@ type PendingArtifactCompletionValidation = {
 };
 
 type PendingImageStudioRefresh = {
+  workbenchRequestId?: string;
   sourcePath: string;
   baselineTargetIds: string[];
   assistantMessageBaseline: number;
@@ -667,7 +671,7 @@ function imageStudioReferenceInstruction(reference: ImageStudioAiReference | nul
       ? "- Use exactly this model ID. Do not switch models."
       : "- No model was selected. List the configured image models and ask the user to choose one; do not generate or edit until they answer.",
     "- Use the image editing skill and save the result as a new workspace file; do not overwrite the source image.",
-    "- In the final response, embed the edited image with a Markdown image link and report its exact workspace-relative path so the conversation shows both the image preview and its file card.",
+    "- In the final response, briefly describe the completed edit and include exactly one normal Markdown file link to the edited image using its exact workspace-relative path. Do not also embed the same image or repeat its path. The user chooses whether to replace the selected project asset; do not claim it has already been replaced.",
   ].join("\n");
 }
 
@@ -728,6 +732,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
+  const loadWorkspaceThumbnail = useCallback((path: string) => loadArtifactThumbnail(props.client, props.workspaceId, path), [props.client, props.workspaceId]);
   const loadWorkspaceImage = useCallback(async (path: string) => {
     // Resolve absolute/file-URL paths through the server's workspace containment guard.
     const resolved = await props.client.resolveArtifacts(props.workspaceId, [createWorkspaceFileOpenTarget({ path })]);
@@ -1194,7 +1199,30 @@ export function SessionSurface(props: SessionSurfaceProps) {
     ));
     if (editedImage) {
       pendingImageStudioRefreshRef.current = null;
-      props.onOpenTarget?.(editedImage, { auto: true, viewer: "image-studio" }, props.sessionId);
+      const store = usePanelTabStore.getState();
+      const origin = pending.workbenchRequestId
+        ? store.completeMediaEdit(props.workspaceId, props.sessionId, pending.workbenchRequestId, editedImage.value)
+        : null;
+      if (origin) {
+        void props.client.listPluginPackages(props.workspaceId).then(packages => {
+          const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => item.pluginId === "image-studio");
+          if (!surface) throw new Error(t("media.workbench.unavailable"));
+          store.resumeMediaEdit(origin, editedImage.value, surface);
+          toast.success(t("image_studio.ai.opened_result"));
+        }).catch(() => toast.warning(t("image_studio.ai.result_not_opened")));
+        return;
+      }
+      const event = new CustomEvent(IMAGE_STUDIO_EDIT_RESULT, { cancelable: true, detail: {
+        workspaceId: props.workspaceId, sessionId: props.sessionId, requestId: pending.workbenchRequestId,
+        sourcePath: pending.sourcePath, path: editedImage.value,
+      } });
+      if (window.dispatchEvent(event)) {
+        if (pending.workbenchRequestId) {
+          toast.warning(t("image_studio.ai.result_not_opened"));
+          return;
+        }
+        props.onOpenTarget?.(editedImage, { auto: true, viewer: "image-studio" }, props.sessionId);
+      }
       toast.success(t("image_studio.ai.opened_result"));
       return;
     }
@@ -1317,6 +1345,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery";
     const imageStudioRefresh = nextDraft.capability?.id === "image-studio-reference" && selectedImageReference
       ? {
+          workbenchRequestId: selectedImageReference.workbenchRequestId,
           sourcePath: selectedImageReference.sourcePath,
           baselineTargetIds: openTargets.map((target) => target.id),
           assistantMessageBaseline: renderedMessages.length,
@@ -1373,6 +1402,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const dispatched = promptWasDispatched(dispatchOutcome);
       if (dispatched && imageStudioRefresh) {
         pendingImageStudioRefreshRef.current = imageStudioRefresh;
+        if (imageStudioRefresh.workbenchRequestId) window.dispatchEvent(new CustomEvent(IMAGE_STUDIO_EDIT_RESULT, { detail: {
+          workspaceId: props.workspaceId, sessionId: props.sessionId, requestId: imageStudioRefresh.workbenchRequestId, phase: "pending",
+        } }));
       }
       const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
       if (dispatched && artifactCompletionTargets.length > 0) {
@@ -2544,6 +2576,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   openTargets={verifiedOpenTargets}
                   onOpenTarget={openTargetForSession}
                   loadWorkspaceImage={loadWorkspaceImage}
+                  loadWorkspaceThumbnail={loadWorkspaceThumbnail}
                 >
                   <EnvironmentVariableProvider
                     client={props.isRemoteWorkspace ? null : props.environmentClient ?? props.client}
