@@ -105,7 +105,12 @@ test('missing scope fails before network I/O; renewed scope is checked again', a
 });
 
 test('public state derives route capabilities from each account granted scopes', async t => {
-  const f = await fixture(t), { account } = await f.connect();
+  const f = await fixture(t);
+  const emptyState = f.ops.state();
+  assert.equal(emptyState.capabilities.publish.status, 'account_required');
+  assert.match(emptyState.capabilities.publish.reason, /绑定并选择抖音账号/);
+
+  const { account } = await f.connect();
   f.store.put('account', { ...account, scopes: ['user_info', 'item.comment'] });
   let state = f.ops.state(), selected = state.accounts[0];
   assert.equal(selected.capabilities.publish.available, false);

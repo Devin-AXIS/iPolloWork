@@ -86,7 +86,7 @@ export class Operations {
   }
   state() {
     const settings = this.settings();
-    return { settings, capabilities: applicationCapabilities(settings), accounts: this.accounts(),
+    return { settings, capabilities: { ...accountCapabilities(null), ...applicationCapabilities(settings) }, accounts: this.accounts(),
       drafts: this.store.list('draft', null, 100), assets: this.store.list('asset', null, 100), jobs: this.store.list('job', null, 100) };
   }
   account(id) { return this.store.get('account', text(id, '账号 ID', 100)) ?? fail('账号不存在', 'account_not_found'); }

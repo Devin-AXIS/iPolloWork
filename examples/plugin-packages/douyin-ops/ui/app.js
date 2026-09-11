@@ -24,7 +24,7 @@
   function requireAccount() { if (!accountId) throw new Error('请先在「账号」中完成官方授权。'); return accountId; }
   const routeCapabilities = { studio: 'publish', videos: 'listVideos', comments: 'comments', search: 'searchVideos' };
   function capability(name) {
-    const result = name === 'searchVideos' ? state.capabilities?.searchVideos : account()?.capabilities?.[name];
+    const result = name === 'searchVideos' ? state.capabilities?.searchVideos : account()?.capabilities?.[name] ?? state.capabilities?.[name];
     return result ?? { available: false, status: accountId ? 'scope_required' : 'account_required', source: 'account', label: '当前功能', requiredScopes: [], missingScopes: [], reason: '当前权限状态不可用，请刷新运营台。' };
   }
   function requireCapability(name) { const result = capability(name); if (!result.available) throw Object.assign(new Error(result.reason), { code: result.status }); return result; }
@@ -62,7 +62,7 @@
     });
   }
   function getHost() {
-    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.5' }, appCapabilities: {} }).then(host => {
+    hostPromise ??= hostRequest('ui/initialize', { protocolVersion: '2025-11-21', appInfo: { name: '抖音运营台', version: '0.1.6' }, appCapabilities: {} }).then(host => {
       parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); return host;
     }).catch(error => { hostPromise = undefined; throw error; });
     return hostPromise;
