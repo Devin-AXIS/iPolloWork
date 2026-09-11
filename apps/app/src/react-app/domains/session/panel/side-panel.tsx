@@ -57,6 +57,9 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
+import { relativeDesignMediaPath, replaceDesignMedia } from "../design/design-media";
+import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
@@ -681,6 +684,7 @@ export function SidePanel({
   const isBrowserAvailable = Boolean(getElectronBrowser());
 
   const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
+  const mediaEdits = usePanelTabStore(state => state.mediaEdits);
 
   const seedArtifactOverflowControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
@@ -876,9 +880,31 @@ export function SidePanel({
             </div>
           </div>
         </div>
-        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").map(tab => (
-          <div key={`${tab.sessionId}:${tab.id}`} className={cn("min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
-            <WorkspaceAppFrame
+        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").map(tab => {
+          const edit = mediaEdits.find(item => item.workspaceId === workspaceId && item.sessionId === sessionId && item.source.requestId === tab.mediaEditRequestId);
+          return (
+          <div key={`${tab.sessionId}:${tab.id}`} className={cn("relative min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
+            {edit ? <MediaWorkbench key={edit.source.requestId}
+              source={edit.source} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
+              resultPath={edit.resultPath} replaced={edit.replaced} visible={tab.id === activeTab?.id}
+              returnLabel={t("media.workbench.back_design")}
+              onActivate={() => selectTab(tab.id)}
+              onResult={path => usePanelTabStore.getState().completeMediaEdit(workspaceId, sessionId, edit.source.requestId, path)}
+              onApply={async save => {
+                if (edit.replaced) throw new Error(t("media.workbench.changed"));
+                const file = await client.readWorkspaceFile(workspaceId, edit.page);
+                const content = replaceDesignMedia(file.content, edit.locator, edit.original, edit.media, relativeDesignMediaPath(edit.page, save.path));
+                await client.writeWorkspaceFile(workspaceId, {path:edit.page, content, baseUpdatedAt:file.updatedAt});
+                usePanelTabStore.getState().closeMediaEdit(edit.source.requestId, true);
+                await getReactQueryClient().invalidateQueries({queryKey:["design-html",workspaceId,edit.page]});
+              }}
+              onClose={() => {
+                const store = usePanelTabStore.getState();
+                store.closeMediaEdit(edit.source.requestId);
+                const origin = store.sessions[sessionId]?.tabs.find(item => item.type === "design" && item.path === edit.page);
+                store.openTab(sessionId, origin ?? {id:`design:${sessionId}:${encodeURIComponent(edit.page)}`,type:"design",label:edit.page.split("/").pop() || "Design",sessionId:edit.projectSessionId,path:edit.page});
+              }}
+            /> : <WorkspaceAppFrame
               active={tab.id === activeTab?.id}
               surface={tab.surface}
               client={client}
@@ -893,30 +919,34 @@ export function SidePanel({
               onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
               onSendMessage={onSendWorkspaceAppMessage}
               onRequestClose={() => closeTab(tab)}
-            />
+            />}
           </div>
 
-        )) : null}
+        ); }) : null}
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "design" ? (
-          <DesignPanelErrorBoundary resetKey={`${activeTab.id}:${activeTab.path}`}>
+        {tabs.filter(tab => tab.type === "design").map(tab => (
+          <div key={`${tab.sessionId}:${tab.id}`} className={cn("min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
+          <DesignPanelErrorBoundary resetKey={`${tab.id}:${tab.path}`}>
             <DesignPanel
-              sessionId={activeTab.sessionId}
+              conversationId={sessionId}
+              sessionId={tab.sessionId}
               client={client}
               mediaClient={client}
               workspaceRoot={workspaceRoot}
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
-              initialPath={activeTab.path}
-              displayName={activeTab.label}
+              initialPath={tab.path}
+              displayName={tab.label}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
-        ) : activeTab?.type === "video" ? (
+          </div>
+        ))}
+        {activeTab?.type === "video" ? (
           <VideoPanel
             key={activeTab.id}
             title={activeTab.label}

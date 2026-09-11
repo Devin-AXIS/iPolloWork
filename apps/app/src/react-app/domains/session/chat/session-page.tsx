@@ -3367,6 +3367,11 @@ export function SessionPage(props: SessionPageProps) {
       toast.error(t("artifact.image_studio_install_required"));
       return;
     }
+    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    if (props.runtimeWorkspaceId && sessionId && usePanelTabStore.getState().openMediaEditResult(props.runtimeWorkspaceId, sessionId, target.value, surface)) {
+      setCurrentSidePanel("panel");
+      return;
+    }
     openWorkspaceApp(surface, {
       intent: "edit-image",
       requestId: crypto.randomUUID(),
@@ -3377,7 +3382,7 @@ export function SessionPage(props: SessionPageProps) {
         preview: target.preview,
       },
     }, sourceSessionId);
-  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
+  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setCurrentSidePanel, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
     // SessionSurface automatically previews newly discovered targets after an
     // agent finishes. Video tasks already have a dedicated preview surface.

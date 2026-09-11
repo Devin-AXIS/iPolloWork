@@ -2,6 +2,7 @@ import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPar
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 import { formatFileSize } from "@/lib/utils"
+import { getAssistantFileMentionPaths } from "@/react-app/domains/session/artifacts/open-target"
 import {
   type ArtifactItem,
   getArtifactStudioTarget,
@@ -149,6 +150,11 @@ export function stripArtifactPathLines(text: string, artifactPaths: readonly str
   return text
     .split(/\r?\n/)
     .filter((line) => {
+      // A standalone delivery link renders another card; keep the canonical HTML card below.
+      if (/^\s*(?:(?:[-+*]|\d+[.)])\s+)?\[[^\]]+\]\((?:<[^>]+>|[^)]+)\)[。.;；]?\s*$/.test(line)) {
+        const linkedPath = getAssistantFileMentionPaths(line)[0]
+        if (linkedPath && /\.html?$/i.test(linkedPath) && paths.includes(normalizedArtifactPath(linkedPath))) return false
+      }
       const normalizedLine = line.replaceAll("\\", "/").replace(/[`*_]/g, "").trim()
       const labelledPath = /^(?:生成文件|更新(?:文件)?|音频(?:位于|文件)?|文件(?:路径)?|输出(?:文件)?|保存(?:到|至)?|路径|generated file|updated file|audio(?: files?)?|file|output|saved to)\s*[:：-]/i.test(normalizedLine)
       if (labelledPath) return false

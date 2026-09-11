@@ -49,6 +49,15 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain('disabled={!props.selectedSessionId && !sidePanelOpen}');
     expect(source).toContain('!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher"');
   });
+  test("keeps one HTML delivery card while retaining images and contextual links", () => {
+    const path = "video/session-1/index.html";
+    const href = "/Users/test/Library/Application%20Support/project/" + path;
+    expect(stripArtifactPathLines(`已完成。\n\n- [视频项目](${href})\n- [主视觉](artifacts/hero.png)`, [path])).toBe("已完成。\n\n- [主视觉](artifacts/hero.png)");
+    expect(stripArtifactPathLines(`[视频项目](<${href}>)`, [path])).toBe("");
+    expect(stripArtifactPathLines(`[另一项目](video/session-2/index.html)`, [path])).toBe("[另一项目](video/session-2/index.html)");
+    expect(stripArtifactPathLines(`请打开[视频项目](${path})查看动画。`, [path])).toBe(`请打开[视频项目](${path})查看动画。`);
+    expect(stripArtifactPathLines(`[视频项目](${path})`, [])).toBe(`[视频项目](${path})`);
+  });
   test("output bundles expand and media files route separately from HTML studios", () => {
     const artifactSource = readFileSync(new URL("../src/components/chat/artifact.tsx", import.meta.url), "utf8");
     const sessionPageSource = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
@@ -59,7 +68,8 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain('mediaKindForPath(target.value) === "video"');
     expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("video-console", {');
     expect(sessionPageSource).toContain('intent: "edit-video"');
-    expect(sessionPageSource).toContain("await openImageStudio(target, sourceId ?? undefined);");
+    expect(sessionPageSource).toContain("await openImageStudio(target, sourceId ?? undefined)");
+    expect(sessionPageSource).toContain("openMediaEditResult(props.runtimeWorkspaceId, sessionId, target.value, surface)");
     expect(sessionPageSource).toContain('options?.viewer === "video" && videoArtifactSessionId');
   });
   test("empty projects hide task controls and render the no-task state", () => {
@@ -199,7 +209,7 @@ describe("session output issue regressions", () => {
     expect(messageListSource).toContain("sessionTitle={sessionTitle}");
     expect(artifactSource).toContain("onOpenVideoStudio?.(presentedName)");
     expect(sessionPageSource).toContain("openDesignTab(target.value, target.name)");
-    expect(sidePanelSource).toContain("displayName={activeTab.label}");
+    expect(sidePanelSource).toContain("displayName={tab.label}");
     expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
     expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
     expect(sidePanelSource).toContain('<SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
@@ -477,8 +487,10 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(source).toContain('"h-14 w-full min-w-0"');
-    expect(source).toContain("grid-cols-[repeat(auto-fill,minmax(min(100%,20rem),20rem))]");
+    expect(source).toContain('className="chat-output-grid pb-2"');
+    const styles = readFileSync(new URL("../src/app/index.css", import.meta.url), "utf8");
+    expect(styles).toContain("grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px");
+    expect(styles).toContain(".chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }");
     expect(source).not.toContain("overflow-x-auto overscroll-x-contain");
     expect(source).not.toContain("snap-proximity");
   });

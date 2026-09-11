@@ -470,6 +470,8 @@ export class CodexHarnessRuntime {
   #providers: CodexHarnessProvider[] = [];
   readonly #attachedThreadSelections = new Map<string, AttachedThreadSelection>();
   readonly #eventListeners = new Set<(event: CodexHarnessEvent) => void>();
+  // Approval requests outlive renderer subscriptions; replay until answered or cancelled.
+  readonly #pendingRequests = new Map<string | number, Extract<CodexHarnessEvent, { type: "request" }>>();
   #unsubscribeProcessEvents = () => {};
   readonly #providerGateway = new CodexProviderGateway();
 
@@ -554,6 +556,7 @@ export class CodexHarnessRuntime {
 
   async respond(id: string | number, result: unknown): Promise<void> {
     (await this.#ensureStarted()).respond(id, result);
+    this.#pendingRequests.delete(id);
   }
 
   async events(signal: AbortSignal): Promise<Response> {
@@ -574,6 +577,7 @@ export class CodexHarnessRuntime {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         };
         this.#eventListeners.add(listener);
+        for (const request of this.#pendingRequests.values()) listener(request);
         unsubscribe = () => this.#eventListeners.delete(listener);
         signal.addEventListener("abort", stop, { once: true });
       },
@@ -601,6 +605,7 @@ export class CodexHarnessRuntime {
     this.#starting = null;
     this.#fingerprint = "";
     this.#attachedThreadSelections.clear();
+    this.#pendingRequests.clear();
     this.#unsubscribeProcessEvents();
     this.#unsubscribeProcessEvents = () => {};
     if (process) await process.close();
@@ -880,6 +885,23 @@ export class CodexHarnessRuntime {
       rpc.notify("initialized", {});
       this.#unsubscribeProcessEvents();
       this.#unsubscribeProcessEvents = rpc.subscribe((event) => {
+        if (event.type === "request") this.#pendingRequests.set(event.id, event);
+        if (event.type === "notification" && isRecord(event.params)) {
+          if (event.method === "serverRequest/resolved") {
+            const id = event.params.requestId;
+            if (typeof id === "string" || typeof id === "number") this.#pendingRequests.delete(id);
+          }
+          if (event.method === "turn/completed" || event.method === "thread/closed") {
+            const threadId = event.params.threadId;
+            const turn = isRecord(event.params.turn) ? event.params.turn : null;
+            for (const [id, request] of this.#pendingRequests) {
+              if (!isRecord(request.params) || typeof threadId !== "string") continue;
+              if ((request.params.threadId ?? request.params.conversationId) !== threadId) continue;
+              if (event.method === "turn/completed" && request.params.turnId && request.params.turnId !== turn?.id) continue;
+              this.#pendingRequests.delete(id);
+            }
+          }
+        }
         if (event.method === "turn/started" || event.method === "item/started") this.#markThreadUsed(event.params);
         for (const listener of this.#eventListeners) listener(event);
       });

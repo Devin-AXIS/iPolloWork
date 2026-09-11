@@ -278,6 +278,20 @@ function codexHarnessConnection(input: {
           const turn = isRecord(params.turn) ? params.turn : null;
           const turnId = typeof turn?.id === "string" ? turn.id : null;
           if (threadId && (!turnId || activeTurns.get(threadId) === turnId)) activeTurns.delete(threadId);
+          for (const [requestId, permission] of permissions) {
+            if (permission.sessionId !== threadId) continue;
+            const requestTurnId = codexNativeRequest(permission.native)?.params.turnId;
+            if (requestTurnId && requestTurnId !== turnId) continue;
+            permissions.delete(requestId);
+            subscription.onEvent({ type: "permission.replied", sessionId: permission.sessionId, requestId });
+          }
+          for (const [requestId, question] of questions) {
+            if (question.sessionId !== threadId) continue;
+            const requestTurnId = codexNativeRequest(question.native)?.params.turnId;
+            if (requestTurnId && requestTurnId !== turnId) continue;
+            questions.delete(requestId);
+            subscription.onEvent({ type: "question.replied", sessionId: question.sessionId, requestId });
+          }
         }
         if (envelope.type === "notification" && envelope.method === "serverRequest/resolved" && params) {
           const requestId = typeof params.requestId === "string" || typeof params.requestId === "number"

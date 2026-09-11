@@ -86,7 +86,7 @@ Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (_url, init) => {
   requests.push(init.body instanceof FormData ? { nativeMask: Boolean(init.body.get("mask")), prompt: init.body.get("prompt") } : JSON.parse(init.body));
   return Response.json({ data: [{ b64_json: generated.toString("base64") }] });
 });
-const service = await createService({ workspace: { root }, plugin: { version: "0.1.13" }, host: { callAction: (reference, args) => callOpenAiImageGenerationExtensionAction(config, authorization, reference.split("/")[1], args, context) } });
+const service = await createService({ workspace: { root }, storage: { dataDir: root }, plugin: { version: "0.1.13" }, host: { callAction: (reference, args) => callOpenAiImageGenerationExtensionAction(config, authorization, reference.split("/")[1], args, context) } });
 const manifest = JSON.parse(await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console" : "image-studio"}/ipollowork.plugin.json`, import.meta.url), "utf8"));
 const html = await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console/ui/video-console" : "image-studio/ui/image-studio"}.html`, import.meta.url), "utf8");
 const modulePath = fileURLToPath(new URL(videoMode ? "./video-image-fixture-ui.jsx" : "./image-selection-fixture-ui.jsx", import.meta.url)).replaceAll("\\", "/");
@@ -179,6 +179,9 @@ const server = createServer(async (req, res) => {
         const bytes=await readFile(await resolveWithinRoot(root,args.path)),offset=args.offset||0;
         const part=bytes.subarray(offset,offset+1024*1024);
         result={path:args.path,mime:"video/mp4",size:bytes.length,data:part.toString("base64"),nextOffset:offset+part.length};
+      } else if (action === "inspect" || action === "local-edit") {
+        result = (await callVideoGenerationAction(config, authorization, action, args, context)).result;
+        actions.push({ action, mode: args.mode, path: result.path });
       } else throw new Error("Unexpected mock video action");
       res.setHeader("Content-Type","application/json");res.end(JSON.stringify({ok:true,result}));return;
     }
