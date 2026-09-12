@@ -146,7 +146,6 @@ const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.wireframe-sketch",
   "ipollowork.site-atelier-architecture",
   "ipollowork.hyperframes.agent-command-center",
-  "ipollowork.hyperframes.ai-trend-briefing",
   "ipollowork.hyperframes.multi-agent-relay",
   "ipollowork.hyperframes.course-journey",
   "ipollowork.html-anything.motion-frames",
