@@ -466,16 +466,16 @@
     "@hyperframes/studio-server": "workspace:*",
     "bpm-detective": "^2.0.5",
     "linkedom": "^0.18.12",
-    "postcss": "^8.5.26"
+    "postcss": "^8.5.28"
   },
   "devDependencies": {
     "@types/jsdom": "^30.0.0",
-    "@types/node": "^26.2.0",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@types/node": "^26.4.1",
+    "@vitest/coverage-v8": "^5.0.0",
     "jsdom": "^30.0.1",
     "tsx": "^4.21.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   },
   "optionalDependencies": {
     "esbuild": "^0.28.2"

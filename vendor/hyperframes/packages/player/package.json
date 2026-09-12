@@ -42,6 +42,6 @@
     "puppeteer-core": "^25.2.1",
     "tsup": "^8.0.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.0"
   }
 }
