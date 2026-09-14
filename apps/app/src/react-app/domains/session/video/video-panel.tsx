@@ -855,6 +855,13 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             setDetail(t("video.could_not_load", { url: studioUrl }));
           }} /> : null}
           {features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? <VideoVoicePanel
+            onAddVideo={async (path) => {
+              if (!workspaceId) throw new Error("请先连接工作区。");
+              const file = await client.downloadWorkspaceFile(workspaceId, path);
+              await client.uploadWorkspaceMedia(workspaceId, `${projectDirectory}/assets/avatar-${crypto.randomUUID()}.mp4`,
+                new File([file.data], "avatar.mp4", { type: "video/mp4" }));
+              setRevision(value => value + 1);
+            }}
             sessionId={sessionId}
             workspaceRoot={workspaceRoot}
             client={client}

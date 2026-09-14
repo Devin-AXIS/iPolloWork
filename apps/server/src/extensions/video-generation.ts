@@ -19,10 +19,11 @@ export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
 const RH = "https://www.runninghub.ai";
 const H3_WORKFLOW = "2097511747551842305";
+const AVATAR_WORKFLOW = "2084814218431385601";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
-const modelId = z.enum(["seedance-2.5", "minimax-h3"]);
+const modelId = z.enum(["seedance-2.5", "minimax-h3", "minimax-h3-avatar"]);
 const ratios = ["adaptive", "16:9", "9:16", "1:1", "4:3", "3:4", "21:9"];
 const catalog = [
   {
@@ -40,6 +41,12 @@ const catalog = [
     durations: Array.from({ length: 11 }, (_, i) => String(i + 5)),
     operations: ["text", "first", "first-last"],
     imageLimit: 0, videoLimit: 0, audioLimit: 0, referenceSeconds: 0,
+  },
+  {
+    id: "minimax-h3-avatar", label: "数字人 · MiniMax H3 lightx2v", service: "runninghub-video", key: "RUNNINGHUB_API_KEY",
+    upstream: AVATAR_WORKFLOW, resolutions: ["0.589824MP"], defaultResolution: "0.589824MP",
+    ratios: ["9:16", "16:9"], durations: Array.from({ length: 11 }, (_, i) => String(i + 5)),
+    operations: ["reference"], imageLimit: 1, videoLimit: 0, audioLimit: 1, referenceSeconds: 15,
   },
 ];
 // Source of truth for both the inspector and validation. Do not send unsupported knobs.
@@ -79,6 +86,11 @@ export function validateVideoSubmission(input: unknown): Submission {
   if (["first", "first-last"].includes(args.operation) !== Boolean(args.firstFrame.trim())) fail("首帧模式需要首帧图片；其他模式请使用参考素材。");
   if ((args.operation === "first-last") !== Boolean(args.lastFrame.trim())) fail("首尾帧模式需要尾帧图片；其他模式不支持尾帧。");
   const images = lines(args.imageRefs), videos = lines(args.videoRefs), audio = lines(args.audioRefs);
+  if (args.model === "minimax-h3-avatar") {
+    if (images.length !== 1 || audio.length !== 1) fail("数字人需要一张人物图片和一段配音。");
+    if (audio[0].startsWith("https://")) fail("请上传音频或选择工作区中的配音文件。");
+    if (args.generateAudio !== undefined || args.watermark !== undefined) fail("数字人保留上传的配音，不支持音频或水印开关。");
+  }
   if (images.length > model.imageLimit || videos.length > model.videoLimit || audio.length > model.audioLimit) fail("参考素材数量超过当前模型限制。");
   if (!isReference(args.operation) && images.length + videos.length + audio.length) fail("当前操作不接受多模态参考素材。");
   if (isReference(args.operation) && !images.length && !videos.length && !audio.length) fail("请先添加参考素材。");
@@ -201,7 +213,62 @@ async function sourceUrl(workspace: WorkspaceInfo, source: string, kind: "image"
   const response = await providerFetch(`${RH}/task/openapi/upload`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
   const payload = JSON.parse(new TextDecoder().decode(await readLimitedRequestBody(response, 64 * 1024)));
   if (!response.ok) throw providerApiError(payload, response.status);
-  return z.object({ fileName: z.string().regex(/^[a-zA-Z0-9_/-]+\.(png|jpe?g|webp)$/i) }).parse(workflowData(payload)).fileName;
+  const uploaded = z.object({ fileName: z.string().regex(/^[a-zA-Z0-9_/-]+\.(png|jpe?g|webp|mp3|wav)$/i) }).parse(workflowData(payload)).fileName;
+  if (!mimeTypes[extname(uploaded).toLowerCase()]?.startsWith(`${kind}/`)) fail("上传服务返回了不匹配的素材类型。");
+  return uploaded;
+}
+
+async function avatarWorkflow(args: Submission, key: string, image: string, audio: string, signal: AbortSignal) {
+  const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId: AVATAR_WORKFLOW }, signal));
+  const { prompt } = z.object({ prompt: z.string() }).parse(data);
+  const graph = z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
+  const node = (id: string, type: string) => {
+    if (graph[id]?.class_type !== type) throw new ApiError(400, "video_workflow_changed", "数字人工作流节点已变化，尚未提交生成。");
+    return graph[id].inputs;
+  };
+  const target = node("136", "MiniMaxH3ReferenceToVideo");
+  const drive = node("172", "VRGDG_MiniMaxH3AudioDrive");
+  const output = node("142", "VHS_VideoCombine");
+  const audioInput = node("171", "LoadAudio");
+  const crop = node("199", "TrimAudioDuration");
+  const scheduler = node("124", "BasicScheduler");
+  node("137", "LoadImage");
+  const imageKey = Object.keys(target).find(name => name === "ref_image_0" || name === "ref_images.ref_image_0");
+  const audioKey = Object.keys(target).find(name => name === "ref_audio_0" || name === "ref_audios.ref_audio_0");
+  if (!imageKey || !audioKey || JSON.stringify(node("125", "SamplerCustomAdvanced").latent_image) !== '["172",0]'
+    || JSON.stringify(node("126", "BasicGuider").conditioning) !== '["136",0]'
+    || JSON.stringify(output.images) !== '["122",0]' || JSON.stringify(drive.av_latent) !== '["136",1]'
+    || node("174", "UNETLoader").unet_name !== "minimax_h3_ref2va_int8_convrot.safetensors"
+    || node("196", "LoraLoaderModelOnly").lora_name !== "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors") {
+    throw new ApiError(400, "video_workflow_changed", "数字人音频或视频连接已变化，尚未提交生成。");
+  }
+  graph["137"] = { class_type: image.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image } };
+  audioInput.audio = audio;
+  crop.audio = ["171", 0]; crop.start_index = 0; crop.duration = Number(args.duration);
+  drive.source_audio = ["199", 0];
+  target[imageKey] = ["137", 0]; target[audioKey] = ["199", 0];
+  target.prompt = `<Picture 1> speaks and lip-syncs exactly to <Audio 1>. ${args.prompt}`;
+  target.width = args.ratio === "9:16" ? 576 : 1024;
+  target.height = args.ratio === "9:16" ? 1024 : 576;
+  const frames = Math.round(Number(args.duration) * 24);
+  target.length = frames + (5 - frames % 17 + 17) % 17;
+  target.ref_image_size = "match";
+  scheduler.steps = 6;
+  node("129", "RandomNoise").noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
+  output.audio = ["199", 0]; output.frame_rate = 24; output.trim_to_audio = true;
+  output.format = "video/h264-mp4"; output.save_output = true;
+  const reachable = new Set<string>();
+  const visit = (id: string) => {
+    if (reachable.has(id)) return;
+    if (!graph[id]) throw new ApiError(400, "video_workflow_changed", "数字人缺少生成节点，尚未提交。");
+    reachable.add(id);
+    for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
+  };
+  visit("142");
+  if (!reachable.has("136") || !reachable.has("171")) fail("数字人输出缺少图片或音频生成链路。");
+  return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: AVATAR_WORKFLOW,
+    workflow: JSON.stringify(Object.fromEntries(Object.entries(graph).filter(([id]) => reachable.has(id)))),
+    nodeInfoList: [{ nodeId: "136", fieldName: "prompt", fieldValue: target.prompt }], instanceType: "plus", addMetadata: false } };
 }
 
 // Fetch the published graph before billing, verify the bindings, and replace only
@@ -294,7 +361,7 @@ export async function videoRequest(workspace: WorkspaceInfo, args: Submission, k
       generate_audio: args.generateAudio !== "false", watermark: args.watermark !== "false",
       ...(isReference(args.operation) ? { omni_reference_task_type: args.operation } : {}) } };
   }
-  return h3Workflow(args, key, first, last, signal);
+  return args.model === "minimax-h3-avatar" ? avatarWorkflow(args, key, images[0], audio[0], signal) : h3Workflow(args, key, first, last, signal);
 }
 
 async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, url: string, signal: AbortSignal) {
@@ -349,7 +416,7 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
   const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
   // Persisted jobs from the previous native workflow still finish on node 7.
-  const outputNode = [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
+  const outputNode = job.workflowId === AVATAR_WORKFLOW ? "142" : [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
   const video = outputs.find(item => item.nodeId === outputNode && item.fileType.toLowerCase() === "mp4");
   if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
   return { status, results: [{ url: video.fileUrl }] };
@@ -433,7 +500,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     const now = Date.now();
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
-      ...(args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
+      ...(args.model === "minimax-h3-avatar" ? { workflowId: AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
       model: args.model, operation: args.operation, prompt: args.prompt, status: "submitting", upstreamId: "", path: "", message: "准备并提交素材…",
       createdAt: now, updatedAt: now, nextPoll: now + 15 * 60_000 });
     if (!created.created) return { ok: true, result: { job: created.job } };

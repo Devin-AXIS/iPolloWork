@@ -38,6 +38,59 @@ function workflowFixture() {
     "16": { class_type: "RandomNoise", inputs: { noise_seed: 42 } },
   }) } };
 }
+
+function avatarFixture() {
+  const node = (class_type: string, inputs: Record<string, unknown>) => ({ class_type, inputs });
+  return { code: 0, data: { prompt: JSON.stringify({
+    "136": node("MiniMaxH3ReferenceToVideo", { prompt: "author demo", ref_image_0: ["137", 0], ref_audio_0: ["199", 0], ref_image_size: "max" }),
+    "137": node("LoadImage", { image: "demo.png" }), "171": node("LoadAudio", { audio: "demo.mp3" }),
+    "199": node("TrimAudioDuration", { audio: ["171", 0], start_index: 40, duration: 10 }),
+    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0] }),
+    "125": node("SamplerCustomAdvanced", { latent_image: ["172", 0], guider: ["126", 0], sigmas: ["124", 0], noise: ["129", 0] }),
+    "126": node("BasicGuider", { conditioning: ["136", 0], model: ["196", 0] }),
+    "124": node("BasicScheduler", { steps: 6 }), "129": node("RandomNoise", { noise_seed: 999 }),
+    "122": node("VAEDecode", { samples: ["125", 0] }),
+    "142": node("VHS_VideoCombine", { images: ["122", 0], audio: ["172", 1], frame_rate: 24 }),
+    "174": node("UNETLoader", { unet_name: "minimax_h3_ref2va_int8_convrot.safetensors" }),
+    "196": node("LoraLoaderModelOnly", { model: ["174", 0], lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors" }),
+    "999": node("LoadAudio", { audio: "unused-demo.mp3" }),
+  }) } };
+}
+
+test("avatar requires one image and local audio and rejects incompatible modes", () => {
+  const base = { model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "person.png", audioRefs: "voice.wav" };
+  expect(validateVideoSubmission(submission(base)).model).toBe("minimax-h3-avatar");
+  for (const patch of [{ audioRefs: "" }, { imageRefs: "" }, { imageRefs: "a.png\nb.png" }, { audioRefs: "https://example.com/voice.mp3" }, { ratio: "1:1" }, { duration: "30" }, { generateAudio: "true" }]) {
+    expect(() => validateVideoSubmission(submission({ ...base, ...patch }))).toThrow();
+  }
+});
+
+test("avatar replaces demo media, starts at zero and preserves six steps in both orientations", async () => {
+  const { root, config } = await setup();
+  await writeFile(join(root, "voice.wav"), "test-audio");
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/upload") ? { code: 0, data: { fileName: "input/voice.wav" } } : avatarFixture()));
+  for (const ratio of ["9:16", "16:9"]) {
+    const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", duration: "10", ratio, imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth);
+    if (!("workflow" in request.body)) throw new Error("Missing workflow");
+    const graph = JSON.parse(request.body.workflow);
+    expect(request.body).toMatchObject({ workflowId: "2084814218431385601", instanceType: "plus" });
+    expect(graph["136"].inputs).toMatchObject({ width: ratio === "9:16" ? 576 : 1024, height: ratio === "9:16" ? 1024 : 576, length: 243, ref_image_size: "match" });
+    expect(graph["199"].inputs).toMatchObject({ start_index: 0, duration: 10 });
+    expect(graph["171"].inputs.audio).toBe("input/voice.wav");
+    expect(graph["172"].inputs.source_audio).toEqual(["199", 0]);
+    expect(graph["142"].inputs).toMatchObject({ audio: ["199", 0], trim_to_audio: true });
+    expect(graph["124"].inputs.steps).toBe(6);
+    expect(graph["999"]).toBeUndefined();
+    expect(request.body.workflow).not.toContain("author demo");
+  }
+});
+
+test("avatar rejects changed audio wiring before creating a billable task", async () => {
+  const { root, config } = await setup(); await writeFile(join(root, "voice.wav"), "test-audio");
+  const fixture = avatarFixture(); const graph = JSON.parse(fixture.data.prompt); graph["172"].inputs.av_latent = ["wrong", 0]; fixture.data.prompt = JSON.stringify(graph);
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/upload") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
+  await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow("尚未提交");
+});
 afterEach(async () => {
   if (oldFetch === undefined) Reflect.deleteProperty(globalThis,PROVIDER_FETCH_SYMBOL); else Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,oldFetch);
   for (const root of roots.splice(0)) await rm(root,{recursive:true,force:true});
@@ -240,6 +293,7 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
 });
 
 test.each([
+  ["2084814218431385601", "142"],
   ["2084935567606894593", "92"],
   ["2084511826766811137", "7"],
   ["2097511747551842305", "7"],

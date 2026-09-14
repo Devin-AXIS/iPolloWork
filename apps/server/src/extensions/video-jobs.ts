@@ -5,16 +5,8 @@ import { importNodeSqlite } from "../node-sqlite.js";
 import { runtimeDbPath } from "../runtime-storage.js";
 import type { ServerConfig } from "../types.js";
 import { ensureDir } from "../utils.js";
-
-const jobSchema = z.object({
-  id: z.string(), workspaceId: z.string(), sessionId: z.string(), model: z.string(),
-  operation: z.string(), prompt: z.string(), fingerprint: z.string(), upstreamId: z.string(),
-  // Absent on existing standard-API jobs; preserve their query endpoint on upgrades.
-  workflowId: z.string().optional(),
-  status: z.enum(["submitting", "running", "saving", "succeeded", "failed", "uncertain", "save_failed"]),
-  path: z.string(), message: z.string(), createdAt: z.number(), updatedAt: z.number(), nextPoll: z.number(),
-});
-export type VideoJob = z.infer<typeof jobSchema>;
+import { videoJobSchema as jobSchema, type VideoJob } from "@ipollowork/types/video-generation";
+export type { VideoJob } from "@ipollowork/types/video-generation";
 
 // Durable upstream identifiers, never credentials, media bytes or expiring signed URLs.
 async function openDb(config: ServerConfig) {

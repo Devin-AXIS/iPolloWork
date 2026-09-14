@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n";
 import { StudioInspectorHeader, StudioInspectorPanel } from "../panel/studio-inspector-panel";
+import { VideoAvatarPanel } from "./video-avatar-panel";
 
 import {
   BAILIAN_PRESET_VOICES,
@@ -31,6 +32,7 @@ type VideoVoicePanelProps = {
   onClose: () => void;
   embedded?: boolean;
   embeddedWidth?: number;
+  onAddVideo?: (path: string) => Promise<void>;
 };
 
 type CustomVoice = {
@@ -125,7 +127,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false, embeddedWidth = 400 }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false, embeddedWidth = 400, onAddVideo }: VideoVoicePanelProps) {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const handledPreviewRequestRef = React.useRef(0);
@@ -135,7 +137,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   const [mediaReady, setMediaReady] = React.useState(false);
   const [storageReady, setStorageReady] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
-  const [activeTab, setActiveTab] = React.useState<"preset" | "mine">("preset");
+  const [activeTab, setActiveTab] = React.useState<"preset" | "mine" | "avatar">("preset");
   const [mineDataLoaded, setMineDataLoaded] = React.useState(false);
   const [loadingMineData, setLoadingMineData] = React.useState(false);
   const [cloning, setCloning] = React.useState(false);
@@ -402,12 +404,14 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       /> : undefined}
     >
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
-          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
-          {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
+          {!loading && !mediaReady && activeTab !== "avatar" ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
+          {!loading ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "avatar" ? "avatar" : value === "mine" ? "mine" : "preset")} className="gap-3">
             <TabsList className="w-full bg-muted/60">
-              <TabsTrigger value="preset"><AudioLines />{t("video.voice.preset_tab")}</TabsTrigger>
-              <TabsTrigger value="mine"><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
+              <TabsTrigger value="preset" disabled={!mediaReady}><AudioLines />{t("video.voice.preset_tab")}</TabsTrigger>
+              <TabsTrigger value="mine" disabled={!mediaReady}><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
+              <TabsTrigger value="avatar">数字人视频</TabsTrigger>
             </TabsList>
+            <TabsContent value="avatar">{client && workspaceId ? <VideoAvatarPanel key={sessionId} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId} voice={activeVoice} onAddVideo={onAddVideo} /> : <p className="text-xs">请先连接工作区。</p>}</TabsContent>
             <TabsContent value="preset" className="space-y-3">
               <div>
                 <p className="text-xs font-medium">{t("video.voice.official_presets")}</p>
