@@ -1,3 +1,4 @@
+import { officeDesign } from "./office-design";
 import { chunkPlainText } from "../chunking";
 import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent, ReferenceAsset, ReferenceChunk, ReferenceProgress } from "../types";
@@ -9,6 +10,7 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
   const main = "word/document.xml";
   if (!zip.file(main)) return { text: "", chunks: [], warnings: ["DOCX document.xml was not found."] };
   const reader = officePackage(zip);
+  const design = officeDesign(zip, "docx");
   const relationships = await officeRelationships(zip, main);
   const parts = [...new Set([main, ...relationships.filter((rel) => !rel.external && ["header", "footer", "footnotes", "endnotes", "comments"].includes(rel.type)).flatMap((rel) => rel.target ? [rel.target] : [])])];
   const headings: string[] = [];
@@ -61,6 +63,8 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
       for (const [index, table] of tables.entries()) {
         chunks.push(...chunkPlainText({ source: file.name, heading: `Table ${index + 1} (${part})`, text: table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n") }).map((chunk, n) => ({ ...chunk, id: `${file.name}:${part}:table:${index}:${n}` })));
       }
+      try { await design.word(part, doc); }
+      catch (error) { design.design.limitations.push(`Word design ${part}: ${String(error)}`); }
       onProgress?.(10 + Math.round(80 * (partIndex + 1) / parts.length), `提取 Word 内容 ${partIndex + 1}/${parts.length}`);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") throw error;
@@ -69,5 +73,5 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
   }
   assets.push(...await reader.supportingParts("word"));
   const text = sections.flatMap((section) => [section.text, ...section.tables.map((table) => table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n")), ...section.related.map((item) => `${item.type}: ${item.text}\n${JSON.stringify(item.data)}`)]).filter(Boolean).join("\n\n");
-  return { text, chunks, assets, style: reader.style, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; image interpretation and audio/video transcription are disabled."] : [])], metadata: { headings }, coverage: { text: reader.warnings.length ? "partial" : text.trim() ? "complete" : "none", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" } };
+  return { text, chunks, assets, style: { ...reader.style, design: design.finish() }, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; image interpretation and audio/video transcription are disabled."] : [])], metadata: { headings }, coverage: { text: reader.warnings.length ? "partial" : text.trim() ? "complete" : "none", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" } };
 }

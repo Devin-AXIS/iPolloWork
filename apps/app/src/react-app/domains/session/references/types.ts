@@ -1,9 +1,12 @@
+import type { ReferenceDesign } from "@ipollowork/types/reference-context";
+
 export type ReferenceStyle = {
   fonts: string[];
   colors: string[];
   backgrounds: string[];
   fontSizesPt: number[];
   sourceParts: string[];
+  design?: ReferenceDesign;
 };
 
 export type ReferenceQuality = "high" | "medium" | "low" | "failed";

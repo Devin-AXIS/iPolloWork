@@ -1,3 +1,4 @@
+import { styleWithDesign, textReferenceDesign } from "./extractors/design";
 import type { ComposerAttachment } from "@/app/types";
 import { buildDeterministicSummary } from "./compression";
 import { extractDocxReference } from "./extractors/docx";
@@ -135,7 +136,7 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
     warnings: quality.warnings,
     metadata: extracted.metadata,
     structuredData: extracted.structuredData,
-    style: extracted.style,
+    style: styleWithDesign(extracted.style, extracted.style?.design ?? textReferenceDesign(extension, extracted)),
     rawText: extracted.rawText,
     assets: [...extracted.assets ?? [], { sourcePart: file.name, path: file.name, kind: "document", file }],
     coverage: extracted.coverage,

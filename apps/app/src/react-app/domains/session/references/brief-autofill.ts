@@ -73,7 +73,12 @@ export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionR
   const style = accepted.flatMap((item) => {
     if (!item.style) return [];
     const value = item.style;
-    const lines = [value.fonts.length ? `字体：${value.fonts.join("、")}` : "", value.colors.length ? `配色：${value.colors.join("、")}` : "", value.backgrounds.length ? `背景色：${value.backgrounds.join("、")}` : "", value.fontSizesPt.length ? `原文字号：${value.fontSizesPt.join("、")} pt（视频中按画面适配）` : ""].filter(Boolean);
+    if (value.design) {
+      const design = value.design;
+      const status = design.availability === "declared" ? "文件声明的风格" : design.availability === "structure-only" ? "文件结构（无固定视觉样式）" : design.availability === "unavailable" ? "无法提取设计样式" : "本地提取的设计参数";
+      return [`[${item.fileName}] ${status}：${design.summary.join("；")}${design.limitations.length ? "；部分效果未解析，详见参考上下文" : ""}`];
+    }
+    const lines = [value.fonts.length ? `字体：${value.fonts.join("、")}` : "", value.colors.length ? `配色：${value.colors.join("、")}` : "", value.backgrounds.length ? `背景色：${value.backgrounds.join("、")}` : "", value.fontSizesPt.length ? `原文字号：${value.fontSizesPt.join("、")} pt（生成时按画面适配）` : ""].filter(Boolean);
     return lines.length ? [`[${item.fileName}] ${lines.join("；")}`] : [];
   }).join("\n");
   return { title, audience, details, ...(style ? { style } : {}) };

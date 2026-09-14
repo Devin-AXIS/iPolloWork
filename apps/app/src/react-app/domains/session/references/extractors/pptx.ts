@@ -1,3 +1,4 @@
+import { officeDesign } from "./office-design";
 import { cleanReferenceText } from "../quality";
 import { chunkPlainText } from "../chunking";
 import type { ExtractedReferenceContent, ReferenceAsset, ReferenceChunk, ReferenceProgress } from "../types";
@@ -7,10 +8,12 @@ export async function extractPptxReference(file: File, onProgress?: ReferencePro
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
   const reader = officePackage(zip);
+  const design = officeDesign(zip, "pptx");
   const presentation = await officeXml(zip, "ppt/presentation.xml");
+  const presentationDoc = presentation ? xmlDocument(presentation) : undefined;
   const relationships = await officeRelationships(zip, "ppt/presentation.xml");
   const slideFiles = presentation
-    ? descendants(xmlDocument(presentation), "sldId").flatMap((slide) => {
+    ? descendants(presentationDoc!, "sldId").flatMap((slide) => {
       const id = slide.getAttributeNS(REL_NS, "id");
       const target = relationships.find((rel) => rel.id === id && !rel.external)?.target;
       if (!target) reader.warnings.push(`Missing slide relationship: ${id}`);
@@ -44,6 +47,8 @@ export async function extractPptxReference(file: File, onProgress?: ReferencePro
       }))), page, sourcePart: part, hidden: doc.documentElement.getAttribute("show") === "0", text, tables, related: extracted.related, media: slideAssets.map(({ file: _file, ...asset }) => asset) });
       if (!fullText) reader.warnings.push(`Slide ${page}: no readable text; visual review is required.`);
       chunks.push(...chunkPlainText({ source: file.name, page, text: fullText }));
+      try { await design.slide(part, doc, page, presentationDoc); }
+      catch (error) { design.design.limitations.push(`Slide ${page} design: ${String(error)}`); }
       onProgress?.(10 + Math.round(80 * (index + 1) / slideFiles.length), `提取 PPT 第 ${index + 1}/${slideFiles.length} 页`);
     } catch (error) {
       if (error instanceof Error && error.name === "AbortError") throw error;
@@ -52,7 +57,7 @@ export async function extractPptxReference(file: File, onProgress?: ReferencePro
   }
   assets.push(...await reader.supportingParts("ppt"));
   return {
-    style: reader.style,
+    style: { ...reader.style, design: design.finish() },
     text: slides.map((slide) => `Slide ${slide.page}\n${slide.text}\n${slide.related.map((related) => `${related.type}: ${related.text}\n${JSON.stringify(related.data)}`).join("\n")}`).join("\n\n"), chunks, assets, structuredData: { slides },
     warnings: [...reader.warnings, "Slide text, tables, notes and cached chart data were extracted; image interpretation and audio/video transcription are disabled."],
     metadata: { pages: slideFiles.length }, coverage: { text: reader.warnings.length || slides.length !== slideFiles.length ? "partial" : slides.some((slide) => slide.text.trim()) ? "complete" : "none", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" },

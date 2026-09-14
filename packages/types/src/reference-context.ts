@@ -18,6 +18,28 @@ export const VerifiedInboxReceiptSchema = z.object({ ok: z.literal(true), path: 
 
 const CreativeFileSchema = z.object({ attachmentName: z.string().min(1), workspacePath: z.string().min(1).optional() });
 const BriefSchema = z.object({ title: z.string(), audience: z.string(), details: z.string(), style: z.string().optional() });
+const DesignElementSchema = z.object({
+  kind: z.string(), role: z.enum(["title", "heading", "body", "unknown"]),
+  roleOrigin: z.enum(["explicit", "rule", "unknown"]), text: z.string(), sources: z.array(z.string()),
+  xPt: z.number().optional(), yPt: z.number().optional(), widthPt: z.number().optional(), heightPt: z.number().optional(), rotationDeg: z.number().optional(),
+  fontFamily: z.string().optional(), fontSizePt: z.number().optional(), bold: z.boolean().optional(), italic: z.boolean().optional(),
+  color: z.string().optional(), background: z.string().optional(), alignment: z.string().optional(),
+  spaceBeforePt: z.number().optional(), spaceAfterPt: z.number().optional(), lineSpacing: z.string().optional(),
+  fill: z.string().optional(), borderColor: z.string().optional(), borderWidthPt: z.number().optional(),
+});
+export const ReferenceDesignSchema = z.object({
+  schemaVersion: z.literal(1), format: z.string(), method: z.literal("local-rules"),
+  availability: z.enum(["extracted", "declared", "structure-only", "unavailable"]),
+  summary: z.array(z.string()), limitations: z.array(z.string()), omittedElements: size,
+  typography: z.array(z.object({ fontFamily: z.string().optional(), fontSizePt: z.number().optional(), role: z.string(), count: size })),
+  palette: z.array(z.object({ color: z.string(), role: z.string(), count: size })),
+  structure: z.record(z.string(), z.union([z.string(), z.number()])),
+  pages: z.array(z.object({ sourcePart: z.string(), page: size.optional(), widthPt: z.number().optional(), heightPt: z.number().optional(), background: z.string().optional(),
+    elements: z.array(DesignElementSchema),
+  })),
+});
+export type ReferenceDesign = z.infer<typeof ReferenceDesignSchema>;
+export type ReferenceDesignElement = z.infer<typeof DesignElementSchema>;
 /** Compact index, not a replacement for the lossless reference evidence. */
 export const CreativeContextSchema = z.object({
   schemaVersion: z.literal(1), kind: z.literal("creative-context"),
@@ -36,6 +58,7 @@ export const CreativeContextSchema = z.object({
     direction: z.string().nullable(), directionOrigin: z.enum(["user", "unknown"]),
     observations: z.array(z.object({ sourceId: z.string(), evidencePointer: z.string(),
       fonts: z.array(z.string()), colors: z.array(z.string()), backgrounds: z.array(z.string()), fontSizesPt: z.array(z.number()),
+      design: ReferenceDesignSchema.optional(),
     })),
     interpretation: z.literal("extracted-values-only"),
   }),

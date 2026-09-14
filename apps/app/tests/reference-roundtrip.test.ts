@@ -1,4 +1,4 @@
-import { CreativeContextSchema } from "@ipollowork/types/reference-context";
+import { CreativeContextSchema, ReferenceDesignSchema } from "@ipollowork/types/reference-context";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -97,6 +97,9 @@ test(`reference ${type}: ${size} real bytes upload, parse, persist, reconstruct 
     expect(hash(bytes)).toBe(hash(local));
     const context = JSON.parse(new TextDecoder().decode(bytes));
     expect(context.storage).toBeUndefined();
+    const design = ReferenceDesignSchema.parse(context.files[0].style.design);
+    expect(design.format).toBe(type);
+    expect(design.method).toBe("local-rules");
     expect(context.files[0].rawText ?? context.files[0].text).toBe(evidence);
     const original = saved.find((item) => item.name.endsWith(`-${file.name}`))!;
     const originalRead = await client.downloadInboxItem("ws", Buffer.from(original.workspacePath.replace(/^\.opencode\/ipollowork\/inbox\//, "")).toString("base64url"));
@@ -108,6 +111,7 @@ test(`reference ${type}: ${size} real bytes upload, parse, persist, reconstruct 
     expect(creative.sources[0]?.original?.workspacePath).toBe(original.workspacePath);
     expect(creative.brief.user?.style).toBe("");
     expect(creative.designSystem.directionOrigin).toBe("user");
+    expect(creative.designSystem.observations[0]?.design?.format).toBe(type);
     expect(saved.at(-1)?.workspacePath).toBe(creativePath);
     expect(creativeDownload.data.byteLength).toBeLessThan(100_000);
     console.log(JSON.stringify({ creativeBytes: creativeDownload.data.byteLength, type, sourceBytes: size, contextBytes: bytes.length, attachments: saved.length, sha256: hash(bytes), elapsedMs: Date.now() - started, result: "passed" }));

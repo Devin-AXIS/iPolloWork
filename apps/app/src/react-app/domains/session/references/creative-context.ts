@@ -45,6 +45,7 @@ export function buildCreativeContext(references: TemplateReferenceItem[], brief?
     }
     if (ingestion?.style) context.designSystem.observations.push({ sourceId, evidencePointer: `${pointer}/style`,
       fonts: ingestion.style.fonts, colors: ingestion.style.colors, backgrounds: ingestion.style.backgrounds, fontSizesPt: ingestion.style.fontSizesPt,
+      design: ingestion.style.design ? { ...ingestion.style.design, pages: [], typography: ingestion.style.design.typography.slice(0, 32), palette: ingestion.style.design.palette.slice(0, 32), limitations: [...ingestion.style.design.limitations, "Compact design index omits detailed pages and caps typography/palette at 32; read the source style.design evidence for all recorded details."] } : undefined,
     });
     const structured = record(ingestion?.structuredData);
     for (const key of ["slides", "pages", "sections"]) {

@@ -19,7 +19,7 @@ export default {
       await ctx.prove("原始证据保留，用户风格优先，缺失素材阻止上下文发布", {
         voiceover: "统一上下文保留每条信息的来源，使用你修改的风格，并在文件保存完成后关联真实素材路径。",
         assert: async () => {
-          const result = await run(["test", "tests/reference-ingestion.test.ts", "tests/composer-attachment-persistence.test.ts", "tests/template-brief.test.ts"], "apps/app");
+          const result = await run(["test", "tests/reference-ingestion.test.ts", "tests/reference-design.test.ts", "tests/composer-attachment-persistence.test.ts", "tests/template-brief.test.ts"], "apps/app");
           ctx.output("生产解析器、提交与持久化检查", result.output);
           ctx.assert(result.code === 0, "Rich document extraction, bounded index, edited style, durable path binding and missing-file rejection pass");
         },
