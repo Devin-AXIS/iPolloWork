@@ -6,7 +6,7 @@ import { extractPptxReference } from "./extractors/pptx";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
-import type { ExtractedReferenceContent, ReferenceIngestionResult, ReferenceProgress } from "./types";
+import type { ExtractedReferenceContent, ReferenceAsset, ReferenceIngestionResult, ReferenceProgress } from "./types";
 
 export const REFERENCE_MAX_BYTES = 25 * 1024 * 1024;
 
@@ -70,7 +70,7 @@ async function extractReference(file: File, onProgress?: ReferenceProgress): Pro
   const extension = referenceFileExtension(file.name);
   const mime = referenceMime(file);
 
-  if (extension === "docx" || mime === DOCX_MIME) return extractDocxReference(file);
+  if (extension === "docx" || mime === DOCX_MIME) return extractDocxReference(file, onProgress);
   if (extension === "pptx" || mime === PPTX_MIME) return extractPptxReference(file, onProgress);
   if (extension === "csv" || extension === "json" || mime === "text/csv" || mime === "application/csv" || mime === "application/json") {
     return extractTableReference(file);
@@ -78,9 +78,70 @@ async function extractReference(file: File, onProgress?: ReferenceProgress): Pro
   if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file, onProgress);
   if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
   if (mime.startsWith("image/")) {
-    return { text: "", chunks: [], warnings: ["Images are kept as optional visual attachments; OCR is not available."] };
+    return { text: "", chunks: [], assets: [{ sourcePart: file.name, path: file.name, kind: "image", file }], coverage: { text: "none", visuals: "pending" }, warnings: ["Image preserved for visual inspection during generation. Upload-stage OCR is not available; no image text or description has been inferred."] };
   }
   return { text: "", chunks: [], warnings: ["No extractor is available for this file type."] };
+}
+
+function mediaEvent(media: HTMLMediaElement, event: string, action: () => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timer); media.removeEventListener(event, ready); media.removeEventListener("error", failed); };
+    const ready = () => { cleanup(); resolve(); };
+    const failed = () => { cleanup(); reject(new Error("Media is unavailable or uses an unsupported codec.")); };
+    const timer = setTimeout(failed, 4000);
+    media.addEventListener(event, ready, { once: true });
+    media.addEventListener("error", failed, { once: true });
+    try { action(); } catch { failed(); }
+  });
+}
+
+/** Decode local media only. No remote fetch or paid model request during upload. */
+async function inspectReferenceMedia(extracted: ExtractedReferenceContent) {
+  if (typeof document === "undefined") return;
+  const frames: ReferenceAsset[] = [];
+  const inspected = new Map<File, ReferenceAsset["media"]>();
+  let videos = 0;
+  for (const asset of extracted.assets ?? []) {
+    const file = asset.file;
+    if (!file || !["image", "video", "audio"].includes(asset.kind)) continue;
+    if (inspected.has(file)) { asset.media = inspected.get(file); continue; }
+    inspected.set(file, undefined);
+    try {
+      if (asset.kind === "image") {
+        const bitmap = await createImageBitmap(file);
+        asset.media = { width: bitmap.width, height: bitmap.height };
+        bitmap.close();
+      } else {
+        if (videos++ >= 4) { (extracted.warnings ??= []).push(`Preview limit reached for ${asset.path}; original media preserved.`); continue; }
+        const media = document.createElement(asset.kind === "video" ? "video" : "audio");
+        media.preload = "auto";
+        const url = URL.createObjectURL(file);
+        try {
+          await mediaEvent(media, "loadeddata", () => { media.src = url; media.load(); });
+          asset.media = { durationSeconds: Number.isFinite(media.duration) ? media.duration : undefined };
+          if (media instanceof HTMLVideoElement && media.videoWidth && media.videoHeight) {
+            asset.media.width = media.videoWidth; asset.media.height = media.videoHeight;
+            const canvas = document.createElement("canvas");
+            const scale = Math.min(1, 1280 / Math.max(media.videoWidth, media.videoHeight));
+            canvas.width = Math.max(1, Math.round(media.videoWidth * scale)); canvas.height = Math.max(1, Math.round(media.videoHeight * scale));
+            const context = canvas.getContext("2d");
+            if (context && Number.isFinite(media.duration) && media.duration > 0) {
+              for (const fraction of [0.1, 0.5, 0.9]) {
+                const seconds = media.duration * fraction;
+                await mediaEvent(media, "seeked", () => { media.currentTime = seconds; });
+                context.drawImage(media, 0, 0, canvas.width, canvas.height);
+                const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
+                if (blob) frames.push({ sourcePart: asset.sourcePart, path: `${asset.path}#t=${seconds.toFixed(3)}`, page: asset.page, kind: "image", description: `Sampled video frame from ${asset.path}; does not represent the entire video.`, media: { width: canvas.width, height: canvas.height, frameTimeSeconds: seconds }, file: new File([blob], `${file.name}-frame-${fraction}.jpg`, { type: "image/jpeg" }) });
+              }
+            }
+            canvas.width = 0; canvas.height = 0;
+          }
+        } finally { media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); }
+      }
+      inspected.set(file, asset.media);
+    } catch (error) { (extracted.warnings ??= []).push(`${asset.path}: ${error instanceof Error ? error.message : "Media preview unavailable"}; original preserved.`); }
+  }
+  if (frames.length) extracted.assets?.push(...frames);
 }
 
 export async function ingestReferenceFile(file: File, onProgress?: ReferenceProgress): Promise<ReferenceIngestionResult> {
@@ -109,8 +170,11 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
     chunks: [],
     warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
   }));
+  onProgress?.(92);
+  await inspectReferenceMedia(extracted);
   onProgress?.(95);
-  const quality = assessReferenceQuality({ text: extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
+  const quality = assessReferenceQuality({ text: extracted.qualityText ?? extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
+  if (quality.quality === "high" && (extracted.coverage?.text === "partial" || extracted.coverage?.visuals === "pending")) quality.quality = "medium";
   const draft: ReferenceIngestionResult = {
     id: fileId,
     fileName: file.name,
@@ -124,6 +188,11 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
     warnings: quality.warnings,
     metadata: extracted.metadata,
     structuredData: extracted.structuredData,
+    rawText: extracted.rawText,
+    assets: [DOCX_MIME, PPTX_MIME, PDF_MIME].includes(mimeType)
+      ? [...extracted.assets ?? [], { sourcePart: file.name, path: file.name, kind: "document", file }]
+      : extracted.assets,
+    coverage: extracted.coverage,
   };
 
   const result = { ...draft, summary: buildDeterministicSummary(draft) };

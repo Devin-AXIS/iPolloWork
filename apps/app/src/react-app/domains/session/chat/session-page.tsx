@@ -1550,7 +1550,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="break-words leading-5">{reference.fileName}</p>
-        {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_needs_input")}</p> : null}
+        {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t(reference.ingestion?.assets?.some((asset) => asset.file && asset.kind !== "document") ? "templates.brief.reference_visual_pending" : "templates.brief.reference_needs_input")}</p> : null}
       </div>
       {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={referenceBusy || submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}
     </li>)}

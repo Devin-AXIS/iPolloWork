@@ -23,7 +23,10 @@ function Fixture() {
       setReceipt(result);
       setOpen(false);
     }} /> : null}
-    {receipt ? <section className="mt-6" aria-label="提交结果"><h2>需求已提交</h2><p>{receipt.brief.title}</p><p>{receipt.attachmentNames.join(", ")}</p></section> : null}
+    {receipt ? <section className="mt-6 space-y-3" aria-label="提交结果"><h2>需求已提交</h2><p>{receipt.brief.title}</p><p>{receipt.attachmentNames.join(", ")}</p>
+      <ul>{receipt.context?.files.map((file) => <li key={file.id}>{file.source.name}：{file.text.length} 字符，{file.assets.length} 项附件来源；视觉内容：{file.coverage?.visuals ?? "none"}</li>)}</ul>
+      <details><summary>查看测试提交数据</summary><pre className="whitespace-pre-wrap break-all text-xs" data-testid="reference-receipt">{JSON.stringify(receipt.context, null, 2)}</pre></details>
+    </section> : null}
   </main></TooltipProvider>;
 }
 createRoot(document.getElementById("root")).render(<Fixture />);

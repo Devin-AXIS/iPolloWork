@@ -2,6 +2,16 @@ import { chunkPlainText } from "../chunking";
 import { cleanReferenceText } from "../quality";
 import type { ExtractedReferenceContent, ReferenceChunk } from "../types";
 
+export async function readReferenceText(file: File): Promise<{ text: string; warnings: string[] }> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (bytes[0] === 0xff && bytes[1] === 0xfe) return { text: new TextDecoder("utf-16le").decode(bytes), warnings: [] };
+  if (bytes[0] === 0xfe && bytes[1] === 0xff) return { text: new TextDecoder("utf-16be").decode(bytes), warnings: [] };
+  try { return { text: new TextDecoder("utf-8", { fatal: true }).decode(bytes), warnings: [] }; }
+  catch {
+    return { text: new TextDecoder("gb18030").decode(bytes), warnings: ["Not valid UTF-8; decoded as GB18030. Verify the original encoding if text looks incorrect."] };
+  }
+}
+
 function markdownChunks(source: string, text: string): ReferenceChunk[] {
   const sections: Array<{ heading?: string; body: string[] }> = [];
   let current: { heading?: string; body: string[] } = { body: [] };
@@ -25,11 +35,13 @@ function markdownChunks(source: string, text: string): ReferenceChunk[] {
 }
 
 export async function extractTextReference(file: File): Promise<ExtractedReferenceContent> {
-  const cleaned = cleanReferenceText(await file.text());
+  const decoded = await readReferenceText(file);
+  const cleaned = cleanReferenceText(decoded.text);
   const isMarkdown = /\.md(?:own)?$/i.test(file.name) || file.type.toLowerCase().includes("markdown");
   return {
     text: cleaned.text,
     chunks: isMarkdown ? markdownChunks(file.name, cleaned.text) : chunkPlainText({ source: file.name, text: cleaned.text }),
-    warnings: cleaned.warnings,
+    warnings: [...decoded.warnings, ...cleaned.warnings],
+    coverage: { text: decoded.warnings.length ? "partial" : "complete", visuals: "none" },
   };
 }

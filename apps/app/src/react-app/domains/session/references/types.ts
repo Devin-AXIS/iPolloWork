@@ -1,5 +1,17 @@
 export type ReferenceQuality = "high" | "medium" | "low" | "failed";
 
+/** Binary content stays outside the JSON; the submitter supplies its attachment name. */
+export type ReferenceAsset = {
+  sourcePart: string;
+  path: string;
+  kind: "image" | "video" | "audio" | "embedded" | "document" | "link";
+  page?: number;
+  description?: string;
+  external?: boolean;
+  file?: File;
+  media?: { width?: number; height?: number; durationSeconds?: number; frameTimeSeconds?: number };
+};
+
 export type ReferenceChunk = {
   id: string;
   source: string;
@@ -23,6 +35,9 @@ export type ReferenceIngestionResult = {
   warnings: string[];
   metadata?: ExtractedReferenceContent["metadata"];
   structuredData?: unknown;
+  rawText?: string;
+  assets?: ReferenceAsset[];
+  coverage?: { text: "complete" | "partial" | "none"; visuals: "pending" | "none" };
 };
 
 export type TemplateReferenceItem = {
@@ -46,6 +61,11 @@ export type ReferenceContextPack = {
 
 export type ExtractedReferenceContent = {
   text: string;
+  rawText?: string;
+  /** Raw evidence for quality scoring, excluding generated profile labels. */
+  qualityText?: string;
+  assets?: ReferenceAsset[];
+  coverage?: ReferenceIngestionResult["coverage"];
   chunks?: ReferenceChunk[];
   warnings?: string[];
   structuredData?: unknown;

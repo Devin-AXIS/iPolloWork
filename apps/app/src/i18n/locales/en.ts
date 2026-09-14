@@ -803,6 +803,7 @@ export default {
   "templates.brief.reference_none": "No reference files added",
   "templates.brief.reference_back": "Back to files",
   "templates.brief.reference_parsing_file": "Parsing {name}",
+  "templates.brief.reference_visual_pending": "File preserved for further inspection during generation. No reliable text extracted yet; you can fill in the brief manually.",
   "templates.brief.reference_needs_input": "No reliable text extracted. Replace this file or enter details manually.",
   "templates.brief.next": "Next",
   "templates.brief.skip_references": "Skip and fill in details",

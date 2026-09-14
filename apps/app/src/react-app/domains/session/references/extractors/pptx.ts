@@ -1,54 +1,50 @@
 import { cleanReferenceText } from "../quality";
 import { chunkPlainText } from "../chunking";
-import type { ExtractedReferenceContent, ReferenceChunk, ReferenceProgress } from "../types";
-
-const A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
-
-function slideNumber(path: string) {
-  const match = path.match(/slide(\d+)\.xml$/i);
-  return match?.[1] ? Number.parseInt(match[1], 10) : Number.MAX_SAFE_INTEGER;
-}
-
-function textFromSlideXml(xml: string) {
-  const doc = new DOMParser().parseFromString(xml, "application/xml");
-  return Array.from(doc.getElementsByTagNameNS(A_NS, "t"))
-    .map((item) => item.textContent?.trim() ?? "")
-    .filter(Boolean)
-    .join("\n");
-}
+import type { ExtractedReferenceContent, ReferenceAsset, ReferenceChunk, ReferenceProgress } from "../types";
+import { descendants, officePackage, officeRelationships, officeTables, officeText, officeXml, REL_NS, xmlDocument } from "./office";
 
 export async function extractPptxReference(file: File, onProgress?: ReferenceProgress): Promise<ExtractedReferenceContent> {
   const { default: JSZip } = await import("jszip");
   const zip = await JSZip.loadAsync(await file.arrayBuffer());
-  onProgress?.(10);
-  const slideFiles = Object.keys(zip.files)
-    .filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path))
-    .sort((left, right) => slideNumber(left) - slideNumber(right));
-
+  const reader = officePackage(zip);
+  const presentation = await officeXml(zip, "ppt/presentation.xml");
+  const relationships = await officeRelationships(zip, "ppt/presentation.xml");
+  const slideFiles = presentation
+    ? descendants(xmlDocument(presentation), "sldId").flatMap((slide) => {
+      const id = slide.getAttributeNS(REL_NS, "id");
+      const target = relationships.find((rel) => rel.id === id && !rel.external)?.target;
+      if (!target) reader.warnings.push(`Missing slide relationship: ${id}`);
+      return target ? [target] : [];
+    })
+    : Object.keys(zip.files).filter((path) => /^ppt\/slides\/slide\d+\.xml$/i.test(path)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  if (!presentation) reader.warnings.push("Presentation order was unavailable; used slide filenames.");
   if (!slideFiles.length) return { text: "", chunks: [], warnings: ["PPTX slides were not found."] };
-
   const chunks: ReferenceChunk[] = [];
-  const slideTexts: string[] = [];
-  const warnings = ["Slide text was extracted; images, charts and visual layout require review."];
-  for (const [index, path] of slideFiles.entries()) {
-    const xml = await zip.file(path)?.async("string");
-    if (!xml) continue;
-    const cleaned = cleanReferenceText(textFromSlideXml(xml));
-    const page = slideNumber(path);
-    onProgress?.(10 + Math.round(80 * (index + 1) / slideFiles.length));
-    if (!cleaned.text) {
-      warnings.push(`Slide ${page}: no readable text; visual review is required.`);
-      continue;
+  const assets: ReferenceAsset[] = [];
+  const slides = [];
+  for (const [index, part] of slideFiles.entries()) {
+    const xml = await officeXml(zip, part);
+    if (!xml) { reader.warnings.push(`Missing slide: ${part}`); continue; }
+    const doc = xmlDocument(xml);
+    const page = index + 1;
+    const extracted = await reader.inspect(part, doc, page);
+    const slideAssets = [...extracted.assets];
+    for (const related of extracted.related.filter((item) => item.type === "notesSlide")) {
+      const notesXml = await officeXml(zip, related.sourcePart);
+      if (notesXml) slideAssets.push(...(await reader.inspect(related.sourcePart, xmlDocument(notesXml), page)).assets);
     }
-    slideTexts.push(`Slide ${page}\n${cleaned.text}`);
-    chunks.push(...chunkPlainText({ source: file.name, page, text: cleaned.text }));
+    assets.push(...slideAssets);
+    const text = cleanReferenceText(officeText(doc)).text;
+    const tables = officeTables(doc);
+    const fullText = [text, ...tables.map((table) => table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n")), ...extracted.related.map((related) => `${related.type}: ${related.text}\n${JSON.stringify(related.data)}`)].filter(Boolean).join("\n\n");
+    slides.push({ page, sourcePart: part, hidden: doc.documentElement.getAttribute("show") === "0", text, tables, related: extracted.related, media: slideAssets.map(({ file: _file, ...asset }) => asset) });
+    if (!fullText) reader.warnings.push(`Slide ${page}: no readable text; visual review is required.`);
+    chunks.push(...chunkPlainText({ source: file.name, page, text: fullText }));
+    onProgress?.(10 + Math.round(80 * (index + 1) / slideFiles.length));
   }
-
-  const cleaned = cleanReferenceText(slideTexts.join("\n\n"));
   return {
-    text: cleaned.text,
-    chunks,
-    warnings: [...warnings, ...cleaned.warnings],
-    metadata: { pages: slideFiles.length },
+    text: slides.map((slide) => `Slide ${slide.page}\n${slide.text}\n${slide.related.map((related) => `${related.type}: ${related.text}\n${JSON.stringify(related.data)}`).join("\n")}`).join("\n\n"), chunks, assets, structuredData: { slides },
+    warnings: [...reader.warnings, "Slide text, tables, notes and cached chart data were extracted; visual interpretation and video transcription remain pending."],
+    metadata: { pages: slideFiles.length }, coverage: { text: "partial", visuals: "pending" },
   };
 }

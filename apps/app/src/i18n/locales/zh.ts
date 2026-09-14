@@ -805,6 +805,7 @@ export default {
   "templates.brief.reference_none": "未添加参考文件",
   "templates.brief.reference_back": "返回修改文件",
   "templates.brief.reference_parsing_file": "正在解析 {name}",
+  "templates.brief.reference_visual_pending": "文件已保留供生成时进一步识别，当前尚未提取到可靠正文，可先手动填写。",
   "templates.brief.reference_needs_input": "未提取到可靠正文，可更换文件或手动填写。",
   "templates.brief.next": "下一步",
   "templates.brief.skip_references": "不上传，直接填写",

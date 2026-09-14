@@ -1,29 +1,16 @@
 import type { ReferenceChunk, ReferenceQuality } from "./types";
 
-const PDF_METADATA_PATTERNS = [
-  /^\s*(?:Producer|Creator|CreationDate|ModDate|CIDFont|ToUnicode|FontDescriptor)\s*:?.*$/i,
-];
-
 const GARBLE_PATTERN = /[\uFFFD\u25A0-\u25A3]|(?:[^\p{L}\p{N}\p{P}\p{Zs}\r\n\t]){2,}/gu;
 const READABLE_PATTERN = /[\p{L}\p{N}]/gu;
 
 export function cleanReferenceText(text: string): { text: string; warnings: string[] } {
-  const warnings = new Set<string>();
   const lines = text
     .replace(/^\uFEFF/, "")
     .split(/\r?\n/)
-    .map((line) => line.replace(/\s+/g, " ").trim())
-    .filter((line) => {
-      if (!line) return false;
-      if (PDF_METADATA_PATTERNS.some((pattern) => pattern.test(line))) {
-        warnings.add("Removed PDF renderer metadata.");
-        return false;
-      }
-      return true;
-    });
+    .map((line) => line.trimEnd());
 
   // Repeated lines can be real table values or requirements. Preserve evidence.
-  return { text: lines.join("\n"), warnings: [...warnings] };
+  return { text: lines.join("\n").trimEnd(), warnings: [] };
 }
 
 export function assessReferenceQuality(input: {

@@ -38,6 +38,97 @@ import {
   inferTemplateBriefFromIngestions,
 } from "../src/react-app/domains/session/references/brief-autofill";
 
+const W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const A = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const P = "http://schemas.openxmlformats.org/presentationml/2006/main";
+const R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+function rels(items: Array<[string, string, string, boolean?]>) {
+  return `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">${items.map(([id, type, target, external]) => `<Relationship Id="${id}" Type="${R}/${type}" Target="${target}"${external ? ' TargetMode="External"' : ""}/>`).join("")}</Relationships>`;
+}
+
+describe("rich reference evidence", () => {
+  test("Word preserves blank table cells, header/footer, footnotes and media bytes", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:a="${A}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body><w:p><w:r><w:t>产品介绍与使用要求</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:drawing><wp:docPr descr="产品正面照"/><a:blip r:embed="photo"/></w:drawing></w:r></w:p></w:body></w:document>`);
+    zip.file("word/_rels/document.xml.rels", rels([["h", "header", "header1.xml"], ["f", "footer", "footer1.xml"], ["n", "footnotes", "footnotes.xml"], ["photo", "image", "media/photo.png"], ["movie", "video", "media/demo.mp4"], ["web", "hyperlink", "https://example.invalid/resource", true]]));
+    for (const [part, text] of [["header1.xml", "品牌 ACME"], ["footer1.xml", "内部资料"], ["footnotes.xml", "价格含税条件以本注释为准"]]) zip.file(`word/${part}`, `<w:root xmlns:w="${W}"><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:root>`);
+    zip.file("word/media/photo.png", new Uint8Array([1, 2, 3]));
+    zip.file("word/media/demo.mp4", new Uint8Array([4, 5, 6]));
+    const file = new File([await zip.generateAsync({ type: "arraybuffer" })], "rich.docx");
+    const result = await ingestReferenceFile(file);
+    expect(result.extractedText).toContain("A |  | C");
+    expect(result.extractedText).toContain("价格含税条件");
+    expect(result.extractedText).toContain("品牌 ACME");
+    expect(result.extractedText).toContain("内部资料");
+    expect(result.assets?.find((asset) => asset.kind === "image")?.description).toContain("产品正面照");
+    expect(new Uint8Array(await result.assets!.find((asset) => asset.kind === "video")!.file!.arrayBuffer())).toEqual(new Uint8Array([4, 5, 6]));
+    expect(result.assets?.find((asset) => asset.kind === "link")).toMatchObject({ external: true, file: undefined });
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: result.id, file, fileName: file.name, mimeType: result.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion: result }]);
+    const context = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(context.files[0].structuredData.sections[0].tables[0].rows[0]).toHaveLength(3);
+    for (const asset of context.files[0].assets.filter((asset: { attachmentName?: string }) => asset.attachmentName)) expect(payload.attachments.some((attachment) => attachment.name === asset.attachmentName && attachment.delivery === "workspace")).toBe(true);
+    expect(context.files[0].assets.every((asset: object) => !("file" in asset))).toBe(true);
+    expect(payload.contextPack.promptText).toContain("video");
+    expect(result.quality).not.toBe("high");
+  });
+
+  test("PPT follows presentation order and retains notes, chart values and shared media provenance", async () => {
+    const zip = new JSZip();
+    zip.file("ppt/presentation.xml", `<p:presentation xmlns:p="${P}" xmlns:r="${R}"><p:sldIdLst><p:sldId r:id="second"/><p:sldId r:id="first"/></p:sldIdLst></p:presentation>`);
+    zip.file("ppt/_rels/presentation.xml.rels", rels([["first", "slide", "slides/slide1.xml"], ["second", "slide", "slides/slide2.xml"]]));
+    for (const number of [1, 2]) {
+      zip.file(`ppt/slides/slide${number}.xml`, `<p:sld xmlns:p="${P}" xmlns:a="${A}" xmlns:r="${R}"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Requirements: slide ${number} detailed product evidence.</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`);
+      zip.file(`ppt/slides/_rels/slide${number}.xml.rels`, rels([["image", "image", "../media/shared.png"], ["notes", "notesSlide", "../notesSlides/notesSlide1.xml"], ["chart", "chart", "../charts/chart1.xml"]]));
+    }
+    zip.file("ppt/media/shared.png", "image-bytes");
+    zip.file("ppt/notesSlides/notesSlide1.xml", `<p:notes xmlns:p="${P}" xmlns:a="${A}"><a:p><a:r><a:t>演讲备注：上市时间为十月，不要提前发布。</a:t></a:r></a:p></p:notes>`);
+    zip.file("ppt/charts/chart1.xml", `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:ser><c:val><c:numRef><c:f>Sheet1!B2</c:f><c:numCache><c:pt idx="0"><c:v>1299.50</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:chart></c:chartSpace>`);
+    const file = new File([await zip.generateAsync({ type: "arraybuffer" })], "rich.pptx");
+    const result = await ingestReferenceFile(file);
+    expect(result.chunks[0]?.text).toContain("slide 2");
+    expect(result.chunks[0]?.page).toBe(1);
+    expect(result.extractedText).toContain("不要提前发布");
+    expect(result.extractedText).toContain("1299.50");
+    expect(result.assets?.filter((asset) => asset.kind === "image").map((asset) => asset.page)).toEqual([1, 2]);
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: result.id, file, fileName: file.name, mimeType: result.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion: result }]);
+    expect(payload.attachments.filter((attachment) => attachment.name.endsWith("shared.png"))).toHaveLength(1);
+    const context = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(context.files[0].assets[0].attachmentName).toBe(context.files[0].assets[1].attachmentName);
+  });
+
+  test("empty structured files are not scored as high quality and unsafe numbers retain exact evidence", async () => {
+    for (const [name, text] of [["empty.csv", ""], ["empty.json", "{}"], ["array.json", "[]"]]) expect((await ingestReferenceFile(new File([text!], name!))).quality).toBe("failed");
+    const result = await ingestReferenceFile(new File(['{"id":9007199254740993,"amount":0.123456789012345678901}'], "precise.json"));
+    expect(result.structuredData).toMatchObject({ id: "9007199254740993" });
+    expect(result.rawText).toContain("0.123456789012345678901");
+    expect(result.warnings.join(" ")).toContain("numbers preserved as strings");
+  });
+
+  test("CSV preserves delimiter, every record and raw source", async () => {
+    const text = 'name;price;note\nA;99;"line 1\nline 2"\n;;\nB;;last';
+    const result = await extractTableReference(new File([text], "semicolon.csv"));
+    expect(result.structuredData).toMatchObject({ delimiter: ";", headers: ["name", "price", "note"], records: [["name", "price", "note"], ["A", "99", "line 1\nline 2"], ["", "", ""], ["B", "", "last"]] });
+    expect(result.rawText).toBe(text);
+  });
+
+  test("UTF-16 text and Markdown indentation survive decoding and cleaning", async () => {
+    const text = "Creator: Alice\n\n    保留代码缩进\n\t制表符";
+    const result = await extractTextReference(new File([new Uint8Array([255, 254]), Buffer.from(text, "utf16le")], "unicode.txt"));
+    expect(result.text).toBe(text);
+  });
+
+  test("oversized embedded media is explicitly omitted without losing the main text", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Keep readable product requirements despite oversized media.</w:t></w:r></w:p></w:body></w:document>`);
+    zip.file("word/_rels/document.xml.rels", rels([["movie", "video", "media/large.mp4"]]));
+    zip.file("word/media/large.mp4", new Uint8Array(26 * 1024 * 1024));
+    const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "large.docx"));
+    expect(result.text).toContain("Keep readable");
+    expect(result.assets?.[0]?.file).toBeUndefined();
+    expect(result.warnings?.join(" ")).toContain("exceeds 25 MB");
+  });
+});
+
 function createTextPdf(text: string): Uint8Array {
   const stream = `BT\n/F1 16 Tf\n72 720 Td\n(${text}) Tj\nET\n`;
   const objects = [
@@ -63,7 +154,7 @@ function createTextPdf(text: string): Uint8Array {
 }
 
 describe("reference ingestion core", () => {
-  test("cleans known PDF renderer metadata before quality checks", () => {
+  test("preserves legitimate author and producer lines as source evidence", () => {
     const cleaned = cleanReferenceText([
       "Producer: Skia/PDF m92",
       "Creator: Chromium",
@@ -74,13 +165,13 @@ describe("reference ingestion core", () => {
 
     expect(cleaned.text).toContain("Real launch plan");
     expect(cleaned.text).toContain("Audience: product teams");
-    expect(cleaned.text).not.toContain("Skia/PDF");
-    expect(cleaned.text).not.toContain("Chromium");
-    expect(cleaned.warnings).toContain("Removed PDF renderer metadata.");
+    expect(cleaned.text).toContain("Skia/PDF");
+    expect(cleaned.text).toContain("Creator: Chromium");
+    expect(cleaned.warnings).toEqual([]);
   });
 
-  test("classifies metadata-only extracted content as failed", () => {
-    const cleaned = cleanReferenceText("Producer: Skia/PDF\nCreator: Chromium");
+  test("classifies empty extracted content as failed", () => {
+    const cleaned = cleanReferenceText("\n \n");
     const quality = assessReferenceQuality({ text: cleaned.text, warnings: cleaned.warnings });
 
     expect(quality.quality).toBe("failed");

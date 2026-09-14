@@ -1,5 +1,6 @@
 import type { TemplateBrief } from "../templates/template-brief";
 import type { ReferenceIngestionResult } from "./types";
+import { selectReferenceChunks } from "./compression";
 
 function cleanLine(value: string): string {
   return value
@@ -63,7 +64,7 @@ export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionR
     || (first.structuredData !== undefined ? fileNameStem(first.fileName) : titleFromText(first.extractedText, first.fileName));
   const audience = [...new Set(accepted.map((item) => fieldValue(item, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"])).filter(Boolean))].join("；");
   const details = [...new Set(accepted.map((item) => fieldValue(item, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"])).filter(Boolean))].join("\n")
-    || accepted.flatMap((item) => item.chunks).slice(0, 3).map((chunk) => cleanLine(chunk.text)).join(" ").slice(0, 700).trim();
+    || selectReferenceChunks(accepted.flatMap((item) => item.chunks), { maxChunks: 6, maxChunkChars: 360 }).map((chunk) => cleanLine(chunk.text)).join("\n").slice(0, 2200).trim();
 
   return { title, audience, details };
 }

@@ -9,8 +9,8 @@ async function upload(ctx, files, holdRead = false) {
     for (const item of ${JSON.stringify(files)}) {
       const file = new File([item.text], item.name, { type: item.type });
       if (${holdRead}) {
-        const read = file.text.bind(file);
-        file.text = () => new Promise((resolve) => { window.__releaseReferenceRead = async () => resolve(await read()); });
+        const read = file.arrayBuffer.bind(file);
+        file.arrayBuffer = () => new Promise((resolve) => { window.__releaseReferenceRead = async () => resolve(await read()); });
       }
       transfer.items.add(file);
     }
