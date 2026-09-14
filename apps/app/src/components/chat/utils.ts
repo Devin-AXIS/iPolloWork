@@ -2,7 +2,7 @@ import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPar
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 import { formatFileSize } from "@/lib/utils"
-import { getAssistantFileMentionPaths } from "@/react-app/domains/session/artifacts/open-target"
+import { getAssistantFileMentionPaths, localFilePathFromHref } from "@/react-app/domains/session/artifacts/open-target"
 import {
   type ArtifactItem,
   getArtifactStudioTarget,
@@ -138,8 +138,8 @@ export function artifactCardDescription(artifact: ArtifactItem, sourceText: stri
 }
 
 function normalizedArtifactPath(path: string) {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/^\.\//, "")
-  return /(?:^|\/)((?:design|video)\/[^\s]+)$/i.exec(normalized)?.[1] ?? normalized
+  const normalized = (localFilePathFromHref(path) || path).trim().replaceAll("\\", "/").replace(/^\.\//, "")
+  return /(?:^|\/)((?:design|video)\/.+)$/i.exec(normalized)?.[1] ?? normalized
 }
 
 /** Keep delivery paths in the artifact card instead of repeating path-only lines in the reply. */
@@ -150,10 +150,10 @@ export function stripArtifactPathLines(text: string, artifactPaths: readonly str
   return text
     .split(/\r?\n/)
     .filter((line) => {
-      // A standalone delivery link renders another card; keep the canonical HTML card below.
+      // A standalone delivery link renders another card; keep the canonical card below.
       if (/^\s*(?:(?:[-+*]|\d+[.)])\s+)?\[[^\]]+\]\((?:<[^>]+>|[^)]+)\)[。.;；]?\s*$/.test(line)) {
         const linkedPath = getAssistantFileMentionPaths(line)[0]
-        if (linkedPath && /\.html?$/i.test(linkedPath) && paths.includes(normalizedArtifactPath(linkedPath))) return false
+        if (linkedPath && paths.includes(normalizedArtifactPath(linkedPath))) return false
       }
       const normalizedLine = line.replaceAll("\\", "/").replace(/[`*_]/g, "").trim()
       const labelledPath = /^(?:生成文件|更新(?:文件)?|音频(?:位于|文件)?|文件(?:路径)?|输出(?:文件)?|保存(?:到|至)?|路径|generated file|updated file|audio(?: files?)?|file|output|saved to)\s*[:：-]/i.test(normalizedLine)
@@ -168,6 +168,10 @@ export function stripArtifactPathLines(text: string, artifactPaths: readonly str
         || withoutPunctuation === `./${mentionedPath}`
       return !standalonePath
     })
+    .map(line => line.replace(/(?<!!)\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+"[^"\n]*")?\s*\)/g, (link: string, label: string, bracketedHref: string | undefined, href: string | undefined) => {
+      const path = localFilePathFromHref(bracketedHref ?? href ?? "")
+      return path && paths.includes(normalizedArtifactPath(path)) ? label : link
+    }))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd()

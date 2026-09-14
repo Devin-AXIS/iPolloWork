@@ -11,7 +11,7 @@ import {
 } from "@modelcontextprotocol/ext-apps/app-bridge";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { IMAGE_GENERATION_REQUEST_TIMEOUT_MS, VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS } from "@/app/lib/ipollowork-server";
-import { Save, Replace, AlertCircle, Clock, RectangleHorizontal, RectangleVertical, Square, Scan, ChevronDown, ImagePlus, Undo2, Sparkles, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
+import { ArrowUpRight, Save, Replace, AlertCircle, Clock, RectangleHorizontal, RectangleVertical, Square, Scan, ChevronDown, ImagePlus, Undo2, Sparkles, Loader2, RotateCw, SlidersHorizontal, Upload, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import type {
@@ -227,6 +227,9 @@ type WorkspaceAppInspectorProps = {
   onCallTool: (name: string, args: Record<string, unknown>) => Promise<CallToolResult>;
   onOpenAuthorizations: () => void;
   onChangeModel?: () => void;
+  onChooseParameterModel?: () => void;
+  openParametersAfterModelSelection?: boolean;
+  onParametersOpened?: () => void;
   onDismissError?: () => void;
   composer?: boolean;
   mediaKind?: "image" | "video";
@@ -280,12 +283,14 @@ function InspectorImagePreview({ path, readTool, onCallTool }: {
     onError={() => setError(t("media.studio.preview_error"))} />;
 }
 
-function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations, onChangeModel, onDismissError, onOptimizePrompt, mediaKind, onSwitchMedia, composer = false }: WorkspaceAppInspectorProps) {
+function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations, onChangeModel, onChooseParameterModel, openParametersAfterModelSelection, onParametersOpened, onDismissError, onOptimizePrompt, mediaKind, onSwitchMedia, composer = false }: WorkspaceAppInspectorProps) {
   useSyncExternalStore(useCallback(listener => {
     window.addEventListener(localeChangedEvent, listener);
     return () => window.removeEventListener(localeChangedEvent, listener);
   }, []), currentLocale, currentLocale);
   const formRef = useRef<HTMLFormElement>(null);
+  const [outputGuideOpen, setOutputGuideOpen] = useState(false);
+  const [outputParametersOpen, setOutputParametersOpen] = useState(false);
   const [customWidth,setCustomWidth]=useState("16");
   const [customHeight,setCustomHeight]=useState("9");
   const activeRef = useRef(true);
@@ -424,6 +429,20 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
   const outputFields = compactParameters
     ? ["ratio", "size", "resolution", "duration"].flatMap(id => context.fields.filter(field => field.id === id && field.control === "select"))
     : [];
+  useEffect(() => {
+    setOutputGuideOpen(false);
+    setOutputParametersOpen(false);
+  }, [mediaKind]);
+  useEffect(() => {
+    if (outputFields.length === 0) {
+      setOutputParametersOpen(false);
+      return;
+    }
+    setOutputGuideOpen(false);
+    if (!openParametersAfterModelSelection) return;
+    setOutputParametersOpen(true);
+    onParametersOpened?.();
+  }, [openParametersAfterModelSelection, outputFields.length, onParametersOpened]);
   const outputLabel = (field: PluginUiInspectorContextV1["fields"][number], value: string) => {
     if (field.id === "ratio" && value === "adaptive") return t("media.parameters.auto");
     if (field.id === "resolution" && value === "0.5MP") return t("media.parameters.standard");
@@ -564,9 +583,24 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
             <SelectContent><SelectItem value="image">{t("media.studio.image")}</SelectItem><SelectItem value="video">{t("media.studio.video")}</SelectItem></SelectContent>
           </Select> : null}
           {composer ? context.fields.filter(field => !isAdvancedField(field) && field.control !== "image" && field.control !== "textarea" && !outputFields.includes(field)).map(renderField) : null}
+        {composer && outputFields.length === 0 ? <Popover open={outputGuideOpen} onOpenChange={setOutputGuideOpen}>
+          <PopoverTrigger render={<Button type="button" variant="secondary" className="h-7 shrink-0 gap-1.5 rounded-lg bg-muted px-2 text-xs font-normal text-foreground shadow-none" />} aria-label={t("media.parameters.summary")} data-output-settings>
+            <SlidersHorizontal className="size-3.5" />
+            <span className="media-output-value">{mediaKind === "video" ? t("media.parameters.video_summary") : t("media.parameters.ratio")}</span>
+            <span className="media-output-compact">{t("media.parameters.settings")}</span><ChevronDown className="size-3" />
+          </PopoverTrigger>
+          <PopoverContent align="start" side="top" className="w-[min(300px,calc(100vw-24px))] gap-2 rounded-2xl bg-background p-3 text-foreground" data-testid="media-output-model-guide">
+            <p className="text-sm font-medium">{t("media.parameters.select_model_title")}</p>
+            <p className="text-xs leading-5 text-foreground/70">{t("media.parameters.select_model_description")}</p>
+            <Button type="button" variant="ghost" className="h-7 justify-start self-start px-2 text-xs" onClick={() => {
+              setOutputGuideOpen(false);
+              onChooseParameterModel?.();
+            }}>{t("media.parameters.select_model_action")}<ArrowUpRight className="size-3.5" aria-hidden /></Button>
+          </PopoverContent>
+        </Popover> : null}
         {outputFields.length > 0 ? <>
           {outputFields.map(field => <input key={field.id} type="hidden" name={field.id} value={field.value} />)}
-          <Popover>
+          <Popover open={outputParametersOpen} onOpenChange={setOutputParametersOpen}>
             <PopoverTrigger render={<Button type="button" variant="secondary" className="h-7 gap-1.5 rounded-[8px] bg-muted px-2 text-xs font-normal text-foreground shadow-none" />} aria-label={t("media.parameters.summary")} data-output-settings>
               {outputFields.map((field, index) => <span key={field.id} title={field.id === "resolution" && ["0.5MP", "1MP"].includes(field.value) ? t("media.parameters.pixels", { value: field.value, count: field.value === "0.5MP" ? 50 : 100 }) : undefined} className={cn("media-output-value flex items-center gap-1.5", index > 0 && "border-l border-border pl-2")}>
                 {["ratio", "size"].includes(field.id) ? ratioIcon(field.value) : field.id === "duration" ? <Clock className="size-3.5" /> : null}
@@ -574,7 +608,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
               </span>)}
               <span className="media-output-compact">{t("media.parameters.settings")}</span><ChevronDown className="size-3" />
             </PopoverTrigger>
-            <PopoverContent align="start" side="top" className="media-composer-controls max-h-[var(--available-height)] w-[min(360px,calc(100vw-24px))] gap-3 overflow-y-auto rounded-[16px] bg-background p-2.5" aria-label={t("media.parameters.title")}>
+            <PopoverContent align="start" side="top" className="media-composer-controls max-h-[var(--available-height)] w-[min(360px,calc(100vw-24px))] gap-3 overflow-y-auto rounded-[16px] bg-background p-2.5" aria-label={t("media.parameters.title")} data-testid="media-output-parameters">
               {outputFields.map(field => <fieldset key={field.id} className="min-w-0" disabled={submitting || updating || context.submitDisabled}>
                 <legend className="mb-1.5 text-xs font-normal text-muted-foreground">{field.id === "size" ? field.label : t(`media.parameters.${field.id}`)}</legend>
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(44px,1fr))] gap-1 rounded-lg bg-muted p-1">
@@ -697,6 +731,10 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const [downloadMenu, setDownloadMenu] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const [imageVideoMenu, setImageVideoMenu] = useState<{path:string;left:number;top:number}|null>(null);
   const [modelMenu, setModelMenu] = useState<{ value: string; options: { id: string; label: string; disabled: boolean }[]; left: number; top: number; width: number; height: number; manageLabel: string } | null>(null);
+  const [parameterModelSelection, setParameterModelSelection] = useState<"choosing" | "selected" | null>(null);
+  useEffect(() => {
+    setParameterModelSelection(null);
+  }, [engineId, props.sessionId, props.active]);
   const [imagePreview, setImagePreview] = useState<{ src: string; name: string; path: string } | null>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
   const hostContextRef = useRef<McpUiHostContext>({});
@@ -825,6 +863,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         const options = data.options.flatMap((entry: unknown) => isRecord(entry) && typeof entry.id === "string" && typeof entry.label === "string" && typeof entry.disabled === "boolean"
           ? [{ id: entry.id, label: entry.label, disabled: entry.disabled }] : []);
         const bounds = iframe.getBoundingClientRect();
+        setParameterModelSelection(current => current === "choosing" ? current : null);
         setModelMenu({ value: data.value, options, left: bounds.left + data.left, top: bounds.top + data.top, width: data.width, height: data.height, manageLabel: data.manageLabel });
         return;
       }
@@ -1192,6 +1231,12 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
                 mediaKind={engineId === "video-console" ? "video" : "image"}
                 onSwitchMedia={props.onSwitchMedia}
                 onDismissError={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:dismiss-error` }, "*")}
+                onChooseParameterModel={() => {
+                  setParameterModelSelection("choosing");
+                  iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:open-model-menu` }, "*");
+                }}
+                openParametersAfterModelSelection={parameterModelSelection === "selected"}
+                onParametersOpened={() => setParameterModelSelection(null)}
                 onChangeModel={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:open-model-menu` }, "*")}
                 onClose={() => setInspectorOpen(false)}
                 onCallTool={callWorkspaceAppTool}
@@ -1247,6 +1292,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       </DropdownMenu> : null}
       {props.active !== false && modelMenu ? <DropdownMenu open onOpenChange={open => {
         if (!open) {
+          setParameterModelSelection(current => current === "selected" ? current : null);
           setModelMenu(null);
           iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:model-menu-closed` }, "*");
         }
@@ -1254,6 +1300,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         <DropdownMenuTrigger aria-label={engineId === "video-console" ? t("media.studio.video_model") : t("media.studio.image_model")} style={{ position: "fixed", left: modelMenu.left, top: modelMenu.top, width: modelMenu.width, height: modelMenu.height, opacity: 0 }} />
         <DropdownMenuContent align="end" className="w-64" positionerClassName="z-[70]">
           <DropdownMenuRadioGroup value={modelMenu.value} onValueChange={value => {
+            setParameterModelSelection(current => current === "choosing" ? "selected" : null);
             iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:select-model`, value }, "*");
             setModelMenu(null);
           }}>
@@ -1261,6 +1308,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem onClick={() => {
+            setParameterModelSelection(null);
             setModelMenu(null);
             navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"));
           }}>{modelMenu.manageLabel}</DropdownMenuItem>

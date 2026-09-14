@@ -6,7 +6,7 @@ import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { CircleAlert, Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -57,7 +57,6 @@ import {
   artifactDirectoryPath,
   artifactPathIsWithinDirectory,
   artifactPathMatchesTarget,
-  getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -1459,6 +1458,18 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
+function TemplateReferenceThumbnail({ file, name }: { file: File; name: string }) {
+  const [url, setUrl] = useState<string>();
+  useEffect(() => {
+    const previewUrl = URL.createObjectURL(file);
+    setUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [file]);
+  return <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-background/60 p-0.5">
+    {url ? <img src={url} alt={name} className="h-full w-full object-contain" /> : <Image aria-hidden="true" className="size-5 text-muted-foreground" />}
+  </div>;
+}
+
 function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
@@ -1513,7 +1524,7 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       mimeType: file.type || "application/octet-stream",
       size: file.size,
       status: "parsing" as const,
-      sendOriginal: false,
+      sendOriginal: file.type.startsWith("image/") && canSendOriginalReference(file),
     }));
     updateReferences((current) => [...current, ...pending]);
 
@@ -1522,12 +1533,12 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
         try {
           const ingestion = await ingestReferenceFile(item.file);
           const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
-          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
+          return { ...item, mimeType: ingestion.mimeType, status, ingestion, sendOriginal: canSendOriginalReference(item.file) && (ingestion.mimeType.startsWith("image/") || status === "weak" || status === "failed") };
         } catch (error) {
           toast.warning(t("templates.brief.reference_status_failed"), {
             description: error instanceof Error ? error.message : item.fileName,
           });
-          return { ...item, status: "failed" };
+          return { ...item, status: "failed", sendOriginal: canSendOriginalReference(item.file) };
         }
       }));
       const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
@@ -1649,7 +1660,7 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
                   {referenceBusy ? <LoaderCircle className="size-5 animate-spin" /> : <Plus className="size-5" />}
                 </span>
                 <span className="text-ui-control font-medium text-foreground">{t("templates.brief.upload_file")}</span>
-                <span className="flex min-w-0 flex-col gap-1 text-xs font-normal leading-5 text-foreground/70">
+                <span className="flex min-w-0 flex-col gap-1 text-xs font-normal leading-5 text-foreground/60">
                   <span id="template-reference-formats">{t("templates.brief.reference_supported_formats")}</span>
                   <span id="template-reference-max-size">{t("templates.brief.reference_max_size", { size: formatBytes(REFERENCE_MAX_BYTES) })}</span>
                 </span>
@@ -1657,17 +1668,33 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
               <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
             </div>
 
-            {references.length ? <div className="grid gap-2">
-              {references.map((reference) => <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2.5">
-                <FileText className="size-3.5 shrink-0 text-foreground/70" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium">{reference.fileName}</div>
-                  <div className="text-[10px] text-foreground/70">{formatBytes(reference.size)} · {reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
-                  {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-foreground/70" title={reference.ingestion.warnings[0]}>{reference.ingestion.warnings[0]}</div> : null}
-                </div>
-                <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file) || submitting} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
-                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-foreground/70 hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
-              </div>)}
+            {references.length ? <div className="flex flex-wrap items-start gap-3">
+              {references.map((reference) => {
+                const hasImagePreview = reference.mimeType.startsWith("image/") && canSendOriginalReference(reference.file);
+                const statusLabel = reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed");
+                return (
+                  <div key={reference.id} data-testid="template-reference-card" className="flex h-12 w-60 max-w-full min-w-0 items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2">
+                    {hasImagePreview ? (
+                      <TemplateReferenceThumbnail file={reference.file} name={reference.fileName} />
+                    ) : reference.status === "ready" ? (
+                      <span aria-hidden="true" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground"><FileText className="size-4" /></span>
+                    ) : (
+                    <Tooltip>
+                      <TooltipTrigger render={<button type="button" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" aria-label={statusLabel} />}>
+                        {reference.status === "parsing" ? <LoaderCircle className="size-4 animate-spin" /> : reference.status === "weak" || reference.status === "failed" ? <CircleAlert className="size-4" /> : <FileText className="size-4" />}
+                      </TooltipTrigger>
+                      <TooltipContent positionerClassName="z-[90]">{statusLabel}</TooltipContent>
+                    </Tooltip>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-xs font-medium" title={reference.fileName}>{reference.fileName}</div>
+                      <div className="text-[10px] text-muted-foreground">{formatBytes(reference.size)}</div>
+                    </div>
+
+                    <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-foreground/70 hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+                  </div>
+                );
+              })}
             </div> : null}
             <label className="flex flex-col gap-2 pt-1 text-xs font-medium text-foreground">
               {t("templates.brief.file_instructions")}
@@ -1960,12 +1987,6 @@ export function SessionPage(props: SessionPageProps) {
       : undefined,
     [artifactCatalogState, artifactContext, artifactScopeKey],
   );
-  const videoOutput = useMemo(() => (
-    currentVideoEntryPath
-      ? getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
-        .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
-      : null
-  ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -1976,9 +1997,6 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
   }, []);
-  const autoOpenedDesignTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     currentTemplateSessionData && dismissedTemplateBriefSessionIds.has(currentTemplateSessionData.sessionId),
   );
@@ -2615,26 +2633,6 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
   }, [isVideoSession, props.selectedSessionId, setSidePanelState]);
-  useEffect(() => {
-    if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
-    const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
-    if (status !== "idle") return;
-    const outputKey = `${props.selectedSessionId}:${videoOutput.messageId}:${videoOutput.path}`;
-    if (autoOpenedVideoOutputRef.current === outputKey) return;
-    autoOpenedVideoOutputRef.current = outputKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
-  useEffect(() => {
-    if (!props.selectedSessionId || !isVideoSession || !currentTemplateSessionData?.hasBrief) return;
-    const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
-    if (autoOpenedVideoTemplateRef.current === templateKey) return;
-    autoOpenedVideoTemplateRef.current = templateKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [currentTemplateSessionData, isVideoSession, openCurrentVideoStudio, props.selectedSessionId]);
-  useEffect(() => {
-    autoOpenedVideoOutputRef.current = null;
-    autoOpenedVideoTemplateRef.current = null;
-  }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -2757,18 +2755,6 @@ export function SessionPage(props: SessionPageProps) {
         setSessionType(createdSessionId, sessionTypeForTemplate(created.manifest));
         setTemplateSessionData({ ...created, hasBrief: true, applyMode: "current-conversation" });
         setTemplateSessionRevision((value) => value + 1);
-        if (created.manifest.surface === "design") {
-          openTab(createdSessionId, {
-            id: `design:${createdSessionId}:${encodeURIComponent(created.state.entry)}`,
-            type: "design",
-            label: created.state.entry.split("/").filter(Boolean).pop() || "Design",
-            sessionId: createdSessionId,
-            path: created.state.entry,
-          });
-          setSidePanelState(createdSessionId, "panel");
-        } else {
-          openVideoStudio(createdSessionId);
-        }
       }
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
@@ -2791,7 +2777,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [openTab, openVideoStudio, pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateDestinationProjects]);
+  }, [pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, templateDestinationProjects]);
   const submitPendingTemplateApplication = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -2957,15 +2943,6 @@ export function SessionPage(props: SessionPageProps) {
     }
     setCurrentSidePanel("panel");
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
-
-  useEffect(() => {
-    if (!props.selectedSessionId || !designTemplateEntryPath || !hasTemplateBrief) return;
-    const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
-    if (autoOpenedDesignTemplateRef.current === templateKey) return;
-    autoOpenedDesignTemplateRef.current = templateKey;
-    if (sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design") return;
-    openDesignTab(designTemplateEntryPath);
-  }, [activePanelTab, designTemplateEntryPath, hasTemplateBrief, openDesignTab, props.selectedSessionId, sessionSidePanel]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     userOpenedSidebarWhileNarrowRef.current = false;
@@ -3381,8 +3358,6 @@ export function SessionPage(props: SessionPageProps) {
     }, sourceSessionId);
   }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setCurrentSidePanel, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
-    // SessionSurface automatically previews newly discovered targets after an
-    // agent finishes. Video tasks already have a dedicated preview surface.
     if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
