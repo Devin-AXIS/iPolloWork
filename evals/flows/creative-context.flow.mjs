@@ -38,12 +38,12 @@ export default {
       },
     })),
     { name: "内置插件安装 Skill", run: async (ctx) => {
-      await ctx.prove("reference-analyzer 随内置 Video 插件安装到工作区", {
-        voiceover: "参考资料 Skill 随软件的内置插件分发，安装后可以从工作区读取使用。",
+      await ctx.prove("共用参考资料 Skill 自动安装，升级和卸载 Video 不影响它", {
+        voiceover: "参考资料 Skill 独立分发，视频、演示文稿和网页模板都能使用；禁用或卸载视频插件不会移除它。",
         assert: async () => {
-          const result = await run(["test", "src/plugin-package-lifecycle.test.ts", "--test-name-pattern", "projects bundled Design and Video"], "apps/server");
+          const result = await run(["test", "src/plugin-package-lifecycle.test.ts", "--test-name-pattern", "projects bundled Design and Video|shared reference Skill|complete creative workspace packages"], "apps/server");
           ctx.output("插件安装结果", result.output);
-          ctx.assert(result.code === 0, "Production plugin lifecycle materializes reference-analyzer/SKILL.md");
+          ctx.assert(result.code === 0, "Shared Skill installs independently on all three engines and survives migration and creative-plugin removal");
         },
       });
     } },
