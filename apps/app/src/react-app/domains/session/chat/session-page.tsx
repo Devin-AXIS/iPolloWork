@@ -155,6 +155,7 @@ import {
 } from "../templates/template-brief";
 import {
   REFERENCE_FILE_ACCEPT,
+  REFERENCE_MAX_BYTES,
   canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
@@ -1485,7 +1486,8 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
 
-  useEffect(() => () => { referencesRef.current = []; }, []);
+  const referenceControllers = useRef(new Map<string, AbortController>());
+  useEffect(() => () => { referencesRef.current = []; for (const controller of referenceControllers.current.values()) controller.abort(); referenceControllers.current.clear(); }, []);
 
   const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
     const next = updater(referencesRef.current);
@@ -1504,7 +1506,9 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
   const addReferenceFiles = async (files: File[]) => {
     if (!files.length) return;
     const unsupported = files.filter((file) => !isReferenceFile(file));
-    const supported = files.filter((file) => isReferenceFile(file));
+    const oversized = files.filter((file) => isReferenceFile(file) && file.size > REFERENCE_MAX_BYTES);
+    if (oversized.length) toast.warning(t("templates.brief.reference_too_large"), { description: oversized.map((file) => file.name).join("、") });
+    const supported = files.filter((file) => isReferenceFile(file) && file.size <= REFERENCE_MAX_BYTES);
     if (unsupported.length) {
       toast.warning(
         unsupported.length === 1
@@ -1529,21 +1533,24 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     // Parse sequentially to bound PDF/ZIP memory and show each completed file immediately.
     for (const item of pending) {
       if (!referencesRef.current.some((reference) => reference.id === item.id)) continue;
+      const controller = new AbortController();
+      referenceControllers.current.set(item.id, controller);
       try {
-        const ingestion = await ingestReferenceFile(item.file, (progress) => {
-          if (referencesRef.current.find((reference) => reference.id === item.id)?.progress === progress) return;
-          updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, progress } : reference));
-        });
+        const ingestion = await ingestReferenceFile(item.file, (progress, progressDetail) => {
+          updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, progress, progressDetail } : reference));
+        }, controller.signal);
         const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
         updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, mimeType: ingestion.mimeType, status, ingestion, progress: 100 } : reference));
       } catch (error) {
+        if (controller.signal.aborted) continue;
         toast.warning(t("templates.brief.reference_status_failed"), { description: error instanceof Error ? error.message : item.fileName });
         updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, status: "failed", progress: 100 } : reference));
-      }
+      } finally { referenceControllers.current.delete(item.id); }
     }
   };
 
   const removeReference = (id: string) => {
+    referenceControllers.current.get(id)?.abort();
     updateReferences((current) => current.filter((item) => item.id !== id));
   };
 
@@ -1551,10 +1558,11 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     {references.map((reference) => <li key={reference.id} className="flex min-w-0 items-start gap-2 py-1.5 text-xs">
       <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
-        <p className="break-words leading-5">{reference.fileName}</p>
+        <p className="break-words leading-5">{reference.fileName} <span className="text-muted-foreground">({(reference.size / 1_000_000).toFixed(1)} MB)</span></p>
+        {reference.ingestion ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_coverage", { count: reference.ingestion.extractedText.length })}{reference.ingestion.coverage?.text !== "complete" ? ` · ${t("templates.brief.reference_partial")}` : ""}</p> : null}
         {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t(reference.ingestion?.assets?.some((asset) => asset.file && asset.kind !== "document") ? "templates.brief.reference_visual_pending" : "templates.brief.reference_needs_input")}</p> : null}
       </div>
-      {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={referenceBusy || submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}
+      {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}
     </li>)}
   </ul> : null;
 
@@ -1644,6 +1652,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
                 <span className="min-w-0 flex-1 truncate text-muted-foreground" title={parsingReference.fileName}>{t("templates.brief.reference_parsing_file", { name: parsingReference.fileName })}</span>
                 <span className="shrink-0 font-medium tabular-nums text-foreground">{referenceProgress}%</span>
               </div>
+              {parsingReference.progressDetail ? <p className="text-xs text-muted-foreground">{parsingReference.progressDetail}</p> : null}
               <Progress value={referenceProgress} aria-label={t("templates.brief.reference_status_parsing")} className="[&_[data-slot=progress-track]]:h-1 [&_[data-slot=progress-track]]:bg-foreground/10 [&_[data-slot=progress-indicator]]:rounded-full [&_[data-slot=progress-indicator]]:bg-foreground/70 [&_[data-slot=progress-indicator]]:duration-300 [&_[data-slot=progress-indicator]]:motion-reduce:transition-none" />
             </div> : null}
             {referenceFileList}

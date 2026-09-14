@@ -6,15 +6,16 @@ import { extractPptxReference } from "./extractors/pptx";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
-import type { ExtractedReferenceContent, ReferenceAsset, ReferenceIngestionResult, ReferenceProgress } from "./types";
+import type { ExtractedReferenceContent, ReferenceIngestionResult, ReferenceProgress } from "./types";
 
-export const REFERENCE_MAX_BYTES = 25 * 1024 * 1024;
+// Match the server inbox default (decimal bytes), not a model attachment limit.
+export const REFERENCE_MAX_BYTES = 50_000_000;
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
 const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
-const REFERENCE_FILE_EXTENSIONS = ["pdf", "docx", "pptx", "md", "txt", "png", "jpg", "jpeg", "webp", "csv", "json"];
+const REFERENCE_FILE_EXTENSIONS = ["pdf", "docx", "pptx", "md", "txt", "csv", "json"];
 const EXTENSIONS = new Set(REFERENCE_FILE_EXTENSIONS);
 export const REFERENCE_FILE_ACCEPT = REFERENCE_FILE_EXTENSIONS.map((extension) => `.${extension}`).join(",");
 const MIMES = new Set([
@@ -26,9 +27,6 @@ const MIMES = new Set([
   "text/csv",
   "application/csv",
   "application/json",
-  "image/png",
-  "image/jpeg",
-  "image/webp",
 ]);
 
 const MIME_BY_EXTENSION: Record<string, string> = {
@@ -37,27 +35,21 @@ const MIME_BY_EXTENSION: Record<string, string> = {
   pptx: PPTX_MIME,
   md: "text/markdown",
   txt: "text/plain",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  webp: "image/webp",
   csv: "text/csv",
   json: "application/json",
 };
 
 export function referenceFileExtension(name: string): string {
-  return name.split(".").pop()?.trim().toLowerCase() ?? "";
+  return name.includes(".") ? name.split(".").pop()?.trim().toLowerCase() ?? "" : "";
 }
 
 export function referenceMime(file: Pick<File, "name" | "type">): string {
-  const mime = file.type.trim().toLowerCase();
-  if (MIMES.has(mime)) return mime;
-  return MIME_BY_EXTENSION[referenceFileExtension(file.name)] ?? "text/plain";
+  return MIME_BY_EXTENSION[referenceFileExtension(file.name)] ?? (MIMES.has(file.type.trim().toLowerCase()) ? file.type.trim().toLowerCase() : "application/octet-stream");
 }
 
 export function isReferenceFile(file: Pick<File, "name" | "type">): boolean {
   const extension = referenceFileExtension(file.name);
-  if (EXTENSIONS.has(extension)) return true;
+  if (extension) return EXTENSIONS.has(extension);
   const mime = file.type.trim().toLowerCase();
   return Boolean(mime && MIMES.has(mime));
 }
@@ -77,79 +69,16 @@ async function extractReference(file: File, onProgress?: ReferenceProgress): Pro
   }
   if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file, onProgress);
   if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
-  if (mime.startsWith("image/")) {
-    return { text: "", chunks: [], assets: [{ sourcePart: file.name, path: file.name, kind: "image", file }], coverage: { text: "none", visuals: "pending" }, warnings: ["Image preserved for visual inspection during generation. Upload-stage OCR is not available; no image text or description has been inferred."] };
-  }
   return { text: "", chunks: [], warnings: ["No extractor is available for this file type."] };
 }
 
-function mediaEvent(media: HTMLMediaElement, event: string, action: () => void): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const cleanup = () => { clearTimeout(timer); media.removeEventListener(event, ready); media.removeEventListener("error", failed); };
-    const ready = () => { cleanup(); resolve(); };
-    const failed = () => { cleanup(); reject(new Error("Media is unavailable or uses an unsupported codec.")); };
-    const timer = setTimeout(failed, 4000);
-    media.addEventListener(event, ready, { once: true });
-    media.addEventListener("error", failed, { once: true });
-    try { action(); } catch { failed(); }
-  });
-}
-
-/** Decode local media only. No remote fetch or paid model request during upload. */
-async function inspectReferenceMedia(extracted: ExtractedReferenceContent) {
-  if (typeof document === "undefined") return;
-  const frames: ReferenceAsset[] = [];
-  const inspected = new Map<File, ReferenceAsset["media"]>();
-  let videos = 0;
-  for (const asset of extracted.assets ?? []) {
-    const file = asset.file;
-    if (!file || !["image", "video", "audio"].includes(asset.kind)) continue;
-    if (inspected.has(file)) { asset.media = inspected.get(file); continue; }
-    inspected.set(file, undefined);
-    try {
-      if (asset.kind === "image") {
-        const bitmap = await createImageBitmap(file);
-        asset.media = { width: bitmap.width, height: bitmap.height };
-        bitmap.close();
-      } else {
-        if (videos++ >= 4) { (extracted.warnings ??= []).push(`Preview limit reached for ${asset.path}; original media preserved.`); continue; }
-        const media = document.createElement(asset.kind === "video" ? "video" : "audio");
-        media.preload = "auto";
-        const url = URL.createObjectURL(file);
-        try {
-          await mediaEvent(media, "loadeddata", () => { media.src = url; media.load(); });
-          asset.media = { durationSeconds: Number.isFinite(media.duration) ? media.duration : undefined };
-          if (media instanceof HTMLVideoElement && media.videoWidth && media.videoHeight) {
-            asset.media.width = media.videoWidth; asset.media.height = media.videoHeight;
-            const canvas = document.createElement("canvas");
-            const scale = Math.min(1, 1280 / Math.max(media.videoWidth, media.videoHeight));
-            canvas.width = Math.max(1, Math.round(media.videoWidth * scale)); canvas.height = Math.max(1, Math.round(media.videoHeight * scale));
-            const context = canvas.getContext("2d");
-            if (context && Number.isFinite(media.duration) && media.duration > 0) {
-              for (const fraction of [0.1, 0.5, 0.9]) {
-                const seconds = media.duration * fraction;
-                await mediaEvent(media, "seeked", () => { media.currentTime = seconds; });
-                context.drawImage(media, 0, 0, canvas.width, canvas.height);
-                const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.85));
-                if (blob) frames.push({ sourcePart: asset.sourcePart, path: `${asset.path}#t=${seconds.toFixed(3)}`, page: asset.page, kind: "image", description: `Sampled video frame from ${asset.path}; does not represent the entire video.`, media: { width: canvas.width, height: canvas.height, frameTimeSeconds: seconds }, file: new File([blob], `${file.name}-frame-${fraction}.jpg`, { type: "image/jpeg" }) });
-              }
-            }
-            canvas.width = 0; canvas.height = 0;
-          }
-        } finally { media.removeAttribute("src"); media.load(); URL.revokeObjectURL(url); }
-      }
-      inspected.set(file, asset.media);
-    } catch (error) { (extracted.warnings ??= []).push(`${asset.path}: ${error instanceof Error ? error.message : "Media preview unavailable"}; original preserved.`); }
-  }
-  if (frames.length) extracted.assets?.push(...frames);
-}
-
-export async function ingestReferenceFile(file: File, onProgress?: ReferenceProgress): Promise<ReferenceIngestionResult> {
-  onProgress?.(0);
+export async function ingestReferenceFile(file: File, onProgress?: ReferenceProgress, signal?: AbortSignal): Promise<ReferenceIngestionResult> {
+  const report: ReferenceProgress = (percent, detail) => { signal?.throwIfAborted(); onProgress?.(percent, detail); };
+  report(0, "检查文件");
   const fileId = `${file.name}-${file.lastModified}`;
   const mimeType = referenceMime(file);
 
-  if (file.size > REFERENCE_MAX_BYTES) {
+  if (file.size > REFERENCE_MAX_BYTES || !isReferenceFile(file)) {
     onProgress?.(100);
     return {
       id: fileId,
@@ -161,18 +90,16 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
       summary: "",
       chunks: [],
       quality: "failed",
-      warnings: [`${file.name} is larger than 25 MB.`],
+      warnings: [file.size > REFERENCE_MAX_BYTES ? `${file.name} exceeds 50 MB (50,000,000 bytes).` : "Unsupported reference type. Upload PDF, DOCX, PPTX, Markdown, TXT, CSV or JSON."],
     };
   }
 
-  const extracted = await extractReference(file, onProgress).catch((error): ExtractedReferenceContent => ({
+  const extracted = await extractReference(file, report).catch((error): ExtractedReferenceContent => ({
     text: "",
     chunks: [],
     warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
   }));
-  onProgress?.(92);
-  await inspectReferenceMedia(extracted);
-  onProgress?.(95);
+  report(95, "检查解析覆盖情况");
   const quality = assessReferenceQuality({ text: extracted.qualityText ?? extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
   if (quality.quality === "high" && (extracted.coverage?.text === "partial" || extracted.coverage?.visuals === "pending")) quality.quality = "medium";
   const draft: ReferenceIngestionResult = {
@@ -196,27 +123,21 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
   };
 
   const result = { ...draft, summary: buildDeterministicSummary(draft) };
-  onProgress?.(100);
+  report(100, "解析结束");
   return result;
 }
 
 export async function prepareOriginalReferenceAttachment(file: File): Promise<ComposerAttachment> {
-  if (file.size > REFERENCE_MAX_BYTES) throw new Error(`${file.name} is larger than 25 MB.`);
+  if (file.size > REFERENCE_MAX_BYTES) throw new Error(`${file.name} is larger than 50 MB (50,000,000 bytes).`);
   if (!isReferenceFile(file)) throw new Error(`${file.name} is not a supported reference document.`);
 
   const mimeType = referenceMime(file);
-  const kind = mimeType.startsWith("image/") ? "image" as const : "file" as const;
-  const previewUrl = kind === "image" && typeof URL !== "undefined" && "createObjectURL" in URL
-    ? URL.createObjectURL(file)
-    : undefined;
-
   return {
     id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
     name: file.name,
     mimeType,
     size: file.size,
-    kind,
+    kind: "file",
     file,
-    previewUrl,
   };
 }

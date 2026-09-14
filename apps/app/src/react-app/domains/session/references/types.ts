@@ -37,7 +37,7 @@ export type ReferenceIngestionResult = {
   structuredData?: unknown;
   rawText?: string;
   assets?: ReferenceAsset[];
-  coverage?: { text: "complete" | "partial" | "none"; visuals: "pending" | "none" };
+  coverage?: { text: "complete" | "partial" | "none"; visuals: "pending" | "none" | "not-supported" };
 };
 
 export type TemplateReferenceItem = {
@@ -50,6 +50,7 @@ export type TemplateReferenceItem = {
   sendOriginal: boolean;
   ingestion?: ReferenceIngestionResult;
   progress?: number;
+  progressDetail?: string;
 };
 
 export type ReferenceContextPack = {
@@ -77,7 +78,7 @@ export type ExtractedReferenceContent = {
   };
 };
 
-export type ReferenceProgress = (percent: number) => void;
+export type ReferenceProgress = (percent: number, detail?: string) => void;
 
 export type PromptPackOptions = {
   maxSummaryChars?: number;

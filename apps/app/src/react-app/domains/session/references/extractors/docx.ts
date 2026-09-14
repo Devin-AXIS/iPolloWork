@@ -16,37 +16,53 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
   const assets: ReferenceAsset[] = [];
   const sections = [];
   for (const [partIndex, part] of parts.entries()) {
-    const xml = await officeXml(zip, part);
-    if (!xml) { reader.warnings.push(`Missing document part: ${part}`); continue; }
-    const doc = xmlDocument(xml);
-    let heading: string | undefined;
-    let sectionLines: string[] = [];
-    let sectionIndex = 0;
-    const flush = () => {
-      if (!sectionLines.length) return;
-      const sectionId = sectionIndex++;
-      chunks.push(...chunkPlainText({ source: file.name, heading, text: sectionLines.join("\n") }).map((chunk, index) => ({ ...chunk, id: `${file.name}:${part}:section:${sectionId}:chunk:${index}` })));
-      sectionLines = [];
-    };
-    const paragraphs = descendants(doc, "p").filter((node) => node.namespaceURI === WORD_NS);
-    for (const paragraph of paragraphs) {
-      const text = officeText(paragraph).trimEnd();
-      if (!text.trim()) continue;
-      const style = descendants(paragraph, "pStyle")[0]?.getAttributeNS(WORD_NS, "val") ?? "";
-      if (/heading/i.test(style)) { flush(); heading = text; headings.push(text); }
-      sectionLines.push(text);
+    try {
+      const xml = await officeXml(zip, part);
+      if (!xml) { reader.warnings.push(`Missing document part: ${part}`); continue; }
+      const doc = xmlDocument(xml);
+      let heading: string | undefined;
+      let sectionLines: string[] = [];
+      let sectionIndex = 0;
+      const flush = () => {
+        if (!sectionLines.length) return;
+        const sectionId = sectionIndex++;
+        chunks.push(...chunkPlainText({ source: file.name, heading, text: sectionLines.join("\n") }).map((chunk, index) => ({ ...chunk, id: `${file.name}:${part}:section:${sectionId}:chunk:${index}` })));
+        sectionLines = [];
+      };
+      const paragraphs = descendants(doc, "p").filter((node) => node.namespaceURI === WORD_NS);
+      for (const paragraph of paragraphs) {
+        const text = officeText(paragraph).trimEnd();
+        if (!text.trim()) continue;
+        const style = descendants(paragraph, "pStyle")[0]?.getAttributeNS(WORD_NS, "val") ?? "";
+        if (/heading/i.test(style)) { flush(); heading = text; headings.push(text); }
+        sectionLines.push(text);
+      }
+      flush();
+      const tables = officeTables(doc);
+      const extracted = await reader.inspect(part, doc);
+      assets.push(...extracted.assets);
+      const text = cleanReferenceText(officeText(doc)).text;
+      sections.push({
+        sourcePart: part, type: part === main ? "body" : relationships.find((rel) => rel.target === part)?.type,
+        text, tables, related: extracted.related,
+        paragraphs: paragraphs.map((node, index) => ({
+          index, text: officeText(node),
+          style: descendants(node, "pStyle")[0]?.getAttributeNS(WORD_NS, "val"),
+          numberingId: descendants(node, "numId")[0]?.getAttributeNS(WORD_NS, "val"),
+          level: descendants(node, "ilvl")[0]?.getAttributeNS(WORD_NS, "val"),
+          footnoteIds: descendants(node, "footnoteReference").map((ref) => ref.getAttributeNS(WORD_NS, "id")),
+          endnoteIds: descendants(node, "endnoteReference").map((ref) => ref.getAttributeNS(WORD_NS, "id")),
+        })),
+      });
+      for (const [index, table] of tables.entries()) {
+        chunks.push(...chunkPlainText({ source: file.name, heading: `Table ${index + 1} (${part})`, text: table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n") }).map((chunk, n) => ({ ...chunk, id: `${file.name}:${part}:table:${index}:${n}` })));
+      }
+      onProgress?.(10 + Math.round(80 * (partIndex + 1) / parts.length), `提取 Word 内容 ${partIndex + 1}/${parts.length}`);
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") throw error;
+      reader.warnings.push(`${part}: ${error instanceof Error ? error.message : String(error)}; other readable parts preserved.`);
     }
-    flush();
-    const tables = officeTables(doc);
-    const extracted = await reader.inspect(part, doc);
-    assets.push(...extracted.assets);
-    const text = cleanReferenceText(officeText(doc)).text;
-    sections.push({ sourcePart: part, type: part === main ? "body" : relationships.find((rel) => rel.target === part)?.type, text, tables, related: extracted.related });
-    for (const [index, table] of tables.entries()) {
-      chunks.push(...chunkPlainText({ source: file.name, heading: `Table ${index + 1} (${part})`, text: table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n") }).map((chunk, n) => ({ ...chunk, id: `${file.name}:${part}:table:${index}:${n}` })));
-    }
-    onProgress?.(10 + Math.round(80 * (partIndex + 1) / parts.length));
   }
   const text = sections.flatMap((section) => [section.text, ...section.tables.map((table) => table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n")), ...section.related.map((item) => `${item.type}: ${item.text}\n${JSON.stringify(item.data)}`)]).filter(Boolean).join("\n\n");
-  return { text, chunks, assets, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; OCR, video transcription and visual interpretation remain pending."] : [])], metadata: { headings }, coverage: { text: "partial", visuals: assets.some((asset) => asset.kind !== "link") ? "pending" : "none" } };
+  return { text, chunks, assets, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; image interpretation and audio/video transcription are disabled."] : [])], metadata: { headings }, coverage: { text: "partial", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" } };
 }

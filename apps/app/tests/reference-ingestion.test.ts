@@ -29,6 +29,7 @@ import { extractPptxReference } from "../src/react-app/domains/session/reference
 import { ensurePdfTypedArrayHexSupport, extractPdfReference } from "../src/react-app/domains/session/references/extractors/pdf";
 import {
   ingestReferenceFile,
+  REFERENCE_MAX_BYTES,
   isReferenceFile,
   prepareOriginalReferenceAttachment,
 } from "../src/react-app/domains/session/references/ingestion";
@@ -121,11 +122,11 @@ describe("rich reference evidence", () => {
     const zip = new JSZip();
     zip.file("word/document.xml", `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Keep readable product requirements despite oversized media.</w:t></w:r></w:p></w:body></w:document>`);
     zip.file("word/_rels/document.xml.rels", rels([["movie", "video", "media/large.mp4"]]));
-    zip.file("word/media/large.mp4", new Uint8Array(26 * 1024 * 1024));
+    zip.file("word/media/large.mp4", new Uint8Array(50_000_001));
     const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "large.docx"));
     expect(result.text).toContain("Keep readable");
     expect(result.assets?.[0]?.file).toBeUndefined();
-    expect(result.warnings?.join(" ")).toContain("exceeds 25 MB");
+    expect(result.warnings?.join(" ")).toContain("exceeds 50000000 bytes");
   });
 });
 
@@ -631,14 +632,14 @@ describe("reference ingestion router", () => {
     expect((await buildTemplateReferenceSubmitPayload([])).attachments).toEqual([]);
   });
 
-  test("keeps an image's extraction limitation in the JSON without inventing text", async () => {
+  test("rejects independent image references without inventing text", async () => {
     const file = new File(["image"], "image.png", { type: "image/png" });
     const ingestion = await ingestReferenceFile(file);
     const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, mimeType: file.type, size: file.size, status: "failed", sendOriginal: false, ingestion }]);
     const context = JSON.parse(await payload.attachments[0]!.file.text());
     expect(context.files[0].text).toBe("");
     expect(context.files[0].quality).toBe("failed");
-    expect(context.files[0].warnings.join(" ")).toContain("OCR is not available");
+    expect(context.files[0].warnings.join(" ")).toContain("Unsupported reference type");
   });
 
   test("does not send original source files unless opt in is selected", async () => {
@@ -673,7 +674,7 @@ describe("reference ingestion router", () => {
 
   test("ignores original-file opt in when a reference exceeds the attachment limit", async () => {
     const file = new File(["oversized"], "oversized.pdf", { type: "application/pdf" });
-    Object.defineProperty(file, "size", { value: 25 * 1024 * 1024 + 1 });
+    Object.defineProperty(file, "size", { value: REFERENCE_MAX_BYTES + 1 });
     const result = await ingestReferenceFile(file);
     const reference: TemplateReferenceItem = {
       id: result.id,
@@ -791,4 +792,69 @@ describe("reference ingestion router", () => {
     expect(attachment.kind).toBe("file");
     expect(await attachment.file.text()).toBe("hello");
   });
+});
+
+
+describe("local-only reference limits and completeness", () => {
+  test.each(["pdf", "docx", "pptx", "md", "txt", "csv", "json"])("%s accepts 50,000,000 bytes and rejects one byte more", async (extension) => {
+    const file = new File(["fixture"], `source.${extension}`);
+    Object.defineProperty(file, "size", { value: REFERENCE_MAX_BYTES, configurable: true });
+    expect((await prepareOriginalReferenceAttachment(file)).size).toBe(50_000_000);
+    Object.defineProperty(file, "size", { value: REFERENCE_MAX_BYTES + 1 });
+    expect((await ingestReferenceFile(file)).quality).toBe("failed");
+    await expect(prepareOriginalReferenceAttachment(file)).rejects.toThrow("50 MB");
+  });
+  test.each(["png", "jpg", "jpeg", "webp", "mp3", "wav", "mp4"])("rejects %s even with a misleading text MIME", async (extension) => {
+    const file = new File(["not a document"], `source.${extension}`, { type: "text/plain" });
+    expect(isReferenceFile(file)).toBe(false);
+    const result = await ingestReferenceFile(file);
+    expect(result.assets).toBeUndefined();
+    expect(result.quality).toBe("failed");
+  });
+  test("cancellation stops extraction and does not return a successful result", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(ingestReferenceFile(new File(["text"], "source.txt"), undefined, controller.signal)).rejects.toThrow();
+  });
+  test("large context is losslessly reconstructed from bounded JSON parts", async () => {
+    const original = "产品参数😀\"\n".repeat(300_000) + "FINAL_FACT_123";
+    const file = new File([original], "large.txt");
+    const ingestion = await ingestReferenceFile(file);
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: "large", file, fileName: file.name, mimeType: file.type, size: file.size, status: "ready", sendOriginal: false, ingestion }]);
+    const manifest = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(manifest.storage).toBe("json-string-parts");
+    const parts = await Promise.all(manifest.parts.map(async (part: { attachmentName: string }) => {
+      const attachment = payload.attachments.find((item) => item.name === part.attachmentName)!;
+      expect(attachment.size).toBeLessThan(4_000_000);
+      return JSON.parse(await attachment.file.text());
+    }));
+    const context = JSON.parse(parts.join(""));
+    expect(context.files[0].text).toBe(original);
+    expect(context.extraction.modelUsed).toBe(false);
+    expect(payload.contextPack.promptText).toContain("Do not invoke models for OCR");
+  });
+  test("Word autofill uses a readable title rather than an opaque filename", () => {
+    const result: ReferenceIngestionResult = { id: "doc", fileName: "upload-987.docx", mimeType: "", size: 50, sourceMode: "memory", quality: "medium", warnings: [], chunks: [], extractedText: "智能家居产品发布\n详细功能和参数", summary: "", structuredData: { sections: [] } };
+    expect(inferTemplateBriefFromIngestions([result]).title).toBe("智能家居产品发布");
+  });
+});
+
+
+test("an oversized Word auxiliary part does not discard readable main content", async () => {
+  const zip = new JSZip();
+  zip.file("word/document.xml", `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Readable main document requirements and product information.</w:t></w:r></w:p></w:body></w:document>`);
+  zip.file("word/_rels/document.xml.rels", rels([["header", "header", "header1.xml"]]));
+  zip.file("word/header1.xml", new Uint8Array(17 * 1024 * 1024));
+  const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "partial.docx"));
+  expect(result.text).toContain("Readable main document");
+  expect(result.warnings?.join(" ")).toContain("other readable parts preserved");
+});
+
+test("labeled requirements in one reference do not suppress facts from another", async () => {
+  const first = await ingestReferenceFile(new File(["# 发布计划\n需求：介绍智能家具的核心功能，并展示家庭实际使用场景及操作流程。"], "brief.md"));
+  const second = await ingestReferenceFile(new File(["产品规格参数：支持 220V 供电，质保三年，安装前请确认尺寸与家庭空间匹配。"], "specs.txt"));
+  const brief = inferTemplateBriefFromIngestions([first, second]);
+  expect(brief.details).toContain("核心功能");
+  expect(brief.details).toContain("220V");
+  expect(brief.details).toContain("specs.txt");
 });

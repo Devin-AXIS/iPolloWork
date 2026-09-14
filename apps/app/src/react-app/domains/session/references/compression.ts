@@ -22,6 +22,7 @@ const TOPIC_KEYWORDS = [
   "结论",
   "交付物",
   "品牌",
+  "卖点", "参数", "价格", "功能", "限制", "注意事项", "规格", "售后",
 ];
 
 function normalizeLimit(value: number | undefined, fallback: number, ceiling: number) {

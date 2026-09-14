@@ -76,3 +76,17 @@ describe("composer attachment persistence", () => {
     expect(persistedAttachmentInstruction(items)).toBeNull();
   });
 });
+
+
+test("reference uploads keep at most three requests active and preserve order", async () => {
+  let active = 0, peak = 0;
+  const attachments = Array.from({ length: 8 }, (_, index) => ({ id: String(index), name: `${index}.txt`, mimeType: "text/plain", size: 4, kind: "file" as const, file: new File(["text"], `${index}.txt`), delivery: "workspace" as const }));
+  const items = await persistComposerAttachments({ attachments, workspaceId: "ws", sessionId: "session", client: { uploadInbox: async (_workspace, _file, options) => {
+    peak = Math.max(peak, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    return { path: options!.path! };
+  } } });
+  expect(peak).toBe(3);
+  expect(items.map((item) => item.attachmentId)).toEqual(attachments.map((item) => item.id));
+});

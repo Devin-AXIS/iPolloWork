@@ -18,7 +18,12 @@ function Fixture() {
     {open ? <TemplateApplyDialog open mode="current-conversation" template={{ title: "产品介绍视频", category: "video", surface: "video" }} onClose={() => setOpen(false)} onSubmit={async (brief, references) => {
       const payload = await buildTemplateReferenceSubmitPayload(references);
       const parsed = payload.attachments.find((attachment) => attachment.delivery === "workspace");
-      const result = { brief, context: parsed ? JSON.parse(await parsed.file.text()) : null, attachmentNames: payload.attachments.map((attachment) => attachment.name) };
+      let context = parsed ? JSON.parse(await parsed.file.text()) : null;
+      if (context?.storage === "json-string-parts") {
+        const fragments = await Promise.all(context.parts.map(async (part) => JSON.parse(await payload.attachments.find((item) => item.name === part.attachmentName).file.text())));
+        context = JSON.parse(fragments.join(""));
+      }
+      const result = { brief, context, attachmentNames: payload.attachments.map((attachment) => attachment.name) };
       window.__referenceReceipt = result;
       setReceipt(result);
       setOpen(false);

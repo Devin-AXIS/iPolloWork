@@ -83,25 +83,29 @@ export async function persistComposerAttachments(input: {
   const workspaceId = input.workspaceId.trim();
   if (!workspaceId || input.attachments.length === 0) return [];
   const sessionSegment = safeAttachmentPathSegment(input.sessionId, "session");
-  const uploaded = await Promise.all(input.attachments.map(async (attachment) => {
-    const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
-    const filename = safeAttachmentPathSegment(attachment.name, "file");
-    const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
-    try {
-      const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
-      const inboxPath = result.path.trim().replace(/^\/+/, "");
-      if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
-      return {
-        attachmentId: attachment.id,
-        name: attachment.name,
-        workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
-      } satisfies PersistedComposerAttachment;
-    } catch (error) {
-      if (attachment.delivery === "workspace") throw error;
-      console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
-      return null;
-    }
-  }));
+  const uploaded: Array<PersistedComposerAttachment | null> = [];
+  // Reference packages can contain many large files; bound concurrent request bodies.
+  for (let offset = 0; offset < input.attachments.length; offset += 3) {
+    uploaded.push(...await Promise.all(input.attachments.slice(offset, offset + 3).map(async (attachment) => {
+      const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
+      const filename = safeAttachmentPathSegment(attachment.name, "file");
+      const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
+      try {
+        const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
+        const inboxPath = result.path.trim().replace(/^\/+/, "");
+        if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
+        return {
+          attachmentId: attachment.id,
+          name: attachment.name,
+          workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
+        } satisfies PersistedComposerAttachment;
+      } catch (error) {
+        if (attachment.delivery === "workspace") throw error;
+        console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
+        return null;
+      }
+    })));
+  }
   return uploaded.filter((item): item is PersistedComposerAttachment => item !== null);
 }
 

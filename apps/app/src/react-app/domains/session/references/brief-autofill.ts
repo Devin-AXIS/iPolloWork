@@ -61,10 +61,14 @@ export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionR
 
   const title = fieldValue(first, ["Title", "Topic", "标题", "主题", "视频主题"])
     || first.metadata?.headings?.[0]
-    || (first.structuredData !== undefined ? fileNameStem(first.fileName) : titleFromText(first.extractedText, first.fileName));
+    || (/\.(?:csv|json)$/i.test(first.fileName) ? fileNameStem(first.fileName) : titleFromText(first.extractedText, first.fileName));
   const audience = [...new Set(accepted.map((item) => fieldValue(item, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"])).filter(Boolean))].join("；");
-  const details = [...new Set(accepted.map((item) => fieldValue(item, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"])).filter(Boolean))].join("\n")
-    || selectReferenceChunks(accepted.flatMap((item) => item.chunks), { maxChunks: 6, maxChunkChars: 360 }).map((chunk) => cleanLine(chunk.text)).join("\n").slice(0, 2200).trim();
+  const details = accepted.map((item) => {
+    const labeled = fieldValue(item, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"]);
+    if (labeled) return accepted.length === 1 ? labeled : `[${item.fileName}] ${labeled}`;
+    return selectReferenceChunks(item.chunks, { maxChunks: Math.max(1, Math.floor(8 / accepted.length)), maxChunkChars: 500 })
+      .map((chunk) => `[${item.fileName}${chunk.page ? ` · 第 ${chunk.page} 页` : chunk.heading ? ` · ${chunk.heading}` : ""}] ${cleanLine(chunk.text)}`).join("\n");
+  }).filter(Boolean).join("\n").slice(0, 4000).trim();
 
   return { title, audience, details };
 }

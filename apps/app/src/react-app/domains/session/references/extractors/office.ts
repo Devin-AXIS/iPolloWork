@@ -5,8 +5,15 @@ export const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/rel
 export const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
 export const DRAWING_NS = "http://schemas.openxmlformats.org/drawingml/2006/main";
 
+const packageBudgets = new WeakMap<JSZip, { bytes: number }>();
+function packageBudget(zip: JSZip) {
+  let budget = packageBudgets.get(zip);
+  if (!budget) { budget = { bytes: 0 }; packageBudgets.set(zip, budget); }
+  return budget;
+}
+
 // Stop decompression before materializing an oversized XML/media part in memory.
-async function readPart(entry: JSZip.JSZipObject, limit: number): Promise<Uint8Array<ArrayBuffer>> {
+async function readPart(entry: JSZip.JSZipObject, limit: number, budget: { bytes: number }): Promise<Uint8Array<ArrayBuffer>> {
   return new Promise((resolve, reject) => {
     const chunks: Uint8Array[] = [];
     let size = 0;
@@ -15,7 +22,9 @@ async function readPart(entry: JSZip.JSZipObject, limit: number): Promise<Uint8A
     const stream = (entry as JSZip.JSZipObject & { internalStream(type: "uint8array"): JSZip.JSZipStreamHelper<Uint8Array> }).internalStream("uint8array");
     stream.on("data", (chunk) => {
       size += chunk.length;
-      if (size > limit) { stream.pause(); reject(new Error(`Office part exceeds ${Math.round(limit / 1024 / 1024)} MB: ${entry.name}`)); return; }
+      budget.bytes += chunk.length;
+      if (budget.bytes > 200_000_000) { stream.pause(); reject(new Error("Office expanded content exceeds 200 MB; split the document.")); return; }
+      if (size > limit) { stream.pause(); reject(new Error(`Office part exceeds ${limit} bytes: ${entry.name}`)); return; }
       chunks.push(chunk);
     }).on("error", reject).on("end", () => {
       const bytes = new Uint8Array(size);
@@ -28,7 +37,7 @@ async function readPart(entry: JSZip.JSZipObject, limit: number): Promise<Uint8A
 
 export async function officeXml(zip: JSZip, path: string) {
   const entry = zip.file(path);
-  return entry ? new TextDecoder().decode(await readPart(entry, 16 * 1024 * 1024)) : undefined;
+  return entry ? new TextDecoder().decode(await readPart(entry, 16 * 1024 * 1024, packageBudget(zip))) : undefined;
 }
 
 export function xmlDocument(xml: string): Document {
@@ -98,6 +107,7 @@ const MIME: Record<string, string> = {
 
 /** One package reader shared by Word and PowerPoint; never fetch external relationships. */
 export function officePackage(zip: JSZip) {
+  if (Object.keys(zip.files).length > 4096) throw new Error("Office package contains more than 4096 entries; split the document.");
   const warnings: string[] = [];
   const binaries = new Map<string, File>();
   let totalBytes = 0;
@@ -125,11 +135,11 @@ export function officePackage(zip: JSZip) {
           if (!rel.external && !file && kind !== "link") {
             const entry = zip.file(target);
             if (!entry) warnings.push(`Missing embedded file: ${target}`);
-            else if (mediaCount >= 128 || totalBytes >= 50 * 1024 * 1024) warnings.push(`Media extraction limit reached; retained source location: ${target}`);
+            else if (mediaCount >= 128 || totalBytes >= 100_000_000) warnings.push(`Media extraction limit reached; retained source location: ${target}`);
             else {
               mediaCount += 1;
               try {
-                const bytes = await readPart(entry, Math.min(25 * 1024 * 1024, 50 * 1024 * 1024 - totalBytes));
+                const bytes = await readPart(entry, Math.min(50_000_000, 100_000_000 - totalBytes), packageBudget(zip));
                 file = new File([bytes], target.split("/").pop() || "media", { type: mime }); binaries.set(target, file); totalBytes += bytes.length;
               } catch (error) { warnings.push(error instanceof Error ? error.message : `Unable to extract ${target}`); }
             }
