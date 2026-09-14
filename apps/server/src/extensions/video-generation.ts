@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
-import { basename, extname } from "node:path";
+import { basename, extname, posix } from "node:path";
 import { z } from "zod";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { ApiError, providerApiError } from "../errors.js";
@@ -13,7 +13,8 @@ import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifact
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 import { claimVideoJobs, createVideoJob, getVideoJob, listVideoJobs, updateVideoJob, type VideoJob } from "./video-jobs.js";
 import { storageStatus, uploadWorkspaceFile } from "./storage.js";
-import { inspectLocalVideo, localVideoEditSchema, saveLocalVideo } from "./video-local-edit.js";
+import { avatarTimelineContext } from "./media-center.js";
+import { inspectLocalVideo, localVideoEditSchema, inspectNarrationDuration, mixAvatarNarration, saveLocalVideo } from "./video-local-edit.js";
 
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
@@ -63,6 +64,7 @@ const submissionSchema = z.object({
   resolution: z.string(), duration: z.string(), ratio: z.string(),
   firstFrame: z.string().max(4096).default(""), lastFrame: z.string().max(4096).default(""),
   imageRefs: z.string().max(125000).default(""), videoRefs: z.string().max(42000).default(""), audioRefs: z.string().max(42000).default(""),
+  avatarSource: z.enum(["video-audio", "video-content"]).optional(),
   generateAudio: z.enum(["true", "false"]).optional(), watermark: z.enum(["true", "false"]).optional(),
 }).strict();
 type Submission = z.infer<typeof submissionSchema>;
@@ -80,17 +82,18 @@ export function validateVideoSubmission(input: unknown): Submission {
   const model = videoModelDefinition(args.model);
   if (!model.operations.includes(args.operation)) fail("当前模型不支持此操作。");
   const allowedRatios = ["first", "first-last", "edit", "extend"].includes(args.operation) ? ["adaptive"] : model.ratios;
-  if (!model.resolutions.includes(args.resolution) || !model.durations.includes(args.duration) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
+  if (!model.resolutions.includes(args.resolution) || !(model.durations.includes(args.duration) || args.model === "minimax-h3-avatar" && args.avatarSource === "video-audio" && Number(args.duration) > 0 && Number(args.duration) <= 15) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
   if (["first", "first-last", "edit", "extend"].includes(args.operation) && args.ratio !== "adaptive") fail("首帧、编辑和延长操作的画幅必须跟随输入素材。");
   if (args.operation === "edit" && args.duration !== "-1") fail("Seedance 视频编辑的时长必须跟随原视频。");
   if (["first", "first-last"].includes(args.operation) !== Boolean(args.firstFrame.trim())) fail("首帧模式需要首帧图片；其他模式请使用参考素材。");
   if ((args.operation === "first-last") !== Boolean(args.lastFrame.trim())) fail("首尾帧模式需要尾帧图片；其他模式不支持尾帧。");
   const images = lines(args.imageRefs), videos = lines(args.videoRefs), audio = lines(args.audioRefs);
   if (args.model === "minimax-h3-avatar") {
-    if (images.length !== 1 || audio.length !== 1) fail("数字人需要一张人物图片和一段配音。");
-    if (audio[0].startsWith("https://")) fail("请上传音频或选择工作区中的配音文件。");
+    if (images.length !== 1 || audio.length !== (args.avatarSource === "video-content" ? 0 : 1)) fail("数字人需要一张人物图片和一段配音。");
+    if (audio[0]?.startsWith("https://")) fail("请上传音频或选择工作区中的配音文件。");
     if (args.generateAudio !== undefined || args.watermark !== undefined) fail("数字人保留上传的配音，不支持音频或水印开关。");
   }
+  if (args.avatarSource && args.model !== "minimax-h3-avatar") fail("配音来源仅适用于数字人。 ");
   if (images.length > model.imageLimit || videos.length > model.videoLimit || audio.length > model.audioLimit) fail("参考素材数量超过当前模型限制。");
   if (!isReference(args.operation) && images.length + videos.length + audio.length) fail("当前操作不接受多模态参考素材。");
   if (isReference(args.operation) && !images.length && !videos.length && !audio.length) fail("请先添加参考素材。");
@@ -103,6 +106,7 @@ export function validateVideoSubmission(input: unknown): Submission {
 const stringProperty = { type: "string" };
 export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "status", title: "Video models", effect: "read", properties: {} },
+  { action: "avatar-context", title: "Read current video narration and content", effect: "read", properties: {} },
   { action: "jobs", title: "Session video tasks", effect: "read", properties: { before: { type: "number" } } },
   { action: "submit", title: "Generate or edit video", effect: "write", properties: Object.fromEntries(Object.keys(submissionSchema.shape).map(key => [key, stringProperty])) },
   { action: "recover", title: "Resume an existing video task without resubmitting", effect: "write", properties: { id: stringProperty, upstreamId: stringProperty } },
@@ -247,10 +251,10 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   crop.audio = ["171", 0]; crop.start_index = 0; crop.duration = Number(args.duration);
   drive.source_audio = ["199", 0];
   target[imageKey] = ["137", 0]; target[audioKey] = ["199", 0];
-  target.prompt = `<Picture 1> speaks and lip-syncs exactly to <Audio 1>. ${args.prompt}`;
+  target.prompt = `<Picture 1> speaks and lip-syncs exactly to <Audio 1>. Preserve the reference picture visual style, identity, illustration or photographic rendering, colors, lighting and clothing. ${args.prompt}`;
   target.width = args.ratio === "9:16" ? 576 : 1024;
   target.height = args.ratio === "9:16" ? 1024 : 576;
-  const frames = Math.round(Number(args.duration) * 24);
+  const frames = Math.max(120, Math.ceil(Number(args.duration) * 24));
   target.length = frames + (5 - frames % 17 + 17) % 17;
   target.ref_image_size = "match";
   scheduler.steps = 6;
@@ -308,6 +312,11 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
     graph["300"] = { class_type: "ImageScaleToTotalPixels", inputs: { image: ["24", 0], megapixels, resolution_steps: 32, upscale_method: "nearest-exact" } };
     graph["301"] = { class_type: "GetImageSize", inputs: { image: ["300", 0] } };
     target.first_frame = ["300", 0]; target.width = ["301", 0]; target.height = ["301", 1];
+    if (args.model === "minimax-h3-avatar") {
+      const width = args.ratio === "9:16" ? 576 : 1024, height = args.ratio === "9:16" ? 1024 : 576;
+      graph["300"] = { class_type: "ImageScale", inputs: { image: ["24", 0], width, height, upscale_method: "lanczos", crop: "center" } };
+      target.width = width; target.height = height;
+    }
   } else {
     delete target.first_frame;
     const [width, height] = args.ratio.split(":").map(Number);
@@ -361,6 +370,7 @@ export async function videoRequest(workspace: WorkspaceInfo, args: Submission, k
       generate_audio: args.generateAudio !== "false", watermark: args.watermark !== "false",
       ...(isReference(args.operation) ? { omni_reference_task_type: args.operation } : {}) } };
   }
+  if (args.model === "minimax-h3-avatar" && args.avatarSource === "video-content") return h3Workflow(args, key, images[0], "", signal);
   return args.model === "minimax-h3-avatar" ? avatarWorkflow(args, key, images[0], audio[0], signal) : h3Workflow(args, key, first, last, signal);
 }
 
@@ -474,6 +484,39 @@ export function startVideoJobWorker(config: ServerConfig) {
   return { close: async () => { clearInterval(timer); controller.abort(); await active; } };
 }
 
+async function avatarContext(workspace: WorkspaceInfo, sessionId: string) {
+  const directory = `video/${sessionId}`;
+  const path = await resolveWithinRoot(workspace.path, `${directory}/index.html`);
+  const metadata = await stat(path).catch(error => { if (error.code === "ENOENT") return null; throw error; });
+  if (!metadata) return { content: "", audioCount: 0, audioDuration: 0, audioIssue: "当前视频没有配音素材。", clips: [] };
+  if (!metadata.isFile() || metadata.size > 2 * 1024 * 1024) fail("当前视频工程内容过大，暂时无法读取。 ");
+  const parsed = avatarTimelineContext(await readFile(path, "utf8"));
+  const clips: Array<{ path: string; start: number; duration: number; offset: number; volume: number }> = [];
+  let audioIssue = parsed.clips.length ? "" : "当前视频没有配音素材。";
+  if (parsed.clips.length > 24) audioIssue = "配音片段过多，请先合并配音后重试。";
+  const durations = new Map<string, number>();
+  for (const clip of parsed.clips.slice(0, 24)) {
+    if (!clip.src || clip.start == null || clip.duration == null || clip.duration <= 0 || clip.start + clip.duration > 3600 || clip.offset > 3600 || clip.volume > 2) {
+      audioIssue = "视频配音的时间线信息不完整，请先修复配音片段。"; continue;
+    }
+    if (/^(?:[a-z]+:|[/\\])/i.test(clip.src)) { audioIssue = "请先把配音素材保存到当前视频工程。"; continue; }
+    const path = posix.normalize(posix.join(directory, clip.src));
+    if (!path.startsWith(`${directory}/`)) { audioIssue = "配音素材必须位于当前视频工程。"; continue; }
+    try {
+      const file = await mediaFile(workspace, path);
+      if (!file.mime.startsWith("audio/") || file.size > 15 * 1024 * 1024) throw new Error("invalid audio");
+      const duration = durations.get(path) ?? await inspectNarrationDuration(workspace, path);
+      durations.set(path, duration);
+      const effectiveDuration = Math.min(clip.duration, duration - clip.offset);
+      if (effectiveDuration <= 0) throw new Error("empty audio window");
+      clips.push({ path, start: clip.start, duration: effectiveDuration, offset: clip.offset, volume: clip.volume });
+    } catch { audioIssue = "无法读取配音素材，请检查文件是否存在、格式及大小是否有效，并确认 FFprobe 已安装。"; }
+  }
+  const audioDuration = clips.length ? Math.max(...clips.map(clip => clip.start + clip.duration)) : 0;
+  if (audioDuration > 15) audioIssue = `配音共 ${audioDuration.toFixed(1)} 秒，当前数字人单次最多支持 15 秒。请先缩短视频配音；不会自动截断。`;
+  return { content: parsed.content, audioCount: clips.length, audioDuration, audioIssue, clips };
+}
+
 export async function callVideoGenerationAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, input: unknown, context: Record<string, unknown>) {
   if (action === "status") {
     const models = [];
@@ -487,7 +530,11 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   const workspace = config.workspaces.find(item => item.id === workspaceId);
   if (!workspace) throw new ApiError(404, "workspace_not_found", "工作区不存在。");
   const sessionId = sessionArtifactOwner(context.sessionId);
-  if (!["jobs", "read", "inspect"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (!["jobs", "read", "inspect", "avatar-context"].includes(action) && config.readOnly) throw new ApiError(403, "read_only", "当前工作区为只读，不能创建视频任务或保存素材。");
+  if (action === "avatar-context") {
+    const { clips, ...result } = await avatarContext(workspace, sessionId);
+    return { ok: true, result };
+  }
   if (action === "inspect") return { ok: true, result: await inspectLocalVideo(workspace, z.object({ path: z.string() }).strict().parse(input).path) };
   if (action === "local-edit") return { ok: true, result: await saveLocalVideo(config, workspace, sessionId, input) };
   if (action === "jobs") {
@@ -495,17 +542,33 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     return { ok: true, result: { jobs: await listVideoJobs(config, workspace.id, sessionId, args.before) } };
   }
   if (action === "submit") {
-    const args = validateVideoSubmission(input);
+    const draft = submissionSchema.parse(input);
+    const source = draft.model === "minimax-h3-avatar" && draft.avatarSource ? await avatarContext(workspace, sessionId) : null;
+    if (source && draft.avatarSource === "video-audio") {
+      if (source.audioIssue || !source.clips.length) fail(source.audioIssue || "当前视频没有配音素材。");
+      draft.duration = String(source.audioDuration);
+      draft.audioRefs = `video/${sessionId}/assets/avatar-voice-${draft.requestId}.wav`;
+    }
+    if (source && draft.avatarSource === "video-content") {
+      if (!source.content.trim()) fail("当前视频没有可参考的内容，请先完善视频。 ");
+      draft.audioRefs = "";
+    }
+    if (source) draft.prompt = `保持参考人物图片的视觉风格、身份、服装、色彩和光线；插画保持插画风格，写实照片保持写实风格。${draft.avatarSource === "video-content" ? "参考以下视频内容设计自然动作，不使用视频配音，不要求对口型。" : "严格跟随视频配音对口型。"}\n${draft.prompt}\n视频内容：${source.content}`.slice(0, 8000);
+    const args = validateVideoSubmission(draft);
     const key = await credential(authorization, args.model);
     const now = Date.now();
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
-      ...(args.model === "minimax-h3-avatar" ? { workflowId: AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
+      ...(args.model === "minimax-h3-avatar" ? { workflowId: args.avatarSource === "video-content" ? H3_WORKFLOW : AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
       model: args.model, operation: args.operation, prompt: args.prompt, status: "submitting", upstreamId: "", path: "", message: "准备并提交素材…",
       createdAt: now, updatedAt: now, nextPoll: now + 15 * 60_000 });
     if (!created.created) return { ok: true, result: { job: created.job } };
     let submitted = false;
     try {
+      if (source && args.avatarSource === "video-audio") {
+        await sessionDirectory(workspace, sessionId, "assets");
+        await mixAvatarNarration(workspace, source.clips, args.audioRefs, source.audioDuration);
+      }
       const request = await videoRequest(workspace, args, key, config, authorization);
       submitted = true;
       const result = await jsonRequest(request.url, key, request.body);

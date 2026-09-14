@@ -1,32 +1,33 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type VideoJob } from "@ipollowork/types/video-generation";
-import { Loader2, RefreshCw } from "lucide-react";
+import { videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
+import { Loader2, RefreshCw, ImagePlus, Check } from "lucide-react";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { VideoVoiceoverSettings } from "./video-voice";
 import { videoProjectDirectory } from "./video-project";
 
 type Props = { client: iPolloWorkServerClient; workspaceId: string; workspaceRoot: string; sessionId: string;
-  voice: VideoVoiceoverSettings | null; onAddVideo?: (path: string) => Promise<void> };
+  onAddVideo?: (path: string) => Promise<void> };
 
-// Owns only the avatar form. Submission, persistence and polling remain server-owned.
-export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, voice, onAddVideo }: Props) {
+export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, onAddVideo }: Props) {
   const [image, setImage] = React.useState("");
-  const [audio, setAudio] = React.useState("");
-  const [text, setText] = React.useState("");
+  const [imageName, setImageName] = React.useState("");
+  const [imagePreview, setImagePreview] = React.useState("");
+  const imagePreviewRef = React.useRef("");
+  const [useAudio, setUseAudio] = React.useState(false);
+  const [source, setSource] = React.useState<VideoAvatarContext | null>(null);
   const [ratio, setRatio] = React.useState("9:16");
   const [duration, setDuration] = React.useState("10");
-  const [prompt, setPrompt] = React.useState("人物面向镜头自然说话，保持人物身份、背景和镜头稳定。");
+  const [prompt, setPrompt] = React.useState("人物面向镜头自然表现，保持人物身份、背景和镜头稳定。");
   const [ready, setReady] = React.useState(false);
+  const [checking, setChecking] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
   const busyRef = React.useRef(false);
   const [message, setMessage] = React.useState("");
   const [jobs, setJobs] = React.useState<VideoJob[]>([]);
-  const [audioFiles, setAudioFiles] = React.useState<string[]>([]);
   const [preview, setPreview] = React.useState("");
   const previewRef = React.useRef("");
   const mounted = React.useRef(true);
@@ -37,27 +38,30 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     return response.result;
   }, [client, context]);
   const refresh = React.useCallback(async () => {
-    const result = videoJobsResultSchema.parse(await call("jobs", {}));
-    if (mounted.current) setJobs(result.jobs.filter(job => job.model === "minimax-h3-avatar"));
+    const [jobResult, statusResult, sourceResult] = await Promise.allSettled([call("jobs", {}), call("status", {}), call("avatar-context", {})]);
+    if (!mounted.current) return;
+    if (jobResult.status === "fulfilled") setJobs(videoJobsResultSchema.parse(jobResult.value).jobs.filter(job => job.model === "minimax-h3-avatar"));
+    setReady(statusResult.status === "fulfilled" && videoModelStatusSchema.parse(statusResult.value).models.some(model => model.id === "minimax-h3-avatar"));
+    setSource(sourceResult.status === "fulfilled" ? videoAvatarContextSchema.parse(sourceResult.value) : null);
+    setChecking(false);
+    if (sourceResult.status === "rejected") throw sourceResult.reason;
+    if (statusResult.status === "rejected") throw statusResult.reason;
   }, [call]);
   React.useEffect(() => {
     mounted.current = true;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout>;
+    let disposed = false, refreshing = false;
     const poll = async () => {
-      try { await refresh(); } catch (error) { if (!disposed) setMessage(error instanceof Error ? error.message : "无法读取任务"); }
-      if (!disposed) timer = setTimeout(() => void poll(), 10_000);
+      if (refreshing) return;
+      refreshing = true;
+      try { await refresh(); } catch (error) { if (!disposed) setMessage(error instanceof Error ? error.message : "无法读取视频信息"); }
+      finally { refreshing = false; }
     };
-    void call("status", {}).then(value => {
-      const status = videoModelStatusSchema.parse(value);
-      if (!disposed) setReady(status.models.some(model => model.id === "minimax-h3-avatar"));
-    }).catch(error => { if (!disposed) setMessage(error instanceof Error ? error.message : "无法读取授权"); });
     void poll();
-    void client.listSessionArtifacts(workspaceId, sessionId).then(page => {
-      if (!disposed) setAudioFiles(page.items.filter(item => /\.(mp3|wav)$/i.test(item.path)).map(item => item.path));
-    }).catch(() => undefined);
-    return () => { disposed = true; mounted.current = false; clearTimeout(timer); URL.revokeObjectURL(previewRef.current); };
-  }, [call, client, refresh, sessionId, workspaceId]);
+    const timer = setInterval(() => void poll(), 10_000);
+    const onFocus = () => { void poll(); };
+    window.addEventListener("focus", onFocus);
+    return () => { disposed = true; mounted.current = false; clearInterval(timer); window.removeEventListener("focus", onFocus); URL.revokeObjectURL(previewRef.current); URL.revokeObjectURL(imagePreviewRef.current); };
+  }, [refresh]);
   const act = async (fn: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -65,38 +69,27 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     try { await fn(); } catch (error) { if (mounted.current) setMessage(error instanceof Error ? error.message : "操作失败"); }
     finally { busyRef.current = false; if (mounted.current) setBusy(false); }
   };
-  const upload = async (file: File, kind: "image" | "audio") => {
+  const upload = async (file: File) => {
     const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-    if (!(kind === "image" ? ["png", "jpg", "jpeg", "webp"] : ["mp3", "wav"]).includes(extension)) throw new Error("图片支持 PNG/JPG/WebP，音频支持 MP3/WAV。");
-    if (!file.size || file.size > (kind === "image" ? 20 : 15) * 1024 * 1024) throw new Error("图片上限 20 MB，音频上限 15 MB，文件不能为空。");
+    if (!["png", "jpg", "jpeg", "webp"].includes(extension)) throw new Error("人物图片支持 PNG、JPG 和 WebP。");
+    if (!file.size || file.size > 20 * 1024 * 1024) throw new Error("人物图片不能超过 20 MB，文件不能为空。");
+    const bitmap = await createImageBitmap(file);
+    bitmap.close();
     const path = `${videoProjectDirectory(sessionId)}/assets/avatar-${crypto.randomUUID()}.${extension}`;
     await client.writeWorkspaceBinaryFile(workspaceId, { path, data: await file.arrayBuffer() });
-    if (mounted.current) { if (kind === "image") setImage(path); else setAudio(path); }
+    if (!mounted.current) return;
+    URL.revokeObjectURL(imagePreviewRef.current);
+    imagePreviewRef.current = URL.createObjectURL(file);
+    setImage(path); setImageName(file.name); setImagePreview(imagePreviewRef.current);
   };
-  const synthesize = async () => {
-    if (!voice || !text.trim()) throw new Error("先在百炼音色或我的声音中选好声音，再输入配音文字。");
-    const outputPath = `${videoProjectDirectory(sessionId)}/assets/avatar-voice-${crypto.randomUUID()}.mp3`;
-    const response = await client.callMedia("speech_synthesize_workspace_file", {
-      text: text.trim(), sceneText: text.trim(), sceneId: "avatar", sceneStart: 0, sceneDuration: Number(duration),
-      outputPath, voice: voice.voiceId, model: voice.model,
-    }, context);
-    if (!response.ok) throw new Error(response.message || "配音生成失败");
-    const payload = response.result;
-    if (!payload || typeof payload !== "object" || !("output" in payload)) throw new Error("配音没有返回文件。");
-    const result = payload.output;
-    if (!result || typeof result !== "object" || !("sourcePath" in result) || typeof result.sourcePath !== "string"
-      || !("durationSeconds" in result) || typeof result.durationSeconds !== "number") throw new Error("配音没有返回有效时长。");
-    if (mounted.current) {
-      setAudio(result.sourcePath);
-      const nextDuration = String(Math.min(15, Math.max(5, Math.ceil(result.durationSeconds))));
-      setDuration(nextDuration);
-      setMessage(`配音已生成，共 ${result.durationSeconds.toFixed(1)} 秒。视频使用开头 ${nextDuration} 秒以内的音频；单次支持 5–15 秒。`);
-    }
-  };
+  const audioAvailable = Boolean(source?.audioCount && !source.audioIssue);
+  const canSubmit = ready && !checking && Boolean(image && prompt.trim() && source && (useAudio ? audioAvailable : source.content.trim()));
   const submit = async () => {
+    if (!canSubmit) throw new Error("请先检查人物图片、配音素材和 RunningHub Key 配置。");
     const result = videoSubmitResultSchema.parse(await call("submit", {
       requestId: crypto.randomUUID(), model: "minimax-h3-avatar", operation: "reference", prompt,
-      resolution: "0.589824MP", duration, ratio, imageRefs: image, audioRefs: audio,
+      resolution: "0.589824MP", duration: useAudio ? String(source?.audioDuration) : duration, ratio,
+      imageRefs: image, avatarSource: useAudio ? "video-audio" : "video-content",
     }));
     if (mounted.current) { setJobs(current => [result.job, ...current.filter(job => job.id !== result.job.id)]); setMessage(result.job.message); }
   };
@@ -107,19 +100,40 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     previewRef.current = URL.createObjectURL(new Blob([file.data], { type: "video/mp4" }));
     setPreview(previewRef.current);
   };
-  return <div className="space-y-3" data-testid="video-avatar-panel">
-    <p className="text-xs text-muted-foreground">上传人物图和配音，生成对口型数字人视频。MiniMax H3 · lightx2v</p>
-    {!ready ? <p role="status" className="text-xs text-amber-600">请先在授权中心配置 RunningHub 视频服务。</p> : null}
-    <label className="block space-y-1 text-xs">人物图片<Input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void act(() => upload(file, "image")); }} /></label>
-    {image ? <p className="break-all text-[11px] text-muted-foreground">已选择：{image.split("/").pop()}</p> : null}
-    <label className="block space-y-1 text-xs">上传配音<Input type="file" accept=".mp3,.wav" disabled={busy} onChange={event => { const file = event.target.files?.[0]; if (file) void act(() => upload(file, "audio")); }} /></label>
-    {audioFiles.length ? <Select value={audioFiles.includes(audio) ? audio : ""} onValueChange={value => { if (value) setAudio(value); }}><SelectTrigger className="w-full min-w-0" aria-label="选择已有配音"><SelectValue className="min-w-0 overflow-hidden" placeholder="选择本会话已有配音">{audioFiles.includes(audio) ? audio.split("/").pop() : "选择本会话已有配音"}</SelectValue></SelectTrigger><SelectContent>{audioFiles.map(path => <SelectItem key={path} value={path}>{path.split("/").pop()}</SelectItem>)}</SelectContent></Select> : null}
-    <label className="block space-y-1 text-xs">配音文件路径<Input value={audio} placeholder="也可填写工作区内的 MP3/WAV 路径" onChange={event => setAudio(event.target.value)} /></label>
-    <details className="rounded-lg border p-2 text-xs"><summary>用已选声音生成配音</summary><p className="my-2 text-muted-foreground">{voice ? `当前声音：${voice.voiceId}` : "先在百炼音色或我的声音页签选择声音。"}</p><Textarea aria-label="配音文字" value={text} maxLength={1000} onChange={event => setText(event.target.value)} /><Button className="mt-2" size="sm" disabled={busy || !voice || !text.trim()} onClick={() => void act(synthesize)}>生成配音（百炼计费）</Button></details>
-    <div className="grid grid-cols-2 gap-2"><Select value={ratio} onValueChange={value => { if (value) setRatio(value); }}><SelectTrigger aria-label="数字人画幅"><SelectValue>{ratio === "9:16" ? "竖屏 576×1024" : "横屏 1024×576"}</SelectValue></SelectTrigger><SelectContent><SelectItem value="9:16">竖屏 576×1024</SelectItem><SelectItem value="16:9">横屏 1024×576</SelectItem></SelectContent></Select><Select value={duration} onValueChange={value => { if (value) setDuration(value); }}><SelectTrigger aria-label="数字人视频时长"><SelectValue>{duration} 秒</SelectValue></SelectTrigger><SelectContent>{Array.from({ length: 11 }, (_, i) => String(i + 5)).map(seconds => <SelectItem key={seconds} value={seconds}>{seconds} 秒</SelectItem>)}</SelectContent></Select></div>
-    <label className="block space-y-1 text-xs">动作描述<Textarea value={prompt} maxLength={7000} onChange={event => setPrompt(event.target.value)} /></label>
-    <p className="text-[11px] text-muted-foreground">音频从 0 秒开始 · 6 步 · match。视频按 RunningHub Plus 实际计算耗时计费，配音不足时结果可能较短。</p>
-    <Button className="w-full" disabled={busy || !ready || !image || !audio || !prompt.trim()} onClick={() => void act(submit)}>{busy ? <Loader2 className="animate-spin" /> : null}生成数字人视频（付费）</Button>
+  return <div className="space-y-4" data-testid="video-avatar-panel">
+    <p className="text-xs leading-relaxed text-muted-foreground">上传人物图片，沿用图片的人物形象与视觉风格生成数字人。</p>
+    <div className="space-y-2">
+      <label className="block space-y-2 text-xs font-medium">人物图片
+        <Input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void act(() => upload(file)); }} />
+      </label>
+      {imagePreview ? <div className="overflow-hidden rounded-xl border bg-muted/30"><img src={imagePreview} alt="数字人人物参考图片" className="max-h-52 w-full object-contain p-2" /><p className="truncate border-t px-3 py-2 text-xs text-muted-foreground" title={imageName}>{imageName}</p></div> : <div className="flex items-center gap-2 rounded-lg border border-dashed p-3 text-xs text-muted-foreground"><ImagePlus className="size-4 shrink-0" />PNG / JPG / WebP，最大 20 MB</div>}
+      <p className="text-[11px] leading-relaxed text-muted-foreground">生成时参考图片的画风、服装、色彩与光线；插画保持插画风格，照片保持写实风格。</p>
+    </div>
+    <fieldset className="space-y-2" disabled={busy}>
+      <legend className="mb-2 text-xs font-medium">是否使用视频中的配音素材</legend>
+      <div className="grid grid-cols-2 gap-2">
+        <Button type="button" variant={useAudio ? "secondary" : "outline"} aria-pressed={useAudio} disabled={!audioAvailable || busy} onClick={() => setUseAudio(true)}>使用配音</Button>
+        <Button type="button" variant={!useAudio ? "secondary" : "outline"} aria-pressed={!useAudio} onClick={() => setUseAudio(false)}>不使用配音</Button>
+      </div>
+      <p role="status" className="text-xs leading-relaxed text-muted-foreground">{checking ? "正在读取当前视频配音…" : source?.audioIssue || (!source ? "暂时无法读取当前视频，请刷新重试。" : source.audioCount ? `当前视频有 ${source.audioCount} 段配音，共 ${source.audioDuration.toFixed(1)} 秒。` : "当前视频没有配音素材。")}</p>
+      <p className="text-xs leading-relaxed">{useAudio ? `数字人视频将与配音时长一致${source?.audioDuration ? `（${source.audioDuration.toFixed(1)} 秒）` : ""}，按视频时间线保留配音。` : "参考当前视频内容生成数字人，不使用视频配音，可自行选择生成时长。"}</p>
+    </fieldset>
+    <fieldset className="space-y-2" disabled={busy}>
+      <legend className="mb-2 text-xs font-medium">画面尺寸</legend>
+      <div className="grid grid-cols-2 gap-2">
+        {(["9:16", "16:9"]).map(value => <button key={value} type="button" aria-pressed={ratio === value} aria-label={value === "9:16" ? "竖屏 576×1024" : "横屏 1024×576"} onClick={() => setRatio(value)} className={`relative flex min-w-0 flex-col items-center gap-2 rounded-xl border px-2 py-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${ratio === value ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:bg-muted/50"}`}>
+          <span className="flex h-8 items-center"><span className={`block rounded-sm border-2 ${value === "9:16" ? "h-8 w-5" : "h-5 w-8"}`} /></span>
+          <span>{value === "9:16" ? "竖屏 9:16" : "横屏 16:9"}</span><span className="text-[11px] text-muted-foreground">{value === "9:16" ? "576 × 1024" : "1024 × 576"}</span>{ratio === value ? <Check className="absolute right-2 top-2 size-3 text-primary" /> : null}
+        </button>)}
+      </div>
+    </fieldset>
+    {!useAudio ? <label className="block space-y-2 text-xs font-medium">生成时长<Select value={duration} onValueChange={value => { if (value) setDuration(value); }} disabled={busy}><SelectTrigger className="w-full" aria-label="数字人视频时长"><SelectValue>{duration} 秒</SelectValue></SelectTrigger><SelectContent>{Array.from({ length: 11 }, (_, i) => String(i + 5)).map(seconds => <SelectItem key={seconds} value={seconds}>{seconds} 秒</SelectItem>)}</SelectContent></Select></label> : null}
+    <label className="block space-y-2 text-xs font-medium">动作描述<Textarea value={prompt} disabled={busy} maxLength={3000} onChange={event => setPrompt(event.target.value)} /></label>
+    <div className="space-y-2">
+      <Button className="w-full" disabled={busy || !canSubmit} onClick={() => void act(submit)}>{busy ? <Loader2 className="animate-spin" /> : null}生成数字人视频（付费）</Button>
+      <p className="text-[11px] leading-relaxed text-muted-foreground">{checking ? "正在检查 RunningHub Key…" : ready ? "RunningHub Key 已配置。生成按 RunningHub 实际用量计费。" : "需要先在授权中心配置 RunningHub 视频服务的 Key，配置后才能生成。"}</p>
+      {!useAudio && source && !source.content.trim() ? <p className="text-xs text-muted-foreground">当前视频没有可参考的内容，请先完善视频。</p> : null}
+    </div>
     {message ? <p role="status" className="break-words text-xs">{message}</p> : null}
     <div className="flex items-center justify-between text-xs">本会话数字人任务<Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
     {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs"><p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p><p className="break-words text-muted-foreground">{job.message}</p>{job.path ? <div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button>{onAddVideo ? <Button size="sm" disabled={busy} onClick={() => void act(async () => { await onAddVideo(job.path); setMessage("已添加到当前项目素材，可拖入时间线。"); })}>添加到项目素材</Button> : null}</div> : null}{["uncertain", "save_failed"].includes(job.status) && job.upstreamId ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id }); await refresh(); })}>恢复查询（不重新生成）</Button> : null}</div>)}

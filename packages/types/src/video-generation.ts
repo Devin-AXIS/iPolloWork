@@ -11,3 +11,11 @@ export type VideoJob = z.infer<typeof videoJobSchema>;
 export const videoJobsResultSchema = z.object({ jobs: z.array(videoJobSchema) });
 export const videoSubmitResultSchema = z.object({ job: videoJobSchema });
 export const videoModelStatusSchema = z.object({ models: z.array(z.object({ id: z.string() })) });
+
+export const videoAvatarContextSchema = z.object({
+  content: z.string(),
+  audioDuration: z.number().nonnegative(),
+  audioCount: z.number().int().nonnegative(),
+  audioIssue: z.string(),
+});
+export type VideoAvatarContext = z.infer<typeof videoAvatarContextSchema>;

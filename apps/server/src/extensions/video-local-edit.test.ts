@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
+import { inspectNarrationDuration, mixAvatarNarration, inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
 import type { ServerConfig } from "../types.js";
 const exec = promisify(execFile);
@@ -76,3 +76,12 @@ test("overwrite changes the same file, is retry-safe and rejects stale or read-o
   await writeFile(join(workspace.path,"source.mp4"),"changed");
   await expect(saveLocalVideo(config,workspace,"session",overwrite)).rejects.toThrow("发生了变化");
 },30000);
+
+test("avatar narration mixing preserves gaps, offsets and exact output duration", async()=>{
+  const {root,workspace}=await fixture();
+  await exec(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v","error","-f","lavfi","-i","sine=frequency=400:duration=5","-c:a","pcm_s16le",join(root,"voice.wav")],{windowsHide:true});
+  await mixAvatarNarration(workspace,[{path:"voice.wav",start:0,duration:2,offset:1,volume:1},{path:"voice.wav",start:3,duration:1.2,offset:0,volume:.5}],"mixed.wav",4.2);
+  expect(await inspectNarrationDuration(workspace,"mixed.wav")).toBeCloseTo(4.2,2);
+  const raw=await exec(process.env.HYPERFRAMES_FFMPEG_PATH||"ffmpeg",["-v","error","-i",join(root,"mixed.wav"),"-ss","2.1","-t","0.5","-ac","1","-f","s16le","pipe:1"],{encoding:"buffer",windowsHide:true});
+  expect(raw.stdout.every(byte=>byte===0)).toBe(true);
+});

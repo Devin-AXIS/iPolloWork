@@ -152,3 +152,25 @@ export async function saveLocalVideo(config: ServerConfig, workspace: WorkspaceI
     if (temporary) await unlink(temporary).catch(error => { if (error.code !== "ENOENT") throw error; });
   }
 }
+
+export async function inspectNarrationDuration(workspace: WorkspaceInfo, path: string) {
+  const absolute = await resolveWithinRoot(workspace.path, path);
+  const result = await runBinary("ffprobe", ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "stream=codec_type:format=duration", "-of", "json", absolute], 15_000);
+  const value = probeSchema.parse(JSON.parse(result.stdout));
+  if (!value.streams.some(stream => stream.codec_type === "audio")) throw new ApiError(400, "avatar_audio_invalid", "配音文件没有可用音轨。 ");
+  return value.format.duration;
+}
+
+/** Mix narration windows, retaining timeline gaps and trims; exclude background music. */
+export async function mixAvatarNarration(workspace: WorkspaceInfo, clips: Array<{ path: string; start: number; duration: number; offset: number; volume: number }>, output: string, duration: number) {
+  const args = ["-nostdin", "-v", "error"];
+  for (const clip of clips) {
+    const absolute = await resolveWithinRoot(workspace.path, clip.path);
+    args.push("-protocol_whitelist", "file,pipe", "-ss", String(clip.offset), "-t", String(clip.duration), "-i", absolute);
+  }
+  const filters = clips.map((clip, index) => `[${index}:a]atrim=duration=${clip.duration},asetpts=PTS-STARTPTS,volume=${clip.volume},adelay=${Math.round(clip.start * 1000)}:all=1[a${index}]`);
+  filters.push(clips.map((_, index) => `[a${index}]`).join("") + `amix=inputs=${clips.length}:normalize=0,apad,atrim=duration=${duration}[out]`);
+  const absoluteOutput = await resolveWithinRoot(workspace.path, output);
+  await runBinary("ffmpeg", [...args, "-filter_complex", filters.join(";"), "-map", "[out]", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", "-n", absoluteOutput], 60_000);
+  return output;
+}
