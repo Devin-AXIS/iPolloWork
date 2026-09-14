@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
+import { mediaKindForPath, MAX_VIDEO_IMAGE_BYTES, MAX_VIDEO_MEDIA_BYTES } from "@ipollowork/types/video-image-workbench";
 import {
   AppBridge,
   PostMessageTransport,
@@ -50,7 +51,7 @@ import {
   type PluginUiHostContextV1,
 } from "@ipollowork/types/plugins";
 
-import type { PluginUiSurface } from "./plugin-ui-contributions";
+import { mediaStudioEngine, workspaceAppServiceAction, type PluginUiSurface } from "./plugin-ui-contributions";
 import { ServiceWorkbenchFrame } from "./service-workbench-frame";
 
 export type WorkspaceAppModelContext = McpUiUpdateModelContextRequest["params"];
@@ -77,6 +78,10 @@ type WorkspaceAppFrameProps = {
   onRequestClose?: () => void;
   onEditGalleryImage?: (path: string) => void;
   onGenerateVideo?: (path: string) => void;
+  onSwitchMedia?: (kind: "image" | "video") => void;
+  onOpenMedia?: (path: string, kind: "image" | "video") => void;
+  onReturnToSource?: () => void;
+  onMediaProduced?: (path: string, originRequestId: string) => void;
   workbench?: { canSave: boolean; canReplace: boolean; busy: boolean; onAction: (action: "back" | "copy" | "replace") => void };
   onImageSaved?: (save: WorkspaceImageSave) => void;
   onImageEdited?: (edit: WorkspaceImageEdit | null) => void;
@@ -193,7 +198,7 @@ function sameWorkspaceAppRuntimeResource(
 function pluginUiHostContext(
   props: Pick<
     WorkspaceAppFrameProps,
-    "surface" | "placement" | "workspaceId" | "workspaceRoot" | "sessionId" | "launch"
+    "surface" | "placement" | "workspaceId" | "workspaceRoot" | "sessionId" | "launch" | "onSwitchMedia"
   >,
   developmentPreview: WorkspaceAppFrameProps["developmentPreview"],
 ): PluginUiHostContextV1 {
@@ -205,6 +210,7 @@ function pluginUiHostContext(
     workspaceId: props.workspaceId,
     workspaceRoot: props.workspaceRoot,
     sessionId: props.sessionId ?? null,
+    mediaStudio: Boolean(props.onSwitchMedia),
     ...(props.launch ? { launch: props.launch } : {}),
     ...(developmentPreview ? {
       developmentPreview: {
@@ -223,6 +229,8 @@ type WorkspaceAppInspectorProps = {
   onChangeModel?: () => void;
   onDismissError?: () => void;
   composer?: boolean;
+  mediaKind?: "image" | "video";
+  onSwitchMedia?: (kind: "image" | "video") => void;
   onOptimizePrompt?: (args: Record<string, string>) => Promise<string>;
 };
 
@@ -272,7 +280,7 @@ function InspectorImagePreview({ path, readTool, onCallTool }: {
     onError={() => setError(t("media.studio.preview_error"))} />;
 }
 
-function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations, onChangeModel, onDismissError, onOptimizePrompt, composer = false }: WorkspaceAppInspectorProps) {
+function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizations, onChangeModel, onDismissError, onOptimizePrompt, mediaKind, onSwitchMedia, composer = false }: WorkspaceAppInspectorProps) {
   useSyncExternalStore(useCallback(listener => {
     window.addEventListener(localeChangedEvent, listener);
     return () => window.removeEventListener(localeChangedEvent, listener);
@@ -550,7 +558,11 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
 
         </> : context.fields.filter(field => !isAdvancedField(field)).map(renderField)}
         <div className={compactParameters ? "media-composer-footer flex shrink-0 items-center gap-2" : composer ? "flex max-h-[70%] shrink-0 flex-wrap items-end gap-2 overflow-y-auto" : "contents"}>
-          <div className={compactParameters ? "flex min-w-0 items-center gap-2" : composer ? "flex min-w-0 max-w-full items-end gap-2 overflow-x-auto" : "contents"}>
+          <div className={compactParameters ? "flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none]" : composer ? "flex min-w-0 max-w-full items-end gap-2 overflow-x-auto" : "contents"}>
+          {composer && onSwitchMedia && mediaKind ? <Select value={mediaKind} onValueChange={value => { if(value === "image" || value === "video") onSwitchMedia(value); }}>
+            <SelectTrigger size="sm" data-media-type className="data-[size=sm]:h-7 shrink-0 gap-1.5 rounded-lg border-0 bg-muted px-2 text-xs font-normal text-foreground shadow-none" aria-label={t("media.studio.type")}><SelectValue>{t(`media.studio.${mediaKind}`)}</SelectValue></SelectTrigger>
+            <SelectContent><SelectItem value="image">{t("media.studio.image")}</SelectItem><SelectItem value="video">{t("media.studio.video")}</SelectItem></SelectContent>
+          </Select> : null}
           {composer ? context.fields.filter(field => !isAdvancedField(field) && field.control !== "image" && field.control !== "textarea" && !outputFields.includes(field)).map(renderField) : null}
         {outputFields.length > 0 ? <>
           {outputFields.map(field => <input key={field.id} type="hidden" name={field.id} value={field.value} />)}
@@ -654,9 +666,32 @@ export function WorkspaceAppFrame(props: WorkspaceAppFrameProps) {
 }
 
 function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const [importingMedia, setImportingMedia] = useState(false);
+  const [mediaImportError, setMediaImportError] = useState("");
+  const importMedia = async (file: File) => {
+    const kind = mediaKindForPath(file.name);
+    if (!kind || !file.size || file.size > (kind === "image" ? MAX_VIDEO_IMAGE_BYTES : MAX_VIDEO_MEDIA_BYTES)) {
+      setMediaImportError(t("media.workbench.too_large"));
+      return;
+    }
+    setImportingMedia(true);
+    setMediaImportError("");
+    try {
+      const path = `artifacts/media-studio/${crypto.randomUUID()}.${file.name.split(".").pop()?.toLowerCase()}`;
+      await props.client.uploadWorkspaceMedia(props.workspaceId, path, file);
+      props.onOpenMedia?.(path, kind);
+    } catch (reason) {
+      setMediaImportError(reason instanceof Error ? reason.message : t("media.workbench.failed"));
+    } finally {
+      setImportingMedia(false);
+    }
+  };
+
   const platform = usePlatform();
   const navigate = useNavigate();
-  const inspectorBelowAppToolbar = props.surface.pluginId === "image-studio" || props.surface.pluginId === "video-console";
+  const engineId = mediaStudioEngine(props.surface);
+  const inspectorBelowAppToolbar = engineId === "image-studio" || engineId === "video-console";
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [fileInfo, setFileInfo] = useState<{ rows: { label: string; value: string }[]; prompt: string } | null>(null);
   const [downloadMenu, setDownloadMenu] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -745,26 +780,33 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   useEffect(() => {
     const receiveImageStudioReference = (event: MessageEvent) => {
       const iframe = iframeRef.current;
-      if (!["image-studio", "video-console"].includes(props.surface.pluginId) || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
-      if (event.data.type === `ipollowork:${props.surface.pluginId}:file-info-close`) { setFileInfo(null); return; }
-      if (event.data.type === `ipollowork:${props.surface.pluginId}:file-info`) {
+      if (!["image-studio", "video-console"].includes(engineId) || event.source !== iframe?.contentWindow || !isRecord(event.data)) return;
+      if (event.data.type === "ipollowork:media-studio:switch" && (event.data.kind === "image" || event.data.kind === "video")) { props.onSwitchMedia?.(event.data.kind); return; }
+      if (event.data.type === "ipollowork:media-studio:open") { mediaInputRef.current?.click(); return; }
+      if (event.data.type === "ipollowork:media-studio:edit" && typeof event.data.path === "string") {
+        const kind=mediaKindForPath(event.data.path); if(kind)props.onOpenMedia?.(event.data.path,kind); return;
+      }
+      if (event.data.type === "ipollowork:media-studio:produced" && typeof event.data.path === "string" && typeof event.data.originRequestId === "string") { props.onMediaProduced?.(event.data.path,event.data.originRequestId); return; }
+      if (event.data.type === `ipollowork:${engineId}:file-info-close`) { setFileInfo(null); return; }
+      if (event.data.type === `ipollowork:${engineId}:file-info`) {
         const { rows, prompt } = event.data;
         if (!Array.isArray(rows) || typeof prompt !== "string" || prompt.length > 16000) return;
         setFileInfo({ rows: rows.slice(0, 16).flatMap((row: unknown) => isRecord(row) && typeof row.label === "string" && typeof row.value === "string" ? [{ label: row.label.slice(0, 80), value: row.value.slice(0, 1000) }] : []), prompt });
         return;
       }
       if (event.data.type === "ipollowork:media-workbench:back") {
-        workbenchRef.current?.onAction("back");
+        if (workbenchRef.current) workbenchRef.current.onAction("back");
+        else props.onReturnToSource?.();
         return;
       }
-      if (event.data.type === `ipollowork:${props.surface.pluginId}:download-menu`) {
+      if (event.data.type === `ipollowork:${engineId}:download-menu`) {
         const { left, top, width, height } = event.data;
         if (typeof left !== "number" || typeof top !== "number" || typeof width !== "number" || typeof height !== "number" || ![left, top, width, height].every(Number.isFinite)) return;
         const bounds = iframe.getBoundingClientRect();
         setDownloadMenu({ left: bounds.left + left, top: bounds.top + top, width, height });
         return;
       }
-      if (["video-console", "image-studio"].includes(props.surface.pluginId) && event.data.type === `ipollowork:${props.surface.pluginId}:download-file`) {
+      if (["video-console", "image-studio"].includes(engineId) && event.data.type === `ipollowork:${engineId}:download-file`) {
         const { blob, name } = event.data;
         if (!(blob instanceof Blob) || blob.size > 100 * 1024 * 1024 || !["video/mp4", "video/quicktime", "image/png", "image/jpeg", "image/webp"].includes(blob.type) || typeof name !== "string") return;
         const url = URL.createObjectURL(blob);
@@ -775,7 +817,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
         return;
       }
-      if (event.data.type === `ipollowork:${props.surface.pluginId}:model-menu`) {
+      if (event.data.type === `ipollowork:${engineId}:model-menu`) {
         const data = event.data;
         if (typeof data.value !== "string" || typeof data.manageLabel !== "string" || !Array.isArray(data.options)
           || typeof data.left !== "number" || typeof data.top !== "number" || typeof data.width !== "number" || typeof data.height !== "number"
@@ -786,24 +828,24 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         setModelMenu({ value: data.value, options, left: bounds.left + data.left, top: bounds.top + data.top, width: data.width, height: data.height, manageLabel: data.manageLabel });
         return;
       }
-      if (props.surface.pluginId === "video-console" && event.data.type === "ipollowork:video-console:list-media") {
+      if (engineId === "video-console" && event.data.type === "ipollowork:video-console:list-media") {
         if (!props.sessionId) return;
         void props.client.listSessionArtifacts(props.workspaceId, props.sessionId, 60).then(page => {
           iframe.contentWindow?.postMessage({ type: "ipollowork:video-console:media-list", paths: page.items.filter(item => /\.(png|jpe?g|webp|mp4|mov)$/i.test(item.path)).slice(0, 12).map(item => item.path) }, "*");
         }).catch(() => iframe.contentWindow?.postMessage({ type: "ipollowork:video-console:media-list", error: t("media.studio.outputs_error") }, "*"));
         return;
       }
-      if (props.surface.pluginId === "image-studio" && typeof event.data.path === "string") {
+      if (engineId === "image-studio" && typeof event.data.path === "string") {
         if (event.data.type === "ipollowork:image-studio:generate-video") { props.onGenerateVideo?.(event.data.path); return; }
         if (event.data.type === "ipollowork:image-studio:video-menu" && typeof event.data.left === "number" && typeof event.data.top === "number") { const rect=iframe.getBoundingClientRect();setImageVideoMenu({path:event.data.path,left:rect.left+event.data.left,top:rect.top+event.data.top});return; }
       }
-      if (props.surface.pluginId === "video-console" && event.data.type === "ipollowork:video-console:edit-image" && typeof event.data.path === "string") { props.onEditGalleryImage?.(event.data.path); return; }
-      if (props.surface.pluginId === "video-console" && event.data.type === "ipollowork:video-console:preview") {
+      if (engineId === "video-console" && event.data.type === "ipollowork:video-console:edit-image" && typeof event.data.path === "string") { props.onEditGalleryImage?.(event.data.path); return; }
+      if (engineId === "video-console" && event.data.type === "ipollowork:video-console:preview") {
         const data = event.data;
         if (typeof data.src === "string" && data.src.length <= 140*1024*1024 && /^data:(image\/(png|jpeg|webp)|video\/(mp4|quicktime));base64,/.test(data.src) && typeof data.name === "string" && typeof data.path === "string") setImagePreview({src:data.src,name:data.name,path:data.path});
         return;
       }
-      if (props.surface.pluginId === "video-console" && event.data.type === "ipollowork:video-console:ask-ai") {
+      if (engineId === "video-console" && event.data.type === "ipollowork:video-console:ask-ai") {
         const { path, time } = event.data;
         if (!props.sessionId || typeof path !== "string" || !path.trim() || typeof time !== "number" || !Number.isFinite(time) || time < 0) return;
         window.dispatchEvent(new CustomEvent("ipollowork:add-video-reference", { detail: { sessionId: props.sessionId, path, time } }));
@@ -811,7 +853,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         window.dispatchEvent(new Event("ipollowork:focusPrompt"));
         return;
       }
-      if (props.surface.pluginId !== "image-studio") return;
+      if (engineId !== "image-studio") return;
       if (event.data.type === "ipollowork:image-studio:manage-connections") {
         navigate(workspaceSettingsRoute(props.workspaceId, "authorizations"));
         return;
@@ -854,7 +896,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     window.addEventListener("message", receiveImageStudioReference);
     return () => window.removeEventListener("message", receiveImageStudioReference);
-  }, [navigate, props.client, props.workspaceId, props.onDisplayModeChange, props.onEditGalleryImage, props.onGenerateVideo, props.sessionId, props.surface.pluginId, props.launch, resource]);
+  }, [navigate, props.client, props.workspaceId, props.onDisplayModeChange, props.onEditGalleryImage, props.onGenerateVideo, props.onSwitchMedia, props.onOpenMedia, props.onReturnToSource, props.onMediaProduced, props.sessionId, props.surface.pluginId, props.launch, resource, engineId]);
 
   useEffect(() => {
     const iframe = iframeRef.current;
@@ -867,7 +909,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       theme: currentTheme(),
       displayMode: props.displayMode ?? "inline",
       availableDisplayModes: supportsDisplayModeChange ? ["inline", "fullscreen"] : ["inline"],
-      locale: document.documentElement.lang || navigator.language,
+      locale: currentLocale(),
       timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       platform: platform.platform === "desktop" ? "desktop" : "web",
       userAgent: navigator.userAgent,
@@ -908,10 +950,10 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         if (props.surface.action && name !== props.surface.action) {
           throw new Error(`Workspace App may only call ${props.surface.action}.`);
         }
-        if (props.surface.pluginId === "image-studio" && name === "edit-image") onImageEditedRef.current?.(null);
+        if (engineId === "image-studio" && name === "edit-image") onImageEditedRef.current?.(null);
         const result = await props.client.callExtensionAction({
           extensionId: props.surface.pluginId,
-          action: name,
+          action: workspaceAppServiceAction(props.surface, name),
           args: isRecord(args) ? args : {},
           context: {
             directory: props.workspaceRoot,
@@ -924,7 +966,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
             queryKey: sessionArtifactsQueryKey(props.client.baseUrl, props.workspaceId, props.sessionId),
           });
         }
-        if (!disposed && result.ok && props.surface.pluginId === "image-studio" && name === "save-edit") {
+        if (!disposed && result.ok && engineId === "image-studio" && name === "save-edit") {
           const saved = result.result;
           if (isRecord(saved) && typeof saved.path === "string" && typeof saved.originalPath === "string"
             && typeof saved.revision === "string" && (saved.saveMode === "copy" || saved.saveMode === "overwrite")) {
@@ -945,7 +987,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
     };
     bridge.onupdatemodelcontext = async (context) => {
       modelContextRef.current = context;
-      if (!disposed && props.surface.pluginId === "video-console") {
+      if (!disposed && engineId === "video-console") {
         const result = context.structuredContent?.videoEditResult;
         if (isRecord(result) && typeof result.path === "string" && typeof result.sourcePath === "string" && typeof result.requestId === "string") {
           onVideoResultRef.current?.({ path: result.path, sourcePath: result.sourcePath, requestId: result.requestId, saveMode: result.saveMode === "overwrite" ? "overwrite" : "copy", ...(typeof result.revision === "string" ? { revision: result.revision } : {}) });
@@ -997,6 +1039,8 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       if (!disposed) updateHostContext({ theme: currentTheme() });
     });
     themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+    const onLocaleChange = () => { if (!disposed) updateHostContext({ locale: currentLocale() }); };
+    window.addEventListener(localeChangedEvent, onLocaleChange);
 
     const connection = bridge.connect(transport);
     iframe.srcdoc = withContentSecurityPolicy(resource);
@@ -1010,6 +1054,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       disposed = true;
       resizeObserver.disconnect();
       themeObserver.disconnect();
+      window.removeEventListener(localeChangedEvent, onLocaleChange);
       bridgeRef.current = null;
       void bridge.teardownResource({}).catch(() => undefined).finally(() => transport.close());
       iframe.srcdoc = "";
@@ -1033,18 +1078,18 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
   const callWorkspaceAppTool = useCallback(async (name: string, args: Record<string, unknown>) => {
     const bridge = bridgeRef.current;
     if (!bridge) return toolError("Workspace App is not ready");
-    return bridge.callTool({ name, arguments: args }, props.surface.pluginId === "image-studio" && name === "generate_or_edit"
+    return bridge.callTool({ name, arguments: args }, engineId === "image-studio" && name === "generate_or_edit"
       ? { timeout: IMAGE_GENERATION_REQUEST_TIMEOUT_MS }
-      : props.surface.pluginId === "video-console" && name === "generate_or_edit"
+      : engineId === "video-console" && name === "generate_or_edit"
       ? { timeout: VIDEO_SUBMISSION_REQUEST_TIMEOUT_MS }
       : undefined);
-  }, [props.surface.pluginId]);
+  }, [props.surface.pluginId, engineId]);
 
   useEffect(() => {
     const sourcePath = props.launch?.intent === "edit-image" ? props.launch.source?.path : undefined;
-    if (!bridgeReady || props.surface.pluginId !== "image-studio" || !sourcePath) return;
+    if (!bridgeReady || engineId !== "image-studio" || !sourcePath) return;
     void callWorkspaceAppTool("open_image", { sourcePath });
-  }, [bridgeReady, callWorkspaceAppTool, props.launch?.intent, props.launch?.source?.path, props.launch?.requestId, props.surface.pluginId]);
+  }, [bridgeReady, callWorkspaceAppTool, props.launch?.intent, props.launch?.source?.path, props.launch?.requestId, props.surface.pluginId, engineId]);
 
   const controlActions = useMemo<iPolloWorkControlAction[]>(() => props.active === false || props.placement !== "workspace" ? [] : [
     {
@@ -1124,6 +1169,11 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
         data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}
         data-preview-revision={props.developmentPreview?.revision}
       />
+      {props.onOpenMedia ? <input ref={mediaInputRef} type="file" hidden accept=".png,.jpg,.jpeg,.webp,.mp4,.mov" aria-label={t("media.studio.open")} onChange={event => {const file=event.currentTarget.files?.[0];event.currentTarget.value="";if(file && !importingMedia) void importMedia(file);}} /> : null}
+      {props.active !== false && (importingMedia || mediaImportError) ? <div role={mediaImportError ? "alert" : "status"} className="absolute inset-x-4 top-16 z-20 flex items-center gap-2 rounded-xl border bg-card p-3 text-xs text-card-foreground">
+        {importingMedia ? <Loader2 className="size-4 animate-spin" /> : <AlertCircle className="size-4 text-destructive" />}{mediaImportError || t("media.studio.uploading")}
+        {mediaImportError ? <Button variant="ghost" size="icon" className="ml-auto size-7" aria-label={t("media.parameters.dismiss_error")} onClick={()=>setMediaImportError("")}><X className="size-4" /></Button> : null}
+      </div> : null}
       {props.active !== false && fileInfo ? <aside aria-label={t("media.studio.file_info")} className="absolute inset-y-0 right-0 z-20 flex w-[340px] max-w-full flex-col border-l bg-background p-4 shadow-sm" onKeyDown={event => { if (event.key === "Escape") setFileInfo(null); }}>
         <div className="mb-4 flex items-center justify-between"><h2 className="text-sm font-semibold">{t("media.studio.file_info")}</h2><Button autoFocus variant="ghost" size="icon" aria-label={t("media.studio.close_info")} onClick={() => setFileInfo(null)}><X className="size-4" /></Button></div>
         <div className="min-h-0 overflow-y-auto"><dl className="space-y-3">{fileInfo.rows.map(row => <div key={row.label} className="grid grid-cols-[80px_1fr] gap-3 text-xs"><dt className="text-muted-foreground">{row.label}</dt><dd className="break-words whitespace-pre-wrap">{row.value}</dd></div>)}</dl>
@@ -1139,12 +1189,14 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
                 key={`${props.surface.pluginId}:${props.sessionId}`}
                 context={inspectorContext}
                 composer
-                onDismissError={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:dismiss-error` }, "*")}
-                onChangeModel={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:open-model-menu` }, "*")}
+                mediaKind={engineId === "video-console" ? "video" : "image"}
+                onSwitchMedia={props.onSwitchMedia}
+                onDismissError={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:dismiss-error` }, "*")}
+                onChangeModel={() => iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:open-model-menu` }, "*")}
                 onClose={() => setInspectorOpen(false)}
                 onCallTool={callWorkspaceAppTool}
                 onOptimizePrompt={async args => {
-                  const video = props.surface.pluginId === "video-console";
+                  const video = engineId === "video-console";
                   const current = video ? await callWorkspaceAppTool("set_parameters", {}) : undefined;
                   const model = current?.structuredContent?.model;
                   const response = await props.client.callExtensionAction({
@@ -1177,18 +1229,18 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           {props.workbench ? <>
             <DropdownMenuItem data-testid="media-save-copy" disabled={props.workbench.busy || !props.workbench.canSave} onClick={() => {
               props.workbench?.onAction("copy");
-              if (props.surface.pluginId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
+              if (engineId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
               setDownloadMenu(null);
             }}><Save className="size-4" />{t("media.workbench.save_copy")}</DropdownMenuItem>
             <DropdownMenuItem data-testid="media-replace-return" disabled={props.workbench.busy || !props.workbench.canReplace} onClick={() => {
               props.workbench?.onAction("replace");
-              if (props.surface.pluginId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
+              if (engineId === "video-console") iframeRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-console:save-copy" }, "*");
               setDownloadMenu(null);
             }}><Replace className="size-4" />{t("media.workbench.replace_return")}</DropdownMenuItem>
-          </> : (props.surface.pluginId === "image-studio"
+          </> : (engineId === "image-studio"
             ? [{ value: "image", label: t("media.workbench.save_copy") }]
             : [{ value: "video", label: t("media.studio.save_video") }, { value: "first", label: t("media.studio.save_first") }, { value: "last", label: t("media.studio.save_last") }]).map(option => <DropdownMenuItem key={option.value} onClick={() => {
-              iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:download`, value: option.value }, "*");
+              iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:download`, value: option.value }, "*");
               setDownloadMenu(null);
             }}>{option.label}</DropdownMenuItem>)}
         </DropdownMenuContent>
@@ -1196,13 +1248,13 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       {props.active !== false && modelMenu ? <DropdownMenu open onOpenChange={open => {
         if (!open) {
           setModelMenu(null);
-          iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:model-menu-closed` }, "*");
+          iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:model-menu-closed` }, "*");
         }
       }}>
-        <DropdownMenuTrigger aria-label={props.surface.pluginId === "video-console" ? t("media.studio.video_model") : t("media.studio.image_model")} style={{ position: "fixed", left: modelMenu.left, top: modelMenu.top, width: modelMenu.width, height: modelMenu.height, opacity: 0 }} />
+        <DropdownMenuTrigger aria-label={engineId === "video-console" ? t("media.studio.video_model") : t("media.studio.image_model")} style={{ position: "fixed", left: modelMenu.left, top: modelMenu.top, width: modelMenu.width, height: modelMenu.height, opacity: 0 }} />
         <DropdownMenuContent align="end" className="w-64" positionerClassName="z-[70]">
           <DropdownMenuRadioGroup value={modelMenu.value} onValueChange={value => {
-            iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:select-model`, value }, "*");
+            iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:select-model`, value }, "*");
             setModelMenu(null);
           }}>
             {modelMenu.options.map(option => <DropdownMenuRadioItem key={option.id} value={option.id} disabled={option.disabled}>{option.label}</DropdownMenuRadioItem>)}
@@ -1216,7 +1268,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
       </DropdownMenu> : null}
       <Dialog open={props.active !== false && imagePreview !== null} onOpenChange={open => {
         if (open) return;
-        iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${props.surface.pluginId}:preview-closed`, path: imagePreview?.path }, "*");
+        iframeRef.current?.contentWindow?.postMessage({ type: `ipollowork:${engineId}:preview-closed`, path: imagePreview?.path }, "*");
         setImagePreview(null);
       }}>
         <DialogContent className="flex h-[min(80dvh,800px)] flex-col gap-4 sm:max-w-[min(90vw,1000px)]" data-testid="image-studio-preview" aria-describedby={undefined}>

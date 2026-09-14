@@ -78,8 +78,9 @@ function safeSegment(value: string): string {
   return value.replace(/[^A-Za-z0-9._-]/g, "_") || "default";
 }
 
+// Keep the image metadata directory stable across the Media Studio package migration.
 export function pluginServiceDataDirectory(config: ServerConfig, workspaceId: string, pluginId: string): string {
-  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId));
+  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId === "media-studio" ? "image-studio" : pluginId));
 }
 
 export async function deletePluginServiceData(config: ServerConfig, workspaceId: string, pluginId: string): Promise<void> {
@@ -133,6 +134,12 @@ export async function listPluginServiceActions(
   pluginId = "",
 ): Promise<PluginServiceAction[]> {
   const installed = await listInstalledPluginPackages({ serverConfig: config });
+  const media = installed.find(entry => entry.pluginId === "media-studio" && entry.enabled);
+  if (media && (pluginId === "image-studio" || pluginId === "video-console")) {
+    return actionsForManifest(media.manifest)
+      .filter(entry => pluginId === "video-console" ? entry.action.startsWith("video-") : !entry.action.startsWith("video-"))
+      .map(entry => ({ ...entry, extensionId: pluginId, action: pluginId === "video-console" ? entry.action.slice(6) : entry.action === "image-status" ? "status" : entry.action }));
+  }
   return installed
     .filter((entry) => entry.enabled && (!pluginId || entry.pluginId === pluginId))
     .flatMap((entry) => actionsForManifest(entry.manifest));
@@ -239,6 +246,10 @@ export async function callPluginServiceAction(input: {
     serverConfig: input.config,
     pluginId: input.pluginId,
   });
+  if (installed.manifest.id === "media-studio" && input.pluginId !== "media-studio") {
+    return callPluginServiceAction({ ...input, pluginId: "media-studio",
+      action: input.pluginId === "video-console" ? `video-${input.action}` : input.action === "status" ? "image-status" : input.action });
+  }
   const declared = actionsForManifest(installed.manifest).find((entry) => entry.action === input.action);
   if (!declared) throw new ApiError(404, "plugin_service_action_not_found", "Plugin service action is not declared");
   const authorization = await bindPluginAuthorizationRuntime(input.config, input.pluginId);

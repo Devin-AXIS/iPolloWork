@@ -1,5 +1,5 @@
 import * as React from "react";
-import { resolveInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { resolveInstalledPluginContributions, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { usePanelTabStore, type MediaEditBinding } from "../panel/panel-tab-store";
 import {
   MAX_VIDEO_IMAGE_BYTES,
@@ -182,7 +182,7 @@ export function useDesignMediaWorkbench(params: Params) {
       const packages = await params.client.listPluginPackages(params.workspaceId);
       assertCurrent(scope);
       const pluginId = selectedMedia.kind === "image" ? "image-studio" : "video-console";
-      const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => item.pluginId === pluginId);
+      const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => mediaStudioEngine(item) === pluginId);
       if (!surface) throw new Error(t("media.workbench.unavailable"));
       usePanelTabStore.getState().rememberMediaEdit(binding);
       usePanelTabStore.getState().resumeMediaEdit(binding, path, surface);

@@ -254,6 +254,42 @@ function parseClipboardUriList(clipboard: DataTransfer) {
   return links;
 }
 
+function ComposerImageAttachment({ attachment, onRemove }: {
+  attachment: ComposerAttachment;
+  onRemove: () => void;
+}) {
+  const [dimensions, setDimensions] = useState("");
+  return (
+    <div className="relative size-12 shrink-0" data-testid="composer-image-attachment">
+      <Tooltip>
+        <TooltipTrigger
+          render={<div tabIndex={0} className="size-12 overflow-hidden rounded-xl border border-border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring" />}
+        >
+          <img
+            src={attachment.previewUrl}
+            alt={attachment.name}
+            decoding="async"
+            className="size-full object-cover"
+            onLoad={(event) => setDimensions(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)}
+          />
+        </TooltipTrigger>
+        <TooltipContent className="flex-col items-start gap-0.5" sideOffset={8}>
+          <span className="max-w-full break-all">{attachment.name}</span>
+          <span>{[dimensions, formatBytes(attachment.size)].filter(Boolean).join(" · ")}</span>
+        </TooltipContent>
+      </Tooltip>
+      <button
+        type="button"
+        className="absolute right-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full border border-border bg-background/85 text-foreground backdrop-blur-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`${t("action.remove")} ${attachment.name}`}
+        onClick={onRemove}
+      >
+        <X size={10} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 function isImageAttachment(attachment: ComposerAttachment) {
   return attachment.kind === "image" || attachment.mimeType.startsWith("image/");
 }
@@ -1382,28 +1418,31 @@ export function ReactSessionComposer(props: ComposerProps) {
         {/* Main composer panel */}
         <div
           className={`@container/composer composer-card relative flex flex-col overflow-visible rounded-[18px] border bg-dls-surface ${engineSelectedAppearance ? "border-sky-8" : "border-transparent"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434]` : ""} ${panelRoundedClass}`}
-          style={engineSelectedAppearance ? undefined : {
-            backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
-            backgroundOrigin: "border-box",
-            backgroundClip: "padding-box, border-box",
+          style={{
+            height: "auto",
+            ...(engineSelectedAppearance ? {} : {
+              backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
+              backgroundOrigin: "border-box",
+              backgroundClip: "padding-box, border-box",
+            }),
           }}
         >
-          {props.topAccessory ? <div className="relative z-10">{props.topAccessory}</div> : null}
+          {props.topAccessory ? <div className="relative z-10 shrink-0">{props.topAccessory}</div> : null}
 
           {renderMentionMenu()}
           {renderSlashMenu()}
 
           {props.attachments.length > 0 ? (
-            <div className="mx-5 mt-3 flex max-h-16 shrink-0 flex-wrap gap-2 overflow-y-auto md:mx-6">
-              {props.attachments.map((attachment) => (
+            <div className="mx-4 mt-3 flex max-h-16 shrink-0 flex-wrap gap-2 overflow-y-auto">
+              {props.attachments.map((attachment) => isImageAttachment(attachment) && attachment.previewUrl ? (
+                <ComposerImageAttachment
+                  key={`${attachment.id}:${attachment.previewUrl}`}
+                  attachment={attachment}
+                  onRemove={() => props.onRemoveAttachment(attachment.id)}
+                />
+              ) : (
                 <div key={attachment.id} className="flex items-center gap-2 rounded-2xl border border-gray-6 bg-gray-2 px-3 py-2 text-xs text-gray-10">
-                  {isImageAttachment(attachment) && attachment.previewUrl ? (
-                    <div className="h-10 w-10 overflow-hidden rounded-xl border border-gray-6 bg-gray-1">
-                      <img src={attachment.previewUrl} alt={attachment.name} decoding="async" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <FileText size={14} className="text-gray-9" />
-                  )}
+                  <FileText size={14} className="text-gray-9" />
                   <div className="max-w-[160px] min-w-0">
                     <div className="truncate text-[12px] font-medium text-gray-11">{attachment.name}</div>
                     <div className="flex items-center gap-1.5 text-[11px] text-gray-10">
@@ -1442,7 +1481,8 @@ export function ReactSessionComposer(props: ComposerProps) {
             </div>
           ) : null}
 
-          <div className="flex min-h-0 flex-1 flex-col px-4 pt-3 pb-2">
+          {/* Keep the editor and actions at their original height; accessories add space above. */}
+          <div className="flex h-[120px] shrink-0 flex-col px-4 pt-3 pb-2">
             {/* Editor */}
             <LexicalPromptEditor
               ref={editorRef}

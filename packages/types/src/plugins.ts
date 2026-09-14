@@ -691,10 +691,14 @@ export type PluginUiHostContextV1 = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string | null;
+  /** The host presents image and video engines in one Media Studio. */
+  mediaStudio?: boolean;
   /** Optional, non-secret context supplied when the host opens this surface. */
   launch?: {
     intent: string;
     requestId?: string;
+    /** Source binding retained while making a different kind of media. */
+    originRequestId?: string;
     /** The host owns saving and replacing a selected project asset. */
     returnToSource?: boolean;
     returnLabel?: string;

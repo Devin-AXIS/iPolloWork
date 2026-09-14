@@ -312,7 +312,7 @@ test("read-only and path escapes are rejected; preview is chunked",async()=>{
 });
 
 test("plugin manifest is valid and advertises only host-backed actions",async()=>{
-  const manifest=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ipollowork.plugin.json",import.meta.url)).json();
+  const manifest=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ipollowork.plugin.json",import.meta.url)).json();
   const result=validatePluginPackageManifest(manifest);expect(result.success).toBe(true);
   if(!result.success)throw new Error(JSON.stringify(result.issues));
   expect(result.manifest.contributions).toContainEqual(expect.objectContaining({type:"workspace-app",ref:"console"}));
@@ -320,7 +320,7 @@ test("plugin manifest is valid and advertises only host-backed actions",async()=
 });
 
 test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
-  const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html",import.meta.url)).text();
   const start=html.indexOf("function openSettings()");
   const callback=html.slice(start,html.indexOf("\n",start));
   const edits:string[]=[];
@@ -337,7 +337,7 @@ test("empty video workbench opens generation settings without switching H3 to an
 test("video inspector resets incompatible fields and publishes the real host contract",async()=>{
   const {call}=await setup();
   const provider=(await call("status")).result;
-  const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html",import.meta.url)).text();
   const definitions=html.slice(html.indexOf("const state ="),html.indexOf("function post("));
   const functions=html.slice(html.indexOf("function model()"),html.indexOf("async function refresh("));
   const sandbox: Record<string,unknown>={
@@ -386,7 +386,7 @@ test("video inspector resets incompatible fields and publishes the real host con
 });
 
 test("generate directly submits the current prompt and settings without chat expansion", async () => {
-  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
   const selectors = html.slice(html.indexOf("function model()"), html.indexOf("function normalized()"));
   const runner = html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
@@ -415,14 +415,14 @@ test("generate directly submits the current prompt and settings without chat exp
 test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {
   const { call, root } = await setup();
   const provider = (await call("status")).result;
-  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
   const functions = html.slice(html.indexOf("function model()"), html.indexOf("async function refresh("));
   const importer = html.slice(html.indexOf("async function importMedia("), html.indexOf("function openSettings("));
   const dataUrl = "data:image/png;base64,aW1hZ2U=";
   const sandbox: Record<string, unknown> = {
     document:{documentElement:{lang:"zh"}}, provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
-    $: () => ({ setAttribute() {} }), renderEditor() {}, tell() {}, request: async () => ({}),
+    $: () => ({ setAttribute() {} }), renderEditor() {}, renderWorkbench() {}, tell() {}, request: async () => ({}),
     call: async (action: string, args: Record<string, unknown>) => {
       expect(action).toBe("import");
       if (args.filename === "fail.png") throw new Error("导入失败");
@@ -496,7 +496,7 @@ test("Ark local video reuses default storage with a 24-hour signed read URL",asy
 
 
 test("video model never defaults to a prior generation", async () => {
-  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
   const refresh = html.slice(html.indexOf("async function refresh()"), html.indexOf("function node("));
   const state = { model: "", jobsLoaded: false, activeJobId: "", host: { launch: { source: { path: "" } } } };
   const sandbox = { state, document: { activeElement: null }, $: () => ({ contains: () => false }), normalized() {}, render() {}, publish() {}, applyLaunch: async () => {},
