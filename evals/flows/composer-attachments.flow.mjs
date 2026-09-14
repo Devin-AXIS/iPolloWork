@@ -59,6 +59,78 @@ async function assertLayout(ctx, {empty = false, scrolling = false} = {}) {
   if (scrolling) ctx.assert(state.railScrollable && state.editorScrollable, `Attachments and long draft scroll independently: ${JSON.stringify(state)}`);
 }
 
+async function proveExtensionsMenu(ctx) {
+  const plus = '.composer-card button[title="添加到任务"], .composer-card button[title="Add to this task"]';
+  const menu = '[data-testid="composer-plus-menu"]';
+  const extensions = '[data-testid="composer-extensions-menu"]';
+  const originalHash = await ctx.eval('location.hash');
+  const originalDraft = await ctx.eval(`document.querySelector('${editor}').textContent`);
+  const originalWidth = await ctx.eval(`document.querySelector('${card}').style.width`);
+  const open = async () => {
+    await ctx.waitFor(`Boolean(document.querySelector('${plus}'))`);
+    if (!await ctx.eval(`Boolean(document.querySelector('${menu}'))`)) await ctx.trustedClick(plus);
+    await ctx.waitFor(`Boolean(document.querySelector('${menu}'))`);
+  };
+  if (await ctx.eval(`Boolean(document.querySelector('${menu}'))`)) await ctx.trustedClick(plus);
+  try {
+    await ctx.prove('The compact add menu offers Extensions alongside files, templates and delegation', {
+      voiceover: '打开加号菜单，扩展使用与左侧栏一致的图标，四个入口的按钮也更紧凑。',
+      action: open,
+      assert: async () => {
+        const state = await ctx.eval(`(() => { const m=document.querySelector('${menu}'); return {width:m.getBoundingClientRect().width, items:[...m.querySelectorAll('button')].map(b=>({text:b.textContent.trim(), height:b.getBoundingClientRect().height}))}; })()`);
+        ctx.assert(await ctx.eval(`(() => { const icon=document.querySelector('${menu} .lucide-toy-brick'), sidebar=document.querySelector('[data-sidebar-primary-icon] .lucide-toy-brick'); return Boolean(icon && sidebar && icon.innerHTML===sidebar.innerHTML && icon.getAttribute('stroke-width')===sidebar.getAttribute('stroke-width')); })()`), 'Extensions uses the same icon and stroke as the sidebar');
+        ctx.assert(state.width <= 176 && state.items.length === 4 && state.items.every(b=>b.height <= 32), JSON.stringify(state));
+        ctx.assert(state.items.some(b=>/^(扩展|Extensions)$/.test(b.text)) && !state.items.some(b=>/^(工具|Tools)$/.test(b.text)), 'Extensions replaces Tools');
+      },
+      screenshot: {name:'compact-plus-menu', requireText:['扩展','使用模板']},
+    });
+    for (const [index, name, route] of [[0,'插件','plugins'],[1,'MCP','mcp']]) {
+      await open();
+      await ctx.eval(`[...document.querySelectorAll('${menu} button')].find(b=>/^(扩展|Extensions)$/.test(b.textContent.trim())).click()`);
+      await ctx.waitFor(`Boolean(document.querySelector('${extensions}'))`);
+      await ctx.eval(`document.querySelector('${extensions}').firstElementChild.firstElementChild.querySelectorAll('button')[${index}].click()`);
+      await ctx.waitFor(`!document.querySelector('${extensions}').textContent.includes('加载') && !document.querySelector('${extensions}').textContent.includes('Loading')`);
+      await ctx.prove(`${name} is available in a compact two-section extensions menu`, {
+        voiceover: `扩展里只保留插件和 MCP。现在查看${name}，可以从右上角进入对应配置。`,
+        action: async () => {},
+        assert: async () => {
+          const state = await ctx.eval(`(() => {const m=document.querySelector('${extensions}'); const nav=[...m.firstElementChild.firstElementChild.querySelectorAll('button')];return {width:m.getBoundingClientRect().width, contained:m.getBoundingClientRect().right <= document.querySelector('.composer-card').getBoundingClientRect().right, noHorizontalScroll:[...m.querySelectorAll('div')].every(e=>e.scrollWidth <= e.clientWidth || getComputedStyle(e).textOverflow==='ellipsis' || e.classList.contains('truncate')), items:nav.map(b=>({text:b.textContent.trim(),height:b.getBoundingClientRect().height})), text:m.textContent};})()`);
+          ctx.assert(state.contained && state.noHorizontalScroll, `Menu fits the conversation pane without horizontal scrolling: ${JSON.stringify(state)}`);
+          ctx.assert(state.width <= 448 && state.items.length === 2 && state.items.every(b=>b.height <= 32), JSON.stringify(state));
+          ctx.assert(/^(插件|Plugins)$/.test(state.items[0].text) && state.items[1].text==='MCP', 'Only Plugins and MCP navigation remains');
+          ctx.assert(!/正在加载命令|Loading commands/.test(state.text), 'No command loading state in extensions');
+        },
+        screenshot: {name:`compact-${route}`, requireText:['插件','MCP','配置']},
+      });
+      await ctx.eval(`[...document.querySelectorAll('${extensions} button')].find(b=>/^(配置|Configure)$/.test(b.textContent.trim())).click()`);
+      await ctx.waitFor(`location.hash.includes('/settings/extensions/${route}')`);
+      ctx.assert(await ctx.eval(`location.hash.includes('/settings/extensions/${route}')`), `${name} configuration opens its own settings page`);
+      await ctx.navigateHash(originalHash);
+      await ctx.waitFor(`Boolean(document.querySelector('${editor}'))`);
+    }
+    await ctx.prove('Extensions stay visible above the add menu in a narrow conversation', {
+      voiceover: '对话栏变窄时，扩展面板显示在上方，配置按钮和列表仍然完整可见。',
+      action: async () => {
+        await ctx.eval(`document.querySelector('${card}').style.width='360px'`);
+        await open();
+        await ctx.eval(`[...document.querySelectorAll('${menu} button')].find(b=>/^(扩展|Extensions)$/.test(b.textContent.trim())).click()`);
+        await ctx.waitFor(`Boolean(document.querySelector('${extensions}'))`);
+      },
+      assert: async () => {
+        await ctx.waitFor(`document.querySelector('${extensions}').getBoundingClientRect().bottom <= document.querySelector('${menu}').getBoundingClientRect().top`);
+        ctx.assert(await ctx.eval(`(() => {const r=document.querySelector('${extensions}').getBoundingClientRect(),c=document.querySelector('${card}').getBoundingClientRect();return r.left >= c.left && r.right <= c.right && r.top >=0;})()`), 'Narrow submenu remains within the composer width and above the main menu');
+      },
+      screenshot: {name:'compact-extensions-narrow', requireText:['插件','MCP','配置']},
+    });
+    ctx.assert(await ctx.eval(`document.querySelector('${editor}').textContent === ${JSON.stringify(originalDraft)}`), 'Existing draft is preserved; no message sent');
+  } finally {
+    if (await ctx.eval('location.hash') !== originalHash) await ctx.navigateHash(originalHash);
+    await ctx.waitFor(`Boolean(document.querySelector('${editor}'))`);
+    if (await ctx.eval(`Boolean(document.querySelector('${menu}'))`)) await ctx.trustedClick(plus);
+    await ctx.eval(`document.querySelector('${card}').style.width=${JSON.stringify(originalWidth)}`);
+  }
+}
+
 export default {
   id: 'composer-attachments',
   title: 'Chat attachments and capability chips preserve the input and footer',
@@ -67,6 +139,7 @@ export default {
     name: 'Empty, attached, tagged and long drafts at responsive widths',
     run: async ctx => {
       await ctx.waitFor(`Boolean(document.querySelector('${editor}'))`);
+      if (process.env.IPOLLOWORK_EVAL_COMPOSER_MENU_ONLY === '1') return proveExtensionsMenu(ctx);
       ctx.assert(await ctx.eval(`document.querySelector('${editor}').textContent.trim() === '' && !document.querySelector('${card} img[decoding=async]') && !document.querySelector('.new-conversation-capability-chip')`), 'Start with an empty draft and no capability chip');
       const theme = await ctx.eval("({value: document.documentElement.getAttribute('data-theme'), scheme: document.documentElement.style.colorScheme})");
       try {

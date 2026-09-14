@@ -145,12 +145,83 @@ async function proveSessionCustomEntry(ctx) {
   }
 }
 
+// Uses a real local template/task and file writes; only the model response is simulated.
+async function provePreviewAfterResult(ctx) {
+  const referenceDelivery = ctx.env.IPOLLOWORK_EVAL_TEMPLATE_REFERENCE_DELIVERY_ONLY === '1';
+  const originalHash = await ctx.eval('location.hash');
+  ctx.assert(await ctx.eval("![...document.querySelectorAll('[role=dialog] input,[role=dialog] textarea')].some(e=>e.value || e.files?.length) && !document.querySelector('[contenteditable=true]')?.textContent.trim()"), 'No user draft is displaced');
+  if(await ctx.eval("Boolean(document.querySelector('[data-testid=template-apply-dialog]'))")) await ctx.eval("[...document.querySelectorAll('[data-testid=template-apply-dialog] button')].find(b=>b.textContent==='取消').click()");
+  await ctx.waitFor("!document.querySelector('[role=dialog]')");
+  await ctx.eval(`window.__previewProof={fetch:window.fetch,prompts:[],writes:[]};window.fetch=async(input,init)=>{const p=window.__previewProof;const url=typeof input==='string'?input:input instanceof URL?input.href:input.url;const path=new URL(url,location.href).pathname;if(init?.method==='POST' && (path.endsWith('/prompt') || path.endsWith('/prompt_async'))){const body=JSON.parse(init.body);p.prompts.push(body);p.started=true;return new Response(JSON.stringify({sessionId:p.sid,turnId:'preview-proof-turn'}),{status:200,headers:{'Content-Type':'application/json'}});}const response=await p.fetch(input,init);if(init?.method==='POST'&&path.endsWith('/sessions')&&response.ok){const data=await response.clone().json();p.sid=data.item.id;p.sessionUrl=url+'/'+p.sid;p.headers=init.headers;}if(path.endsWith('/materialize')&&response.ok){p.template=await response.clone().json();p.base=new URL(url).origin;}return response;};`);
+  try {
+    const projectId = await ctx.eval("document.querySelector('[data-testid=project-new-conversation-button]').dataset.projectId");
+    await ctx.trustedClick(`[data-testid="project-new-conversation-button"][data-project-id="${projectId}"]`);
+    await ctx.waitFor("Boolean(document.querySelector('[data-testid=initial-project-task-starter]'))");
+    await ctx.eval("[...document.querySelectorAll('[role=tab]')].find(b=>b.textContent==='创作').click()");
+    await ctx.eval("[...document.querySelectorAll('[data-testid=new-conversation-quick-actions] button')].find(b=>b.textContent.includes('PPT')).click()");
+    const card='[data-testid="new-conversation-template-strip"] button[aria-label="使用模板: Morrow Brand Narrative"]';
+    await ctx.waitFor(`Boolean(document.querySelector('${card}'))`);
+    await ctx.prove('Choose a template and provide its content before previewing', {
+      voiceover:referenceDelivery ? '上传参考文档和图片后就能生成，无需选择是否发送原文件，也不用重复填写文档内容。' : '选择做 PPT 和模板后，填写演示主题与受众，此时右侧预览保持关闭。',
+      action:async()=>{
+        await click(ctx,card);await ctx.waitFor("Boolean(document.querySelector('#template-description-tab'))");
+        if(referenceDelivery){
+          await ctx.eval(`(()=>{const input=document.querySelector('${dialog} input[type=file]');const transfer=new DataTransfer();transfer.items.add(new File(['# 预览时机验证\\n\\nThis presentation introduces the reference product to the product team. Include three user benefits, supporting evidence and a clear launch plan. The unique source fact is that the headphones offer 42 hours of listening.'], 'reference-proof.md',{type:'text/markdown'}));const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII='),c=>c.charCodeAt(0));transfer.items.add(new File([bytes],'reference-proof.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+          await ctx.waitFor(`!document.querySelector('${submit}').disabled`);
+          await ctx.fill('[data-testid=template-file-instructions]','预览时机验证：面向产品团队。');
+        }else{
+          await ctx.trustedClick('#template-description-tab');await ctx.fill('[data-testid=template-title]','预览时机验证');await ctx.fill('[data-testid=template-audience]','产品团队');
+        }
+      },
+      assert:async()=>ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-panel]') && !window.__previewProof.sid && !document.querySelector('[data-testid=template-apply-dialog]').innerText.includes('不发原文件')"),'No preview or new session before submitting and no original-file switch'),
+      screenshot:{name:'result-brief',requireText:referenceDelivery ? ['reference-proof.md','reference-proof.png'] : ['演示标题','手动填写'],rejectText:['entry.html','不发原文件']},
+    });
+    await ctx.trustedClick(submit);
+    await ctx.waitFor('window.__previewProof.prompts.length===1 && Boolean(window.__previewProof.template)');
+    await ctx.waitFor("!document.querySelector('[data-testid=template-apply-dialog]')");
+    if(referenceDelivery) ctx.assert(await ctx.eval("(()=>{const p=window.__previewProof.prompts[0];const inputs=p.input??p.parts??[];const images=inputs.filter(x=>x.type==='image'||(x.type==='file'&&x.mime?.startsWith('image/')));return images.length===1 && images[0].url.startsWith('data:image/png;base64,') && JSON.stringify(p).includes('42 hours of listening');})()"),'The actual model request includes one image and the extracted document fact; model execution is intercepted');
+    await ctx.eval(`(async()=>{const p=window.__previewProof;p.workspace=${JSON.stringify(projectId)};p.cache=(await import('/src/react-app/infra/query-client.ts')).getReactQueryClient();const surfaceSource=await(await fetch('/src/react-app/domains/session/surface/session-surface.tsx')).text();const activityUrl=surfaceSource.split(String.fromCharCode(10)).find(line=>line.includes('from "') && line.includes('session-activity-store.ts')).split('from "')[1].split('"')[0];p.activityImport=import(activityUrl);p.activity=(await p.activityImport).useSessionActivityStore;const k=['react-session-transcript',p.workspace,p.sid];p.user=p.cache.getQueryData(k)?.findLast(m=>m.role==='user');if(!p.user)throw Error('Submitted brief did not reach the conversation');p.user={...p.user,metadata:{ipollowork:{created:Date.now(),optimistic:false}}};p.seed=(phase)=>{const busy=phase!=='complete';const status={type:busy?'busy':'idle'};const reasoning={type:'reasoning',text:'先规划演示结构，再根据需求生成内容。',state:busy?'streaming':'done'};const text=phase==='complete'?{type:'text',text:'演示已完成：[预览时机验证]('+p.template.state.entry+')',state:'done'}:null;const assistant={id:'preview-proof-answer',role:'assistant',metadata:{ipollowork:{created:Date.now(),...(busy?{}:{completed:Date.now()})}},parts:[reasoning,...(text?[text]:[])]};const messages=[p.user,assistant];p.cache.setQueryData(k,messages);const snapshotKey=['react-session-snapshot',p.workspace,p.sid];const snap=p.cache.getQueryData(snapshotKey);if(snap)p.cache.setQueryData(snapshotKey,{...snap,messages,status});p.cache.setQueryData(['react-session-status',p.workspace,p.sid],status);p.activity.getState().seedSessionRun(p.workspace,p.sid,status,true);};p.seed('thinking');})()`,{awaitPromise:true});
+    await ctx.prove('Submitted brief stays in the conversation while thinking',{
+      voiceover:'提交表单后，对话中显示需求和思考进度，已复制的模板原稿不会自动打开。',
+      action:async()=>{},
+      assert:async()=>ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-panel]') && document.body.innerText.includes('预览时机验证') && window.__previewProof.prompts.length===1"),'The submitted conversation remains visible without opening the scaffold'),
+      screenshot:{name:'result-thinking',requireText:['预览时机验证'],rejectText:['entry.html']},
+    });
+    await ctx.eval(`(async()=>{const p=window.__previewProof;const result=await p.fetch(p.base+'/workspace/'+p.workspace+'/files/content',{method:'POST',headers:p.headers,body:JSON.stringify({path:p.template.state.entry,content:'<!doctype html><html><head><meta charset="UTF-8"><title>预览时机验证</title></head><body style="margin:0;background:#171421;color:#fff;font-family:sans-serif"><main class="slide" data-ipw-slide style="width:1280px;height:720px;padding:80px;box-sizing:border-box"><p>产品团队 · 演示</p><h1 style="font-size:64px">结果生成之后，再打开预览</h1><p>需求 → 思考与规划 → 文件卡片 → 预览</p></main></body></html>'})});if(!result.ok)throw Error('Could not write the test output');p.seed('thinking');})()`,{awaitPromise:true});
+    await ctx.prove('Writing a file during generation does not open the preview',{
+      voiceover:'生成过程中即使文件已经写入，也继续留在对话页，等待本轮完成。',
+      action:async()=>{},
+      assert:async()=>ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-panel]')"),'The existing output file does not bypass the running state'),
+      screenshot:{name:'result-generating',requireText:['预览时机验证'],rejectText:['entry.html']},
+    });
+    await ctx.prove('Completion shows one result card without opening the preview',{
+      voiceover:'生成完成后，对话保留说明和一张结果卡片，右侧不会自动展开。',
+      action:async()=>{await ctx.eval("window.__previewProof.seed('complete')");await ctx.waitFor("document.querySelectorAll('[data-testid=artifact-file-card]').length===1",{timeoutMs:20000});},
+      assert:async()=>ctx.assert(await ctx.eval("document.querySelectorAll('[data-testid=artifact-file-card]').length===1 && !document.querySelector('[data-testid=design-panel]') && document.body.innerText.includes('演示已完成') && window.__previewProof.prompts.length===1"),'The same file appears once and no preview opens automatically'),
+      screenshot:{name:'result-complete',requireText:['预览时机验证','演示已完成']},
+    });
+    await ctx.prove('Clicking the result card opens the generated preview',{
+      voiceover:'点击结果卡片，右侧才展示生成的演示文件。',
+      action:async()=>{await ctx.trustedClick('[data-testid=artifact-file-card]');await ctx.waitFor("[...document.querySelectorAll('[data-testid=design-panel] iframe')].some(f=>f.contentDocument?.body?.innerText.includes('结果生成之后'))",{timeoutMs:20000});},
+      assert:async()=>ctx.assert(await ctx.eval("document.querySelectorAll('[data-testid=artifact-file-card]').length===1 && Boolean(document.querySelector('[data-testid=design-panel]')) && window.__previewProof.prompts.length===1"),'Clicking opens the existing result without generating again'),
+      screenshot:{name:'result-click-preview',requireText:['预览时机验证','演示已完成']},
+    });
+  } catch (error) {
+    ctx.output('preview-state', JSON.stringify(await ctx.eval("(()=>{const p=window.__previewProof;return {hash:location.hash,status:p.cache?.getQueryData(['react-session-status',p.workspace,p.sid]),activity:p.activity?.getState().getStatus(p.workspace,p.sid),prompts:p.prompts.length,text:document.body.innerText.slice(-1800)}})()")));
+    throw error;
+  } finally {
+    await ctx.navigateHash(originalHash);
+    await ctx.eval(`(async()=>{const p=window.__previewProof;try{if(p.template){const created=await p.fetch(p.base+'/workspace/'+p.workspace+'/files/sessions',{method:'POST',headers:p.headers,body:JSON.stringify({write:true})});if(!created.ok)throw Error('Could not begin proof cleanup');const fileSession=await created.json();try{const removed=await p.fetch(p.base+'/files/sessions/'+fileSession.session.id+'/ops',{method:'POST',headers:p.headers,body:JSON.stringify({operations:[{type:'delete',path:p.template.state.entry.split('/').slice(0,-1).join('/'),recursive:true}]})});const result=await removed.json();if(!removed.ok || !result.items.every(item=>item.ok))throw Error('Could not clean isolated proof output');}finally{await p.fetch(p.base+'/files/sessions/'+fileSession.session.id,{method:'DELETE',headers:p.headers});}}if(p.sid){const response=await p.fetch(p.sessionUrl,{method:'DELETE',headers:p.headers});if(!response.ok)throw Error('Could not delete the isolated proof session');}}finally{window.fetch=p.fetch;}delete window.__previewProof;})()`,{awaitPromise:true});
+  }
+}
+
 export default {
   id: "template-entry",
   title: "Template file and description entry interactions",
   kind: "user-facing",
   preserveTheme: true,
   steps: [{ name: "Use existing template UI and reference ingestion", async run(ctx) {
+    if(ctx.env.IPOLLOWORK_EVAL_TEMPLATE_AFTER_RESULT_ONLY === '1' || ctx.env.IPOLLOWORK_EVAL_TEMPLATE_REFERENCE_DELIVERY_ONLY === '1') return provePreviewAfterResult(ctx);
     if(ctx.env.IPOLLOWORK_EVAL_TEMPLATE_SESSION_CUSTOM_ONLY === '1') return proveSessionCustomEntry(ctx);
     if(ctx.env.IPOLLOWORK_EVAL_TEMPLATE_DEFERRED_ONLY === '1') return proveDeferredTemplate(ctx);
     if(ctx.env.IPOLLOWORK_EVAL_TEMPLATE_LOCATION_ONLY === '1') return proveProjectLocation(ctx);
@@ -178,14 +249,14 @@ export default {
     try {
       if(await ctx.eval("Boolean(document.querySelector('#custom-template-category'))")){
         await click(ctx,'#custom-template-category');
-        await ctx.waitFor("document.querySelectorAll('[role=option]').length===9");
-        const categories=await ctx.eval("[...document.querySelectorAll('[role=option]')].map(e=>e.textContent)");
+        await ctx.waitFor("[...document.querySelectorAll('[role=option]')].filter(e=>e.checkVisibility()).length===9");
+        const categories=await ctx.eval("[...document.querySelectorAll('[role=option]')].filter(e=>e.checkVisibility()).map(e=>e.textContent)");
         await ctx.client.send('Input.dispatchKeyEvent',{type:'keyDown',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
         await ctx.client.send('Input.dispatchKeyEvent',{type:'keyUp',key:'Escape',code:'Escape',windowsVirtualKeyCode:27});
         for(const category of categories){
           await click(ctx,'#custom-template-category');
-          await ctx.waitFor("document.querySelectorAll('[role=option]').length===9");
-          await ctx.eval(`document.querySelectorAll('[data-template-proof-choice]').forEach(e=>e.removeAttribute('data-template-proof-choice'));[...document.querySelectorAll('[role=option]')].find(e=>e.textContent===${JSON.stringify(category)}).setAttribute('data-template-proof-choice','true')`);
+          await ctx.waitFor("[...document.querySelectorAll('[role=option]')].filter(e=>e.checkVisibility()).length===9");
+          await ctx.eval(`document.querySelectorAll('[data-template-proof-choice]').forEach(e=>e.removeAttribute('data-template-proof-choice'));[...document.querySelectorAll('[role=option]')].filter(e=>e.checkVisibility()).find(e=>e.textContent===${JSON.stringify(category)}).setAttribute('data-template-proof-choice','true')`);
           await ctx.trustedClick('[data-template-proof-choice=true]');
           await ctx.waitFor(`document.querySelector('#custom-template-category').textContent.includes(${JSON.stringify(category)})`);
           await ctx.assert(await ctx.eval(`Boolean(document.querySelector('#template-file-tab')) && Boolean(document.querySelector('#template-description-tab')) && !document.querySelector('${dialog} input[required]')`),`${category}: file mode uses the shared two-mode entry`);
@@ -238,9 +309,20 @@ export default {
       await ctx.waitFor(`document.querySelector('${submit}').disabled===false`, {timeoutMs:60000});
       await ctx.fill('[data-testid="template-file-instructions"]', 'Emphasize customer benefits');
       await ctx.prove("A file is sufficient; extra instructions are optional", {
-        voiceover: "上传参考文件后，现有解析反馈和生成按钮正常工作，补充要求仍然可选。",
+        voiceover: "上传后，附件只显示文件名、大小和删除按钮，补充要求仍然可选。",
         assert: async () => ctx.assert(await ctx.eval(`document.querySelector('${dialog}').innerText.includes('launch-brief.md') && !document.querySelector('[data-testid="template-file-instructions"]').required && !document.querySelector('${submit}').disabled`), "The existing file card reports readiness without additional required fields"),
         screenshot: {name:"file-ready", requireText:["launch-brief.md"], rejectText:["Something went wrong"]},
+      });
+      ctx.assert(await ctx.eval("(()=>{const card=document.querySelector('[data-testid=template-reference-card]');return card.getBoundingClientRect().height<=64 && card.getBoundingClientRect().width<=240 && getComputedStyle(card).borderTopWidth==='0px' && !card.innerText.includes('质量') && card.querySelectorAll('button').length===1 && !card.querySelector('button[aria-pressed]');})()"),'Attachment card is compact and borderless without an original-file switch');
+      await ctx.prove('Images display thumbnails beside compact document cards', {
+        voiceover:'图片以缩略图并排展示，文档使用短卡片，文件名过长会截断，删除按钮始终可见。',
+        action:async()=>{
+          await ctx.eval(`(()=>{const input=document.querySelector('${dialog} input[type=file]');const transfer=new DataTransfer();const bytes=Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXioAAAAASUVORK5CYII='),c=>c.charCodeAt(0));transfer.items.add(new File([bytes],'reference-proof.png',{type:'image/png'}));transfer.items.add(new File([bytes],'second-reference-proof.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+          await ctx.waitFor(`!document.querySelector('${submit}').disabled`);
+          await ctx.waitFor("document.querySelectorAll('[data-testid=template-reference-card] img').length===2 && [...document.querySelectorAll('[data-testid=template-reference-card] img')].every(img=>img.complete&&img.naturalWidth>0)");
+        },
+        assert:async()=>ctx.assert(await ctx.eval("(()=>{const c=[...document.querySelectorAll('[data-testid=template-reference-card]')].find(c=>c.innerText.includes('reference-proof.png'));return c.getBoundingClientRect().width<=240 && c.getBoundingClientRect().height===48 && [...document.querySelectorAll('[data-testid=template-reference-card]')].every(e=>e.getBoundingClientRect().height===48) && c.querySelector('img').getBoundingClientRect().height<=32 && c.querySelectorAll('button').length===1 && getComputedStyle(c.querySelector('img')).objectFit==='contain' && getComputedStyle(c.parentElement).flexWrap==='wrap' && !c.querySelector('button[aria-pressed]');})()"),'Two decoded image previews and a compact document card share a wrapping attachment area'),
+        screenshot:{name:'image-reference',requireText:['reference-proof.png'],rejectText:['不发原文件','发送原文件','解析失败','OCR']},
       });
       await click(ctx, '#template-description-tab');
       await ctx.waitFor("Boolean(document.querySelector('[data-testid=template-title]'))");
@@ -270,6 +352,7 @@ export default {
       await click(ctx, '#template-file-tab');
       await ctx.assert(await ctx.eval(`document.querySelector('[data-testid="template-file-instructions"]').value==='Emphasize customer benefits'`), "File instructions survive mode switching");
       if (ctx.env.IPOLLOWORK_EVAL_TEMPLATE_UI_ONLY !== '1') {
+      await ctx.eval("for(const name of ['reference-proof.png','second-reference-proof.png'])document.querySelector('button[aria-label*=\"'+name+'\"]')?.click()");
       await click(ctx, submit);
       await ctx.waitFor('window.__templateEntryWrites.length===1');
       await ctx.waitFor(`!document.querySelector('${submit}').disabled`);
@@ -293,6 +376,7 @@ export default {
       ctx.assert(await ctx.eval('window.__templateContrast.every(ratio=>ratio>=4.5)'), 'Description and placeholders have at least 4.5:1 contrast');
       await ctx.eval('delete window.__templateContrast');
       if (ctx.env.IPOLLOWORK_EVAL_TEMPLATE_UI_ONLY !== '1') {
+      await ctx.eval("for(const name of ['reference-proof.png','second-reference-proof.png'])document.querySelector('button[aria-label*=\"'+name+'\"]')?.click()");
       await click(ctx, submit);
       await ctx.waitFor('window.__templateEntryWrites.length===2');
       await ctx.waitFor(`!document.querySelector('${submit}').disabled`);
@@ -308,6 +392,7 @@ export default {
         assert: async () => ctx.assert(await ctx.eval(`(()=>{const d=document.querySelector('${dialog}'),r=d.getBoundingClientRect();return getComputedStyle(d).colorScheme==='dark' && r.left>=0 && r.right<=innerWidth && d.scrollWidth<=d.clientWidth+1 && [...d.querySelectorAll('button,textarea')].every(e=>{const b=e.getBoundingClientRect();return b.left>=r.left && b.right<=r.right+1;});})()`), "Upload, file actions and submit controls fit at 420px in dark mode"),
         screenshot: {name:"narrow-dark", requireText:["launch-brief.md"], rejectText:["Something went wrong"]},
       });
+      if (ctx.env.IPOLLOWORK_EVAL_TEMPLATE_UI_ONLY === '1') ctx.assert(await ctx.eval("(()=>{const cards=[...document.querySelectorAll('[data-testid=template-reference-card]')];const parent=cards[0].parentElement.getBoundingClientRect();return cards.length===3 && new Set(cards.map(c=>Math.round(c.getBoundingClientRect().top))).size>1 && cards.every(c=>{const r=c.getBoundingClientRect();return r.left>=parent.left&&r.right<=parent.right+1;});})()"),'Mixed attachments wrap within the narrow modal without horizontal overflow');
       await ctx.prove('Custom fields fit a narrow dark window', {
         voiceover:'窄窗口下，标题、受众和补充内容纵向排列，输入和生成按钮保持可用。',
         action:async()=>{await click(ctx,'#template-description-tab');await ctx.waitFor("Boolean(document.querySelector('[data-testid=template-title]'))");},
@@ -320,7 +405,7 @@ export default {
       await ctx.fill('[data-testid="template-description"]','');
       await click(ctx, '#template-file-tab');
       await ctx.fill('[data-testid="template-file-instructions"]','');
-      await ctx.eval(`document.querySelector('${dialog} button[aria-label*="launch-brief.md"]').click()`);
+      await ctx.eval(`for(const name of ["launch-brief.md","reference-proof.png","second-reference-proof.png"])document.querySelector('${dialog} button[aria-label*="'+name+'"]')?.click()`);
       await ctx.assert(await ctx.eval(`document.querySelector('${submit}').disabled`), "Removing the last reference disables file generation");
       await ctx.prove("English labels fit the same narrow layout", {
         voiceover: "切换英文后，较长的标签也能正常换行，弹窗没有横向溢出。",
@@ -341,7 +426,7 @@ export default {
       await ctx.fill('[data-testid="template-description"]','');
       await click(ctx, '#template-file-tab');
       await ctx.fill('[data-testid="template-file-instructions"]','');
-      await ctx.eval(`document.querySelector('${dialog} button[aria-label*="launch-brief.md"]')?.click()`);
+      await ctx.eval(`for(const name of ["launch-brief.md","reference-proof.png","second-reference-proof.png"]) document.querySelector('${dialog} button[aria-label*="'+name+'"]')?.click()`);
       await ctx.eval("window.fetch=window.__templateEntryFetch; if(window.__templateEntryTheme===null) document.documentElement.removeAttribute('data-theme'); else document.documentElement.setAttribute('data-theme',window.__templateEntryTheme); document.documentElement.style.colorScheme=window.__templateEntryColorScheme; delete window.__templateEntryFetch; delete window.__templateEntryWrites; delete window.__templateEntryTheme; delete window.__templateEntryColorScheme;");
       await ctx.client.send('Emulation.clearDeviceMetricsOverride');
     }
