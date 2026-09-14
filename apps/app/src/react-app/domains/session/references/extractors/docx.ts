@@ -45,6 +45,10 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
       sections.push({
         sourcePart: part, type: part === main ? "body" : relationships.find((rel) => rel.target === part)?.type,
         text, tables, related: extracted.related,
+        review: ["del", "ins", "comment", "footnote", "endnote"].flatMap((kind) => descendants(doc, kind).map((node) => ({
+          kind, id: node.getAttributeNS(WORD_NS, "id"), author: node.getAttributeNS(WORD_NS, "author"), date: node.getAttributeNS(WORD_NS, "date"),
+          text: [...descendants(node, "t"), ...descendants(node, "delText")].map((item) => item.textContent ?? "").join(""),
+        }))),
         paragraphs: paragraphs.map((node, index) => ({
           index, text: officeText(node),
           style: descendants(node, "pStyle")[0]?.getAttributeNS(WORD_NS, "val"),

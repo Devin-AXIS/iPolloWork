@@ -8,8 +8,8 @@ import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
 import type { ExtractedReferenceContent, ReferenceIngestionResult, ReferenceProgress } from "./types";
 
-// Match the server inbox default (decimal bytes), not a model attachment limit.
-export const REFERENCE_MAX_BYTES = 50_000_000;
+import { REFERENCE_MAX_BYTES } from "@ipollowork/types/reference-context";
+export { REFERENCE_MAX_BYTES };
 
 const DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
 const PDF_MIME = "application/pdf";
@@ -72,6 +72,23 @@ async function extractReference(file: File, onProgress?: ReferenceProgress): Pro
   return { text: "", chunks: [], warnings: ["No extractor is available for this file type."] };
 }
 
+function extractTextInWorker(file: File, table: boolean, signal?: AbortSignal): Promise<ExtractedReferenceContent> {
+  return new Promise((resolve, reject) => {
+    signal?.throwIfAborted();
+    const worker = new Worker(new URL("./reference-worker.ts", import.meta.url), { type: "module" });
+    const cleanup = () => { worker.terminate(); signal?.removeEventListener("abort", abort); };
+    const abort = () => { cleanup(); reject(new DOMException("Reference parsing cancelled", "AbortError")); };
+    signal?.addEventListener("abort", abort, { once: true });
+    worker.onmessage = (event: MessageEvent<{ result?: ExtractedReferenceContent; error?: string }>) => {
+      cleanup();
+      if (event.data.result) resolve(event.data.result);
+      else reject(new Error(event.data.error || "Reference worker returned no result"));
+    };
+    worker.onerror = (event) => { cleanup(); reject(new Error(event.message || "Reference worker failed")); };
+    worker.postMessage({ file, table });
+  });
+}
+
 export async function ingestReferenceFile(file: File, onProgress?: ReferenceProgress, signal?: AbortSignal): Promise<ReferenceIngestionResult> {
   const report: ReferenceProgress = (percent, detail) => { signal?.throwIfAborted(); onProgress?.(percent, detail); };
   report(0, "检查文件");
@@ -94,7 +111,10 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
     };
   }
 
-  const extracted = await extractReference(file, report).catch((error): ExtractedReferenceContent => ({
+  report(5, "读取文件内容");
+  const extension = referenceFileExtension(file.name);
+  const useWorker = typeof window !== "undefined" && typeof Worker !== "undefined" && ["txt", "md", "csv", "json"].includes(extension);
+  const extracted = await (useWorker ? extractTextInWorker(file, ["csv", "json"].includes(extension), signal) : extractReference(file, report)).catch((error): ExtractedReferenceContent => ({
     text: "",
     chunks: [],
     warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
@@ -116,9 +136,7 @@ export async function ingestReferenceFile(file: File, onProgress?: ReferenceProg
     metadata: extracted.metadata,
     structuredData: extracted.structuredData,
     rawText: extracted.rawText,
-    assets: [DOCX_MIME, PPTX_MIME, PDF_MIME].includes(mimeType)
-      ? [...extracted.assets ?? [], { sourcePart: file.name, path: file.name, kind: "document", file }]
-      : extracted.assets,
+    assets: [...extracted.assets ?? [], { sourcePart: file.name, path: file.name, kind: "document", file }],
     coverage: extracted.coverage,
   };
 

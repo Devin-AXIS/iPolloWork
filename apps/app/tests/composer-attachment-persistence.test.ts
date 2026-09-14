@@ -6,6 +6,15 @@ import {
 } from "../src/react-app/shell/session-prompt";
 
 describe("composer attachment persistence", () => {
+  test("reference upload rejects lower server limits and invalid manifests before publishing", async () => {
+    let uploads = 0;
+    const file = new File(['{"storage":"json-string-parts"}'], "reference-context.json");
+    const attachment = { id: "context", name: file.name, file, size: file.size, mimeType: "application/json", kind: "file" as const, delivery: "workspace" as const };
+    const uploadInbox = async () => { uploads++; return { path: "unexpected" }; };
+    await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox, capabilities: async () => ({ toolProviders: { files: { maxBytes: 1 } } }) } })).rejects.toThrow("超过当前服务器附件上限");
+    await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox } })).rejects.toThrow();
+    expect(uploads).toBe(0);
+  });
   test("workspace-only context files must persist and do not consume inline model context", async () => {
     const attachment = {
       id: "context",

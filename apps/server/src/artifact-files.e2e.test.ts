@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
@@ -245,4 +246,32 @@ describe("artifact file routes", () => {
     expect(xlsxDownload.status).toBe(200);
     expect(Array.from(new Uint8Array(await xlsxDownload.arrayBuffer()))).toEqual([80, 75, 9, 9]);
   });
+});
+
+
+test("reference inbox verifies disk bytes and reconstructs parts before publishing", async () => {
+  const root = await createWorkspaceRoot();
+  const { base, token } = await startiPolloWorkServer(root);
+  const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+  const upload = (path: string, body: string, sha256 = digest(body), assembly?: unknown) => {
+    const form = new FormData(); form.set("file", new File([body], "source.json")); form.set("path", path); form.set("sha256", sha256);
+    if (assembly) form.set("referenceAssembly", JSON.stringify(assembly));
+    return fetch(`${base}/workspace/ws_1/inbox`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+  };
+  expect((await upload("test/bad.json", "{}", "0".repeat(64))).status).toBe(422);
+  const text = JSON.stringify({ text: "start 中文😀 end", number: "0.1234567890123456789" });
+  const part = JSON.stringify(text);
+  expect((await upload("test/part.json", part)).status).toBe(200);
+  const assembly = { sha256: digest(text), bytes: Buffer.byteLength(text), parts: [{ path: "test/part.json", bytes: Buffer.byteLength(part) }] };
+  const response = await upload("test/reference-context.json", "{}", digest("{}"), assembly);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ sha256: digest(text), bytes: Buffer.byteLength(text) });
+  const output = join(root, ".opencode/ipollowork/inbox/test/reference-context.json");
+  expect(await readFile(output, "utf8")).toBe(text);
+  const altered = JSON.stringify(text.replace("start", "wrong"));
+  await upload("test/part.json", altered);
+  expect((await upload("test/reference-context.json", "{}", digest("{}"), assembly)).status).toBe(422);
+  expect(await readFile(output, "utf8")).toBe(text);
+  expect((await upload("other/reference-context.json", "{}", digest("{}"), assembly)).status).toBe(400);
+  expect((await upload("test/reference-context.json", "{}", digest("{}"), { ...assembly, parts: [{ path: "test/missing.json", bytes: 2 }] })).status).toBe(422);
 });

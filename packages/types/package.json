@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./reference-context": { "types": "./src/reference-context.ts", "development": "./src/reference-context.ts", "bun": "./src/reference-context.ts", "default": "./dist/reference-context.js" },
     "./video-generation": {
       "types": "./src/video-generation.ts",
       "development": "./src/video-generation.ts",

@@ -38,7 +38,10 @@ export async function extractPptxReference(file: File, onProgress?: ReferencePro
       const text = cleanReferenceText(officeText(doc)).text;
       const tables = officeTables(doc);
       const fullText = [text, ...tables.map((table) => table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n")), ...extracted.related.map((related) => `${related.type}: ${related.text}\n${JSON.stringify(related.data)}`)].filter(Boolean).join("\n\n");
-      slides.push({ page, sourcePart: part, hidden: doc.documentElement.getAttribute("show") === "0", text, tables, related: extracted.related, media: slideAssets.map(({ file: _file, ...asset }) => asset) });
+      slides.push({ shapes: ["sp", "pic", "graphicFrame"].flatMap((kind) => descendants(doc, kind).map((node) => ({
+        kind, text: officeText(node), name: descendants(node, "cNvPr")[0]?.getAttribute("name"),
+        transform: descendants(node, "xfrm").map((item) => ({ x: descendants(item, "off")[0]?.getAttribute("x"), y: descendants(item, "off")[0]?.getAttribute("y"), width: descendants(item, "ext")[0]?.getAttribute("cx"), height: descendants(item, "ext")[0]?.getAttribute("cy"), rotation: item.getAttribute("rot") })),
+      }))), page, sourcePart: part, hidden: doc.documentElement.getAttribute("show") === "0", text, tables, related: extracted.related, media: slideAssets.map(({ file: _file, ...asset }) => asset) });
       if (!fullText) reader.warnings.push(`Slide ${page}: no readable text; visual review is required.`);
       chunks.push(...chunkPlainText({ source: file.name, page, text: fullText }));
       onProgress?.(10 + Math.round(80 * (index + 1) / slideFiles.length), `提取 PPT 第 ${index + 1}/${slideFiles.length} 页`);

@@ -50,7 +50,7 @@ function rels(items: Array<[string, string, string, boolean?]>) {
 describe("rich reference evidence", () => {
   test("Word preserves blank table cells, header/footer, footnotes and media bytes", async () => {
     const zip = new JSZip();
-    zip.file("word/document.xml", `<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:a="${A}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body><w:p><w:r><w:t>产品介绍与使用要求</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:drawing><wp:docPr descr="产品正面照"/><a:blip r:embed="photo"/></w:drawing></w:r></w:p></w:body></w:document>`);
+    zip.file("word/document.xml", `<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:a="${A}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body><w:p><w:del w:id="7" w:author="Editor"><w:r><w:delText>旧价格 1999</w:delText></w:r></w:del><w:ins w:id="8"><w:r><w:t>新价格 1299</w:t></w:r></w:ins></w:p><w:p><w:r><w:t>产品介绍与使用要求</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:drawing><wp:docPr descr="产品正面照"/><a:blip r:embed="photo"/></w:drawing></w:r></w:p></w:body></w:document>`);
     zip.file("word/_rels/document.xml.rels", rels([["h", "header", "header1.xml"], ["f", "footer", "footer1.xml"], ["n", "footnotes", "footnotes.xml"], ["photo", "image", "media/photo.png"], ["movie", "video", "media/demo.mp4"], ["web", "hyperlink", "https://example.invalid/resource", true]]));
     for (const [part, text] of [["header1.xml", "品牌 ACME"], ["footer1.xml", "内部资料"], ["footnotes.xml", "价格含税条件以本注释为准"]]) zip.file(`word/${part}`, `<w:root xmlns:w="${W}"><w:p><w:r><w:t>${text}</w:t></w:r></w:p></w:root>`);
     zip.file("word/media/photo.png", new Uint8Array([1, 2, 3]));
@@ -67,6 +67,8 @@ describe("rich reference evidence", () => {
     const payload = await buildTemplateReferenceSubmitPayload([{ id: result.id, file, fileName: file.name, mimeType: result.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion: result }]);
     const context = JSON.parse(await payload.attachments[0]!.file.text());
     expect(context.files[0].structuredData.sections[0].tables[0].rows[0]).toHaveLength(3);
+    expect(context.files[0].structuredData.sections[0].review).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "del", id: "7", author: "Editor", text: "旧价格 1999" }), expect.objectContaining({ kind: "ins", text: "新价格 1299" })]));
+    expect(result.extractedText).not.toContain("旧价格 1999");
     for (const asset of context.files[0].assets.filter((asset: { attachmentName?: string }) => asset.attachmentName)) expect(payload.attachments.some((attachment) => attachment.name === asset.attachmentName && attachment.delivery === "workspace")).toBe(true);
     expect(context.files[0].assets.every((asset: object) => !("file" in asset))).toBe(true);
     expect(payload.contextPack.promptText).toContain("video");
@@ -78,7 +80,7 @@ describe("rich reference evidence", () => {
     zip.file("ppt/presentation.xml", `<p:presentation xmlns:p="${P}" xmlns:r="${R}"><p:sldIdLst><p:sldId r:id="second"/><p:sldId r:id="first"/></p:sldIdLst></p:presentation>`);
     zip.file("ppt/_rels/presentation.xml.rels", rels([["first", "slide", "slides/slide1.xml"], ["second", "slide", "slides/slide2.xml"]]));
     for (const number of [1, 2]) {
-      zip.file(`ppt/slides/slide${number}.xml`, `<p:sld xmlns:p="${P}" xmlns:a="${A}" xmlns:r="${R}"><p:cSld><p:spTree><p:sp><p:txBody><a:p><a:r><a:t>Requirements: slide ${number} detailed product evidence.</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`);
+      zip.file(`ppt/slides/slide${number}.xml`, `<p:sld xmlns:p="${P}" xmlns:a="${A}" xmlns:r="${R}"><p:cSld><p:spTree><p:sp><p:nvSpPr><p:cNvPr id="2" name="Product title"/></p:nvSpPr><p:spPr><a:xfrm rot="60000"><a:off x="120" y="240"/><a:ext cx="360" cy="480"/></a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Requirements: slide ${number} detailed product evidence.</a:t></a:r></a:p></p:txBody></p:sp></p:spTree></p:cSld></p:sld>`);
       zip.file(`ppt/slides/_rels/slide${number}.xml.rels`, rels([["image", "image", "../media/shared.png"], ["notes", "notesSlide", "../notesSlides/notesSlide1.xml"], ["chart", "chart", "../charts/chart1.xml"]]));
     }
     zip.file("ppt/media/shared.png", "image-bytes");
@@ -95,12 +97,13 @@ describe("rich reference evidence", () => {
     expect(payload.attachments.filter((attachment) => attachment.name.endsWith("shared.png"))).toHaveLength(1);
     const context = JSON.parse(await payload.attachments[0]!.file.text());
     expect(context.files[0].assets[0].attachmentName).toBe(context.files[0].assets[1].attachmentName);
+    expect(context.files[0].structuredData.slides[0].shapes[0]).toMatchObject({ name: "Product title", transform: [{ x: "120", y: "240", width: "360", height: "480", rotation: "60000" }] });
   });
 
   test("empty structured files are not scored as high quality and unsafe numbers retain exact evidence", async () => {
     for (const [name, text] of [["empty.csv", ""], ["empty.json", "{}"], ["array.json", "[]"]]) expect((await ingestReferenceFile(new File([text!], name!))).quality).toBe("failed");
     const result = await ingestReferenceFile(new File(['{"id":9007199254740993,"amount":0.123456789012345678901}'], "precise.json"));
-    expect(result.structuredData).toMatchObject({ id: "9007199254740993" });
+    expect(result.structuredData).toMatchObject({ id: "9007199254740993", amount: "0.123456789012345678901" });
     expect(result.rawText).toContain("0.123456789012345678901");
     expect(result.warnings.join(" ")).toContain("numbers preserved as strings");
   });
@@ -660,7 +663,7 @@ describe("reference ingestion router", () => {
 
     const defaultPayload = await buildTemplateReferenceSubmitPayload([reference]);
     expect(defaultPayload.contextPack.promptText).toContain("source.txt");
-    expect(defaultPayload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json"]);
+    expect(defaultPayload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json", "reference-1-asset-1-source.txt"]);
     const context = JSON.parse(await defaultPayload.attachments[0]!.file.text());
     expect(context.schemaVersion).toBe(1);
     expect(context.files[0].text).toBe(result.extractedText);
@@ -668,8 +671,8 @@ describe("reference ingestion router", () => {
     expect(result.sourceMode).toBe("memory");
 
     const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
-    expect(optInPayload.attachments).toHaveLength(2);
-    expect(optInPayload.attachments[1]?.name).toBe("source.txt");
+    expect(optInPayload.attachments).toHaveLength(3);
+    expect(optInPayload.attachments[2]?.name).toBe("source.txt");
   });
 
   test("ignores original-file opt in when a reference exceeds the attachment limit", async () => {
@@ -844,7 +847,7 @@ test("an oversized Word auxiliary part does not discard readable main content", 
   const zip = new JSZip();
   zip.file("word/document.xml", `<w:document xmlns:w="${W}"><w:body><w:p><w:r><w:t>Readable main document requirements and product information.</w:t></w:r></w:p></w:body></w:document>`);
   zip.file("word/_rels/document.xml.rels", rels([["header", "header", "header1.xml"]]));
-  zip.file("word/header1.xml", new Uint8Array(17 * 1024 * 1024));
+  zip.file("word/header1.xml", new Uint8Array(100_000_001));
   const result = await extractDocxReference(new File([await zip.generateAsync({ type: "arraybuffer", compression: "DEFLATE" })], "partial.docx"));
   expect(result.text).toContain("Readable main document");
   expect(result.warnings?.join(" ")).toContain("other readable parts preserved");
@@ -857,4 +860,11 @@ test("labeled requirements in one reference do not suppress facts from another",
   expect(brief.details).toContain("核心功能");
   expect(brief.details).toContain("220V");
   expect(brief.details).toContain("specs.txt");
+});
+
+
+test("CSV retains escaped quotes, CRLF inside cells, and trailing empty columns", async () => {
+  const text = 'a,b,c\r\n"say ""hello""","first\r\nsecond",\r\nlast,,end';
+  const result = await extractTableReference(new File([text], "quoted.csv"));
+  expect(result.structuredData).toMatchObject({ records: [["a", "b", "c"], ['say "hello"', "first\r\nsecond", ""], ["last", "", "end"]] });
 });

@@ -1,7 +1,12 @@
 import type { ReferenceChunk, ReferenceQuality } from "./types";
 
 const GARBLE_PATTERN = /[\uFFFD\u25A0-\u25A3]|(?:[^\p{L}\p{N}\p{P}\p{Zs}\r\n\t]){2,}/gu;
-const READABLE_PATTERN = /[\p{L}\p{N}]/gu;
+const READABLE_PATTERN = /[\p{L}\p{N}]+/gu;
+function matchedCharacters(text: string, pattern: RegExp) {
+  let count = 0;
+  for (const match of text.matchAll(pattern)) count += match[0].length;
+  return count;
+}
 
 export function cleanReferenceText(text: string): { text: string; warnings: string[] } {
   const lines = text
@@ -25,8 +30,8 @@ export function assessReferenceQuality(input: {
     return { quality: text ? "low" : "failed", warnings: [...warnings] };
   }
 
-  const garbled = text.match(GARBLE_PATTERN)?.join("").length ?? 0;
-  const readable = text.match(READABLE_PATTERN)?.join("").length ?? 0;
+  const garbled = matchedCharacters(text, GARBLE_PATTERN);
+  const readable = matchedCharacters(text, READABLE_PATTERN);
   const garbledRatio = garbled / Math.max(text.length, 1);
   const readableRatio = readable / Math.max(text.replace(/\s/g, "").length, 1);
 

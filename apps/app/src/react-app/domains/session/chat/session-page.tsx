@@ -1559,7 +1559,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
       <div className="min-w-0 flex-1">
         <p className="break-words leading-5">{reference.fileName} <span className="text-muted-foreground">({(reference.size / 1_000_000).toFixed(1)} MB)</span></p>
-        {reference.ingestion ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_coverage", { count: reference.ingestion.extractedText.length })}{reference.ingestion.coverage?.text !== "complete" ? ` · ${t("templates.brief.reference_partial")}` : ""}</p> : null}
+        {reference.ingestion ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_coverage", { count: (reference.ingestion.rawText ?? reference.ingestion.extractedText).length })}{reference.ingestion.coverage?.text !== "complete" ? ` · ${t("templates.brief.reference_partial")}` : ""}</p> : null}
         {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t(reference.ingestion?.assets?.some((asset) => asset.file && asset.kind !== "document") ? "templates.brief.reference_visual_pending" : "templates.brief.reference_needs_input")}</p> : null}
       </div>
       {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}

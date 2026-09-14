@@ -62,8 +62,9 @@ export function selectReferenceChunks(
 export function buildDeterministicSummary(
   result: Pick<ReferenceIngestionResult, "fileName" | "mimeType" | "extractedText" | "chunks" | "warnings">,
 ) {
+  const lowerText = result.extractedText.toLowerCase();
   const topics = TOPIC_KEYWORDS
-    .filter((keyword) => result.extractedText.toLowerCase().includes(keyword))
+    .filter((keyword) => lowerText.includes(keyword))
     .slice(0, 8);
   const pages = new Set(result.chunks.map((chunk) => chunk.page).filter((page): page is number => typeof page === "number"));
   return [

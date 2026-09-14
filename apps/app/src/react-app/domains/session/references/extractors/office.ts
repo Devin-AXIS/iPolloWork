@@ -37,7 +37,7 @@ async function readPart(entry: JSZip.JSZipObject, limit: number, budget: { bytes
 
 export async function officeXml(zip: JSZip, path: string) {
   const entry = zip.file(path);
-  return entry ? new TextDecoder().decode(await readPart(entry, 16 * 1024 * 1024, packageBudget(zip))) : undefined;
+  return entry ? new TextDecoder().decode(await readPart(entry, 100_000_000, packageBudget(zip))) : undefined;
 }
 
 export function xmlDocument(xml: string): Document {

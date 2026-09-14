@@ -104,6 +104,10 @@ function profileJson(fileName: string, text: string): ExtractedReferenceContent 
         warnings.push("Unsafe JSON numbers preserved as strings; rawText retains original numeric tokens.");
         return raw;
       }
+      if (/[.eE]/.test(raw) && raw.replace(/[^0-9]/g, "").length > 16 && String(node.value) !== raw) {
+        warnings.push("High precision JSON numbers preserved as strings; rawText retains exact tokens.");
+        return raw;
+      }
       return node.value;
     }
     if (node.type === "array") return (node.children ?? []).map((child) => exactValue(child, depth + 1));

@@ -1,3 +1,4 @@
+import { ReferenceContextPartsSchema, type InboxUploadOptions, type ReferenceAssembly } from "@ipollowork/types/reference-context";
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
 import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
 import type { Language } from "@/i18n";
@@ -28,10 +29,11 @@ type DraftToPartsOptions = {
 };
 
 type InboxUploadClient = {
+  capabilities?: () => Promise<{ toolProviders?: { files?: { maxBytes: number; injection?: boolean } } }>;
   uploadInbox: (
     workspaceId: string,
     file: File,
-    options?: { path?: string },
+    options?: InboxUploadOptions,
   ) => Promise<{ path: string }>;
 };
 
@@ -82,16 +84,40 @@ export async function persistComposerAttachments(input: {
 }): Promise<PersistedComposerAttachment[]> {
   const workspaceId = input.workspaceId.trim();
   if (!workspaceId || input.attachments.length === 0) return [];
+  if (input.client.capabilities && input.attachments.some((item) => item.delivery === "workspace")) {
+    const capability = (await input.client.capabilities()).toolProviders?.files;
+    if (capability?.injection === false) throw new Error("当前服务器未启用附件上传。");
+    const oversized = capability ? input.attachments.find((item) => item.file.size > capability.maxBytes) : undefined;
+    if (oversized) throw new Error(`${oversized.name} 超过当前服务器附件上限 ${capability!.maxBytes} 字节，请调整服务器配置或拆分文件。`);
+  }
   const sessionSegment = safeAttachmentPathSegment(input.sessionId, "session");
   const uploaded: Array<PersistedComposerAttachment | null> = [];
+  // Publish the primary context only after all source files and parts are durable.
+  const attachments = [...input.attachments].sort((a, b) => Number(a.name === "reference-context.json") - Number(b.name === "reference-context.json"));
   // Reference packages can contain many large files; bound concurrent request bodies.
-  for (let offset = 0; offset < input.attachments.length; offset += 3) {
-    uploaded.push(...await Promise.all(input.attachments.slice(offset, offset + 3).map(async (attachment) => {
+  for (let offset = 0; offset < attachments.length;) {
+    const remaining = attachments.slice(offset);
+    const contextIndex = remaining.findIndex((item) => item.name === "reference-context.json");
+    const batch = remaining.slice(0, contextIndex === 0 ? 1 : Math.min(3, contextIndex < 0 ? remaining.length : contextIndex));
+    offset += batch.length;
+    uploaded.push(...await Promise.all(batch.map(async (attachment) => {
       const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
       const filename = safeAttachmentPathSegment(attachment.name, "file");
       const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
       try {
-        const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
+        let referenceAssembly: ReferenceAssembly | undefined;
+        if (attachment.delivery === "workspace" && attachment.name === "reference-context.json") {
+          const raw = JSON.parse(await attachment.file.text());
+            const manifest = raw?.storage === "json-string-parts" ? ReferenceContextPartsSchema.parse(raw) : undefined;
+            if (manifest) {
+              referenceAssembly = { sha256: manifest.sha256, bytes: manifest.bytes, parts: manifest.parts.map((part) => {
+              const saved = uploaded.find((item) => item?.name === part.attachmentName);
+              if (!saved) throw new Error(`参考文件缺少分片：${part.attachmentName}`);
+              return { path: saved.workspacePath.replace(/^\.opencode\/ipollowork\/inbox\//, ""), bytes: part.bytes };
+            }) };
+          }
+        }
+        const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath, verify: attachment.delivery === "workspace", referenceAssembly });
         const inboxPath = result.path.trim().replace(/^\/+/, "");
         if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
         return {
