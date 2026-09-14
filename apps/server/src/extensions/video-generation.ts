@@ -102,7 +102,7 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   description: action.action === "status"
     ? "List the configured video models the user can choose from. Do not treat the first result as consent."
     : action.action === "submit"
-      ? "Generate or edit video with the configured model explicitly selected by the user. Never choose or infer a model for them."
+      ? "Generate or edit standalone video footage with the configured model explicitly selected by the user. Use only for explicit plugin/model or raw video asset requests; ordinary video creation belongs to editable HTML in Video Studio. Never choose or infer a model for them."
       : action.title,
   effect: action.effect === "read" ? "read" as const : "write" as const,
   inputSchema: {

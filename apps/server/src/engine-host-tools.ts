@@ -40,6 +40,14 @@ Activating publish, send, submit, pay, buy, confirm, delete, or similar conseque
 
 export const IPOLLOWORK_SCHEDULE_OFFER_PROMPT = "是否需要生成计划并加入 iPolloWork 日程？";
 
+export const ENGINE_VIDEO_GENERATION_INSTRUCTION = `## Video deliverable routing
+- A general request to generate/make a video (生成视频、做视频、宣传片、短视频) means an editable HyperFrames HTML composition supported by Video Studio. Follow the prepared video task/template context and deliver its HTML entry. Do not ask the user to choose between HTML and a video model for this default request.
+- MP4 export, duration, aspect ratio, realism, an attached image, or an already-open media workbench alone do not switch the deliverable to model-generated footage. Export/render requests on an existing composition keep its editable source.
+- Use video-generation or another video plugin only when the user explicitly requests that plugin/model, text-to-video/image-to-video generation, or standalone video assets/raw footage/B-roll (纯视频素材). Plugin availability and a model name mentioned as the subject of a video are not such a request. Respect negation and the latest explicit correction.
+- If the user requests footage as an intermediate step and then a complete/editable video, use the plugin only for those assets and finish the Video Studio composition. A raw clip alone does not complete that task. Editing an existing HTML composition retains its project; a new standalone footage request must not inherit an HTML editing contract just because Studio is open.
+- Only on the footage/plugin path, inspect the requested plugin's actions (video-generation: status), reuse the user's explicit configured model selection from the current request/workbench context, or show configured choices and wait for selection. Never choose the first/default model. If the requested plugin is unavailable, report it and ask for an alternative; do not silently substitute a provider or HTML.
+- Script/outline/advice-only requests do not create a video or submit a generation job. Ask a short clarification only when explicit deliverables conflict and the conversation cannot resolve them.`;
+
 const CONSEQUENTIAL_BROWSER_CONTROL = /(?:发布|发送|提交|付款|支付|购买|下单|确认|删除|移除|清空数据|授权)|(?:\b(?:publish|send|submit|pay|purchase|buy|checkout|confirm|delete|remove|authorize)\b)|(?:^post(?: now)?$)/i;
 
 export function consequentialBrowserControlNames(value: unknown): string[] {
@@ -151,7 +159,7 @@ const browserActionSchema = {
 export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   {
     name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
-    description: "List the actions currently exposed by installed and enabled iPolloWork extensions. For image generation or editing, use extensionId=openai-image-generation. Call status first, show the configured models, and wait for the user to choose unless active Image Studio context already identifies their selection. Never infer a model, choose the first result, or treat defaultModel as consent. Then call image_generate or image_edit through ipollowork_extension_call with that exact model ID. These server actions work with Image Studio closed or open; do not operate Workspace App UI tools for a normal image request. Return the saved path as a Markdown image link in the final answer. Apply the same rule to video-generation: status lists choices, and submit is allowed only after the user explicitly selects a configured model.",
+    description: `List the actions currently exposed by installed and enabled iPolloWork extensions. For image generation or editing, use extensionId=openai-image-generation. Call status first, show the configured models, and wait for the user to choose unless active Image Studio context already identifies their selection. Never infer a model, choose the first result, or treat defaultModel as consent. Then call image_generate or image_edit through ipollowork_extension_call with that exact model ID. These server actions work with Image Studio closed or open; do not operate Workspace App UI tools for a normal image request. Return the saved path as a Markdown image link in the final answer. ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
     parameters: objectParameters({
       extensionId: {
         type: "string",
