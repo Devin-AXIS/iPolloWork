@@ -1500,6 +1500,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       title: editedBriefFields.current.has("title") ? current.title : inferred.title,
       audience: editedBriefFields.current.has("audience") ? current.audience : inferred.audience,
       details: editedBriefFields.current.has("details") ? current.details : inferred.details,
+      style: editedBriefFields.current.has("style") ? current.style : inferred.style,
     }));
   };
 
@@ -1560,6 +1561,12 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       <div className="min-w-0 flex-1">
         <p className="break-words leading-5">{reference.fileName} <span className="text-muted-foreground">({(reference.size / 1_000_000).toFixed(1)} MB)</span></p>
         {reference.ingestion ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_coverage", { count: (reference.ingestion.rawText ?? reference.ingestion.extractedText).length })}{reference.ingestion.coverage?.text !== "complete" ? ` · ${t("templates.brief.reference_partial")}` : ""}</p> : null}
+        {step === "brief" && reference.ingestion ? <details className="mt-2 font-normal">
+          <summary className="cursor-pointer text-muted-foreground">查看解析内容</summary>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 text-xs">{(reference.ingestion.rawText ?? reference.ingestion.extractedText).slice(0, 20_000)}</pre>
+          {(reference.ingestion.rawText ?? reference.ingestion.extractedText).length > 20_000 ? <p className="mt-1 text-muted-foreground">此处预览前 20,000 字符，完整内容随提交保存。</p> : null}
+        </details> : null}
+        {reference.ingestion?.assets?.some((asset) => asset.file && ["image", "video", "audio"].includes(asset.kind)) ? <p className="mt-1 text-muted-foreground">已提取 {reference.ingestion.assets.filter((asset, index, all) => asset.file && ["image", "video", "audio"].includes(asset.kind) && all.findIndex((other) => other.file === asset.file) === index).length} 项素材，提交时保存到工作区供视频使用。</p> : null}
         {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t(reference.ingestion?.assets?.some((asset) => asset.file && asset.kind !== "document") ? "templates.brief.reference_visual_pending" : "templates.brief.reference_needs_input")}</p> : null}
       </div>
       {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}
@@ -1572,7 +1579,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     setSubmitting(true);
     try {
       await onSubmit(
-        { title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() },
+        { title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), style: brief.style?.trim() },
         references,
       );
     } finally {
@@ -1702,6 +1709,14 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
                 )}
               </label>
             ))}
+            {(template?.category ?? customCategory) === "video" ? <label className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
+              <span>{t("template_market.style_label")}</span>
+              <Textarea aria-label={t("template_market.style_label")} value={brief.style ?? ""} disabled={submitting}
+                onChange={(event) => { const style = event.currentTarget.value; editedBriefFields.current.add("style"); setBrief((current) => ({ ...current, style })); }}
+                placeholder="可从参考文件回填，也可填写，例如：白色背景、深蓝文字、简洁排版。"
+                className="min-h-24 rounded-lg px-4 py-2 text-ui-control font-normal" />
+              <span className="text-xs font-normal text-muted-foreground">自动提取文件中的字体、配色与背景；可修改，生成时以此处为准。清空后使用模板默认风格。</span>
+            </label> : null}
           </section>
 
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">

@@ -1,5 +1,5 @@
 import type JSZip from "jszip";
-import type { ReferenceAsset } from "../types";
+import type { ReferenceAsset, ReferenceStyle } from "../types";
 
 export const REL_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 export const WORD_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
@@ -112,9 +112,57 @@ export function officePackage(zip: JSZip) {
   const binaries = new Map<string, File>();
   let totalBytes = 0;
   let mediaCount = 0;
+  const style: ReferenceStyle = { fonts: [], colors: [], backgrounds: [], fontSizesPt: [], sourceParts: [] };
+  const backgroundThemes = new Set<string>();
+  const themeColors = new Map<string, string>();
+  const collectStyle = (part: string, doc: Document) => {
+    const add = <T,>(values: T[], value: T, limit = 24) => { if (value && values.length < limit && !values.includes(value)) values.push(value); };
+    const color = (value: string | null) => value && /^[0-9a-f]{6}$/i.test(value) ? `#${value.toUpperCase()}` : undefined;
+    const theme = part.includes("/theme/");
+    const includeFonts = !theme || style.fonts.length === 0;
+    const includeColors = !theme || style.colors.length === 0;
+    for (const scheme of descendants(doc, "clrScheme")) for (const child of Array.from(scheme.childNodes)) {
+      if (child.nodeType !== 1) continue;
+      const element = child as Element;
+      const hex = color(descendants(element, "srgbClr")[0]?.getAttribute("val") ?? descendants(element, "sysClr")[0]?.getAttribute("lastClr") ?? null);
+      if (hex) themeColors.set(element.localName, hex);
+    }
+    for (const node of descendants(doc, "*")) {
+      if (includeFonts && ["latin", "ea", "cs"].includes(node.localName)) {
+        const font = node.getAttribute("typeface");
+        if (font && !font.startsWith("+")) add(style.fonts, font);
+      }
+      if (node.localName === "rFonts") for (const key of ["ascii", "eastAsia", "hAnsi", "cs"]) add(style.fonts, node.getAttributeNS(WORD_NS, key) || "");
+      const hex = node.localName === "srgbClr" ? color(node.getAttribute("val")) : node.localName === "color" ? color(node.getAttributeNS(WORD_NS, "val")) : undefined;
+      if (hex && includeColors) add(style.colors, hex);
+      if (node.localName === "bg") for (const fill of descendants(node, "srgbClr")) { const hex = color(fill.getAttribute("val")); if (hex) add(style.backgrounds, hex); }
+      if (node.localName === "bg") for (const fill of descendants(node, "schemeClr")) { const key = fill.getAttribute("val"); if (key) backgroundThemes.add(key); }
+      if (node.localName === "background") { const hex = color(node.getAttributeNS(WORD_NS, "color")); if (hex) add(style.backgrounds, hex); }
+      const size = node.localName === "sz" && node.namespaceURI === WORD_NS ? Number(node.getAttributeNS(WORD_NS, "val")) / 2 : ["rPr", "defRPr", "endParaRPr"].includes(node.localName) ? Number(node.getAttribute("sz")) / 100 : 0;
+      if (size > 0 && size <= 400) add(style.fontSizesPt, size);
+    }
+    for (const key of backgroundThemes) { const hex = themeColors.get(key === "bg1" ? "lt1" : key === "bg2" ? "lt2" : key); if (hex) add(style.backgrounds, hex); }
+    add(style.sourceParts, part, 256);
+  };
   return {
-    warnings,
+    warnings, style,
+    async supportingParts(prefix: "word" | "ppt") {
+      const assets: ReferenceAsset[] = [];
+      const paths = Object.keys(zip.files).filter((path) => prefix === "word" ? /^word\/(?:styles\.xml|theme\/[^/]+\.xml)$/.test(path) : /^ppt\/(?:theme|slideMasters|slideLayouts)\/[^/]+\.xml$/.test(path));
+      if (paths.length > 128) warnings.push("Only the first 128 style/master parts were inspected.");
+      for (const path of paths.slice(0, 128)) {
+        try {
+          const xml = await officeXml(zip, path);
+          if (!xml) continue;
+          const doc = xmlDocument(xml);
+          collectStyle(path, doc);
+          if (/slideMasters|slideLayouts/.test(path)) assets.push(...(await this.inspect(path, doc)).assets);
+        } catch (error) { warnings.push(`Style part ${path}: ${error instanceof Error ? error.message : String(error)}`); }
+      }
+      return assets;
+    },
     async inspect(part: string, doc: Document, page?: number) {
+      collectStyle(part, doc);
       const assets: ReferenceAsset[] = [];
       const related: Array<{ sourcePart: string; type: string; text: string; data: unknown }> = [];
       const relationships = await officeRelationships(zip, part);
@@ -150,6 +198,7 @@ export function officePackage(zip: JSZip) {
           const xml = await officeXml(zip, target);
           if (!xml) { warnings.push(`Missing related part: ${target}`); continue; }
           const relatedDoc = xmlDocument(xml);
+          collectStyle(target, relatedDoc);
           const text = officeText(relatedDoc).trim();
           const series = descendants(relatedDoc, "ser").map((seriesNode) => ({
             text: officeText(seriesNode).trim(),

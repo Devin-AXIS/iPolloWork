@@ -65,10 +65,16 @@ export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionR
   const audience = [...new Set(accepted.map((item) => fieldValue(item, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"])).filter(Boolean))].join("；");
   const details = accepted.map((item) => {
     const labeled = fieldValue(item, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"]);
-    if (labeled) return accepted.length === 1 ? labeled : `[${item.fileName}] ${labeled}`;
-    return selectReferenceChunks(item.chunks, { maxChunks: Math.max(1, Math.floor(8 / accepted.length)), maxChunkChars: 500 })
+    const evidence = selectReferenceChunks(item.chunks, { maxChunks: Math.max(1, Math.floor(8 / accepted.length)), maxChunkChars: 500 })
       .map((chunk) => `[${item.fileName}${chunk.page ? ` · 第 ${chunk.page} 页` : chunk.heading ? ` · ${chunk.heading}` : ""}] ${cleanLine(chunk.text)}`).join("\n");
+    return [labeled, evidence].filter(Boolean).join("\n");
   }).filter(Boolean).join("\n").slice(0, 4000).trim();
 
-  return { title, audience, details };
+  const style = accepted.flatMap((item) => {
+    if (!item.style) return [];
+    const value = item.style;
+    const lines = [value.fonts.length ? `字体：${value.fonts.join("、")}` : "", value.colors.length ? `配色：${value.colors.join("、")}` : "", value.backgrounds.length ? `背景色：${value.backgrounds.join("、")}` : "", value.fontSizesPt.length ? `原文字号：${value.fontSizesPt.join("、")} pt（视频中按画面适配）` : ""].filter(Boolean);
+    return lines.length ? [`[${item.fileName}] ${lines.join("；")}`] : [];
+  }).join("\n");
+  return { title, audience, details, ...(style ? { style } : {}) };
 }

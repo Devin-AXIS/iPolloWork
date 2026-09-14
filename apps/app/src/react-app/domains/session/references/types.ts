@@ -1,3 +1,11 @@
+export type ReferenceStyle = {
+  fonts: string[];
+  colors: string[];
+  backgrounds: string[];
+  fontSizesPt: number[];
+  sourceParts: string[];
+};
+
 export type ReferenceQuality = "high" | "medium" | "low" | "failed";
 
 /** Binary content stays outside the JSON; the submitter supplies its attachment name. */
@@ -35,6 +43,7 @@ export type ReferenceIngestionResult = {
   warnings: string[];
   metadata?: ExtractedReferenceContent["metadata"];
   structuredData?: unknown;
+  style?: ReferenceStyle;
   rawText?: string;
   assets?: ReferenceAsset[];
   coverage?: { text: "complete" | "partial" | "none"; visuals: "pending" | "none" | "not-supported" };
@@ -70,6 +79,7 @@ export type ExtractedReferenceContent = {
   chunks?: ReferenceChunk[];
   warnings?: string[];
   structuredData?: unknown;
+  style?: ReferenceStyle;
   metadata?: {
     pages?: number;
     rows?: number;

@@ -67,6 +67,7 @@ export async function extractDocxReference(file: File, onProgress?: ReferencePro
       reader.warnings.push(`${part}: ${error instanceof Error ? error.message : String(error)}; other readable parts preserved.`);
     }
   }
+  assets.push(...await reader.supportingParts("word"));
   const text = sections.flatMap((section) => [section.text, ...section.tables.map((table) => table.rows.map((row) => row.map((cell) => cell.text).join(" | ")).join("\n")), ...section.related.map((item) => `${item.type}: ${item.text}\n${JSON.stringify(item.data)}`)]).filter(Boolean).join("\n\n");
-  return { text, chunks, assets, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; image interpretation and audio/video transcription are disabled."] : [])], metadata: { headings }, coverage: { text: "partial", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" } };
+  return { text, chunks, assets, style: reader.style, structuredData: { sections }, warnings: [...reader.warnings, ...(assets.some((asset) => asset.kind !== "link") ? ["Embedded media preserved with source locations; image interpretation and audio/video transcription are disabled."] : [])], metadata: { headings }, coverage: { text: reader.warnings.length ? "partial" : text.trim() ? "complete" : "none", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" } };
 }

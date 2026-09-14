@@ -50,9 +50,11 @@ export async function extractPptxReference(file: File, onProgress?: ReferencePro
       reader.warnings.push(`${part}: ${error instanceof Error ? error.message : String(error)}; other readable parts preserved.`);
     }
   }
+  assets.push(...await reader.supportingParts("ppt"));
   return {
+    style: reader.style,
     text: slides.map((slide) => `Slide ${slide.page}\n${slide.text}\n${slide.related.map((related) => `${related.type}: ${related.text}\n${JSON.stringify(related.data)}`).join("\n")}`).join("\n\n"), chunks, assets, structuredData: { slides },
     warnings: [...reader.warnings, "Slide text, tables, notes and cached chart data were extracted; image interpretation and audio/video transcription are disabled."],
-    metadata: { pages: slideFiles.length }, coverage: { text: "partial", visuals: "not-supported" },
+    metadata: { pages: slideFiles.length }, coverage: { text: reader.warnings.length || slides.length !== slideFiles.length ? "partial" : slides.some((slide) => slide.text.trim()) ? "complete" : "none", visuals: assets.some((asset) => asset.kind !== "link") ? "not-supported" : "none" },
   };
 }

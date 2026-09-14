@@ -48,6 +48,18 @@ function rels(items: Array<[string, string, string, boolean?]>) {
 }
 
 describe("rich reference evidence", () => {
+  test("Word style extraction preserves explicit requirements and other evidence", async () => {
+    const zip = new JSZip();
+    zip.file("word/document.xml", `<w:document xmlns:w="${W}"><w:background w:color="F0F0F0"/><w:body><w:p><w:r><w:rPr><w:rFonts w:ascii="Arial"/><w:color w:val="112233"/><w:sz w:val="32"/></w:rPr><w:t>价格：1299.50 元；型号：YS-001</w:t></w:r></w:p><w:p><w:r><w:t>要求：保留准确数字</w:t></w:r></w:p></w:body></w:document>`);
+    zip.file("word/styles.xml", `<w:styles xmlns:w="${W}"><w:style><w:rPr><w:rFonts w:eastAsia="Microsoft YaHei"/></w:rPr></w:style></w:styles>`);
+    const result = await ingestReferenceFile(new File([await zip.generateAsync({ type: "arraybuffer" })], "style.docx"));
+    expect(result.style).toMatchObject({ fonts: ["Arial", "Microsoft YaHei"], colors: ["#112233"], backgrounds: ["#F0F0F0"], fontSizesPt: [16] });
+    const brief = inferTemplateBriefFromIngestions([result]);
+    expect(brief.style).toContain("#112233");
+    expect(brief.details).toContain("1299.50");
+    expect(brief.details).toContain("YS-001");
+    expect(brief.details).toContain("保留准确数字");
+  });
   test("Word preserves blank table cells, header/footer, footnotes and media bytes", async () => {
     const zip = new JSZip();
     zip.file("word/document.xml", `<w:document xmlns:w="${W}" xmlns:r="${R}" xmlns:a="${A}" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body><w:p><w:del w:id="7" w:author="Editor"><w:r><w:delText>旧价格 1999</w:delText></w:r></w:del><w:ins w:id="8"><w:r><w:t>新价格 1299</w:t></w:r></w:ins></w:p><w:p><w:r><w:t>产品介绍与使用要求</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>A</w:t></w:r></w:p></w:tc><w:tc><w:p/></w:tc><w:tc><w:p><w:r><w:t>C</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:p><w:r><w:drawing><wp:docPr descr="产品正面照"/><a:blip r:embed="photo"/></w:drawing></w:r></w:p></w:body></w:document>`);
@@ -72,7 +84,7 @@ describe("rich reference evidence", () => {
     for (const asset of context.files[0].assets.filter((asset: { attachmentName?: string }) => asset.attachmentName)) expect(payload.attachments.some((attachment) => attachment.name === asset.attachmentName && attachment.delivery === "workspace")).toBe(true);
     expect(context.files[0].assets.every((asset: object) => !("file" in asset))).toBe(true);
     expect(payload.contextPack.promptText).toContain("video");
-    expect(result.quality).not.toBe("high");
+    expect(result.coverage).toEqual({ text: "complete", visuals: "not-supported" });
   });
 
   test("PPT follows presentation order and retains notes, chart values and shared media provenance", async () => {
@@ -84,6 +96,9 @@ describe("rich reference evidence", () => {
       zip.file(`ppt/slides/_rels/slide${number}.xml.rels`, rels([["image", "image", "../media/shared.png"], ["notes", "notesSlide", "../notesSlides/notesSlide1.xml"], ["chart", "chart", "../charts/chart1.xml"]]));
     }
     zip.file("ppt/media/shared.png", "image-bytes");
+    zip.file("ppt/slideMasters/master1.xml", `<p:sldMaster xmlns:p="${P}" xmlns:a="${A}"><p:cSld><p:bg><a:solidFill><a:srgbClr val="123456"/></a:solidFill></p:bg></p:cSld></p:sldMaster>`);
+    zip.file("ppt/slideMasters/_rels/master1.xml.rels", rels([["bg", "image", "../media/background.png"]]));
+    zip.file("ppt/media/background.png", "background-bytes");
     zip.file("ppt/notesSlides/notesSlide1.xml", `<p:notes xmlns:p="${P}" xmlns:a="${A}"><a:p><a:r><a:t>演讲备注：上市时间为十月，不要提前发布。</a:t></a:r></a:p></p:notes>`);
     zip.file("ppt/charts/chart1.xml", `<c:chartSpace xmlns:c="http://schemas.openxmlformats.org/drawingml/2006/chart"><c:chart><c:ser><c:val><c:numRef><c:f>Sheet1!B2</c:f><c:numCache><c:pt idx="0"><c:v>1299.50</c:v></c:pt></c:numCache></c:numRef></c:val></c:ser></c:chart></c:chartSpace>`);
     const file = new File([await zip.generateAsync({ type: "arraybuffer" })], "rich.pptx");
@@ -92,11 +107,16 @@ describe("rich reference evidence", () => {
     expect(result.chunks[0]?.page).toBe(1);
     expect(result.extractedText).toContain("不要提前发布");
     expect(result.extractedText).toContain("1299.50");
-    expect(result.assets?.filter((asset) => asset.kind === "image").map((asset) => asset.page)).toEqual([1, 2]);
+    expect(result.assets?.filter((asset) => asset.kind === "image").map((asset) => asset.page)).toEqual([1, 2, undefined]);
+    expect(result.style?.backgrounds).toEqual(["#123456"]);
     const payload = await buildTemplateReferenceSubmitPayload([{ id: result.id, file, fileName: file.name, mimeType: result.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion: result }]);
     expect(payload.attachments.filter((attachment) => attachment.name.endsWith("shared.png"))).toHaveLength(1);
     const context = JSON.parse(await payload.attachments[0]!.file.text());
     expect(context.files[0].assets[0].attachmentName).toBe(context.files[0].assets[1].attachmentName);
+    const background = context.files[0].assets.find((asset: { sourcePart: string }) => asset.sourcePart === "ppt/slideMasters/master1.xml");
+    expect(await payload.attachments.find((item) => item.name === background.attachmentName)!.file.text()).toBe("background-bytes");
+    expect(context.files[0].style.backgrounds).toEqual(["#123456"]);
+    expect(payload.contextPack.promptText).toContain("reuse extracted local image/video/audio assets");
     expect(context.files[0].structuredData.slides[0].shapes[0]).toMatchObject({ name: "Product title", transform: [{ x: "120", y: "240", width: "360", height: "480", rotation: "60000" }] });
   });
 
@@ -784,7 +804,7 @@ describe("reference ingestion router", () => {
 
     expect(brief.title).toBe("临床交接看板");
     expect(brief.audience).toBe("七病区护士");
-    expect(brief.details).toBe("展示风险、负责人和升级路径。");
+    expect(brief.details).toContain("展示风险、负责人和升级路径。");
   });
 
   test("prepares original attachments only for explicit opt in", async () => {
