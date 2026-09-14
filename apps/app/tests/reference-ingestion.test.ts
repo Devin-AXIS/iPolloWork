@@ -1,3 +1,5 @@
+import { CreativeContextSchema } from "@ipollowork/types/reference-context";
+import { buildCreativeContext } from "../src/react-app/domains/session/references/creative-context";
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import JSZip from "jszip";
@@ -116,6 +118,16 @@ describe("rich reference evidence", () => {
     const background = context.files[0].assets.find((asset: { sourcePart: string }) => asset.sourcePart === "ppt/slideMasters/master1.xml");
     expect(await payload.attachments.find((item) => item.name === background.attachmentName)!.file.text()).toBe("background-bytes");
     expect(context.files[0].style.backgrounds).toEqual(["#123456"]);
+    const creative = CreativeContextSchema.parse(JSON.parse(await payload.attachments.find((item) => item.name === "creative-context.json")!.file.text()));
+    expect(creative.content.sections[0]?.excerpt).toContain("slide 2");
+    expect(creative.designSystem.observations[0]?.backgrounds).toEqual(["#123456"]);
+    expect(creative.layoutLanguage.elements[0]?.geometryPointer).toBe("/files/0/structuredData/slides/0/shapes/0/transform");
+    expect(creative.assets[0]?.file).toEqual(creative.assets[1]?.file);
+    expect(creative.assets[0]?.page).toBe(1);
+    expect(creative.assets[1]?.page).toBe(2);
+    expect(creative.assets.every((asset) => asset.semanticRole === null)).toBe(true);
+    expect(creative.motionLanguage.status).toBe("not-analyzed");
+
     expect(payload.contextPack.promptText).toContain("reuse extracted local image/video/audio assets");
     expect(context.files[0].structuredData.slides[0].shapes[0]).toMatchObject({ name: "Product title", transform: [{ x: "120", y: "240", width: "360", height: "480", rotation: "60000" }] });
   });
@@ -683,7 +695,7 @@ describe("reference ingestion router", () => {
 
     const defaultPayload = await buildTemplateReferenceSubmitPayload([reference]);
     expect(defaultPayload.contextPack.promptText).toContain("source.txt");
-    expect(defaultPayload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json", "reference-1-asset-1-source.txt"]);
+    expect(defaultPayload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json", "reference-1-asset-1-source.txt", "creative-context.json"]);
     const context = JSON.parse(await defaultPayload.attachments[0]!.file.text());
     expect(context.schemaVersion).toBe(1);
     expect(context.files[0].text).toBe(result.extractedText);
@@ -691,7 +703,7 @@ describe("reference ingestion router", () => {
     expect(result.sourceMode).toBe("memory");
 
     const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
-    expect(optInPayload.attachments).toHaveLength(3);
+    expect(optInPayload.attachments).toHaveLength(4);
     expect(optInPayload.attachments[2]?.name).toBe("source.txt");
   });
 
@@ -712,7 +724,7 @@ describe("reference ingestion router", () => {
 
     const payload = await buildTemplateReferenceSubmitPayload([reference]);
 
-    expect(payload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json"]);
+    expect(payload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json", "creative-context.json"]);
     const context = JSON.parse(await payload.attachments[0]!.file.text());
     expect(context.files[0].quality).toBe("failed");
     expect(context.files[0].originalAttached).toBe(false);
@@ -887,4 +899,22 @@ test("CSV retains escaped quotes, CRLF inside cells, and trailing empty columns"
   const text = 'a,b,c\r\n"say ""hello""","first\r\nsecond",\r\nlast,,end';
   const result = await extractTableReference(new File([text], "quoted.csv"));
   expect(result.structuredData).toMatchObject({ records: [["a", "b", "c"], ['say "hello"', "first\r\nsecond", ""], ["last", "", "end"]] });
+});
+
+
+test("Creative Context bounds excerpts without dropping raw evidence and preserves explicit empty style", async () => {
+  const file = new File(["Original evidence"], "source.txt");
+  const ingestion = await ingestReferenceFile(file);
+  ingestion.chunks = Array.from({ length: 100 }, (_, index) => ({ id: String(index), source: file.name, text: `${index}:` + "x".repeat(1000), tokenEstimate: 250 }));
+  ingestion.style = { fonts: ["Arial"], colors: ["#123456"], backgrounds: [], fontSizesPt: [24], sourceParts: ["theme"] };
+  const references: TemplateReferenceItem[] = [{ id: ingestion.id, file, fileName: file.name, mimeType: ingestion.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion }];
+  const context = buildCreativeContext(references, { title: "Edited", audience: "Users", details: "Keep facts", style: "" });
+  expect(context.content.sections).toHaveLength(48);
+  expect(context.content.omittedSections).toBe(52);
+  expect(context.content.sections[0]?.excerptTruncated).toBe(true);
+  expect(context.designSystem.direction).toBe("");
+  expect(context.designSystem.directionOrigin).toBe("user");
+  expect(context.designSystem.observations[0]?.colors).toEqual(["#123456"]);
+  expect(ingestion.chunks.at(-1)?.text).toStartWith("99:");
+  expect(buildCreativeContext(references).designSystem.directionOrigin).toBe("unknown");
 });

@@ -1,4 +1,4 @@
-import { ReferenceContextPartsSchema, type InboxUploadOptions, type ReferenceAssembly } from "@ipollowork/types/reference-context";
+import { bindCreativeContextFiles, CreativeContextSchema, ReferenceContextPartsSchema, type InboxUploadOptions, type ReferenceAssembly } from "@ipollowork/types/reference-context";
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
 import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
 import type { Language } from "@/i18n";
@@ -93,11 +93,12 @@ export async function persistComposerAttachments(input: {
   const sessionSegment = safeAttachmentPathSegment(input.sessionId, "session");
   const uploaded: Array<PersistedComposerAttachment | null> = [];
   // Publish the primary context only after all source files and parts are durable.
-  const attachments = [...input.attachments].sort((a, b) => Number(a.name === "reference-context.json") - Number(b.name === "reference-context.json"));
+  const priority = (item: ComposerAttachment) => item.delivery !== "workspace" ? 0 : item.name === "creative-context.json" ? 2 : item.name === "reference-context.json" ? 1 : 0;
+  const attachments = [...input.attachments].sort((a, b) => priority(a) - priority(b));
   // Reference packages can contain many large files; bound concurrent request bodies.
   for (let offset = 0; offset < attachments.length;) {
     const remaining = attachments.slice(offset);
-    const contextIndex = remaining.findIndex((item) => item.name === "reference-context.json");
+    const contextIndex = remaining.findIndex((item) => priority(item) > 0);
     const batch = remaining.slice(0, contextIndex === 0 ? 1 : Math.min(3, contextIndex < 0 ? remaining.length : contextIndex));
     offset += batch.length;
     uploaded.push(...await Promise.all(batch.map(async (attachment) => {
@@ -106,6 +107,12 @@ export async function persistComposerAttachments(input: {
       const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
       try {
         let referenceAssembly: ReferenceAssembly | undefined;
+        let file = attachment.file;
+        if (attachment.delivery === "workspace" && attachment.name === "creative-context.json") {
+          const context = CreativeContextSchema.parse(JSON.parse(await file.text()));
+          const bound = bindCreativeContextFiles(context, uploaded.filter((item): item is PersistedComposerAttachment => item !== null));
+          file = new File([JSON.stringify(bound)], file.name, { type: file.type });
+        }
         if (attachment.delivery === "workspace" && attachment.name === "reference-context.json") {
           const raw = JSON.parse(await attachment.file.text());
             const manifest = raw?.storage === "json-string-parts" ? ReferenceContextPartsSchema.parse(raw) : undefined;
@@ -117,7 +124,7 @@ export async function persistComposerAttachments(input: {
             }) };
           }
         }
-        const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath, verify: attachment.delivery === "workspace", referenceAssembly });
+        const result = await input.client.uploadInbox(workspaceId, file, { path: requestedPath, verify: attachment.delivery === "workspace", referenceAssembly });
         const inboxPath = result.path.trim().replace(/^\/+/, "");
         if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
         return {
@@ -137,10 +144,13 @@ export async function persistComposerAttachments(input: {
 
 export function persistedAttachmentInstruction(items: PersistedComposerAttachment[]): string | null {
   if (items.length === 0) return null;
-  const lines = items.map((item) => `- ${item.name}: ${item.workspacePath}`);
+  const hasContext = items.some((item) => item.name === "creative-context.json");
+  const lines = items.filter((item) => !hasContext || !/^reference-\d+-asset-|^reference-context-part-/.test(item.name))
+    .map((item) => `- ${item.name}: ${item.workspacePath}`);
   return [
     "The user-provided chat attachments were also saved as local workspace files so tools and plugins can use them:",
     ...lines,
+    ...(hasContext ? ["creative-context.json contains verified workspace paths for indexed originals and assets. For omitted assets, resolve the evidence attachmentName against neighboring inbox filenames (attachment-id prefix + attachmentName); verify existence before use. Reference JSON parts have already been reconstructed; read reference-context.json directly."] : []),
     "Use these workspace-relative paths when a tool or plugin asks for a local media path. Do not ask the user to upload the same files again.",
   ].join("\n");
 }

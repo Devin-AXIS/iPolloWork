@@ -2489,7 +2489,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
         path: state.briefPath,
         content: JSON.stringify({
@@ -2781,7 +2781,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const persistedBrief = {
         template: t("template_market.custom_title"),
         category: application.category,
@@ -2867,7 +2867,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const createdSessionId = await props.onCreateTaskFromTemplate(pendingTemplateProjectId, {
         templateId: template.id,
         resourceScope: application.resourceScope,

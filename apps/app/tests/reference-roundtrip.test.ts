@@ -1,3 +1,4 @@
+import { CreativeContextSchema } from "@ipollowork/types/reference-context";
 import { expect, test } from "bun:test";
 import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -86,7 +87,7 @@ test(`reference ${type}: ${size} real bytes upload, parse, persist, reconstruct 
     expect(evidence).toContain(head);
     expect(evidence).toContain(tail);
     expect(ingestion.quality).not.toBe("failed");
-    const payload = await buildTemplateReferenceSubmitPayload([{ id: "reference", file, fileName: file.name, mimeType: ingestion.mimeType, size, status: "ready", sendOriginal: false, ingestion }]);
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: "reference", file, fileName: file.name, mimeType: ingestion.mimeType, size, status: "ready", sendOriginal: false, ingestion }], { brief: { title: "User title", audience: "Users", details: "Keep exact numbers", style: "" } });
     const saved = await persistComposerAttachments({ attachments: payload.attachments, workspaceId: "ws", sessionId: "test", client });
     const contextPath = saved.find((item) => item.name === "reference-context.json")!.workspacePath;
     const inboxPath = contextPath.replace(/^\.opencode\/ipollowork\/inbox\//, "");
@@ -100,6 +101,15 @@ test(`reference ${type}: ${size} real bytes upload, parse, persist, reconstruct 
     const original = saved.find((item) => item.name.endsWith(`-${file.name}`))!;
     const originalRead = await client.downloadInboxItem("ws", Buffer.from(original.workspacePath.replace(/^\.opencode\/ipollowork\/inbox\//, "")).toString("base64url"));
     expect(hash(new Uint8Array(originalRead.data))).toBe(originalHash);
-    console.log(JSON.stringify({ type, sourceBytes: size, contextBytes: bytes.length, attachments: saved.length, sha256: hash(bytes), elapsedMs: Date.now() - started, result: "passed" }));
+    const creativePath = saved.find((item) => item.name === "creative-context.json")!.workspacePath;
+    const creativeDownload = await client.downloadInboxItem("ws", Buffer.from(creativePath.replace(/^\.opencode\/ipollowork\/inbox\//, "")).toString("base64url"));
+    const creative = CreativeContextSchema.parse(JSON.parse(new TextDecoder().decode(creativeDownload.data)));
+    expect(creative.evidence.workspacePath).toBe(contextPath);
+    expect(creative.sources[0]?.original?.workspacePath).toBe(original.workspacePath);
+    expect(creative.brief.user?.style).toBe("");
+    expect(creative.designSystem.directionOrigin).toBe("user");
+    expect(saved.at(-1)?.workspacePath).toBe(creativePath);
+    expect(creativeDownload.data.byteLength).toBeLessThan(100_000);
+    console.log(JSON.stringify({ creativeBytes: creativeDownload.data.byteLength, type, sourceBytes: size, contextBytes: bytes.length, attachments: saved.length, sha256: hash(bytes), elapsedMs: Date.now() - started, result: "passed" }));
   } finally { await server.stop(true); await rm(root, { recursive: true, force: true }); }
 }, 300_000);

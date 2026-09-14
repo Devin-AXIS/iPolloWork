@@ -16,7 +16,7 @@ function Fixture() {
     <h1 className="mb-4 text-lg font-semibold">产品介绍视频</h1>
     <Button onClick={() => { setReceipt(null); setOpen(true); }}>使用模板</Button>
     {open ? <TemplateApplyDialog open mode="current-conversation" template={{ title: "产品介绍视频", category: "video", surface: "video" }} onClose={() => setOpen(false)} onSubmit={async (brief, references) => {
-      const payload = await buildTemplateReferenceSubmitPayload(references);
+      const payload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const parsed = payload.attachments.find((attachment) => attachment.delivery === "workspace");
       let context = parsed ? JSON.parse(await parsed.file.text()) : null;
       if (context?.storage === "json-string-parts") {

@@ -1,3 +1,6 @@
+import { CreativeContextSchema } from "@ipollowork/types/reference-context";
+import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import { ingestReferenceFile } from "../src/react-app/domains/session/references/ingestion";
 import { describe, expect, test } from "bun:test";
 import {
   persistedAttachmentInstruction,
@@ -98,4 +101,28 @@ test("reference uploads keep at most three requests active and preserve order", 
   } } });
   expect(peak).toBe(3);
   expect(items.map((item) => item.attachmentId)).toEqual(attachments.map((item) => item.id));
+});
+
+
+test("Creative Context publishes only after its dependencies and binds all local media paths", async () => {
+  const file = new File(["Product reference with sufficient detail for generation."], "source.txt");
+  const ingestion = await ingestReferenceFile(file);
+  ingestion.assets!.push({ kind: "image", sourcePart: "page 1", path: "photo.png", file: new File(["photo"], "photo.png") });
+  const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, size: file.size, mimeType: ingestion.mimeType, status: "ready", sendOriginal: false, ingestion }]);
+  const uploaded = new Map<string, File>();
+  const saved = await persistComposerAttachments({ attachments: [...payload.attachments].reverse(), workspaceId: "ws", sessionId: "session", client: {
+    uploadInbox: async (_workspaceId, file, options) => {
+      if (file.name === "creative-context.json") {
+        expect(uploaded.has("reference-context.json")).toBe(true);
+        expect([...uploaded.keys()]).toContain("photo.png");
+      }
+      uploaded.set(file.name, file);
+      return { path: options!.path! };
+    },
+  } });
+  const context = CreativeContextSchema.parse(JSON.parse(await uploaded.get("creative-context.json")!.text()));
+  expect(context.assets[0]?.file?.workspacePath).toBe(saved.find((item) => item.name.endsWith("photo.png"))?.workspacePath);
+  expect(context.sources[0]?.original?.workspacePath).toBe(saved.find((item) => item.name.endsWith("source.txt"))?.workspacePath);
+  expect(persistedAttachmentInstruction(saved)).not.toContain("- reference-1-asset-");
+  await expect(persistComposerAttachments({ attachments: payload.attachments.filter((item) => !item.name.endsWith("photo.png")), workspaceId: "ws", sessionId: "missing", client: { uploadInbox: async (_workspaceId, _file, options) => ({ path: options!.path! }) } })).rejects.toThrow("缺少已上传文件");
 });

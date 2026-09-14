@@ -723,13 +723,14 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"));
   });
 
-  test("projects bundled Design and Video packages into DeepSeek Harness skills", async () => {
+  test.each(["opencode", "deepseek-harness"])("projects bundled Design and Video packages into %s skills", async (engineId) => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
     const config = serverConfig(workspaceRoot);
     const workspace = config.workspaces[0];
     if (!workspace) throw new Error("Test workspace is missing");
-    workspace.engineId = "deepseek-harness";
+    workspace.engineId = engineId;
+    const skillDirectory = engineId === "opencode" ? ".opencode" : ".dsh";
     const packages = [
       {
         id: "design-agent",
@@ -750,8 +751,12 @@ describe("plugin package lifecycle", () => {
         serverConfig: config,
         packageRoot: item.root,
       });
-      expect(await readFile(join(workspaceRoot, ".dsh", "skills", item.skill, "SKILL.md"), "utf8"))
+      expect(await readFile(join(workspaceRoot, skillDirectory, "skills", item.skill, "SKILL.md"), "utf8"))
         .toContain(item.heading);
+      if (item.id === "video-agent") {
+        expect(await readFile(join(workspaceRoot, skillDirectory, "skills", "reference-analyzer", "SKILL.md"), "utf8"))
+          .toContain("# Reference context workflow");
+      }
     }
   });
 
