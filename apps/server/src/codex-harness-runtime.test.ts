@@ -133,14 +133,16 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     const question = { id: "question-2", method: "item/tool/requestUserInput", params: { threadId: "thread-b", turnId: "turn-b", questions: [] } };
     try {
       await emit([approval, question]);
-      const expected = [{ ...approval, type: "request" }, { ...question, type: "request" }];
+      const expected = [{ ...approval, type: "request" as const }, { ...question, type: "request" as const }];
       expect(await readWindow()).toEqual(expected);
+      expect(runtime.pendingRequests()).toEqual(expected);
       expect(await readWindow()).toEqual(expected);
       expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 0 });
       await runtime.respond(1, { decision: "decline" });
       expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 1 });
       await expect(runtime.respond(1, { decision: "accept" })).rejects.toThrow("no longer pending");
       expect(await readWindow()).toEqual([{ ...question, type: "request" }]);
+      expect(runtime.pendingRequests()).toEqual([{ ...question, type: "request" }]);
       await emit([{ method: "serverRequest/resolved", params: { requestId: "question-2" } }]);
       expect(await readWindow()).toEqual([]);
       const later = { ...approval, id: 3, params: { ...approval.params, turnId: "turn-later" } };

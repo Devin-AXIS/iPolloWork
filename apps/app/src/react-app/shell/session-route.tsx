@@ -950,6 +950,8 @@ export function SessionRoute() {
     questionReplyBusy,
     respondQuestion,
     todos,
+    refreshInteractions,
+    interactionsRefreshing,
   } = useSessionInteractions({
     connection: conversation,
     workspaceId: selectedWorkspaceId,
@@ -2921,6 +2923,8 @@ export function SessionRoute() {
       }}
       todos={todos}
       sessionLoadingById={(sessionId) => effectiveLoading && Boolean(sessionId && sessionId === selectedSessionId)}
+      refreshInteractions={refreshInteractions}
+      interactionsRefreshing={interactionsRefreshing}
       activePermission={activePermission}
       permissionReplyBusy={permissionReplyBusy}
       respondPermission={respondPermission}

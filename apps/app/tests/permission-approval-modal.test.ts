@@ -34,7 +34,7 @@ describe("permission approval modal helpers", () => {
     const html = renderToStaticMarkup(React.createElement(PendingConfirmationNotice, { waitingFor: "approval", onStop: () => { stops += 1; } }));
     expect(html).toContain('role="status"');
     expect(html).toContain('data-testid="pending-confirmation-notice"');
-    expect(html).toContain("Waiting for your approval");
+    expect(html).toContain("Confirmation details unavailable");
     expect(html).toContain("Stop this run");
     expect(html).not.toContain("Allow once");
     expect(stops).toBe(0);

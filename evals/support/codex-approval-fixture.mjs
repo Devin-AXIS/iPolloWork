@@ -34,6 +34,12 @@ const server = Bun.serve({
     const url = new URL(request.url);
     let response;
     if (request.method === "OPTIONS") response = new Response(null);
+    else if (url.pathname.endsWith("/rpc")) {
+      const body = await request.json();
+      response = body.method === "ipollowork/pendingRequests"
+        ? Response.json({ value: runtime.pendingRequests() })
+        : new Response("Unknown RPC", { status: 400 });
+    }
     else if (url.pathname.endsWith("/events")) response = await runtime.events(request.signal);
     else if (url.pathname.endsWith("/respond")) {
       const body = await request.json();

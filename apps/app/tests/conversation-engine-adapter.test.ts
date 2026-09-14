@@ -41,6 +41,28 @@ import {
   openCodeConversationEngineAdapter,
 } from "../src/react-app/domains/session/engine/opencode-conversation-engine";
 import { conversationEngineAdapters } from "../src/react-app/domains/session/engine/conversation-engines";
+
+test("Codex restores missing confirmations from the runtime without an SSE event or automatic approval", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = [{ type: "request", id: 51, method: "item/commandExecution/requestApproval", params: { threadId: "recover", turnId: "turn", command: "read reference-context.json" } }];
+  const calls: string[] = [];
+  globalThis.fetch = (async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push(body.method);
+    if (body.method !== "ipollowork/pendingRequests") throw new Error("Unexpected mutation");
+    return Response.json({ value: requests });
+  }) as typeof fetch;
+  try {
+    const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({ baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "restore" });
+    const [permissions, questions] = await Promise.all([connection.listPermissions({ sessionId: "recover" }), connection.listQuestions({ sessionId: "recover" })]);
+    expect(permissions).toHaveLength(1);
+    expect(permissions[0]?.resources).toContain("read reference-context.json");
+    expect(questions).toEqual([]);
+    expect(calls).toEqual(["ipollowork/pendingRequests"]);
+    requests = [];
+    expect(await connection.listPermissions({ sessionId: "recover" })).toEqual([]);
+  } finally { globalThis.fetch = originalFetch; }
+});
 import {
   mapDeepSeekHarnessEnvelope,
   mapDeepSeekHarnessSnapshot,
@@ -952,7 +974,11 @@ describe("conversation engine adapters", () => {
       type: "request", id: 61, method: "mcpServer/elicitation/request",
       params: { threadId: "approval-recovery", turnId: "turn-a", message: "Allow image edit?", _meta: { codex_approval_kind: "mcp_tool_call" } },
     }];
-    globalThis.fetch = Object.assign(async () => new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join("")), { preconnect: originalFetch.preconnect });
+    const pending = [frames[0]];
+    globalThis.fetch = Object.assign(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.body) return Response.json({ value: pending });
+      return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""));
+    }, { preconnect: originalFetch.preconnect });
     try {
       const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
         baseUrl: "http://unused.test", serverBaseUrl: "http://ipollowork.test", workspaceId: "approval-recovery",
@@ -966,6 +992,7 @@ describe("conversation engine adapters", () => {
       frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "previous-turn", status: "completed" } } });
       await subscribe();
       expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toHaveLength(1);
+      pending.length = 0;
       frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "turn-a", status: "interrupted" } } });
       await subscribe();
       expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toEqual([]);

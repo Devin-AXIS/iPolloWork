@@ -254,6 +254,8 @@ export type SessionSurfaceProps = {
   isRemoteWorkspace: boolean;
   isSandboxWorkspace: boolean;
   todos?: TodoItem[];
+  refreshInteractions?: () => void;
+  interactionsRefreshing?: boolean;
   activePermission?: ConversationPermission | null;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
@@ -1031,7 +1033,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     : props.activeQuestion ? "input"
     : chatStreaming ? conversationWaitingFor(snapshot?.session) : null;
   const waitingLabel = waitingFor
-    ? t(waitingFor === "approval" ? "session.waiting_approval" : "session.waiting_input")
+    ? t(!props.activePermission && !props.activeQuestion ? "session.confirmation_recovering" : waitingFor === "approval" ? "session.waiting_approval" : "session.waiting_input")
     : undefined;
   const status = useMemo((): ThreadStatus => {
     if (stopAcknowledged) {
@@ -2409,7 +2411,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
             composerTopAccessoryVisible ? (
               <div>
                 {waitingFor && !props.activePermission && !props.activeQuestion ? (
-                  <PendingConfirmationNotice waitingFor={waitingFor} onStop={() => { void handleAbort(); }} />
+                  <PendingConfirmationNotice waitingFor={waitingFor} onRefresh={props.refreshInteractions} refreshing={props.interactionsRefreshing} onStop={() => { void handleAbort(); }} />
                 ) : null}
                 {starterCapability || selectedAnimations.length || selectedVoiceReference || selectedImageReference ? (
                   <div className="mx-4 mt-2 flex flex-wrap gap-1.5">

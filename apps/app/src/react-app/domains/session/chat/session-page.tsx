@@ -814,6 +814,8 @@ export type SessionPageProps = {
   sessionLoadingById: (sessionId: string | null) => boolean;
   providerAuthModal?: ProviderAuthModalProps | null;
   activePermission?: ConversationPermission | null;
+  refreshInteractions?: () => void;
+  interactionsRefreshing?: boolean;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
@@ -5020,6 +5022,8 @@ export function SessionPage(props: SessionPageProps) {
                         ipolloworkToken={reactSessionToken}
                         todos={props.todos}
                         activePermission={props.activePermission}
+                        refreshInteractions={props.refreshInteractions}
+                        interactionsRefreshing={props.interactionsRefreshing}
                         permissionReplyBusy={props.permissionReplyBusy}
                         respondPermission={props.respondPermission}
                         activeQuestion={props.activeQuestion}
