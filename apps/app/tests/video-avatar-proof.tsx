@@ -32,7 +32,7 @@ window.fetch = async (input, init) => {
     if (action === "jobs") return json({ ok: true, result: { jobs } });
     if (action === "submit") {
       const receipt=document.getElementById("submission-receipt"); if(receipt) receipt.textContent=JSON.stringify(args,null,2);
-      const job = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/renders/result.mp4", message: "模拟生成完成（没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0 };
+      const job = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/assets/result.mp4", message: "已自动加入当前 Video Studio 素材库（模拟结果，没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0 };
       jobs.unshift(job); return json({ ok: true, result: { job } });
     }
   }
@@ -41,7 +41,7 @@ window.fetch = async (input, init) => {
   if (path.endsWith("/files/raw")) { requests.push({ action: "upload", path: body.path }); return json({ ok: true, path: body.path, updatedAt: 1 }); }
   throw new Error(`Unhandled proof route ${path}`);
 };
-Reflect.set(window, "avatarProof", { requests, jobs, added: [] });
+Reflect.set(window, "avatarProof", { requests, jobs });
 const client = createiPolloWorkServerClient({ baseUrl: "https://avatar-proof.invalid" });
 createRoot(document.getElementById("root")!).render(<div style={{ height: "100vh", padding: 32 }}>
   <h1>VideoStudio · 数字人视频</h1><p>组件集成验证：模拟云端结果，不产生费用。</p>
@@ -49,6 +49,6 @@ createRoot(document.getElementById("root")!).render(<div style={{ height: "100vh
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
     <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined}
-      onAddVideo={async path => { Reflect.get(window, "avatarProof").added.push(path); }} />
+      />
   </div>
 </div>);

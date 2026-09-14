@@ -649,3 +649,38 @@ test("avatar submit derives narration server-side and blocks missing keys before
   expect(graph["136"].inputs.prompt).toContain("智能家居新品");
   expect(graph["136"].inputs.prompt).toContain("插画保持插画风格");
 });
+
+
+test("avatar completion automatically saves one project asset across restart and recovery", async () => {
+  const { config, root, call } = await setup();
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({ id: "avatar-task" }));
+  const args = submission();
+  await call("submit", args);
+  const submitted = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  await updateVideoJob(config, submitted, { model: "minimax-h3-avatar" });
+  let valid = false, downloads = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    if (String(url).endsWith("/openapi/v2/query")) return Response.json({ status: "SUCCESS", results: [{ url: "https://rh-images.xiaoyaoyou.com/avatar.mp4" }] });
+    downloads++;
+    return new Response(valid ? mp4 : "invalid output");
+  });
+  await pollVideoJobs({ ...config }, auth);
+  expect((await getVideoJob(config, args.requestId, "workspace", context.sessionId)).status).toBe("save_failed");
+  const assets = join(root, "video", context.sessionId, "assets");
+  expect(await readdir(assets)).toEqual([]);
+  valid = true;
+  await call("recover", { id: args.requestId });
+  await pollVideoJobs({ ...config }, auth);
+  const saved = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  expect(saved.status).toBe("succeeded");
+  expect(saved.path).toBe(`video/${context.sessionId}/assets/${args.requestId}.mp4`);
+  expect(saved.message).toContain("已自动加入当前 Video Studio 素材库");
+  expect(await readFile(join(root, saved.path))).toEqual(mp4);
+  await updateVideoJob(config, saved, { status: "saving", nextPoll: 0 });
+  await pollVideoJobs({ ...config }, auth);
+  await pollVideoJobs(config, auth);
+  expect(downloads).toBe(2);
+  expect(await readdir(assets)).toEqual([`${args.requestId}.mp4`]);
+  expect((await listSessionArtifacts(config, "workspace", context.sessionId)).items).toHaveLength(1);
+  expect((await listSessionArtifacts(config, "workspace", "session-two")).items).toHaveLength(0);
+});

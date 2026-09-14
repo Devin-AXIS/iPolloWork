@@ -378,7 +378,7 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
   const parsed = new URL(httpsUrl(url));
   const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com"];
   if (!domains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))) throw new Error("服务商返回了未受信任的视频下载域名，请联系管理员检查接口。");
-  const path = `${await sessionDirectory(workspace, job.sessionId, "renders")}/${job.id}.mp4`;
+  const path = `${await sessionDirectory(workspace, job.sessionId, job.model === "minimax-h3-avatar" ? "assets" : "renders")}/${job.id}.mp4`;
   const destination = await resolveWithinRoot(workspace.path, path);
   const existing = await stat(destination).catch(() => null);
   if (!existing) {
@@ -456,7 +456,7 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
           ? z.object({ video_url: z.string() }).parse(data.content).video_url
           : z.array(z.object({ url: z.string() })).min(1).parse(data.results)[0].url;
         const path = await saveOutput(config, workspace, job, url, signal);
-        await updateVideoJob(config, job, { status: "succeeded", path, message: "已保存到本会话的产出文件。" });
+        await updateVideoJob(config, job, { status: "succeeded", path, message: job.model === "minimax-h3-avatar" ? "已自动加入当前 Video Studio 素材库，可拖入时间线。" : "已保存到本会话的产出文件。" });
       } else if (["queued", "running", "pending", "processing"].includes(status)) {
         const overdue = Date.now() - job.createdAt > 24 * 60 * 60 * 1000;
         await updateVideoJob(config, job, { status: overdue ? "uncertain" : "running", message: overdue ? "任务超过 24 小时仍未完成，已暂停自动查询。请在服务商控制台检查，也可恢复查询。" : "服务商正在生成，关闭控制台不会中断任务。", nextPoll: Date.now() + 10_000 });

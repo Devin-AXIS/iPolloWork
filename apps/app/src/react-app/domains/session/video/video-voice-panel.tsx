@@ -32,7 +32,6 @@ type VideoVoicePanelProps = {
   onClose: () => void;
   embedded?: boolean;
   embeddedWidth?: number;
-  onAddVideo?: (path: string) => Promise<void>;
 };
 
 type CustomVoice = {
@@ -127,7 +126,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false, embeddedWidth = 400, onAddVideo }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false, embeddedWidth = 400 }: VideoVoicePanelProps) {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const handledPreviewRequestRef = React.useRef(0);
@@ -411,7 +410,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
               <TabsTrigger value="mine" disabled={!mediaReady}><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
               <TabsTrigger value="avatar">数字人视频</TabsTrigger>
             </TabsList>
-            <TabsContent value="avatar">{client && workspaceId ? <VideoAvatarPanel key={sessionId} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId} onAddVideo={onAddVideo} /> : <p className="text-xs">请先连接工作区。</p>}</TabsContent>
+            <TabsContent value="avatar">{client && workspaceId ? <VideoAvatarPanel key={sessionId} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId} /> : <p className="text-xs">请先连接工作区。</p>}</TabsContent>
             <TabsContent value="preset" className="space-y-3">
               <div>
                 <p className="text-xs font-medium">{t("video.voice.official_presets")}</p>

@@ -9,10 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { videoProjectDirectory } from "./video-project";
 
-type Props = { client: iPolloWorkServerClient; workspaceId: string; workspaceRoot: string; sessionId: string;
-  onAddVideo?: (path: string) => Promise<void> };
+type Props = { client: iPolloWorkServerClient; workspaceId: string; workspaceRoot: string; sessionId: string };
 
-export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, onAddVideo }: Props) {
+export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId }: Props) {
   const [image, setImage] = React.useState("");
   const [imageName, setImageName] = React.useState("");
   const [imagePreview, setImagePreview] = React.useState("");
@@ -136,7 +135,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     </div>
     {message ? <p role="status" className="break-words text-xs">{message}</p> : null}
     <div className="flex items-center justify-between text-xs">本会话数字人任务<Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
-    {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs"><p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p><p className="break-words text-muted-foreground">{job.message}</p>{job.path ? <div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button>{onAddVideo ? <Button size="sm" disabled={busy} onClick={() => void act(async () => { await onAddVideo(job.path); setMessage("已添加到当前项目素材，可拖入时间线。"); })}>添加到项目素材</Button> : null}</div> : null}{["uncertain", "save_failed"].includes(job.status) && job.upstreamId ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id }); await refresh(); })}>恢复查询（不重新生成）</Button> : null}</div>)}
+    {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs"><p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p><p className="break-words text-muted-foreground">{job.message}</p>{job.path ? <div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button></div> : null}{["uncertain", "save_failed"].includes(job.status) && job.upstreamId ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id }); await refresh(); })}>恢复查询（不重新生成）</Button> : null}</div>)}
     {preview ? <video controls src={preview} className="max-h-80 w-full rounded-lg" /> : null}
   </div>;
 }
