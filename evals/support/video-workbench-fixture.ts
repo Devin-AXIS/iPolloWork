@@ -27,7 +27,7 @@ if(m.method==='tools/call'){const response=await fetch('/action',{method:'POST',
 </script></body></html>`;
 const server=Bun.serve({hostname:"127.0.0.1",port:5278,async fetch(request){const url=new URL(request.url);try{
   if(url.pathname==="/reset"&&request.method==="POST"){root=await mkdtemp(join(tmpdir(),"ipollowork-video-workbench-proof-"));workspace.path=root;config.configPath=join(root,"server.json");config.authorizedRoots=[root];calls=[];seed();return Response.json({ok:true});}
-  if(url.pathname==="/studio")return new Response(await readFile(new URL("../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)),{headers:{"content-type":"text/html;charset=utf-8"}});
+  if(url.pathname==="/studio")return new Response(await readFile(new URL("../../examples/plugin-packages/media-studio/ui/video-console.html",import.meta.url)),{headers:{"content-type":"text/html;charset=utf-8"}});
   if(url.pathname==="/setup")return Response.json({root,launch});
   if(url.pathname==="/witness"){const artifacts=await listSessionArtifacts(config,workspace.id,"proof");return Response.json({calls,artifacts,source:await inspectLocalVideo(workspace,"source.mp4")});}
   if(url.pathname==="/action"){const {name,arguments:args}=await request.json();if(!["status","jobs","read","inspect","local-edit","import"].includes(name))throw new Error("Billable actions are disabled in this proof");calls.push(name);const result=await callVideoGenerationAction(config,{read:async()=>({})},name,args,context);return Response.json({content:[],structuredContent:result.result});}

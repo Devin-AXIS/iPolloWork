@@ -109,14 +109,14 @@ export default {
   steps: [{
     name: "Generation stays locked until the user chooses a configured model",
     async run(ctx) {
-      const imageRoot = new URL("../../examples/plugin-packages/image-studio/", import.meta.url);
-      const videoRoot = new URL("../../examples/plugin-packages/video-console/", import.meta.url);
+      const imageRoot = new URL("../../examples/plugin-packages/media-studio/", import.meta.url);
+      const videoRoot = new URL("../../examples/plugin-packages/media-studio/", import.meta.url);
       const imageHtml = await readFile(new URL("ui/image-studio.html", imageRoot), "utf8");
       const videoHtml = await readFile(new URL("ui/video-console.html", videoRoot), "utf8");
       const imageManifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", imageRoot), "utf8"));
       const videoManifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", videoRoot), "utf8"));
       const imageResource = imageManifest.resources.find((item) => item.type === "ui");
-      const videoResource = videoManifest.resources.find((item) => item.type === "ui");
+      const videoResource = videoManifest.resources.find((item) => item.type === "ui" && item.id === "console");
       await ctx.waitFor("Boolean(window.__ipolloworkControl)");
       try {
         await ctx.prove("Image Studio waits for the user's configured-model choice", {

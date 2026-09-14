@@ -25,7 +25,7 @@ export default {
     {
       name: "启动页图标比例",
       async run(ctx) {
-        const html = await readFile(new URL("../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url), "utf8");
+        const html = await readFile(new URL("../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url), "utf8");
         await ctx.eval(`(() => {
           const host = document.createElement('section');
           host.id = 'image-start-icon-proof';

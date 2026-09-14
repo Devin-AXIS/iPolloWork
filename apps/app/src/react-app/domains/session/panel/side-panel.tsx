@@ -4,10 +4,9 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
-  Clapperboard,
   FileText,
   Globe,
-  Image,
+  Images,
   Loader2,
   Maximize2,
   Minimize2,
@@ -63,6 +62,7 @@ import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import { VideoPanel } from "../video/video-panel";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
+import { isMediaStudioPlugin, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
 import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
@@ -85,6 +85,8 @@ type SidePanelProps = {
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onGenerateVideo?: (path:string, sourceSessionId:string) => void;
+  onSwitchMedia?: (kind: "image" | "video") => void;
+  onOpenMedia?: (path: string, kind: "image" | "video") => void;
   onSaveAsTemplate?: () => void;
   aiEditing?: boolean;
   expanded?: boolean;
@@ -177,8 +179,8 @@ export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem })
           : item.icon === "plugin-workshop"
             ? <ToolCase className="size-[18px]" />
             : item.icon === "image-studio"
-              ? <Image className="size-[18px]" />
-              : item.icon === "video-console" ? <Clapperboard className="size-[18px]" /> : <PanelsTopLeft className="size-[18px]" />;
+              ? <Images className="size-[18px]" />
+              : item.icon === "video-console" ? <Images className="size-[18px]" /> : <PanelsTopLeft className="size-[18px]" />;
 
   return (
     <span
@@ -249,16 +251,15 @@ function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
   }
   if (tab.type === "design") return <Code2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "video") return <SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
-  if (tab.type === "workspace-app") return tab.surface.pluginId === "image-studio"
-    ? <Image className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
-    : tab.surface.pluginId === "video-console" ? <Clapperboard className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "workspace-app") return mediaStudioEngine(tab.surface) === "image-studio"
+    ? <Images className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+    : mediaStudioEngine(tab.surface) === "video-console" ? <Images className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
   return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
 }
 
 function studioLabel(id: string, label: string) {
-  if (id === "image-studio") return t("side_panel.image_studio");
-  if (id === "video-console") return t("side_panel.video_studio");
+  if (isMediaStudioPlugin(id)) return t("media.studio.title");
   return label;
 }
 
@@ -672,6 +673,8 @@ export function SidePanel({
   onSendWorkspaceAppMessage,
   onEditImage,
   onGenerateVideo,
+  onSwitchMedia,
+  onOpenMedia,
   onSaveAsTemplate,
   aiEditing = false,
   expanded = false,
@@ -880,15 +883,28 @@ export function SidePanel({
             </div>
           </div>
         </div>
-        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").map(tab => {
+        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").flatMap(parentTab => (parentTab.mediaViews ?? [parentTab]).map(view => {
+          const tab = {...parentTab,...view};
+          const visible = tab.id === activeTab?.id && mediaStudioEngine(tab.surface) === mediaStudioEngine(parentTab.surface);
           const edit = mediaEdits.find(item => item.workspaceId === workspaceId && item.sessionId === sessionId && item.source.requestId === tab.mediaEditRequestId);
+          const origin = mediaEdits.find(item => item.workspaceId === workspaceId && item.sessionId === sessionId && item.source.requestId === tab.launch?.originRequestId);
+          const returnToProject = (binding: NonNullable<typeof origin>) => {
+            const store = usePanelTabStore.getState();
+            store.closeMediaEdit(binding.source.requestId);
+            const project = store.sessions[sessionId]?.tabs.find(item => item.type === "design" && item.path === binding.page);
+            store.openTab(sessionId, project ?? {id:`design:${sessionId}:${encodeURIComponent(binding.page)}`,type:"design",label:binding.page.split("/").pop() || "Design",sessionId:binding.projectSessionId,path:binding.page});
+          };
           return (
-          <div key={`${tab.sessionId}:${tab.id}`} className={cn("relative min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
+          <div key={`${tab.sessionId}:${tab.id}:${mediaStudioEngine(tab.surface)}`} className={cn("relative min-h-0 flex-1 overflow-hidden", !visible && "hidden")} aria-hidden={!visible} data-media-engine={isMediaStudioPlugin(tab.surface.pluginId) ? mediaStudioEngine(tab.surface) : undefined}>
             {edit ? <MediaWorkbench key={edit.source.requestId}
               source={edit.source} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
-              resultPath={edit.resultPath} replaced={edit.replaced} visible={tab.id === activeTab?.id}
+              resultPath={edit.resultPath} replaced={edit.replaced} visible={visible}
+              onSwitchMedia={onSwitchMedia}
+              onOpenMedia={onOpenMedia}
+              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onEditImage={path=>onEditImage?.({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:"image",confidence:1,reason:"media-gallery"})}
               returnLabel={t("media.workbench.back_design")}
-              onActivate={() => selectTab(tab.id)}
+              onActivate={() => usePanelTabStore.getState().openTab(sessionId, tab)}
               onResult={path => usePanelTabStore.getState().completeMediaEdit(workspaceId, sessionId, edit.source.requestId, path)}
               onApply={async save => {
                 if (edit.replaced) throw new Error(t("media.workbench.changed"));
@@ -898,31 +914,30 @@ export function SidePanel({
                 usePanelTabStore.getState().closeMediaEdit(edit.source.requestId, true);
                 await getReactQueryClient().invalidateQueries({queryKey:["design-html",workspaceId,edit.page]});
               }}
-              onClose={() => {
-                const store = usePanelTabStore.getState();
-                store.closeMediaEdit(edit.source.requestId);
-                const origin = store.sessions[sessionId]?.tabs.find(item => item.type === "design" && item.path === edit.page);
-                store.openTab(sessionId, origin ?? {id:`design:${sessionId}:${encodeURIComponent(edit.page)}`,type:"design",label:edit.page.split("/").pop() || "Design",sessionId:edit.projectSessionId,path:edit.page});
-              }}
+              onClose={() => returnToProject(edit)}
             /> : <WorkspaceAppFrame
-              active={tab.id === activeTab?.id}
+              active={visible}
               surface={tab.surface}
               client={client}
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               sessionId={tab.sessionId}
-              launch={tab.launch}
+              launch={origin && tab.launch ? {...tab.launch,returnToSource:true,returnLabel:t("media.workbench.back_design"),workbenchMessage:t("media.studio.continuation_hint")} : tab.launch}
+              onReturnToSource={origin ? () => returnToProject(origin) : undefined}
+              onMediaProduced={(path,requestId) => usePanelTabStore.getState().rememberMediaContinuation(workspaceId,sessionId,requestId,path)}
               placement="workspace"
               displayMode={expanded ? "fullscreen" : "inline"}
               onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
               onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onSwitchMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onSwitchMedia : undefined}
+              onOpenMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onOpenMedia : undefined}
               onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
               onSendMessage={onSendWorkspaceAppMessage}
               onRequestClose={() => closeTab(tab)}
             />}
           </div>
 
-        ); }) : null}
+        ); })) : null}
         {!activeTab ? (
           <PanelEmpty />
         ) : null}

@@ -17,12 +17,11 @@ export const bundledPluginPackageIds = [
   "douyin-ops",
   "design-agent",
   "video-agent",
-  "image-studio",
-  "video-console",
+  "media-studio",
   "deepseek-harness",
 ] as const;
 
-export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "image-studio", "video-console"] as const;
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "media-studio"] as const;
 
 export const catalogPluginPackageIds = [...bundledPluginPackageIds];
 

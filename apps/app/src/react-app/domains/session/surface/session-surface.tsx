@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { resolveInstalledPluginContributions } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { resolveInstalledPluginContributions, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { IMAGE_STUDIO_EDIT_RESULT } from "@/app/types";
 import { loadArtifactThumbnail } from "@/components/chat/artifact-thumbnail";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
@@ -7,7 +7,7 @@ import type { UIMessage } from "ai";
 import { useSessionArtifacts } from "@/react-app/infra/session-artifacts-query";
 import { withStudioResults } from "../sync/message-merge";
 import { useQuery } from "@tanstack/react-query";
-import type { TemplateCatalogItem } from "@ipollowork/types/templates";
+import type { TemplateCatalogItem, TemplateCategory } from "@ipollowork/types/templates";
 import { Check, Minimize2, Sparkles, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
@@ -269,6 +269,7 @@ export type SessionSurfaceProps = {
   onUploadInboxFiles?: ((files: File[], options?: { notify?: boolean }) => void | Promise<unknown>) | null;
   providerConnectedCount?: number;
   onCreateSession?: (type: NewConversationMode, templateId?: string) => void;
+  onUseCustomTemplate?: (category: TemplateCategory) => void;
   onMaterializeTemplate?: (templateId: string, surface: "design" | "video") => void | Promise<void>;
   /** Marks the first prompt as a video task before it reaches the agent. */
   onActivateVideoStudio?: (sessionId: string) => void;
@@ -1205,7 +1206,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         : null;
       if (origin) {
         void props.client.listPluginPackages(props.workspaceId).then(packages => {
-          const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => item.pluginId === "image-studio");
+          const surface = resolveInstalledPluginContributions(packages.items).workspaceApps.find(item => mediaStudioEngine(item) === "image-studio");
           if (!surface) throw new Error(t("media.workbench.unavailable"));
           store.resumeMediaEdit(origin, editedImage.value, surface);
           toast.success(t("image_studio.ai.opened_result"));
@@ -2498,6 +2499,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 { item: animation, values },
               ])}
               onRetryAnimationCatalog={() => setAnimationCatalogRevision((current) => current + 1)}
+              onUseCustomTemplate={props.onUseCustomTemplate}
               onUseTemplate={props.onMaterializeTemplate
                 ? (templateId, surface) => void props.onMaterializeTemplate?.(templateId, surface)
                 : props.onCreateSession

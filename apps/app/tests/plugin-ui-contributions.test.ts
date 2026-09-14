@@ -1,13 +1,24 @@
 import { describe, expect, test } from "bun:test";
 
 import type { iPolloWorkPluginPackageItem } from "../src/app/lib/ipollowork-server";
-import { resolveInstalledPluginContributions } from "../src/react-app/plugin-ui/plugin-ui-contributions";
+import { resolveInstalledPluginContributions, mediaStudioEngine, workspaceAppLaunchers, workspaceAppServiceAction } from "../src/react-app/plugin-ui/plugin-ui-contributions";
 import {
   parsePluginPackageManifest,
   parsePluginUiInspectorContext,
 } from "@ipollowork/types/plugins";
 
 describe("plugin UI contributions", () => {
+  test("one Media Studio install exposes two engines behind one launcher and respects disablement", async () => {
+    const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ipollowork.plugin.json", import.meta.url)).json());
+    const item: iPolloWorkPluginPackageItem = { pluginId:manifest.id, name:manifest.name, version:"1.0.0", enabled:true, disabledResourceIds:[], previousVersion:null, manifest, integrity:{sha256:"0".repeat(64),status:"unsigned"}, activeEngineId:"opencode", engineCompatibility:[] };
+    const views = resolveInstalledPluginContributions([item]).workspaceApps;
+    expect(views).toHaveLength(2);
+    expect(views.map(mediaStudioEngine).sort()).toEqual(["image-studio","video-console"]);
+    expect(workspaceAppLaunchers(views)).toHaveLength(1);
+    for (const view of views) expect(workspaceAppServiceAction(view,"status")).toBe(mediaStudioEngine(view)==="image-studio"?"image-status":"video-status");
+    expect(resolveInstalledPluginContributions([{...item,enabled:false},{...item,pluginId:"image-studio"}]).workspaceApps).toHaveLength(0);
+  });
+
   test("parses the shared Workspace App inspector contract", () => {
     expect(parsePluginUiInspectorContext({
       schemaVersion: 1,

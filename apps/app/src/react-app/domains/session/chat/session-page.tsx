@@ -60,6 +60,7 @@ import {
   getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { MessageContent } from "@/components/ui/message";
 import { formatBytes } from "@/app/utils";
 import { useEnginePackages } from "@/react-app/domains/engines/use-engine-packages";
@@ -154,6 +155,7 @@ import {
 } from "../templates/template-brief";
 import {
   REFERENCE_FILE_ACCEPT,
+  REFERENCE_MAX_BYTES,
   canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
@@ -177,6 +179,10 @@ import { cn } from "@/lib/utils";
 import {
   resolveInstalledPluginContributions,
   useInstalledPluginContributions,
+  isMediaStudioPlugin,
+  mediaStudioEngine,
+  workspaceAppTabId,
+  workspaceAppLaunchers,
 } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
@@ -218,12 +224,12 @@ const CUSTOM_TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
 ];
 
 type PendingTemplateApplication =
-  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
+  | { item: TemplateCatalogItem; origin: "market" | "project-task"; resourceScope: WorkContextId }
   | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
 
 type PendingCustomTemplateApplication = {
   category: TemplateCategory;
-  target: "new-task" | "current-session";
+  target: "new-task" | "project-task" | "current-session";
   allowCategoryChange: boolean;
 };
 
@@ -1470,7 +1476,9 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
   onClose: () => void | Promise<void>;
 }) {
   const config = templateBriefConfigFor(template ?? { category: customCategory ?? "slides" });
-  const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [inputMode, setInputMode] = useState<"file" | "description">("file");
+  const [customBrief, setCustomBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [fileInstructions, setFileInstructions] = useState("");
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
   const [referenceBusy, setReferenceBusy] = useState(false);
   const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
@@ -1482,16 +1490,6 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
     const next = updater(referencesRef.current);
     referencesRef.current = next;
     setReferences(next);
-  };
-
-  const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
-    if (!inferred.title && !inferred.audience && !inferred.details) return;
-    setBrief((current) => ({
-      title: current.title.trim() ? current.title : inferred.title,
-      audience: current.audience.trim() ? current.audience : inferred.audience,
-      details: current.details.trim() ? current.details : inferred.details,
-    }));
-    toast.success(t("templates.brief.reference_autofilled"));
   };
 
   const addReferenceFiles = async (files: File[]) => {
@@ -1534,9 +1532,6 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       }));
       const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
       updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
-      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
-        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
-      ));
     } finally {
       setReferenceBusy(false);
     }
@@ -1546,14 +1541,23 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
     updateReferences((current) => current.filter((item) => item.id !== id));
   };
 
-  const requiredFields = config.fields.filter((field) => !field.optional);
-  const completedRequiredFields = requiredFields.filter((field) => brief[field.key].trim()).length;
+  const usesFiles = inputMode === "file";
+  const canSubmit = usesFiles
+    ? references.length > 0 && references.every(reference =>
+      reference.status === "ready" || reference.status === "weak" || (reference.status === "failed" && reference.sendOriginal && canSendOriginalReference(reference.file)))
+    : config.fields.every(field => field.optional || Boolean(customBrief[field.key].trim()));
   const submitApplication = async () => {
+    if (!canSubmit || submitting || (usesFiles && referenceBusy)) return;
     setSubmitting(true);
     try {
+      const inferred = usesFiles ? inferTemplateBriefFromIngestions(
+        references.flatMap(reference => reference.ingestion ? [reference.ingestion] : []),
+      ) : null;
       await onSubmit(
-        { title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() },
-        references,
+        usesFiles
+          ? { title: inferred?.title || references[0].fileName, audience: inferred?.audience ?? "", details: fileInstructions.trim() }
+          : { title: customBrief.title.trim(), audience: customBrief.audience.trim(), details: customBrief.details.trim() },
+        usesFiles ? references : [],
       );
     } finally {
       setSubmitting(false);
@@ -1589,13 +1593,13 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       <DialogContent
         data-testid="template-apply-dialog"
         showCloseButton={false}
-        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[800px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[800px]"
+        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[660px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-5 sm:p-7 ring-0 dark:ring-1 dark:ring-border sm:max-w-[660px]"
       >
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          className="absolute end-4 top-4 size-7 rounded-lg bg-transparent p-0 text-foreground/70 hover:text-foreground sm:end-6 sm:top-6"
           aria-label={t("common.close")}
           disabled={submitting}
           onClick={() => void onClose()}
@@ -1603,17 +1607,17 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
           <X className="size-4" />
         </Button>
 
-        <DialogHeader className="shrink-0 gap-1.5 pb-6 pe-8 text-left">
-          <DialogTitle className="text-ui-title-sm font-semibold leading-6">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
-          <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{template ? config.description : t("template_market.custom_description")}</DialogDescription>
+        <DialogHeader className="shrink-0 gap-2 pb-5 pe-8 text-left">
+          <DialogTitle className="text-lg font-semibold leading-6 tracking-tight">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
+          <DialogDescription className="max-w-lg text-xs leading-5 text-foreground/70">{t("templates.brief.input_description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-0.5 pb-0.5">
           {customCategory && onCustomCategoryChange ? (
             <section className="space-y-1.5">
-              <label className="text-ui-body font-semibold leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
+              <label className="text-xs font-medium leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
               <Select value={customCategory} onValueChange={(value) => { if (value) onCustomCategoryChange(value); }}>
-                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>{t(`template_market.category.${customCategory}`)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1622,67 +1626,70 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
               </Select>
             </section>
           ) : null}
-          <section className="space-y-4">
-            {config.fields.map((field) => (
-              <label key={field.key} className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
-                <span>{field.label}{!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null}</span>
-                {field.key === "details" ? (
-                  <Textarea
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[130px] min-h-[130px] resize-none rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                ) : (
-                  <Input
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[34px] rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                )}
-              </label>
-            ))}
-          </section>
+          <Tabs value={inputMode} onValueChange={value => { if (value === "file" || value === "description") setInputMode(value); }}>
+            <TabsList className="h-9 w-full rounded-lg bg-muted/60 p-1" aria-label={t("templates.brief.input_mode")}>
+              <TabsTrigger id="template-file-tab" aria-controls="template-input-panel" value="file" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Upload className="size-3.5" />{t("templates.brief.use_file")}</TabsTrigger>
+              <TabsTrigger id="template-description-tab" aria-controls="template-input-panel" value="description" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Pencil className="size-3.5" />{t("templates.brief.describe")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div id="template-input-panel" role="tabpanel" aria-labelledby={`template-${inputMode}-tab`} className="space-y-4">
+          {inputMode === "description" ? <div className="space-y-4">
+            {config.fields.map(field => <label key={field.key} className="flex flex-col gap-2 text-xs font-medium text-foreground">
+              <span>{field.label}{!field.optional ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null}</span>
+              {field.key === "details" ? <Textarea data-testid="template-description" rows={3} required={!field.optional} disabled={submitting} value={customBrief[field.key]} onChange={event => { const value = event.currentTarget.value; setCustomBrief(current => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 dark:bg-muted/60 ring-0 px-3.5 py-3 text-ui-control font-normal leading-5 placeholder:text-foreground/70 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />
+                : <Input data-testid={`template-${field.key}`} required={!field.optional} disabled={submitting} value={customBrief[field.key]} onChange={event => { const value = event.currentTarget.value; setCustomBrief(current => ({ ...current, [field.key]: value })); }} placeholder={field.placeholder} className="h-10 rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-3.5 text-ui-control font-normal placeholder:text-foreground/70" />}
+            </label>)}
+          </div> : null}
 
-          <section aria-labelledby="template-supplemental" className="space-y-1.5">
-            <h3 id="template-supplemental" className="text-ui-body font-semibold leading-5 text-foreground">{t("templates.brief.supplemental_information")}</h3>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
-              <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
+          {usesFiles ? <section aria-labelledby="template-supplemental" className="space-y-3">
+            <h3 id="template-supplemental" className="text-xs font-medium leading-5 text-foreground">{t("templates.brief.reference_label")}</h3>
+            <div>
+              <Button data-testid="template-reference-formats-trigger" type="button" variant="ghost" className="h-auto min-h-[180px] w-full flex-col justify-center gap-3 whitespace-normal rounded-xl border-0 bg-muted/60 px-5 py-6 text-center shadow-none ring-0 before:hidden hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/15 dark:bg-muted/60 dark:hover:bg-muted/80" aria-label={t("templates.brief.upload_file")} aria-describedby="template-reference-formats template-reference-max-size" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>
+                <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+                  {referenceBusy ? <LoaderCircle className="size-5 animate-spin" /> : <Plus className="size-5" />}
+                </span>
+                <span className="text-ui-control font-medium text-foreground">{t("templates.brief.upload_file")}</span>
+                <span className="flex min-w-0 flex-col gap-1 text-xs font-normal leading-5 text-foreground/70">
+                  <span id="template-reference-formats">{t("templates.brief.reference_supported_formats")}</span>
+                  <span id="template-reference-max-size">{t("templates.brief.reference_max_size", { size: formatBytes(REFERENCE_MAX_BYTES) })}</span>
+                </span>
+              </Button>
               <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
             </div>
 
             {references.length ? <div className="grid gap-2">
-              {references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+              {references.map((reference) => <div key={reference.id} className="flex min-w-0 flex-wrap items-center gap-2 rounded-lg border border-border/60 bg-background px-3 py-2.5">
+                <FileText className="size-3.5 shrink-0 text-foreground/70" />
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-xs font-medium">{reference.fileName}</div>
-                  <div className="text-[10px] text-muted-foreground">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
-                  {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-muted-foreground" title={reference.ingestion.warnings[0]}>{reference.ingestion.warnings[0]}</div> : null}
+                  <div className="text-[10px] text-foreground/70">{formatBytes(reference.size)} · {reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
+                  {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-foreground/70" title={reference.ingestion.warnings[0]}>{reference.ingestion.warnings[0]}</div> : null}
                 </div>
                 <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file) || submitting} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
-                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-foreground/70 hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
               </div>)}
             </div> : null}
-          </section>
+            <label className="flex flex-col gap-2 pt-1 text-xs font-medium text-foreground">
+              {t("templates.brief.file_instructions")}
+              <Textarea data-testid="template-file-instructions" rows={3} disabled={submitting} value={fileInstructions} onChange={event => setFileInstructions(event.currentTarget.value)} placeholder={t("templates.brief.file_instructions_placeholder")} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 dark:bg-muted/60 ring-0 px-3.5 py-3 text-ui-control font-normal leading-5 placeholder:text-foreground/70 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />
+            </label>
+          </section> : null}
 
+          </div>
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">
-            <h3 id="template-destination" className="flex items-center gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
+            <h3 id="template-destination" className="flex items-center gap-1.5 text-xs font-medium leading-5 text-foreground">
               {t("templates.brief.destination")}
               <span className="text-destructive" aria-hidden="true">*</span>
             </h3>
-            <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.destination_description")}</p>
-            <div className="flex items-center gap-4">
+            <p className="text-xs leading-5 text-foreground/70">{t("templates.brief.destination_description")}</p>
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={selectedProjectId} onValueChange={(value) => { if (value) onProjectChange(value); }}>
-                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>
                     {projects.find((project) => project.id === selectedProjectId)?.name
                       ?? destinationName
                       ?? t("workspace_list.workspace_fallback")}
-                    <span className="ms-1 text-muted-foreground">· {t("templates.brief.new_conversation")}</span>
+                    <span className="ms-1 text-foreground/70">· {t("templates.brief.new_conversation")}</span>
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1694,9 +1701,9 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
           </section> : null}
         </div>
 
-        <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
-          <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
+        <DialogFooter className="mx-0 mb-0 mt-5 shrink-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0 pt-4 sm:justify-end">
+          <Button type="button" variant="ghost" className="h-9 rounded-lg px-4 text-foreground/70 hover:text-foreground" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
+          <Button type="button" className="h-9 rounded-lg px-4" disabled={!canSubmit || (usesFiles && referenceBusy) || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
           </Button>
@@ -2049,18 +2056,6 @@ export function SessionPage(props: SessionPageProps) {
       });
       setSessionTypeRevision((value) => value + 1);
       setTemplateSessionRevision((value) => value + 1);
-      if (result.manifest.surface === "design") {
-        openTab(props.selectedSessionId, {
-          id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
-          type: "design",
-          label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
-          sessionId: templateSessionId,
-          path: result.state.entry,
-        });
-        setSidePanelState(props.selectedSessionId, "design");
-      } else {
-        openVideoStudio(templateSessionId);
-      }
       return true;
     } catch (error) {
       if (isTemplateSessionConflict(error)) {
@@ -2072,7 +2067,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -2630,10 +2625,7 @@ export function SessionPage(props: SessionPageProps) {
     openCurrentVideoStudio({ auto: true });
   }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
   useEffect(() => {
-    const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
-      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true
-      || currentTemplateSessionData?.hasBrief === true;
-    if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
+    if (!props.selectedSessionId || !isVideoSession || !currentTemplateSessionData?.hasBrief) return;
     const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
     if (autoOpenedVideoTemplateRef.current === templateKey) return;
     autoOpenedVideoTemplateRef.current = templateKey;
@@ -2704,7 +2696,9 @@ export function SessionPage(props: SessionPageProps) {
   const openCustomTemplate = useCallback((category: TemplateCategory, target: PendingCustomTemplateApplication["target"], allowCategoryChange = false) => {
     setTemplateMarketOpen(false);
     setPendingCustomTemplateApplication({ category, target, allowCategoryChange });
-    if (target === "new-task") {
+    if (target === "project-task") {
+      setPendingTemplateProjectId(props.selectedWorkspaceId);
+    } else if (target === "new-task") {
       const selectedProjectId = templateDestinationProjects.some((project) => project.id === props.selectedWorkspaceId)
         ? props.selectedWorkspaceId
         : templateDestinationProjects[0]?.id;
@@ -2744,7 +2738,7 @@ export function SessionPage(props: SessionPageProps) {
         ...brief,
       };
       let createdSessionId: string | null = null;
-      if (application.target === "new-task") {
+      if (application.target !== "current-session") {
         if (!props.onCreateTaskFromCustom) return;
         createdSessionId = await props.onCreateTaskFromCustom(pendingTemplateProjectId, {
           category: application.category,
@@ -2965,13 +2959,13 @@ export function SessionPage(props: SessionPageProps) {
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
 
   useEffect(() => {
-    if (!props.selectedSessionId || !designTemplateEntryPath) return;
+    if (!props.selectedSessionId || !designTemplateEntryPath || !hasTemplateBrief) return;
     const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
     if (autoOpenedDesignTemplateRef.current === templateKey) return;
     autoOpenedDesignTemplateRef.current = templateKey;
     if (sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design") return;
     openDesignTab(designTemplateEntryPath);
-  }, [activePanelTab, designTemplateEntryPath, openDesignTab, props.selectedSessionId, sessionSidePanel]);
+  }, [activePanelTab, designTemplateEntryPath, hasTemplateBrief, openDesignTab, props.selectedSessionId, sessionSidePanel]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     userOpenedSidebarWhileNarrowRef.current = false;
@@ -3336,7 +3330,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceSessionId ?? props.selectedSessionId;
     if (!sessionId) return;
     openTab(sessionId, {
-      id: `workspace-app:${surface.id}`,
+      id: workspaceAppTabId(surface),
       type: "workspace-app",
       label: surface.label,
       sessionId,
@@ -3346,21 +3340,24 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
   const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
-    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    const surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === pluginId);
     if (surface) {
-      openWorkspaceApp(surface, launch, sourceSessionId);
+      const sourcePath = launch?.source?.path;
+      const origin = sourcePath && [...usePanelTabStore.getState().mediaEdits].reverse().find(item=>item.workspaceId===props.runtimeWorkspaceId && item.sessionId===(sourceSessionId ?? props.selectedSessionId)
+        && [item.source.path,...item.results,...(item.relatedResults ?? [])].includes(sourcePath));
+      openWorkspaceApp(surface, origin && launch ? {...launch,originRequestId:origin.source.requestId} : launch, sourceSessionId);
       return;
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
-  }, [openWorkspaceApp, workspaceApps]);
+  }, [openWorkspaceApp, workspaceApps, props.runtimeWorkspaceId, props.selectedSessionId]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
-    let surface = workspaceApps.find((entry) => entry.pluginId === "image-studio");
+    let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
       const packages = await props.ipolloworkServerClient
         .listPluginPackages(props.runtimeWorkspaceId)
         .catch(() => null);
       surface = packages
-        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => entry.pluginId === "image-studio")
+        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio")
         : undefined;
     }
     if (!surface) {
@@ -3421,6 +3418,11 @@ export function SessionPage(props: SessionPageProps) {
     if (target.kind === "file" && mediaKindForPath(target.value) === "video") {
       if (options?.auto) return;
       prioritizeRightPanel();
+      const videoSurface = workspaceApps.find(item => mediaStudioEngine(item) === "video-console");
+      if (videoSurface && props.runtimeWorkspaceId && sourceId && usePanelTabStore.getState().openMediaEditResult(props.runtimeWorkspaceId, sourceId, target.value, videoSurface)) {
+        setCurrentSidePanel("panel");
+        return;
+      }
       openWorkspaceAppForPlugin("video-console", {
         intent: "edit-video",
         requestId: crypto.randomUUID(),
@@ -4071,13 +4073,13 @@ export function SessionPage(props: SessionPageProps) {
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
-    ...workspaceApps.map<SidePanelLauncherItem>((surface) => ({
-      id: `workspace-app:${surface.id}`,
-      label: surface.label,
+    ...workspaceAppLaunchers(workspaceApps).map<SidePanelLauncherItem>((surface) => ({
+      id: workspaceAppTabId(surface),
+      label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
       group: "studio",
-      icon: surface.pluginId === "image-studio" ? "image-studio" : surface.pluginId === "video-console" ? "video-console" : "workspace-app",
+      icon: mediaStudioEngine(surface) === "image-studio" ? "image-studio" : mediaStudioEngine(surface) === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
+      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
   ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
@@ -4912,21 +4914,14 @@ export function SessionPage(props: SessionPageProps) {
                     templatesLoading={starterTemplateCatalogLoading}
                     templateBusyId={templateBusyId}
                     getTemplateCover={getStarterTemplateCover}
-                    onUseTemplate={async (templateId, surface) => {
+                    onUseTemplate={(templateId) => {
                       if (templateBusyId) return;
-                      setTemplateBusyId(templateId);
-                      try {
-                        await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
-                          props.selectedWorkspaceId,
-                          surface === "video" ? "video" : "design",
-                          templateId,
-                          PERSONAL_WORK_CONTEXT_ID,
-                        ));
-                      } finally {
-                        setTemplateBusyId((current) => current === templateId ? null : current);
-                      }
+                      const item = starterTemplateCatalog.find((template) => template.manifest.id === templateId);
+                      if (!item) return;
+                      setPendingTemplateProjectId(props.selectedWorkspaceId);
+                      setPendingTemplateApplication({ item, origin: "project-task", resourceScope: PERSONAL_WORK_CONTEXT_ID });
                     }}
-                    onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
+                    onUseCustomTemplate={(category) => openCustomTemplate(category, selectedProject && !selectedProject.workspace.isDefault ? "project-task" : "new-task")}
                     onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                     onRequestTemplates={() => void refreshStarterTemplateCatalog()}
                     pendingDraft={props.initialTaskDraftPending}
@@ -5041,6 +5036,7 @@ export function SessionPage(props: SessionPageProps) {
                           });
                           return null;
                         }}
+                        onUseCustomTemplate={(category) => openCustomTemplate(category, "current-session")}
                         onMaterializeTemplate={(templateId) => {
                           const template = starterTemplateCatalog.find((item) => item.manifest.id === templateId);
                           if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
@@ -5254,6 +5250,8 @@ export function SessionPage(props: SessionPageProps) {
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}
                         onEditImage={openImageStudio}
+                        onSwitchMedia={kind => openWorkspaceAppForPlugin(kind === "image" ? "image-studio" : "video-console", {intent:`generate-${kind}`,requestId:crypto.randomUUID()})}
+                        onOpenMedia={(path,kind) => void openTarget({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:kind === "image" ? "image" : "external",confidence:1,reason:"media-studio-import"})}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
@@ -5344,7 +5342,7 @@ export function SessionPage(props: SessionPageProps) {
       {pendingTemplateApplication ? (
         <TemplateApplyDialog
           key={`pending:${pendingTemplateApplication.origin}:${pendingTemplateApplication.item.manifest.id}`}
-          open={!createProjectOpen && templateDestinationProjects.length > 0}
+          open={!createProjectOpen && (pendingTemplateApplication.origin === "project-task" || templateDestinationProjects.length > 0)}
           mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
@@ -5362,8 +5360,8 @@ export function SessionPage(props: SessionPageProps) {
       {pendingCustomTemplateApplication ? (
         <TemplateApplyDialog
           key={`custom:${pendingCustomTemplateApplication.target}`}
-          open={!createProjectOpen && (pendingCustomTemplateApplication.target === "current-session" || templateDestinationProjects.length > 0)}
-          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : "market"}
+          open={!createProjectOpen && (pendingCustomTemplateApplication.target !== "new-task" || templateDestinationProjects.length > 0)}
+          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : pendingCustomTemplateApplication.target === "project-task" ? "new-conversation" : "market"}
           template={null}
           customCategory={pendingCustomTemplateApplication.category}
           onCustomCategoryChange={pendingCustomTemplateApplication.allowCategoryChange

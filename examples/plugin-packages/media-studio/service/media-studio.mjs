@@ -88,7 +88,7 @@ function hostResult(value) {
   return result;
 }
 
-export default async function createImageStudioService(runtime) {
+export default async function createMediaStudioService(runtime) {
   const generationPath = sourcePath => resolve(runtime.storage.dataDir, `${createHash("sha256").update(sourcePath).digest("hex")}.generation.json`);
   async function loadImage(sourcePath) {
     const source = safeWorkspaceFile(runtime.workspace.root, sourcePath);
@@ -132,7 +132,12 @@ export default async function createImageStudioService(runtime) {
 
   return {
     actions: {
-      status: async () => {
+      ...Object.fromEntries(["status", "jobs", "submit", "recover", "import", "read", "inspect", "local-edit"].map(action => [`video-${action}`, async input => {
+        const response = await runtime.host.callAction(`video-generation/${action}`, input);
+        if (!response?.ok || !response.result) throw new Error(response?.message || "Video operation failed. Please retry.");
+        return response.result;
+      }])),
+      "image-status": async () => {
         const result = hostResult(await runtime.host.callAction("openai-image-generation/status", {}));
         return {
           ...result,

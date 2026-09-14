@@ -309,6 +309,19 @@
     .workbench-hint[data-error="true"] { color:var(--danger); }
     html.mac:lang(zh) .workbench-back { font-weight:500; }
     @media(max-width:560px) { .workbench-back span { display:none; } }
+    @media(min-width:640px){#empty .empty-actions:has(#emptyVideo){grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+    .outputs-empty { flex:1; min-height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:28px 20px; text-align:center; }
+    .outputs-empty-art { position:relative; width:140px; height:94px; margin-bottom:20px; color:var(--muted); }
+    .outputs-empty-card { position:absolute; top:16px; width:66px; height:66px; display:grid; place-items:center; border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:0 8px 24px color-mix(in srgb,var(--text) 5%,transparent); }
+    .outputs-empty-card:first-child { left:9px; transform:rotate(-12deg); background:var(--surface-muted); }
+    .outputs-empty-card:nth-child(2) { right:8px; top:7px; transform:rotate(9deg); }
+    .outputs-empty-card svg { width:28px; height:28px; stroke-width:1.5; }
+    .outputs-empty-spark { position:absolute; right:0; top:-5px; width:20px; height:20px; opacity:.65; }
+    .outputs-empty h2 { flex:none; margin:0; font-size:16px; line-height:1.5; font-weight:500; color:var(--text); }
+    .outputs-empty p { max-width:290px; margin:8px 0 0; font-size:13px; line-height:1.7; color:var(--muted); text-wrap:balance; }
+    @media(max-height:420px) { .outputs-empty { min-height:170px; padding:16px; } .outputs-empty-art { transform:scale(.8); height:76px; margin-bottom:8px; } }
+    .generation-gallery:has(#outputsEmpty:not([hidden])) .gallery-sections, .generation-gallery:has(#outputsEmpty:not([hidden])) .reference-bar { display:none; }
   </style>
 </head>
 <body>
@@ -342,6 +355,15 @@
           <section id="generationGallery" class="generation-gallery" hidden data-i18n-aria="生成图片历史" aria-label="生成图片历史">
             <div class="gallery-sections">
               <section class="gallery-section"><div class="gallery-heading"><h2 class="gallery-title"><span data-i18n="从产出文件添加">从产出文件添加</span></h2><button id="loadOutputImages" class="button ghost" type="button" data-i18n-aria="刷新产出图片" aria-label="刷新产出图片"><span data-i18n="刷新">刷新</span></button></div><div id="galleryGrid" class="gallery-grid"></div></section>
+            </div>
+            <div id="outputsEmpty" class="outputs-empty" role="status" hidden>
+              <!-- Lucide image and clapperboard geometry from lucide-react (ISC). -->
+              <div class="outputs-empty-art" aria-hidden="true">
+                <span class="outputs-empty-card"><svg data-lucide="image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></span>
+                <span class="outputs-empty-card"><svg data-lucide="clapperboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m12.296 3.464 3.02 3.956"/><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m6.18 5.276 3.1 3.899"/></svg></span>
+                <svg class="outputs-empty-spark" data-lucide="sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg>
+              </div>
+              <h2 data-output-empty-title></h2><p data-output-empty-description></p>
             </div>
             <div class="reference-bar">
               <span id="galleryStatus" role="status"></span>
@@ -487,7 +509,7 @@
     const MAX_SELECTION_HISTORY_BYTES = 64 * 1024 * 1024;
     const state = {
       mode: "start", aiMode: "inpaint", tool: "smart", operation: "add", zoom: 1, zoomMode: "fit", drawing: false, moved: false,
-      gallery: [], referencePath: "", galleryKey: "", generating: false, generationStartedAt: 0, start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
+      gallery: [], galleryLoading:true, galleryError:false, referencePath: "", galleryKey: "", generating: false, generationStartedAt: 0, start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
       imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
       activeSubtract: false, temporaryTool: "", selectionTool: "smart", annotationMode: false, annotationPoint: null, busy: false, providerReady: false,
       expandDirection: "all", expandScale: 1.5,
@@ -532,7 +554,7 @@
         tooLarge: "图片尺寸过大。精确选区目前支持最长边不超过 4096px。", failed: "操作失败", connected: "工作台已连接", dimensions: "{width} × {height}",
       },
       en: {"名称":"Name","格式":"Format","文件大小":"File size","尺寸":"Dimensions","比例":"Aspect ratio","生成模型":"Model","生成时间":"Created","无生成记录":"No generation record","未知":"Unknown","图片":"Image",
-"从产出文件添加":"Add from outputs","刷新":"Refresh","刷新产出图片":"Refresh outputs","切换图片模型":"Change image model","工作模式":"Mode","生成图片历史":"Generated images","选区操作":"Selection actions","选区工具栏":"Selection toolbar","选区方式":"Selection mode","高级功能":"Advanced tools","画布缩放":"Canvas zoom","保存编辑结果":"Save edited image","文件信息":"File information","请重新选择参考图":"Select the reference image again","请完成图片选区后重试。":"Finish the image selection and try again.","图片选区已变化，请检查当前选区后重新发送。":"The selection changed. Review it and send again.","历史记录暂时无法保存":"Could not save history","正在读取近期产出…":"Loading recent outputs\u2026","暂无可读取的图片产出":"No readable image outputs","已载入 {count} 张近期图片":"Loaded {count} recent images",
+"从产出文件添加":"Add from outputs","刷新":"Refresh","刷新产出图片":"Refresh outputs","切换图片模型":"Change image model","工作模式":"Mode","生成图片历史":"Generated images","选区操作":"Selection actions","选区工具栏":"Selection toolbar","选区方式":"Selection mode","高级功能":"Advanced tools","画布缩放":"Canvas zoom","保存编辑结果":"Save edited image","文件信息":"File information","请重新选择参考图":"Select the reference image again","请完成图片选区后重试。":"Finish the image selection and try again.","图片选区已变化，请检查当前选区后重新发送。":"The selection changed. Review it and send again.","历史记录暂时无法保存":"Could not save history","正在读取近期产出…":"Loading recent outputs\u2026","给灵感一个开始":"Make room for your next idea","在下方写下一个想法，或添加参考素材。你的第一份作品会出现在这里。":"Describe an idea below, or add a reference. Your first creation will appear here.","图片暂时加载不出来，请刷新重试。":"Images could not be loaded. Try refreshing.","已载入 {count} 张近期图片":"Loaded {count} recent images",
         title: "Image Studio", newImage: "New image", edit: "Edit", generate: "Generate", checking: "Checking image model…", ready: "Image model connected", unavailable: "Image model not connected",
         launchGenerateDescription: "Create from a prompt or reference", launchOpenDescription: "Continue editing an existing image", moreActions:"More actions", generateVideo:"Generate video", emptyTitle: "Start your next creation", emptyBody: "Start with an idea, or refine an existing image.", generateEmptyTitle: "Generate a new image", generateEmptyBody: "Describe what you imagine and turn it into an image.",
         moveParameters: "Move parameters", openImage: "Open image", importImage: "Import image", replaceImage: "Open image", downloadImage: "Save as", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
@@ -574,7 +596,7 @@
       $("#selectionErase").ariaLabel = tr("eraseAction");
       $("#annotationHint").textContent = tr("annotationPointHint");
       $("#documentTitle").textContent = state.sourceName || tr("newImage");
-      renderMode(); renderProvider(); renderSelectionState(); renderSaveReview(); renderGallery();
+      renderMode(); renderProvider(); renderSelectionState(); renderSaveReview(); renderGallery(); renderMediaStudio();
     }
     function post(message) { if(message.rows)message={...message,rows:message.rows.map(row=>({...row,label:tr(row.label),value:tr(row.value)}))};parent.postMessage(message, "*"); }
     function respond(id, result) { post({ jsonrpc: "2.0", id, result }); }
@@ -748,6 +770,7 @@
       $("#emptyImport").hidden = generating;
       $("#emptyGenerate").hidden = generating;
       $("#emptyBack").hidden = !generating || Boolean(state.sourcePath);
+      renderMediaStudio();
     }
     function renderMode() {
       document.documentElement.classList.toggle("generating", state.mode === "generate");
@@ -1230,6 +1253,9 @@
       setStatus(""); renderGallery(); publishContext();
     }
     function renderGallery() {
+      $("#outputsEmpty").hidden = state.gallery.length > 0 || state.generating || state.busy || state.galleryLoading || state.galleryError;
+      $("[data-output-empty-title]").textContent = tr("给灵感一个开始");
+      $("[data-output-empty-description]").textContent = tr("在下方写下一个想法，或添加参考素材。你的第一份作品会出现在这里。");
       const grid = $("#galleryGrid");
       grid.replaceChildren();
       if (state.generating) {
@@ -1246,7 +1272,7 @@
         select.setAttribute("aria-label", `${state.locale==="en"?"Preview":"预览"}：${entry.name}`); select.title=entry.name;
         const image = document.createElement("img"); image.src = entry.thumbnail; image.alt = entry.name; image.loading = "lazy"; select.append(image); select.onclick = () => previewGalleryImage(entry);
         const actions = document.createElement("div"); actions.className = "card-actions";
-        const editAction=async()=>{await loadWorkspaceImage(entry.path);if(state.sourcePath===entry.path)setMode("edit");};
+        const editAction=async()=>{if(state.hostContext?.mediaStudio){post({type:"ipollowork:media-studio:edit",path:entry.path});return;}await loadWorkspaceImage(entry.path);if(state.sourcePath===entry.path)setMode("edit");};
         for (const [label, action] of [[state.locale==="en"?"Edit":"编辑",editAction]]) {
           const button=document.createElement("button");button.type="button";button.textContent=label;button.disabled=state.busy;button.onclick=action;actions.append(button);
         }
@@ -1272,22 +1298,24 @@
     }
     $("#loadOutputImages").onclick = () => {
       if (state.busy) return;
+      state.galleryLoading=true; renderGallery();
       $("#galleryStatus").textContent = tr("正在读取近期产出…");
       post({ type: "ipollowork:image-studio:list-images" });
     };
     addEventListener("message", async event => {
       if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:image-list" || state.busy) return;
-      if (event.data.error) { $("#galleryStatus").textContent = event.data.error; return; }
+      if (event.data.error) { state.galleryLoading=false; state.galleryError=true; $("#galleryStatus").textContent = event.data.error; renderGallery(); return; }
       const paths = Array.isArray(event.data.paths) ? event.data.paths.filter(path => typeof path === "string").slice(0, 12) : [];
       if(paths.length && !state.sourcePath && state.mode === "start"){setMode("generate");requestInspector();}
-      setBusy(true); let loaded = 0;
+      state.galleryLoading=true; state.galleryError=false; setBusy(true); let loaded = 0;
       try {
         for (const path of paths.reverse()) {
           if (state.gallery.some(entry => entry.path === path)) { loaded++; continue; }
           try { await rememberGalleryImage(await callService("load-image", { sourcePath: path })); loaded++; } catch { /* A missing file must not hide other outputs. */ }
         }
-        $("#galleryStatus").textContent = loaded ? tr("已载入 {count} 张近期图片",{count:loaded}) : tr("暂无可读取的图片产出");
-      } finally { setBusy(false); }
+        state.galleryError = paths.length > 0 && loaded === 0 && state.gallery.length === 0;
+        $("#galleryStatus").textContent = state.galleryError ? tr("图片暂时加载不出来，请刷新重试。") : loaded ? tr("已载入 {count} 张近期图片",{count:loaded}) : "";
+      } finally { state.galleryLoading=false; setBusy(false); }
     });
     async function renderImage(payload) {
       post({type:"ipollowork:image-studio:file-info-close"});
@@ -1562,11 +1590,29 @@
     document.querySelector('#workbenchBack').onclick = () => post({type:'ipollowork:media-workbench:back'});
     new ResizeObserver(() => { const hint = document.querySelector('#workbenchHint'); document.documentElement.style.setProperty('--workbench-hint-space', hint.hidden ? '0px' : `${hint.offsetHeight + 12}px`); }).observe(document.querySelector('#workbenchHint'));
 
+    function renderMediaStudio() {
+      if (!state.hostContext?.mediaStudio) return;
+      const english = state.locale === "en";
+      for (const selector of ['#topImport span', '#emptyImport strong']) $(selector).textContent = english ? 'Open media' : '打开素材';
+      $('#topImport').setAttribute('aria-label', english ? 'Open media' : '打开素材');
+      $('#emptyImport .launch-description').textContent = english ? 'Continue editing an image or video' : '继续编辑已有图片或视频';
+      $('#emptyBody').textContent = english ? 'Create images and videos, or refine existing media.' : '生成图片与视频，或继续打磨已有素材。';
+      if (!$('#emptyVideo')) {
+        const button = document.createElement('button'); button.id = 'emptyVideo'; button.className = 'launch-card'; button.type = 'button';
+        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 8 6 4-6 4Z"/></svg><strong></strong><span class="launch-description"></span>';
+        button.onclick = () => post({type:'ipollowork:media-studio:switch',kind:'video'});
+        $('#emptyImport').before(button);
+      }
+      $('#emptyVideo strong').textContent = english ? 'Generate video' : '生成视频';
+      $('#emptyVideo .launch-description').textContent = english ? 'Create from a prompt or reference' : '从描述或参考素材开始创作';
+      $('#emptyVideo').hidden = state.mode === 'generate';
+    }
     async function applyHostContext(hostContext) {
       if (!hostContext || typeof hostContext !== "object") return;
       if (typeof hostContext.workspaceId !== "string") return;
       state.hostContext = hostContext;
       renderWorkbench(hostContext.launch);
+      renderMediaStudio();
       const galleryKey = `image-studio-gallery:${hostContext.workspaceId}:${hostContext.sessionId || "workspace"}`;
       if (state.galleryKey !== galleryKey) {
         state.galleryKey = galleryKey;
@@ -1577,6 +1623,9 @@
         renderGallery();
       }
       const launch = hostContext.launch;
+      if (launch?.intent === "generate-image" && !launch.source && state.appliedLaunch !== launch.requestId) {
+        state.appliedLaunch = launch.requestId; setMode("generate");
+      }
       if (launch?.intent === "edit-image" && launch.source?.path) {
         const key = `${launch.requestId || ""}:${launch.source.path}`;
         if (state.appliedLaunch === key || state.busy) return;
@@ -1866,7 +1915,7 @@
     $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
     $("#emptyBack").addEventListener("click", () => setMode("start"));
     $("#imageToVideo").onclick=()=>post({type:"ipollowork:image-studio:generate-video",path:state.sourcePath});
-    for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => $("#fileInput").click());
+    for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => state.hostContext?.mediaStudio ? post({type:"ipollowork:media-studio:open"}) : $("#fileInput").click());
     $('#fileInfo').onclick=()=>{const m=state.sourceMetadata||{},g=m.generation;const gcd=(a,b)=>b?gcd(b,a%b):a;const divisor=gcd(state.imageWidth,state.imageHeight);post({type:'ipollowork:image-studio:file-info',rows:[{label:'名称',value:state.sourceName},{label:'格式',value:m.mimeType||'图片'},{label:'文件大小',value:typeof m.bytes==='number'?`${(m.bytes/1024/1024).toFixed(2)} MB`:'未知'},{label:'尺寸',value:`${state.imageWidth} × ${state.imageHeight} px`},{label:'比例',value:`${state.imageWidth/divisor}:${state.imageHeight/divisor}`},{label:'生成模型',value:g?.model||'无生成记录'},{label:'生成时间',value:g?.createdAt||'无生成记录'}],prompt:g?.prompt||''});};
     $("#downloadImage").addEventListener("click", () => {
       const rect = $("#downloadImage").getBoundingClientRect();

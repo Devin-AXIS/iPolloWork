@@ -303,11 +303,11 @@ describe("plugin package manifest", () => {
     });
   });
 
-  test("accepts Image Studio as a self-contained workspace app with independently managed skills", async () => {
+  test("accepts Media Studio as a single package with both workspace views with independently managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
-    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url)).json();
-    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
-    const editingSkill = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/skills/image-editing/SKILL.md", import.meta.url)).text();
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ipollowork.plugin.json", import.meta.url)).json();
+    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
+    const editingSkill = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/skills/image-editing/SKILL.md", import.meta.url)).text();
 
     const result = validatePluginPackageManifest(manifest);
 
@@ -317,7 +317,7 @@ describe("plugin package manifest", () => {
     expect(result.manifest.contributions).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "workspace-app", ref: "studio" }),
     ]));
-    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(2);
     expect(result.manifest.resources.filter((resource) => resource.type === "local-service")).toHaveLength(1);
     expect(result.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id)).toEqual([
       "image-generation",
@@ -375,7 +375,7 @@ describe("plugin package manifest", () => {
   });
 
   test("Image Studio lists the full catalog but waits for the user to select a configured model", async () => {
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
     expect(apply).toBeDefined();
     const state: {
@@ -422,7 +422,7 @@ describe("plugin package manifest", () => {
   test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {
     const { openAiImageGenerationStatus } = await import("./extensions/openai-image-generation.js");
     const { models } = await openAiImageGenerationStatus({ read: async () => ({}) });
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const functions = ["selectedModel", "normalizeModelParameters", "updateParameters", "actionArguments", "publishContext"].map((name) => {
       const source = ui.match(new RegExp(`    function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n    \\}`))?.[0];
       if (!source) throw new Error(`Missing ${name}`);
@@ -476,7 +476,7 @@ describe("plugin package manifest", () => {
   });
 
   test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const source = ui.match(/    async function saveEditedResult\(mode\) \{[\s\S]*?\n    \}/)?.[0];
     expect(source).toBeDefined();
     const calls: unknown[] = [];
