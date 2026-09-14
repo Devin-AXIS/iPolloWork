@@ -90,13 +90,14 @@ export async function persistComposerAttachments(input: {
     try {
       const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
       const inboxPath = result.path.trim().replace(/^\/+/, "");
-      if (!inboxPath) return null;
+      if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
       return {
         attachmentId: attachment.id,
         name: attachment.name,
         workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
       } satisfies PersistedComposerAttachment;
     } catch (error) {
+      if (attachment.delivery === "workspace") throw error;
       console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
       return null;
     }
@@ -288,7 +289,7 @@ export async function draftToParts(
   parts.push(...firstLineLocalFileParts(draft.resolvedText ?? draft.text, root));
   parts.push(
     ...(await Promise.all(
-      draft.attachments.map(async (attachment) => {
+      draft.attachments.filter((attachment) => attachment.delivery !== "workspace").map(async (attachment) => {
         if (options.supportsNativeAttachments === false) {
           if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
             throw new Error("The selected model cannot read image or PDF attachments.");

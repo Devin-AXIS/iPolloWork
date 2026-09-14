@@ -76,6 +76,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
@@ -161,6 +162,8 @@ import {
 import { inferTemplateBriefFromIngestions } from "../references/brief-autofill";
 import {
   buildTemplateReferenceSubmitPayload,
+  serializeReferenceContext,
+  REFERENCE_CONTEXT_FILE_NAME,
   revokeTemplateReferenceAttachmentPreviews,
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
@@ -1453,7 +1456,7 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
+export function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
   template: TemplateManifestV1 | null;
@@ -1472,11 +1475,16 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
   const config = templateBriefConfigFor(template ?? { category: customCategory ?? "slides" });
   const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
-  const [referenceBusy, setReferenceBusy] = useState(false);
+  const [step, setStep] = useState<"references" | "brief">("references");
+  const editedBriefFields = useRef(new Set<keyof TemplateBrief>());
+  const referenceBusy = references.some((reference) => reference.status === "parsing");
+  const referenceProgress = references.length ? Math.round(references.reduce((sum, reference) => sum + (reference.progress ?? 0), 0) / references.length) : 0;
   const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
+
+  useEffect(() => () => { referencesRef.current = []; }, []);
 
   const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
     const next = updater(referencesRef.current);
@@ -1485,13 +1493,11 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
   };
 
   const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
-    if (!inferred.title && !inferred.audience && !inferred.details) return;
     setBrief((current) => ({
-      title: current.title.trim() ? current.title : inferred.title,
-      audience: current.audience.trim() ? current.audience : inferred.audience,
-      details: current.details.trim() ? current.details : inferred.details,
+      title: editedBriefFields.current.has("title") ? current.title : inferred.title,
+      audience: editedBriefFields.current.has("audience") ? current.audience : inferred.audience,
+      details: editedBriefFields.current.has("details") ? current.details : inferred.details,
     }));
-    toast.success(t("templates.brief.reference_autofilled"));
   };
 
   const addReferenceFiles = async (files: File[]) => {
@@ -1507,7 +1513,6 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       );
     }
     if (!supported.length) return;
-    setReferenceBusy(true);
     const pending = supported.map((file) => ({
       id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
       file,
@@ -1516,29 +1521,24 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       size: file.size,
       status: "parsing" as const,
       sendOriginal: false,
+      progress: 0,
     }));
     updateReferences((current) => [...current, ...pending]);
 
-    try {
-      const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
-        try {
-          const ingestion = await ingestReferenceFile(item.file);
-          const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
-          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
-        } catch (error) {
-          toast.warning(t("templates.brief.reference_status_failed"), {
-            description: error instanceof Error ? error.message : item.fileName,
-          });
-          return { ...item, status: "failed" };
-        }
-      }));
-      const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
-      updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
-      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
-        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
-      ));
-    } finally {
-      setReferenceBusy(false);
+    // Parse sequentially to bound PDF/ZIP memory and show each completed file immediately.
+    for (const item of pending) {
+      if (!referencesRef.current.some((reference) => reference.id === item.id)) continue;
+      try {
+        const ingestion = await ingestReferenceFile(item.file, (progress) => {
+          if (referencesRef.current.find((reference) => reference.id === item.id)?.progress === progress) return;
+          updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, progress } : reference));
+        });
+        const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
+        updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, mimeType: ingestion.mimeType, status, ingestion, progress: 100 } : reference));
+      } catch (error) {
+        toast.warning(t("templates.brief.reference_status_failed"), { description: error instanceof Error ? error.message : item.fileName });
+        updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, status: "failed", progress: 100 } : reference));
+      }
     }
   };
 
@@ -1608,7 +1608,53 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
           <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{template ? config.description : t("template_market.custom_description")}</DialogDescription>
         </DialogHeader>
 
+        <ol aria-label={t("templates.brief.steps")} className="mb-6 flex shrink-0 gap-6 border-b border-border pb-4 text-ui-control">
+          {(["references", "brief"] as const).map((item, index) => <li key={item} aria-current={step === item ? "step" : undefined} className={cn("flex items-center gap-2", step === item ? "font-medium text-foreground" : "text-muted-foreground")}>
+            <span className={cn("flex size-6 items-center justify-center rounded-full text-xs", step === item ? "bg-primary text-primary-foreground" : "bg-muted")}>{step === "brief" && index === 0 ? <Check className="size-3.5" /> : index + 1}</span>
+            {t(`templates.brief.step_${item}`)}
+          </li>)}
+        </ol>
+
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+          {step === "references" ? <>
+          <section aria-labelledby="template-supplemental" className="space-y-4">
+            <h3 id="template-supplemental" className="text-ui-body font-semibold leading-5 text-foreground">{t("templates.brief.reference_question")}</h3>
+            <p className="text-ui-control leading-6 text-muted-foreground">{t("templates.brief.reference_intro")}</p>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+              <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
+              <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
+              <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
+            </div>
+
+            {references.length ? <div className="space-y-2" aria-live="polite">
+              <div className="flex justify-between gap-3 text-xs text-muted-foreground"><span>{referenceBusy ? t("templates.brief.reference_status_parsing") : t("templates.brief.reference_finished")}</span><span>{referenceProgress}%</span></div>
+              <Progress value={referenceProgress} aria-label={t("templates.brief.reference_status_parsing")} />
+            </div> : null}
+            {references.length ? <div className="grid gap-2">
+              {references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
+                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <div className="break-words text-xs font-medium">{reference.fileName}</div>
+                  <div className="text-[10px] text-muted-foreground">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
+                  {reference.ingestion ? <details className="mt-1 text-xs text-muted-foreground">
+                    <summary className="cursor-pointer">{t("templates.brief.reference_review", { count: reference.ingestion.extractedText.length })}</summary>
+                    <div className="mt-2 max-h-40 space-y-2 overflow-auto whitespace-pre-wrap break-words">
+                      {reference.ingestion.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+                      <p>{reference.ingestion.extractedText.slice(0, 3000)}</p>
+                    </div>
+                  </details> : null}
+                </div>
+                <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file) || submitting} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
+                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={referenceBusy || submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+              </div>)}
+            </div> : null}
+            {!referenceBusy && references.length ? <div className="space-y-3">
+              <p className="text-xs leading-5 text-muted-foreground">{t(references.some((reference) => reference.status === "ready") ? "templates.brief.reference_ready_hint" : "templates.brief.reference_empty_hint")}</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => downloadTextAsFile(REFERENCE_CONTEXT_FILE_NAME, serializeReferenceContext(references), "application/json")}><Download className="size-3.5" />{t("templates.brief.reference_download")}</Button>
+            </div> : null}
+          </section>
+          </> : <>
+            {references.some((reference) => reference.status === "ready") ? <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-5 text-muted-foreground">{t("templates.brief.reference_autofilled")}</p> : null}
           {customCategory && onCustomCategoryChange ? (
             <section className="space-y-1.5">
               <label className="text-ui-body font-semibold leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
@@ -1630,7 +1676,7 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
                   <Textarea
                     required={!field.optional}
                     value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
+                    onChange={(event) => { const value = event.currentTarget.value; editedBriefFields.current.add(field.key); setBrief((current) => ({ ...current, [field.key]: value })); }}
                     placeholder={field.placeholder}
                     className="h-[130px] min-h-[130px] resize-none rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
                   />
@@ -1638,35 +1684,13 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
                   <Input
                     required={!field.optional}
                     value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
+                    onChange={(event) => { const value = event.currentTarget.value; editedBriefFields.current.add(field.key); setBrief((current) => ({ ...current, [field.key]: value })); }}
                     placeholder={field.placeholder}
                     className="h-[34px] rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
                   />
                 )}
               </label>
             ))}
-          </section>
-
-          <section aria-labelledby="template-supplemental" className="space-y-1.5">
-            <h3 id="template-supplemental" className="text-ui-body font-semibold leading-5 text-foreground">{t("templates.brief.supplemental_information")}</h3>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
-              <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
-              <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
-            </div>
-
-            {references.length ? <div className="grid gap-2">
-              {references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium">{reference.fileName}</div>
-                  <div className="text-[10px] text-muted-foreground">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
-                  {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-muted-foreground" title={reference.ingestion.warnings[0]}>{reference.ingestion.warnings[0]}</div> : null}
-                </div>
-                <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file) || submitting} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
-                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
-              </div>)}
-            </div> : null}
           </section>
 
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">
@@ -1692,14 +1716,18 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
               {onRequestNewProject ? <Button type="button" variant="outline" className="h-[34px] shrink-0 rounded-lg px-3 text-ui-control" onClick={onRequestNewProject}><Plus className="size-3.5" />{t("templates.brief.new_project")}</Button> : null}
             </div>
           </section> : null}
+          </>}
         </div>
 
         <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
-          <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
+          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (step === "brief") setStep("references"); else if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{step === "brief" || newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
+          {step === "references" ? <Button type="button" className="h-9 rounded-lg px-3" disabled={referenceBusy} onClick={() => {
+            applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(references.flatMap((reference) => reference.ingestion ? [reference.ingestion] : [])));
+            setStep("brief");
+          }}>{referenceBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}{t(references.length ? "templates.brief.next" : "templates.brief.skip_references")}</Button> : <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
-          </Button>
+          </Button>}
         </DialogFooter>
       </DialogContent>
     </Dialog>

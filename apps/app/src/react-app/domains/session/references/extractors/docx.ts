@@ -71,5 +71,5 @@ export async function extractDocxReference(file: File): Promise<ExtractedReferen
       .map((chunk, chunkIndex) => ({ ...chunk, id: `${file.name}:section:${sectionIndex + 1}:chunk:${chunkIndex + 1}` })))
     : chunkPlainText({ source: file.name, text: cleaned.text });
 
-  return { text: cleaned.text, chunks, warnings: cleaned.warnings, metadata: { headings } };
+  return { text: cleaned.text, chunks, warnings: [...cleaned.warnings, "Main document paragraphs and tables were extracted; images, headers, footers and annotations require review."], metadata: { headings } };
 }

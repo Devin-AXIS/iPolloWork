@@ -27,7 +27,7 @@ function escapeRegExp(value: string): string {
 function titleFromText(text: string, fileName: string): string {
   const h1 = text.match(/^\s{0,3}#\s+(.+?)\s*#*\s*$/m);
   if (h1?.[1]) return snippet(h1[1], 120);
-  const first = text.split(/\r?\n/).map(cleanLine).find((line) => line.length > 1 && line.length <= 90 && !/:$/.test(line));
+  const first = text.split(/\r?\n/).map(cleanLine).find((line) => line.length > 1 && line.length <= 90 && !/[:：]|^Slide \d+$/.test(line));
   return first || fileNameStem(fileName);
 }
 
@@ -42,17 +42,27 @@ function labelValue(text: string, labels: string[]): string {
   return "";
 }
 
+function fieldValue(item: ReferenceIngestionResult, labels: string[]): string {
+  if (item.structuredData && typeof item.structuredData === "object" && !Array.isArray(item.structuredData)) {
+    for (const [key, value] of Object.entries(item.structuredData)) {
+      if (typeof value === "string" && labels.some((label) => label.toLowerCase() === key.toLowerCase())) {
+        return snippet(value, 360);
+      }
+    }
+  }
+  return labelValue(item.extractedText, labels);
+}
+
 export function inferTemplateBriefFromIngestions(ingestions: ReferenceIngestionResult[]): TemplateBrief {
   const accepted = ingestions.filter((item) => item.quality === "high" || item.quality === "medium");
   const first = accepted[0];
   if (!first) return { title: "", audience: "", details: "" };
 
-  const combined = accepted
-    .map((item) => [item.extractedText, ...item.chunks.slice(0, 4).map((chunk) => chunk.text)].join("\n"))
-    .join("\n\n");
-  const title = titleFromText(first.extractedText, first.fileName);
-  const audience = labelValue(combined, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"]);
-  const details = labelValue(combined, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"])
+  const title = fieldValue(first, ["Title", "Topic", "标题", "主题", "视频主题"])
+    || first.metadata?.headings?.[0]
+    || (first.structuredData !== undefined ? fileNameStem(first.fileName) : titleFromText(first.extractedText, first.fileName));
+  const audience = [...new Set(accepted.map((item) => fieldValue(item, ["Audience", "For", "Users", "Customers", "受众", "目标用户", "面向谁"])).filter(Boolean))].join("；");
+  const details = [...new Set(accepted.map((item) => fieldValue(item, ["Requirements", "Details", "Key information", "Content", "Scope", "需求", "要求", "关键信息", "内容", "范围"])).filter(Boolean))].join("\n")
     || accepted.flatMap((item) => item.chunks).slice(0, 3).map((chunk) => cleanLine(chunk.text)).join(" ").slice(0, 700).trim();
 
   return { title, audience, details };

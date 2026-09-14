@@ -6,7 +6,7 @@ import { extractPptxReference } from "./extractors/pptx";
 import { extractTableReference } from "./extractors/table";
 import { extractTextReference } from "./extractors/text";
 import { assessReferenceQuality } from "./quality";
-import type { ExtractedReferenceContent, ReferenceIngestionResult } from "./types";
+import type { ExtractedReferenceContent, ReferenceIngestionResult, ReferenceProgress } from "./types";
 
 export const REFERENCE_MAX_BYTES = 25 * 1024 * 1024;
 
@@ -66,16 +66,16 @@ export function canSendOriginalReference(file: Pick<File, "name" | "type" | "siz
   return file.size <= REFERENCE_MAX_BYTES && isReferenceFile(file);
 }
 
-async function extractReference(file: File): Promise<ExtractedReferenceContent> {
+async function extractReference(file: File, onProgress?: ReferenceProgress): Promise<ExtractedReferenceContent> {
   const extension = referenceFileExtension(file.name);
   const mime = referenceMime(file);
 
   if (extension === "docx" || mime === DOCX_MIME) return extractDocxReference(file);
-  if (extension === "pptx" || mime === PPTX_MIME) return extractPptxReference(file);
+  if (extension === "pptx" || mime === PPTX_MIME) return extractPptxReference(file, onProgress);
   if (extension === "csv" || extension === "json" || mime === "text/csv" || mime === "application/csv" || mime === "application/json") {
     return extractTableReference(file);
   }
-  if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file);
+  if (extension === "pdf" || mime === PDF_MIME) return extractPdfReference(file, onProgress);
   if (extension === "md" || extension === "txt" || mime.startsWith("text/")) return extractTextReference(file);
   if (mime.startsWith("image/")) {
     return { text: "", chunks: [], warnings: ["Images are kept as optional visual attachments; OCR is not available."] };
@@ -83,11 +83,13 @@ async function extractReference(file: File): Promise<ExtractedReferenceContent> 
   return { text: "", chunks: [], warnings: ["No extractor is available for this file type."] };
 }
 
-export async function ingestReferenceFile(file: File): Promise<ReferenceIngestionResult> {
+export async function ingestReferenceFile(file: File, onProgress?: ReferenceProgress): Promise<ReferenceIngestionResult> {
+  onProgress?.(0);
   const fileId = `${file.name}-${file.lastModified}`;
   const mimeType = referenceMime(file);
 
   if (file.size > REFERENCE_MAX_BYTES) {
+    onProgress?.(100);
     return {
       id: fileId,
       fileName: file.name,
@@ -102,11 +104,12 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
     };
   }
 
-  const extracted = await extractReference(file).catch((error): ExtractedReferenceContent => ({
+  const extracted = await extractReference(file, onProgress).catch((error): ExtractedReferenceContent => ({
     text: "",
     chunks: [],
     warnings: [`Reference parsing failed: ${error instanceof Error ? error.message : String(error)}`],
   }));
+  onProgress?.(95);
   const quality = assessReferenceQuality({ text: extracted.text, chunks: extracted.chunks, warnings: extracted.warnings });
   const draft: ReferenceIngestionResult = {
     id: fileId,
@@ -119,9 +122,13 @@ export async function ingestReferenceFile(file: File): Promise<ReferenceIngestio
     chunks: extracted.chunks ?? [],
     quality: quality.quality,
     warnings: quality.warnings,
+    metadata: extracted.metadata,
+    structuredData: extracted.structuredData,
   };
 
-  return { ...draft, summary: buildDeterministicSummary(draft) };
+  const result = { ...draft, summary: buildDeterministicSummary(draft) };
+  onProgress?.(100);
+  return result;
 }
 
 export async function prepareOriginalReferenceAttachment(file: File): Promise<ComposerAttachment> {

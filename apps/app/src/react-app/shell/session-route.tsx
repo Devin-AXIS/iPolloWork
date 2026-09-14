@@ -1457,6 +1457,9 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
+        if (!selectedWorkspaceEndpoint && draft.attachments.some((attachment) => attachment.delivery === "workspace")) {
+          throw new Error("Connect the workspace before sending parsed reference files.");
+        }
         const [parts, persistedAttachments] = await Promise.all([
           draftToParts(
             draft,

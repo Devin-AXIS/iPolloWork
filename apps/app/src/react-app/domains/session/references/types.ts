@@ -21,6 +21,8 @@ export type ReferenceIngestionResult = {
   chunks: ReferenceChunk[];
   quality: ReferenceQuality;
   warnings: string[];
+  metadata?: ExtractedReferenceContent["metadata"];
+  structuredData?: unknown;
 };
 
 export type TemplateReferenceItem = {
@@ -32,6 +34,7 @@ export type TemplateReferenceItem = {
   status: "parsing" | "ready" | "weak" | "failed";
   sendOriginal: boolean;
   ingestion?: ReferenceIngestionResult;
+  progress?: number;
 };
 
 export type ReferenceContextPack = {
@@ -45,6 +48,7 @@ export type ExtractedReferenceContent = {
   text: string;
   chunks?: ReferenceChunk[];
   warnings?: string[];
+  structuredData?: unknown;
   metadata?: {
     pages?: number;
     rows?: number;
@@ -52,6 +56,8 @@ export type ExtractedReferenceContent = {
     headings?: string[];
   };
 };
+
+export type ReferenceProgress = (percent: number) => void;
 
 export type PromptPackOptions = {
   maxSummaryChars?: number;

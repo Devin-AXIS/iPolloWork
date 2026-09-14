@@ -1,6 +1,6 @@
 import { chunkPlainText } from "../chunking";
 import { cleanReferenceText } from "../quality";
-import type { ExtractedReferenceContent, ReferenceChunk } from "../types";
+import type { ExtractedReferenceContent, ReferenceChunk, ReferenceProgress } from "../types";
 
 type Uint8ArrayPrototypeWithHex = Uint8Array & { toHex?: () => string };
 
@@ -30,13 +30,12 @@ async function loadPdfjs() {
 
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   if ("GlobalWorkerOptions" in pdfjs) {
-    const worker = await import("pdfjs-dist/legacy/build/pdf.worker.mjs?url");
-    pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+    pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.mjs", import.meta.url).href;
   }
   return pdfjs;
 }
 
-export async function extractPdfReference(file: File): Promise<ExtractedReferenceContent> {
+export async function extractPdfReference(file: File, onProgress?: ReferenceProgress): Promise<ExtractedReferenceContent> {
   const warnings = new Set<string>();
 
   try {
@@ -44,29 +43,38 @@ export async function extractPdfReference(file: File): Promise<ExtractedReferenc
     const bytes = new Uint8Array(await file.arrayBuffer());
     const loadingTask = pdfjs.getDocument({ data: bytes, useWorkerFetch: false });
     const pdf = await loadingTask.promise;
-    const chunks: ReferenceChunk[] = [];
-    const pageTexts: string[] = [];
+    onProgress?.(10);
+    try {
+      const chunks: ReferenceChunk[] = [];
+      const pageTexts: string[] = [];
 
-    for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
-      const page = await pdf.getPage(pageNumber);
-      const content = await page.getTextContent();
-      const raw = content.items
-        .map((item) => "str" in item ? String(item.str) : "")
-        .join(" ");
-      const cleaned = cleanReferenceText(raw);
-      cleaned.warnings.forEach((warning) => warnings.add(warning));
-      if (!cleaned.text) continue;
-      pageTexts.push(cleaned.text);
-      chunks.push(...chunkPlainText({ source: file.name, page: pageNumber, text: cleaned.text }));
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const raw = content.items
+          .map((item) => "str" in item ? `${item.str}${item.hasEOL ? "\n" : " "}` : "")
+          .join("");
+        const cleaned = cleanReferenceText(raw);
+        cleaned.warnings.forEach((warning) => warnings.add(warning));
+        onProgress?.(10 + Math.round(80 * pageNumber / pdf.numPages));
+        if (!cleaned.text) {
+          warnings.add(`Page ${pageNumber}: no readable text; OCR or visual review is required.`);
+          continue;
+        }
+        pageTexts.push(cleaned.text);
+        chunks.push(...chunkPlainText({ source: file.name, page: pageNumber, text: cleaned.text }));
+      }
+
+      const text = pageTexts.join("\n\n");
+      return {
+        text,
+        chunks,
+        warnings: [...warnings, "Only the PDF text layer was extracted; embedded images and visual layout require review.", ...(text ? [] : ["No readable PDF text was extracted."])],
+        metadata: { pages: pdf.numPages },
+      };
+    } finally {
+      await pdf.destroy();
     }
-
-    const text = pageTexts.join("\n\n");
-    return {
-      text,
-      chunks,
-      warnings: [...warnings, ...(text ? [] : ["No readable PDF text was extracted."])],
-      metadata: { pages: pdf.numPages },
-    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return { text: "", chunks: [], warnings: [...warnings, `PDF parsing failed: ${message}`] };

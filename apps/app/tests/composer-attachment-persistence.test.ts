@@ -2,9 +2,26 @@ import { describe, expect, test } from "bun:test";
 import {
   persistedAttachmentInstruction,
   persistComposerAttachments,
+  draftToParts,
 } from "../src/react-app/shell/session-prompt";
 
 describe("composer attachment persistence", () => {
+  test("workspace-only context files must persist and do not consume inline model context", async () => {
+    const attachment = {
+      id: "context",
+      name: "reference-context.json",
+      mimeType: "application/json",
+      size: 2,
+      kind: "file" as const,
+      delivery: "workspace" as const,
+      file: new File(["{}"], "reference-context.json", { type: "application/json" }),
+    };
+    for (const uploadInbox of [async () => { throw new Error("upload failed"); }, async () => ({ path: "" })]) {
+      await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox } })).rejects.toThrow();
+    }
+    const parts = await draftToParts({ text: "Use my references", parts: [{ type: "text", text: "Use my references" }], attachments: [attachment] }, "/workspace", { getState: () => ({ selections: {} }) }, undefined, { supportsNativeAttachments: false });
+    expect(parts).toEqual([{ type: "text", text: "Use my references" }]);
+  });
   test("uploads attachments into a session-scoped workspace inbox path", async () => {
     const calls: Array<{ workspaceId: string; path?: string }> = [];
     const attachment = {

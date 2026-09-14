@@ -39,6 +39,8 @@ function profileCsv(fileName: string, text: string): ExtractedReferenceContent {
 
   return {
     text: profile,
+    structuredData: { headers: headerRow, rows },
+    warnings: ["The text overview contains a sample; structuredData preserves all CSV records and cell values."],
     chunks: chunkPlainText({ source: fileName, text: profile }),
     metadata: { rows: rows.length, columns: headers.length },
   };
@@ -96,6 +98,8 @@ function profileJson(fileName: string, text: string): ExtractedReferenceContent 
 
   return {
     text: profile,
+    structuredData: parsed,
+    warnings: ["The text overview contains a sample; structuredData preserves the complete JSON value."],
     chunks: chunkPlainText({ source: fileName, text: profile }),
     metadata: { rows: Array.isArray(parsed) ? parsed.length : undefined },
   };

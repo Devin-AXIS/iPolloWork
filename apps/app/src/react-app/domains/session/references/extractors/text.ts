@@ -17,11 +17,11 @@ function markdownChunks(source: string, text: string): ReferenceChunk[] {
     }
   }
 
-  return sections.flatMap((section) => chunkPlainText({
+  return sections.flatMap((section, sectionIndex) => chunkPlainText({
     source,
     heading: section.heading,
     text: section.body.join("\n"),
-  }));
+  }).map((chunk, index) => ({ ...chunk, id: `${source}:section:${sectionIndex + 1}:chunk:${index + 1}` })));
 }
 
 export async function extractTextReference(file: File): Promise<ExtractedReferenceContent> {

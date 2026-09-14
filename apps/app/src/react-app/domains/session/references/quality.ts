@@ -1,8 +1,6 @@
 import type { ReferenceChunk, ReferenceQuality } from "./types";
 
 const PDF_METADATA_PATTERNS = [
-  /\bChromium\b/i,
-  /\bSkia\/PDF\b/i,
   /^\s*(?:Producer|Creator|CreationDate|ModDate|CIDFont|ToUnicode|FontDescriptor)\s*:?.*$/i,
 ];
 
@@ -24,15 +22,8 @@ export function cleanReferenceText(text: string): { text: string; warnings: stri
       return true;
     });
 
-  const seen = new Set<string>();
-  const deduped = lines.filter((line) => {
-    const key = line.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  return { text: deduped.join("\n"), warnings: [...warnings] };
+  // Repeated lines can be real table values or requirements. Preserve evidence.
+  return { text: lines.join("\n"), warnings: [...warnings] };
 }
 
 export function assessReferenceQuality(input: {

@@ -297,7 +297,7 @@ describe("reference extractors", () => {
     const source = readFileSync(new URL("../src/react-app/domains/session/references/extractors/pdf.ts", import.meta.url), "utf8");
 
     expect(source).toContain('import("pdfjs-dist/legacy/build/pdf.mjs")');
-    expect(source).toContain('import("pdfjs-dist/legacy/build/pdf.worker.mjs?url")');
+    expect(source).toContain('new URL("pdfjs-dist/legacy/build/pdf.worker.mjs", import.meta.url).href');
     expect(source).not.toContain('import("pdfjs-dist")');
     expect(source).not.toContain('import("pdfjs-dist/build/pdf.worker.mjs?url")');
   });
@@ -487,6 +487,69 @@ describe("reference extractors", () => {
 });
 
 describe("reference ingestion router", () => {
+  test("prefills explicit JSON fields and combines requirements from multiple files", async () => {
+    const first = await ingestReferenceFile(new File([JSON.stringify({ title: "秋季产品发布", audience: "设计团队", requirements: "展示自动排版与导出。" })], "brief.json", { type: "application/json" }));
+    const second = await ingestReferenceFile(new File(["# 补充资料\n受众：设计团队\n需求：保留实际定价与客户案例，不虚构任何数字。"], "extra.md", { type: "text/markdown" }));
+    const brief = inferTemplateBriefFromIngestions([first, second]);
+    expect(brief.title).toBe("秋季产品发布");
+    expect(brief.audience).toBe("设计团队");
+    expect(brief.details).toContain("展示自动排版与导出。");
+    expect(brief.details).toContain("保留实际定价与客户案例");
+  });
+  test("preserves later sections and complete structured records in the shared JSON", async () => {
+    const files = [
+      new File(["Launch requirements. ".repeat(800) + "FINAL_EVIDENCE_42"], "long.txt", { type: "text/plain" }),
+      new File(["name,value\n" + Array.from({ length: 40 }, (_, index) => `record${index},${index}`).join("\n")], "table.csv", { type: "text/csv" }),
+      new File([JSON.stringify({ records: Array.from({ length: 40 }, (_, index) => ({ index, description: "x".repeat(300) })) })], "records.json", { type: "application/json" }),
+    ];
+    const references: TemplateReferenceItem[] = [];
+    for (const file of files) {
+      const ingestion = await ingestReferenceFile(file);
+      references.push({ id: ingestion.id, file, fileName: file.name, mimeType: ingestion.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion });
+    }
+    const payload = await buildTemplateReferenceSubmitPayload(references);
+    const context = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(context.files).toHaveLength(3);
+    expect(context.files[0].text).toEndWith("FINAL_EVIDENCE_42");
+    expect(context.files[1].structuredData.rows.at(-1)).toEqual(["record39", "39"]);
+    expect(context.files[2].structuredData.records[39].description).toHaveLength(300);
+    expect(payload.attachments[0]?.delivery).toBe("workspace");
+    expect(payload.contextPack.promptText).toContain("using file tools before generating");
+  });
+
+  test("preserves repeated source evidence and mentions of Chromium", () => {
+    const text = "Chromium browser adoption\nOwner: Alice\nOwner: Alice";
+    expect(cleanReferenceText(text).text).toBe(text);
+  });
+
+  test("reports monotonic parsing progress, metadata and failed-file completion", async () => {
+    const progress: number[] = [];
+    const result = await ingestReferenceFile(new File([createTextPdf("Audience: Enterprise product teams with a new launch.")], "readable.pdf", { type: "application/pdf" }), (value) => progress.push(value));
+    expect(progress[0]).toBe(0);
+    expect(progress.at(-1)).toBe(100);
+    expect(progress).toEqual([...progress].sort((a, b) => a - b));
+    expect(result.metadata?.pages).toBe(1);
+    const failedProgress: number[] = [];
+    await ingestReferenceFile(new File(["{"], "broken.json", { type: "application/json" }), (value) => failedProgress.push(value));
+    expect(failedProgress.at(-1)).toBe(100);
+  });
+
+  test("does not allow a partially parsed reference batch to be submitted", async () => {
+    const file = new File(["pending"], "pending.txt", { type: "text/plain" });
+    await expect(buildTemplateReferenceSubmitPayload([{ id: "pending", file, fileName: file.name, mimeType: file.type, size: file.size, status: "parsing", sendOriginal: false }])).rejects.toThrow("Wait for reference parsing");
+    expect((await buildTemplateReferenceSubmitPayload([])).attachments).toEqual([]);
+  });
+
+  test("keeps an image's extraction limitation in the JSON without inventing text", async () => {
+    const file = new File(["image"], "image.png", { type: "image/png" });
+    const ingestion = await ingestReferenceFile(file);
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, mimeType: file.type, size: file.size, status: "failed", sendOriginal: false, ingestion }]);
+    const context = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(context.files[0].text).toBe("");
+    expect(context.files[0].quality).toBe("failed");
+    expect(context.files[0].warnings.join(" ")).toContain("OCR is not available");
+  });
+
   test("does not send original source files unless opt in is selected", async () => {
     const file = new File([
       "Audience: team\nRequirements: provide a concise, source-grounded template brief for the upcoming review.",
@@ -505,12 +568,16 @@ describe("reference ingestion router", () => {
 
     const defaultPayload = await buildTemplateReferenceSubmitPayload([reference]);
     expect(defaultPayload.contextPack.promptText).toContain("source.txt");
-    expect(defaultPayload.attachments).toEqual([]);
+    expect(defaultPayload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json"]);
+    const context = JSON.parse(await defaultPayload.attachments[0]!.file.text());
+    expect(context.schemaVersion).toBe(1);
+    expect(context.files[0].text).toBe(result.extractedText);
+    expect(context.files[0].originalAttached).toBe(false);
     expect(result.sourceMode).toBe("memory");
 
     const optInPayload = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
-    expect(optInPayload.attachments).toHaveLength(1);
-    expect(optInPayload.attachments[0]?.name).toBe("source.txt");
+    expect(optInPayload.attachments).toHaveLength(2);
+    expect(optInPayload.attachments[1]?.name).toBe("source.txt");
   });
 
   test("ignores original-file opt in when a reference exceeds the attachment limit", async () => {
@@ -530,7 +597,10 @@ describe("reference ingestion router", () => {
 
     const payload = await buildTemplateReferenceSubmitPayload([reference]);
 
-    expect(payload.attachments).toEqual([]);
+    expect(payload.attachments.map((attachment) => attachment.name)).toEqual(["reference-context.json"]);
+    const context = JSON.parse(await payload.attachments[0]!.file.text());
+    expect(context.files[0].quality).toBe("failed");
+    expect(context.files[0].originalAttached).toBe(false);
   });
 
   test("accepts existing reference file types", () => {
