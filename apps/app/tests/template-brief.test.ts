@@ -145,8 +145,8 @@ describe("template brief", () => {
     expect(video).toContain("Decide whether narration materially helps");
     expect(video).toContain("content-led storyboard");
     expect(video).toContain("add, remove, reorder, or retime scenes");
-    expect(video).toContain("preserve its current theme as the visual source of truth");
-    expect(video).toContain("do not change the managed theme block");
+    expect(video).toContain("If brief.style is empty, preserve the template theme");
+    expect(video).toContain("/* ipw-theme:start */");
     expect(video).not.toContain("colorPalette");
     expect(app).toContain("build the complete prototype");
     expect(app).toContain("or turn it into a marketing website");
@@ -200,7 +200,7 @@ describe("template brief", () => {
       briefPath: "design/ses_morrow/brief.json",
     });
 
-    expect(prompt.length).toBeLessThan(2_200);
+    expect(prompt.length).toBeLessThan(2_500);
     expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
     expect(prompt).toContain("Apply it now in this turn");
     expect(prompt).toContain("Do not reply only with confirmation");
@@ -436,7 +436,14 @@ describe("template brief", () => {
 
 test.each(["site", "app", "slides", "poster", "cards", "report", "article", "video", "other", "resume"] as const)("%s template honors editable brief style", (category) => {
   const prompt = templateBriefPrompt({ template: { category, title: "Reference style", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
-  expect(prompt).toContain("User brief.style overrides editable styling");
-  expect(prompt).toContain("When brief.style is non-empty, apply it consistently through design-tokens.css");
-  expect(prompt).toContain("never fixed-brand nodes");
+  expect(prompt).toContain("Reference/brief.style sets INITIAL defaults only");
+  expect(prompt).toContain("later user theme/token edits win");
+  expect(prompt).toContain("Preserve fixed-brand assets");
+});
+
+
+test.each(["ipollowork.wechat-article", `${ARTIFACT_DELIVERY_ID_PREFIX}slides`])("%s also treats reference colors as replaceable defaults", (id) => {
+  const prompt = templateBriefPrompt({ template: { id, category: "slides", title: "Example", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
+  expect(prompt).toContain("Reference/brief.style sets INITIAL defaults only");
+  expect(prompt).toContain("No hardcoded theme colors");
 });
