@@ -1,10 +1,39 @@
+import { CreativeContextSchema } from "@ipollowork/types/reference-context";
+import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import { ingestReferenceFile } from "../src/react-app/domains/session/references/ingestion";
 import { describe, expect, test } from "bun:test";
 import {
   persistedAttachmentInstruction,
   persistComposerAttachments,
+  draftToParts,
 } from "../src/react-app/shell/session-prompt";
 
 describe("composer attachment persistence", () => {
+  test("reference upload rejects lower server limits and invalid manifests before publishing", async () => {
+    let uploads = 0;
+    const file = new File(['{"storage":"json-string-parts"}'], "reference-context.json");
+    const attachment = { id: "context", name: file.name, file, size: file.size, mimeType: "application/json", kind: "file" as const, delivery: "workspace" as const };
+    const uploadInbox = async () => { uploads++; return { path: "unexpected" }; };
+    await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox, capabilities: async () => ({ toolProviders: { files: { maxBytes: 1 } } }) } })).rejects.toThrow("超过当前服务器附件上限");
+    await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox } })).rejects.toThrow();
+    expect(uploads).toBe(0);
+  });
+  test("workspace-only context files must persist and do not consume inline model context", async () => {
+    const attachment = {
+      id: "context",
+      name: "reference-context.json",
+      mimeType: "application/json",
+      size: 2,
+      kind: "file" as const,
+      delivery: "workspace" as const,
+      file: new File(["{}"], "reference-context.json", { type: "application/json" }),
+    };
+    for (const uploadInbox of [async () => { throw new Error("upload failed"); }, async () => ({ path: "" })]) {
+      await expect(persistComposerAttachments({ attachments: [attachment], workspaceId: "ws", sessionId: "session", client: { uploadInbox } })).rejects.toThrow();
+    }
+    const parts = await draftToParts({ text: "Use my references", parts: [{ type: "text", text: "Use my references" }], attachments: [attachment] }, "/workspace", { getState: () => ({ selections: {} }) }, undefined, { supportsNativeAttachments: false });
+    expect(parts).toEqual([{ type: "text", text: "Use my references" }]);
+  });
   test("uploads attachments into a session-scoped workspace inbox path", async () => {
     const calls: Array<{ workspaceId: string; path?: string }> = [];
     const attachment = {
@@ -58,4 +87,42 @@ describe("composer attachment persistence", () => {
     expect(items).toEqual([]);
     expect(persistedAttachmentInstruction(items)).toBeNull();
   });
+});
+
+
+test("reference uploads keep at most three requests active and preserve order", async () => {
+  let active = 0, peak = 0;
+  const attachments = Array.from({ length: 8 }, (_, index) => ({ id: String(index), name: `${index}.txt`, mimeType: "text/plain", size: 4, kind: "file" as const, file: new File(["text"], `${index}.txt`), delivery: "workspace" as const }));
+  const items = await persistComposerAttachments({ attachments, workspaceId: "ws", sessionId: "session", client: { uploadInbox: async (_workspace, _file, options) => {
+    peak = Math.max(peak, ++active);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    active--;
+    return { path: options!.path! };
+  } } });
+  expect(peak).toBe(3);
+  expect(items.map((item) => item.attachmentId)).toEqual(attachments.map((item) => item.id));
+});
+
+
+test("Creative Context publishes only after its dependencies and binds all local media paths", async () => {
+  const file = new File(["Product reference with sufficient detail for generation."], "source.txt");
+  const ingestion = await ingestReferenceFile(file);
+  ingestion.assets!.push({ kind: "image", sourcePart: "page 1", path: "photo.png", file: new File(["photo"], "photo.png") });
+  const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, size: file.size, mimeType: ingestion.mimeType, status: "ready", sendOriginal: false, ingestion }]);
+  const uploaded = new Map<string, File>();
+  const saved = await persistComposerAttachments({ attachments: [...payload.attachments].reverse(), workspaceId: "ws", sessionId: "session", client: {
+    uploadInbox: async (_workspaceId, file, options) => {
+      if (file.name === "creative-context.json") {
+        expect(uploaded.has("reference-context.json")).toBe(true);
+        expect([...uploaded.keys()]).toContain("photo.png");
+      }
+      uploaded.set(file.name, file);
+      return { path: options!.path! };
+    },
+  } });
+  const context = CreativeContextSchema.parse(JSON.parse(await uploaded.get("creative-context.json")!.text()));
+  expect(context.assets[0]?.file?.workspacePath).toBe(saved.find((item) => item.name.endsWith("photo.png"))?.workspacePath);
+  expect(context.sources[0]?.original?.workspacePath).toBe(saved.find((item) => item.name.endsWith("source.txt"))?.workspacePath);
+  expect(persistedAttachmentInstruction(saved)).not.toContain("- reference-1-asset-");
+  await expect(persistComposerAttachments({ attachments: payload.attachments.filter((item) => !item.name.endsWith("photo.png")), workspaceId: "ws", sessionId: "missing", client: { uploadInbox: async (_workspaceId, _file, options) => ({ path: options!.path! }) } })).rejects.toThrow("缺少已上传文件");
 });

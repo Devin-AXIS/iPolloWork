@@ -394,7 +394,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('t("templates.brief.destination_description")');
     expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
     expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
-    expect(source).toContain('t("templates.brief.supplemental_information")');
+    expect(source).toContain('t("templates.brief.reference_question")');
     expect(source).toContain("REFERENCE_FILE_ACCEPT");
     expect(source).toContain('t("templates.brief.upload_file")');
     expect(source).toContain('t("templates.brief.reference_supported_formats")');
@@ -453,7 +453,7 @@ describe("session output issue regressions", () => {
     expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
     expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
     expect(initialProjectSource).not.toContain("modelSafeAttachments");
-    expect(initialProjectSource).toContain("ingestReferenceFile(item.file)");
+    expect(initialProjectSource).toContain("ingestReferenceFile(item.file,");
     expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
     expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
     expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
@@ -632,9 +632,9 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
     expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
     expect(sidePanelSource).toContain('if (tab.type === "video") return <SquarePlay');
-    expect(sidePanelSource).toContain('tab.surface.pluginId === "image-studio"');
+    expect(sidePanelSource).toContain('mediaStudioEngine(tab.surface) === "image-studio"');
     expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
-    expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<Images className="size-[18px]" />');
     expect(sidePanelSource).not.toContain("WebkitMaskImage");
     expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
     expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
@@ -647,7 +647,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("designOpen");
     expect(sessionPageSource).toContain("filesOpen");
     expect(sessionPageSource).toContain("videoOpen");
-    expect(sessionPageSource).toContain('tab.type === "workspace-app" && tab.surface.id === surface.id');
+    expect(sessionPageSource).toContain('tab.id === workspaceAppTabId(surface)');
     expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
     expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
     expect(sidePanelSource).not.toContain('text-[#666666]');

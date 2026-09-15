@@ -8,6 +8,7 @@ import {
 } from "./ipollowork-extensions-preview-connect-steering.js";
 import {
   ENGINE_BROWSER_INSTRUCTION,
+  ENGINE_VIDEO_GENERATION_INSTRUCTION,
   ENGINE_HOST_TOOL_NAMES,
   engineHostTool,
   type EngineHostToolName,
@@ -713,6 +714,7 @@ export const iPolloWorkExtensionsPreview = async () => {
     output.system.push(await resolveiPolloWorkExtensionDiscoveryInstruction());
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
     output.system.push(ENGINE_BROWSER_INSTRUCTION);
+    output.system.push(ENGINE_VIDEO_GENERATION_INSTRUCTION);
     output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
     output.system.push(engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview));
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);

@@ -5,6 +5,7 @@ import type { TodoItem } from "@/app/types";
 import { t } from "@/i18n";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import { useQueryCacheState } from "@/react-app/infra/query-cache-state";
+import { useSessionActivityStore } from "../status/session-activity-store";
 import { describeRouteError } from "@/react-app/shell/route-workspaces";
 import {
   permissionKey,
@@ -65,45 +66,45 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
   );
   const todos = useQueryCacheState<TodoItem[]>(todoQueryKey, emptyTodos);
 
-  useEffect(() => {
-    if (!connection || !workspaceId || !sessionId) return;
-    let cancelled = false;
-    const directory = workspaceRoot || undefined;
-    void (async () => {
-      const snapshotStartedAt = Date.now();
-      try {
-        const list = await connection.listPermissions({ sessionId, directory });
-        if (!cancelled) {
-          seedPermissionState(workspaceId, sessionId, list, { snapshotStartedAt });
-        }
-      } catch {
-        // Keep event-synced permission state if the snapshot read fails.
-        // Hiding a pending approval can block the running task.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [connection, sessionId, workspaceId, workspaceRoot]);
+  const [interactionsRefreshing, setInteractionsRefreshing] = useState(false);
+  const refreshRef = useRef<(() => Promise<void>) | null>(null);
+  const refreshInteractions = useCallback(() => refreshRef.current?.(), []);
 
   useEffect(() => {
     if (!connection || !workspaceId || !sessionId) return;
     let cancelled = false;
+    let inFlight: Promise<void> | null = null;
     const directory = workspaceRoot || undefined;
-    void (async () => {
+    const refresh = () => {
+      if (inFlight) return inFlight;
+      setInteractionsRefreshing(true);
       const snapshotStartedAt = Date.now();
-      try {
-        const list = await connection.listQuestions({ sessionId, directory });
-        if (!cancelled) {
-          seedQuestionState(workspaceId, sessionId, list, { snapshotStartedAt });
-        }
-      } catch {
-        // Keep event-synced question state if the snapshot read fails.
-        // Hiding a pending question can block the running task.
-      }
-    })();
+      inFlight = Promise.allSettled([
+        connection.listPermissions({ sessionId, directory }).then((list) => {
+          if (!cancelled) seedPermissionState(workspaceId, sessionId, list, { snapshotStartedAt });
+        }),
+        connection.listQuestions({ sessionId, directory }).then((list) => {
+          if (!cancelled) seedQuestionState(workspaceId, sessionId, list, { snapshotStartedAt });
+        }),
+      ]).then(() => {}).finally(() => {
+        inFlight = null;
+        if (!cancelled) setInteractionsRefreshing(false);
+      });
+      return inFlight;
+    };
+    refreshRef.current = refresh;
+    void refresh();
+    const timer = setInterval(() => {
+      const status = useSessionActivityStore.getState().getStatus(workspaceId, sessionId);
+      if (["thinking", "responding", "compacting", "waiting"].includes(status)) void refresh();
+    }, 5_000);
+    const onFocus = () => { void refresh(); };
+    window.addEventListener("focus", onFocus);
     return () => {
       cancelled = true;
+      refreshRef.current = null;
+      clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
     };
   }, [connection, sessionId, workspaceId, workspaceRoot]);
 
@@ -126,6 +127,8 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
           permissionKey(workspaceId, sessionId),
           (current = []) => current.filter((permission) => permission.id !== requestID),
         );
+
+        useSessionActivityStore.getState().setWaitingRequest(workspaceId, sessionId, "permission", requestID, false);
 
         // Apply the task-wide grant to requests already waiting alongside this
         // one. Never persist a session choice as a workspace/global folder rule.
@@ -175,6 +178,7 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
           questionKey(workspaceId, sessionId),
           (current = []) => current.filter((question) => question.id !== requestID),
         );
+        useSessionActivityStore.getState().setWaitingRequest(workspaceId, sessionId, "question", requestID, false);
       } catch (error) {
         toast.error(t("app.error_request_failed"), {
           description: describeRouteError(error),
@@ -188,6 +192,8 @@ export function useSessionInteractions(input: UseSessionInteractionsInput) {
   );
 
   return {
+    refreshInteractions,
+    interactionsRefreshing,
     activePermission,
     permissionReplyBusy,
     respondPermission,

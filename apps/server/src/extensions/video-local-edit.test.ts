@@ -5,11 +5,21 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
+import { inspectNarrationDuration, mixAvatarNarration, inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
 import type { ServerConfig } from "../types.js";
 const exec = promisify(execFile);
 const roots: string[] = [];
+test("transparent avatar WebM keeps its alpha channel after editing", async () => {
+  const { root, config, workspace, edit } = await fixture();
+  const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";
+  await exec(ffmpeg, ["-v", "error", "-f", "lavfi", "-i", "color=c=green:s=64x64:r=10:d=1", "-vf", "format=rgba,colorkey=0x008000:0.1:0.1", "-c:v", "libvpx-vp9", "-pix_fmt", "yuva420p", "-threads", "1", join(root, "person.webm")], { windowsHide: true });
+  const info = await inspectLocalVideo(workspace, "person.webm");
+  const saved = await saveLocalVideo(config, workspace, "session", { ...edit, path: "person.webm", revision: info.revision, start: 0, end: .5, rotation: 0, speed: 1, crop: { x: 0, y: 0, width: 1, height: 1 } });
+  const alpha = await exec(ffmpeg, ["-v", "error", "-c:v", "libvpx-vp9", "-i", join(root, saved.path), "-vf", "alphaextract", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], { encoding: "buffer", windowsHide: true });
+  expect(alpha.stdout.length).toBe(64 * 64);
+  expect(Math.max(...alpha.stdout)).toBeLessThan(10);
+});
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-local-video-test-")); roots.push(root);
@@ -76,3 +86,21 @@ test("overwrite changes the same file, is retry-safe and rejects stale or read-o
   await writeFile(join(workspace.path,"source.mp4"),"changed");
   await expect(saveLocalVideo(config,workspace,"session",overwrite)).rejects.toThrow("发生了变化");
 },30000);
+
+test("avatar narration mixing preserves gaps, offsets and exact output duration", async()=>{
+  const {root,workspace}=await fixture();
+  await exec(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v","error","-f","lavfi","-i","sine=frequency=400:duration=5","-ac","2","-c:a","pcm_s16le",join(root,"voice.wav")],{windowsHide:true});
+  await mixAvatarNarration(workspace,[{path:"voice.wav",start:0,duration:2,offset:1,volume:1},{path:"voice.wav",start:3,duration:1.2,offset:0,volume:.5}],"mixed.wav",4.2);
+  expect(await inspectNarrationDuration(workspace,"mixed.wav")).toBeCloseTo(4.2,2);
+  const raw=await exec(process.env.HYPERFRAMES_FFMPEG_PATH||"ffmpeg",["-v","error","-i",join(root,"mixed.wav"),"-ss","2.1","-t","0.5","-ac","1","-f","s16le","pipe:1"],{encoding:"buffer",windowsHide:true});
+  expect(raw.stdout.every(byte=>byte===0)).toBe(true);
+  const rms = async (path: string, start: number) => {
+    const { stdout } = await exec(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v","error","-i",join(root,path),"-ss",String(start),"-t","0.5","-ac","1","-ar","24000","-f","f32le","pipe:1"], { encoding:"buffer", windowsHide:true });
+    let squares = 0;
+    for (let i = 0; i < stdout.length; i += 4) squares += stdout.readFloatLE(i) ** 2;
+    return Math.sqrt(squares / (stdout.length / 4));
+  };
+  const sourceLevel = await rms("voice.wav", 1.2);
+  expect(await rms("mixed.wav", .2) / sourceLevel).toBeCloseTo(1, 2);
+  expect(await rms("mixed.wav", 3.2) / sourceLevel).toBeCloseTo(.5, 2);
+});

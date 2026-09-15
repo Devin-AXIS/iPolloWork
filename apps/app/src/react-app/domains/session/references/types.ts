@@ -1,4 +1,27 @@
+import type { ReferenceDesign } from "@ipollowork/types/reference-context";
+
+export type ReferenceStyle = {
+  fonts: string[];
+  colors: string[];
+  backgrounds: string[];
+  fontSizesPt: number[];
+  sourceParts: string[];
+  design?: ReferenceDesign;
+};
+
 export type ReferenceQuality = "high" | "medium" | "low" | "failed";
+
+/** Binary content stays outside the JSON; the submitter supplies its attachment name. */
+export type ReferenceAsset = {
+  sourcePart: string;
+  path: string;
+  kind: "image" | "video" | "audio" | "embedded" | "document" | "link";
+  page?: number;
+  description?: string;
+  external?: boolean;
+  file?: File;
+  media?: { width?: number; height?: number; durationSeconds?: number; frameTimeSeconds?: number };
+};
 
 export type ReferenceChunk = {
   id: string;
@@ -21,6 +44,12 @@ export type ReferenceIngestionResult = {
   chunks: ReferenceChunk[];
   quality: ReferenceQuality;
   warnings: string[];
+  metadata?: ExtractedReferenceContent["metadata"];
+  structuredData?: unknown;
+  style?: ReferenceStyle;
+  rawText?: string;
+  assets?: ReferenceAsset[];
+  coverage?: { text: "complete" | "partial" | "none"; visuals: "pending" | "none" | "not-supported" };
 };
 
 export type TemplateReferenceItem = {
@@ -32,6 +61,8 @@ export type TemplateReferenceItem = {
   status: "parsing" | "ready" | "weak" | "failed";
   sendOriginal: boolean;
   ingestion?: ReferenceIngestionResult;
+  progress?: number;
+  progressDetail?: string;
 };
 
 export type ReferenceContextPack = {
@@ -43,8 +74,15 @@ export type ReferenceContextPack = {
 
 export type ExtractedReferenceContent = {
   text: string;
+  rawText?: string;
+  /** Raw evidence for quality scoring, excluding generated profile labels. */
+  qualityText?: string;
+  assets?: ReferenceAsset[];
+  coverage?: ReferenceIngestionResult["coverage"];
   chunks?: ReferenceChunk[];
   warnings?: string[];
+  structuredData?: unknown;
+  style?: ReferenceStyle;
   metadata?: {
     pages?: number;
     rows?: number;
@@ -52,6 +90,8 @@ export type ExtractedReferenceContent = {
     headings?: string[];
   };
 };
+
+export type ReferenceProgress = (percent: number, detail?: string) => void;
 
 export type PromptPackOptions = {
   maxSummaryChars?: number;

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -723,14 +723,21 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"));
   });
 
-  test("projects bundled Design and Video packages into DeepSeek Harness skills", async () => {
+  test.each(["opencode", "deepseek-harness", "codex-harness"])("projects bundled Design and Video packages into %s skills", async (engineId) => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
     const config = serverConfig(workspaceRoot);
     const workspace = config.workspaces[0];
     if (!workspace) throw new Error("Test workspace is missing");
-    workspace.engineId = "deepseek-harness";
+    workspace.engineId = engineId;
+    const skillDirectory = engineId === "opencode" ? ".opencode" : engineId === "deepseek-harness" ? ".dsh" : ".agents";
     const packages = [
+      {
+        id: "reference-context",
+        root: fileURLToPath(new URL("../../../examples/plugin-packages/reference-context", import.meta.url)),
+        skill: "ipollowork-reference-analyzer",
+        heading: "# Reference context workflow",
+      },
       {
         id: "design-agent",
         root: fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url)),
@@ -750,9 +757,54 @@ describe("plugin package lifecycle", () => {
         serverConfig: config,
         packageRoot: item.root,
       });
-      expect(await readFile(join(workspaceRoot, ".dsh", "skills", item.skill, "SKILL.md"), "utf8"))
+      expect(await readFile(join(workspaceRoot, skillDirectory, "skills", item.skill, "SKILL.md"), "utf8"))
         .toContain(item.heading);
+      if (item.id === "reference-context") {
+        expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).map((entry) => entry.pluginId)).toEqual(["reference-context"]);
+      }
     }
+    const sharedSkill = join(workspaceRoot, skillDirectory, "skills", "ipollowork-reference-analyzer", "SKILL.md");
+    for (const pluginId of ["video-agent", "design-agent"]) {
+      await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: false });
+      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
+      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId });
+      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
+    }
+  });
+
+  test.each([true, false])("shared reference Skill survives startup migration and Video uninstall (enabled=%s)", async (enabled) => {
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const workspaceRoot = await createRoot("ipollowork-shared-reference-migration-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    const legacyRoot = await createRoot("ipollowork-legacy-video-reference-");
+    const videoRoot = fileURLToPath(new URL("../../../examples/plugin-packages/video-agent", import.meta.url));
+    const sharedRoot = fileURLToPath(new URL("../../../examples/plugin-packages/reference-context", import.meta.url));
+    const skillText = await readFile(join(sharedRoot, "skills", "ipollowork-reference-analyzer", "SKILL.md"), "utf8");
+    await cp(videoRoot, legacyRoot, { recursive: true });
+    const manifest = JSON.parse(await readFile(join(legacyRoot, "ipollowork.plugin.json"), "utf8"));
+    manifest.package.version = "0.3.3";
+    manifest.resources.push({ type: "skill", id: "reference-analyzer", label: "Reference", path: "skills/reference-analyzer/SKILL.md", required: true });
+    await writeFile(join(legacyRoot, "ipollowork.plugin.json"), JSON.stringify(manifest), "utf8");
+    await mkdir(join(legacyRoot, "skills", "reference-analyzer"), { recursive: true });
+    await writeFile(join(legacyRoot, "skills", "reference-analyzer", "SKILL.md"), skillText.replace("name: ipollowork-reference-analyzer", "name: reference-analyzer"), "utf8");
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: legacyRoot });
+    await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "video-agent", enabled });
+    const server = await startServer(config);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers: { authorization: "Bearer token" } });
+      expect(response.status).toBe(200);
+      const sharedPath = join(workspaceRoot, ".opencode", "skills", "ipollowork-reference-analyzer", "SKILL.md");
+      expect(await readFile(sharedPath, "utf8")).toBe(skillText);
+      await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
+      const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
+      expect(installed).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId: "video-agent", version: "0.3.4", enabled }),
+        expect.objectContaining({ pluginId: "reference-context", enabled: true }),
+      ]));
+      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
+      expect(await readFile(sharedPath, "utf8")).toBe(skillText);
+    } finally { await server.stop(); }
   });
 
   test("shares one installed package inventory across OpenCode and DeepSeek Harness projects", async () => {
@@ -1654,7 +1706,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
           { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
+          { pluginId: "reference-context", version: "0.1.1", installedVersion: "0.1.1", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.0", installedVersion: "1.0.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
@@ -1856,6 +1909,7 @@ describe("plugin package lifecycle", () => {
     const videoDirectory = join(workspaceRoot, "video", "existing-session");
     const designEntry = join(designDirectory, "entry.html");
     const videoEntry = join(videoDirectory, "index.html");
+    const sharedSkill = join(workspaceRoot, ".opencode", "skills", "ipollowork-reference-analyzer", "SKILL.md");
     const videoSupportSkill = join(workspaceRoot, ".opencode", "skills", "hyperframes-cli", "SKILL.md");
     await mkdir(designDirectory, { recursive: true });
     await mkdir(videoDirectory, { recursive: true });
@@ -1875,7 +1929,7 @@ describe("plugin package lifecycle", () => {
       },
       {
         pluginId: "video-agent",
-        version: "0.3.2",
+        version: "0.3.4",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },
@@ -1891,6 +1945,7 @@ describe("plugin package lifecycle", () => {
           enabled: true,
         })),
       ));
+      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
       for (const item of packages) {
         expect(await readFile(item.skillPath, "utf8")).toContain(item.heading);
       }
@@ -1928,6 +1983,7 @@ describe("plugin package lifecycle", () => {
       expect(videoSkillEnabled.status).toBe(200);
       expect(await readFile(videoSupportSkill, "utf8")).toContain("# HyperFrames CLI");
 
+      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
       for (const item of packages) {
         const removal = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/${item.pluginId}`, {
           method: "DELETE",
@@ -1943,6 +1999,7 @@ describe("plugin package lifecycle", () => {
       expect((await afterRemoval.json()).items.map((item: { pluginId: string }) => item.pluginId))
         .not.toEqual(expect.arrayContaining(packages.map((item) => item.pluginId)));
 
+      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
       for (const item of packages) {
         const installation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${item.pluginId}/install`, {
           method: "POST",

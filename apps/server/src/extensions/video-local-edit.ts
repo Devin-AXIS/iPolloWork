@@ -13,6 +13,33 @@ import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifact
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
 
 const execute = promisify(execFile);
+export async function avatarCutoutCli() {
+  const cli = process.env.HYPERFRAMES_CLI_PATH;
+  if (!cli || !(await stat(cli).catch(() => null))?.isFile()) {
+    throw new ApiError(503, "avatar_cutout_unavailable", "人物抠像工具未就绪，请完整重启软件后重试；自托管服务需要配置 HYPERFRAMES_CLI_PATH。");
+  }
+  return cli;
+}
+export async function removeAvatarBackground(input: string, output: string, signal: AbortSignal) {
+  const cli = await avatarCutoutCli();
+  // The raw input lives in renders/, which Studio excludes from its asset list.
+  // Publish only the finished WebM so browsers never cache a partial header.
+  const partial = join(dirname(input), `.${basename(output)}.${randomUUID()}.webm`);
+  try {
+    await execute(process.execPath, [cli, "remove-background", input, "--output", partial, "--quality", "balanced", "--json"], {
+      windowsHide: true, timeout: 30 * 60_000, signal, maxBuffer: 1024 * 1024,
+      env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+    });
+    const info = await stat(partial);
+    if (!info.size) throw new Error("人物抠像结果为空。");
+    await rename(partial, output);
+  } catch (error) {
+    if (signal.aborted) throw error;
+    throw new ApiError(422, "avatar_cutout_failed", "数字人视频已生成，但人物抠像未完成。请检查本地抠像工具和模型下载网络后重试保存，无需重新生成。");
+  } finally {
+    await unlink(partial).catch(() => undefined);
+  }
+}
 const MAX_BYTES = MAX_VIDEO_MEDIA_BYTES;
 const active = new Set<string>();
 const activeRequests = new Set<string>();
@@ -25,7 +52,7 @@ export const localVideoEditSchema = z.object({
   speed: z.number().min(.5).max(2), volume: z.number().min(0).max(1), crop: cropSchema,
 }).strict().refine(value => value.end - value.start >= .1, "保留时长至少为 0.1 秒。");
 type Edit = z.infer<typeof localVideoEditSchema>;
-const probeSchema = z.object({ streams: z.array(z.object({ codec_type: z.string(), width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number().positive().max(3600) }) });
+const probeSchema = z.object({ streams: z.array(z.object({ codec_type: z.string(), codec_name: z.string().optional(), width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number().positive().max(3600) }) });
 const receiptSchema = z.object({ fingerprint: z.string(), path: z.string(), resultHash: z.string(), completed: z.boolean() });
 const binary = (name: "ffmpeg" | "ffprobe") => process.env[name === "ffmpeg" ? "HYPERFRAMES_FFMPEG_PATH" : "HYPERFRAMES_FFPROBE_PATH"]?.trim() || name;
 const hashText = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -35,7 +62,7 @@ async function hashFile(path: string) {
   return hash.digest("hex");
 }
 async function videoFile(workspace: WorkspaceInfo, path: string) {
-  if (!safeVideoMediaPath(path) || !/\.(mp4|mov)$/i.test(path)) throw new ApiError(400, "video_invalid_path", "请选择工作区内的 MP4 或 MOV 视频。");
+  if (!safeVideoMediaPath(path) || !/\.(mp4|mov|webm)$/i.test(path)) throw new ApiError(400, "video_invalid_path", "请选择工作区内的 MP4、MOV 或 WebM 视频。");
   // Check ancestry as well as the file: a newly created output may not exist yet.
   await resolveWithinRoot(workspace.path, dirname(path));
   const absolute = await realpath(await resolveWithinRoot(workspace.path, path));
@@ -55,11 +82,11 @@ async function runBinary(name: "ffmpeg" | "ffprobe", args: string[], timeout: nu
 }
 export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string) {
   const source = await videoFile(workspace, path);
-  const result = await runBinary("ffprobe", ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "stream=codec_type,width,height:format=duration", "-of", "json", source.absolute], 15000);
+  const result = await runBinary("ffprobe", ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", source.absolute], 15000);
   const metadata = probeSchema.parse(JSON.parse(result.stdout));
   const video = metadata.streams.find(stream => stream.codec_type === "video");
   if (!video?.width || !video.height || video.width * video.height > 3840 * 2160) throw new ApiError(400, "video_dimensions", "请选择分辨率不超过 4K 的视频。");
-  return { path, bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
+  return { path, bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, codec: video.codec_name, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
 }
 export function localVideoFilters(edit: Edit) {
   const { crop } = edit;
@@ -130,9 +157,12 @@ export async function saveLocalVideo(config: ServerConfig, workspace: WorkspaceI
     if (edit.mode === "copy" && await stat(destination).then(() => true, error => { if (error.code === "ENOENT") return false; throw error; })) throw new ApiError(409, "video_output_exists", "输出文件已存在，未覆盖已有文件。");
     temporary = join(dirname(destination), `.${basename(output)}.${randomUUID()}.partial${extension}`);
     const filters = localVideoFilters(edit);
-    await runBinary("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file,pipe", "-ss", String(edit.start), "-i", source.absolute,
-      "-t", String((edit.end - edit.start) / edit.speed), "-map", "0:v:0", ...(metadata.hasAudio && edit.volume ? ["-map", "0:a:0", "-af", filters.audio, "-c:a", "aac"] : ["-an"]),
-      "-vf", filters.video, "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-threads", "2", "-filter_threads", "1", "-pix_fmt", "yuv420p", "-movflags", "+faststart", "-fs", String(MAX_BYTES), temporary], 120000);
+    const webm = extension.toLowerCase() === ".webm";
+    const decoder = webm && metadata.codec === "vp9" ? "libvpx-vp9" : webm && metadata.codec === "vp8" ? "libvpx" : null;
+    await runBinary("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file,pipe", "-ss", String(edit.start), ...(decoder ? ["-c:v", decoder] : []), "-i", source.absolute,
+      "-t", String((edit.end - edit.start) / edit.speed), "-map", "0:v:0", ...(metadata.hasAudio && edit.volume ? ["-map", "0:a:0", "-af", filters.audio, "-c:a", webm ? "libopus" : "aac"] : ["-an"]),
+      "-vf", filters.video, ...(webm ? ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", "20", "-pix_fmt", "yuva420p", "-metadata:s:v:0", "alpha_mode=1"] : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart"]),
+      "-threads", "2", "-filter_threads", "1", "-fs", String(MAX_BYTES), temporary], 120000);
     const resultInfo = await stat(temporary);
     if (!resultInfo.size || resultInfo.size >= MAX_BYTES) throw new ApiError(413, "video_output_size", "输出视频超过大小限制，原文件未覆盖。");
     if ((await videoFile(workspace, edit.path)).revision !== edit.revision) throw new ApiError(409, "video_source_changed", "保存期间原视频发生变化，未执行覆盖。");
@@ -151,4 +181,29 @@ export async function saveLocalVideo(config: ServerConfig, workspace: WorkspaceI
     activeRequests.delete(receiptPath);
     if (temporary) await unlink(temporary).catch(error => { if (error.code !== "ENOENT") throw error; });
   }
+}
+
+export async function inspectNarrationDuration(workspace: WorkspaceInfo, path: string) {
+  const absolute = await resolveWithinRoot(workspace.path, path);
+  const result = await runBinary("ffprobe", ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "stream=codec_type:format=duration", "-of", "json", absolute], 15_000);
+  const value = probeSchema.parse(JSON.parse(result.stdout));
+  if (!value.streams.some(stream => stream.codec_type === "audio")) throw new ApiError(400, "avatar_audio_invalid", "配音文件没有可用音轨。 ");
+  return value.format.duration;
+}
+
+/** Mix narration windows, retaining timeline gaps and trims; exclude background music. */
+export async function mixAvatarNarration(workspace: WorkspaceInfo, clips: Array<{ path: string; start: number; duration: number; offset: number; volume: number }>, output: string, duration: number) {
+  const args = ["-nostdin", "-v", "error"];
+  for (const clip of clips) {
+    const absolute = await resolveWithinRoot(workspace.path, clip.path);
+    args.push("-protocol_whitelist", "file,pipe", "-ss", String(clip.offset), "-t", String(clip.duration), "-i", absolute);
+  }
+  // The desktop bundles FFmpeg 4.x: adelay's `all` and amix's `normalize`
+  // options are unavailable there. Downmix before delaying, then pad every
+  // input equally so amix's default normalization can be undone exactly.
+  const filters = clips.map((clip, index) => `[${index}:a]atrim=duration=${clip.duration},asetpts=PTS-STARTPTS,aformat=sample_rates=24000:channel_layouts=mono,volume=${clip.volume},adelay=${Math.round(clip.start * 1000)},apad,atrim=duration=${duration}[a${index}]`);
+  filters.push(clips.map((_, index) => `[a${index}]`).join("") + `amix=inputs=${clips.length}:duration=longest:dropout_transition=0,volume=${clips.length},atrim=duration=${duration}[out]`);
+  const absoluteOutput = await resolveWithinRoot(workspace.path, output);
+  await runBinary("ffmpeg", [...args, "-filter_complex", filters.join(";"), "-map", "[out]", "-ac", "1", "-ar", "24000", "-c:a", "pcm_s16le", "-n", absoluteOutput], 60_000);
+  return output;
 }

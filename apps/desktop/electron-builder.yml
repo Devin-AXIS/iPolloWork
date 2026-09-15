@@ -54,6 +54,8 @@ extraResources:
       - "!**/node_modules/**/*"
   - from: ../../examples/plugin-packages/design-agent
     to: plugin-packages/design-agent
+  - from: ../../examples/plugin-packages/reference-context
+    to: plugin-packages/reference-context
   - from: ../../examples/plugin-packages/video-agent
     to: plugin-packages/video-agent
   - from: ../../examples/plugin-packages/media-studio

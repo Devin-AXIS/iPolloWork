@@ -1,9 +1,11 @@
 import { z } from "zod";
+import { createHash } from "node:crypto";
+import { ReferenceAssemblySchema, Sha256Schema } from "@ipollowork/types/reference-context";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import sharp from "sharp";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { MAX_VIDEO_IMAGE_BYTES, MAX_VIDEO_MEDIA_BYTES, mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
@@ -761,7 +763,8 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     if (!contentType.toLowerCase().includes("multipart/form-data")) {
       throw new ApiError(400, "invalid_payload", "Expected multipart/form-data");
     }
-    const form = await ctx.request.formData();
+    const bounded = await readLimitedRequestBody(ctx.request, resolveInboxMaxBytes() + 1_000_000, { code: "file_too_large", message: "Attachment exceeds the configured upload limit" });
+    const form = await new Response(Buffer.from(bounded), { headers: { "content-type": contentType } }).formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
       throw new ApiError(400, "file_required", "Form field 'file' is required");
@@ -775,6 +778,9 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const inboxRoot = resolveInboxDir(workspace.path);
     const dest = resolveSafeChildPath(inboxRoot, relativePath);
     const maxBytes = resolveInboxMaxBytes();
+    const expectedSha = form.has("sha256") ? Sha256Schema.parse(form.get("sha256")) : undefined;
+    const assembly = form.has("referenceAssembly") ? ReferenceAssemblySchema.parse(JSON.parse(String(form.get("referenceAssembly")))) : undefined;
+    if (assembly && (!expectedSha || !relativePath.endsWith("reference-context.json"))) throw new ApiError(400, "invalid_reference_assembly", "Reference assembly requires a verified context JSON upload");
     if (file.size > maxBytes) {
       throw new ApiError(413, "file_too_large", "File exceeds upload limit", { maxBytes, size: file.size });
     }
@@ -789,8 +795,42 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     await ensureDir(dirname(dest));
     const bytes = Buffer.from(await file.arrayBuffer());
     const tmp = `${dest}.tmp-${shortId()}`;
-    await writeFile(tmp, bytes);
-    await rename(tmp, dest);
+    if (expectedSha && createHash("sha256").update(bytes).digest("hex") !== expectedSha) throw new ApiError(422, "upload_integrity", "Uploaded bytes do not match the source hash");
+    let savedBytes = bytes.byteLength;
+    const expectedResult = assembly?.sha256 ?? expectedSha;
+    try {
+      if (assembly) {
+        const output = await open(tmp, "wx");
+        savedBytes = 0;
+        try {
+          const seen = new Set<string>();
+          for (const part of assembly.parts) {
+            const path = normalizeWorkspaceRelativePath(part.path, { allowSubdirs: true });
+            if (dirname(path) !== dirname(relativePath) || seen.has(path) || path === relativePath) throw new ApiError(400, "invalid_reference_part", "Reference parts must be unique files in the same upload session");
+            seen.add(path);
+            const source = await resolveWithinRoot(inboxRoot, path);
+            const info = await stat(source).catch(() => null);
+            if (!info?.isFile() || info.size !== part.bytes) throw new ApiError(422, "reference_part_missing", "Reference part is missing or has changed");
+            const fragment = z.string().parse(JSON.parse(await readFile(source, "utf8")));
+            const chunk = Buffer.from(fragment, "utf8");
+            savedBytes += chunk.length;
+            if (savedBytes > assembly.bytes) throw new ApiError(422, "reference_size_mismatch", "Reference result exceeds its declared size");
+            await output.writeFile(chunk);
+          }
+          await output.sync();
+        } finally { await output.close(); }
+        if (savedBytes !== assembly.bytes) throw new ApiError(422, "reference_size_mismatch", "Reference result is incomplete");
+      } else await writeFile(tmp, bytes);
+      // Read back the completed file before publishing its name. Never acknowledge an unverified result.
+      let sha256: string | undefined;
+      if (expectedResult) {
+        const hash = createHash("sha256");
+        for await (const chunk of createReadStream(tmp)) hash.update(chunk);
+        sha256 = hash.digest("hex");
+        if (sha256 !== expectedResult) throw new ApiError(422, "reference_integrity", "Saved reference differs from the original context");
+      }
+      await rename(tmp, dest);
+    } finally { await rm(tmp, { force: true }); }
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -802,7 +842,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
       timestamp: Date.now(),
     });
 
-    return jsonResponse({ ok: true, path: relativePath, bytes: file.size });
+    return jsonResponse({ ok: true, path: relativePath, bytes: savedBytes, ...(expectedResult ? { sha256: expectedResult } : {}) });
   });
 
   addRoute(routes, "GET", "/workspace/:id/artifacts", "client", async (ctx) => {

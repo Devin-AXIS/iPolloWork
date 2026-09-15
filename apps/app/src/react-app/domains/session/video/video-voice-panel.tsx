@@ -8,9 +8,11 @@ import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrig
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { t } from "@/i18n";
 import { StudioInspectorHeader, StudioInspectorPanel } from "../panel/studio-inspector-panel";
+import { VideoAvatarPanel } from "./video-avatar-panel";
 
 import {
   BAILIAN_PRESET_VOICES,
+  BAILIAN_PRESET_GROUPS,
   DEFAULT_COSYVOICE_MODEL,
   migrateVideoVoiceoverSettings,
   parseVideoVoiceoverSettings,
@@ -135,7 +137,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
   const [mediaReady, setMediaReady] = React.useState(false);
   const [storageReady, setStorageReady] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
-  const [activeTab, setActiveTab] = React.useState<"preset" | "mine">("preset");
+  const [activeTab, setActiveTab] = React.useState<"preset" | "mine" | "avatar">("preset");
   const [mineDataLoaded, setMineDataLoaded] = React.useState(false);
   const [loadingMineData, setLoadingMineData] = React.useState(false);
   const [cloning, setCloning] = React.useState(false);
@@ -402,21 +404,31 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       /> : undefined}
     >
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
-          {!loading && !mediaReady ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
-          {!loading && mediaReady ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="gap-3">
+          {!loading && !mediaReady && activeTab !== "avatar" ? <div className="rounded-xl border border-amber-500/25 bg-amber-500/8 p-3 text-xs leading-5 text-muted-foreground"><p className="font-medium text-foreground">{t("video.voice.configure_title")}</p><p className="mt-1">{t("video.voice.configure_description")}</p></div> : null}
+          {!loading ? <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "avatar" ? "avatar" : value === "mine" ? "mine" : "preset")} className="gap-3">
             <TabsList className="w-full bg-muted/60">
-              <TabsTrigger value="preset"><AudioLines />{t("video.voice.preset_tab")}</TabsTrigger>
-              <TabsTrigger value="mine"><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
+              <TabsTrigger value="preset" disabled={!mediaReady}><AudioLines />{t("video.voice.preset_tab")}</TabsTrigger>
+              <TabsTrigger value="mine" disabled={!mediaReady}><FileAudio />{t("video.voice.my_voices_tab")}</TabsTrigger>
+              <TabsTrigger value="avatar">数字人视频</TabsTrigger>
             </TabsList>
+            <TabsContent value="avatar">{client && workspaceId ? <VideoAvatarPanel key={sessionId} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId} /> : <p className="text-xs">请先连接工作区。</p>}</TabsContent>
             <TabsContent value="preset" className="space-y-3">
               <div>
                 <p className="text-xs font-medium">{t("video.voice.official_presets")}</p>
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("video.voice.preset_help")}</p>
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
-                <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")} /></SelectTrigger>
-                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{presetVoiceLabel(voice.id)} · {t(`video.voice.preset_description.${voice.id}`)}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")}>{presetVoiceId ? presetVoiceLabel(presetVoiceId) : undefined}</SelectValue></SelectTrigger>
+                <SelectContent align="start" className="max-h-[min(20rem,var(--available-height))]">
+                  {BAILIAN_PRESET_GROUPS.map(group => <SelectGroup key={group}>
+                    <SelectLabel>{t(`video.voice.preset_group.${group}`)}</SelectLabel>
+                    {BAILIAN_PRESET_VOICES.filter(voice => voice.group === group).map(voice => <SelectItem key={voice.id} value={voice.id}>
+                      <div className="min-w-0 whitespace-normal"><div>{presetVoiceLabel(voice.id)}</div><div className="text-xs font-normal text-muted-foreground">{t(`video.voice.preset_description.${voice.id}`)}</div></div>
+                    </SelectItem>)}
+                  </SelectGroup>)}
+                </SelectContent>
               </Select>
+              {BAILIAN_PRESET_VOICES.some(voice => voice.id === presetVoiceId) ? <p className="text-xs leading-relaxed text-muted-foreground">{t(`video.voice.preset_description.${presetVoiceId}`)}</p> : null}
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={presetVoiceLabel(activeVoice.voiceId)} /> : null}
               <VoiceAiButton disabled={!activeVoice || activeVoice.source !== "preset"} onClick={sendVoiceToAi} />
             </TabsContent>

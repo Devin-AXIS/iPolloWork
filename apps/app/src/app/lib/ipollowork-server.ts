@@ -1,3 +1,4 @@
+import { VerifiedInboxReceiptSchema, type InboxUploadOptions } from "@ipollowork/types/reference-context";
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
@@ -2007,12 +2008,15 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "DELETE",
       }),
-    uploadInbox: async (workspaceId: string, file: File, options?: { path?: string }) => {
+    uploadInbox: async (workspaceId: string, file: File, options?: InboxUploadOptions) => {
       const id = workspaceId.trim();
       if (!id) throw new Error("workspaceId is required");
       if (!file) throw new Error("file is required");
       const form = new FormData();
       form.append("file", file);
+      const digest = options?.verify || options?.referenceAssembly ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())), (byte) => byte.toString(16).padStart(2, "0")).join("") : undefined;
+      if (digest) form.append("sha256", digest);
+      if (options?.referenceAssembly) form.append("referenceAssembly", JSON.stringify(options.referenceAssembly));
       if (options?.path?.trim()) {
         form.append("path", options.path.trim());
       }
@@ -2043,6 +2047,11 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }
 
       const body = result.text.trim();
+      if (digest) {
+        const receipt = VerifiedInboxReceiptSchema.parse(JSON.parse(body));
+        if (receipt.sha256 !== (options?.referenceAssembly?.sha256 ?? digest) || receipt.bytes !== (options?.referenceAssembly?.bytes ?? file.size)) throw new Error("附件落盘校验失败，未开始生成，请重试上传。");
+        return receipt;
+      }
       if (body) {
         try {
           const parsed = JSON.parse(body) as Partial<iPolloWorkInboxUploadResult>;

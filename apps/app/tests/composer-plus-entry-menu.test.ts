@@ -137,7 +137,7 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain("props.onOpenWorkspaceApp?.(entry.pluginId)");
     expect(sessionSurfaceSource).toContain("onOpenWorkspaceApp={props.onOpenWorkspaceApp}");
     expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
-    expect(sessionPageSource).toContain("entry.pluginId === pluginId");
+    expect(sessionPageSource).toContain("mediaStudioEngine(entry) === pluginId");
     expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
     expect(sessionPageSource).toContain('activePanelTab.type === "workspace-app"');
     expect(sessionPageSource).toContain("workspaceAppCapabilityInstruction");

@@ -554,6 +554,10 @@ export class CodexHarnessRuntime {
     return codexHarnessProviderDirectory({ records, providers, catalog });
   }
 
+  pendingRequests() {
+    return [...this.#pendingRequests.values()];
+  }
+
   async respond(id: string | number, result: unknown): Promise<void> {
     const process = await this.#ensureStarted();
     if (!this.#pendingRequests.has(id)) {

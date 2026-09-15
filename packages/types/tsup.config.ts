@@ -2,6 +2,8 @@ import { defineConfig } from "tsup"
 
 export default defineConfig({
   entry: {
+    "reference-context": "src/reference-context.ts",
+    "video-generation": "src/video-generation.ts",
     "provider-errors": "src/provider-errors.ts",
     index: "src/index.ts",
     "den/desktop-app-restrictions": "src/den/desktop-app-restrictions.ts",

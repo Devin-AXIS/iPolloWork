@@ -213,6 +213,25 @@ function codexHarnessConnection(input: {
   const selectedModes = new Map<string, CodexModeId>();
   const selectedAccessModes = new Map<string, CodexAccessModeId>();
   const liveState = createCodexLiveState();
+  let requestRevision = 0;
+  let refreshingRequests: Promise<void> | null = null;
+  const refreshRequests = () => {
+    if (refreshingRequests) return refreshingRequests;
+    const revision = requestRevision;
+    refreshingRequests = (async () => {
+      const requests = await client.call<WorkspaceEngineEvent[]>("ipollowork/pendingRequests");
+      // A live request/resolution received after the read started takes precedence.
+      if (revision !== requestRevision) return;
+      const restored = requests.flatMap((request) => mapCodexHarnessEvent(request, createCodexLiveState()));
+      permissions.clear();
+      questions.clear();
+      for (const event of restored) {
+        if (event.type === "permission.asked") permissions.set(event.permission.id, event.permission);
+        if (event.type === "question.asked") questions.set(event.question.id, event.question);
+      }
+    })().finally(() => { refreshingRequests = null; });
+    return refreshingRequests;
+  };
   let pluginCapabilitiesCache: { at: number; items: Awaited<ReturnType<typeof client.pluginCapabilities>> } | null = null;
 
   const listPluginCapabilities = async () => {
@@ -267,6 +286,7 @@ function codexHarnessConnection(input: {
     },
     async subscribe(subscription) {
       for await (const envelope of client.events(subscription.signal)) {
+        if (envelope.type === "request" || ["serverRequest/resolved", "turn/completed", "thread/closed"].includes(String(envelope.method))) requestRevision += 1;
         const params = eventParams(envelope);
         if (envelope.type === "notification" && envelope.method === "turn/started" && params) {
           const threadId = typeof params.threadId === "string" ? params.threadId : null;
@@ -328,15 +348,18 @@ function codexHarnessConnection(input: {
       }
     },
     async listPermissions(request) {
+      await refreshRequests();
       return [...permissions.values()].filter((permission) => permission.sessionId === request.sessionId);
     },
     async replyPermission(request) {
       const native = codexNativeRequest(request.permission.native);
       if (!native) throw new Error("Codex permission response is no longer available");
       await replyNativePermission(request.permission, request.reply);
+      requestRevision += 1;
       permissions.delete(request.permission.id);
     },
     async listQuestions(request) {
+      await refreshRequests();
       return [...questions.values()].filter((question) => question.sessionId === request.sessionId);
     },
     async replyQuestion(request) {
@@ -349,6 +372,7 @@ function codexHarnessConnection(input: {
           : []
       )));
       await client.respond(native.rpcId, { answers });
+      requestRevision += 1;
       questions.delete(request.question.id);
     },
     async create(directory) {

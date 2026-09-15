@@ -134,6 +134,8 @@ export type ComposerAttachment = {
   kind: "image" | "file";
   file: File;
   previewUrl?: string;
+  /** Persist as a tool-readable workspace file instead of inlining its contents into model context. */
+  delivery?: "workspace";
 };
 
 export const IMAGE_STUDIO_EDIT_RESULT = "ipollowork:image-studio:edit-result";

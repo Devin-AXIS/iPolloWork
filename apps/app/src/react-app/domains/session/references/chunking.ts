@@ -45,7 +45,7 @@ export function chunkPlainText(input: {
   if (current) chunks.push(current.slice(0, maxChunkChars));
 
   return chunks.map((text, index) => ({
-    id: `${input.source}:chunk:${index + 1}`,
+    id: `${input.source}${input.page ? `:page:${input.page}` : ""}:chunk:${index + 1}`,
     source: input.source,
     ...(input.page ? { page: input.page } : {}),
     ...(input.heading ? { heading: input.heading } : {}),

@@ -436,6 +436,22 @@ function defaultCaptionStyleIssues(html: string, caption: TimelineNode): Voiceov
   return issues;
 }
 
+/** Read narration attached to the composition rather than unused audio assets. */
+export function avatarTimelineContext(html: string) {
+  const source = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<script\b[\s\S]*?<\/script>/gi, "");
+  const clips = timelineNodes(source).flatMap(node => {
+    const attrs = node.attributes;
+    const src = decodeHtmlText(attrs.get("src") ?? "");
+    const id = attrs.get("id") ?? "";
+    if (node.tagName !== "audio" || !(attrs.get("data-ipw-voiceover") === "true" || id === "voiceover" || id.startsWith("vo-") || id.startsWith("narration-") || isVoiceoverSource(src))) return [];
+    const volume = finiteTimelineNumber(node, "data-volume") ?? 1;
+    if (volume === 0 || /\bmuted(?:\s|=|>)/i.test(source.slice(source.lastIndexOf("<", node.contentStart - 1), node.contentStart))) return [];
+    return [{ src, start: finiteTimelineNumber(node, "data-start"), duration: finiteTimelineNumber(node, "data-duration"),
+      offset: finiteTimelineNumber(node, "data-media-start") ?? finiteTimelineNumber(node, "data-playback-start") ?? 0, volume }];
+  });
+  return { content: visibleTextFromHtml(source).slice(0, 4000), clips };
+}
+
 export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];

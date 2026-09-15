@@ -109,6 +109,7 @@ import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/reac
 import {
   conversationTemplateBrief,
   inferConversationTemplateIntents,
+  conversationVideoTarget,
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
   selectConversationTemplate,
@@ -949,6 +950,8 @@ export function SessionRoute() {
     questionReplyBusy,
     respondQuestion,
     todos,
+    refreshInteractions,
+    interactionsRefreshing,
   } = useSessionInteractions({
     connection: conversation,
     workspaceId: selectedWorkspaceId,
@@ -1457,6 +1460,9 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
+        if (!selectedWorkspaceEndpoint && draft.attachments.some((attachment) => attachment.delivery === "workspace")) {
+          throw new Error("Connect the workspace before sending parsed reference files.");
+        }
         const [parts, persistedAttachments] = await Promise.all([
           draftToParts(
             draft,
@@ -1482,6 +1488,7 @@ export function SessionRoute() {
         const capabilitySystemContext = draft.capability?.instruction ?? null;
         // A workbench owns its request; template inference must not add a second task.
         const workspaceAppRequest = draft.capability?.id.split("+").some((id) => id.startsWith("workspace-app:")) === true;
+        const videoTarget = conversationVideoTarget(text);
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
@@ -1496,7 +1503,9 @@ export function SessionRoute() {
         ]);
         if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
-          !workspaceAppRequest && isConversationTemplateSessionId(targetSessionId, template.sessionId),
+          !workspaceAppRequest
+          && !(videoTarget === "media" && template.surface === "video")
+          && isConversationTemplateSessionId(targetSessionId, template.sessionId),
         );
         const activePanelState = usePanelTabStore.getState().sessions[targetSessionId];
         const activePanelTab = activePanelState?.tabs.find((tab) => tab.id === activePanelState.activeTabId);
@@ -1518,7 +1527,7 @@ export function SessionRoute() {
           const authoringTemplate = conversationTemplates.find((template) => template.authoring);
           if (authoringTemplate) {
             promptTemplateSessionIds.add(authoringTemplate.sessionId);
-          } else if (existingTemplateEdit && activeTemplateSessionId) {
+          } else if (existingTemplateEdit && activeTemplateSessionId && conversationTemplates.some((template) => template.sessionId === activeTemplateSessionId)) {
             promptTemplateSessionIds.add(activeTemplateSessionId);
           } else if (existingTemplateEdit && conversationTemplates[0]) {
             promptTemplateSessionIds.add(conversationTemplates[0].sessionId);
@@ -1615,6 +1624,7 @@ export function SessionRoute() {
           sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
           && !workspaceAppRequest
+          && videoTarget !== "media"
           && selectedWorkspaceEndpoint
           && readSessionType(targetSessionId) === "video"
         ) {
@@ -1628,6 +1638,7 @@ export function SessionRoute() {
         const isLegacyVideoTask = sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
           && !workspaceAppRequest
+          && videoTarget !== "media"
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
         const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
@@ -2912,6 +2923,8 @@ export function SessionRoute() {
       }}
       todos={todos}
       sessionLoadingById={(sessionId) => effectiveLoading && Boolean(sessionId && sessionId === selectedSessionId)}
+      refreshInteractions={refreshInteractions}
+      interactionsRefreshing={interactionsRefreshing}
       activePermission={activePermission}
       permissionReplyBusy={permissionReplyBusy}
       respondPermission={respondPermission}

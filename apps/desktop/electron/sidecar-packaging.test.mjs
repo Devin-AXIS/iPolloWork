@@ -16,6 +16,17 @@ import {
 const afterPack = afterPackModule.default ?? afterPackModule;
 const { assertMacEngineTrustFiles } = afterSignModule;
 
+it("ships the shared reference Skill independently of Video", async () => {
+  const builderConfig = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
+  assert.match(builderConfig, /from: \.\.\/\.\.\/examples\/plugin-packages\/reference-context\s+to: plugin-packages\/reference-context/);
+  const packageRoot = new URL("../../../examples/plugin-packages/reference-context/", import.meta.url);
+  const manifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", packageRoot), "utf8"));
+  assert.equal(manifest.defaultEnabled, true);
+  const resource = manifest.resources.find((item) => item.id === "ipollowork-reference-analyzer");
+  assert.ok(resource);
+  assert.match(await readFile(new URL(resource.path, packageRoot), "utf8"), /^name: ipollowork-reference-analyzer$/m);
+});
+
 it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
   const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),

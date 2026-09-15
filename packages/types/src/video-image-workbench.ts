@@ -10,7 +10,7 @@ export type MediaKind = "image" | "video";
 
 export function mediaKindForPath(value: string): MediaKind | null {
   if (/\.(png|jpe?g|webp)$/i.test(value)) return "image";
-  return /\.(mp4|mov)$/i.test(value) ? "video" : null;
+  return /\.(mp4|mov|webm)$/i.test(value) ? "video" : null;
 }
 
 export function safeVideoMediaPath(value: unknown): string | null {
