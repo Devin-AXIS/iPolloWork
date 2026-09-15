@@ -112,3 +112,16 @@ test("Markdown code examples do not become the document's design declarations", 
   expect(ingestion.style?.design?.palette).toEqual([]);
   expect(ingestion.style?.design?.typography).toEqual([]);
 });
+
+
+test("edited or cleared style is authoritative in the submitted creative context", async () => {
+  const file = new File(["# Product\n风格：黑白简洁"], "style.md");
+  const ingestion = await ingestReferenceFile(file);
+  for (const style of ["蓝色背景、白色文字", ""]) {
+    const brief = { title: "Product", audience: "Designers", details: "Explain product", style };
+    const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, mimeType: ingestion.mimeType, size: file.size, status: "ready", sendOriginal: false, ingestion }], { brief });
+    const context = JSON.parse(await payload.attachments.find((item) => item.name === "creative-context.json")!.file.text());
+    expect(context.brief.user.style).toBe(style);
+    expect(context.designSystem.direction).toBe(style);
+  }
+});

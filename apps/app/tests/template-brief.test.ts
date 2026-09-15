@@ -432,3 +432,11 @@ describe("template brief", () => {
   });
 
 });
+
+
+test.each(["site", "app", "slides", "poster", "cards", "report", "article", "video", "other", "resume"] as const)("%s template honors editable brief style", (category) => {
+  const prompt = templateBriefPrompt({ template: { category, title: "Reference style", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
+  expect(prompt).toContain("User brief.style overrides editable styling");
+  expect(prompt).toContain("When brief.style is non-empty, apply it consistently through design-tokens.css");
+  expect(prompt).toContain("never fixed-brand nodes");
+});

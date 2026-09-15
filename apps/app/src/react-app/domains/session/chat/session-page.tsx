@@ -1715,14 +1715,14 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
                 )}
               </label>
             ))}
-            {(template?.category ?? customCategory) === "video" ? <label className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
+            <label className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
               <span>{t("template_market.style_label")}</span>
               <Textarea aria-label={t("template_market.style_label")} value={brief.style ?? ""} disabled={submitting}
                 onChange={(event) => { const style = event.currentTarget.value; editedBriefFields.current.add("style"); setBrief((current) => ({ ...current, style })); }}
                 placeholder="可从参考文件回填，也可填写，例如：白色背景、深蓝文字、简洁排版。"
                 className="min-h-24 rounded-lg px-4 py-2 text-ui-control font-normal" />
               <span className="text-xs font-normal text-muted-foreground">自动提取文件中的字体、配色与背景；可修改，生成时以此处为准。清空后使用模板默认风格。</span>
-            </label> : null}
+            </label>
           </section>
 
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">
@@ -2480,7 +2480,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
         path: state.briefPath,
         content: JSON.stringify({
@@ -2751,7 +2751,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const persistedBrief = {
         template: t("template_market.custom_title"),
         category: application.category,
@@ -2825,7 +2825,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const createdSessionId = await props.onCreateTaskFromTemplate(pendingTemplateProjectId, {
         templateId: template.id,
         resourceScope: application.resourceScope,

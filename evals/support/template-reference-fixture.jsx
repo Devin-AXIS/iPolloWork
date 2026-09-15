@@ -9,13 +9,14 @@ import { setLocale } from "../../apps/app/src/i18n";
 import "../../apps/app/src/app/index.css";
 
 setLocale("zh");
+const category = new URLSearchParams(location.search).get("category") ?? "video";
 function Fixture() {
   const [open, setOpen] = useState(false);
   const [receipt, setReceipt] = useState(null);
   return <TooltipProvider><main className="min-h-screen bg-background p-10 text-foreground">
     <h1 className="mb-4 text-lg font-semibold">产品介绍视频</h1>
     <Button onClick={() => { setReceipt(null); setOpen(true); }}>使用模板</Button>
-    {open ? <TemplateApplyDialog open mode="current-conversation" template={{ title: "产品介绍视频", category: "video", surface: "video" }} onClose={() => setOpen(false)} onSubmit={async (brief, references) => {
+    {open ? <TemplateApplyDialog open mode="current-conversation" template={{ title: "产品介绍视频", category, surface: category === "video" ? "video" : "design" }} onClose={() => setOpen(false)} onSubmit={async (brief, references) => {
       const payload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const parsed = payload.attachments.find((attachment) => attachment.delivery === "workspace");
       let context = parsed ? JSON.parse(await parsed.file.text()) : null;
@@ -23,7 +24,9 @@ function Fixture() {
         const fragments = await Promise.all(context.parts.map(async (part) => JSON.parse(await payload.attachments.find((item) => item.name === part.attachmentName).file.text())));
         context = JSON.parse(fragments.join(""));
       }
-      const result = { brief, context, attachmentNames: payload.attachments.map((attachment) => attachment.name) };
+      const creativeAttachment = payload.attachments.find((item) => item.name === "creative-context.json");
+      const creativeContext = creativeAttachment ? JSON.parse(await creativeAttachment.file.text()) : null;
+      const result = { brief, context, creativeContext, attachmentNames: payload.attachments.map((attachment) => attachment.name) };
       window.__referenceReceipt = result;
       setReceipt(result);
       setOpen(false);
