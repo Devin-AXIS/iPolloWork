@@ -1,7 +1,8 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, Wrench, X, Zap } from "lucide-react";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, ToyBrick, X, Zap } from "lucide-react";
+import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -45,7 +46,7 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-type ToolMenuSection = "commands" | "skills" | "mcps" | "extensions";
+type ToolMenuSection = "extensions" | "mcps";
 type PlusMenuSection = "tools" | "delegation";
 
 export type ComposerProps = {
@@ -254,6 +255,42 @@ function parseClipboardUriList(clipboard: DataTransfer) {
   return links;
 }
 
+function ComposerImageAttachment({ attachment, onRemove }: {
+  attachment: ComposerAttachment;
+  onRemove: () => void;
+}) {
+  const [dimensions, setDimensions] = useState("");
+  return (
+    <div className="relative size-12 shrink-0" data-testid="composer-image-attachment">
+      <Tooltip>
+        <TooltipTrigger
+          render={<div tabIndex={0} className="size-12 overflow-hidden rounded-xl border border-border bg-muted outline-none focus-visible:ring-2 focus-visible:ring-ring" />}
+        >
+          <img
+            src={attachment.previewUrl}
+            alt={attachment.name}
+            decoding="async"
+            className="size-full object-cover"
+            onLoad={(event) => setDimensions(`${event.currentTarget.naturalWidth} × ${event.currentTarget.naturalHeight}`)}
+          />
+        </TooltipTrigger>
+        <TooltipContent className="flex-col items-start gap-0.5" sideOffset={8}>
+          <span className="max-w-full break-all">{attachment.name}</span>
+          <span>{[dimensions, formatBytes(attachment.size)].filter(Boolean).join(" · ")}</span>
+        </TooltipContent>
+      </Tooltip>
+      <button
+        type="button"
+        className="absolute right-0.5 top-0.5 inline-flex size-4 items-center justify-center rounded-full border border-border bg-background/85 text-foreground backdrop-blur-sm transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-label={`${t("action.remove")} ${attachment.name}`}
+        onClick={onRemove}
+      >
+        <X size={10} aria-hidden />
+      </button>
+    </div>
+  );
+}
+
 function isImageAttachment(attachment: ComposerAttachment) {
   return attachment.kind === "image" || attachment.mimeType.startsWith("image/");
 }
@@ -371,8 +408,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   const [delegationMenuOpen, setDelegationMenuOpen] = useState(false);
   const [commands, setCommands] = useState<SlashCommandOption[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
-  const [skillsLoading, setSkillsLoading] = useState(false);
-  const [skills, setSkills] = useState<SkillCard[]>(props.skills ?? []);
   const [mcpLoading, setMcpLoading] = useState(false);
   const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
   const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
@@ -393,7 +428,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [accessModes, setAccessModes] = useState<ConversationAccessMode[]>([]);
-  const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("commands");
+  const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("extensions");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -402,19 +437,15 @@ export function ReactSessionComposer(props: ComposerProps) {
   const commandsRequestRef = useRef<Promise<SlashCommandOption[]> | null>(null);
   const commandsLoadVersionRef = useRef(0);
   const listCommandsRef = useRef(props.listCommands);
-  const listSkillsRef = useRef(props.listSkills);
   const listMcpRef = useRef(props.listMcp);
   const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
   const listExternalAgentsRef = useRef(props.listExternalAgents);
   const toolMenuLoadRef = useRef({
     openId: 0,
-    commands: false,
-    skills: false,
     mcps: false,
     extensions: false,
   });
   const [commandsLoaded, setCommandsLoaded] = useState(false);
-  const [skillsLoaded, setSkillsLoaded] = useState(Boolean(props.skills));
   const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
   const [extensionsLoaded, setExtensionsLoaded] = useState(false);
   const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
@@ -544,10 +575,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [mentionOpenNext, mentionQuery]);
 
   useEffect(() => {
-    setSkills(props.skills ?? []);
-  }, [props.skills]);
-
-  useEffect(() => {
     setMcpServers(props.mcpServers ?? []);
     setMcpStatus(props.mcpStatus ?? null);
     setMcpStatuses(props.mcpStatuses ?? {});
@@ -556,10 +583,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   useEffect(() => {
     listCommandsRef.current = props.listCommands;
   }, [props.listCommands]);
-
-  useEffect(() => {
-    listSkillsRef.current = props.listSkills;
-  }, [props.listSkills]);
 
   useEffect(() => {
     listMcpRef.current = props.listMcp;
@@ -718,28 +741,21 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (!toolMenuOpen) return;
     toolMenuLoadRef.current = {
       openId: toolMenuLoadRef.current.openId + 1,
-      commands: false,
-      skills: false,
       mcps: false,
       extensions: false,
     };
-    setCommandsLoaded(false);
-    setSkillsLoaded(Boolean(props.skills));
     setMcpLoaded(Boolean(props.mcpServers));
     setExtensionsLoaded(Boolean(props.importedPlugins));
   }, [toolMenuOpen]);
 
   useEffect(() => {
-    if (!slashOpen && !toolMenuOpen) return;
-    const openId = toolMenuLoadRef.current.openId;
-    if (toolMenuOpen && toolMenuLoadRef.current.commands) return;
-    if (toolMenuOpen) toolMenuLoadRef.current.commands = true;
+    if (!slashOpen) return;
     let cancelled = false;
     const cached = commandsCacheRef.current;
     if (cached !== null) {
       setCommands(cached);
       setCommandsLoading(false);
-      if (toolMenuOpen && toolMenuLoadRef.current.openId === openId) setCommandsLoaded(true);
+      setCommandsLoaded(true);
       return () => {
         cancelled = true;
       };
@@ -749,13 +765,13 @@ export function ReactSessionComposer(props: ComposerProps) {
       .then((next) => {
         if (!cancelled) {
           setCommands(next);
-          if (toolMenuOpen && toolMenuLoadRef.current.openId === openId) setCommandsLoaded(true);
+          setCommandsLoaded(true);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setCommands([]);
-          if (toolMenuOpen && toolMenuLoadRef.current.openId === openId) setCommandsLoaded(true);
+          setCommandsLoaded(true);
         }
       })
       .finally(() => {
@@ -764,7 +780,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     return () => {
       cancelled = true;
     };
-  }, [slashOpen, toolMenuOpen, loadCommands]);
+  }, [slashOpen, loadCommands]);
 
   useEffect(() => {
     if (!mentionOpen) return;
@@ -821,33 +837,8 @@ export function ReactSessionComposer(props: ComposerProps) {
   useEffect(() => {
     if (!toolMenuOpen) return;
     const openId = toolMenuLoadRef.current.openId;
-    const listSkills = listSkillsRef.current;
     const listMcp = listMcpRef.current;
     const listInstalledExtensions = listInstalledExtensionsRef.current;
-    if (toolMenuSection === "skills" && listSkills && !toolMenuLoadRef.current.skills) {
-      let cancelled = false;
-      toolMenuLoadRef.current.skills = true;
-      setSkillsLoading(true);
-      void listSkills()
-        .then((next) => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setSkills(next);
-            setSkillsLoaded(true);
-          }
-        })
-        .catch(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) {
-            setSkills([]);
-            setSkillsLoaded(true);
-          }
-        })
-        .finally(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) setSkillsLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
     if (toolMenuSection === "mcps" && listMcp && !toolMenuLoadRef.current.mcps) {
       let cancelled = false;
       toolMenuLoadRef.current.mcps = true;
@@ -921,10 +912,6 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   const activeMenu = slashOpen ? "slash" : mentionOpen ? "mention" : null;
   const activeItems = activeMenu === "slash" ? slashFiltered : activeMenu === "mention" ? mentionFiltered : [];
-  const toolCommandItems = commands.filter((command) => !command.source || command.source === "command");
-  const toolSkillItems = commands.filter((command) => command.source === "skill");
-  const toolMcpItems = commands.filter((command) => command.source === "mcp");
-  void toolMcpItems;
   const composerExtensions = installedExtensions.filter((item) => (
     activePluginEngineCompatibility(item)?.status !== "unsupported"
   ));
@@ -1034,7 +1021,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   };
 
   const openToolMenuSettings = () => {
-    const section: ToolMenuSettingsSection = toolMenuSection === "commands" || toolMenuSection === "skills" || toolMenuSection === "mcps"
+    const section: ToolMenuSettingsSection = toolMenuSection === "mcps"
       ? toolMenuSection
       : "plugins";
     props.onOpenSettingsSection?.(section);
@@ -1382,28 +1369,31 @@ export function ReactSessionComposer(props: ComposerProps) {
         {/* Main composer panel */}
         <div
           className={`@container/composer composer-card relative flex flex-col overflow-visible rounded-[18px] border bg-dls-surface ${engineSelectedAppearance ? "border-sky-8" : "border-transparent"} ${props.layout === "inline" ? `new-conversation-composer dark:bg-[#343434]` : ""} ${panelRoundedClass}`}
-          style={engineSelectedAppearance ? undefined : {
-            backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
-            backgroundOrigin: "border-box",
-            backgroundClip: "padding-box, border-box",
+          style={{
+            height: "auto",
+            ...(engineSelectedAppearance ? {} : {
+              backgroundImage: `linear-gradient(${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}, ${props.layout === "inline" ? "var(--new-conversation-composer-surface, var(--dls-surface))" : "var(--dls-surface)"}), linear-gradient(90deg, #7FCDFF 0%, #FFE67D 100%)`,
+              backgroundOrigin: "border-box",
+              backgroundClip: "padding-box, border-box",
+            }),
           }}
         >
-          {props.topAccessory ? <div className="relative z-10">{props.topAccessory}</div> : null}
+          {props.topAccessory ? <div className="relative z-10 shrink-0">{props.topAccessory}</div> : null}
 
           {renderMentionMenu()}
           {renderSlashMenu()}
 
           {props.attachments.length > 0 ? (
-            <div className="mx-5 mt-3 flex max-h-16 shrink-0 flex-wrap gap-2 overflow-y-auto md:mx-6">
-              {props.attachments.map((attachment) => (
+            <div className="mx-4 mt-3 flex max-h-16 shrink-0 flex-wrap gap-2 overflow-y-auto">
+              {props.attachments.map((attachment) => isImageAttachment(attachment) && attachment.previewUrl ? (
+                <ComposerImageAttachment
+                  key={`${attachment.id}:${attachment.previewUrl}`}
+                  attachment={attachment}
+                  onRemove={() => props.onRemoveAttachment(attachment.id)}
+                />
+              ) : (
                 <div key={attachment.id} className="flex items-center gap-2 rounded-2xl border border-gray-6 bg-gray-2 px-3 py-2 text-xs text-gray-10">
-                  {isImageAttachment(attachment) && attachment.previewUrl ? (
-                    <div className="h-10 w-10 overflow-hidden rounded-xl border border-gray-6 bg-gray-1">
-                      <img src={attachment.previewUrl} alt={attachment.name} decoding="async" className="h-full w-full object-cover" />
-                    </div>
-                  ) : (
-                    <FileText size={14} className="text-gray-9" />
-                  )}
+                  <FileText size={14} className="text-gray-9" />
                   <div className="max-w-[160px] min-w-0">
                     <div className="truncate text-[12px] font-medium text-gray-11">{attachment.name}</div>
                     <div className="flex items-center gap-1.5 text-[11px] text-gray-10">
@@ -1442,7 +1432,8 @@ export function ReactSessionComposer(props: ComposerProps) {
             </div>
           ) : null}
 
-          <div className="flex min-h-0 flex-1 flex-col px-4 pt-3 pb-2">
+          {/* Keep the editor and actions at their original height; accessories add space above. */}
+          <div className="flex h-[120px] shrink-0 flex-col px-4 pt-3 pb-2">
             {/* Editor */}
             <LexicalPromptEditor
               ref={editorRef}
@@ -1566,10 +1557,10 @@ export function ReactSessionComposer(props: ComposerProps) {
                   </button>
                   {plusMenuOpen ? (
                     <div className="absolute bottom-full left-0 z-40 mb-2 flex items-end gap-1">
-                      <div className="w-52 shrink-0 rounded-[16px] border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
+                      <div data-testid="composer-plus-menu" className="w-44 shrink-0 rounded-lg border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
                         onMouseEnter={() => {
                           setPlusMenuSection(null);
                           setToolMenuOpen(false);
@@ -1592,7 +1583,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                       {props.onOpenTemplateMarket ? (
                         <button
                           type="button"
-                          className="flex w-full items-center gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
                           onMouseEnter={() => {
                             setPlusMenuSection(null);
                             setToolMenuOpen(false);
@@ -1610,7 +1601,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                       ) : null}
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("tools")}
                         onClick={() => {
                           setPlusMenuSection("tools");
@@ -1619,14 +1610,14 @@ export function ReactSessionComposer(props: ComposerProps) {
                         }}
                       >
                         <span className="flex min-w-0 items-center gap-2">
-                          <Wrench className="size-4 shrink-0 text-gray-9" aria-hidden />
+                          <ToyBrick className="size-4 shrink-0 text-gray-9" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
                           <span>{t("composer.plus_tools")}</span>
                         </span>
                         <ChevronRight size={14} className="text-gray-9" />
                       </button>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-between gap-2 rounded-[12px] px-3 py-2.5 text-left text-sm ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                         onMouseEnter={() => setPlusMenuSection("delegation")}
                         onClick={() => {
                           setPlusMenuSection("delegation");
@@ -1653,19 +1644,17 @@ export function ReactSessionComposer(props: ComposerProps) {
                   }}
                 >
                   {toolMenuOpen ? (
-                    <div className="absolute bottom-full left-[10.75rem] z-40 mb-2 w-[min(calc(100vw-16rem),34rem)] overflow-hidden rounded-[22px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
-                      <div className="grid grid-cols-[152px_minmax(0,1fr)] sm:grid-cols-[176px_minmax(0,1fr)]">
-                        <div className="border-r border-dls-border bg-gray-2/30 p-2">
+                    <div data-testid="composer-extensions-menu" className="absolute bottom-full left-[8.75rem] z-40 mb-2 w-[min(calc(100cqw-13rem),28rem)] @max-[26rem]/composer:left-[-2.5rem] @max-[26rem]/composer:mb-44 @max-[26rem]/composer:w-[calc(100cqw-2rem)] overflow-hidden rounded-xl border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
+                      <div className="grid grid-cols-[104px_minmax(0,1fr)] sm:grid-cols-[112px_minmax(0,1fr)]">
+                        <div className="border-r border-dls-border bg-gray-2/30 p-1.5">
                           {([
-                            ["commands", t("dashboard.commands")],
-                            ["skills", t("dashboard.skills")],
                             ["extensions", t("composer.extensions_label")],
                             ["mcps", t("composer.mcps_label")],
                           ] as const).map(([section, label]) => (
                             <button
                               key={section}
                               type="button"
-                              className={`mb-1 flex w-full items-center justify-between rounded-[16px] px-3 py-2.5 text-left text-sm transition-colors ${toolMenuSection === section ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
+                              className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${toolMenuSection === section ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
                               onClick={() => setToolMenuSection(section)}
                             >
                               <span className="truncate">{label}</span>
@@ -1673,11 +1662,11 @@ export function ReactSessionComposer(props: ComposerProps) {
                             </button>
                           ))}
                         </div>
-                        <div className="max-h-72 overflow-y-auto p-2">
-                          <div className="mb-2 flex justify-end border-b border-dls-border px-1 pb-2">
+                        <div className="min-w-0 max-h-64 overflow-y-auto overflow-x-hidden p-1.5">
+                          <div className="mb-1 flex justify-end border-b border-dls-border px-1 pb-1.5">
                             <button
                               type="button"
-                              className="inline-flex items-center gap-1.5 rounded-full border border-dls-border px-3 py-1.5 text-[12px] font-medium text-gray-11 transition-colors hover:bg-gray-2"
+                              className="inline-flex items-center gap-1.5 rounded-md border border-dls-border px-2 py-1 text-[11px] font-medium text-gray-11 transition-colors hover:bg-gray-2"
                               onClick={() => {
                                 setToolMenuOpen(false);
                                 openToolMenuSettings();
@@ -1687,63 +1676,15 @@ export function ReactSessionComposer(props: ComposerProps) {
                               {t("composer.configure")}
                             </button>
                           </div>
-                          {toolMenuSection === "commands" ? (
-                            toolCommandItems.length > 0 ? (
-                              <div className="grid gap-1">
-                                {toolCommandItems.map((command) => (
-                                  <button
-                                    key={command.id}
-                                    type="button"
-                                    className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
-                                    onClick={() => applyCommandSelection(command)}
-                                  >
-                                    <Terminal size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0">
-                                      <div className="truncate text-xs font-semibold text-gray-11">/{command.name}</div>
-                                      {command.description ? <div className="truncate text-xs text-gray-10">{command.description}</div> : null}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">
-                                {!commandsLoaded && commandsLoading ? t("composer.loading_commands") : t("composer.no_commands")}
-                              </div>
-                            )
-                          ) : null}
-                          {toolMenuSection === "skills" ? (
-                            (skills.length > 0 || toolSkillItems.length > 0) ? (
-                              <div className="grid gap-1">
-                                {[...toolSkillItems, ...skills.filter((skill) => !toolSkillItems.some((command) => command.name === skill.name)).map((skill) => ({ id: `skill:${skill.name}`, name: skill.name, description: skill.description, source: "skill" as const }))].map((command) => (
-                                  <button
-                                    key={command.id}
-                                    type="button"
-                                    className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
-                                    onClick={() => applyCommandSelection(command)}
-                                  >
-                                    <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0">
-                                      <div className="truncate text-xs font-semibold text-gray-11">/{command.name}</div>
-                                      {command.description ? <div className="truncate text-xs text-gray-10">{command.description}</div> : null}
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">
-                                {(!skillsLoaded && skillsLoading) || (!commandsLoaded && commandsLoading) ? t("composer.loading_commands") : t("context_panel.no_skills")}
-                              </div>
-                            )
-                          ) : null}
                           {toolMenuSection === "mcps" ? (
                             activeMcpItems.length > 0 ? (
                               <div className="grid gap-1">
                                 {activeMcpItems.map(({ entry, status }) => (
-                                  <div key={entry.name} className="flex items-start gap-3 rounded-[16px] px-3 py-2.5 text-gray-11">
+                                  <div key={entry.name} className="flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5 text-gray-11">
                                     <Plug size={14} className="mt-0.5 shrink-0 text-gray-9" />
                                     <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
+                                      <div className="flex min-w-0 items-center justify-between gap-2">
+                                        <div className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-11">{entry.name}</div>
                                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${mcpStatusBadgeClass(status)}`}>
                                           {formatMcpStatusLabel(status)}
                                         </span>
@@ -1755,7 +1696,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               </div>
                             ) : (
                               <div className="px-3 py-2 text-xs text-gray-10">
-                                {!mcpLoaded && mcpLoading ? t("composer.loading_commands") : (mcpStatus ?? t("context_panel.no_mcp"))}
+                                {!mcpLoaded && mcpLoading ? t("common.loading") : (mcpStatus ?? t("context_panel.no_mcp"))}
                               </div>
                             )
                           ) : null}
@@ -1766,15 +1707,15 @@ export function ReactSessionComposer(props: ComposerProps) {
                                   <button
                                     key={entry.pluginId}
                                     type="button"
-                                    className="flex w-full items-start gap-3 rounded-[16px] px-3 py-2.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
+                                    className="flex min-w-0 w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
                                     onClick={() => applyExtensionSelection(entry)}
                                   >
-                                    <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-card shadow-sm">
-                                      {extensionIcon(entry, 16)}
+                                    <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-card shadow-sm">
+                                      {extensionIcon(entry, 14)}
                                     </div>
                                     <div className="min-w-0 flex-1">
-                                      <div className="flex items-center justify-between gap-3">
-                                        <div className="truncate text-xs font-semibold text-gray-11">{entry.name}</div>
+                                      <div className="flex min-w-0 items-center justify-between gap-2">
+                                        <div className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-11">{entry.name}</div>
                                         {activePluginEngineCompatibility(entry)?.status === "partial" ? (
                                           <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
                                         ) : (
@@ -1788,7 +1729,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               </div>
                             ) : (
                               <div className="px-3 py-2 text-xs text-gray-10">
-                                {!extensionsLoaded && extensionsLoading ? t("composer.loading_commands") : t("composer.no_extensions_enabled")}
+                                {!extensionsLoaded && extensionsLoading ? t("common.loading") : t("composer.no_extensions_enabled")}
                               </div>
                             )
                           ) : null}
@@ -1800,13 +1741,13 @@ export function ReactSessionComposer(props: ComposerProps) {
 
                 <div ref={delegationMenuRef} className="relative">
                   {delegationMenuOpen ? (
-                    <div className="absolute left-[10.75rem] bottom-full z-40 mb-2 w-64 overflow-hidden rounded-[18px] border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
+                    <div className="absolute left-[8.75rem] bottom-full z-40 mb-2 w-[min(calc(100cqw-13rem),14rem)] @max-[26rem]/composer:left-[-2.5rem] @max-[26rem]/composer:mb-44 @max-[26rem]/composer:w-[calc(100cqw-2rem)] overflow-hidden rounded-xl border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
                       <div className="border-b border-dls-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10">
                         {t("composer.external_agents_label")}
                       </div>
                       <div
                         role="presentation"
-                        className="max-h-64 space-y-1 overflow-y-auto p-2"
+                        className="max-h-56 space-y-0.5 overflow-y-auto p-1.5"
                         onMouseDown={(event) => event.preventDefault()}
                       >
                         {externalAgents.map((agent, index) => (
@@ -1816,7 +1757,7 @@ export function ReactSessionComposer(props: ComposerProps) {
                               delegationItemRefs.current[index] = element;
                             }}
                             type="button"
-                            className={`flex w-full items-start gap-3 rounded-[14px] px-3 py-2.5 text-left transition-colors ${delegationMenuIndex === index ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
+                            className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${delegationMenuIndex === index ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
                             onMouseEnter={() => setDelegationMenuIndex(index)}
                             onMouseDown={(event) => {
                               event.preventDefault();

@@ -109,6 +109,22 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain("applyExternalAgentSelection(agent)");
   });
 
+  test("limits the compact extensions submenu to plugins and MCP while keeping slash loading", () => {
+    const menu = actionRowSource();
+    expect(menu).toContain('data-testid="composer-plus-menu"');
+    expect(menu).toContain('data-testid="composer-extensions-menu"');
+    expect(menu).toContain('["extensions", t("composer.extensions_label")]');
+    expect(menu).toContain('["mcps", t("composer.mcps_label")]');
+    expect(menu).not.toContain('["commands",');
+    expect(menu).not.toContain('["skills",');
+    expect(composerSource).toContain('useState<ToolMenuSection>("extensions")');
+    expect(composerSource).toContain('if (!slashOpen) return;');
+    expect(composerSource).toContain('[slashOpen, loadCommands]');
+    expect(composerSource).toContain('applySkillSelection(command.name, options)');
+    expect(composerSource).not.toContain('toolMenuLoadRef.current.commands');
+    expect(composerSource).not.toContain('toolMenuLoadRef.current.skills');
+  });
+
   test("loads the extension menu from installed and ready plugin packages", () => {
     expect(sessionSurfaceSource).toContain("listInstalledExtensions");
     expect(sessionSurfaceSource).toContain("isPluginPackageReady");
@@ -121,7 +137,7 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain("props.onOpenWorkspaceApp?.(entry.pluginId)");
     expect(sessionSurfaceSource).toContain("onOpenWorkspaceApp={props.onOpenWorkspaceApp}");
     expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
-    expect(sessionPageSource).toContain("entry.pluginId === pluginId");
+    expect(sessionPageSource).toContain("mediaStudioEngine(entry) === pluginId");
     expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
     expect(sessionPageSource).toContain('activePanelTab.type === "workspace-app"');
     expect(sessionPageSource).toContain("workspaceAppCapabilityInstruction");

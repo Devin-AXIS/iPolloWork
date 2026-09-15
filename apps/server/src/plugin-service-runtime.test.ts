@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { access, chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, chmod, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,7 +14,7 @@ import {
   pluginAuthorizationConsumerId,
   savePluginSecretAuthorization,
 } from "./plugin-platform-runtime.js";
-import { installPluginPackage } from "./plugin-package-lifecycle.js";
+import { installPluginPackage, listInstalledPluginPackages, readInstalledPluginUiResource, setPluginPackageEnabled } from "./plugin-package-lifecycle.js";
 import {
   callPluginServiceAction,
   deletePluginServiceData,
@@ -353,14 +353,53 @@ describe("plugin service runtime", () => {
     })).rejects.toMatchObject({ code: "plugin_host_action_unavailable" });
   });
 
+  test("Media Studio upgrades both legacy packages without losing assets and serves both engines from one install", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-media-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-media-runtime-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    const serverConfig = config(workspaceRoot);
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/media-studio", import.meta.url));
+    for (const id of ["image-studio", "video-console"]) {
+      const legacyRoot = await temporaryRoot("ipollowork-media-legacy-");
+      await cp(packageRoot, legacyRoot, { recursive: true });
+      const manifest = JSON.parse(await readFile(join(legacyRoot, "ipollowork.plugin.json"), "utf8"));
+      manifest.id = id;
+      if (id === "video-console") {
+        manifest.resources = manifest.resources.filter((resource: { type: string }) => resource.type !== "skill");
+        delete manifest.localization;
+      }
+      manifest.package.updateId = `ipollowork/${id}`;
+      await writeFile(join(legacyRoot, "ipollowork.plugin.json"), JSON.stringify(manifest));
+      await installPluginPackage({ serverConfig, packageRoot: legacyRoot });
+    }
+    const dataDir = pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "image-studio");
+    await mkdir(dataDir, { recursive: true });
+    await writeFile(join(dataDir, "existing.generation.json"), "preserved");
+    await writeFile(join(workspaceRoot, "original.png"), "original");
+    await installPluginPackage({ serverConfig, packageRoot });
+    expect((await listInstalledPluginPackages({ serverConfig })).map(item => item.pluginId)).toEqual(["media-studio"]);
+    expect(await readFile(join(pluginServiceDataDirectory(serverConfig, WORKSPACE_ID, "media-studio"), "existing.generation.json"), "utf8")).toBe("preserved");
+    expect(await readFile(join(workspaceRoot, "original.png"), "utf8")).toBe("original");
+    expect((await readInstalledPluginUiResource({ serverConfig, pluginId: "image-studio", resourceId: "studio" })).pluginId).toBe("media-studio");
+    expect((await readInstalledPluginUiResource({ serverConfig, pluginId: "media-studio", resourceId: "console" })).html).toContain('id="player"');
+    const calls: string[] = [];
+    for (const [pluginId, action] of [["media-studio", "image-status"], ["media-studio", "video-status"], ["image-studio", "status"], ["video-console", "status"]]) {
+      await callPluginServiceAction({ config: serverConfig, workspaceId: WORKSPACE_ID, pluginId, action, args: {}, context: {},
+        callHostAction: async reference => { calls.push(reference); return { ok: true, result: { configured: true } }; } });
+    }
+    expect(calls).toEqual(["action:openai-image-generation/status", "action:video-generation/status", "action:openai-image-generation/status", "action:video-generation/status"]);
+    await setPluginPackageEnabled({ serverConfig, pluginId: "media-studio", enabled: false });
+    await expect(callPluginServiceAction({ config: serverConfig, workspaceId: WORKSPACE_ID, pluginId: "video-console", action: "status", args: {}, context: {} })).rejects.toMatchObject({ code: "plugin_package_disabled" });
+  });
+
   test("imports and reloads Image Studio assets while delegating provider work through its declared host action", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-image-studio-workspace-");
     const runtimeRoot = await temporaryRoot("ipollowork-image-studio-runtime-");
-    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/image-studio", import.meta.url));
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/media-studio", import.meta.url));
     process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
     const serverConfig = config(workspaceRoot);
     const env = new EnvService({ path: join(runtimeRoot, "env.json") });
-    const serviceModuleUrl = pathToFileURL(join(packageRoot, "service", "image-studio.mjs")).href;
+    const serviceModuleUrl = pathToFileURL(join(packageRoot, "service", "media-studio.mjs")).href;
     const nodeImport = Bun.spawn(["node", "--input-type=module", "--eval", `await import(${JSON.stringify(serviceModuleUrl)})`], {
       stdout: "pipe",
       stderr: "pipe",

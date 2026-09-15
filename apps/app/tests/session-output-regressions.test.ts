@@ -55,9 +55,22 @@ describe("session output issue regressions", () => {
     expect(stripArtifactPathLines(`已完成。\n\n- [视频项目](${href})\n- [主视觉](artifacts/hero.png)`, [path])).toBe("已完成。\n\n- [主视觉](artifacts/hero.png)");
     expect(stripArtifactPathLines(`[视频项目](<${href}>)`, [path])).toBe("");
     expect(stripArtifactPathLines(`[另一项目](video/session-2/index.html)`, [path])).toBe("[另一项目](video/session-2/index.html)");
-    expect(stripArtifactPathLines(`请打开[视频项目](${path})查看动画。`, [path])).toBe(`请打开[视频项目](${path})查看动画。`);
+    expect(stripArtifactPathLines(`请打开[视频项目](${path})查看动画。`, [path])).toBe("请打开视频项目查看动画。");
     expect(stripArtifactPathLines(`[视频项目](${path})`, [])).toBe(`[视频项目](${path})`);
   });
+  test("keeps inline delivery wording without rendering a second card for the same file", () => {
+    for (const path of ["design/session/entry.html", "exports/slides.pptx", "exports/report.pdf", "artifacts/hero.png"]) {
+      expect(stripArtifactPathLines(`演示已完成：[预览时机验证](${path})。`, [path])).toBe("演示已完成：预览时机验证。");
+      expect(stripArtifactPathLines(`[结果](${path})`, [path])).toBe("");
+      expect(stripArtifactPathLines(`![图片](${path})`, [path])).toBe(`![图片](${path})`);
+      expect(stripArtifactPathLines(`结果：[预览](${path})`, [])).toBe(`结果：[预览](${path})`);
+    }
+    expect(stripArtifactPathLines("已完成：[演示](design/session/entry.html)，参考[数据](design/session/data.csv)。", ["design/session/entry.html"])).toBe("已完成：演示，参考[数据](design/session/data.csv)。");
+    expect(stripArtifactPathLines("已完成：[演示](design/session/brand%20deck.html#slide-1)。", ["design/session/brand deck.html"])).toBe("已完成：演示。");
+    expect(stripArtifactPathLines("已完成：[演示](<design/session/brand deck.html>)。", ["design/session/brand deck.html"])).toBe("已完成：演示。");
+    expect(stripArtifactPathLines("请查看[帮助](https://example.com/help)与[其他文件](other.pdf)。", ["result.pdf"])).toBe("请查看[帮助](https://example.com/help)与[其他文件](other.pdf)。");
+  });
+
   test("output bundles expand and media files route separately from HTML studios", () => {
     const artifactSource = readFileSync(new URL("../src/components/chat/artifact.tsx", import.meta.url), "utf8");
     const sessionPageSource = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
@@ -381,7 +394,7 @@ describe("session output issue regressions", () => {
     expect(source).toContain('t("templates.brief.destination_description")');
     expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
     expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
-    expect(source).toContain('t("templates.brief.supplemental_information")');
+    expect(source).toContain('t("templates.brief.reference_question")');
     expect(source).toContain("REFERENCE_FILE_ACCEPT");
     expect(source).toContain('t("templates.brief.upload_file")');
     expect(source).toContain('t("templates.brief.reference_supported_formats")');
@@ -440,7 +453,7 @@ describe("session output issue regressions", () => {
     expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
     expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
     expect(initialProjectSource).not.toContain("modelSafeAttachments");
-    expect(initialProjectSource).toContain("ingestReferenceFile(item.file)");
+    expect(initialProjectSource).toContain("ingestReferenceFile(item.file,");
     expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
     expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
     expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
@@ -619,9 +632,9 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
     expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
     expect(sidePanelSource).toContain('if (tab.type === "video") return <SquarePlay');
-    expect(sidePanelSource).toContain('tab.surface.pluginId === "image-studio"');
+    expect(sidePanelSource).toContain('mediaStudioEngine(tab.surface) === "image-studio"');
     expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
-    expect(sidePanelSource).toContain('<Image className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<Images className="size-[18px]" />');
     expect(sidePanelSource).not.toContain("WebkitMaskImage");
     expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
     expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
@@ -634,7 +647,7 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("designOpen");
     expect(sessionPageSource).toContain("filesOpen");
     expect(sessionPageSource).toContain("videoOpen");
-    expect(sessionPageSource).toContain('tab.type === "workspace-app" && tab.surface.id === surface.id');
+    expect(sessionPageSource).toContain('tab.id === workspaceAppTabId(surface)');
     expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
     expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
     expect(sidePanelSource).not.toContain('text-[#666666]');

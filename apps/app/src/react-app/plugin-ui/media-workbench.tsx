@@ -17,7 +17,7 @@ import {
   type WorkspaceVideoResult,
 } from "./workspace-app-frame";
 import {
-  resolveInstalledPluginContributions,
+  resolveInstalledPluginContributions, mediaStudioEngine,
   type PluginUiSurface,
 } from "./plugin-ui-contributions";
 
@@ -44,6 +44,10 @@ export function MediaWorkbench({
   onActivate,
   onApply,
   onClose,
+  onSwitchMedia,
+  onGenerateVideo,
+  onEditImage,
+  onOpenMedia,
 }: {
   source: MediaWorkbenchSource;
   client: iPolloWorkServerClient;
@@ -58,6 +62,10 @@ export function MediaWorkbench({
   onActivate?: () => void;
   onApply: (save: MediaWorkbenchSave) => Promise<void>;
   onClose: () => void;
+  onSwitchMedia?: (kind: MediaKind) => void;
+  onGenerateVideo?: (path: string) => void;
+  onEditImage?: (path: string) => void;
+  onOpenMedia?: (path: string, kind: MediaKind) => void;
 }) {
   const [surface, setSurface] = useState<PluginUiSurface | null>(null);
   const [saved, setSaved] = useState<(MediaWorkbenchSave & { editId?: string }) | null>(null);
@@ -83,7 +91,7 @@ export function MediaWorkbench({
       .then(({ items }) => {
         if (!active.current) return;
         const found = resolveInstalledPluginContributions(items).workspaceApps.find(
-          (item) => item.pluginId === pluginId,
+          (item) => mediaStudioEngine(item) === pluginId,
         );
         if (!found) throw new Error(t("media.workbench.unavailable"));
         setSurface(found);
@@ -153,14 +161,14 @@ export function MediaWorkbench({
   }, [workspaceId, sessionId, source.requestId, source.path, source.kind, onActivate, onResult]);
 
   const finishImage = async (replace: boolean) => {
-    if (!saved || applying.current) return;
+    if (!saved || !surface || applying.current) return;
     applying.current = true;
     setBusy(true);
     setError("");
     try {
       let copy: MediaWorkbenchSave = saved;
       if (saved.editId) {
-        const response = await client.callExtensionAction({ extensionId: "image-studio", action: "save-edit",
+        const response = await client.callExtensionAction({ extensionId: surface.pluginId, action: "save-edit",
           args: { editId: saved.editId, mode: "copy" },
           context: { directory: workspaceRoot, workspaceId, sessionId } });
         if (!response.ok) throw new Error(response.message);
@@ -202,6 +210,7 @@ export function MediaWorkbench({
       return;
     const next: MediaWorkbenchSave = { path: result.path, saveMode: result.path === source.path ? "overwrite" : "copy", revision: result.revision };
     setSaved(next);
+    onResult?.(result.path);
     setError("");
     setNotice("");
     if (next.saveMode === "overwrite" || replaceVideoOnSave.current) void apply(next);
@@ -229,6 +238,11 @@ export function MediaWorkbench({
           workspaceRoot={workspaceRoot}
           sessionId={sessionId}
           placement="workspace"
+          onSwitchMedia={onSwitchMedia}
+          onGenerateVideo={onGenerateVideo}
+          onEditGalleryImage={onEditImage}
+          onOpenMedia={onOpenMedia}
+          onMediaProduced={(path,requestId)=>{if(requestId===source.requestId && mediaKindForPath(path)===source.kind && safeVideoMediaPath(path)){setSaved({path,saveMode:"copy"});onResult?.(path);}}}
           launch={{
             intent: source.kind === "image" ? "edit-image" : "edit-video",
             requestId: source.requestId,

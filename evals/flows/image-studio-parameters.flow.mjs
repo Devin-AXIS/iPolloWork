@@ -75,7 +75,7 @@ export default {
   steps: [{
     name: "Switch native and prompt-only image providers",
     async run(ctx) {
-      const packageRoot = new URL("../../examples/plugin-packages/image-studio/", import.meta.url);
+      const packageRoot = new URL("../../examples/plugin-packages/media-studio/", import.meta.url);
       const html = await readFile(new URL("ui/image-studio.html", packageRoot), "utf8");
       const manifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", packageRoot), "utf8"));
       const imageFixture = fileURLToPath(new URL("../../vendor/hyperframes/assets/logo.png", import.meta.url));

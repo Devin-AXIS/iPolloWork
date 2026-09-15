@@ -54,6 +54,9 @@ import {
   inferArtifactRequestOwnership,
   selectArtifactsForRequest,
   selectSupplementalArtifactsForRequest,
+  selectConversationArtifactCards,
+  selectTemplateEntryArtifacts,
+  useArtifacts,
   type ArtifactInteractionContext,
   type ArtifactRequestOwnership,
 } from "@/lib/artifacts"
@@ -596,15 +599,21 @@ const AssistantMessage = React.memo(
       const completed = getMessageCompleted(message)
       return created !== null && completed !== null && completed >= created ? completed - created : null
     }, [message])
+    const responseArtifacts = useArtifacts(artifactMessages ?? [message], {
+      supplementalFiles: artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
+    })
     const visibleArtifactPaths = React.useMemo(() => {
       if (isStreaming) return []
-      const sourceMessages = artifactMessages ?? [message]
-      return getArtifactsFromMessages(sourceMessages, [], {
-          supplementalFiles: artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
-        })
-        .filter((artifact) => artifact.type !== "text" && artifact.type !== "unknown")
-        .map((artifact) => artifact.path)
-    }, [artifactFiles, artifactMessages, isStreaming, message, templateEntryPath])
+      const requestArtifacts = selectArtifactsForRequest(
+        responseArtifacts.filter(artifact => isStudioResultMessage(message) || !deliveredPaths.includes(artifact.path)),
+        requestOrdinal ?? null,
+        artifactRequestOwnership ?? [],
+      )
+      return selectConversationArtifactCards(
+        templateEntryPath ? selectTemplateEntryArtifacts(requestArtifacts, templateEntryPath) : requestArtifacts,
+        artifactContext,
+      ).map(artifact => artifact.path)
+    }, [artifactContext, artifactRequestOwnership, deliveredPaths, isStreaming, message, requestOrdinal, responseArtifacts, templateEntryPath])
 
     return (
       <Message

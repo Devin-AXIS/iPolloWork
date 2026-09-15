@@ -18,6 +18,32 @@ export type PluginUiSurface = {
   resource: PluginUiResource | (PluginResource & { type: "local-service" });
 };
 
+// Engine identities remain stable for persisted tabs and iframe messages.
+// The package identity owns installation, resources, and service calls.
+export function isMediaStudioPlugin(pluginId: string) {
+  return pluginId === "media-studio" || pluginId === "image-studio" || pluginId === "video-console";
+}
+
+export function mediaStudioEngine(surface: PluginUiSurface): string {
+  if (surface.pluginId !== "media-studio") return surface.pluginId;
+  return surface.resource.id === "console" ? "video-console" : "image-studio";
+}
+
+export function workspaceAppServiceAction(surface: PluginUiSurface, action: string): string {
+  if (surface.pluginId !== "media-studio") return action;
+  return mediaStudioEngine(surface) === "video-console" ? `video-${action}` : action === "status" ? "image-status" : action;
+}
+
+export function workspaceAppTabId(surface: PluginUiSurface) {
+  return isMediaStudioPlugin(surface.pluginId) ? "workspace-app:media-studio" : `workspace-app:${surface.id}`;
+}
+
+export function workspaceAppLaunchers(surfaces: PluginUiSurface[]) {
+  const media = surfaces.find(item => mediaStudioEngine(item) === "image-studio")
+    ?? surfaces.find(item => mediaStudioEngine(item) === "video-console");
+  return surfaces.filter(item => !isMediaStudioPlugin(item.pluginId) || item === media);
+}
+
 export type PluginConversationTemplate = {
   id: string;
   pluginId: string;
@@ -83,7 +109,9 @@ export function resolveInstalledPluginContributions(
   const settingsPages: PluginUiSurface[] = [];
   const conversationTemplates: PluginConversationTemplate[] = [];
 
+  const hasUnifiedPackage = items.some(item => item.pluginId === "media-studio");
   for (const item of items) {
+    if (hasUnifiedPackage && (item.pluginId === "image-studio" || item.pluginId === "video-console")) continue;
     if (!item.enabled) continue;
     if (activePluginEngineCompatibility(item)?.status === "unsupported") continue;
     item.manifest.contributions?.forEach((contribution, index) => {

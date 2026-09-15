@@ -57,7 +57,6 @@ import {
   artifactDirectoryPath,
   artifactPathIsWithinDirectory,
   artifactPathMatchesTarget,
-  getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
@@ -182,6 +181,10 @@ import { cn } from "@/lib/utils";
 import {
   resolveInstalledPluginContributions,
   useInstalledPluginContributions,
+  isMediaStudioPlugin,
+  mediaStudioEngine,
+  workspaceAppTabId,
+  workspaceAppLaunchers,
 } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
@@ -223,12 +226,12 @@ const CUSTOM_TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
 ];
 
 type PendingTemplateApplication =
-  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
+  | { item: TemplateCatalogItem; origin: "market" | "project-task"; resourceScope: WorkContextId }
   | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
 
 type PendingCustomTemplateApplication = {
   category: TemplateCategory;
-  target: "new-task" | "current-session";
+  target: "new-task" | "project-task" | "current-session";
   allowCategoryChange: boolean;
 };
 
@@ -2016,12 +2019,6 @@ export function SessionPage(props: SessionPageProps) {
       : undefined,
     [artifactCatalogState, artifactContext, artifactScopeKey],
   );
-  const videoOutput = useMemo(() => (
-    currentVideoEntryPath
-      ? getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
-        .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
-      : null
-  ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -2032,9 +2029,6 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
   }, []);
-  const autoOpenedDesignTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     currentTemplateSessionData && dismissedTemplateBriefSessionIds.has(currentTemplateSessionData.sessionId),
   );
@@ -2112,18 +2106,6 @@ export function SessionPage(props: SessionPageProps) {
       });
       setSessionTypeRevision((value) => value + 1);
       setTemplateSessionRevision((value) => value + 1);
-      if (result.manifest.surface === "design") {
-        openTab(props.selectedSessionId, {
-          id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
-          type: "design",
-          label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
-          sessionId: templateSessionId,
-          path: result.state.entry,
-        });
-        setSidePanelState(props.selectedSessionId, "design");
-      } else {
-        openVideoStudio(templateSessionId);
-      }
       return true;
     } catch (error) {
       if (isTemplateSessionConflict(error)) {
@@ -2135,7 +2117,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -2683,29 +2665,6 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
   }, [isVideoSession, props.selectedSessionId, setSidePanelState]);
-  useEffect(() => {
-    if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
-    const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
-    if (status !== "idle") return;
-    const outputKey = `${props.selectedSessionId}:${videoOutput.messageId}:${videoOutput.path}`;
-    if (autoOpenedVideoOutputRef.current === outputKey) return;
-    autoOpenedVideoOutputRef.current = outputKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
-  useEffect(() => {
-    const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
-      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true
-      || currentTemplateSessionData?.hasBrief === true;
-    if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
-    const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
-    if (autoOpenedVideoTemplateRef.current === templateKey) return;
-    autoOpenedVideoTemplateRef.current = templateKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [currentTemplateSessionData, isVideoSession, openCurrentVideoStudio, props.selectedSessionId]);
-  useEffect(() => {
-    autoOpenedVideoOutputRef.current = null;
-    autoOpenedVideoTemplateRef.current = null;
-  }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -2767,7 +2726,9 @@ export function SessionPage(props: SessionPageProps) {
   const openCustomTemplate = useCallback((category: TemplateCategory, target: PendingCustomTemplateApplication["target"], allowCategoryChange = false) => {
     setTemplateMarketOpen(false);
     setPendingCustomTemplateApplication({ category, target, allowCategoryChange });
-    if (target === "new-task") {
+    if (target === "project-task") {
+      setPendingTemplateProjectId(props.selectedWorkspaceId);
+    } else if (target === "new-task") {
       const selectedProjectId = templateDestinationProjects.some((project) => project.id === props.selectedWorkspaceId)
         ? props.selectedWorkspaceId
         : templateDestinationProjects[0]?.id;
@@ -2807,7 +2768,7 @@ export function SessionPage(props: SessionPageProps) {
         ...brief,
       };
       let createdSessionId: string | null = null;
-      if (application.target === "new-task") {
+      if (application.target !== "current-session") {
         if (!props.onCreateTaskFromCustom) return;
         createdSessionId = await props.onCreateTaskFromCustom(pendingTemplateProjectId, {
           category: application.category,
@@ -2826,18 +2787,6 @@ export function SessionPage(props: SessionPageProps) {
         setSessionType(createdSessionId, sessionTypeForTemplate(created.manifest));
         setTemplateSessionData({ ...created, hasBrief: true, applyMode: "current-conversation" });
         setTemplateSessionRevision((value) => value + 1);
-        if (created.manifest.surface === "design") {
-          openTab(createdSessionId, {
-            id: `design:${createdSessionId}:${encodeURIComponent(created.state.entry)}`,
-            type: "design",
-            label: created.state.entry.split("/").filter(Boolean).pop() || "Design",
-            sessionId: createdSessionId,
-            path: created.state.entry,
-          });
-          setSidePanelState(createdSessionId, "panel");
-        } else {
-          openVideoStudio(createdSessionId);
-        }
       }
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
@@ -2860,7 +2809,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [openTab, openVideoStudio, pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateDestinationProjects]);
+  }, [pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, templateDestinationProjects]);
   const submitPendingTemplateApplication = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -3026,15 +2975,6 @@ export function SessionPage(props: SessionPageProps) {
     }
     setCurrentSidePanel("panel");
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
-
-  useEffect(() => {
-    if (!props.selectedSessionId || !designTemplateEntryPath) return;
-    const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
-    if (autoOpenedDesignTemplateRef.current === templateKey) return;
-    autoOpenedDesignTemplateRef.current = templateKey;
-    if (sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design") return;
-    openDesignTab(designTemplateEntryPath);
-  }, [activePanelTab, designTemplateEntryPath, openDesignTab, props.selectedSessionId, sessionSidePanel]);
 
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     userOpenedSidebarWhileNarrowRef.current = false;
@@ -3399,7 +3339,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceSessionId ?? props.selectedSessionId;
     if (!sessionId) return;
     openTab(sessionId, {
-      id: `workspace-app:${surface.id}`,
+      id: workspaceAppTabId(surface),
       type: "workspace-app",
       label: surface.label,
       sessionId,
@@ -3409,21 +3349,24 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
   const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
-    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    const surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === pluginId);
     if (surface) {
-      openWorkspaceApp(surface, launch, sourceSessionId);
+      const sourcePath = launch?.source?.path;
+      const origin = sourcePath && [...usePanelTabStore.getState().mediaEdits].reverse().find(item=>item.workspaceId===props.runtimeWorkspaceId && item.sessionId===(sourceSessionId ?? props.selectedSessionId)
+        && [item.source.path,...item.results,...(item.relatedResults ?? [])].includes(sourcePath));
+      openWorkspaceApp(surface, origin && launch ? {...launch,originRequestId:origin.source.requestId} : launch, sourceSessionId);
       return;
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
-  }, [openWorkspaceApp, workspaceApps]);
+  }, [openWorkspaceApp, workspaceApps, props.runtimeWorkspaceId, props.selectedSessionId]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
-    let surface = workspaceApps.find((entry) => entry.pluginId === "image-studio");
+    let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
       const packages = await props.ipolloworkServerClient
         .listPluginPackages(props.runtimeWorkspaceId)
         .catch(() => null);
       surface = packages
-        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => entry.pluginId === "image-studio")
+        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio")
         : undefined;
     }
     if (!surface) {
@@ -3447,8 +3390,6 @@ export function SessionPage(props: SessionPageProps) {
     }, sourceSessionId);
   }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setCurrentSidePanel, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
-    // SessionSurface automatically previews newly discovered targets after an
-    // agent finishes. Video tasks already have a dedicated preview surface.
     if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
@@ -3484,6 +3425,11 @@ export function SessionPage(props: SessionPageProps) {
     if (target.kind === "file" && mediaKindForPath(target.value) === "video") {
       if (options?.auto) return;
       prioritizeRightPanel();
+      const videoSurface = workspaceApps.find(item => mediaStudioEngine(item) === "video-console");
+      if (videoSurface && props.runtimeWorkspaceId && sourceId && usePanelTabStore.getState().openMediaEditResult(props.runtimeWorkspaceId, sourceId, target.value, videoSurface)) {
+        setCurrentSidePanel("panel");
+        return;
+      }
       openWorkspaceAppForPlugin("video-console", {
         intent: "edit-video",
         requestId: crypto.randomUUID(),
@@ -4134,13 +4080,13 @@ export function SessionPage(props: SessionPageProps) {
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
-    ...workspaceApps.map<SidePanelLauncherItem>((surface) => ({
-      id: `workspace-app:${surface.id}`,
-      label: surface.label,
+    ...workspaceAppLaunchers(workspaceApps).map<SidePanelLauncherItem>((surface) => ({
+      id: workspaceAppTabId(surface),
+      label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
       group: "studio",
-      icon: surface.pluginId === "image-studio" ? "image-studio" : surface.pluginId === "video-console" ? "video-console" : "workspace-app",
+      icon: mediaStudioEngine(surface) === "image-studio" ? "image-studio" : mediaStudioEngine(surface) === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
+      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
   ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
   const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
@@ -4975,21 +4921,14 @@ export function SessionPage(props: SessionPageProps) {
                     templatesLoading={starterTemplateCatalogLoading}
                     templateBusyId={templateBusyId}
                     getTemplateCover={getStarterTemplateCover}
-                    onUseTemplate={async (templateId, surface) => {
+                    onUseTemplate={(templateId) => {
                       if (templateBusyId) return;
-                      setTemplateBusyId(templateId);
-                      try {
-                        await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
-                          props.selectedWorkspaceId,
-                          surface === "video" ? "video" : "design",
-                          templateId,
-                          PERSONAL_WORK_CONTEXT_ID,
-                        ));
-                      } finally {
-                        setTemplateBusyId((current) => current === templateId ? null : current);
-                      }
+                      const item = starterTemplateCatalog.find((template) => template.manifest.id === templateId);
+                      if (!item) return;
+                      setPendingTemplateProjectId(props.selectedWorkspaceId);
+                      setPendingTemplateApplication({ item, origin: "project-task", resourceScope: PERSONAL_WORK_CONTEXT_ID });
                     }}
-                    onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
+                    onUseCustomTemplate={(category) => openCustomTemplate(category, selectedProject && !selectedProject.workspace.isDefault ? "project-task" : "new-task")}
                     onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                     onRequestTemplates={() => void refreshStarterTemplateCatalog()}
                     pendingDraft={props.initialTaskDraftPending}
@@ -5106,6 +5045,7 @@ export function SessionPage(props: SessionPageProps) {
                           });
                           return null;
                         }}
+                        onUseCustomTemplate={(category) => openCustomTemplate(category, "current-session")}
                         onMaterializeTemplate={(templateId) => {
                           const template = starterTemplateCatalog.find((item) => item.manifest.id === templateId);
                           if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
@@ -5319,6 +5259,8 @@ export function SessionPage(props: SessionPageProps) {
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}
                         onEditImage={openImageStudio}
+                        onSwitchMedia={kind => openWorkspaceAppForPlugin(kind === "image" ? "image-studio" : "video-console", {intent:`generate-${kind}`,requestId:crypto.randomUUID()})}
+                        onOpenMedia={(path,kind) => void openTarget({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:kind === "image" ? "image" : "external",confidence:1,reason:"media-studio-import"})}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
@@ -5409,7 +5351,7 @@ export function SessionPage(props: SessionPageProps) {
       {pendingTemplateApplication ? (
         <TemplateApplyDialog
           key={`pending:${pendingTemplateApplication.origin}:${pendingTemplateApplication.item.manifest.id}`}
-          open={!createProjectOpen && templateDestinationProjects.length > 0}
+          open={!createProjectOpen && (pendingTemplateApplication.origin === "project-task" || templateDestinationProjects.length > 0)}
           mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
@@ -5427,8 +5369,8 @@ export function SessionPage(props: SessionPageProps) {
       {pendingCustomTemplateApplication ? (
         <TemplateApplyDialog
           key={`custom:${pendingCustomTemplateApplication.target}`}
-          open={!createProjectOpen && (pendingCustomTemplateApplication.target === "current-session" || templateDestinationProjects.length > 0)}
-          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : "market"}
+          open={!createProjectOpen && (pendingCustomTemplateApplication.target !== "new-task" || templateDestinationProjects.length > 0)}
+          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : pendingCustomTemplateApplication.target === "project-task" ? "new-conversation" : "market"}
           template={null}
           customCategory={pendingCustomTemplateApplication.category}
           onCustomCategoryChange={pendingCustomTemplateApplication.allowCategoryChange
