@@ -4281,6 +4281,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
     await enginePackageManager.applyEnvironment();
+    try {
+      process.env.HYPERFRAMES_CLI_PATH ||= resolveLocalHyperframesCli();
+    } catch {
+      console.warn("[avatar] Local HyperFrames cutout is unavailable");
+    }
     // Reuse the packaged Video Studio binaries in the local video workbench server.
     for (const [name, variable] of [["ffmpeg", "HYPERFRAMES_FFMPEG_PATH"], ["ffprobe", "HYPERFRAMES_FFPROBE_PATH"]]) {
       if (!process.env[variable]) {

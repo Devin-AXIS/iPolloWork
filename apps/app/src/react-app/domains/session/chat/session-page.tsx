@@ -145,6 +145,9 @@ import {
   type VideoArtifactCompletionRequirement,
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import type { ConversationStatus } from "../engine/conversation-engine";
+import { statusKey } from "../sync/session-sync";
 import {
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
@@ -1761,6 +1764,12 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
 }
 
 export function SessionPage(props: SessionPageProps) {
+  // Observe the same status cache as the composer: Stop settles it immediately
+  // and session-sync suppresses stale busy events until the next prompt.
+  const { data: selectedSessionStatus } = useQuery<ConversationStatus>({
+    queryKey: statusKey(props.runtimeWorkspaceId ?? "", props.selectedSessionId ?? ""),
+    queryFn: skipToken,
+  });
   const locale = currentLocale();
   const { config: shellConfig } = useShellConfig();
   const navigate = useNavigate();
@@ -2489,7 +2498,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
         path: state.briefPath,
         content: JSON.stringify({
@@ -2781,7 +2790,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
       const persistedBrief = {
         template: t("template_market.custom_title"),
         category: application.category,
@@ -2867,7 +2876,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
+      referencePayload = await buildTemplateReferenceSubmitPayload(references);
       const createdSessionId = await props.onCreateTaskFromTemplate(pendingTemplateProjectId, {
         templateId: template.id,
         resourceScope: application.resourceScope,
@@ -5305,7 +5314,7 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
-                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
+                        aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}

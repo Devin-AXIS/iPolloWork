@@ -2,6 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
 import { basename, extname, posix } from "node:path";
 import { z } from "zod";
+import { avatarBackgroundForPrompt } from "@ipollowork/types/video-generation";
+import { avatarCutoutCli, removeAvatarBackground } from "./video-local-edit.js";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { ApiError, providerApiError } from "../errors.js";
 import { createAuthorizationAccess, type AuthorizationAccess } from "../authorization-center.js";
@@ -167,7 +169,7 @@ async function jsonRequest(url: string, key: string, body?: unknown, signal?: Ab
   return data;
 }
 
-const mimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".mp4": "video/mp4", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".wav": "audio/wav" };
+const mimeTypes: Record<string, string> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".mp3": "audio/mpeg", ".wav": "audio/wav" };
 async function mediaFile(workspace: WorkspaceInfo, path: string) {
   if (!path || path.includes(":") || path.startsWith("/") || path.includes("\\") || path.split("/").some(part => !part || part === "." || part === "..")) fail("素材路径必须是当前工作区内的相对路径。");
   const mime = mimeTypes[extname(path).toLowerCase()];
@@ -378,7 +380,8 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
   const parsed = new URL(httpsUrl(url));
   const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com"];
   if (!domains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))) throw new Error("服务商返回了未受信任的视频下载域名，请联系管理员检查接口。");
-  const path = `${await sessionDirectory(workspace, job.sessionId, job.model === "minimax-h3-avatar" ? "assets" : "renders")}/${job.id}.mp4`;
+  const cutout = job.model === "minimax-h3-avatar" && job.avatarBackground === "transparent";
+  let path = `${await sessionDirectory(workspace, job.sessionId, job.model === "minimax-h3-avatar" && !cutout ? "assets" : "renders")}/${job.id}.mp4`;
   const destination = await resolveWithinRoot(workspace.path, path);
   const existing = await stat(destination).catch(() => null);
   if (!existing) {
@@ -409,6 +412,12 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
       await rename(partial, destination);
     } finally { await file.close().catch(() => undefined); await rm(partial, { force: true }); }
   } else if (!existing.isFile() || existing.size === 0) throw new Error("产出路径已存在异常文件，不能覆盖。");
+  if (cutout) {
+    const outputPath = `${await sessionDirectory(workspace, job.sessionId, "assets")}/avatar-${job.id}.webm`;
+    const output = await resolveWithinRoot(workspace.path, outputPath);
+    if (!(await stat(output).catch(() => null))?.size) await removeAvatarBackground(destination, output, signal);
+    path = outputPath;
+  }
   // Optional inspection must not turn an already saved provider result into a failed job.
   const media = await inspectLocalVideo(workspace, path).catch(() => null);
   await recordSessionArtifact(config, workspace, job.sessionId, path, undefined, {
@@ -451,7 +460,7 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
         await updateVideoJob(config, job, { status: "failed", message: safeError(error.success ? `${error.data.code ?? ""} ${error.data.message ?? ""}` : `${data.errorCode ?? ""} ${data.errorMessage ?? "生成失败"}`, key) });
       } else if (["succeeded", "success"].includes(status)) {
         saving = true;
-        await updateVideoJob(config, job, { status: "saving", nextPoll: Date.now() + 300_000 });
+        await updateVideoJob(config, job, { status: "saving", message: job.avatarBackground === "transparent" ? "视频已生成，正在提取透明人物…" : "正在保存视频…", nextPoll: Date.now() + 35 * 60_000 });
         const url = job.model === "seedance-2.5"
           ? z.object({ video_url: z.string() }).parse(data.content).video_url
           : z.array(z.object({ url: z.string() })).min(1).parse(data.results)[0].url;
@@ -543,6 +552,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
   }
   if (action === "submit") {
     const draft = submissionSchema.parse(input);
+    const avatarBackground = draft.model === "minimax-h3-avatar" ? avatarBackgroundForPrompt(draft.prompt) : undefined;
     const source = draft.model === "minimax-h3-avatar" && draft.avatarSource ? await avatarContext(workspace, sessionId) : null;
     if (source && draft.avatarSource === "video-audio") {
       if (source.audioIssue || !source.clips.length) fail(source.audioIssue || "当前视频没有配音素材。");
@@ -555,10 +565,12 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     }
     if (source) draft.prompt = `保持参考人物图片的视觉风格、身份、服装、色彩和光线；插画保持插画风格，写实照片保持写实风格。${draft.avatarSource === "video-content" ? "参考以下视频内容设计自然动作，不使用视频配音，不要求对口型。" : "严格跟随视频配音对口型。"}\n${draft.prompt}\n视频内容：${source.content}`.slice(0, 8000);
     const args = validateVideoSubmission(draft);
+    if (avatarBackground === "transparent") await avatarCutoutCli();
     const key = await credential(authorization, args.model);
     const now = Date.now();
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
+      ...(avatarBackground ? { avatarBackground } : {}),
       ...(args.model === "minimax-h3-avatar" ? { workflowId: args.avatarSource === "video-content" ? H3_WORKFLOW : AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
       model: args.model, operation: args.operation, prompt: args.prompt, status: "submitting", upstreamId: "", path: "", message: "准备并提交素材…",
       createdAt: now, updatedAt: now, nextPoll: now + 15 * 60_000 });

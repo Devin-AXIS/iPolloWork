@@ -1,4 +1,14 @@
 import { afterEach, expect, test } from "bun:test";
+import { avatarBackgroundForPrompt } from "@ipollowork/types/video-generation";
+
+test("avatar defaults to a transparent person unless the motion prompt requests scenery", () => {
+  for (const prompt of ["人物自然说话，保持镜头稳定", "不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
+    expect(avatarBackgroundForPrompt(prompt)).toBe("transparent");
+  }
+  for (const prompt of ["背景是海边", "保留原图背景", "人物站在公园，面向镜头", "a studio backdrop"]) {
+    expect(avatarBackgroundForPrompt(prompt)).toBe("scene");
+  }
+});
 import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -15,6 +25,7 @@ import { callVideoGenerationAction, pollVideoJobs, validateVideoSubmission, vide
 import { claimVideoJobs, getVideoJob, updateVideoJob } from "./video-jobs.js";
 
 const roots: string[] = [];
+const initialCutoutCli = process.env.HYPERFRAMES_CLI_PATH;
 const oldFetch: unknown = Reflect.get(globalThis, PROVIDER_FETCH_SYMBOL);
 const auth: AuthorizationAccess = { read: async (id): Promise<Readonly<Record<string,string>>> => id === "volcengine-video" ? { ARK_API_KEY: "test-ark-secret" } : id === "runninghub-video" ? { RUNNINGHUB_API_KEY: "test-rh-secret" } : {} };
 const context = { workspaceId: "workspace", sessionId: "session-one" };
@@ -22,6 +33,9 @@ const context = { workspaceId: "workspace", sessionId: "session-one" };
 const mp4 = Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-video-test-")); roots.push(root);
+  // Mock tool availability; provider tests never execute a local model.
+  process.env.HYPERFRAMES_CLI_PATH = join(root, "cutout.mjs");
+  await writeFile(process.env.HYPERFRAMES_CLI_PATH, "");
   const config: ServerConfig = { host:"127.0.0.1",port:0,token:"token",hostToken:"host",configPath:join(root,"server.json"),approval:{mode:"auto",timeoutMs:0},corsOrigins:[],workspaces:[{id:"workspace",name:"Workspace",path:root,preset:"starter",workspaceType:"local"}],authorizedRoots:[root],readOnly:false,startedAt:Date.now(),tokenSource:"generated",hostTokenSource:"generated",logFormat:"pretty",logRequests:false };
   return { root, config, call: (action: string, input: unknown = {}, owner = context) => callVideoGenerationAction(config,auth,action,input,owner) };
 }
@@ -92,6 +106,8 @@ test("avatar rejects changed audio wiring before creating a billable task", asyn
   await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow("尚未提交");
 });
 afterEach(async () => {
+  if (initialCutoutCli === undefined) delete process.env.HYPERFRAMES_CLI_PATH;
+  else process.env.HYPERFRAMES_CLI_PATH = initialCutoutCli;
   if (oldFetch === undefined) Reflect.deleteProperty(globalThis,PROVIDER_FETCH_SYMBOL); else Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,oldFetch);
   for (const root of roots.splice(0)) await rm(root,{recursive:true,force:true});
 });

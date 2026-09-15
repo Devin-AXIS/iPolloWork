@@ -59,7 +59,7 @@ export function buildTimelineAssetId(assetPath: string, existingIds: Iterable<st
     .replace(/[^a-zA-Z0-9_-]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .toLowerCase();
-  const baseId = normalized || "asset";
+  const baseId = normalized ? (/^\d/.test(normalized) ? `asset_${normalized}` : normalized) : "asset";
   const ids = new Set(existingIds);
   if (!ids.has(baseId)) return baseId;
   let suffix = 2;

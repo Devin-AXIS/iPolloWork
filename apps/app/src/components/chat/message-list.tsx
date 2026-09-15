@@ -1049,7 +1049,9 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
 RetryMessage.displayName = "RetryMessage"
 
 export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/workspace").SessionArtifactPage["videoJobs"] }) {
-  return (jobs ?? []).filter(job => job.status !== "succeeded").map(job => {
+  const visible = (jobs ?? []).filter(job => job.status !== "succeeded");
+  const failedJobs = visible.filter(job => job.status === "failed" || job.status === "save_failed");
+  const renderJob = (job: (typeof visible)[number]) => {
     const failed = job.status === "failed" || job.status === "save_failed";
     const label = job.status === "submitting" ? "submitting"
       : job.status === "running" ? "running"
@@ -1061,7 +1063,15 @@ export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/works
       <p>{t(`session.video_job.${label}`)}</p>
       <p className="break-all text-xs">{job.model} · {job.id}</p>
     </div>;
-  });
+  };
+  return <>
+    {visible.filter(job => job.status !== "failed" && job.status !== "save_failed").map(renderJob)}
+    {failedJobs.length ? <details className="mx-auto w-full max-w-[800px] py-2 text-sm text-muted-foreground md:px-10">
+      <summary className="cursor-pointer">{t("session.video_job.previous_failures", { count: failedJobs.length })}</summary>
+      <p className="pt-2 text-xs">{t("session.video_job.independent_history")}</p>
+      {failedJobs.map(renderJob)}
+    </details> : null}
+  </>;
 }
 
 const isMessageEmptyGroup = (messages: UIMessageWithIndex[]) =>

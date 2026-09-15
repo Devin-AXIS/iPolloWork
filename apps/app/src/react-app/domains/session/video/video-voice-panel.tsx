@@ -12,6 +12,7 @@ import { VideoAvatarPanel } from "./video-avatar-panel";
 
 import {
   BAILIAN_PRESET_VOICES,
+  BAILIAN_PRESET_GROUPS,
   DEFAULT_COSYVOICE_MODEL,
   migrateVideoVoiceoverSettings,
   parseVideoVoiceoverSettings,
@@ -417,9 +418,17 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
                 <p className="mt-1 text-[11px] leading-4 text-muted-foreground">{t("video.voice.preset_help")}</p>
               </div>
               <Select value={presetVoiceId} onValueChange={(value) => { if (value) void choosePreset(value); }}>
-                <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")} /></SelectTrigger>
-                <SelectContent align="start"><SelectGroup><SelectLabel>CosyVoice</SelectLabel>{BAILIAN_PRESET_VOICES.map((voice) => <SelectItem key={voice.id} value={voice.id}>{presetVoiceLabel(voice.id)} · {t(`video.voice.preset_description.${voice.id}`)}</SelectItem>)}</SelectGroup></SelectContent>
+                <SelectTrigger className="w-full" aria-label={t("video.voice.official_aria")}><SelectValue placeholder={t("video.voice.choose_official")}>{presetVoiceId ? presetVoiceLabel(presetVoiceId) : undefined}</SelectValue></SelectTrigger>
+                <SelectContent align="start" className="max-h-[min(20rem,var(--available-height))]">
+                  {BAILIAN_PRESET_GROUPS.map(group => <SelectGroup key={group}>
+                    <SelectLabel>{t(`video.voice.preset_group.${group}`)}</SelectLabel>
+                    {BAILIAN_PRESET_VOICES.filter(voice => voice.group === group).map(voice => <SelectItem key={voice.id} value={voice.id}>
+                      <div className="min-w-0 whitespace-normal"><div>{presetVoiceLabel(voice.id)}</div><div className="text-xs font-normal text-muted-foreground">{t(`video.voice.preset_description.${voice.id}`)}</div></div>
+                    </SelectItem>)}
+                  </SelectGroup>)}
+                </SelectContent>
               </Select>
+              {BAILIAN_PRESET_VOICES.some(voice => voice.id === presetVoiceId) ? <p className="text-xs leading-relaxed text-muted-foreground">{t(`video.voice.preset_description.${presetVoiceId}`)}</p> : null}
               {activeVoice?.source === "preset" ? <SelectedVoice voiceId={activeVoice.voiceId} label={presetVoiceLabel(activeVoice.voiceId)} /> : null}
               <VoiceAiButton disabled={!activeVoice || activeVoice.source !== "preset"} onClick={sendVoiceToAi} />
             </TabsContent>
