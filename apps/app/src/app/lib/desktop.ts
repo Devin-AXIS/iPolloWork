@@ -5,6 +5,9 @@ export const desktopResumeEvent = "ipollowork:desktop-resumed";
 export type * from "./desktop-types";
 export type {
   EngineInfo,
+  EnginePackageInfo,
+  EnginePackageSource,
+  EnginePackageStatus,
   iPolloWorkServerInfo,
   EngineDoctorResult,
   WorkspaceInfo,
@@ -40,6 +43,7 @@ import type {
   WorkspaceList,
 } from "./desktop-types";
 import type { BrowserPanelTab } from "./desktop-types";
+import type { BrowserLoginUi } from "@ipollowork/types/plugins";
 
 export const LOCAL_IMAGE_FILE_EXTENSIONS = ["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"];
 export const LOCAL_IMAGE_FILE_FILTERS = [{ name: "图片文件", extensions: LOCAL_IMAGE_FILE_EXTENSIONS }];
@@ -67,6 +71,7 @@ declare global {
       shell?: {
         openExternal?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
         openAuth?: (url: string) => Promise<{ ok: boolean; error?: string } | void>;
+        clearAuthSession?: () => Promise<{ ok: boolean; error?: string } | void>;
         relaunch?: () => Promise<void>;
       };
       system?: {
@@ -126,12 +131,35 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, provider?: "auto" | "builtin" | "external") => Promise<{
+        openUrl?: (url: string, options?: { profileId?: string; loginUi?: BrowserLoginUi & { origin: string } }) => Promise<{
           provider: "builtin";
-          browser_url: string;
-          target_id: string;
-          tab_id: string;
+          tabId: string;
           url: string;
+        }>;
+        snapshot?: (payload: { tabId: string; imageSelector?: string }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          snapshotId: string;
+          url: string;
+          title: string;
+          tree: string;
+          imageUrl?: string | null;
+          elementCount: number;
+          truncated: boolean;
+        }>;
+        act?: (payload: {
+          tabId: string;
+          snapshotId: string;
+          workspaceRoot?: string;
+          actions: Array<Record<string, unknown>>;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          results: Array<Record<string, unknown>>;
+          snapshotRequired: boolean;
         }>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;
@@ -273,47 +301,10 @@ export const desktopFetch: typeof globalThis.fetch = async (input, init) => {
     return globalThis.fetch(input, init);
   }
 
-  // Extract method/headers/body from either a Request object or the (input, init)
-  // pair. The OpenCode SDK calls fetch(request) (no init), so reading these only
-  // from `init` would silently drop the Authorization header and the POST body
-  // — the remote would then reject every request with "Invalid bearer token".
-  let url: string;
-  let method: string | undefined;
-  let headers: Record<string, string> | undefined;
-  let body: string | undefined;
-
-  if (typeof Request !== "undefined" && input instanceof Request) {
-    url = input.url;
-    method = init?.method ?? input.method;
-    const headersSource = init?.headers ? new Headers(init.headers) : input.headers;
-    headers = Object.fromEntries(headersSource.entries());
-    if (typeof init?.body === "string") {
-      body = init.body;
-    } else if (input.body) {
-      // Request body is a stream — buffer to text so it survives the IPC hop
-      // to the Electron main process.
-      body = await input.clone().text();
-    }
-  } else {
-    url = typeof input === "string" ? input : input.toString();
-    method = init?.method;
-    headers = init?.headers ? Object.fromEntries(new Headers(init.headers).entries()) : undefined;
-    body = typeof init?.body === "string" ? init.body : undefined;
-  }
-
-  const result = await invokeElectronHelper("__fetch", url, { method, headers, body });
-
-  // Response constructor rejects bodies for null-body status codes, so we
-  // must pass null instead of an empty string for those.
-  const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
-  const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
-
-  return new Response(responseBody, {
-    status: result.status,
-    statusText: result.statusText,
-    headers: result.headers,
-  });
+  return desktopFetchViaMain(input, init);
 };
+
+const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
 
 export async function desktopFetchViaMain(
   input: RequestInfo | URL,
@@ -334,6 +325,7 @@ export async function desktopFetchViaMain(
     if (typeof init?.body === "string") {
       body = init.body;
     } else if (input.body) {
+      // Preserve SDK Request headers and buffer its body for the IPC hop.
       body = await input.clone().text();
     }
   } else {
@@ -348,7 +340,7 @@ export async function desktopFetchViaMain(
     throw new Error("desktop_binary_fetch_requires_restart");
   }
 
-  const NULL_BODY_STATUSES = new Set([101, 204, 205, 304]);
+  // These statuses require a null body, even when IPC returns an empty string.
   const responseBody = NULL_BODY_STATUSES.has(result.status) ? null : result.body;
 
   return new Response(responseBody, {
@@ -399,6 +391,16 @@ export async function openDesktopAuthUrl(url: string): Promise<void> {
   }
   if (typeof window !== "undefined") {
     window.open(url, "_blank", "noopener,noreferrer");
+  }
+}
+
+export async function clearDesktopAuthSession(): Promise<void> {
+  const clearAuthSession = window.__IPOLLOWORK_ELECTRON__?.shell?.clearAuthSession;
+  if (!clearAuthSession) return;
+
+  const result = await clearAuthSession();
+  if (result && result.ok === false) {
+    throw new Error(result.error ?? "Failed to clear sign-in session");
   }
 }
 
@@ -551,6 +553,9 @@ const {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
   pickDirectory,
   pickFile,
   saveFile,
@@ -567,7 +572,6 @@ const {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 } = desktopBridge;
 
@@ -608,6 +612,9 @@ export {
   runtimeBootstrap,
   engineInfo,
   engineDoctor,
+  enginePackagesList,
+  enginePackageInstall,
+  enginePackageUninstall,
   pickDirectory,
   pickFile,
   saveFile,
@@ -624,6 +631,5 @@ export {
   writeOpencodeConfig,
   resetiPolloWorkState,
   resetOpencodeCache,
-  opencodeMcpAuth,
   setWindowDecorations,
 };

@@ -1,68 +1,62 @@
 import { describe, expect, it } from "vitest";
 
 import type { CatalogItem } from "./useBlockCatalog";
-import {
-  isCatalogLibrarySection,
-  isGsapCatalogItem,
-  resolveGsapCatalogCoverage,
-} from "./useBlockCatalog";
+import { COMPONENT_CATALOG_SECTIONS, resolveCatalogSection } from "./useBlockCatalog";
 
-function item(name: string, plugins: string[]): CatalogItem {
+function item(name: string, category?: "maps"): CatalogItem {
   return {
     name,
     version: "1.0.0",
     type: "hyperframes:block",
-    kind: "effect",
-    librarySection: "opening-effect",
-    category: "effects",
+    kind: "scene",
+    category: "data",
     title: name,
     description: name,
     dimensions: { width: 1920, height: 1080 },
     duration: 6,
     files: [],
-    engine: {
-      name: "gsap",
-      version: "3.15.0",
-      plugins,
-    },
+    visualComponent: category
+      ? {
+          version: 1,
+          category,
+          surfaces: ["video"],
+          themeMode: "inherit",
+        }
+      : undefined,
   };
 }
 
-describe("resolveGsapCatalogCoverage", () => {
-  it("counts official plugin and ease coverage independently", () => {
-    const coverage = resolveGsapCatalogCoverage([
-      item("scroll", ["ScrollTrigger"]),
-      item("ease", ["CustomEase"]),
-      item("unrelated", ["MadeUpPlugin"]),
+describe("component catalog contract", () => {
+  it("keeps the thirteen clear component categories in one ordered contract", () => {
+    expect(COMPONENT_CATALOG_SECTIONS).toEqual([
+      "scene",
+      "product",
+      "data",
+      "diagrams",
+      "maps",
+      "proof",
+      "knowledge",
+      "people",
+      "typography",
+      "media",
+      "social",
+      "developer",
+      "brand",
     ]);
-
-    expect(coverage).toEqual({
-      plugins: { covered: 1, total: 19 },
-      eases: { covered: 1, total: 6 },
-    });
   });
-});
 
-describe("isGsapCatalogItem", () => {
-  it("keeps non-GSAP components out of the GSAP libraries", () => {
-    expect(isGsapCatalogItem(item("gsap", ["ScrollTrigger"]))).toBe(true);
-    expect(
-      isGsapCatalogItem({
-        ...item("shader", []),
-        engine: { name: "three", version: "0.180.0" },
-      }),
-    ).toBe(false);
+  it("only admits registry items with an explicit visual component category", () => {
+    expect(resolveCatalogSection(item("route-map", "maps"))).toBe("maps");
+    expect(resolveCatalogSection(item("ordinary-block"))).toBeNull();
   });
-});
 
-describe("isCatalogLibrarySection", () => {
-  it("accepts only explicit library section values", () => {
-    expect(isCatalogLibrarySection("opening-effect")).toBe(true);
-    expect(isCatalogLibrarySection("transition-effect")).toBe(true);
-    expect(isCatalogLibrarySection("opening-animation")).toBe(false);
-    expect(isCatalogLibrarySection("caption-animation")).toBe(false);
-    expect(isCatalogLibrarySection(undefined)).toBe(false);
-    expect(isCatalogLibrarySection("background-scene")).toBe(false);
-    expect(isCatalogLibrarySection("effects")).toBe(false);
+  it("maps legacy version-one categories into the canonical taxonomy", () => {
+    expect(resolveCatalogSection({ visualComponent: { category: "intro" } })).toBe("scene");
+    expect(resolveCatalogSection({ visualComponent: { category: "outro" } })).toBe("scene");
+    expect(resolveCatalogSection({ visualComponent: { category: "flow" } })).toBe("diagrams");
+    expect(resolveCatalogSection({ visualComponent: { category: "compare" } })).toBe("proof");
+    expect(resolveCatalogSection({ visualComponent: { category: "interface" } })).toBe("media");
+    expect(resolveCatalogSection({ visualComponent: { category: "structured" } })).toBe("data");
+    expect(resolveCatalogSection({ visualComponent: { category: "commerce" } })).toBe("brand");
   });
 });

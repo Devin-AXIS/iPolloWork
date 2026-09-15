@@ -13,7 +13,7 @@ const connectedBuiltIn: McpDirectoryInfo = {
   oauth: false,
   kind: "extension",
   extensionManifest: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "ipollowork-browser",
     name: "iPolloWork Browser",
     description: "Connected by default.",
@@ -30,7 +30,7 @@ const availableBuiltIn: McpDirectoryInfo = {
   oauth: false,
   kind: "extension",
   extensionManifest: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     id: "computer-use",
     name: "Computer Use",
     description: "Marketplace-only until installed.",
@@ -85,8 +85,6 @@ describe("extension item projection", () => {
       quickConnect: [connectedBuiltIn, availableBuiltIn],
       mcpServers: [],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       enablementContext: {},
       isBuiltInConnected: (entry) => entry.id === connectedBuiltIn.id,
     });
@@ -100,8 +98,6 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       orgMcpConnections: [orgMcpConnection()],
       enablementContext: {},
       isBuiltInConnected: () => false,
@@ -118,8 +114,6 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       orgMcpConnections: [orgMcpConnection({ connectedForMe: true })],
       enablementContext: {},
       isBuiltInConnected: () => false,
@@ -136,8 +130,6 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [directNotionServer],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       orgMcpConnections: [orgMcpConnection()],
       enablementContext: {},
       isBuiltInConnected: () => false,
@@ -147,13 +139,11 @@ describe("extension item projection", () => {
     expect(result.installedMcpEntries.map((entry) => entry.name)).toEqual(["Notion"]);
   });
 
-  test("keeps migrated package services out of the legacy Quick Connect catalog", () => {
+  test("keeps package services out of the standalone Quick Connect catalog", () => {
     const result = buildExtensionItems({
       quickConnect: [notionQuickConnect],
       mcpServers: [],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       orgMcpConnections: [orgMcpConnection({ credentialMode: "shared", connected: false, connectedForMe: false })],
       enablementContext: {},
       isBuiltInConnected: () => false,
@@ -163,7 +153,7 @@ describe("extension item projection", () => {
     expect(result.quickConnectEntries.map((entry) => entry.name)).toEqual([]);
   });
 
-  test("keeps plugin-owned and related skills out of the legacy grid without mutating runtime skills", () => {
+  test("keeps plugin-owned and related skills out of the standalone grid without mutating runtime skills", () => {
     const installedSkills = [
       { name: "figma-use", path: "/global/figma-use/SKILL.md" },
       { name: "hyperframes-cli", path: "/global/hyperframes-cli/SKILL.md" },
@@ -174,8 +164,6 @@ describe("extension item projection", () => {
       mcpServers: [],
       installedSkills,
       pluginPackageSkillNames: ["figma-use", "hyperframes-cli"],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       enablementContext: {},
       isBuiltInConnected: () => false,
     });
@@ -193,9 +181,7 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [directNotionServer],
       installedSkills: [],
-      installedPluginPackageMcpServerNames: ["notion"],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
+      pluginPackageMcpServerNames: ["notion"],
       enablementContext: {},
       isBuiltInConnected: () => false,
     });
@@ -203,8 +189,6 @@ describe("extension item projection", () => {
       quickConnect: [notionQuickConnect],
       mcpServers: [directNotionServer],
       installedSkills: [],
-      importedCloudPlugins: {},
-      cloudMarketplaces: [],
       enablementContext: {},
       isBuiltInConnected: () => false,
     });

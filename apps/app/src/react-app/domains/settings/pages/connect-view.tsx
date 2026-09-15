@@ -22,7 +22,6 @@ import {
   resolveConnectionRowGroup,
   type ConnectRowGroup,
 } from "@/react-app/domains/settings/connect-cloud-readiness";
-import type { ExtensionItem } from "@/react-app/domains/settings/extension-items";
 import { useConnectEnabled, useDesktopConfig } from "@/react-app/domains/cloud/desktop-config-provider";
 import { resolveExtensionIconUrl } from "@/react-app/design-system/extension-icon-src";
 import { useCloudSession } from "../cloud/cloud-session-provider";
@@ -71,11 +70,9 @@ type ConnectSession = Pick<
 export type ConnectViewProps = {
   developerMode: boolean;
   session: ConnectSession;
-  marketplaceItems?: ExtensionItem[];
+  organizationPlugins?: DenOrgPlugin[];
   refreshMarketplaceItems?: () => Promise<unknown> | void;
 };
-
-type CloudMarketplaceItem = ExtensionItem & { plugin: DenOrgPlugin };
 
 function denManageConnectionsUrl() {
   return new URL("/dashboard/mcp-connections", readDenSettings().baseUrl).toString();
@@ -168,10 +165,6 @@ function ConnectSignInPanel(props: ConnectViewProps) {
   );
 }
 
-function isCloudMarketplaceItem(item: ExtensionItem): item is CloudMarketplaceItem {
-  return Boolean(item.plugin);
-}
-
 type ConnectOrganizationRow =
   | {
       kind: "connection";
@@ -229,7 +222,7 @@ function rowSearchText(row: ConnectOrganizationRow) {
 
 function buildConnectRows(input: {
   connections: DenExternalMcpConnection[];
-  items: ExtensionItem[];
+  plugins: DenOrgPlugin[];
   role: "owner" | "admin" | "member" | null | undefined;
 }) {
   const connectionRows: ConnectOrganizationRow[] = input.connections.map((connection) => ({
@@ -242,17 +235,17 @@ function buildConnectRows(input: {
     connection,
   }));
 
-  const pluginRows: ConnectOrganizationRow[] = input.items.filter(isCloudMarketplaceItem).flatMap((item) => {
-    const group = resolveConnectRowGroup(item.plugin.cloudReadiness, input.role, item.plugin.componentCounts);
+  const pluginRows: ConnectOrganizationRow[] = input.plugins.flatMap((plugin) => {
+    const group = resolveConnectRowGroup(plugin.cloudReadiness, input.role, plugin.componentCounts);
     if (group === "excluded") return [];
     return [{
       kind: "plugin",
-      id: item.plugin.id,
+      id: plugin.id,
       group,
-      name: item.plugin.name,
-      description: item.plugin.description ?? "",
-      meta: formatPluginConnectRowMeta(item.plugin),
-      plugin: item.plugin,
+      name: plugin.name,
+      description: plugin.description ?? "",
+      meta: formatPluginConnectRowMeta(plugin),
+      plugin,
     }];
   });
 
@@ -337,13 +330,13 @@ function ConnectOrganizationList(props: {
   connectingId: string | null;
   disconnectingId: string | null;
   connections: DenExternalMcpConnection[];
-  items: ExtensionItem[];
+  plugins: DenOrgPlugin[];
   onConnect: (connectionId: string) => void;
   onDisconnect: (connectionId: string) => void;
   role: "owner" | "admin" | "member" | null | undefined;
 }) {
   const [search, setSearch] = useState("");
-  const rows = useMemo(() => buildConnectRows({ connections: props.connections, items: props.items, role: props.role }), [props.connections, props.items, props.role]);
+  const rows = useMemo(() => buildConnectRows({ connections: props.connections, plugins: props.plugins, role: props.role }), [props.connections, props.plugins, props.role]);
   const query = search.trim().toLowerCase();
   const filteredRows = query ? rows.filter((row) => rowSearchText(row).includes(query)) : rows;
   const rowsByGroup = new Map<ConnectOrganizationRow["group"], ConnectOrganizationRow[]>();
@@ -407,7 +400,7 @@ function ConnectOrganizationList(props: {
 
 function ConnectActivePanel(props: {
   connections: DenExternalMcpConnection[];
-  marketplaceItems: ExtensionItem[];
+  organizationPlugins: DenOrgPlugin[];
   loading: boolean;
   error: string | null;
   connectingId: string | null;
@@ -435,7 +428,7 @@ function ConnectActivePanel(props: {
 
       <ConnectOrganizationList
         connections={props.connections}
-        items={props.marketplaceItems}
+        plugins={props.organizationPlugins}
         role={activeOrganization?.role}
         connectingId={props.connectingId}
         disconnectingId={props.disconnectingId}
@@ -455,8 +448,8 @@ function ConnectPitchPanel() {
     <SettingsSection>
       <SettingsInset className="space-y-4 bg-dls-surface">
         <div className="space-y-2">
-          <div className="text-base font-semibold text-dls-text">{t("connect.pitch_title")}</div>
-          <div className="max-w-[58ch] text-sm text-dls-secondary">{t("connect.pitch_body")}</div>
+          <div className="text-ui-body font-semibold text-dls-text">{t("connect.pitch_title")}</div>
+          <div className="settings-description max-w-[58ch] text-ui-control leading-5 text-dls-secondary">{t("connect.pitch_body")}</div>
         </div>
         <ManageInDenButton />
       </SettingsInset>
@@ -469,7 +462,7 @@ export function ConnectView(props: ConnectViewProps) {
   const desktopConfig = useDesktopConfig();
   const connectEnabled = useConnectEnabled();
   const orgMcpConnections = useOrgMcpConnections();
-  const marketplaceItems = props.marketplaceItems ?? [];
+  const organizationPlugins = props.organizationPlugins ?? [];
   const refreshMarketplaceItems = props.refreshMarketplaceItems;
   const connectionsCount = orgMcpConnections.connections.length;
   const signedInLoading = denAuth.status === "signed_in"
@@ -498,7 +491,7 @@ export function ConnectView(props: ConnectViewProps) {
       {state === "active" ? (
         <ConnectActivePanel
           connections={orgMcpConnections.connections}
-          marketplaceItems={marketplaceItems}
+          organizationPlugins={organizationPlugins}
           loading={orgMcpConnections.loading}
           error={orgMcpConnections.error}
           connectingId={orgMcpConnections.connectingId}

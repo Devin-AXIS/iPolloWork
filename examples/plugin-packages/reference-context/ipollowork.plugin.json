@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "id": "reference-context",
+  "name": "参考资料",
+  "description": "为视频、演示文稿、网页和其他模板提供共用的参考资料 Skill。",
+  "category": "AI Agent 与自动化",
+  "defaultEnabled": true,
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "package": {
+    "version": "0.1.1",
+    "publisher": { "id": "ipollowork", "name": "iPolloWork" },
+    "compatibility": { "ipollowork": ">=0.18.0" },
+    "updateId": "ipollowork/reference-context"
+  },
+  "permissions": [
+    { "id": "workspace-read", "reason": "读取当前任务的参考资料、样式证据和素材。" },
+    { "id": "workspace-write", "reason": "按用户需求将参考素材用于当前模板项目。" },
+    { "id": "process", "reason": "使用本地命令读取大型解析结果并检查素材引用。" }
+  ],
+  "resources": [
+    {
+      "type": "skill",
+      "id": "ipollowork-reference-analyzer",
+      "label": "参考资料上下文",
+      "description": "读取统一参考上下文，遵循用户风格，按来源复用素材并核对输出。",
+      "path": "skills/ipollowork-reference-analyzer/SKILL.md",
+      "provides": ["workflow:ipollowork-reference-analyzer"],
+      "required": true
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "Reference Context",
+        "description": "Shared reference evidence Skill for video, slides, websites and other templates.",
+        "category": "AI Agents & Automation",
+        "resources": {
+          "ipollowork-reference-analyzer": {
+            "label": "Reference Context",
+            "description": "Consume unified reference evidence, apply edited style and verify source asset reuse."
+          }
+        },
+        "permissions": {
+          "workspace-read": { "reason": "Read the current task's reference documents, design evidence and assets." },
+          "workspace-write": { "reason": "Reuse reference assets in the selected template project as requested." },
+          "process": { "reason": "Read large evidence files and check media references using local commands." }
+        }
+      }
+    }
+  }
+}

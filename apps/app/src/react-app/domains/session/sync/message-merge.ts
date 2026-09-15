@@ -1,4 +1,6 @@
 import type { UIMessage } from "ai";
+import type { SessionArtifact } from "@ipollowork/types/workspace";
+import { formatFileSize } from "@/lib/utils";
 
 function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage) {
   const parts = snapshotMessage.parts.map((part, index) => {
@@ -35,12 +37,12 @@ function mergeSnapshotMessageWithCached(snapshotMessage: UIMessage, cachedMessag
 
 function messageCreated(message: UIMessage) {
   const metadata = message.metadata;
-  if (!metadata || typeof metadata !== "object" || !("opencode" in metadata)) return null;
+  if (!metadata || typeof metadata !== "object" || !("ipollowork" in metadata)) return null;
 
-  const opencode = metadata.opencode;
-  if (!opencode || typeof opencode !== "object" || !("created" in opencode)) return null;
+  const ipollowork = metadata.ipollowork;
+  if (!ipollowork || typeof ipollowork !== "object" || !("created" in ipollowork)) return null;
 
-  const created = opencode.created;
+  const created = ipollowork.created;
   return typeof created === "number" ? created : null;
 }
 
@@ -141,4 +143,31 @@ export function mergeSnapshotIntoCachedMessages(snapshotMessages: UIMessage[], c
   }
 
   return sortFullyTimestampedMessages(merged);
+}
+
+/** Presentation only: these receipts must never be sent back to the conversation engine. */
+export function withStudioResults(messages: UIMessage[], artifacts: SessionArtifact[], labels: { image: string; video: string }) {
+  const seen = new Set<string>();
+  const results: UIMessage[] = [];
+  for (const artifact of artifacts) {
+    const generation = artifact.generation;
+    if (!generation || seen.has(generation.id)) continue;
+    seen.add(generation.id);
+    // A path in a tool result or inline preview is not a delivery card.
+    // Receipts use stable generation IDs so refreshes remain idempotent.
+    const details = [
+      formatFileSize(artifact.size),
+      generation.width && generation.height ? `${generation.width} × ${generation.height}` : null,
+      generation.duration ? `${Number(generation.duration.toFixed(1))} s` : null,
+      generation.model,
+    ].filter(Boolean).join(" · ");
+    const filename = artifact.path.split("/").pop() ?? artifact.path;
+    results.push({
+      id: `studio-result:${generation.id}`,
+      role: "assistant",
+      metadata: { ipollowork: { created: generation.completedAt, completed: generation.completedAt } },
+      parts: [{ type: "text", text: `${labels[generation.kind]}\n\n${details}\n\n[${filename.replace(/[\[\]\\]/g, "\\$&")}](${encodeURI(artifact.path).replace(/\(/g, "%28").replace(/\)/g, "%29")})` }],
+    });
+  }
+  return mergeSnapshotAndLiveMessages(messages, sortFullyTimestampedMessages(results), { appendLiveOnlyMessages: true });
 }

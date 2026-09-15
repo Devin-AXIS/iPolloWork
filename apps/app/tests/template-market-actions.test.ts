@@ -26,9 +26,12 @@ const desktopMain = readFileSync(
 );
 
 describe("template market actions", () => {
-  test("keeps package import but hides save-current controls", () => {
-    expect(marketDialog).toContain('t("template_market.import_package")');
+  test("keeps package import but removes create and save-current controls", () => {
+    expect(marketDialog).toContain('t("template_market.import")');
+    expect(marketDialog).toContain('t("template_market.import_tooltip")');
     expect(marketDialog).toContain("accept={TEMPLATE_PACKAGE_FILE_ACCEPT}");
+    expect(marketDialog).not.toContain('t("template_authoring.create")');
+    expect(marketDialog).not.toContain("onCreate:");
     expect(marketDialog).not.toContain('t("template_market.save_current")');
     expect(marketDialog).not.toContain("onSaveCurrent");
     expect(marketDialog).not.toContain("canSaveCurrent");
@@ -99,19 +102,91 @@ describe("template market actions", () => {
     }
   });
 
-  test("shows export only for local templates in the personal catalog", () => {
-    expect(marketDialog).toContain('onExport={template.sourceType === "local" ? () => props.onExport(template) : undefined}');
-    expect(marketDialog).toContain('template.sourceType === "local" && onExport');
-    expect(marketDialog.match(/onExport=\{/g)?.length).toBe(1);
-    expect(marketDialog).toContain('t("template_market.export_package")');
+  test("keeps template cards focused on source, style, use, and favorites", () => {
+    expect(marketDialog).toContain("FAVORITE_TEMPLATE_IDS_STORAGE_KEY");
+    expect(marketDialog).toContain("writeFavoriteTemplateIds(next)");
+    expect(marketDialog).toContain("templateFormatLabel(template)");
+    expect(marketDialog).toContain("favorite && \"fill-current\"");
+    expect(marketDialog).not.toContain("onExport:");
+    expect(marketDialog).not.toContain("onUninstall:");
+    expect(marketDialog).not.toContain('t("template_market.preview")');
   });
 
-  test("reuses the HTML cover and preview flow for installed enterprise templates", () => {
+  test("puts My templates first and guides a genuinely empty collection to Explore", () => {
+    expect(marketDialog).toContain('const TEMPLATE_MARKET_VIEWS: TemplateMarketView[] = ["my", "explore"]');
+    expect(marketDialog).toContain('template.sourceType === "local" || favoriteIds.has(template.manifest.id)');
+    expect(marketDialog).toContain('view === "my" && myCollection === "all" && myTemplatesEmpty');
+    expect(marketDialog).toContain('onClick={exploreTemplates}');
+    expect(marketDialog).toContain('t("template_market.explore_templates")');
+    expect(marketDialog).toContain('bg-[var(--project-dialog-accent)] text-white hover:brightness-95 active:brightness-90');
+  });
+
+  test("keeps the template dialog stationary, resizable, and above its popup controls", () => {
+    expect(marketDialog).not.toContain("template-market-drag-region");
+    expect(marketDialog).not.toContain("setPointerCapture");
+    expect(marketDialog).not.toContain("setDialogPosition");
+    expect(marketDialog).not.toContain("electron:titlebar-drag");
+    expect(marketDialog).toContain("<DialogContent showCloseButton className=");
+    expect(marketDialog).toContain("max-h-[calc(100dvh-32px)] max-w-[calc(100dvw-32px)] resize");
+    expect(marketDialog).toContain("[&>[data-slot=dialog-close]]:top-[29px]");
+    expect(marketDialog).toContain('className="mt-4 w-full shrink-0 px-6"');
+    expect(marketDialog).toContain('className="relative mt-4 w-full"');
+    expect(marketDialog).toContain('className="mt-3 flex min-h-9 items-center overflow-x-auto"');
+    expect(marketDialog).toContain('className="mt-2 flex h-9 items-center gap-4 overflow-x-auto"');
+    expect(marketDialog).toContain('className="mt-3 min-h-0 w-full flex-1 overflow-y-auto px-6 pb-6"');
+    expect(marketDialog).not.toContain("showCloseButton={false}");
+    expect(marketDialog.match(/positionerClassName="z-\[90\]"/g)).toHaveLength(6);
+  });
+
+  test("matches the Figma three-column template card layout", () => {
+    expect(marketDialog.match(/grid grid-cols-3 gap-4 max-\[800px\]:grid-cols-2 max-\[540px\]:grid-cols-1/g)).toHaveLength(3);
+    expect(marketDialog).toContain('border-2 border-transparent bg-muted/50 pb-4 transition-colors duration-150 hover:border-[var(--project-dialog-accent)]');
+    expect(marketDialog).toContain('className="relative block h-[137px] w-full shrink-0');
+    expect(marketDialog).toContain('t("template_market.favorite")');
+    expect(marketDialog).toContain('category === id ? "bg-foreground text-background" : "text-foreground hover:bg-muted"');
+    expect(marketDialog).toContain('t("template_market.all_types")');
+    expect(marketDialog).toContain("items-center justify-center gap-1.5 whitespace-nowrap");
+    expect(marketDialog).not.toMatch(/#[0-9a-f]{3,8}/i);
+    expect(marketDialog).not.toContain("rgba(");
+    expect(marketDialog).not.toContain("widthClass");
+    expect(marketDialog).not.toContain("max-w-[763px]");
+    expect(marketDialog).not.toContain("w-[calc(100%-48px)]");
+    expect(marketDialog.match(/w-full[^\"]*px-6/g)).toHaveLength(3);
+    expect(marketDialog).not.toContain("ml-[57px]");
+    expect(marketDialog).toContain('t("template_market.type_label")');
+    expect(marketDialog).toContain("bg-transparent px-4 font-['PingFang_SC',sans-serif]");
+    expect(marketDialog).toContain('className="ml-auto flex shrink-0 items-center gap-2"');
+    expect(marketDialog).not.toContain('view === "my" ? "mt-4" : "mt-5"');
+  });
+
+  test("reuses the HTML cover and preview flow for installed remote templates", () => {
     expect(marketDialog).toContain("if (installedTemplate) {");
     expect(marketDialog).toContain("<TemplateCard template={installedTemplate} getCover={getCover}");
-    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, enterpriseResourceId: resource.id })}");
-    expect(marketDialog).toContain("previewEnterpriseResource.latestVersion.version === previewTemplate?.installedVersion");
-    expect(marketDialog).toContain("props.onInstallEnterprise(enterpriseResource)");
+    expect(marketDialog).toContain("onPreview={(template) => setPreviewSelection({ template, remoteResourceId: resource.id })}");
+    expect(marketDialog).toContain("previewRemoteResource.latestVersion.version === previewTemplate?.installedVersion");
+    expect(marketDialog).toContain("props.onInstallRemote(remoteResource)");
+  });
+
+  test("shows Built-in, Cloud, and Enterprise in Explore and keeps remote templates usable from local storage", () => {
+    expect(marketDialog).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
+    expect(marketDialog).toContain('t("template_market.source_builtin")');
+    expect(marketDialog).toContain('props.onSelectSource("builtin")');
+    expect(marketDialog).toContain('props.onSelectSource("cloud")');
+    expect(marketDialog).toContain('props.onSelectSource("enterprise")');
+    expect(marketDialog).toContain('t("enterprise_connection.enterprise")');
+    expect(marketDialog).toContain('const remoteCatalogMode = props.source !== "builtin"');
+    expect(marketDialog).not.toContain("<WorkResourceScopeSwitch");
+    expect(sessionPage).toContain('useState<TemplateCatalogSource>("builtin")');
+    expect(sessionPage).toContain('source === "enterprise" && !activeEnterprise');
+    expect(sessionPage).toContain('listEnterpriseResources("template", resourceOptions)');
+    expect(sessionPage).toContain("connection: activeEnterprise");
+    expect(sessionPage).toContain("listTemplates(props.runtimeWorkspaceId, templateResourceScope)");
+    expect(sessionPage).toContain("importTemplate(props.runtimeWorkspaceId, file, category, resourceScope)");
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, templateResourceScope)");
+    expect(sessionPage).toContain("getCachedTemplateCover(templateResourceScope, templateId)");
+    expect(sessionPage).toContain("cloudAvailable={denAuth.isSignedIn}");
+    expect(sessionPage).toContain("enterpriseAvailable={Boolean(activeEnterprise)}");
+    expect(sessionPage).toContain("onSelectSource={selectTemplateCatalogSource}");
   });
 
   test("keeps preview metadata separated from long descriptions and cover edges", () => {
@@ -159,5 +234,37 @@ describe("template market actions", () => {
     expect(sessionPage).toContain("reference.ingestion?.warnings[0]");
     expect(sessionPage).toContain('t("templates.brief.submit_failed")');
     expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
+  });
+
+  test("applies a template to the current conversation when opened from the composer", () => {
+    expect(sessionPage).toContain('useState<"new-session" | "current-session">("new-session")');
+    expect(sessionPage).toContain('setTemplateMarketTarget("current-session")');
+    expect(sessionPage).toContain('templateMarketTarget === "current-session"');
+    expect(sessionPage).toContain("applyTemplateToCurrentSession(template, templateResourceScope)");
+    expect(sessionPage).toContain('setTemplateMarketTarget("new-session")');
+    expect(sessionPage).toContain('t("templates.brief.apply_current")');
+  });
+
+  test("keeps repeated templates in the current conversation with isolated instance ids", () => {
+    expect(sessionPage).toContain("listTemplateSessions(props.runtimeWorkspaceId)");
+    expect(sessionPage).toContain("nextConversationArtifactSessionId(");
+    expect(sessionPage).toContain("materializeTemplate(");
+    expect(sessionPage).toContain("templateSessionId,");
+    expect(sessionPage).toContain("sessionId: templateSessionId");
+    expect(sessionPage).toContain("isTemplateSessionConflict(error)");
+    expect(sessionPage).toContain('origin: "conversation-conflict"');
+    expect(sessionPage).toContain('data-testid="template-conflict-dialog"');
+  });
+
+  test("configures a market template before creating a task in the selected project", () => {
+    expect(sessionPage).toContain('data-testid="template-apply-dialog"');
+    expect(sessionPage).toContain('mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}');
+    expect(sessionPage).toContain('projects={pendingTemplateApplication.origin === "market" ? templateDestinationProjects : undefined}');
+    expect(sessionPage).toContain('onProjectChange={pendingTemplateApplication.origin === "market" ? setPendingTemplateProjectId : undefined}');
+    expect(sessionPage).toContain('onRequestNewProject={pendingTemplateApplication.origin === "market" ? openCreateProjectDialog : undefined}');
+    expect(sessionPage).toContain("props.onCreateTaskFromTemplate(pendingTemplateProjectId");
+    expect(sessionPage).toContain("setPendingTemplateDispatch({");
+    expect(sessionPage).not.toContain("projectFiles: supplemental.projectFiles");
+    expect(sessionPage).not.toContain("links: supplemental.links");
   });
 });

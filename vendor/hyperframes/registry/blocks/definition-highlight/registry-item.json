@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "definition-highlight",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Definition Highlight",
+  "description": "Define a key term in a highly readable editorial frame.",
+  "tags": [
+    "component",
+    "typography",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "highlight",
+        "note"
+      ],
+      "instructions": "AI may rewrite the title, supporting note, and up to four term and definition. Keep pipe separators between items and preserve the editorial layout."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "definition-highlight.html",
+      "target": "compositions/definition-highlight.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Definition Highlight",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Items (label::detail | ...)",
+      "type": "string",
+      "default": "AGENT::A system that chooses and uses tools|CONTEXT::The information shaping a decision|PROOF::Evidence a claim actually holds|CONTROL::The user's ability to direct outcomes",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted item",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "Use the term the same way throughout the story",
+      "maxLength": 100,
+      "update": "live"
+    }
+  ]
+}

@@ -1,14 +1,23 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Code2, Focus, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Save, Share2, SlidersHorizontal, Smartphone, Undo2 } from "lucide-react";
+import { GripVertical, Trash2, ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
 
+import {
+  IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  type DesignAiSelectionContext,
+  type DesignStudioClient,
+  type DesignStudioFeatures,
+} from "@ipollowork/design-studio";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { hydrateDesignMedia } from "./design-media";
+import { useDesignMediaWorkbench } from "./use-design-media-workbench";
 import { pickLocalImageFile, readLocalImageAsDataUrl } from "@/app/lib/desktop";
 import { downloadBlobAsFile } from "@/app/lib/download";
 import { Button } from "@/components/ui/button";
+import { TemplateIcon } from "@/components/template-icon";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -16,13 +25,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { toast } from "@/components/ui/sonner";
+import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { isPptxCompatibleTemplate } from "@ipollowork/types/templates";
+import { isPptxCompatibleTemplate, type TemplateSessionSnapshot } from "@ipollowork/types/templates";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
-import type { DesignAiSelectionContext } from "./design-ai-selection";
 import { useDesignAiSelectionStore } from "./design-ai-selection-store";
 import {
   buildDesignPreviewDocument,
@@ -55,14 +63,11 @@ import {
 } from "./design-view-restore";
 import { DesignExportMenu } from "./design-export-menu";
 import { DesignPropertiesInspector } from "./design-properties-inspector";
+import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
+import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
-import floatingToolbarDivider from "./assets/floating-toolbar-divider.svg";
 import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
-import floatingToolbarGrip from "./assets/floating-toolbar-grip.svg";
-import floatingToolbarPalette from "./assets/floating-toolbar-palette.svg";
-import floatingToolbarSettings from "./assets/floating-toolbar-settings.svg";
-import floatingToolbarTrash from "./assets/floating-toolbar-trash.svg";
 import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
@@ -117,12 +122,25 @@ import {
 } from "./pptx-entrance-animations";
 
 type DesignPanelProps = {
+  conversationId?: string;
   sessionId: string;
-  client: iPolloWorkServerClient | null;
+  client: DesignStudioClient | null;
   workspaceId: string | null;
+  mediaClient?: iPolloWorkServerClient | null;
+  workspaceRoot?: string;
   isRemoteWorkspace?: boolean;
   initialPath?: string;
+  displayName?: string;
   expanded?: boolean;
+  features?: DesignStudioFeatures;
+  branding?: {
+    kind: "design" | "slides";
+    title: string;
+    byline: string;
+    bylineUrl: string;
+    repositoryUrl: string;
+    onAskAi: () => void;
+  };
   onAskAi: (context: DesignAiSelectionContext) => void;
   onSaveAsTemplate?: () => void;
 };
@@ -139,8 +157,13 @@ const PDF_SLIDE_HEIGHT = 900;
 const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
-const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none hover:bg-muted hover:text-foreground [&_svg]:!size-[18px]";
-const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground [&_svg]:!size-[18px] [&_svg]:stroke-[1.5]";
+const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+
+function FloatingToolbarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
+  return <Tooltip><TooltipTrigger aria-label={label} render={children} /><TooltipContent positionerClassName="z-[140]">{label}</TooltipContent></Tooltip>;
+}
+
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
@@ -183,80 +206,13 @@ function sanitizePdfFileBaseName(value: string) {
 function isGenericPdfTitle(value: string) {
   return /^(?:cover|overview|summary|presentation|slides?|pitch deck|deck|untitled|index|entry|ipollowork(?: slide editing demo)?|pitch deck - ipollowork)$/i.test(value.trim());
 }
-function isPreviewLocalAssetUrl(value: string) {
-  const trimmed = value.trim();
-  return Boolean(trimmed)
-    && !trimmed.startsWith("#")
-    && !trimmed.startsWith("/")
-    && !/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(trimmed)
-    && !trimmed.split(/[?#]/, 1)[0]?.split("/").includes("..");
-}
-
-function resolvePreviewAssetPath(currentPath: string, assetUrl: string) {
-  const path = assetUrl.split(/[?#]/, 1)[0] ?? "";
-  const base = directoryPath(currentPath);
-  const segments: string[] = [];
-  for (const segment of `${base}${path}`.split("/")) {
-    if (!segment || segment === ".") continue;
-    if (segment === "..") segments.pop();
-    else segments.push(segment);
-  }
-  return segments.join("/");
-}
-
-type HydratedDesignPreview = {
-  source: string;
-  objectUrls: string[];
-};
-
-function arrayBufferToPreviewDataUrl(data: ArrayBuffer, contentType: string | null) {
-  const bytes = new Uint8Array(data);
-  let binary = "";
-  const chunkSize = 0x8000;
-  for (let index = 0; index < bytes.length; index += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(index, index + chunkSize));
-  }
-  return `data:${contentType ?? "application/octet-stream"};base64,${btoa(binary)}`;
-}
-
 async function hydrateDesignPreviewAssets(
   source: string,
-  input: { client: iPolloWorkServerClient | null; workspaceId: string | null; activePagePath: string },
-): Promise<HydratedDesignPreview> {
-  if (!input.client || !input.workspaceId || !input.activePagePath || typeof DOMParser === "undefined") {
-    return { source, objectUrls: [] };
-  }
-  const client = input.client;
-  const workspaceId = input.workspaceId;
-  const parser = new DOMParser();
-  const document = parser.parseFromString(source, "text/html");
-  const images = Array.from(document.querySelectorAll<HTMLImageElement>("img[src]"))
-    .filter((image) => isPreviewLocalAssetUrl(image.getAttribute("src") ?? ""));
-  if (!images.length) return { source, objectUrls: [] };
-
-  const assetUrls = new Map<string, string>();
-  await Promise.all(images.map(async (image) => {
-    const original = image.getAttribute("src") ?? "";
-    const assetPath = resolvePreviewAssetPath(input.activePagePath, original);
-    const existing = assetUrls.get(assetPath);
-    if (existing) {
-      image.setAttribute("src", existing);
-      image.setAttribute("data-ipw-preview-src", original);
-      return;
-    }
-    try {
-      const downloaded = await client.downloadWorkspaceFile(workspaceId, assetPath);
-      const dataUrl = arrayBufferToPreviewDataUrl(downloaded.data, downloaded.contentType);
-      assetUrls.set(assetPath, dataUrl);
-      image.setAttribute("src", dataUrl);
-      image.setAttribute("data-ipw-preview-src", original);
-    } catch {
-      // Leave the original relative URL in place so broken assets stay visible
-      // as broken assets instead of hiding an underlying file issue.
-    }
-  }));
-  const doctype = source.trimStart().toLowerCase().startsWith("<!doctype") ? "<!DOCTYPE html>\n" : "";
-  return { source: `${doctype}${document.documentElement.outerHTML}`, objectUrls: [] };
+  input: { client: DesignStudioClient | null; workspaceId: string | null; activePagePath: string },
+) {
+  const { client, workspaceId, activePagePath } = input;
+  if (!client || !workspaceId || !activePagePath || typeof DOMParser === "undefined") return { source, objectUrls: [] };
+  return hydrateDesignMedia(source, activePagePath, path => client.downloadWorkspaceFile(workspaceId, path));
 }
 
 function deckPdfFileName(document: Document, path: string) {
@@ -524,11 +480,17 @@ function updateSelectionValue(selection: DesignSelection, field: DesignField, va
 
 export function DesignPanel({
   sessionId,
+  conversationId = sessionId,
   client,
   workspaceId,
+  mediaClient = null,
+  workspaceRoot = "",
   isRemoteWorkspace = false,
   initialPath,
+  displayName,
   expanded = false,
+  features = IPOLLOWORK_DESIGN_STUDIO_FEATURES,
+  branding,
   onAskAi,
   onSaveAsTemplate,
 }: DesignPanelProps) {
@@ -538,6 +500,7 @@ export function DesignPanel({
   const previewViewportRef = React.useRef<HTMLDivElement>(null);
   const presentationPanRef = React.useRef<HTMLDivElement>(null);
   const imageInputRef = React.useRef<HTMLInputElement>(null);
+  const imageInputIntentRef = React.useRef<"replacement" | "element-background" | "design-background">("replacement");
   const designTokenDraftRef = React.useRef("");
   const designTokenSaveTimerRef = React.useRef<number | null>(null);
   const templateQuery = useQuery({
@@ -615,6 +578,7 @@ export function DesignPanel({
     setHistory((current) => pushDesignUndoHistory(current, snapshot));
   }, [setHistory]);
   const [previewSource, setPreviewSource] = React.useState("");
+  const [mediaRevision, setMediaRevision] = React.useState(0);
   const [hydratedPreviewSource, setHydratedPreviewSource] = React.useState("");
   const [previewRevision, setPreviewRevision] = React.useState(0);
   const previewRevisionRef = React.useRef(previewRevision);
@@ -642,12 +606,40 @@ export function DesignPanel({
   const [exportingPptx, setExportingPptx] = React.useState(false);
   const [pptxConfirmationOpen, setPptxConfirmationOpen] = React.useState(false);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = React.useState(false);
+  const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
+  const templateCatalog = features.templates
+    && client?.listDesignStudioTemplates
+    && client.getDesignStudioTemplateCover
+    && client.applyDesignStudioTemplate
+    && workspaceId
+    ? features.templates
+    : null;
   const aiUndoCheckpoint = useDesignAiSelectionStore((state) => {
     const checkpoint = state.undoCheckpoints[sessionId]?.[activePagePath]?.at(-1);
     const context = checkpoint ? state.contexts[checkpoint.contextId] : undefined;
     return context?.workspaceId === workspaceId ? checkpoint : undefined;
   });
   const appliedAiCheckpointRef = React.useRef<string | null>(null);
+
+  const applyTemplateSnapshot = React.useCallback((snapshot: TemplateSessionSnapshot) => {
+    queryClient.setQueryData(["design-session-template", workspaceId, sessionId] as const, snapshot);
+    queryClient.removeQueries({ queryKey: ["design-html", workspaceId] });
+    setSelectedPath("");
+    setActivePagePath("");
+    setActivePageHash("");
+    setViewedVersionPath("current");
+    setViewedVersionUpdatedAt(null);
+    setHistory([]);
+    setDraft("");
+    draftRef.current = "";
+    setSavedSource("");
+    setPreviewSource("");
+    setHydratedPreviewSource("");
+    setSelectionState(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+    setPreviewLoaded(false);
+  }, [queryClient, sessionId, setHistory, workspaceId]);
 
   React.useEffect(() => {
     if (!lockedPath) {
@@ -887,6 +879,7 @@ export function DesignPanel({
     const pageIdentity = `${sessionId}:${activePagePath}`;
     const pageChanged = hydratedPageRef.current !== pageIdentity;
     if (!shouldHydrateDesignSource(pageChanged, fileQuery.data.content, draftRef.current)) return;
+    if (!pageChanged) pendingViewRestoreRef.current = capturePreviewView(fileQuery.data.content);
     draftRef.current = fileQuery.data.content;
     setPendingCanvasChange(false);
     setDraft(fileQuery.data.content);
@@ -909,28 +902,34 @@ export function DesignPanel({
     setPreviewRevision((current) => current + 1);
   }, [activePagePath, fileQuery.data?.content, fileQuery.data?.updatedAt, sessionId, viewedVersionPath]);
 
+  const previewObjectUrlsRef = React.useRef<string[]>([]);
+  React.useEffect(() => {
+    const urls = previewObjectUrlsRef.current;
+    // Release only after React has replaced the iframe that used these URLs.
+    return () => urls.forEach((url) => URL.revokeObjectURL(url));
+  }, [hydratedPreviewSource]);
+
   React.useEffect(() => {
     if (!previewSource) {
+      previewObjectUrlsRef.current = [];
       setHydratedPreviewSource("");
       return;
     }
     let cancelled = false;
-    let objectUrls: string[] = [];
     setPreviewLoaded(false);
     void hydrateDesignPreviewAssets(previewSource, { client, workspaceId, activePagePath }).then((result) => {
-      objectUrls = result.objectUrls;
       if (cancelled) {
-        objectUrls.forEach((url) => URL.revokeObjectURL(url));
+        result.objectUrls.forEach((url) => URL.revokeObjectURL(url));
         return;
       }
+      previewObjectUrlsRef.current = result.objectUrls;
       setHydratedPreviewSource(result.source);
       setPreviewRevision((current) => current + 1);
     });
     return () => {
       cancelled = true;
-      objectUrls.forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [activePagePath, client, previewSource, workspaceId]);
+  }, [activePagePath, client, previewSource, workspaceId, mediaRevision]);
 
   React.useEffect(() => {
     const receiveMessage = (event: MessageEvent) => {
@@ -1495,6 +1494,43 @@ export function DesignPanel({
     },
   });
 
+  const capturePreviewView = (targetSource: string): DesignViewRestore => ({
+    id: crypto.randomUUID(),
+    targetSource,
+    previewRevision: previewRevisionRef.current + 1,
+    frameRevision: `${activePagePath}:${previewRevisionRef.current + 1}`,
+    frameLoaded: false,
+    frameRestored: false,
+    deckRestored: false,
+    deckIndex: deckRef.current?.index ?? null,
+    frameScrollX: frameViewRef.current.scrollX,
+    frameScrollY: frameViewRef.current.scrollY,
+    panLeft: presentationPanRef.current?.scrollLeft ?? 0,
+    panTop: presentationPanRef.current?.scrollTop ?? 0,
+    selectionLocator: selection?.locator ?? null,
+  });
+
+  const mediaWorkbench = useDesignMediaWorkbench({
+    sessionId: conversationId, projectSessionId: sessionId,
+    client: mediaClient, workspaceId, page: activePagePath, selection,
+    enabled: editing && !isMultiSelection && !selection?.locked && !isRemoteWorkspace && viewedVersionPath === "current" && Boolean(mediaClient),
+    saveCurrent: async () => (await saveMutation.mutateAsync()).content,
+    onReload: (content, updatedAt) => {
+      pendingViewRestoreRef.current = capturePreviewView(content);
+      queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, activePagePath], { content, updatedAt });
+      draftRef.current = content;
+      setDraft(content); setSavedSource(content); setPendingCanvasChange(false);
+      setPreviewSource(content); setHydratedPreviewSource(""); setPreviewLoaded(false);
+      setMediaRevision(current => current + 1);
+    },
+    onFill: (kind, src, preview) => {
+      if (!selection) return;
+      rememberHistory();
+      setPendingCanvasChange(true);
+      iframeRef.current?.contentWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "media-fill", ids: [selection.id], kind, src, preview }, "*");
+    },
+  });
+
   const viewVersion = async (versionPath: string) => {
     if (!client || !workspaceId || !fileQuery.data || versionPath === viewedVersionPath) return;
     if (draft !== savedSource && !window.confirm("Discard unsaved design changes and switch versions?")) return;
@@ -1661,8 +1697,8 @@ export function DesignPanel({
   const fontSize = Math.max(1, Math.round(Number.parseFloat(selection?.styles.fontSize || "16") || 16));
   const setFontSize = (next: number, remember = false) => applyField("fontSize", `${Math.max(1, Math.min(240, next))}px`, remember);
 
-  const replaceImageFromFile = async (file: File | undefined) => {
-    if (!file || !selection || selection.tag !== "img") return;
+  const applyBrowserImage = async (file: File | undefined) => {
+    if (!file) return;
     if (!file.type.startsWith("image/")) {
       toast.error("Choose an image file to replace this image.");
       return;
@@ -1673,9 +1709,25 @@ export function DesignPanel({
     }
     try {
       const result = await imageFileToPortableDataUrl(file);
-      rememberHistory();
-      applyField("src", result, false);
-      toast.success("Image replaced in the design.");
+      if (imageInputIntentRef.current === "replacement") {
+        if (!selection || selection.tag !== "img") return;
+        rememberHistory();
+        applyField("src", result, false);
+        toast.success("Image replaced in the design.");
+      } else if (imageInputIntentRef.current === "element-background") {
+        if (!selection || selection.tag === "img") return;
+        applyStyleFields({ backgroundColor: "transparent", backgroundImage: `url(\"${result}\")` });
+        toast.success("Image added as the fill.");
+      } else {
+        handleDesignTokenChange("--ipw-bg-image", `url(\"${result}\")`);
+        handleDesignTokenChange("--ipw-bg-gradient", "none");
+        handleDesignTokenChange("--ipw-bg-overlay", "linear-gradient(rgba(28,27,26,.45), rgba(28,27,26,.45))");
+        handleDesignTokenChange("--ipw-bg-overlay-opacity", "0.45");
+        handleDesignTokenChange("--ipw-bg-mode", "image");
+        handleDesignTokenChange("--ipw-bg-size", "cover");
+        handleDesignTokenChange("--ipw-bg-position", "50% 50%");
+        toast.success("Background image applied.");
+      }
     } catch {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
     }
@@ -1683,6 +1735,7 @@ export function DesignPanel({
 
   const chooseReplacementImage = async () => {
     if (!selection || selection.tag !== "img") return;
+    if (mediaClient) { mediaWorkbench.choose("image"); return; }
     const pickedPath = await pickLocalImageFile("选择替换图片");
     if (pickedPath) {
       const dataUrl = await readLocalImageAsDataUrl(pickedPath);
@@ -1696,27 +1749,11 @@ export function DesignPanel({
       return;
     }
     if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+    imageInputIntentRef.current = "replacement";
     imageInputRef.current?.click();
   };
 
   const undo = async () => {
-    const pan = presentationPanRef.current;
-    const selectionLocator = selection?.locator ?? null;
-    const restoreView = (targetSource: string): DesignViewRestore => ({
-      id: crypto.randomUUID(),
-      targetSource,
-      previewRevision: previewRevisionRef.current + 1,
-      frameRevision: `${activePagePath}:${previewRevisionRef.current + 1}`,
-      frameLoaded: false,
-      frameRestored: false,
-      deckRestored: false,
-      deckIndex: deckRef.current?.index ?? null,
-      frameScrollX: frameViewRef.current.scrollX,
-      frameScrollY: frameViewRef.current.scrollY,
-      panLeft: pan?.scrollLeft ?? 0,
-      panTop: pan?.scrollTop ?? 0,
-      selectionLocator,
-    });
     if (pendingViewRestoreRef.current) return;
     const popped = popDesignUndoHistory(historyRef.current, {
       html: draftRef.current,
@@ -1725,7 +1762,7 @@ export function DesignPanel({
     setHistory(popped.history);
     const previous = popped.previous;
     if (previous !== undefined) {
-      const restore = restoreView(previous.html);
+      const restore = capturePreviewView(previous.html);
       pendingViewRestoreRef.current = restore;
       draftRef.current = previous.html;
       setPendingCanvasChange(false);
@@ -1733,7 +1770,9 @@ export function DesignPanel({
       setSelectionState(null);
       setQuickEdit(null);
       setPreviewSource(previous.html);
-      setHydratedPreviewSource("");
+      // Canvas edits do not change previewSource. Reusing its already hydrated
+      // document keeps image URLs alive when Undo returns to that same source.
+      if (previous.html !== previewSource) setHydratedPreviewSource("");
       setPreviewLoaded(false);
       setPreviewRevision(restore.previewRevision);
       if (previous.restoreTokenCss) {
@@ -1745,7 +1784,7 @@ export function DesignPanel({
     }
     const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
     if (!checkpoint || !client || !workspaceId) return;
-    const restore = restoreView(checkpoint.beforeHtml);
+    const restore = capturePreviewView(checkpoint.beforeHtml);
     pendingViewRestoreRef.current = restore;
     try {
       const current = await client.readWorkspaceFile(workspaceId, activePagePath);
@@ -1786,8 +1825,14 @@ export function DesignPanel({
 
   const chooseBackgroundImage = async () => {
     if (!selection || selection.tag === "img") return;
+    if (mediaClient) { mediaWorkbench.choose("image"); return; }
     const pickedPath = await pickLocalImageFile("选择填充图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "element-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1799,7 +1844,12 @@ export function DesignPanel({
 
   const chooseDesignSystemBackgroundImage = async () => {
     const pickedPath = await pickLocalImageFile("选择全局背景图片");
-    if (!pickedPath) return;
+    if (!pickedPath) {
+      if (typeof window !== "undefined" && window.__IPOLLOWORK_ELECTRON__?.invokeDesktop) return;
+      imageInputIntentRef.current = "design-background";
+      imageInputRef.current?.click();
+      return;
+    }
     const dataUrl = await readLocalImageAsDataUrl(pickedPath);
     if (!dataUrl) {
       toast.error("Could not prepare that image. Try PNG, JPG, or WebP.");
@@ -1934,17 +1984,60 @@ export function DesignPanel({
   const viewedVersionLabel = viewedVersionPath === "current"
     ? currentVersionLabel
     : `V${versionTargets.length - versionTargets.findIndex((version) => version.path === viewedVersionPath)}`;
+  const activePageDisplayName = activePagePath === lockedPath
+    ? displayName?.trim() || fileName(activePagePath)
+    : fileName(activePagePath);
+  const selectEditingMode = (nextEditing: boolean) => {
+    setEditing(nextEditing);
+    setSelectionState(null);
+    setQuickEdit(null);
+    setAdvancedOpen(false);
+  };
+  const editControl = (
+    <ToggleGroup
+      value={[editing ? "edit" : "preview"]}
+      onValueChange={(value) => {
+        const nextMode = value[0];
+        if (nextMode === "edit" || nextMode === "preview") selectEditingMode(nextMode === "edit");
+      }}
+      spacing={0.5}
+      aria-label={t("design.toolbar.mode")}
+      className="flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
+      data-testid="design-mode-toggle"
+    >
+      <ToggleGroupItem value="preview" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
+        {t("design.toolbar.preview")}
+      </ToggleGroupItem>
+      <ToggleGroupItem value="edit" className="h-[26px] min-w-0 rounded-md px-3 text-xs text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none">
+        {t("design.toolbar.edit")}
+      </ToggleGroupItem>
+    </ToggleGroup>
+  );
+  const templateControl = templateCatalog ? (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      className={DESIGN_ACTION_BUTTON_CLASS}
+      onClick={() => setTemplateDialogOpen(true)}
+      aria-label={templateCatalog.title}
+      title={templateCatalog.title}
+      data-testid="design-template-market-button"
+    >
+      <TemplateIcon className="size-4" />
+    </Button>
+  ) : null;
 
   return (
-    <div ref={panelRef} className="flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
+    <div ref={panelRef} className="relative flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
+      <input ref={mediaWorkbench.input} type="file" className="sr-only" aria-label={t("design.properties.action.choose_media")} onChange={event => { void mediaWorkbench.importFile(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
       <input
         ref={imageInputRef}
         type="file"
         accept={LOCAL_IMAGE_ACCEPT}
         className="sr-only"
-        aria-label="Choose replacement image"
+        aria-label="Choose design image"
         onChange={(event) => {
-          replaceImageFromFile(event.currentTarget.files?.[0]);
+          void applyBrowserImage(event.currentTarget.files?.[0]);
           event.currentTarget.value = "";
         }}
       />
@@ -1967,12 +2060,33 @@ export function DesignPanel({
       ) : (
         <>
           <div className={cn(
-            "flex min-w-0 shrink-0 flex-wrap items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            "relative flex min-w-0 shrink-0 items-center border-b border-border px-3 py-2 [border-bottom-width:0.5px]",
+            branding
+              ? "relative z-30 h-14 flex-nowrap overflow-hidden border-white/60 bg-background/80 shadow-[0_10px_30px_-22px_rgba(15,23,42,0.55),inset_0_1px_0_rgba(255,255,255,0.72)] backdrop-blur-xl backdrop-saturate-150 before:pointer-events-none before:absolute before:inset-x-0 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-white/90 before:to-transparent dark:border-white/10 dark:bg-background/72 dark:shadow-[0_10px_30px_-22px_rgba(0,0,0,0.9),inset_0_1px_0_rgba(255,255,255,0.12)] dark:before:via-white/20"
+              : "flex-wrap",
             compactToolbar ? "gap-1" : "gap-2",
           )}>
+            {branding ? (
+              <div className="order-0 flex min-w-0 shrink-0 items-center gap-2.5 border-r border-border/70 pr-3">
+                <span className="grid size-8 shrink-0 place-items-center rounded-xl border border-white/70 bg-white/70 text-foreground shadow-[0_6px_18px_-12px_rgba(15,23,42,0.8),inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-white/10 dark:bg-white/8 dark:shadow-none" aria-hidden="true">
+                  {branding.kind === "slides" ? <Presentation className="size-4" /> : <Layers3 className="size-4" />}
+                </span>
+                <div className="flex min-w-0 flex-col justify-center leading-none">
+                  <strong className="truncate text-sm font-semibold tracking-[-0.02em]">{branding.title}</strong>
+                  <a
+                    href={branding.bylineUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 w-fit truncate text-[10px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    {branding.byline}
+                  </a>
+                </div>
+              </div>
+            ) : null}
             {hasSiteVersioning ? (
               <div className={cn("order-0 flex min-w-0 flex-1 items-center gap-2", veryCompactToolbar && "hidden")}>
-                <p className="min-w-0 truncate text-sm font-medium">{fileName(activePagePath)}</p>
+                <p className="min-w-0 truncate text-sm font-medium">{activePageDisplayName}</p>
                 {versionTargets.length > 0 ? (
                   <Select value={viewedVersionPath} onValueChange={(value) => { if (value) void viewVersion(value); }}>
                     <SelectTrigger size="sm" className="w-14 shrink-0 rounded-lg border-0 bg-transparent px-2 shadow-none hover:bg-muted focus-visible:ring-0" aria-label="Design version"><SelectValue>{viewedVersionLabel}</SelectValue></SelectTrigger>
@@ -1984,21 +2098,6 @@ export function DesignPanel({
                 ) : null}
               </div>
             ) : null}
-            <Label className="order-1 flex shrink-0 items-center gap-2 text-xs">
-              <Switch
-                size="sm"
-                className="border-[#AEB2B9] bg-transparent shadow-none data-checked:!border-[#0A84FF] data-checked:!bg-[#0A84FF] data-unchecked:!border-[#AEB2B9] data-unchecked:!bg-transparent [&_[data-slot=switch-thumb]]:!shadow-none [&_[data-slot=switch-thumb][data-checked]]:!bg-white [&_[data-slot=switch-thumb][data-unchecked]]:!bg-[#62666D]"
-                checked={editing}
-                onCheckedChange={(checked) => {
-                  setEditing(checked);
-                  setSelectionState(null);
-                  setQuickEdit(null);
-                  setAdvancedOpen(false);
-                }}
-                aria-label="Edit"
-              />
-              Edit
-            </Label>
             {deck ? (
               <div className="order-2 flex h-8 min-w-0 items-center rounded-lg border border-border bg-transparent p-0.5 shadow-none" data-testid="design-deck-navigation">
                 <Button variant="ghost" size="icon-sm" className="size-7 rounded-md text-foreground hover:bg-muted" onClick={() => navigateDeck("previous")} disabled={deck.index <= 0} aria-label="Previous slide" title="Previous slide">
@@ -2024,106 +2123,153 @@ export function DesignPanel({
                     setQuickEdit(null);
                     setAdvancedOpen(false);
                   }}
-                  variant="outline"
-                  size="sm"
-                  aria-label="Preview device"
-                  className="order-3 shrink-0 rounded-lg"
+                  spacing={0.5}
+                  aria-label={t("design.toolbar.preview_device")}
+                  className="order-3 flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"
                 >
-                  <ToggleGroupItem value="desktop" className="h-8 w-8 rounded-l-lg px-0" aria-label="Desktop preview" title="Desktop">
-                    <Monitor className="size-3.5" />
+                  <ToggleGroupItem value="desktop" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.desktop")} title={t("design.toolbar.desktop")}>
+                    <Monitor className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
-                  <ToggleGroupItem value="mobile" className="h-8 w-8 rounded-r-lg px-0" aria-label="Mobile preview" title="Mobile">
-                    <Smartphone className="size-3.5" />
+                  <ToggleGroupItem value="mobile" className="h-[26px] min-w-0 w-[30px] rounded-md px-0 text-muted-foreground shadow-none hover:bg-background/70 hover:text-foreground aria-pressed:bg-white aria-pressed:text-[#171717] aria-pressed:shadow-none" aria-label={t("design.toolbar.mobile")} title={t("design.toolbar.mobile")}>
+                    <Smartphone className="size-3.5 stroke-[1.5]" />
                   </ToggleGroupItem>
                 </ToggleGroup>
               )
             ) : null}
-            <div className={cn("ml-auto flex shrink-0 items-center", isPresentationTemplate ? "order-3" : "order-2", compactToolbar ? "gap-1" : "gap-2")}>
-              {editing ? <Button
+            <div className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2" data-testid="design-mode-controls">
+              {editControl}
+            </div>
+            <div className={cn("ml-auto flex shrink-0 items-center gap-1", isPresentationTemplate ? "order-3" : "order-2")}>
+              {branding ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    className="h-8 shrink-0 gap-1.5 rounded-lg bg-foreground px-2.5 text-xs font-semibold text-background shadow-none hover:bg-foreground/90 hover:text-background"
+                    onClick={branding.onAskAi}
+                    aria-label="Ask AI about this document"
+                    title="Ask AI"
+                  >
+                    <Sparkles className="size-4" />
+                    <span className={cn(compactToolbar && "sr-only")}>Ask AI</span>
+                  </Button>
+                </>
+              ) : null}
+              {templateControl}
+              <Button
                 variant="ghost"
                 size="icon-sm"
                 className={cn(DESIGN_ACTION_BUTTON_CLASS, elementPropertiesOpen && "bg-muted")}
                 onClick={toggleElementProperties}
-                aria-label="Toggle design properties"
-                title="Design properties"
-                aria-pressed={elementPropertiesOpen}
+                disabled={!editing}
+                aria-label={t("design.toolbar.properties")}
+                title={t("design.toolbar.properties")}
+                aria-pressed={editing && elementPropertiesOpen}
                 data-testid="design-properties-button"
               >
                 <SlidersHorizontal />
-              </Button> : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={DESIGN_ACTION_BUTTON_CLASS}
-                onClick={() => void undo()}
-                disabled={history.length === 0 && !aiUndoCheckpoint}
-                aria-label="Undo design change"
-                title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}
-              >
-                <Undo2 />
               </Button>
-              {isPresentationTemplate ? (
+              <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+              <div className="flex shrink-0 items-center gap-1" data-testid="design-history-controls">
                 <Button
                   variant="ghost"
                   size="icon-sm"
                   className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => setPresentationZoom(1)}
-                  disabled={presentationZoom === 1}
-                  aria-label="Fit canvas to view"
-                  title="Fit canvas to view"
+                  onClick={() => void undo()}
+                  disabled={history.length === 0 && !aiUndoCheckpoint}
+                  aria-label={t("design.toolbar.undo")}
+                  title={history.length === 0 && !aiUndoCheckpoint ? t("design.toolbar.undo_empty") : t("design.toolbar.undo")}
                 >
-                  <Focus />
+                  <Undo2 />
                 </Button>
-              ) : null}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className={DESIGN_ACTION_BUTTON_CLASS}
-                onClick={() => saveMutation.mutate()}
-                disabled={saveMutation.isPending || (!editing && !dirty)}
-                aria-label="Save design"
-                title="Save"
-              >
-                {saveMutation.isPending ? <Loader2 className="animate-spin" /> : dirty ? <Save /> : <Check />}
-              </Button>
-              {!compactToolbar ? (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className={DESIGN_ACTION_BUTTON_CLASS}
-                  onClick={() => publishMutation.mutate()}
-                  disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-                  aria-label="Publish to object storage"
-                  title="Publish to object storage"
-                >
-                  {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
-                </Button>
-              ) : null}
-              {deck || compactToolbar || onSaveAsTemplate ? (
-                <DesignExportMenu
-                  triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
-                  compact={compactToolbar}
-                  expanded={expanded}
-                  showExports={Boolean(deck)}
-                  publishing={publishMutation.isPending}
-                  publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
-                  exportingPdf={exportingPdf}
-                  exportingPptx={exportingPptx}
-                  exportReady={previewLoaded}
-                  exportDisabledReason="Preview is still preparing."
-                  previewDevice={!isPresentationTemplate ? previewDevice : undefined}
-                  onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
-                    setPreviewDevice(device);
-                    setSelectionState(null);
-                    setQuickEdit(null);
-                    setAdvancedOpen(false);
-                  } : undefined}
-                  onPublish={() => publishMutation.mutate()}
-                  onExportPdf={() => void exportDeckToPdf()}
-                  onExportPptx={() => setPptxConfirmationOpen(true)}
-                  onSaveAsTemplate={onSaveAsTemplate}
-                />
-              ) : null}
+                {isPresentationTemplate ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => setPresentationZoom(1)}
+                    disabled={presentationZoom === 1}
+                    aria-label="Fit canvas to view"
+                    title="Fit canvas to view"
+                  >
+                    <Focus />
+                  </Button>
+                ) : null}
+                {onSaveAsTemplate ? (
+                  <DesignSaveMenu
+                    triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                    expanded={expanded}
+                    saving={saveMutation.isPending}
+                    saveDisabled={!editing && !dirty}
+                    onSave={() => saveMutation.mutate()}
+                    onSaveAsTemplate={onSaveAsTemplate}
+                  />
+                ) : (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => saveMutation.mutate()}
+                    disabled={saveMutation.isPending || (!editing && !dirty)}
+                    aria-label={t("design.toolbar.save")}
+                    title={t("design.toolbar.save")}
+                  >
+                    {saveMutation.isPending ? <Loader2 className="animate-spin" /> : <Save />}
+                  </Button>
+                )}
+              </div>
+              <span className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+              <div className="flex shrink-0 items-center gap-1" data-testid="design-sharing-controls">
+                {!compactToolbar && features.publish ? (
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className={DESIGN_ACTION_BUTTON_CLASS}
+                    onClick={() => publishMutation.mutate()}
+                    disabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                    aria-label={t("design.toolbar.publish")}
+                    title={t("design.toolbar.publish")}
+                  >
+                    {publishMutation.isPending ? <Loader2 className="animate-spin" /> : <Share2 />}
+                  </Button>
+                ) : null}
+                {deck || compactToolbar ? (
+                  <DesignExportMenu
+                    triggerClassName={DESIGN_ACTION_BUTTON_CLASS}
+                    compact={compactToolbar}
+                    expanded={expanded}
+                    showExports={Boolean(deck)}
+                    publishing={publishMutation.isPending}
+                    publishDisabled={publishMutation.isPending || saveMutation.isPending || !lockedPath}
+                    exportingPdf={exportingPdf}
+                    exportingPptx={exportingPptx}
+                    exportReady={previewLoaded}
+                    exportDisabledReason="Preview is still preparing."
+                    previewDevice={!isPresentationTemplate ? previewDevice : undefined}
+                    onPreviewDeviceChange={!isPresentationTemplate ? (device) => {
+                      setPreviewDevice(device);
+                      setSelectionState(null);
+                      setQuickEdit(null);
+                      setAdvancedOpen(false);
+                    } : undefined}
+                    onPublish={features.publish ? () => publishMutation.mutate() : undefined}
+                    onExportPdf={() => void exportDeckToPdf()}
+                    onExportPptx={() => setPptxConfirmationOpen(true)}
+                  />
+                ) : null}
+                {branding ? (
+                  <a
+                    href={branding.repositoryUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(DESIGN_ACTION_BUTTON_CLASS, "inline-flex items-center justify-center border border-border/70 bg-background/65 shadow-sm hover:border-foreground/20 hover:bg-background")}
+                    aria-label="View DeepSeek Design on GitHub"
+                    title="DeepSeek Design on GitHub"
+                  >
+                    <Github className="size-[18px]" />
+                  </a>
+                ) : null}
+              </div>
             </div>
           </div>
 
@@ -2152,7 +2298,7 @@ export function DesignPanel({
                       ref={iframeRef}
                       key={`${activePagePath}:${previewRevision}`}
                       srcDoc={preview}
-                      title={`Design preview: ${fileName(activePagePath)}`}
+                      title={`Design preview: ${activePageDisplayName}`}
                       className={cn(
                         "border border-border bg-white transition-[width,border-radius,box-shadow,transform] duration-200",
                         isPresentationTemplate
@@ -2168,13 +2314,15 @@ export function DesignPanel({
                           transform: `scale(${presentationScale})`,
                         }
                         : undefined}
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-same-origin"
                       data-preview-loaded={previewLoaded ? "true" : "false"}
                       onLoad={() => {
                         setPreviewLoaded(true);
                         const frameWindow = iframeRef.current?.contentWindow;
                         const pending = pendingViewRestoreRef.current;
-                        if (pending && !expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision)) return;
+                        // Asset hydration replaces the provisional HTML iframe. Restore only in the
+                        // hydrated frame so its successor cannot discard the selected element.
+                        if (pending && (!hydratedPreviewSource || !expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision))) return;
                         if (pending) pending.frameLoaded = true;
                         if (activePageHash && !pending) frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
                         frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
@@ -2208,42 +2356,38 @@ export function DesignPanel({
                     onPointerUp={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <button
+                    <FloatingToolbarTooltip label={t("design.toolbar.drag")}><button
                       type="button"
-                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                       onPointerDown={startFloatingDrag}
                       onPointerMove={moveFloatingToolbar}
                       onPointerUp={stopFloatingDrag}
                       onPointerCancel={stopFloatingDrag}
                       onLostPointerCapture={stopFloatingDrag}
-                      aria-label="Move floating toolbar"
-                      title="Drag toolbar"
                     >
-                      <img src={floatingToolbarGrip} alt="" className="size-4 select-none" draggable={false} />
-                    </button>
+                      <GripVertical className="size-4" strokeWidth={1.5} />
+                    </button></FloatingToolbarTooltip>
                     {quickEdit && (!isMultiSelection || quickEdit === "color") ? (
                       <div className="flex items-center gap-1">
-                        <Button
+                        <FloatingToolbarTooltip label={t("common.back")}><Button
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => setQuickEdit(null)}
-                          aria-label="Back to design tools"
                         >
                           <ArrowLeft />
-                        </Button>
+                        </Button></FloatingToolbarTooltip>
                         {quickEdit === "color" ? (
                           <div className="flex items-center gap-1 px-0.5" aria-label={selection.colorField === "color" ? "Quick text colors" : "Quick background colors"}>
                             {COLOR_SWATCHES.slice(0, 6).map((color) => (
-                              <button
-                                key={color}
+                              <FloatingToolbarTooltip key={color} label={`${t(selection.colorField === "color" ? "design.properties.field.text_color" : "design.properties.field.background_color")} ${color}`}><button
                                 type="button"
                                 className="size-6 rounded-full border border-black/10 shadow-sm transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 style={{ backgroundColor: color }}
                                 onClick={() => applyField(selection.colorField, color, false)}
-                                aria-label={`Set ${selection.colorField === "color" ? "text" : "background"} color ${color}`}
-                              />
+                              /></FloatingToolbarTooltip>
                             ))}
-                            <label
+                            <FloatingToolbarTooltip label={t("design.toolbar.custom_color")}>
+                              <label
                               className="relative grid size-6 cursor-pointer place-items-center rounded-full border border-border bg-muted text-muted-foreground"
                               aria-label={selection.colorField === "color" ? "Choose custom text color" : "Choose custom background color"}
                             >
@@ -2256,10 +2400,11 @@ export function DesignPanel({
                                 aria-label={selection.colorField === "color" ? "Custom text color" : "Custom background color"}
                               />
                             </label>
+                            </FloatingToolbarTooltip>
                           </div>
                         ) : quickEdit === "fontSize" ? (
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize - 1)} aria-label="Decrease font size"><Minus /></Button>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_decrease")}><Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize - 1)}><Minus /></Button></FloatingToolbarTooltip>
                             <Input
                               autoFocus
                               type="number"
@@ -2271,7 +2416,7 @@ export function DesignPanel({
                               onChange={(event) => setFontSize(Number(event.currentTarget.value) || 1)}
                             />
                             <span className="text-[10px] text-muted-foreground">px</span>
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize + 1)} aria-label="Increase font size"><Plus /></Button>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_increase")}><Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize + 1)}><Plus /></Button></FloatingToolbarTooltip>
                           </div>
                         ) : (
                           <Input
@@ -2286,73 +2431,77 @@ export function DesignPanel({
                             }}
                           />
                         )}
-                        <Button variant="ghost" size="icon-xs" onClick={() => setQuickEdit(null)} aria-label="Done quick editing">
+                        <FloatingToolbarTooltip label={t("common.done")}><Button variant="ghost" size="icon-xs" onClick={() => setQuickEdit(null)}>
                           <Check />
-                        </Button>
+                        </Button></FloatingToolbarTooltip>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
                         {!isMultiSelection && selection.canEditText ? (
                           <>
-                            <button
+                            <FloatingToolbarTooltip label={t("design.toolbar.edit_text")}><button
                               type="button"
                               className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("text")}
-                              aria-label="Edit selected text"
                             >
                               <img src={floatingToolbarEditText} alt="" className="h-4 w-auto select-none" draggable={false} />
-                            </button>
-                            <button
+                            </button></FloatingToolbarTooltip>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_size")}><button
                               type="button"
                               className="h-6 shrink-0 rounded px-1 text-base font-normal leading-6 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("fontSize")}
-                              aria-label="Change selected font size"
                             >
                               {fontSize}
-                            </button>
+                            </button></FloatingToolbarTooltip>
                           </>
                         ) : null}
-                        <Button
+                        <FloatingToolbarTooltip label={t("design.toolbar.settings")}><Button
                           variant={elementPropertiesOpen ? "secondary" : "ghost"}
+                          className="text-muted-foreground hover:text-foreground"
                           size="icon-xs"
                           onClick={toggleElementProperties}
-                          aria-label="Toggle advanced design settings"
                           aria-pressed={elementPropertiesOpen}
                         >
-                          <img src={floatingToolbarSettings} alt="" className="size-[18px] select-none" draggable={false} />
-                        </Button>
+                          <SlidersHorizontal className="size-[18px]" strokeWidth={1.5} />
+                        </Button></FloatingToolbarTooltip>
                         {isMultiSelection || selection.tag !== "img" ? (
-                          <button
+                          <FloatingToolbarTooltip label={t(selection.colorField === "color" ? "design.properties.field.text_color" : "design.properties.field.background_color")}><button
                             type="button"
                             className={FLOATING_TOOLBAR_BUTTON_CLASS}
                             onClick={() => beginQuickEdit("color")}
-                            aria-label={selection.colorField === "color" ? "Change selected text color" : "Change selected background color"}
-                            title={selection.colorField === "color" ? "Text color" : "Background color"}
                           >
-                            <img src={floatingToolbarPalette} alt="" className="size-[18px] select-none" draggable={false} />
-                          </button>
+                            <Palette className="size-[18px]" strokeWidth={1.5} />
+                          </button></FloatingToolbarTooltip>
                         ) : null}
-                        {!isMultiSelection ? <button
+                        {!isMultiSelection ? <FloatingToolbarTooltip label={t("design.toolbar.ask_ai")}><button
                           type="button"
                           className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => void askAiAboutSelection()}
                           disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
-                          aria-label="Ask AI about selected element"
-                          title="Ask AI"
                         >
                           <img src={floatingToolbarAiIcon} alt="" className="size-[18px] select-none" draggable={false} />
-                        </button> : null}
-                        <img src={floatingToolbarDivider} alt="" className="h-[22.5px] w-px shrink-0 select-none" draggable={false} />
-                        <button
+                        </button></FloatingToolbarTooltip> : null}
+                        {mediaWorkbench.canOpen ? <>
+                          <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+                          <FloatingToolbarTooltip label={t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}>
+                            <button type="button"
+                              className={cn(FLOATING_TOOLBAR_BUTTON_CLASS, !compactToolbar && "flex w-auto gap-1.5 px-1 text-xs font-medium")}
+                              disabled={mediaWorkbench.busy}
+                              onClick={() => void mediaWorkbench.open()}>
+                              {mediaWorkbench.busy ? <Loader2 className="size-[18px] animate-spin motion-reduce:animate-none" /> : selection.media?.kind === "video" ? <Video className="size-[18px]" strokeWidth={1.5} /> : <ImageIcon className="size-[18px]" strokeWidth={1.5} />}
+                              {!compactToolbar ? <span>{t(selection.media?.kind === "video" ? "design.toolbar.edit_video" : "design.toolbar.edit_image")}</span> : null}
+                            </button>
+                          </FloatingToolbarTooltip>
+                        </> : null}
+                        <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+                        <FloatingToolbarTooltip label={t(isMultiSelection ? "design.toolbar.delete_many" : "design.toolbar.delete")}><button
                           type="button"
                           className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => setDeleteConfirmationOpen(true)}
                           disabled={!selectionSummary.selections.some((member) => member.canDelete)}
-                          aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
-                          title={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
                         >
-                          <img src={floatingToolbarTrash} alt="" className="size-[18px] select-none" draggable={false} />
-                        </button>
+                          <Trash2 className="size-[18px]" strokeWidth={1.5} />
+                        </button></FloatingToolbarTooltip>
                       </div>
                     )}
                   </div>
@@ -2381,11 +2530,13 @@ export function DesignPanel({
                 onDelete={() => setDeleteConfirmationOpen(true)}
                 onChooseReplacementImage={() => void chooseReplacementImage()}
                 onChooseBackgroundImage={() => void chooseBackgroundImage()}
+                onChooseVideo={mediaClient ? () => mediaWorkbench.choose("video") : undefined}
+                mediaBusy={mediaWorkbench.busy}
               >
                 <DesignSystemDrawer
                   embedded
                   open={propertiesTab === "design-system"}
-                  templateName={designTemplate?.title ?? fileName(activePagePath)}
+                  templateName={designTemplate?.title ?? activePageDisplayName}
                   currentThemeId={appliedDesignSystemId}
                   initialValues={designTokenValues}
                   onClose={() => setAdvancedOpen(false)}
@@ -2428,6 +2579,17 @@ export function DesignPanel({
           void exportDeckToPptx();
         }}
       />
+      {templateCatalog && client && workspaceId ? (
+        <DesignTemplateDialog
+          open={templateDialogOpen}
+          onOpenChange={setTemplateDialogOpen}
+          client={client}
+          workspaceId={workspaceId}
+          sessionId={sessionId}
+          copy={templateCatalog}
+          onApplied={applyTemplateSnapshot}
+        />
+      ) : null}
     </div>
   );
 }

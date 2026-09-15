@@ -38,10 +38,6 @@ export function tokenStarModelName(id: string) {
   return TOKENSTAR_PROVIDER.fallbackModels.find((model) => model.id === id)?.name ?? humanizeModelName(id);
 }
 
-export function tokenStarModelSupportsEffort(id: string) {
-  return id === "gpt-5.5" || id.startsWith("gpt-5.6-");
-}
-
 export function tokenStarRuntimeModels(modelIds: string[]) {
   return Object.fromEntries(
     modelIds.map((id) => [
@@ -74,3 +70,4 @@ export function parseTokenStarModels(value: unknown): TokenStarModel[] {
     return [{ id, name }];
   });
 }
+import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";

@@ -191,7 +191,7 @@ export function StudioApp() {
       void loadStudioRightPanelModule()
         .then((module) =>
           Promise.all([
-            module.preloadStudioEffectsPanel(),
+            module.preloadStudioComponentsPanel(),
             module.preloadStudioAnimationPanel(),
           ]),
         )
@@ -283,6 +283,7 @@ export function StudioApp() {
     activeBlockParams,
     setActiveBlockParams,
     handleAddBlock,
+    handleBlockVariableChange,
     handleTimelineBlockDrop,
     handlePreviewBlockDrop,
   } = useBlockHandlers({
@@ -589,7 +590,6 @@ export function StudioApp() {
                             <StudioLeftSidebar
                               leftSidebarRef={leftSidebarRef}
                               onSelectComposition={handleSelectComposition}
-                              onAddBlock={handleAddBlock}
                               onLint={handleLint}
                               linting={linting}
                               lintFindingCount={lintModal?.length ?? findingsByFile.size}
@@ -601,14 +601,18 @@ export function StudioApp() {
                       }
                       right={
                         panelLayout.rightCollapsed ? null : (
-                          <Suspense fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}>
+                          <Suspense
+                            fallback={<RightPanelLoadingFallback width={panelLayout.rightWidth} />}
+                          >
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}
                               onCloseBlockParams={() => {
+                                const returnTab = activeBlockParams?.returnTab ?? "design";
                                 setActiveBlockParams(null);
-                                panelLayout.setRightPanelTab("design");
+                                panelLayout.setRightPanelTab(returnTab);
                               }}
+                              onBlockVariableChange={handleBlockVariableChange}
                               recordingState={gestureState}
                               recordingDuration={gestureRecording.recordingDuration}
                               onToggleRecording={recordingToggle}

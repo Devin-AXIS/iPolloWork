@@ -17,4 +17,37 @@ describe("session activity store", () => {
     useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "idle" });
     expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("idle");
   });
+
+  test("keeps a terminal error visible across a trailing idle event and clears it for the next run", () => {
+    const store = useSessionActivityStore.getState();
+    store.setRunStatus("ws_1", "ses_1", { type: "busy" });
+    store.setError("ws_1", "ses_1", "provider failed");
+    store.setRunStatus("ws_1", "ses_1", { type: "idle" });
+
+    expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("error");
+    expect(useSessionActivityStore.getState().getSessionError("ws_1", "ses_1")).toBe("provider failed");
+
+    useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "busy" });
+    expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("thinking");
+    expect(useSessionActivityStore.getState().getSessionError("ws_1", "ses_1")).toBeNull();
+  });
+
+  test("uses directory activity to promote runs without settling newer live state", () => {
+    const store = useSessionActivityStore.getState();
+    store.seedWorkspaceSessions("ws_dsh", [{ id: "ses_dsh", dsh: { running: true } }]);
+    store.seedWorkspaceSessions("ws_codex", [{ id: "ses_codex", codex: { status: "active" } }]);
+
+    expect(useSessionActivityStore.getState().getStatus("ws_dsh", "ses_dsh")).toBe("thinking");
+    expect(useSessionActivityStore.getState().getStatus("ws_codex", "ses_codex")).toBe("thinking");
+
+    store.seedWorkspaceSessions("ws_dsh", [{ id: "ses_dsh", dsh: { running: false } }]);
+    store.seedWorkspaceSessions("ws_codex", [{ id: "ses_codex", codex: { status: "notLoaded" } }]);
+    expect(useSessionActivityStore.getState().getStatus("ws_dsh", "ses_dsh")).toBe("thinking");
+    expect(useSessionActivityStore.getState().getStatus("ws_codex", "ses_codex")).toBe("thinking");
+
+    store.setRunStatus("ws_dsh", "ses_dsh", { type: "idle" });
+    store.setRunStatus("ws_codex", "ses_codex", { type: "idle" });
+    expect(useSessionActivityStore.getState().getStatus("ws_dsh", "ses_dsh")).toBe("idle");
+    expect(useSessionActivityStore.getState().getStatus("ws_codex", "ses_codex")).toBe("idle");
+  });
 });

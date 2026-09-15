@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "douyin-product-card",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Douyin Product Card",
+  "description": "A Douyin commerce card for a featured product, price, benefit and purchase call to action.",
+  "tags": [
+    "component",
+    "social",
+    "douyin",
+    "commerce",
+    "product",
+    "shopping",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "product",
+        "price",
+        "benefit",
+        "cta"
+      ],
+      "instructions": "写清商品名称、短利益点、展示价格和简洁行动文案，不使用夸大或无法证实的承诺。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "douyin-product-card.html",
+      "target": "compositions/douyin-product-card.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "product",
+      "label": "商品名称",
+      "type": "string",
+      "default": "折叠磁吸补光灯",
+      "maxLength": 52,
+      "update": "live"
+    },
+    {
+      "id": "price",
+      "label": "价格",
+      "type": "string",
+      "default": "¥129 · 限时到手价",
+      "maxLength": 36,
+      "update": "live"
+    },
+    {
+      "id": "benefit",
+      "label": "核心卖点",
+      "type": "string",
+      "default": "三档色温，桌面拍摄和移动直播都能快速补光。",
+      "maxLength": 110,
+      "update": "live"
+    },
+    {
+      "id": "cta",
+      "label": "行动文案",
+      "type": "string",
+      "default": "点击购物车 · 立即了解",
+      "maxLength": 40,
+      "update": "live"
+    }
+  ]
+}
+

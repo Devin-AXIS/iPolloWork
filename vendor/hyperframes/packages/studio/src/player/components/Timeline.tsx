@@ -22,9 +22,11 @@ import { useTimelineStackingSync } from "./useTimelineStackingSync";
 import { useTimelineGeometry } from "./useTimelineGeometry";
 import { useTimelineTrackDerivations } from "./useTimelineTrackDerivations";
 import {
-  GUTTER,
+  DEFAULT_TIMELINE_GUTTER_WIDTH,
   TRACKS_LEFT_PAD,
+  clampTimelineGutterWidth,
   generateTicks,
+  getTimelineGutterMaxWidth,
   getTimelineCanvasHeight,
   getTimelineVisibleWindow,
 } from "./timelineLayout";
@@ -36,6 +38,11 @@ import type { TimelineProps } from "./TimelineTypes";
 import { useTrackGapMenu } from "./useTrackGapMenu";
 import { useTimelineGapHighlights } from "./useTimelineGapHighlights";
 import { shouldDisplayTimelineElement } from "./timelineLayerPresentation";
+import { TimelineLayerResizeHandle } from "./TimelineLayerResizeHandle";
+import {
+  readStudioUiPreferences,
+  writeStudioUiPreferences,
+} from "../../utils/studioUiPreferences";
 
 // Re-export pure utilities so existing imports from "./Timeline" still resolve.
 export {
@@ -141,6 +148,10 @@ export const Timeline = memo(function Timeline({
   const isDragging = useRef(false);
   const [shiftHeld, setShiftHeld] = useState(false);
   const [razorGuideX, setRazorGuideX] = useState<number | null>(null);
+  const [preferredGutterWidth, setPreferredGutterWidth] = useState(
+    () => readStudioUiPreferences().timelineLayerWidth ?? DEFAULT_TIMELINE_GUTTER_WIDTH,
+  );
+  const gutterWidthRef = useRef(preferredGutterWidth);
 
   useMountEffect(() => {
     const key = (e: KeyboardEvent) => e.key === "Shift" && setShiftHeld(e.type === "keydown");
@@ -256,6 +267,7 @@ export const Timeline = memo(function Timeline({
       ppsRef,
       durationRef,
       trackOrderRef,
+      gutterWidthRef,
       onFileDrop: pinnedOnFileDrop,
       onAssetDrop: pinnedOnAssetDrop,
       onBlockDrop: pinnedOnBlockDrop,
@@ -276,6 +288,9 @@ export const Timeline = memo(function Timeline({
     setScrollRef,
     syncScrollViewport,
   } = useTimelineScrollViewport(scrollRef, [timelineReady, displayElements.length, totalH]);
+  const gutterWidth = clampTimelineGutterWidth(preferredGutterWidth, viewportWidth);
+  const gutterMaxWidth = getTimelineGutterMaxWidth(viewportWidth);
+  gutterWidthRef.current = gutterWidth;
   const selectedKeyframes = usePlayerStore((s) => s.selectedKeyframes);
   const toggleSelectedKeyframe = usePlayerStore((s) => s.toggleSelectedKeyframe);
 
@@ -297,6 +312,7 @@ export const Timeline = memo(function Timeline({
     manualZoomPercentRef,
   } = useTimelineGeometry({
     viewportWidth,
+    gutterWidth,
     effectiveDuration,
     zoomMode,
     manualZoomPercent,
@@ -320,6 +336,7 @@ export const Timeline = memo(function Timeline({
         pps,
         trackCount: displayTrackOrder.length,
         displayDuration,
+        gutterWidth,
       }),
     [
       displayDuration,
@@ -329,12 +346,14 @@ export const Timeline = memo(function Timeline({
       scrollTop,
       viewportHeight,
       viewportWidth,
+      gutterWidth,
     ],
   );
   useTimelineRevealClip(scrollRef, {
     elements: displayElements,
     displayTrackOrder,
     pps,
+    gutterWidth,
   });
 
   const laneGapStrips = useTimelineGapHighlights({
@@ -363,6 +382,7 @@ export const Timeline = memo(function Timeline({
     effectiveDuration,
     pps,
     timelineReady,
+    gutterWidth,
     elementsLength: displayElements.length,
     setZoomMode,
     setManualZoomPercent,
@@ -397,6 +417,7 @@ export const Timeline = memo(function Timeline({
     elementsRef: expandedElementsRef,
     trackOrderRef,
     onSelectElement,
+    gutterWidth,
   });
   setRangeSelectionRef.current = setRangeSelection; // stable ref consumed by useTimelineClipDrag
 
@@ -483,7 +504,11 @@ export const Timeline = memo(function Timeline({
           if (activeTool === "razor" && e.shiftKey && e.button === 0 && scrollRef.current) {
             const rect = scrollRef.current.getBoundingClientRect();
             const x =
-              e.clientX - rect.left + scrollRef.current.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+              e.clientX -
+              rect.left +
+              scrollRef.current.scrollLeft -
+              gutterWidth -
+              TRACKS_LEFT_PAD;
             const splitTime = Math.max(0, x / pps);
             onRazorSplitAll?.(splitTime);
             return;
@@ -499,6 +524,7 @@ export const Timeline = memo(function Timeline({
           minor={minor}
           pps={pps}
           trackContentWidth={displayContentWidth}
+          gutterWidth={gutterWidth}
           totalH={totalH}
           effectiveDuration={effectiveDuration}
           majorTickInterval={majorTickInterval}
@@ -595,6 +621,14 @@ export const Timeline = memo(function Timeline({
           />
         )}
       </div>
+      <TimelineLayerResizeHandle
+        width={gutterWidth}
+        viewportWidth={viewportWidth}
+        maxWidth={gutterMaxWidth}
+        containerRef={containerRef}
+        onWidthChange={setPreferredGutterWidth}
+        onCommit={(width) => writeStudioUiPreferences({ timelineLayerWidth: width })}
+      />
       <TimelineOverlays
         theme={theme}
         showShortcutHint={showShortcutHint}

@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+<title>Logo Wall</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#logo-wall{width:1920px;height:1080px;padding:110px 145px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}header{display:flex;align-items:end;justify-content:space-between}h1{margin:0;font-size:78px;letter-spacing:-.065em}.note{max-width:560px;color:var(--ipw-color-muted,#68717c);font:700 24px/1.1 var(--ipw-font-body,Inter,sans-serif);text-align:right}.grid{margin-top:66px;display:grid;grid-template-columns:repeat(var(--columns),1fr);gap:18px}.cell{height:250px;display:grid;place-items:center;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:var(--ipw-card-radius,26px);background:var(--ipw-card-bg,var(--ipw-color-surface,#fff));box-shadow:var(--ipw-card-shadow,0 16px 38px rgba(20,30,40,.09))}.mark{display:grid;place-items:center;width:108px;height:108px;border-radius:24px;background:color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 16%,var(--ipw-color-surface,#fff));color:var(--ipw-color-primary,#20bbc0);font-size:34px;font-weight:820;letter-spacing:-.04em}.name{margin-top:18px;color:var(--ipw-color-muted,#68717c);font:720 15px/1 var(--ipw-font-body,Inter,sans-serif);text-align:center}</style>
+</head>
+<body>
+<main id="logo-wall" data-composition-id="logo-wall" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+<header>
+<h1 data-ipw-variable="title" data-ipw-ai-slot="title">
+</h1>
+<div class="note" data-ipw-variable="note" data-ipw-ai-slot="note">
+</div>
+</header>
+<section class="grid">
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js">
+</script>
+<script>window.__timelines=window.__timelines||{};(function(){const root=document.getElementById("logo-wall"),values={title:"Trusted by teams",logos:"Atlas,Nova,Field,Orbit,North,Mono,Axis,Signal,Frame,Base",note:"A growing network of product teams",columns:5,...(window.__hyperframes?.getVariables?.()??{})},names=String(values.logos).split(",").map(v=>v.trim()).filter(Boolean).slice(0,18),columns=Math.max(3,Math.min(6,Math.round(Number(values.columns)||5))),grid=root.querySelector(".grid");root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""));grid.style.setProperty("--columns",String(columns));names.forEach(name=>{const cell=document.createElement("article"),mark=document.createElement("div"),label=document.createElement("div");cell.className="cell";mark.className="mark";label.className="name";mark.textContent=name.replace(/[^A-Za-z0-9]/g,"").slice(0,2).toUpperCase()||"•";label.textContent=name;cell.append(mark,label);grid.append(cell)});const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll("header>*"),{y:22,opacity:0,stagger:.1,duration:.45,ease:"power3.out"}).from(root.querySelectorAll(".cell"),{scale:.92,opacity:0,stagger:.055,duration:.42,ease:"back.out(1.35)"},.16);window.__timelines["logo-wall"]=tl;tl.seek(0)})();</script>
+<script>window.__timelines["logo-wall"]?.fromTo("#logo-wall .note",{x:-8},{x:0,duration:7.2,ease:"none"},0);</script>
+</body>
+</html>

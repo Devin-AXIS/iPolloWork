@@ -1,10 +1,6 @@
 /** @jsxImportSource react */
-import type { CloudImportedPlugin, CloudImportedProvider, CloudImportedSkill } from "../../../../app/cloud/import-state";
-import type {
-  DenOrgMarketplaceResolved,
-  DenOrgLlmProvider,
-  DenOrgPlugin,
-} from "../../../../app/lib/den";
+import type { CloudImportedProvider, CloudImportedSkill } from "../../../../app/cloud/import-state";
+import type { DenOrgLlmProvider } from "../../../../app/lib/den";
 import type { DenOrgSkillCard } from "../../../../app/types";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { cva } from "class-variance-authority";
@@ -12,7 +8,6 @@ import fuzzysort from "fuzzysort";
 import * as React from "react";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   RefreshButton,
   SettingsSection,
@@ -59,13 +54,6 @@ export type CloudSkillRow = {
   installedName: string | null;
 };
 
-export type CloudPluginRow = {
-  marketplaceId: string;
-  plugin: DenOrgPlugin;
-  imported: CloudImportedPlugin | null;
-  status: "available" | "imported" | "out_of_sync";
-};
-
 const statusBadgeVariants = cva("", {
   variants: {
     tone: {
@@ -78,7 +66,6 @@ const statusBadgeVariants = cva("", {
 });
 
 const skillSearchKeys = ["title"];
-const pluginSearchKeys = ["plugin.name"];
 const nameSearchKeys = ["name"];
 
 function resourceStatusTone(status: string) {
@@ -197,57 +184,6 @@ function CloudSkillListItem({
           </Button>
         ) : null}
       </SettingsListItemActions>
-    </SettingsListItem>
-  );
-}
-
-interface MarketplacePluginListItemProps {
-  actionId: string | null;
-  row: CloudPluginRow;
-  onImportPlugin: (marketplaceId: string | null, plugin: DenOrgPlugin) => void | Promise<void>;
-}
-
-function MarketplacePluginListItem({
-  actionId,
-  row,
-  onImportPlugin,
-}: MarketplacePluginListItemProps) {
-  const actionBusy = actionId === row.plugin.id;
-  const counts = Object.entries(row.plugin.componentCounts).flatMap(([type, count]) =>
-    count > 0 ? [`${count} ${type}${count === 1 ? "" : "s"}`] : [],
-  );
-
-  return (
-    <SettingsListItem>
-      <SettingsListItemContent>
-        <SettingsListTitle>
-          <SettingsListItemTitle>{row.plugin.name}</SettingsListItemTitle>
-          {row.status !== "available" ? (
-            <SettingsPill className={statusBadgeVariants({ tone: resourceStatusTone(row.status) })}>
-              {row.status === "imported" ? t("den.imported_badge") : t("den.out_of_sync_badge")}
-            </SettingsPill>
-          ) : null}
-          {counts.map((label) => (
-            <SettingsPill key={label}>{label}</SettingsPill>
-          ))}
-        </SettingsListTitle>
-        <SettingsListItemDescription>
-          {row.plugin.description || "No description provided."}
-        </SettingsListItemDescription>
-        {row.imported?.files.length ? (
-          <div className="mt-1 truncate text-xs text-muted-foreground">
-            Installed files: {row.imported.files.map((file) => file.path).join(", ")}
-          </div>
-        ) : null}
-      </SettingsListItemContent>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => void onImportPlugin(row.marketplaceId, row.plugin)}
-        disabled={actionId !== null}
-      >
-        {actionBusy ? t("den.importing") : row.status === "available" ? t("den.import_provider") : t("den.sync")}
-      </Button>
     </SettingsListItem>
   );
 }
@@ -453,145 +389,6 @@ export function CloudSkillsSection({
             <SettingsListEmptyState>{t("settings.cloud.no_skills_match")}</SettingsListEmptyState>
           )}
         </>
-      ) : null}
-    </SettingsSection>
-  );
-}
-
-export interface MarketplacePluginsSectionProps {
-  actionError: string | null;
-  actionId: string | null;
-  activeMarketplaceId: string | null;
-  busy: boolean;
-  marketplaces: DenOrgMarketplaceResolved[];
-  rowsByMarketplace: Record<string, CloudPluginRow[]>;
-  statusError: string | null;
-  onImportPlugin: (marketplaceId: string | null, plugin: DenOrgPlugin) => void | Promise<void>;
-  onRefresh: () => void | Promise<void>;
-  onSelectMarketplace: (marketplaceId: string) => void;
-}
-
-export function MarketplacePluginsSection({
-  actionError,
-  actionId,
-  activeMarketplaceId,
-  busy,
-  marketplaces,
-  rowsByMarketplace,
-  statusError,
-  onImportPlugin,
-  onRefresh,
-  onSelectMarketplace,
-}: MarketplacePluginsSectionProps) {
-  const { hasActiveOrg } = useCloudSession();
-  const [searchQuery, setSearchQuery] = React.useState("");
-  const selectedMarketplace =
-    marketplaces.find((entry) => entry.marketplace.id === activeMarketplaceId) ?? marketplaces[0] ?? null;
-  const selectedRows = selectedMarketplace ? rowsByMarketplace[selectedMarketplace.marketplace.id] ?? [] : [];
-  const visibleRows = useSearch({ items: selectedRows, keys: pluginSearchKeys, query: searchQuery });
-  const pluginGroups = [
-    { value: "available", label: t("settings.cloud.available"), rows: visibleRows.filter((row) => row.status === "available") },
-    { value: "out_of_sync", label: t("den.out_of_sync_badge"), rows: visibleRows.filter((row) => row.status === "out_of_sync") },
-    { value: "imported", label: t("den.imported_badge"), rows: visibleRows.filter((row) => row.status === "imported") },
-  ].filter((group) => group.rows.length > 0);
-
-  return (
-    <SettingsSection>
-      <SettingsSectionHeader>
-        <SettingsSectionHeaderContent>
-          <SettingsSectionHeaderTitle>
-            {t("settings.cloud.marketplaces_title")}
-          </SettingsSectionHeaderTitle>
-          <SettingsSectionHeaderDescription>
-            {t("settings.cloud.marketplaces_description")}
-          </SettingsSectionHeaderDescription>
-        </SettingsSectionHeaderContent>
-        <SettingsSectionHeaderActions>
-          <RefreshButton
-            busy={busy}
-            disabled={[busy, !hasActiveOrg].some(Boolean)}
-            onRefresh={onRefresh}
-          >
-            {t("den.refresh")}
-          </RefreshButton>
-        </SettingsSectionHeaderActions>
-      </SettingsSectionHeader>
-
-      {actionError ?? statusError ? (
-        <SettingsNotice tone="error">{actionError ?? statusError}</SettingsNotice>
-      ) : null}
-
-      {!busy && marketplaces.length === 0 ? (
-        <SettingsListEmptyState>
-          {hasActiveOrg ? t("settings.cloud.no_marketplaces") : t("settings.cloud.choose_org_for_marketplaces")}
-        </SettingsListEmptyState>
-      ) : null}
-
-      {marketplaces.length > 0 ? (
-        <Tabs
-          value={selectedMarketplace?.marketplace.id}
-          onValueChange={onSelectMarketplace}
-          className="gap-y-3"
-        >
-          <TabsList className="max-w-full justify-start overflow-x-auto">
-            {marketplaces.map((entry) => (
-              <TabsTrigger
-                key={entry.marketplace.id}
-                value={entry.marketplace.id}
-                className="flex-none"
-              >
-                {entry.marketplace.name}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
-          <Field>
-            <FieldLabel className="sr-only" htmlFor="marketplace-plugin-search">
-              {t("settings.cloud.search")}
-            </FieldLabel>
-            <SettingsListSearchInput
-              id="marketplace-plugin-search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-            />
-            <FieldDescription className="sr-only">{t("settings.cloud.search_plugin")}</FieldDescription>
-          </Field>
-
-          <TabsContent value={selectedMarketplace?.marketplace.id}>
-            {visibleRows.length > 0 ? (
-              <Accordion multiple defaultValue={["available", "out_of_sync"]}>
-                {pluginGroups.map((group) => (
-                  <AccordionItem key={group.value} value={group.value}>
-                    <AccordionTrigger className="items-center hover:no-underline group gap-x-3">
-                      <span className="group-hover:underline">{group.label}</span>
-                      <SettingsPill>{group.rows.length}</SettingsPill>
-                    </AccordionTrigger>
-                    <AccordionContent className="px-1.5 pb-1.5">
-                      <SettingsList>
-                        {group.rows.map((row) => (
-                          <MarketplacePluginListItem
-                            key={row.plugin.id}
-                            actionId={actionId}
-                            row={row}
-                            onImportPlugin={onImportPlugin}
-                          />
-                        ))}
-                      </SettingsList>
-                    </AccordionContent>
-                  </AccordionItem>
-                ))}
-              </Accordion>
-            ) : null}
-
-            {selectedRows.length > 0 && visibleRows.length === 0 ? (
-              <SettingsListEmptyState>{t("settings.cloud.no_plugins_match")}</SettingsListEmptyState>
-            ) : null}
-
-            {selectedMarketplace && selectedRows.length === 0 ? (
-              <SettingsListEmptyState>{t("settings.cloud.marketplace_empty")}</SettingsListEmptyState>
-            ) : null}
-          </TabsContent>
-        </Tabs>
       ) : null}
     </SettingsSection>
   );

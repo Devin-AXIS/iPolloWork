@@ -1,0 +1,124 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "pricing-plans",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Pricing Plans",
+  "description": "A three-plan pricing comparison with structured values and one featured offer.",
+  "tags": [
+    "component",
+    "commerce",
+    "pricing",
+    "plans",
+    "structured",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "brand",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "override",
+      "rowId": "plan",
+      "binding": {
+        "variable": "plans",
+        "encoding": "key-value-list"
+      },
+      "columns": [
+        {
+          "id": "plan",
+          "label": "Plan",
+          "labelZh": "方案",
+          "type": "string",
+          "role": "id",
+          "required": true
+        },
+        {
+          "id": "price",
+          "label": "Price",
+          "labelZh": "价格",
+          "type": "number",
+          "role": "value",
+          "required": true
+        }
+      ],
+      "minRows": 2,
+      "maxRows": 3,
+      "highlightVariable": "featured",
+      "valueFormat": {
+        "unit": "USD",
+        "precision": 0,
+        "notation": "currency",
+        "currency": "USD"
+      }
+    },
+    "ai": {
+      "slots": [
+        "title",
+        "plans",
+        "featured",
+        "period"
+      ],
+      "instructions": "Provide two or three Plan:Price pairs, keep featured equal to one plan name, and state a short billing period."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "pricing-plans.html",
+      "target": "compositions/pricing-plans.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Choose the pace that fits",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "plans",
+      "label": "Plans",
+      "description": "Plan and monthly price pairs.",
+      "type": "string",
+      "default": "Starter:19,Pro:49,Scale:99",
+      "maxLength": 500,
+      "update": "live"
+    },
+    {
+      "id": "featured",
+      "label": "Featured plan",
+      "type": "string",
+      "default": "Pro",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "period",
+      "label": "Billing period",
+      "type": "string",
+      "default": "per seat / month",
+      "maxLength": 40,
+      "update": "live"
+    }
+  ]
+}

@@ -2,13 +2,64 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 
 import {
+  getActiveAssistantMessageId,
   getAssistantRenderGroups,
+  getScheduleApplyResult,
   groupMessages,
   isMessageGroup,
   splitAssistantRenderGroups,
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("omits failed tool attempts from progress without mutating history or hiding the final explanation", () => {
+    const parts = [
+      { type: "reasoning", text: "正在准备内容", state: "done" },
+      { type: "dynamic-tool", toolName: "ipollowork_browser_snapshot", toolCallId: "failed-browser", state: "output-error", input: {}, errorText: "Browser timeout" },
+      { type: "tool-bash", toolCallId: "failed-command", state: "output-error", input: { command: "example" }, errorText: "Exit code 1" },
+      { type: "dynamic-tool", toolName: "save-post-draft", toolCallId: "saved", state: "output-available", input: {}, output: { ok: true } },
+      { type: "text", text: "草稿已保存；发布仍需处理登录问题。" },
+    ] satisfies Parameters<typeof getAssistantRenderGroups>[0];
+    const before = JSON.stringify(parts);
+    for (const showThinking of [true, false]) {
+      const groups = getAssistantRenderGroups(parts, showThinking);
+      expect(groups.filter(group => group.kind === "tool").map(group => group.part.toolCallId)).toEqual(["saved"]);
+      expect(groups.at(-1)).toEqual({ kind: "text", text: "草稿已保存；发布仍需处理登录问题。" });
+    }
+    expect(JSON.stringify(parts)).toBe(before);
+    expect(getAssistantRenderGroups([parts[1], parts[2]], true)).toEqual([]);
+  });
+
+  test("finds a completed schedule import across OpenCode and MCP tool result envelopes", () => {
+    const messages = [{
+      id: "assistant-schedule",
+      role: "assistant",
+      parts: [{
+        type: "dynamic-tool",
+        toolName: "ipollowork.ipollowork_schedule_apply",
+        toolCallId: "schedule-call",
+        state: "output-available",
+        input: { previewId: "schedule-preview" },
+        output: {
+          content: [{
+            type: "text",
+            text: JSON.stringify({
+              ok: true,
+              items: [
+                { id: "later", startAt: 1787734800000 },
+                { id: "earlier", startAt: 1787648400000 },
+              ],
+            }),
+          }],
+        },
+      }],
+    }] satisfies Parameters<typeof getScheduleApplyResult>[0]
+
+    expect(getScheduleApplyResult(messages)).toEqual({
+      itemCount: 2,
+      focusAt: 1787648400000,
+    })
+  })
+
   test("opens while streaming and defaults completed or historical work to collapsed", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
@@ -24,8 +75,57 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
     expect(source).toContain("<AssistantProcessDisclosure");
     expect(source).toContain("isStreaming={isLiveGroup}");
+    expect(source).toContain("const isLiveGroup = isStreaming && items.some");
     expect(source).toContain("itemRenderData.map(renderProcessItem)");
     expect(source).toContain("hideProcess");
+    expect(source).toContain("isStreaming={group.isStreaming}");
+
+    const markdownSource = readFileSync(
+      new URL("../src/components/markdown/markdown.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(markdownSource).toContain("STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50");
+    expect(markdownSource).toContain("return streaming ? renderedText : text");
+  });
+
+  test("keeps a follow-up waiting state off the completed assistant turn", () => {
+    const previousTurn = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "First question" }] },
+      { id: "assistant-1", role: "assistant", parts: [{ type: "text", text: "First answer" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    const followUpBaseline = previousTurn.length;
+
+    expect(getActiveAssistantMessageId(previousTurn, followUpBaseline)).toBeUndefined();
+
+    const awaitingFollowUp = [
+      ...previousTurn,
+      { id: "user-2", role: "user", parts: [{ type: "text", text: "Second question" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    expect(getActiveAssistantMessageId(awaitingFollowUp, followUpBaseline)).toBeUndefined();
+    expect(getActiveAssistantMessageId(awaitingFollowUp)).toBeUndefined();
+
+    const respondingToFollowUp = [
+      ...awaitingFollowUp,
+      { id: "assistant-2", role: "assistant", parts: [{ type: "reasoning", text: "Working", state: "streaming" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+    expect(getActiveAssistantMessageId(respondingToFollowUp, followUpBaseline)).toBe("assistant-2");
+    expect(getActiveAssistantMessageId(respondingToFollowUp)).toBe("assistant-2");
+  });
+
+  test("keeps the waiting placeholder when OpenCode has only emitted an empty assistant shell", () => {
+    const awaitingAssistantParts = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "1" }] },
+      { id: "assistant-shell", role: "assistant", parts: [] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+
+    expect(getActiveAssistantMessageId(awaitingAssistantParts)).toBeUndefined();
+
+    const reasoningStarted = [
+      { id: "user-1", role: "user", parts: [{ type: "text", text: "1" }] },
+      { id: "assistant-shell", role: "assistant", parts: [{ type: "reasoning", text: "正在处理", state: "streaming" }] },
+    ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
+
+    expect(getActiveAssistantMessageId(reasoningStarted)).toBe("assistant-shell");
   });
 
   test("moves completed pre-result work into a collapsible process section", () => {

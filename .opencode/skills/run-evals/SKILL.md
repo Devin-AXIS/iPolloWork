@@ -34,16 +34,16 @@ published frame proof. Refresh the snapshot when dependencies change:
 
 Verify the endpoint before running flows:
 
-```
-browser_list({ browser_url: "<CDP_URL>" })   # must show an "iPolloWork" target
+```bash
+curl -fsS "<CDP_URL>/json/list"   # must include an iPolloWork page target
 ```
 
 If it fails, inspect `/tmp/electron.log` — the real success marker is
 Chromium's `DevTools listening on ws://127.0.0.1:9825/...`.
 
-If the app shows the Welcome page, create a workspace first (see
-`evals/daytona-flows.md` Flow 1: create `/workspace/hello` on the sandbox,
-"Get started" → "Local workspace" → inject the path → "Create Workspace").
+If the app shows the Welcome page, use a coded onboarding flow or create
+`/workspace/hello` through the visible UI before running a workspace-dependent
+flow.
 
 ## Run the flows
 

@@ -1,9 +1,13 @@
 import { describe, expect, test } from "vitest";
 import {
-  GUTTER,
+  DEFAULT_TIMELINE_GUTTER_WIDTH,
+  MAX_TIMELINE_GUTTER_WIDTH,
+  MIN_TIMELINE_GUTTER_WIDTH,
   RULER_H,
   TRACK_H,
   TRACKS_LEFT_PAD,
+  clampTimelineGutterWidth,
+  getTimelineGutterMaxWidth,
   getTimelineVisibleWindow,
 } from "./timelineLayout";
 
@@ -17,6 +21,7 @@ describe("timeline visible window", () => {
       pps: 100,
       trackCount: 200,
       displayDuration: 300,
+      gutterWidth: DEFAULT_TIMELINE_GUTTER_WIDTH,
       verticalOverscanRows: 3,
       horizontalOverscanViewports: 0,
     });
@@ -29,13 +34,14 @@ describe("timeline visible window", () => {
     const viewportWidth = 1_000;
     const pps = 100;
     const window = getTimelineVisibleWindow({
-      scrollLeft: GUTTER + TRACKS_LEFT_PAD + 60 * pps,
+      scrollLeft: DEFAULT_TIMELINE_GUTTER_WIDTH + TRACKS_LEFT_PAD + 60 * pps,
       scrollTop: 0,
       viewportWidth,
       viewportHeight: 600,
       pps,
       trackCount: 20,
       displayDuration: 180,
+      gutterWidth: DEFAULT_TIMELINE_GUTTER_WIDTH,
     });
 
     expect(window.startTime).toBe(50);
@@ -52,6 +58,7 @@ describe("timeline visible window", () => {
         pps: 100,
         trackCount: 8,
         displayDuration: 60,
+        gutterWidth: DEFAULT_TIMELINE_GUTTER_WIDTH,
       }),
     ).toEqual({
       firstTrackIndex: 0,
@@ -59,5 +66,17 @@ describe("timeline visible window", () => {
       startTime: 0,
       endTime: 60,
     });
+  });
+});
+
+describe("timeline layer gutter width", () => {
+  test("uses the product minimum and maximum on a wide viewport", () => {
+    expect(clampTimelineGutterWidth(100, 1_200)).toBe(MIN_TIMELINE_GUTTER_WIDTH);
+    expect(clampTimelineGutterWidth(800, 1_200)).toBe(MAX_TIMELINE_GUTTER_WIDTH);
+  });
+
+  test("preserves at least 360px for timeline content", () => {
+    expect(getTimelineGutterMaxWidth(680)).toBe(320);
+    expect(clampTimelineGutterWidth(420, 680)).toBe(320);
   });
 });

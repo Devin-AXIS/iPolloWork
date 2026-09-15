@@ -23,6 +23,13 @@ import { registerGlobalAssetRoutes } from "./routes/globalAssets.js";
 export function createStudioApi(adapter: StudioApiAdapter): Hono {
   const api = new Hono();
 
+  api.use("/projects/:id/*", async (c, next) => {
+    await next();
+    if (c.req.method === "GET" || c.req.method === "HEAD" || c.res.status >= 400) return;
+    const project = await adapter.resolveProject(c.req.param("id"));
+    if (project) adapter.invalidateProjectSignature?.(project.dir);
+  });
+
   registerProjectRoutes(api, adapter);
   registerStoryboardRoutes(api, adapter);
   registerFileRoutes(api, adapter);

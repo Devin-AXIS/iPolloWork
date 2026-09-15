@@ -1,0 +1,17 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "bar-chart-race", "version": "1.0.0", "type": "hyperframes:block", "title": "Bar Chart Race",
+  "description": "A ranked, theme-linked horizontal bar race with a clear period and source.",
+  "tags": ["component", "data", "chart", "ranking", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Bar Chart Race", "url": "https://www.hyperframes.dev/catalog/blocks/bar-chart-race" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "items", "period", "source"], "instructions": "AI may replace or reorder the ranked values while keeping five or fewer readable bars and one highlighted leader." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "bar-chart-race.html", "target": "compositions/bar-chart-race.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Category leaders", "maxLength": 64, "update": "live" },
+    { "id": "items", "label": "Ranked data", "description": "Comma-separated Name:Value pairs.", "type": "string", "default": "Atlas:96,Nova:82,Orbit:71,Field:58,Base:44", "maxLength": 140, "update": "live" },
+    { "id": "period", "label": "Period", "type": "string", "default": "Q4 · 2026", "maxLength": 28, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Source · Product analytics", "maxLength": 64, "update": "live" }
+  ]
+}

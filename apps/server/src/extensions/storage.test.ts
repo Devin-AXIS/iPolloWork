@@ -3,17 +3,15 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import { callStorageExtensionAction, STORAGE_EXTENSION_ID } from "./storage.js";
 
 const nativeFetch = globalThis.fetch;
 const directories: string[] = [];
 
-function env(values: Record<string, string>): EnvService {
-  return {
-    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
-  } as unknown as EnvService;
+function env(values: Record<string, string>): AuthorizationAccess {
+  return { read: async () => values };
 }
 
 afterEach(async () => {

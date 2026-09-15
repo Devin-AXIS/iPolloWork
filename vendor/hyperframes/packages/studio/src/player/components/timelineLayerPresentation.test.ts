@@ -113,12 +113,12 @@ describe("timeline layer presentation", () => {
 
   test("uses one neutral clip style for every timeline kind and palette index", () => {
     const expected = {
-      accent: "#20BBC0",
+      accent: "#1FBAC0",
       clip: "var(--hf-timeline-clip-bg)",
       clipActive: "var(--hf-timeline-clip-active)",
       border: "var(--hf-timeline-clip-border)",
       hover: "var(--hf-timeline-clip-hover)",
-      dragging: "#20BBC0",
+      dragging: "#1FBAC0",
       label: "var(--hf-timeline-clip-text)",
     };
 

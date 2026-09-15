@@ -10,7 +10,14 @@ export interface EditingFile {
 
 export interface AppToast {
   message: string;
-  tone: "error" | "info";
+  tone: "error" | "info" | "notice";
+}
+
+export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {
+  if (typeof value !== "object" || value === null) return null;
+  if (!("type" in value) || value.type !== "ipollowork:studio-ai-editing") return null;
+  if (!("projectId" in value) || value.projectId !== projectId) return null;
+  return "active" in value && typeof value.active === "boolean" ? value.active : null;
 }
 
 export type RightPanelTab =
@@ -18,12 +25,10 @@ export type RightPanelTab =
   | "design"
   | "voice"
   | "style"
-  | "illustration"
+  | "components"
   | "assets"
   | "animation"
   | "animation-properties"
-  | "catalog"
-  | "effects"
   | "renders"
   | "block-params"
   | "slideshow"
@@ -154,8 +159,7 @@ function matchesByHfId(
 ): boolean {
   if (!selection.hfId) return false;
   return (
-    element.hfId === selection.hfId &&
-    (element.sourceFile || "index.html") === selectionSourceFile
+    element.hfId === selection.hfId && (element.sourceFile || "index.html") === selectionSourceFile
   );
 }
 
@@ -345,7 +349,6 @@ export function collectHtmlIds(source: string): string[] {
 
 const DEFAULT_TIMELINE_ASSET_DURATION: Record<TimelineAssetKind, number> = {
   image: 3,
-  html: 5,
   video: 5,
   audio: 5,
 };
@@ -355,7 +358,7 @@ export async function resolveDroppedAssetDuration(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<number> {
-  if (kind === "image" || kind === "html") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
+  if (kind === "image") return DEFAULT_TIMELINE_ASSET_DURATION[kind];
 
   const media = document.createElement(kind === "video" ? "video" : "audio");
   media.preload = "metadata";
@@ -395,7 +398,7 @@ export async function resolveDroppedAssetDimensions(
   assetPath: string,
   kind: TimelineAssetKind,
 ): Promise<{ width: number; height: number } | null> {
-  if (kind === "audio" || kind === "html") return null;
+  if (kind === "audio") return null;
   const src = `/api/projects/${projectId}/preview/${assetPath}`;
 
   if (kind === "image") {

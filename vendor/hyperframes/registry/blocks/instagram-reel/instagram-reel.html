@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"creator","label":"Creator","type":"string","default":"mira.moves","maxLength":40},{"id":"caption","label":"Caption","type":"string","default":"Three transitions that make product demos feel effortless.","maxLength":150},{"id":"audio","label":"Audio","type":"string","default":"Original audio · Mira Studio","maxLength":56},{"id":"stats","label":"Engagement","type":"string","default":"84K ♥ · 1.2K comments","maxLength":64}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Instagram Reel</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.reel-wrap{width:100%;display:grid;place-items:center}.reel-phone{position:relative;width:530px;height:900px;overflow:hidden;border-radius:46px;background:#111;color:#fff;box-shadow:0 34px 100px rgba(0,0,0,.28)}.reel-visual{position:absolute;inset:0;background:radial-gradient(circle at 68% 24%,rgba(255,255,255,.28),transparent 26%),linear-gradient(145deg,#0d1521,#314d55 52%,#d47f59)}.reel-visual::before{content:"";position:absolute;width:360px;height:520px;left:72px;top:120px;border:2px solid rgba(255,255,255,.5);border-radius:180px 180px 42px 42px;box-shadow:inset 0 0 0 24px rgba(255,255,255,.08)}.reel-brand{position:absolute;top:34px;left:32px;font-size:20px;font-weight:900}.reel-rail{position:absolute;right:25px;bottom:180px;display:grid;gap:24px;text-align:center;font-size:26px}.reel-copy{position:absolute;left:30px;right:88px;bottom:34px}.reel-creator{font-size:20px;font-weight:850}.reel-caption{margin:14px 0;font-size:22px;line-height:1.3}.reel-audio,.reel-stats{font-size:15px;color:rgba(255,255,255,.78)}.reel-stats{margin-top:12px}
+</style></head>
+<body><main id="root" data-composition-id="instagram-reel" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"creator":"mira.moves","caption":"Three transitions that make product demos feel effortless.","audio":"Original audio · Mira Studio","stats":"84K ♥ · 1.2K comments"}'><section class="reel-wrap"><article class="reel-phone sm-animate"><div class="reel-visual"></div><div class="reel-brand">REELS</div><div class="reel-rail sm-pop"><span>♡</span><span>◯</span><span>⌁</span></div><div class="reel-copy"><div class="reel-creator" data-ipw-variable="creator" data-ipw-ai-slot="creator"></div><p class="reel-caption" data-ipw-variable="caption" data-ipw-ai-slot="caption"></p><div class="reel-audio" data-ipw-variable="audio" data-ipw-ai-slot="audio"></div><div class="reel-stats" data-ipw-variable="stats" data-ipw-ai-slot="stats"></div></div></article></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="instagram-reel";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("clip"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("clip"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("clip"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("clip"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

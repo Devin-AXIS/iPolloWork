@@ -53,7 +53,6 @@ function client(overrides: Partial<iPolloWorkServerClient> = {}): iPolloWorkServ
     }),
     capabilities: async () => ({
       skills: { read: true, write: true, source: "ipollowork" },
-      plugins: { read: true, write: true },
       mcp: { read: true, write: true },
       commands: { read: true, write: true },
       config: { read: true, write: true },

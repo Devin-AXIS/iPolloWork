@@ -4,20 +4,36 @@ import {
   ArrowLeft,
   ArrowRight,
   Code2,
+  FileText,
   Globe,
+  Images,
   Loader2,
   Maximize2,
   Minimize2,
+  PanelsTopLeft,
   Plus,
   RotateCw,
+  SquarePlay,
+  ToolCase,
   X,
 } from "lucide-react";
-import { useDragControls } from "motion/react";
+import { motion, useDragControls } from "motion/react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
+import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
 import { PanelTab, PanelTabClose, PanelTabItem, PanelTabList } from "@/components/panel-tabs";
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { SidebarRightToggleIcon } from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   InputGroup,
   InputGroupAddon,
@@ -40,7 +56,15 @@ import { useControlAction, type iPolloWorkControlAction } from "../../../shell/c
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
 import { DesignPanel } from "../design/design-panel";
-import type { DesignAiSelectionContext } from "../design/design-ai-selection";
+import { relativeDesignMediaPath, replaceDesignMedia } from "../design/design-media";
+import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
+import { getReactQueryClient } from "@/react-app/infra/query-client";
+import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import { VideoPanel } from "../video/video-panel";
+import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
+import { isMediaStudioPlugin, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
+import { PluginWorkshopPanel } from "../plugin-workshop/plugin-workshop";
 import {
   computeBounds,
   getElectronBrowser,
@@ -58,7 +82,13 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
+  onEditImage?: (target: OpenTarget) => void;
+  onGenerateVideo?: (path:string, sourceSessionId:string) => void;
+  onSwitchMedia?: (kind: "image" | "video") => void;
+  onOpenMedia?: (path: string, kind: "image" | "video") => void;
   onSaveAsTemplate?: () => void;
+  aiEditing?: boolean;
   expanded?: boolean;
   titlebarInset?: boolean;
   onExpandedChange?: (expanded: boolean) => void;
@@ -67,12 +97,100 @@ type SidePanelProps = {
 export type SidePanelLauncherItem = {
   id: string;
   label: string;
+  group: "content" | "studio";
   shortcut?: string;
-  iconSrc: string;
-  active?: boolean;
+  icon: "web" | "design" | "files" | "video" | "plugin-workshop" | "image-studio" | "video-console" | "workspace-app";
   disabled?: boolean;
   onClick: () => void;
 };
+
+export function SidePanelLauncherMenu({ launcherItems, expanded = false, isBrowserAvailable = false, onCreateBrowser }: {
+  launcherItems: SidePanelLauncherItem[];
+  expanded?: boolean;
+  isBrowserAvailable?: boolean;
+  onCreateBrowser?: () => void;
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger
+          render={(
+            <DropdownMenuTrigger
+              render={(
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label={t("side_panel.add_entry")}
+                >
+                  <Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+                </Button>
+              )}
+            />
+          )}
+        />
+        <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent
+        align="end"
+        positionerClassName={expanded ? "z-[70]" : undefined}
+        className="w-56"
+      >
+        {launcherItems.map((item, index) => {
+          return (
+            <React.Fragment key={item.id}>
+              {index > 0 && launcherItems[index - 1]?.group !== item.group ? <DropdownMenuSeparator className="my-1" /> : null}
+              <DropdownMenuItem
+                data-testid={`side-panel-launcher-${item.id}`}
+                disabled={item.disabled}
+                onClick={item.onClick}
+                className="h-9 gap-3 px-2.5 py-0 text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!"
+              >
+                <SidePanelLauncherIcon item={item} />
+                <span className="min-w-0 flex-1 truncate font-normal text-foreground!">{studioLabel(item.icon, item.label)}</span>
+                {item.shortcut ? <span className="text-xs font-normal text-muted-foreground">{item.shortcut}</span> : null}
+              </DropdownMenuItem>
+            </React.Fragment>
+          );
+        })}
+        {launcherItems.length === 0 && isBrowserAvailable ? (
+          <DropdownMenuItem
+            onClick={onCreateBrowser}
+            className="h-9 gap-3 px-2.5 py-0 text-sm font-normal text-foreground"
+          >
+            <Globe className="size-[18px] text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+            <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
+          </DropdownMenuItem>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+export function SidePanelLauncherIcon({ item }: { item: SidePanelLauncherItem }) {
+  const icon = item.icon === "web"
+    ? <Globe className="size-[18px]" />
+    : item.icon === "design"
+      ? <Code2 className="size-[18px]" />
+      : item.icon === "files"
+        ? <FileText className="size-[17px]" />
+        : item.icon === "video"
+          ? <SquarePlay className="size-[18px]" />
+          : item.icon === "plugin-workshop"
+            ? <ToolCase className="size-[18px]" />
+            : item.icon === "image-studio"
+              ? <Images className="size-[18px]" />
+              : item.icon === "video-console" ? <Images className="size-[18px]" /> : <PanelsTopLeft className="size-[18px]" />;
+
+  return (
+    <span
+      aria-hidden="true"
+      className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"
+    >
+      {React.cloneElement(icon, { strokeWidth: NAVIGATION_ICON_STROKE_WIDTH })}
+    </span>
+  );
+}
 
 // HMR can remount this module without unmounting BrowserPanelContent, leaving
 // the native Electron browser overlay visible — hide it before the module reloads.
@@ -125,7 +243,28 @@ class DesignPanelErrorBoundary extends React.Component<
   }
 }
 
+function SidePanelTabIcon({ tab }: { tab: PanelTabEntry }) {
+  if (tab.type === "browser") {
+    if (tab.favicon) return <img src={tab.favicon} alt="" className="size-3.5 shrink-0 rounded-[2px]" />;
+    if (tab.status === "loading") return <Loader2 className="size-4 animate-spin" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+    return <Globe className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  }
+  if (tab.type === "design") return <Code2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "video") return <SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "workspace-app") return mediaStudioEngine(tab.surface) === "image-studio"
+    ? <Images className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />
+    : mediaStudioEngine(tab.surface) === "video-console" ? <Images className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <PanelsTopLeft className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  if (tab.type === "plugin-studio") return <ToolCase className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />;
+  return <ArtifactIcon type={tab.preview} className="!size-[15px] text-current" />;
+}
+
+function studioLabel(id: string, label: string) {
+  if (isMediaStudioPlugin(id)) return t("media.studio.title");
+  return label;
+}
+
 function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
+  const label = tab.type === "workspace-app" ? studioLabel(tab.surface.pluginId, tab.label) : tab.label;
   const dragControls = useDragControls();
   const tabRef = React.useRef<HTMLDivElement>(null);
 
@@ -172,25 +311,16 @@ function SidePanelTab({ tab, active, onSelect, onClose }: SidePanelTabProps) {
             event.preventDefault();
             showBrowserTabContextMenu();
           } : undefined}
-          title={tab.label}
-          aria-label={`Select tab: ${tab.label}`}
+          title={label}
+          aria-label={`Select tab: ${label}`}
+          aria-selected={active}
         >
-          {tab.type === "browser" ? (
-            tab.favicon ? (
-              <img src={tab.favicon} alt="" className="size-3.5 shrink-0 rounded-[2px]" />
-            ) : tab.status === "loading" ? (
-              <Loader2 className="animate-spin" />
-            ) : (
-              <Globe />
-            )
-          ) : (
-            tab.type === "design" ? <Code2 /> : <ArtifactIcon type={tab.preview} />
-          )}
-          <span className="min-w-0 flex-1 truncate text-left">{tab.label}</span>
+          <SidePanelTabIcon tab={tab} />
+          <span className="min-w-0 flex-1 truncate text-left">{label}</span>
         </PanelTab>
         <PanelTabClose
           active={active}
-          label={tab.label}
+          label={label}
           onClose={() => onClose(tab)}
         />
       </div>
@@ -203,11 +333,22 @@ type BrowserPanelContentProps = {
   onClose: () => void;
 };
 
+function browserAddressLabel(url: string) {
+  if (!url || url === "about:blank") return t("side_panel.new_tab");
+
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
 function BrowserPanelContent({
   tab,
   onClose,
 }: BrowserPanelContentProps) {
   const isAvailable = Boolean(getElectronBrowser());
+  const [addressExpanded, setAddressExpanded] = React.useState(false);
   const [urlInput, setUrlInput] = React.useState(tab.url);
   const urlFocusedRef = React.useRef(false);
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -221,6 +362,29 @@ function BrowserPanelContent({
       setUrlInput(tab.url);
     }
   }, [tab.id, tab.url]);
+
+  React.useEffect(() => {
+    setAddressExpanded(false);
+  }, [tab.id]);
+
+  const expandAddress = React.useCallback(() => {
+    setAddressExpanded(true);
+    window.requestAnimationFrame(() => {
+      urlInputRef.current?.focus();
+      urlInputRef.current?.select();
+    });
+  }, []);
+
+  React.useEffect(() => {
+    const handleAddressShortcut = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey || event.key.toLowerCase() !== "l") return;
+      event.preventDefault();
+      expandAddress();
+    };
+
+    window.addEventListener("keydown", handleAddressShortcut);
+    return () => window.removeEventListener("keydown", handleAddressShortcut);
+  }, [expandAddress]);
 
   const navigate = React.useCallback(() => {
     void getElectronBrowser()?.navigate?.(urlInput);
@@ -243,8 +407,15 @@ function BrowserPanelContent({
       event.preventDefault();
       navigate();
       urlInputRef.current?.blur();
+      return;
     }
-  }, [navigate]);
+
+    if (event.key === "Escape") {
+      event.preventDefault();
+      setUrlInput(tab.url);
+      urlInputRef.current?.blur();
+    }
+  }, [navigate, tab.url]);
 
   React.useLayoutEffect(() => {
     const browser = getElectronBrowser();
@@ -401,29 +572,73 @@ function BrowserPanelContent({
               />
               <TooltipContent>{t("side_panel.reload")}</TooltipContent>
             </Tooltip>
-            <InputGroup className="mx-1 h-7 flex-1 rounded-md">
-              <InputGroupInput
-                ref={urlInputRef}
-                type="text"
-                className="h-7"
-                value={urlInput}
-                onChange={(event) => setUrlInput(event.target.value)}
-                onKeyDown={handleUrlKeyDown}
-                onFocus={() => {
-                  urlFocusedRef.current = true;
-                  urlInputRef.current?.select();
-                }}
-                onBlur={() => {
-                  urlFocusedRef.current = false;
-                }}
-                placeholder={t("side_panel.enter_url")}
-                spellCheck={false}
-                autoComplete="off"
+            {addressExpanded ? (
+              <InputGroup className="mx-1 h-7 flex-1 rounded-md">
+                <InputGroupInput
+                  ref={urlInputRef}
+                  type="text"
+                  className="h-7"
+                  value={urlInput}
+                  onChange={(event) => setUrlInput(event.target.value)}
+                  onKeyDown={handleUrlKeyDown}
+                  onFocus={() => {
+                    urlFocusedRef.current = true;
+                    urlInputRef.current?.select();
+                  }}
+                  onBlur={() => {
+                    urlFocusedRef.current = false;
+                    setAddressExpanded(false);
+                  }}
+                  placeholder={t("side_panel.enter_url")}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                <InputGroupAddon align="inline-start" className="ps-2">
+                  <Globe />
+                </InputGroupAddon>
+              </InputGroup>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                className="mx-1 h-7 min-w-0 flex-1 justify-start gap-1.5 px-2 text-xs font-normal text-muted-foreground shadow-none before:shadow-none hover:text-foreground"
+                onClick={expandAddress}
+                aria-label={t("side_panel.edit_address", { site: browserAddressLabel(tab.url) })}
+                title={tab.url || t("side_panel.enter_url")}
+              >
+                <Globe className="size-3.5" />
+                <span className="truncate">{browserAddressLabel(tab.url)}</span>
+              </Button>
+            )}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={(
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="rounded-full p-0"
+                    aria-label={t("side_panel.browser_profile_trigger")}
+                    title={t("side_panel.browser_profile_trigger")}
+                  >
+                    <MarbleAvatar seed="browser-profile:default" className="size-6 rounded-full" />
+                  </Button>
+                )}
               />
-              <InputGroupAddon align="inline-start" className="ps-2">
-                <Globe />
-              </InputGroupAddon>
-            </InputGroup>
+              <DropdownMenuContent align="end" className="w-64">
+                <DropdownMenuGroup>
+                  <DropdownMenuLabel>{t("side_panel.browser_profile")}</DropdownMenuLabel>
+                  <DropdownMenuCheckboxItem checked className="items-start">
+                    <MarbleAvatar seed="browser-profile:default" className="mt-0.5 size-7 rounded-full" />
+                    <span className="min-w-0">
+                      <span className="block truncate">{t("side_panel.default_browser_profile")}</span>
+                      <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
+                        {t("side_panel.browser_profile_saved_hint")}
+                      </span>
+                    </span>
+                  </DropdownMenuCheckboxItem>
+                </DropdownMenuGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : (
           <p className="px-2 text-sm text-muted-foreground">
@@ -455,7 +670,13 @@ export function SidePanel({
   isRemoteWorkspace = false,
   launcherItems = [],
   onAskAi,
+  onSendWorkspaceAppMessage,
+  onEditImage,
+  onGenerateVideo,
+  onSwitchMedia,
+  onOpenMedia,
   onSaveAsTemplate,
+  aiEditing = false,
   expanded = false,
   titlebarInset = false,
   onExpandedChange,
@@ -466,6 +687,7 @@ export function SidePanel({
   const isBrowserAvailable = Boolean(getElectronBrowser());
 
   const { createTab, closeTab, selectTab, reorderTabs } = useSidePanelTabs(sessionId);
+  const mediaEdits = usePanelTabStore(state => state.mediaEdits);
 
   const seedArtifactOverflowControlAction = React.useMemo<iPolloWorkControlAction | null>(() => {
     if (!import.meta.env.DEV) return null;
@@ -610,118 +832,168 @@ export function SidePanel({
     <TooltipProvider delay={1000}>
       <div className="flex h-full flex-col">
         <div className="shrink-0 bg-background mac:bg-background/80 mac:backdrop-blur-2xl mac:backdrop-saturate-150">
-          <div className={cn("flex h-10 items-center gap-1 px-2 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
+          <div className={cn("flex h-10 items-center gap-1 pl-2 pr-3 mac:titlebar-drag", titlebarInset && "mac:pl-20")}>
             <div className="no-scrollbar min-w-0 flex-1 overflow-x-auto">
-              <PanelTabList
-                values={tabs.map((tab) => tab.id)}
-                onReorder={reorderTabs}
-              >
-                {tabs.map((tab) => (
-                  <SidePanelTab
-                    key={tab.id}
-                    tab={tab}
-                    active={tab.id === activeTab?.id}
-                    onSelect={selectTab}
-                    onClose={closeTab}
-                  />
-                ))}
-              </PanelTabList>
-            </div>
-            {isBrowserAvailable || launcherItems.length > 0 ? (
-              <DropdownMenu>
-                <Tooltip>
-                  <TooltipTrigger
-                    render={(
-                      <DropdownMenuTrigger
-                        render={(
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            aria-label={t("side_panel.add_entry")}
-                          >
-                            <Plus />
-                          </Button>
-                        )}
-                      />
-                    )}
-                  />
-                  <TooltipContent>{t("side_panel.add_entry")}</TooltipContent>
-                </Tooltip>
-                <DropdownMenuContent
-                  align="end"
-                  positionerClassName={expanded ? "z-[70]" : undefined}
-                  className="w-[296px] rounded-[18px] border border-border bg-popover p-3 text-popover-foreground shadow-[0_8px_24px_rgba(0,0,0,0.10)] before:hidden"
+              <div className="flex min-w-max items-center gap-1">
+                <PanelTabList
+                  values={tabs.map((tab) => tab.id)}
+                  onReorder={reorderTabs}
                 >
-                  {launcherItems.map((item) => {
-                    return (
-                      <DropdownMenuItem
-                        key={item.id}
-                        disabled={item.disabled}
-                        onClick={item.onClick}
-                        className={[
-                          "h-9 rounded-xl px-2 text-[14px] font-normal tracking-[-0.56px] text-muted-foreground focus:bg-muted focus:text-foreground hover:bg-muted hover:text-foreground active:bg-accent active:text-foreground data-highlighted:bg-muted data-highlighted:text-foreground data-disabled:opacity-40",
-                        ].join(" ")}
-                      >
-                        <img src={item.iconSrc} alt="" className="size-4 shrink-0" />
-                        <span className="flex-1">{item.label}</span>
-                        {item.shortcut ? (
-                          <span className="text-[12px] tracking-[-0.24px] text-muted-foreground">{item.shortcut}</span>
-                        ) : null}
-                      </DropdownMenuItem>
-                    );
-                  })}
-                  {launcherItems.length === 0 && isBrowserAvailable ? (
-                    <DropdownMenuItem
-                      onClick={() => createTab()}
-                      className="h-11 rounded-xl px-2 text-[20px] font-normal tracking-[-0.8px] text-foreground focus:bg-muted focus:text-foreground"
-                    >
-                      <Globe className="size-6 stroke-[1.8] text-[#666666]" />
-                      <span className="min-w-0 flex-1 truncate">{t("side_panel.launcher.browser")}</span>
-                    </DropdownMenuItem>
-                  ) : null}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            ) : null}
-            {onExpandedChange ? (
-              <Button
-                variant={expanded ? "secondary" : "ghost"}
-                size="icon-sm"
-                onClick={() => onExpandedChange(!expanded)}
-                aria-label={expanded ? "Restore panel width" : "Expand panel"}
-                aria-pressed={expanded}
-              >
-                {expanded ? <Minimize2 /> : <Maximize2 />}
-              </Button>
-            ) : null}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onClose}
-              aria-label="Close panel"
-              title="Close panel"
-            >
-              <X />
-            </Button>
+                  {tabs.map((tab) => (
+                    <SidePanelTab
+                      key={tab.id}
+                      tab={tab}
+                      active={tab.id === activeTab?.id}
+                      onSelect={selectTab}
+                      onClose={closeTab}
+                    />
+                  ))}
+                </PanelTabList>
+                {isBrowserAvailable || launcherItems.length > 0 ? (
+                  <SidePanelLauncherMenu launcherItems={launcherItems} expanded={expanded} isBrowserAvailable={isBrowserAvailable} onCreateBrowser={() => createTab()} />
+                ) : null}
+              </div>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              {onExpandedChange ? (
+                <Button
+                  variant={expanded ? "secondary" : "ghost"}
+                  size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={() => onExpandedChange(!expanded)}
+                  aria-label={expanded ? "Restore panel width" : "Expand panel"}
+                  aria-pressed={expanded}
+                >
+                  {expanded ? <Minimize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} /> : <Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />}
+                </Button>
+              ) : null}
+              <motion.div layoutId="right-panel-toggle" transition={{ duration: 0.2, ease: "easeOut" }}>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"
+                  onClick={onClose}
+                  aria-label={t("session.right_panel_close")}
+                  title={t("session.right_panel_close")}
+                  data-testid="right-panel-toggle"
+                >
+                  <SidebarRightToggleIcon panelOpen />
+                </Button>
+              </motion.div>
+            </div>
           </div>
         </div>
+        {client && workspaceId ? tabs.filter(tab => tab.type === "workspace-app").flatMap(parentTab => (parentTab.mediaViews ?? [parentTab]).map(view => {
+          const tab = {...parentTab,...view};
+          const visible = tab.id === activeTab?.id && mediaStudioEngine(tab.surface) === mediaStudioEngine(parentTab.surface);
+          const edit = mediaEdits.find(item => item.workspaceId === workspaceId && item.sessionId === sessionId && item.source.requestId === tab.mediaEditRequestId);
+          const origin = mediaEdits.find(item => item.workspaceId === workspaceId && item.sessionId === sessionId && item.source.requestId === tab.launch?.originRequestId);
+          const returnToProject = (binding: NonNullable<typeof origin>) => {
+            const store = usePanelTabStore.getState();
+            store.closeMediaEdit(binding.source.requestId);
+            const project = store.sessions[sessionId]?.tabs.find(item => item.type === "design" && item.path === binding.page);
+            store.openTab(sessionId, project ?? {id:`design:${sessionId}:${encodeURIComponent(binding.page)}`,type:"design",label:binding.page.split("/").pop() || "Design",sessionId:binding.projectSessionId,path:binding.page});
+          };
+          return (
+          <div key={`${tab.sessionId}:${tab.id}:${mediaStudioEngine(tab.surface)}`} className={cn("relative min-h-0 flex-1 overflow-hidden", !visible && "hidden")} aria-hidden={!visible} data-media-engine={isMediaStudioPlugin(tab.surface.pluginId) ? mediaStudioEngine(tab.surface) : undefined}>
+            {edit ? <MediaWorkbench key={edit.source.requestId}
+              source={edit.source} client={client} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
+              resultPath={edit.resultPath} replaced={edit.replaced} visible={visible}
+              onSwitchMedia={onSwitchMedia}
+              onOpenMedia={onOpenMedia}
+              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onEditImage={path=>onEditImage?.({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:"image",confidence:1,reason:"media-gallery"})}
+              returnLabel={t("media.workbench.back_design")}
+              onActivate={() => usePanelTabStore.getState().openTab(sessionId, tab)}
+              onResult={path => usePanelTabStore.getState().completeMediaEdit(workspaceId, sessionId, edit.source.requestId, path)}
+              onApply={async save => {
+                if (edit.replaced) throw new Error(t("media.workbench.changed"));
+                const file = await client.readWorkspaceFile(workspaceId, edit.page);
+                const content = replaceDesignMedia(file.content, edit.locator, edit.original, edit.media, relativeDesignMediaPath(edit.page, save.path));
+                await client.writeWorkspaceFile(workspaceId, {path:edit.page, content, baseUpdatedAt:file.updatedAt});
+                usePanelTabStore.getState().closeMediaEdit(edit.source.requestId, true);
+                await getReactQueryClient().invalidateQueries({queryKey:["design-html",workspaceId,edit.page]});
+              }}
+              onClose={() => returnToProject(edit)}
+            /> : <WorkspaceAppFrame
+              active={visible}
+              surface={tab.surface}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              sessionId={tab.sessionId}
+              launch={origin && tab.launch ? {...tab.launch,returnToSource:true,returnLabel:t("media.workbench.back_design"),workbenchMessage:t("media.studio.continuation_hint")} : tab.launch}
+              onReturnToSource={origin ? () => returnToProject(origin) : undefined}
+              onMediaProduced={(path,requestId) => usePanelTabStore.getState().rememberMediaContinuation(workspaceId,sessionId,requestId,path)}
+              placement="workspace"
+              displayMode={expanded ? "fullscreen" : "inline"}
+              onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
+              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onSwitchMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onSwitchMedia : undefined}
+              onOpenMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onOpenMedia : undefined}
+              onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
+              onSendMessage={onSendWorkspaceAppMessage}
+              onRequestClose={() => closeTab(tab)}
+            />}
+          </div>
+
+        ); })) : null}
         {!activeTab ? (
           <PanelEmpty />
         ) : null}
-        {activeTab?.type === "design" ? (
-          <DesignPanelErrorBoundary resetKey={`${activeTab.id}:${activeTab.path}`}>
+        {tabs.filter(tab => tab.type === "design").map(tab => (
+          <div key={`${tab.sessionId}:${tab.id}`} className={cn("min-h-0 flex-1 overflow-hidden", tab.id !== activeTab?.id && "hidden")} aria-hidden={tab.id !== activeTab?.id}>
+          <DesignPanelErrorBoundary resetKey={`${tab.id}:${tab.path}`}>
             <DesignPanel
-              sessionId={activeTab.sessionId}
+              conversationId={sessionId}
+              sessionId={tab.sessionId}
               client={client}
+              mediaClient={client}
+              workspaceRoot={workspaceRoot}
               workspaceId={workspaceId}
               isRemoteWorkspace={isRemoteWorkspace}
-              initialPath={activeTab.path}
+              initialPath={tab.path}
+              displayName={tab.label}
               expanded={expanded}
               onAskAi={onAskAi ?? (() => undefined)}
               onSaveAsTemplate={onSaveAsTemplate}
             />
           </DesignPanelErrorBoundary>
+          </div>
+        ))}
+        {activeTab?.type === "video" ? (
+          <VideoPanel
+            key={activeTab.id}
+            title={activeTab.label}
+            sessionId={activeTab.sessionId}
+            workspaceRoot={workspaceRoot}
+            client={client}
+            workspaceId={workspaceId}
+            isRemoteWorkspace={isRemoteWorkspace}
+            aiEditing={aiEditing}
+            expanded={expanded}
+            onExpandedChange={onExpandedChange}
+            onAskAi={onAskAi}
+            onSaveAsTemplate={onSaveAsTemplate}
+          />
         ) : activeTab?.type === "browser" ? (
           <BrowserPanelContent tab={activeTab} onClose={() => closeTab(activeTab)} />
+        ) : activeTab?.type === "plugin-studio" && client && workspaceId ? (
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <PluginWorkshopPanel
+              key={`${activeTab.sessionId}:${activeTab.id}`}
+              tab={activeTab}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              aiEditing={aiEditing}
+              expanded={expanded}
+              onSendMessage={onSendWorkspaceAppMessage ? async input => {
+                const result = await onSendWorkspaceAppMessage(input);
+                return typeof result === "boolean" ? result : result.accepted;
+              } : undefined}
+            />
+          </div>
         ) : activeTab?.type === "artifact" ? (
           <div className="min-h-0 flex-1 overflow-hidden">
             <ArtifactPanel
@@ -731,6 +1003,7 @@ export function SidePanel({
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               isRemoteWorkspace={isRemoteWorkspace}
+              onEditImage={onEditImage}
               onClose={onClose}
             />
           </div>

@@ -5,7 +5,11 @@ import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { stageServerConstants, stageServerRuntimeTypes } from "./server-packaging.mjs";
+import {
+  assertServerRuntimeDependencies,
+  stageServerConstants,
+  stageServerRuntimeTypes,
+} from "./server-packaging.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const desktopRoot = resolve(__dirname, "..");
@@ -20,6 +24,8 @@ const hyperframesBuildStamp = resolve(desktopRoot, ".hyperframes-build-stamp.jso
 const hyperframesInstallStamp = resolve(desktopRoot, ".hyperframes-install-stamp.json");
 const serverDistDir = resolve(repoRoot, "apps", "server", "dist");
 const constantsSrc = resolve(repoRoot, "constants.json");
+const serverPackagePath = resolve(repoRoot, "apps", "server", "package.json");
+const desktopPackagePath = resolve(desktopRoot, "package.json");
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 const bunCmd = process.platform === "win32" ? "bun.exe" : "bun";
@@ -163,16 +169,6 @@ function bundleNodeModule(entry, output) {
 }
 
 function stageBundledOpenCodeRuntime() {
-  const chromeEntry = fileURLToPath(import.meta.resolve("opencode-chrome-devtools"));
-  const chromeRoot = resolve(dirname(chromeEntry), "..");
-  const chromeDestinationRoot = resolve(
-    serverDistDir,
-    "opencode-plugins",
-    "opencode-chrome-devtools",
-  );
-  bundleNodeModule(chromeEntry, resolve(chromeDestinationRoot, "dist", "plugin.js"));
-  copyFileSync(resolve(chromeRoot, "package.json"), resolve(chromeDestinationRoot, "package.json"));
-
   const sdkEntry = fileURLToPath(import.meta.resolve("@opencode-ai/plugin"));
   const sdkRoot = resolve(dirname(sdkEntry), "..");
   const sdkPackage = JSON.parse(readFileSync(resolve(sdkRoot, "package.json"), "utf8"));
@@ -249,6 +245,7 @@ function stageBundledOpenCodeRuntime() {
   );
 }
 
+assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", "--outdir", electronHelperDir], desktopRoot);
@@ -270,7 +267,7 @@ stageServerConstants({ serverDistDir, constantsSrc });
 stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir: resolve(runtimeTypesRoot, "dist") });
 rmSync(packagedServerRoot, { recursive: true, force: true });
 cpSync(serverDistDir, resolve(packagedServerRoot, "dist"), { recursive: true });
-copyFileSync(resolve(repoRoot, "apps", "server", "package.json"), resolve(packagedServerRoot, "package.json"));
+copyFileSync(serverPackagePath, resolve(packagedServerRoot, "package.json"));
 for (const fileName of readdirSync(electronRoot).filter((name) => name.endsWith(".mjs")).sort()) {
   run(nodeCmd, ["--check", resolve(electronRoot, fileName)], repoRoot);
 }

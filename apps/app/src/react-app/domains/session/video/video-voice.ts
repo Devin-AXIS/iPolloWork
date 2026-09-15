@@ -25,11 +25,40 @@ export type VoiceSampleDescriptor = {
   type?: string;
 };
 
+type VoiceSampleValidationMessages = {
+  invalidType: string;
+  empty: string;
+  tooLarge: string;
+};
+
+const DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES: VoiceSampleValidationMessages = {
+  invalidType: "请选择 WAV、MP3 或 M4A 音频文件。",
+  empty: "音频文件为空，无法复刻。",
+  tooLarge: "音频文件不能超过 10 MB。",
+};
+
+export const BAILIAN_PRESET_GROUPS = ["narration", "warm", "character", "marketing", "dialect"] as const;
+
+// Official cosyvoice-v3-flash catalog (2026-09-14):
+// https://help.aliyun.com/zh/model-studio/cosyvoice-voice-list
+// Display names and descriptions live in the locale dictionaries.
 export const BAILIAN_PRESET_VOICES = [
-  { id: "longanyang", label: "龙安阳", description: "阳光自然的中文男声" },
-  { id: "longanhuan_v3", label: "龙安欢", description: "明朗欢快的中文女声" },
-  { id: "longanlang_v3", label: "龙安朗", description: "清爽清晰的中文男声" },
-  { id: "longyingmu_v3", label: "龙莺木", description: "知性沉稳的中文女声" },
+  { id: "longanyang", group: "narration" },
+  { id: "longanhuan_v3", group: "narration" },
+  { id: "longanlang_v3", group: "narration" },
+  { id: "longyingmu_v3", group: "narration" },
+  { id: "longanzhi_v3", group: "narration" },
+  { id: "longanyun_v3", group: "warm" },
+  { id: "longwan_v3", group: "warm" },
+  { id: "longhuhu_v3", group: "character" },
+  { id: "longjielidou_v3", group: "character" },
+  { id: "longlaobo_v3", group: "character" },
+  { id: "longjiqi_v3", group: "character" },
+  { id: "longhouge_v3", group: "character" },
+  { id: "longanxuan_v3", group: "marketing" },
+  { id: "longyingxiao_v3", group: "marketing" },
+  { id: "longanyue_v3", group: "dialect" },
+  { id: "longshange_v3", group: "dialect" },
 ] as const;
 
 // Earlier Video Studio builds paired these v1 voices with cosyvoice-v3-flash.
@@ -122,13 +151,16 @@ export function parseVideoVoiceDisplayMetadata(text: string): VideoVoiceAiRefere
   }
 }
 
-export function validateVoiceSampleFile(file: VoiceSampleDescriptor): string | null {
+export function validateVoiceSampleFile(
+  file: VoiceSampleDescriptor,
+  messages: VoiceSampleValidationMessages = DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES,
+): string | null {
   const extension = file.name.split(".").pop()?.toLowerCase();
   if (extension !== "wav" && extension !== "mp3" && extension !== "m4a") {
-    return "请选择 WAV、MP3 或 M4A 音频文件。";
+    return messages.invalidType;
   }
-  if (!Number.isFinite(file.size) || file.size <= 0) return "音频文件为空，无法复刻。";
-  if (file.size > MAX_VOICE_SAMPLE_BYTES) return "音频文件不能超过 10 MB。";
+  if (!Number.isFinite(file.size) || file.size <= 0) return messages.empty;
+  if (file.size > MAX_VOICE_SAMPLE_BYTES) return messages.tooLarge;
   return null;
 }
 

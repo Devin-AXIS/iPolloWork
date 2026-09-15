@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"host","label":"Host","type":"string","default":"Hosted by Future Craft","maxLength":56},{"id":"topic","label":"Topic","type":"string","default":"How small teams turn product signals into momentum","maxLength":120},{"id":"speakers","label":"Speakers","type":"string","default":"Maya:Design systems|Jon:Product strategy|Lin:Creative tooling","maxLength":220},{"id":"listeners","label":"Listeners","type":"string","default":"1,248 listening now","maxLength":48}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>X Space</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.space{width:1420px;margin:auto;display:grid;grid-template-columns:54% 46%;overflow:hidden;border-radius:40px;background:#101114;color:#fff;box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.2))}.space-main{padding:68px}.space-live{display:inline-flex;gap:10px;align-items:center;padding:10px 16px;border-radius:999px;background:#7856ff;font-size:16px;font-weight:900;letter-spacing:.08em}.space-topic{margin:50px 0 36px;font-size:51px;line-height:1.1;letter-spacing:-.04em}.space-host{color:#b8bdc8;font-size:22px}.space-side{padding:64px;background:linear-gradient(145deg,#242631,#17181d)}.space-speakers{display:grid;gap:15px;margin-bottom:38px}.social-list-item{display:grid;grid-template-columns:72px 1fr;gap:16px;align-items:center;padding:18px;border:1px solid #363945;border-radius:20px;background:#1f2128}.social-list-label{display:grid;place-items:center;width:56px;height:56px;border-radius:50%;background:#7856ff;font-size:16px;font-weight:900}.social-list-value{font-size:21px}.space-listeners{padding-top:25px;border-top:1px solid #363945;color:#b8bdc8;font-size:20px}
+</style></head>
+<body><main id="root" data-composition-id="x-space" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"host":"Hosted by Future Craft","topic":"How small teams turn product signals into momentum","speakers":"Maya:Design systems|Jon:Product strategy|Lin:Creative tooling","listeners":"1,248 listening now"}'><section class="space sm-animate"><div class="space-main"><div class="space-live sm-pop">● LIVE SPACE</div><h1 class="space-topic" data-ipw-variable="topic" data-ipw-ai-slot="topic"></h1><div class="space-host" data-ipw-variable="host" data-ipw-ai-slot="host"></div></div><aside class="space-side"><div class="space-speakers" data-ipw-list="speakers" data-list-mode="pair" data-ipw-ai-slot="speakers"></div><div class="space-listeners" data-ipw-variable="listeners" data-ipw-ai-slot="listeners"></div></aside></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="x-space";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("slide-right"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("slide-right"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("slide-right"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("slide-right"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

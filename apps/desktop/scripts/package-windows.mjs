@@ -10,6 +10,7 @@ const repoRoot = path.resolve(desktopRoot, "../..");
 const appPackagePath = path.join(repoRoot, "apps/app/package.json");
 const desktopPackagePath = path.join(desktopRoot, "package.json");
 const outputDir = path.join(desktopRoot, "dist-electron");
+const embeddedEnginePacksDir = path.join(desktopRoot, "dist-engine-packs");
 const unpackedDir = path.join(outputDir, "win-unpacked");
 const executablePath = path.join(unpackedDir, "iPollo.exe");
 const iconPath = path.join(desktopRoot, "resources/icons/windows/icon.ico");
@@ -102,6 +103,13 @@ async function main() {
 
   try {
     await removeDirectoryWithRetry(outputDir);
+    run(process.execPath, [
+      path.join(desktopRoot, "scripts/package-engine-runtime.mjs"),
+      "--all",
+      "--clean",
+      "--outdir",
+      embeddedEnginePacksDir,
+    ], desktopRoot);
     run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")]);
 
     const env = { ...process.env, ELECTRON_MIRROR: process.env.ELECTRON_MIRROR ?? "https://npmmirror.com/mirrors/electron/" };

@@ -80,16 +80,16 @@ describe("template authoring", () => {
     expect(context).toContain("seek-safe and deterministic");
   });
 
-  test("wires personal-only creation, automatic kickoff, validation, and both save menus", () => {
+  test("keeps session authoring and validation while removing creation from the template market", () => {
     const market = readFileSync(new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url), "utf8");
     const route = readFileSync(new URL("../src/react-app/shell/session-route.tsx", import.meta.url), "utf8");
     const page = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
     const design = readFileSync(new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url), "utf8");
     const video = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
 
-    expect(market).toContain("AUTHORING_TYPES");
-    expect(market).toContain('pptxCompatibility: "native-editable"');
-    expect(market).toContain("!enterpriseMode && props.canCreate");
+    expect(market).not.toContain("AUTHORING_TYPES");
+    expect(market).not.toContain("props.canCreate");
+    expect(market).not.toContain("props.onCreate");
     expect(route).toContain("createTemplateAuthoringSession");
     expect(route).toContain("templateAuthoringKickoff");
     expect(route).toContain("synthetic: true");
@@ -100,6 +100,7 @@ describe("template authoring", () => {
     expect(page).toContain("repairCurrentTemplate");
     expect(page).toContain('manifest.id.startsWith("personal.")');
     expect(design).toContain("onSaveAsTemplate={onSaveAsTemplate}");
-    expect(video).toContain('t("template_authoring.save_as_template")');
+    expect(video).toContain("saveAsTemplate: Boolean(onSaveAsTemplate)");
+    expect(video).toContain('event.data.action === "save-as-template"');
   });
 });

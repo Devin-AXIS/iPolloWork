@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "douyin-comment-stack",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Douyin Comment Stack",
+  "description": "A stacked Douyin-style comment panel for audience reactions, Q and A, and pinned responses.",
+  "tags": [
+    "component",
+    "social",
+    "douyin",
+    "comments",
+    "community",
+    "stack",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "comments",
+        "pinned",
+        "footer"
+      ],
+      "instructions": "写两到四条短评论，使用昵称和内容配对；指定一个置顶昵称并写一句收束文案。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "douyin-comment-stack.html",
+      "target": "compositions/douyin-comment-stack.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "标题",
+      "type": "string",
+      "default": "评论区在讨论什么？",
+      "maxLength": 60,
+      "update": "live"
+    },
+    {
+      "id": "comments",
+      "label": "评论列表",
+      "type": "string",
+      "default": "阿椰:这个转场节奏太舒服了|简一:参数能不能分享一下？|橙子汽水:收藏了，今晚就试。",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "pinned",
+      "label": "置顶用户",
+      "type": "string",
+      "default": "简一",
+      "maxLength": 28,
+      "update": "live"
+    },
+    {
+      "id": "footer",
+      "label": "底部文案",
+      "type": "string",
+      "default": "置顶关键问题，让讨论继续生长。",
+      "maxLength": 72,
+      "update": "live"
+    }
+  ]
+}
+

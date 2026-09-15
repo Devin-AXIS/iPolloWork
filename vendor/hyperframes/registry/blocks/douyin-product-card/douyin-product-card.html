@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN" data-composition-variables='[{"id":"product","label":"商品名称","type":"string","default":"折叠磁吸补光灯","maxLength":52},{"id":"price","label":"价格","type":"string","default":"¥129 · 限时到手价","maxLength":36},{"id":"benefit","label":"核心卖点","type":"string","default":"三档色温，桌面拍摄和移动直播都能快速补光。","maxLength":110},{"id":"cta","label":"行动文案","type":"string","default":"点击购物车 · 立即了解","maxLength":40}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Douyin Product Card</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.shop{width:1450px;margin:auto;display:grid;grid-template-columns:44% 56%;overflow:hidden;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:38px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.shop-visual{position:relative;min-height:760px;background:linear-gradient(145deg,#101116,#262936)}.shop-visual::before{content:"";position:absolute;left:135px;top:145px;width:360px;height:360px;border-radius:50%;background:linear-gradient(135deg,#25f4ee,#fff 48%,#fe2c55);box-shadow:0 0 100px rgba(37,244,238,.35)}.shop-visual::after{content:"SALE";position:absolute;left:62px;bottom:58px;color:#fff;font-size:86px;font-weight:950;letter-spacing:-.08em}.shop-copy{display:flex;flex-direction:column;padding:68px}.shop-kicker{color:#fe2c55;font-size:18px;font-weight:900;letter-spacing:.15em}.shop-title{margin:42px 0 20px;font-size:58px;line-height:1.05;letter-spacing:-.045em}.shop-price{font-size:32px;font-weight:900}.shop-benefit{max-width:660px;margin:44px 0 auto;color:var(--ipw-color-muted,#68717c);font-size:25px;line-height:1.5}.shop-cta{display:inline-flex;align-self:flex-start;padding:18px 26px;border-radius:14px;background:#fe2c55;color:#fff;font-size:20px;font-weight:880}
+</style></head>
+<body><main id="root" data-composition-id="douyin-product-card" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"product":"折叠磁吸补光灯","price":"¥129 · 限时到手价","benefit":"三档色温，桌面拍摄和移动直播都能快速补光。","cta":"点击购物车 · 立即了解"}'><section class="shop sm-animate"><div class="shop-visual"></div><div class="shop-copy"><div class="shop-kicker">DOUYIN SHOP</div><h1 class="shop-title" data-ipw-variable="product" data-ipw-ai-slot="product"></h1><div class="shop-price" data-ipw-variable="price" data-ipw-ai-slot="price"></div><p class="shop-benefit" data-ipw-variable="benefit" data-ipw-ai-slot="benefit"></p><div class="shop-cta sm-pop" data-ipw-variable="cta" data-ipw-ai-slot="cta"></div></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="douyin-product-card";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("slide-right"==="slide-left")Object.assign(initial,{x:-58,opacity:0});else if("slide-right"==="slide-right")Object.assign(initial,{x:58,opacity:0});else if("slide-right"==="scale")Object.assign(initial,{scale:.88,opacity:0});else if("slide-right"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08).fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38).fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

@@ -19,7 +19,7 @@ export const KeyframeDiamond = memo(function KeyframeDiamond({
   isHold = false,
 }: KeyframeDiamondProps) {
   const isFilled = state === "active";
-  const color = state === "active" ? "#3CE6AC" : "#858A94";
+  const color = state === "active" ? "#1FBAC0" : "#858A94";
 
   return (
     <button

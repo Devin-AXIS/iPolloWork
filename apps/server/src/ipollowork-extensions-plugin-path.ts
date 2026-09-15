@@ -33,15 +33,6 @@ export function ipolloworkPluginPath(name: string, here = dirname(fileURLToPath(
   return join(here, "opencode-plugins", `${name}.${extension}`);
 }
 
-export function opencodeChromeDevtoolsPluginPath(
-  here = dirname(fileURLToPath(import.meta.url)),
-): string {
-  const resourcesPath = electronResourcesPath(here);
-  return resourcesPath
-    ? join(resourcesPath, "opencode-plugins", "opencode-chrome-devtools", "dist", "plugin.js")
-    : "opencode-chrome-devtools";
-}
-
 export const ipolloworkExtensionsPreviewPluginPath = () => ipolloworkPluginPath("ipollowork-extensions-preview");
 export const ipolloworkCapabilitiesKnowledgePluginPath = () => ipolloworkPluginPath("ipollowork-capabilities-knowledge");
 export const ipolloworkAnthropicAdaptiveThinkingPluginPath = () => ipolloworkPluginPath("ipollowork-anthropic-adaptive-thinking");

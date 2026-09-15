@@ -32,8 +32,10 @@ export const PROVIDER_LABELS: Record<string, string> = {
   anthropic: "Anthropic",
   google: "Google",
   openrouter: "OpenRouter",
+  orcarouter: "OrcaRouter",
   qwen: "Qwen",
   tokenstar: "TokenStar",
+  "deepseek-official": "DeepSeek",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
@@ -46,6 +48,7 @@ const RECOMMENDED_PROVIDER_IDS = [
   "minimax-cn",
   "stepfun",
   "deepseek",
+  "deepseek-official",
   "zhipuai",
   "mistral",
   "cohere",
@@ -60,6 +63,11 @@ const RECOMMENDED_PROVIDER_IDS = [
 const RECOMMENDED_PROVIDER_SET = new Set<string>(RECOMMENDED_PROVIDER_IDS);
 
 const COLLAPSED_PROVIDER_GROUPS = [
+  {
+    canonicalId: "deepseek-official",
+    name: "DeepSeek",
+    variantIds: ["deepseek"],
+  },
   {
     canonicalId: "alibaba-cn",
     name: "Qwen / Alibaba Cloud",
@@ -274,7 +282,10 @@ export const getProviderAuthEntryGroups = (entries: ProviderAuthEntry[], searchQ
 };
 
 export const getProviderAuthEntryVariantLabel = (entry: ProviderAuthEntry) => {
-  const names = entry.variantNames ?? [];
+  const canonicalName = entry.name.trim().toLowerCase();
+  const names = (entry.variantNames ?? []).filter(
+    (name) => name.trim().toLowerCase() !== canonicalName,
+  );
   if (!names.length) return null;
   if (names.length <= 3) return names.join(", ");
   return `${names.slice(0, 3).join(", ")} +${names.length - 3} more`;

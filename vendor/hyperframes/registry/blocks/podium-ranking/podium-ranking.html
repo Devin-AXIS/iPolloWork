@@ -1,0 +1,246 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Top performers this quarter","maxLength":72},{"id":"rankingData","label":"Ranking data","description":"Exactly three entries and scores.","type":"string","default":"North:98,West:91,South:86","maxLength":600},{"id":"highlight","label":"Highlight","type":"string","default":"North","maxLength":40},{"id":"source","label":"Source","type":"string","default":"Q3 performance index","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Podium Ranking</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #pr-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 94px 132px 82px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .pr-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+      }
+      .pr-kicker {
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 760 16px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .pr-title {
+        max-width: 1050px;
+        margin: 0;
+        font-size: 76px;
+        line-height: 0.96;
+        letter-spacing: -0.06em;
+      }
+      .pr-source {
+        padding-bottom: 8px;
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .pr-stage {
+        position: absolute;
+        left: 220px;
+        right: 220px;
+        bottom: 86px;
+        height: 650px;
+        display: flex;
+        align-items: end;
+        justify-content: center;
+        gap: 26px;
+      }
+      .pr-entry {
+        position: relative;
+        display: flex;
+        width: 420px;
+        flex-direction: column;
+        align-items: center;
+        justify-content: end;
+        transform-origin: bottom center;
+      }
+      .pr-person {
+        z-index: 2;
+        width: 100%;
+        padding: 28px 24px;
+        text-align: center;
+      }
+      .pr-rank {
+        display: inline-grid;
+        width: 48px;
+        height: 48px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--ipw-color-text, #15171a);
+        color: var(--ipw-color-bg, #f4f6f8);
+        font: 800 18px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .pr-name {
+        display: block;
+        margin-top: 16px;
+        font-size: 34px;
+        letter-spacing: -0.035em;
+      }
+      .pr-score {
+        display: block;
+        margin-top: 8px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 820 48px/1 var(--ipw-font-body, Inter, sans-serif);
+        font-variant-numeric: tabular-nums;
+      }
+      .pr-base {
+        width: 100%;
+        height: var(--height);
+        transform-origin: bottom center;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 28px) var(--ipw-card-radius, 28px) 8px 8px;
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: var(--ipw-card-shadow, 0 24px 60px rgba(20, 30, 40, 0.12));
+      }
+      .pr-entry.is-highlight .pr-base {
+        border-color: var(--ipw-color-primary, #20bbc0);
+        background: color-mix(
+          in srgb,
+          var(--ipw-color-primary, #20bbc0) 10%,
+          var(--ipw-color-surface, #fff)
+        );
+      }
+      .pr-place-1 {
+        --height: 350px;
+        order: 2;
+      }
+      .pr-place-2 {
+        --height: 280px;
+        order: 1;
+      }
+      .pr-place-3 {
+        --height: 220px;
+        order: 3;
+      }
+      .pr-entry::after {
+        content: "";
+        position: absolute;
+        z-index: 3;
+        bottom: calc(var(--height) - 12px);
+        width: 94px;
+        height: 6px;
+        border-radius: 99px;
+        background: var(--ipw-color-primary, #20bbc0);
+        transform-origin: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="pr-root"
+      data-composition-id="podium-ranking"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <header class="pr-head">
+        <div>
+          <div class="pr-kicker">Top three / performance</div>
+          <h1 class="pr-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="pr-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="pr-stage" data-ipw-ai-slot="rankingData"></section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("pr-root"),
+          id = root.dataset.compositionId;
+        const values = {
+          title: "Top performers this quarter",
+          rankingData: "North:98,West:91,South:86",
+          highlight: "North",
+          source: "Q3 performance index",
+          ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+        };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        const rows = String(values.rankingData)
+          .split(/[,|]/)
+          .map((part) => {
+            const split = part.lastIndexOf(":");
+            return split > 0
+              ? { label: part.slice(0, split).trim(), value: Number(part.slice(split + 1)) }
+              : null;
+          })
+          .filter((row) => row && Number.isFinite(row.value))
+          .sort((a, b) => b.value - a.value)
+          .slice(0, 3);
+        while (rows.length < 3) rows.push({ label: `Entry ${rows.length + 1}`, value: 0 });
+        const stage = root.querySelector(".pr-stage"),
+          scoreStates = [];
+        rows.forEach((row, index) => {
+          const entry = document.createElement("article");
+          entry.className = `pr-entry pr-place-${index + 1}${row.label === String(values.highlight) ? " is-highlight" : ""}`;
+          entry.innerHTML = `<div class="pr-person"><span class="pr-rank">${index + 1}</span><strong class="pr-name"></strong><b class="pr-score">0</b></div><div class="pr-base"></div>`;
+          entry.querySelector(".pr-name").textContent = row.label;
+          stage.append(entry);
+          scoreStates.push({
+            element: entry.querySelector(".pr-score"),
+            state: { value: 0 },
+            target: row.value,
+          });
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".pr-head>*"),
+          { y: 26, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.48, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            root.querySelectorAll(".pr-base"),
+            { scaleY: 0 },
+            { scaleY: 1, duration: 0.72, stagger: 0.1, ease: "power3.out" },
+            0.22,
+          )
+          .fromTo(
+            root.querySelectorAll(".pr-person"),
+            { y: 34, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.5, stagger: 0.09, ease: "power3.out" },
+            0.56,
+          );
+        scoreStates.forEach((item, index) =>
+          tl.to(
+            item.state,
+            {
+              value: item.target,
+              duration: 0.82,
+              ease: "power2.out",
+              onUpdate: () => {
+                item.element.textContent = String(Math.round(item.state.value));
+              },
+            },
+            0.68 + index * 0.06,
+          ),
+        );
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

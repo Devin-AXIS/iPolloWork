@@ -91,8 +91,25 @@ function useKeyframeToggle(
   return { state, onToggle };
 }
 
-function ToolbarIcon({ src, size = 16 }: { src: string; size?: number }) {
-  return <img className="hf-timeline-toolbar-icon" src={src} width={size} height={size} alt="" aria-hidden="true" />;
+function ToolbarIcon({
+  src,
+  width = 16,
+  height = width,
+}: {
+  src: string;
+  width?: number;
+  height?: number;
+}) {
+  return (
+    <img
+      className="hf-timeline-toolbar-icon"
+      src={src}
+      width={width}
+      height={height}
+      alt=""
+      aria-hidden="true"
+    />
+  );
 }
 
 // fallow-ignore-next-line complexity
@@ -213,7 +230,7 @@ export function TimelineToolbar({
             <ToolbarIcon src={redoIconSrc} />
           </button>
         </Tooltip>
-        <ToolbarIcon src={dividerIconSrc} size={17} />
+        <ToolbarIcon src={dividerIconSrc} width={6} height={16.667} />
         <Tooltip label={tx(canSplit ? "Split clip at playhead" : "Select a clip and place the playhead inside it")}>
           <button
             type="button"
@@ -259,7 +276,7 @@ export function TimelineToolbar({
               aria-pressed={keyframeState === "active"}
               aria-busy={pendingAction === "keyframe"}
             >
-              <ToolbarIcon src={diamondIconSrc} />
+            <ToolbarIcon src={diamondIconSrc} width={24} />
             </button>
           </Tooltip>
         )}
@@ -282,7 +299,7 @@ export function TimelineToolbar({
               }
             }}
           >
-            <ToolbarIcon src={trashIconSrc} />
+            <ToolbarIcon src={trashIconSrc} width={24} />
           </button>
         </Tooltip>
       </div>

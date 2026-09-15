@@ -1,0 +1,12 @@
+node_modules/
+dist/
+dist-test/
+data/
+coverage/
+evals/results/
+.env
+.env.*
+*.log
+*.sqlite*
+*.db*
+.DS_Store

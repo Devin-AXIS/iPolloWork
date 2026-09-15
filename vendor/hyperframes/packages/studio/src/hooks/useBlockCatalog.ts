@@ -1,80 +1,60 @@
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  GSAP_OFFICIAL_CAPABILITIES,
+  VISUAL_COMPONENT_CATEGORIES,
   type RegistryItem,
   type RegistryItemKind,
+  type RegistryVisualComponentCategory,
   resolveRegistryItemKind,
+  resolveVisualComponentCategory,
 } from "@hyperframes/core/registry";
 import { type BlockCategory, resolveBlockCategory } from "../utils/blockCategories";
 
 export type CatalogItem = RegistryItem & {
   category: BlockCategory;
   kind: RegistryItemKind;
-  librarySection: AnimationLibrarySection;
 };
 
-export type AnimationLibrarySection = "opening-effect" | "ending-effect" | "transition-effect";
-
-export type CatalogPage = "effects";
+export type CatalogSectionId = RegistryVisualComponentCategory;
 
 export interface CatalogSection {
-  id: AnimationLibrarySection;
+  id: CatalogSectionId;
   items: CatalogItem[];
 }
 
-export const CATALOG_PAGE_SECTIONS: Record<CatalogPage, readonly AnimationLibrarySection[]> = {
-  effects: ["opening-effect", "ending-effect", "transition-effect"],
+export const COMPONENT_CATALOG_SECTIONS = VISUAL_COMPONENT_CATEGORIES;
+
+const SECTION_SEARCH_TERMS: Record<CatalogSectionId, string> = {
+  scene: "scene intro opening outro ending title cta 开场 片头 收尾 结尾 片尾 行动",
+  product: "product feature spotlight demo showcase 产品 功能 亮点 展示",
+  data:
+    "data chart metrics structured ranking matrix dashboard table 数据 图表 指标 结构 排名 矩阵 仪表盘 表格",
+  diagrams:
+    "diagram architecture framework flow process timeline roadmap cycle 图解 架构 流程 时间线 路线图 循环",
+  maps: "map route location geography flow 地图 路径 路线 地理 流向",
+  proof:
+    "proof evidence source testimonial compare before after rating 证据 背书 评价 对比 前后 评分",
+  knowledge: "knowledge education explain 知识 教育 讲解",
+  people: "people profile quote team 人物 团队 观点 引用",
+  typography:
+    "typography text lower third chapter bullet quote label 文字 标注 字幕 章节 列表 引语",
+  media:
+    "media image video split screen device mockup interface ui browser mobile walkthrough cursor 媒体 图片 视频 分屏 样机 界面 浏览器 手机 演示",
+  social:
+    "social media post comment follow creator instagram x douyin xiaohongshu 社交媒体 帖子 评论 关注 创作者 抖音 小红书",
+  developer: "developer code terminal diff api demo 代码演示 代码 终端 差异 接口",
+  brand:
+    "brand marketing commerce logo palette campaign identity pricing offer sale 品牌 营销 商业 标志 色板 活动 定价 报价 促销",
 };
-
-const SECTION_SEARCH_TERMS: Record<AnimationLibrarySection, string> = {
-  "opening-effect": "opening intro title logo 开头 片头 开场",
-  "ending-effect": "ending outro cta follow social 结尾 片尾 关注 三连",
-  "transition-effect": "transition scene wipe push 转场 场景 切换",
-};
-
-export function resolveGsapCatalogCoverage(items: CatalogItem[]) {
-  const declaredCapabilities = new Set(items.flatMap((item) => item.engine?.plugins ?? []));
-  const plugins = GSAP_OFFICIAL_CAPABILITIES.filter((capability) => capability.kind === "plugin");
-  const eases = GSAP_OFFICIAL_CAPABILITIES.filter((capability) => capability.kind === "ease");
-  return {
-    plugins: {
-      covered: plugins.filter((capability) => declaredCapabilities.has(capability.runtimeName))
-        .length,
-      total: plugins.length,
-    },
-    eases: {
-      covered: eases.filter((capability) => declaredCapabilities.has(capability.runtimeName))
-        .length,
-      total: eases.length,
-    },
-  };
-}
-
-export function isGsapCatalogItem(item: CatalogItem): boolean {
-  return item.engine?.name.trim().toLowerCase() === "gsap";
-}
-
-export function isCatalogLibrarySection(value: unknown): value is AnimationLibrarySection {
-  return value === "opening-effect" || value === "ending-effect" || value === "transition-effect";
-}
 
 let catalogCache: CatalogItem[] | null = null;
 let catalogRequest: Promise<CatalogItem[]> | null = null;
 
 function normalizeCatalogItems(data: RegistryItem[]): CatalogItem[] {
   return data
-    .filter(
-      (
-        block,
-      ): block is RegistryItem & {
-        librarySection: AnimationLibrarySection;
-      } => isCatalogLibrarySection(block.librarySection),
-    )
-    .map((block) => ({
-      ...block,
-      category: resolveBlockCategory(block.tags),
-      kind: resolveRegistryItemKind(block),
-      librarySection: block.librarySection,
+    .map((item) => ({
+      ...item,
+      category: resolveBlockCategory(item.tags),
+      kind: resolveRegistryItemKind(item),
     }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
@@ -97,7 +77,13 @@ export function preloadBlockCatalog(): Promise<CatalogItem[]> {
   return catalogRequest;
 }
 
-export function useBlockCatalog(page: CatalogPage) {
+export function resolveCatalogSection(item: {
+  visualComponent?: { category?: unknown };
+}): CatalogSectionId | null {
+  return resolveVisualComponentCategory(item.visualComponent?.category);
+}
+
+export function useBlockCatalog() {
   const [blocks, setBlocks] = useState<CatalogItem[]>(() => catalogCache ?? []);
   const [loading, setLoading] = useState(() => catalogCache === null);
   const [error, setError] = useState<string | null>(null);
@@ -105,47 +91,46 @@ export function useBlockCatalog(page: CatalogPage) {
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      try {
-        const items = await preloadBlockCatalog();
+    void preloadBlockCatalog()
+      .then((items) => {
+        if (active) setBlocks(items);
+      })
+      .catch((loadError: unknown) => {
         if (!active) return;
-        setBlocks(items);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : "Failed to load catalog");
-      } finally {
+        setError(loadError instanceof Error ? loadError.message : "Failed to load catalog");
+      })
+      .finally(() => {
         if (active) setLoading(false);
-      }
-    })();
+      });
     return () => {
       active = false;
     };
   }, []);
 
-  const pageSections = CATALOG_PAGE_SECTIONS[page];
   const filteredBlocks = useMemo(() => {
     const query = search.trim().toLowerCase();
     return blocks.filter((block) => {
-      if (!isGsapCatalogItem(block) || !pageSections.includes(block.librarySection)) return false;
+      const section = resolveCatalogSection(block);
+      if (!section) return false;
       if (!query) return true;
       return (
         block.title.toLowerCase().includes(query) ||
         block.description.toLowerCase().includes(query) ||
         block.category.toLowerCase().includes(query) ||
-        SECTION_SEARCH_TERMS[block.librarySection].includes(query) ||
+        SECTION_SEARCH_TERMS[section].includes(query) ||
         block.tags?.some((tag) => tag.toLowerCase().includes(query)) ||
         block.engine?.plugins?.some((plugin) => plugin.toLowerCase().includes(query))
       );
     });
-  }, [blocks, pageSections, search]);
+  }, [blocks, search]);
 
-  const sections = useMemo(
+  const sections = useMemo<CatalogSection[]>(
     () =>
-      pageSections.map((id) => ({
+      COMPONENT_CATALOG_SECTIONS.map((id) => ({
         id,
-        items: filteredBlocks.filter((block) => block.librarySection === id),
+        items: filteredBlocks.filter((block) => resolveCatalogSection(block) === id),
       })),
-    [filteredBlocks, pageSections],
+    [filteredBlocks],
   );
 
   return {

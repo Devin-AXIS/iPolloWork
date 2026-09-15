@@ -4,7 +4,7 @@ import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
@@ -24,10 +24,8 @@ const config = {
   workspaces: [],
 } as unknown as ServerConfig;
 
-function env(values: Record<string, string>): EnvService {
-  return {
-    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
-  } as unknown as EnvService;
+function env(values: Record<string, string>): AuthorizationAccess {
+  return { read: async () => values };
 }
 
 afterEach(async () => {
@@ -411,6 +409,22 @@ describe("Media Center extension", () => {
       { directory: workspace.root },
     );
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("blocks missing GSAP and persists safe timeline initialization at the final gate", async () => {
+    const workspace = await workspaceConfig();
+    const path = join(workspace.root, "video.html");
+    await writeFile(path, '<main data-composition-id="main" data-duration="54"></main><script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script>');
+    const result = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_gsap" }] } } });
+    const repaired = await readFile(path, "utf8");
+    expect(repaired).toContain("window.__timelines = window.__timelines || {};");
+    await writeFile(path, '<script src="gsap.min.js"></script>' + repaired);
+    const missingAsset = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(missingAsset).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_script_asset" }] } } });
+    await writeFile(join(workspace.root, "gsap.min.js"), "/* dependency fixture, not executed by the validator */");
+    const valid = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(valid).toMatchObject({ ok: true, result: { output: { valid: true } } });
   });
 
   test("rejects completion when explicitly requested media deliverables are absent", () => {

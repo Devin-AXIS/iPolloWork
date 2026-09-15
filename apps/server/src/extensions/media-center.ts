@@ -1,5 +1,7 @@
-import { ApiError } from "../errors.js";
-import type { EnvService } from "../env-file.js";
+import { ApiError, isApiError } from "../errors.js";
+import { repairVideoTimelineRegistry, validateVideoHtmlScripts, validateVideoScriptAssets } from "../video-html-validation.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
+import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
@@ -82,13 +84,6 @@ function cacheVoiceoverAudio(key: string, audio: Buffer) {
     voiceoverAudioCache.delete(oldest[0]);
     voiceoverAudioCacheBytes -= oldest[1].byteLength;
   }
-}
-
-function mediaProviderFetch(input: string | URL | Request, init?: RequestInit): Promise<Response> {
-  const desktopFetch: unknown = Reflect.get(globalThis, Symbol.for("ipollowork.mediaProviderFetch"));
-  return typeof desktopFetch === "function"
-    ? (desktopFetch as typeof fetch)(input, init)
-    : fetch(input, init);
 }
 
 function roundVoiceoverTime(value: number) {
@@ -441,13 +436,29 @@ function defaultCaptionStyleIssues(html: string, caption: TimelineNode): Voiceov
   return issues;
 }
 
+/** Read narration attached to the composition rather than unused audio assets. */
+export function avatarTimelineContext(html: string) {
+  const source = html.replace(/<!--[\s\S]*?-->/g, "").replace(/<script\b[\s\S]*?<\/script>/gi, "");
+  const clips = timelineNodes(source).flatMap(node => {
+    const attrs = node.attributes;
+    const src = decodeHtmlText(attrs.get("src") ?? "");
+    const id = attrs.get("id") ?? "";
+    if (node.tagName !== "audio" || !(attrs.get("data-ipw-voiceover") === "true" || id === "voiceover" || id.startsWith("vo-") || id.startsWith("narration-") || isVoiceoverSource(src))) return [];
+    const volume = finiteTimelineNumber(node, "data-volume") ?? 1;
+    if (volume === 0 || /\bmuted(?:\s|=|>)/i.test(source.slice(source.lastIndexOf("<", node.contentStart - 1), node.contentStart))) return [];
+    return [{ src, start: finiteTimelineNumber(node, "data-start"), duration: finiteTimelineNumber(node, "data-duration"),
+      offset: finiteTimelineNumber(node, "data-media-start") ?? finiteTimelineNumber(node, "data-playback-start") ?? 0, volume }];
+  });
+  return { content: visibleTextFromHtml(source).slice(0, 4000), clips };
+}
+
 export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];
   requirements?: VideoTimelineRequirements;
 } = {}) {
   const epsilon = 0.001;
-  const issues: VoiceoverTimelineIssue[] = [];
+  const issues: VoiceoverTimelineIssue[] = validateVideoHtmlScripts(html);
   const nodes = timelineNodes(html);
   const composition = nodes.find((node) => node.attributes.has("data-composition-id"));
   const compositionDuration = composition ? finiteTimelineNumber(composition, "data-duration") : null;
@@ -773,7 +784,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "voiceover_timeline_validate",
     title: "Validate a video voiceover timeline",
-    description: "Validate local scene, narration, and composition timing before completing a video task. This action uses no provider quota.",
+    description: "Validate local scene, narration, composition timing, inline JavaScript syntax and animation dependencies before completing a video task. Safely adds missing window.__timelines initialization to the source HTML; other errors must be fixed before delivery. This action uses no provider quota.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1066,7 +1077,7 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(url, { signal: controller.signal, redirect: "error" });
+    response = await providerFetch(url, { signal: controller.signal, redirect: "error" });
   } catch (error) {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_audio_download_timeout", "The synthesized audio download timed out.");
@@ -1354,14 +1365,13 @@ function safeProviderBaseUrl(value: string): string {
   return url.origin;
 }
 
-async function resolveBailianCredentials(env: EnvService): Promise<{ apiKey: string; baseUrl: string }> {
-  const records = await env.list();
-  const values = new Map(records.map((item) => [item.key, item.value.trim()] as const));
-  const apiKey = values.get("DASHSCOPE_API_KEY") || process.env.DASHSCOPE_API_KEY?.trim() || "";
+async function resolveBailianCredentials(authorization: AuthorizationAccess): Promise<{ apiKey: string; baseUrl: string }> {
+  const values = await authorization.read("aliyun-bailian");
+  const apiKey = values.DASHSCOPE_API_KEY?.trim() ?? "";
   if (!apiKey) {
     throw new ApiError(400, "dashscope_api_key_missing", "Model Studio API key missing. Configure Alibaba Model Studio media in Authorization Center.");
   }
-  const configuredBaseUrl = values.get("DASHSCOPE_BASE_URL") || process.env.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
+  const configuredBaseUrl = values.DASHSCOPE_BASE_URL?.trim() || DEFAULT_ALIYUN_MEDIA_BASE_URL;
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
@@ -1395,7 +1405,7 @@ async function requestProviderJson(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(input.url, {
+    response = await providerFetch(input.url, {
       method: input.method ?? "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -1409,6 +1419,7 @@ async function requestProviderJson(input: {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio did not respond before the request timed out.");
     }
+    if (isApiError(error)) throw error;
     throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
   } finally {
     clearTimeout(timeout);
@@ -1478,7 +1489,7 @@ async function uploadWorkspaceFileToBailianTemporaryStorage(input: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   try {
-    const response = await mediaProviderFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
+    const response = await providerFetch(uploadHost, { method: "POST", body: form, signal: controller.signal });
     if (!response.ok) {
       throw new ApiError(response.status, "bailian_temporary_upload_failed", `Alibaba Model Studio temporary storage rejected the audio upload (HTTP ${response.status}).`);
     }
@@ -1530,7 +1541,7 @@ async function requestTranslation(input: {
   const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
-    response = await mediaProviderFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
+    response = await providerFetch(endpoint(input.baseUrl, "/compatible-mode/v1/chat/completions"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${input.apiKey}`,
@@ -1543,6 +1554,7 @@ async function requestTranslation(input: {
     if (error instanceof Error && error.name === "AbortError") {
       throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio translation did not finish before the request timed out.");
     }
+    if (isApiError(error)) throw error;
     throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
   } finally {
     clearTimeout(timeout);
@@ -1601,9 +1613,9 @@ function asMediaTask(action: string, payload: unknown): JsonRecord {
   };
 }
 
-export async function bailianMediaStatus(env: EnvService) {
+export async function bailianMediaStatus(authorization: AuthorizationAccess) {
   try {
-    const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+    const { apiKey, baseUrl } = await resolveBailianCredentials(authorization);
     return { configured: Boolean(apiKey), connected: Boolean(apiKey), baseUrl, error: null };
   } catch (error) {
     return {
@@ -1617,7 +1629,7 @@ export async function bailianMediaStatus(env: EnvService) {
 
 export async function callMediaExtensionAction(
   config: ServerConfig,
-  env: EnvService,
+  authorization: AuthorizationAccess,
   action: string,
   args: JsonRecord,
   context: JsonRecord,
@@ -1630,7 +1642,7 @@ export async function callMediaExtensionAction(
       result: {
         provider: "aliyun-bailian",
         operation: action,
-        output: await bailianMediaStatus(env),
+        output: await bailianMediaStatus(authorization),
       },
       context,
     };
@@ -1647,7 +1659,10 @@ export async function callMediaExtensionAction(
     const mediaAssets = await listWorkspaceAssets(workspace.path, assetsDirectory, (path) => /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(path));
     const voiceoverAssets = mediaAssets.filter(isVoiceoverAssetPath);
     const requirementInput = readRecord(args, "requirements");
-    const output = validateVoiceoverTimelineHtml(await readFile(source.absolutePath, "utf8"), {
+    const originalHtml = await readFile(source.absolutePath, "utf8");
+    const html = repairVideoTimelineRegistry(originalHtml);
+    if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
+    const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
       mediaAssets,
       requirements: {
@@ -1659,6 +1674,7 @@ export async function callMediaExtensionAction(
         targetDurationSeconds: readOptionalNumber(requirementInput, "targetDurationSeconds") ?? undefined,
       },
     });
+    const issues = [...output.issues, ...await validateVideoScriptAssets(html, dirname(source.absolutePath))];
     return {
       ok: true,
       extensionId: MEDIA_EXTENSION_ID,
@@ -1666,13 +1682,13 @@ export async function callMediaExtensionAction(
       result: {
         provider: "local",
         operation: action,
-        output: { sourcePath: source.relativePath, ...output },
+        output: { sourcePath: source.relativePath, ...output, valid: issues.length === 0, issues },
       },
       context,
     };
   }
 
-  const { apiKey, baseUrl } = await resolveBailianCredentials(env);
+  const { apiKey, baseUrl } = await resolveBailianCredentials(authorization);
   let result: unknown;
   switch (action) {
     case "speech_synthesize": {
@@ -1882,7 +1898,7 @@ export async function callMediaExtensionAction(
       try {
         providerResponse = await withTemporaryWorkspaceObject({
           config,
-          env,
+          authorization,
           context,
           sourcePath,
           purpose: "voice-clone",

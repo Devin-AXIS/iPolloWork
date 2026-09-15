@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "founder-story",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Founder Story",
+  "description": "Tell a founder's motivation in a concise narrative frame.",
+  "tags": [
+    "component",
+    "people",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "people",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "highlight",
+        "note"
+      ],
+      "instructions": "AI may rewrite the title, supporting note, and up to four founder milestones. Keep pipe separators between items and preserve the editorial layout."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "founder-story.html",
+      "target": "compositions/founder-story.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Founder Story",
+      "maxLength": 76,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Items (label::detail | ...)",
+      "type": "string",
+      "default": "Problem::Work became opaque|Belief::Tools should stay understandable|Build::A visible agent workspace|Mission::Help teams move with confidence",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "highlight",
+      "label": "Highlighted item",
+      "type": "number",
+      "default": 1,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    },
+    {
+      "id": "note",
+      "label": "Supporting note",
+      "type": "string",
+      "default": "An origin story grounded in the problem",
+      "maxLength": 100,
+      "update": "live"
+    }
+  ]
+}

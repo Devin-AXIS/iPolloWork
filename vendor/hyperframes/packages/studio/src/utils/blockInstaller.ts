@@ -1,4 +1,9 @@
-import type { RegistryItem } from "@hyperframes/core/registry";
+import type {
+  BlockParam,
+  RegistryItem,
+  RegistryVariable,
+  RegistryVisualComponent,
+} from "@hyperframes/core/registry";
 import type { TimelineElement } from "../player";
 import {
   insertTimelineAssetIntoSource,
@@ -11,10 +16,25 @@ import { saveProjectFilesWithHistory } from "./studioFileHistory";
 import type { EditHistoryKind } from "./editHistory";
 import { extendRootDurationInSource } from "./rootDuration";
 import { readRootCompositionDuration } from "./rootDuration";
-import { applyPatchByTarget } from "./sourcePatcher";
 import { trackStudioEvent } from "./studioTelemetry";
+import { readAttributeByTarget } from "./sourcePatcher";
+import {
+  buildTimelineMoveTimingPatch,
+  resolveTimelinePatch,
+} from "../hooks/timelineEditingHelpers";
 
-export type EffectInsertIntent = "playhead" | "opening" | "ending" | "transition";
+export type BlockVariableValue = string | number | boolean;
+
+export interface InstalledComponentParams {
+  blockTitle: string;
+  params: BlockParam[];
+  variables: RegistryVariable[];
+  variableValues: Record<string, BlockVariableValue>;
+  visualComponent?: RegistryVisualComponent;
+  hostCompositionPath: string;
+  insertedElementId: string;
+  returnTab: "components";
+}
 
 interface AddBlockOptions {
   projectId: string;
@@ -23,9 +43,13 @@ interface AddBlockOptions {
   placement?: { start: number; track: number };
   visualPosition?: { left: number; top: number };
   currentTime?: number;
-  effectIntent?: EffectInsertIntent;
-  selectedElementId?: string | null;
+  insertionMode?: "overlay" | "ripple";
   timelineElements: TimelineElement[];
+  syncRippleGsap?: (input: {
+    changes: Array<{ element: TimelineElement; start: number }>;
+    coalesceKey: string;
+    label: string;
+  }) => Promise<void>;
   readProjectFile: (path: string) => Promise<string>;
   writeProjectFile: (path: string, content: string) => Promise<void>;
   recordEdit: (entry: {
@@ -40,143 +64,90 @@ interface AddBlockOptions {
   showToast: (msg: string) => void;
 }
 
-interface EffectPlacement {
-  start: number;
-  track: number;
-  shiftExistingBy: number;
+const INSERT_BOUNDARY_EPSILON = 0.0005;
+
+const INHERITED_COMPONENT_THEME_STYLE = [
+  "--component-accent: var(--ipw-color-primary, #20bbc0)",
+  "--component-text: var(--ipw-color-text, #15171a)",
+  "--component-surface: var(--ipw-color-surface, #ffffff)",
+  "--component-muted: var(--ipw-color-muted, #68717c)",
+  "--component-border: var(--ipw-color-border, #d8dde3)",
+].join("; ");
+
+const INHERITED_COMPONENT_THEME_MARKER = "data-ipw-component-theme-aliases";
+
+function authoredTrack(element: TimelineElement): number {
+  return element.authoredTrack ?? element.track;
 }
 
-function elementKey(element: TimelineElement): string {
-  return element.key ?? element.id;
+function readRootCompositionId(source: string): string | null {
+  return new DOMParser()
+    .parseFromString(source, "text/html")
+    .querySelector("[data-composition-id]")
+    ?.getAttribute("data-composition-id") ?? null;
 }
 
-function rootTimelineElements(elements: TimelineElement[], targetPath: string): TimelineElement[] {
-  return elements.filter(
-    (element) =>
-      (element.sourceFile || targetPath) === targetPath &&
-      element.expandedParentStart == null &&
-      Number.isFinite(element.start) &&
-      Number.isFinite(element.duration) &&
-      element.duration > 0,
+function isRootTimelineComposition(
+  element: TimelineElement,
+  rootCompositionId?: string | null,
+): boolean {
+  if (element.compositionAncestors != null && element.compositionAncestors.length === 0) {
+    return true;
+  }
+  return Boolean(
+    rootCompositionId &&
+      element.parentCompositionId == null &&
+      !element.compositionSrc &&
+      (element.id === rootCompositionId || element.domId === rootCompositionId),
   );
 }
 
-function uniqueSortedStarts(elements: TimelineElement[]): number[] {
-  return [...new Set(elements.map((element) => Number(element.start.toFixed(4))))].sort(
-    (a, b) => a - b,
-  );
+function resolveIndependentInsertTrack(elements: readonly TimelineElement[]): number {
+  return elements.length > 0
+    ? Math.max(...elements.map((element) => authoredTrack(element))) + 1
+    : 1;
 }
 
-function buildElementPatchTarget(element: TimelineElement) {
-  if (element.domId) {
-    return {
-      id: element.domId,
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.hfId) {
-    return {
-      hfId: element.hfId,
-      selector: element.selector,
-      selectorIndex: element.selectorIndex,
-    };
-  }
-  if (element.selector) {
-    return { selector: element.selector, selectorIndex: element.selectorIndex };
-  }
-  if (/^[A-Za-z][\w:-]*$/.test(element.id)) return { id: element.id };
-  return null;
+export function resolveBlockRippleChanges(
+  elements: readonly TimelineElement[],
+  start: number,
+  duration: number,
+): Array<{ element: TimelineElement; start: number }> {
+  return elements
+    .filter(
+      (element) =>
+        !isRootTimelineComposition(element) &&
+        element.start + INSERT_BOUNDARY_EPSILON >= start,
+    )
+    .map((element) => ({
+      element,
+      start: Number(formatTimelineAttributeNumber(element.start + duration)),
+    }));
 }
 
-export function resolveEffectPlacement(input: {
-  intent: EffectInsertIntent;
-  duration: number;
-  currentTime: number;
-  rootDuration: number;
-  targetPath: string;
-  timelineElements: TimelineElement[];
-  selectedElementId?: string | null;
-}): EffectPlacement | null {
-  const elements = rootTimelineElements(input.timelineElements, input.targetPath);
-  const highestTrack = elements.reduce(
-    (highest, element) => Math.max(highest, element.authoredTrack ?? element.track),
-    0,
-  );
-  const contentEnd = elements.reduce(
-    (end, element) => Math.max(end, element.start + element.duration),
-    input.rootDuration,
-  );
-
-  if (input.intent === "opening") {
-    return { start: 0, track: 0, shiftExistingBy: input.duration };
-  }
-  if (input.intent === "ending") {
-    return { start: contentEnd, track: 0, shiftExistingBy: 0 };
-  }
-  if (input.intent === "playhead") {
-    return { start: Math.max(0, input.currentTime), track: highestTrack + 1, shiftExistingBy: 0 };
-  }
-
-  if (elements.length < 2) return null;
-  const selected = input.selectedElementId
-    ? elements.find((element) => elementKey(element) === input.selectedElementId)
-    : undefined;
-  const starts = uniqueSortedStarts(elements).filter((start) => start > 0.001);
-  const selectedEnd = selected ? selected.start + selected.duration : undefined;
-  const selectedNextStart = selected
-    ? (starts.find((start) => start >= (selectedEnd ?? 0) - 0.05) ??
-      starts.find((start) => start > selected.start + 0.001))
-    : undefined;
-  const boundary =
-    selectedNextStart ??
-    starts.reduce<number | undefined>((closest, start) => {
-      if (closest == null) return start;
-      return Math.abs(start - input.currentTime) < Math.abs(closest - input.currentTime)
-        ? start
-        : closest;
-    }, undefined);
-  if (boundary == null) return null;
-  return {
-    start: Math.max(0, boundary - input.duration / 2),
-    track: highestTrack + 1,
-    shiftExistingBy: 0,
-  };
-}
-
-export function shiftTimelineContentInSource(
+function applyBlockRippleChanges(
   source: string,
-  elements: TimelineElement[],
-  targetPath: string,
-  amount: number,
+  changes: readonly { element: TimelineElement; start: number }[],
 ): string {
-  if (!(amount > 0)) return source;
   let patched = source;
-  const visited = new Set<string>();
-  for (const element of rootTimelineElements(elements, targetPath)) {
-    const target = buildElementPatchTarget(element);
-    if (!target) continue;
-    const targetKey = JSON.stringify(target);
-    if (visited.has(targetKey)) continue;
-    visited.add(targetKey);
-    patched = applyPatchByTarget(patched, target, {
-      type: "attribute",
-      property: "start",
-      value: formatTimelineAttributeNumber(element.start + amount),
-    });
-    if (element.timingSource === "implicit") {
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "duration",
-        value: formatTimelineAttributeNumber(element.duration),
-      });
-      patched = applyPatchByTarget(patched, target, {
-        type: "attribute",
-        property: "hf-preserve-flow",
-        value: "1",
-      });
+  for (const change of changes) {
+    const resolution = resolveTimelinePatch(patched, change.element, (current, target) =>
+      buildTimelineMoveTimingPatch(
+        current,
+        target,
+        change.start,
+        change.element.duration,
+        undefined,
+        change.element.timingSource === "implicit",
+      ),
+    );
+    if (resolution.status === "missing-target") {
+      throw new Error(`Timeline element ${change.element.id} is missing a patchable target`);
     }
+    if (resolution.status === "target-not-found") {
+      throw new Error(`Unable to ripple timeline element ${change.element.id}`);
+    }
+    if (resolution.status === "changed") patched = resolution.content;
   }
   return patched;
 }
@@ -205,9 +176,124 @@ function makeComponentDocumentBackgroundTransparent(source: string): string {
   );
 }
 
+export function injectInheritedComponentThemeAliases(source: string): string {
+  if (source.includes(INHERITED_COMPONENT_THEME_MARKER)) return source;
+
+  const style = `<style ${INHERITED_COMPONENT_THEME_MARKER}>:root{${INHERITED_COMPONENT_THEME_STYLE}}</style>`;
+  return /<\/head>/i.test(source)
+    ? source.replace(/<\/head>/i, `${style}</head>`)
+    : `${style}\n${source}`;
+}
+
+export function normalizeBlockVariableValue(
+  variable: RegistryVariable,
+  value: BlockVariableValue,
+): BlockVariableValue {
+  if (variable.type === "number") {
+    const parsed = typeof value === "number" ? value : Number(value);
+    const finite = Number.isFinite(parsed) ? parsed : variable.default;
+    return Math.min(variable.max ?? finite, Math.max(variable.min ?? finite, finite));
+  }
+  if (variable.type === "boolean") {
+    return typeof value === "boolean" ? value : variable.default;
+  }
+  if (variable.type === "enum") {
+    return typeof value === "string" && variable.options.some((option) => option.value === value)
+      ? value
+      : variable.default;
+  }
+  if (typeof value !== "string") return variable.default;
+  if (variable.type === "color" && !/^#[0-9a-f]{6}$/i.test(value)) return variable.default;
+  return variable.type === "string" && variable.maxLength
+    ? value.slice(0, variable.maxLength)
+    : value;
+}
+
+function normalizeRegistryPath(path: string): string {
+  return path.replaceAll("\\", "/").replace(/^\.\//, "");
+}
+
+function readComponentVariableValues(
+  hostSource: string,
+  insertedElementId: string,
+  variables: RegistryVariable[],
+): Record<string, BlockVariableValue> {
+  const raw = readAttributeByTarget(hostSource, { id: insertedElementId }, "variable-values");
+  if (!raw) return {};
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return {};
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+  const values: Record<string, BlockVariableValue> = {};
+  for (const variable of variables) {
+    const value: unknown = Reflect.get(parsed, variable.id);
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      continue;
+    }
+    values[variable.id] = normalizeBlockVariableValue(variable, value);
+  }
+  return values;
+}
+
+export function resolveInstalledComponentParams(input: {
+  catalog: RegistryItem[];
+  element: TimelineElement;
+  hostCompositionPath: string;
+  hostSource: string;
+}): InstalledComponentParams | null {
+  if (!input.element.compositionSrc) return null;
+  const compositionSrc = normalizeRegistryPath(input.element.compositionSrc);
+  const block = input.catalog.find(
+    (item) =>
+      item.visualComponent &&
+      item.files.some((file) => normalizeRegistryPath(file.target) === compositionSrc),
+  );
+  if (!block) return null;
+
+  const params = block.type === "hyperframes:block" ? (block.params ?? []) : [];
+  const variables = block.variables ?? [];
+  if (!params.length && !variables.length) return null;
+  const insertedElementId = input.element.domId ?? input.element.id;
+
+  return {
+    blockTitle: block.title,
+    params,
+    variables,
+    variableValues: readComponentVariableValues(input.hostSource, insertedElementId, variables),
+    visualComponent: block.visualComponent,
+    hostCompositionPath: input.hostCompositionPath,
+    insertedElementId,
+    returnTab: "components",
+  };
+}
+
+export function injectRegistryVariableDeclarations(
+  source: string,
+  variables: RegistryVariable[],
+): string {
+  if (!variables.length || /\bdata-composition-variables\s*=/.test(source)) return source;
+
+  const declarations = variables.map(({ update: _update, ...declaration }) => declaration);
+  const serialized = JSON.stringify(declarations)
+    .replaceAll("&", "&amp;")
+    .replaceAll("'", "&#39;")
+    .replaceAll("<", "\\u003c")
+    .replaceAll(">", "\\u003e");
+
+  return source.replace(/<html(?=[\s>])[^>]*>/i, (openTag) =>
+    openTag.replace(/>$/, ` data-composition-variables='${serialized}'>`),
+  );
+}
+
 export async function addBlockToProject(opts: AddBlockOptions): Promise<{
   block: RegistryItem;
   compositionPath: string;
+  hostCompositionPath: string;
   insertedStart: number;
   insertedElementId: string;
 } | null> {
@@ -222,6 +308,8 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
     placement,
     visualPosition,
     timelineElements,
+    insertionMode = "overlay",
+    syncRippleGsap,
     readProjectFile,
     writeProjectFile,
     recordEdit,
@@ -261,11 +349,19 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       return null;
     }
 
-    if (block.type === "hyperframes:component") {
+    if (block.visualComponent) {
       const compContent = await readProjectFile(compositionFile);
-      const transparentContent = makeComponentDocumentBackgroundTransparent(compContent);
-      if (transparentContent !== compContent) {
-        await writeProjectFile(compositionFile, transparentContent);
+      const declaredContent = injectRegistryVariableDeclarations(
+        compContent,
+        block.variables ?? [],
+      );
+      const themedContent =
+        block.visualComponent.themeMode === "inherit"
+          ? injectInheritedComponentThemeAliases(declaredContent)
+          : declaredContent;
+      const normalizedContent = makeComponentDocumentBackgroundTransparent(themedContent);
+      if (normalizedContent !== compContent) {
+        await writeProjectFile(compositionFile, normalizedContent);
       }
     }
 
@@ -280,11 +376,13 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       insertedElementId = compId;
 
       const resolvedTargetPath = targetPath || "index.html";
+      const rootCompositionId = readRootCompositionId(originalContent);
       const relevantElements = timelineElements.filter(
-        (te) => (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
+        (te) =>
+          !isRootTimelineComposition(te, rootCompositionId) &&
+          (te.sourceFile || activeCompPath || "index.html") === resolvedTargetPath,
       );
 
-      const isBlock = block.type === "hyperframes:block";
       const { width: hostWidth, height: hostHeight } =
         resolveTimelineAssetCompositionSize(originalContent);
       const hostDims = { left: 0, top: 0, width: hostWidth, height: hostHeight };
@@ -299,35 +397,21 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           10,
         );
       const rootDuration = readRootCompositionDuration(originalContent) ?? 0;
-      const effectPlacement = placement
-        ? null
-        : resolveEffectPlacement({
-            intent: opts.effectIntent ?? "playhead",
-            duration,
-            currentTime,
-            rootDuration,
-            targetPath: resolvedTargetPath,
-            timelineElements: relevantElements,
-            selectedElementId: opts.selectedElementId,
-          });
-      if (!placement && !effectPlacement) {
-        showToast(
-          "Select a timeline clip that has another clip after it, then insert the transition",
-        );
-        return null;
-      }
       const start = Number(
-        formatTimelineAttributeNumber(placement?.start ?? effectPlacement?.start ?? currentTime),
+        formatTimelineAttributeNumber(placement?.start ?? Math.max(0, currentTime)),
       );
       insertedStart = start;
       const track =
         placement?.track ??
-        effectPlacement?.track ??
-        (isBlock
-          ? 0
+        (insertionMode === "ripple"
+          ? resolveIndependentInsertTrack(relevantElements)
           : relevantElements.length > 0
             ? Math.max(...relevantElements.map((te) => te.track)) + 1
             : 1);
+      const rippleChanges =
+        insertionMode === "ripple"
+          ? resolveBlockRippleChanges(relevantElements, start, duration)
+          : [];
 
       // Timeline discovery already resolves authored and computed z-indexes.
       // Reusing that snapshot avoids a synchronous getComputedStyle() walk over
@@ -337,11 +421,17 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         relevantElements.reduce((highest, element) => Math.max(highest, element.zIndex ?? 0), 0) +
         1;
 
-      const width = hostDims.width;
-      const height = hostDims.height;
+      const geometry = hostDims;
+      const width = geometry.width;
+      const height = geometry.height;
 
-      const left = visualPosition ? Math.round(visualPosition.left) : 0;
-      const top = visualPosition ? Math.round(visualPosition.top) : 0;
+      const left = visualPosition ? Math.round(visualPosition.left) : geometry.left;
+      const top = visualPosition ? Math.round(visualPosition.top) : geometry.top;
+
+      const inheritedThemeStyle =
+        block.visualComponent?.themeMode === "inherit"
+          ? `; ${INHERITED_COMPONENT_THEME_STYLE}`
+          : "";
 
       const subCompHtml = [
         `<div`,
@@ -352,44 +442,61 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
         `  data-hf-id="hf-${generateId()}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
+        block.visualComponent
+          ? `  data-ipw-theme-mode="${block.visualComponent.themeMode}"`
+          : "",
         `  data-start="${formatTimelineAttributeNumber(start)}"`,
         `  data-duration="${formatTimelineAttributeNumber(duration)}"`,
         `  data-track-index="${track}"`,
         `  data-width="${width}"`,
         `  data-height="${height}"`,
-        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}"`,
+        `  style="position: absolute; left: ${left}px; top: ${top}px; width: ${width}px; height: ${height}px; z-index: ${zIndex}${inheritedThemeStyle}"`,
         `></div>`,
       ].join("\n");
 
-      const shiftExistingBy = effectPlacement?.shiftExistingBy ?? 0;
-      const shiftedContent = shiftTimelineContentInSource(
-        originalContent,
-        relevantElements,
-        resolvedTargetPath,
-        shiftExistingBy,
-      );
-      let patchedContent = insertTimelineAssetIntoSource(shiftedContent, subCompHtml);
+      let patchedContent = applyBlockRippleChanges(originalContent, rippleChanges);
+      patchedContent = insertTimelineAssetIntoSource(patchedContent, subCompHtml);
       const originalContentEnd = relevantElements.reduce(
         (end, element) => Math.max(end, element.start + element.duration),
         rootDuration,
       );
       patchedContent = extendRootDurationInSource(
         patchedContent,
-        Math.max(start + duration, originalContentEnd + shiftExistingBy),
+        Math.max(
+          start + duration,
+          insertionMode === "ripple" ? originalContentEnd + duration : originalContentEnd,
+        ),
       );
       hostPatchMs = performance.now() - hostPatchStartedAt;
 
       markStudioWrite();
       const persistStartedAt = performance.now();
+      const label =
+        insertionMode === "ripple"
+          ? `Insert animation: ${block.title}`
+          : `Add component: ${block.title}`;
+      const coalesceKey =
+        insertionMode === "ripple" && rippleChanges.length > 0
+          ? `insert-animation:${compId}:${start}`
+          : undefined;
       await saveProjectFilesWithHistory({
         projectId,
-        label: `Add ${isBlock ? "block" : "component"}: ${block.title}`,
+        label,
         kind: "timeline",
+        coalesceKey,
+        coalesceMs: coalesceKey ? 10_000 : undefined,
         files: { [targetPath]: patchedContent },
         readFile: async () => originalContent,
         writeFile: writeProjectFile,
         recordEdit,
       });
+      if (coalesceKey && syncRippleGsap) {
+        try {
+          await syncRippleGsap({ changes: rippleChanges, coalesceKey, label });
+        } catch (error) {
+          console.error("[Components] Failed to ripple GSAP positions", error);
+        }
+      }
       persistMs = performance.now() - persistStartedAt;
     }
 
@@ -405,15 +512,21 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
 
     trackStudioEvent("block_install_timing", {
       block_name: blockName,
-      effect_intent: opts.effectIntent ?? "playhead",
       registry_install_ms: Math.round(registryInstallMs),
       host_patch_ms: Math.round(hostPatchMs),
       persist_ms: Math.round(persistMs),
       total_ms: Math.round(performance.now() - startedAt),
       timeline_element_count: timelineElements.length,
+      insertion_mode: insertionMode,
     });
 
-    return { block, compositionPath: compositionFile, insertedStart, insertedElementId };
+    return {
+      block,
+      compositionPath: compositionFile,
+      hostCompositionPath: activeCompPath || "index.html",
+      insertedStart,
+      insertedElementId,
+    };
   } catch (error) {
     trackStudioEvent("block_install_failed", {
       block_name: blockName,
