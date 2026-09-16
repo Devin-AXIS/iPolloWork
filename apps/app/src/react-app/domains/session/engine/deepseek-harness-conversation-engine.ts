@@ -552,6 +552,21 @@ function deepSeekHarnessConnection(input: {
         throw conversationError(error);
       }
     },
+    async steerPrompt(request) {
+      try {
+        if (request.signal?.aborted) return { sessionId: request.sessionId };
+        await client.prompt({
+          sessionId: request.sessionId,
+          ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
+          mode: "steer",
+          content: promptContent(request.parts, request.system),
+          clientTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+        return { sessionId: request.sessionId };
+      } catch (error) {
+        throw conversationError(error);
+      }
+    },
     async listCommands() {
       return (await listPluginCapabilities())
         .filter((item) => item.type === "command")

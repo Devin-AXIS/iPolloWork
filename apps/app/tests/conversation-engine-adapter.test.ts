@@ -739,6 +739,52 @@ describe("conversation engine adapters", () => {
     expect(requests.filter((request) => request.method === "thread/read").length).toBeGreaterThanOrEqual(3);
   });
 
+  test("steers the active Codex turn without interrupting or starting another turn", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(body);
+      if (request.url.endsWith("/prompt")) {
+        return Response.json({ ok: true, sessionId: "codex-steer", turnId: "turn-active" });
+      }
+      if (body.method === "turn/steer") {
+        return Response.json({ value: { turnId: "turn-active" } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+      });
+      await connection.sendPrompt({
+        sessionId: "codex-steer",
+        parts: [{ type: "text", text: "Start the task" }],
+      });
+      await connection.steerPrompt?.({
+        sessionId: "codex-steer",
+        parts: [{ type: "text", text: "Focus on the mobile layout" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toContainEqual({
+      method: "turn/steer",
+      payload: {
+        threadId: "codex-steer",
+        expectedTurnId: "turn-active",
+        input: [{ type: "text", text: "Focus on the mobile layout", text_elements: [] }],
+      },
+    });
+    expect(requests.some((request) => request.method === "turn/interrupt")).toBe(false);
+    expect(requests.filter((request) => request.method === "turn/start")).toHaveLength(0);
+  });
+
   test("routes OpenCode and DeepSeek Harness stop requests through their native engines", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; body: unknown }> = [];
@@ -2059,6 +2105,39 @@ describe("conversation engine adapters", () => {
       provider: "openai-codex-priority",
       model: "gpt-5.4-fast",
     });
+  });
+
+  test("steers the active DeepSeek Harness turn through its native prompt mode", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.steerPrompt?.({
+        sessionId: "session-steer",
+        parts: [{ type: "text", text: "Keep the existing structure, but shorten the ending" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([{
+      payload: {
+        sessionId: "session-steer",
+        mode: "steer",
+        content: [{ type: "text", text: "Keep the existing structure, but shorten the ending" }],
+        clientTimeZone: expect.any(String),
+      },
+    }]);
   });
 
   test("exposes native DeepSeek Harness modes and applies model selection before prompting", async () => {

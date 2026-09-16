@@ -235,6 +235,7 @@ export type SessionSurfaceProps = {
     sessionId: string,
     options?: PromptDispatchOptions,
   ) => PromptDispatchOutcome | Promise<PromptDispatchOutcome>;
+  onSteerDraft?: (draft: ComposerDraft, sessionId: string) => boolean | Promise<boolean>;
   onDraftChange: (draft: ComposerDraft) => void;
   supportsNativeAttachments: boolean;
   modelVariantLabel: string;
@@ -1679,10 +1680,20 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const removeQueuedDraft = useCallback((index: number) => {
     removeQueuedDraftFromStore(props.sessionId, index);
   }, [props.sessionId, removeQueuedDraftFromStore]);
-  const removeQueuedDrafts = useComposerStateStore((state) => state.removeQueuedDrafts);
-  const removeManyQueuedDrafts = useCallback((indices: number[]) => {
-    removeQueuedDrafts(props.sessionId, indices);
-  }, [props.sessionId, removeQueuedDrafts]);
+  const steerQueuedDraft = useCallback(async (index: number) => {
+    const queuedDraft = queuedDrafts[index];
+    if (!queuedDraft || !props.onSteerDraft) return;
+    try {
+      const accepted = await props.onSteerDraft(queuedDraft, props.sessionId);
+      if (!accepted) return;
+      removeQueuedDraftFromStore(props.sessionId, index);
+      toast.success(t("composer.steer_sent"));
+    } catch (steerError) {
+      toast.error(t("composer.steer_failed"), {
+        description: steerError instanceof Error ? steerError.message : undefined,
+      });
+    }
+  }, [props.onSteerDraft, props.sessionId, queuedDrafts, removeQueuedDraftFromStore]);
 
   // One label per queued draft, kept index-aligned with `queuedDrafts` so the
   // panel's remove action targets the correct entry. Attachment-only drafts
@@ -1694,6 +1705,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
         if (text) return text;
         return t("composer.queued_attachments_only", { count: draftItem.attachments.length });
       }),
+    [queuedDrafts],
+  );
+  const steerableQueuedDrafts = useMemo(
+    () => queuedDrafts.map((draftItem) => (
+      draftItem.mode === "prompt"
+      && !draftItem.command
+      && !draftItem.capability
+      && !draftItem.attachments.some((attachment) => attachment.delivery === "workspace")
+      && !draftItem.parts.some((part) => part.type === "agent" || part.type === "design-selection")
+    )),
     [queuedDrafts],
   );
   const hasOpenTodos = (props.todos ?? []).some((todo) => todo.content.trim());
@@ -2423,7 +2444,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
                   </div>
                 ) : null}
                 {queuedMessages.length > 0 ? (
-                  <QueuedMessagesPanel messages={queuedMessages} onRemove={removeQueuedDraft} onRemoveMany={removeManyQueuedDrafts} />
+                  <QueuedMessagesPanel
+                    messages={queuedMessages}
+                    steerable={steerableQueuedDrafts}
+                    onSteer={props.onSteerDraft ? steerQueuedDraft : undefined}
+                    onRemove={removeQueuedDraft}
+                  />
                 ) : null}
                 {props.activeQuestion ? (
                   <QuestionPanel
