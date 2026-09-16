@@ -44,6 +44,10 @@ function voiceoverAudioCacheKey(input: {
   model: string;
   voice: string;
   sampleRate?: number;
+  rate: number;
+  pitch: number;
+  volume: number;
+  instruction: string;
 }) {
   return createHash("sha256")
     .update(input.apiKey)
@@ -55,6 +59,14 @@ function voiceoverAudioCacheKey(input: {
     .update(input.voice)
     .update("\0")
     .update(String(input.sampleRate ?? ""))
+    .update("\0")
+    .update(String(input.rate))
+    .update("\0")
+    .update(String(input.pitch))
+    .update("\0")
+    .update(String(input.volume))
+    .update("\0")
+    .update(input.instruction)
     .update("\0")
     .update(input.text)
     .digest("hex");
@@ -716,6 +728,10 @@ export const MEDIA_EXTENSION_ACTIONS = [
         model: { type: "string", description: "Optional speech model. Defaults to cosyvoice-v3-flash." },
         format: { type: "string", description: "Optional audio format, for example wav or mp3." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+        rate: { type: "number", minimum: 0.5, maximum: 2, description: "Speech rate from 0.5 to 2. Defaults to 1." },
+        pitch: { type: "number", minimum: 0.5, maximum: 2, description: "Speech pitch from 0.5 to 2. Defaults to 1." },
+        volume: { type: "number", minimum: 0, maximum: 100, description: "Speech volume from 0 to 100. Defaults to 50." },
+        instruction: { type: "string", maxLength: 100, description: "Optional CosyVoice v3 expression instruction supported by the selected voice." },
       },
       required: ["text"],
       additionalProperties: false,
@@ -739,6 +755,10 @@ export const MEDIA_EXTENSION_ACTIONS = [
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+        rate: { type: "number", minimum: 0.5, maximum: 2, description: "Speech rate from 0.5 to 2. Defaults to 1." },
+        pitch: { type: "number", minimum: 0.5, maximum: 2, description: "Speech pitch from 0.5 to 2. Defaults to 1." },
+        volume: { type: "number", minimum: 0, maximum: 100, description: "Speech volume from 0 to 100. Defaults to 50." },
+        instruction: { type: "string", maxLength: 100, description: "Optional CosyVoice v3 expression instruction supported by the selected voice." },
       },
       required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
       additionalProperties: false,
@@ -765,6 +785,12 @@ export const MEDIA_EXTENSION_ACTIONS = [
               sceneStart: { type: "number", description: "The scene's current start time before narration shifts are applied." },
               sceneDuration: { type: "number", description: "The scene's current duration in seconds." },
               outputPath: { type: "string", description: "New immutable .mp3 path. With compositionPath, use assets/<file>.mp3 (preferred) or the full workspace-relative path inside that composition's assets directory; cross-project output is rejected." },
+              voice: { type: "string", description: "Optional scene voice override." },
+              model: { type: "string", description: "Optional scene model override." },
+              rate: { type: "number", minimum: 0.5, maximum: 2, description: "Optional scene speech-rate override." },
+              pitch: { type: "number", minimum: 0.5, maximum: 2, description: "Optional scene pitch override." },
+              volume: { type: "number", minimum: 0, maximum: 100, description: "Optional scene volume override." },
+              instruction: { type: "string", maxLength: 100, description: "Optional scene expression override." },
             },
             required: ["text", "sceneId", "sceneText", "sceneStart", "sceneDuration", "outputPath"],
             additionalProperties: false,
@@ -775,6 +801,10 @@ export const MEDIA_EXTENSION_ACTIONS = [
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
+        rate: { type: "number", minimum: 0.5, maximum: 2, description: "Default speech rate from 0.5 to 2." },
+        pitch: { type: "number", minimum: 0.5, maximum: 2, description: "Default speech pitch from 0.5 to 2." },
+        volume: { type: "number", minimum: 0, maximum: 100, description: "Default speech volume from 0 to 100." },
+        instruction: { type: "string", maxLength: 100, description: "Default CosyVoice v3 expression instruction." },
       },
       required: ["scenes"],
       additionalProperties: false,
@@ -1036,6 +1066,57 @@ function compatibleCosyVoiceVoice(model: string, voice: string) {
   return LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS[voice] ?? voice;
 }
 
+type SpeechSynthesisControls = {
+  rate: number;
+  pitch: number;
+  volume: number;
+  instruction: string;
+};
+
+function boundedSpeechNumber(value: unknown, key: string, fallback: number, min: number, max: number) {
+  const candidate = readOptionalNumber(value, key);
+  if (candidate === undefined) return fallback;
+  if (candidate < min || candidate > max) {
+    throw new ApiError(400, "invalid_payload", `${key} must be between ${min} and ${max}`);
+  }
+  return candidate;
+}
+
+function optionalBoundedSpeechNumber(value: unknown, key: string, min: number, max: number) {
+  const candidate = readOptionalNumber(value, key);
+  if (candidate === undefined) return undefined;
+  if (candidate < min || candidate > max) {
+    throw new ApiError(400, "invalid_payload", `${key} must be between ${min} and ${max}`);
+  }
+  return candidate;
+}
+
+function speechSynthesisControls(value: unknown): SpeechSynthesisControls {
+  const instruction = readStringField(value, "instruction");
+  if (instruction.length > 100) {
+    throw new ApiError(400, "invalid_payload", "instruction cannot exceed 100 characters");
+  }
+  return {
+    rate: boundedSpeechNumber(value, "rate", 1, 0.5, 2),
+    pitch: boundedSpeechNumber(value, "pitch", 1, 0.5, 2),
+    volume: boundedSpeechNumber(value, "volume", 50, 0, 100),
+    instruction,
+  };
+}
+
+function speechSynthesisInput(text: string, voice: string, format: string, sampleRate: number | undefined, controls: SpeechSynthesisControls): JsonRecord {
+  return {
+    text,
+    ...(voice ? { voice } : {}),
+    ...(format ? { format } : {}),
+    ...(sampleRate ? { sample_rate: sampleRate } : {}),
+    rate: controls.rate,
+    pitch: controls.pitch,
+    volume: controls.volume,
+    ...(controls.instruction ? { instruction: controls.instruction } : {}),
+  };
+}
+
 function taskIdFromPayload(payload: unknown): string | null {
   if (!isRecord(payload) || !isRecord(payload.output)) return null;
   const taskId = payload.output.task_id;
@@ -1168,6 +1249,12 @@ type WorkspaceVoiceoverSceneInput = {
   sceneStart: number;
   sceneDuration: number;
   outputPath: string;
+  voice: string;
+  model: string;
+  rate?: number;
+  pitch?: number;
+  volume?: number;
+  instruction: string;
 };
 
 type SynthesizedWorkspaceVoiceover = {
@@ -1202,7 +1289,24 @@ function workspaceVoiceoverSceneInput(value: unknown): WorkspaceVoiceoverSceneIn
   if (extname(outputPath).toLowerCase() !== ".mp3") {
     throw new ApiError(400, "invalid_synthesized_audio_path", "outputPath must use the .mp3 extension.");
   }
-  return { text, sceneId, sceneText, sceneStart, sceneDuration, outputPath };
+  const instruction = readStringField(value, "instruction");
+  if (instruction.length > 100) {
+    throw new ApiError(400, "invalid_payload", "instruction cannot exceed 100 characters");
+  }
+  return {
+    text,
+    sceneId,
+    sceneText,
+    sceneStart,
+    sceneDuration,
+    outputPath,
+    voice: readStringField(value, "voice"),
+    model: readStringField(value, "model"),
+    rate: optionalBoundedSpeechNumber(value, "rate", 0.5, 2),
+    pitch: optionalBoundedSpeechNumber(value, "pitch", 0.5, 2),
+    volume: optionalBoundedSpeechNumber(value, "volume", 0, 100),
+    instruction,
+  };
 }
 
 async function mapWithConcurrency<T, R>(items: readonly T[], concurrency: number, map: (item: T) => Promise<R>): Promise<R[]> {
@@ -1235,6 +1339,7 @@ async function synthesizeWorkspaceVoiceover(input: {
   model: string;
   voice: string;
   sampleRate?: number;
+  controls: SpeechSynthesisControls;
 }): Promise<SynthesizedWorkspaceVoiceover> {
   const cacheKey = voiceoverAudioCacheKey({
     apiKey: input.apiKey,
@@ -1243,6 +1348,7 @@ async function synthesizeWorkspaceVoiceover(input: {
     model: input.model,
     voice: input.voice,
     sampleRate: input.sampleRate,
+    ...input.controls,
   });
   let audio = readCachedVoiceoverAudio(cacheKey);
   if (!audio) {
@@ -1251,12 +1357,7 @@ async function synthesizeWorkspaceVoiceover(input: {
       url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
       body: {
         model: input.model,
-        input: {
-          text: input.scene.text,
-          ...(input.voice ? { voice: input.voice } : {}),
-          format: "mp3",
-          ...(input.sampleRate ? { sample_rate: input.sampleRate } : {}),
-        },
+        input: speechSynthesisInput(input.scene.text, input.voice, "mp3", input.sampleRate, input.controls),
       },
     });
     audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
@@ -1695,12 +1796,13 @@ export async function callMediaExtensionAction(
       const text = requireString(args, "text");
       const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
       const voice = readStringField(args, "voice");
-      const input: JsonRecord = {
+      const input = speechSynthesisInput(
         text,
-        ...(voice ? { voice: compatibleCosyVoiceVoice(model, voice) } : {}),
-        ...(readStringField(args, "format") ? { format: readStringField(args, "format") } : {}),
-        ...(readOptionalNumber(args, "sampleRate") ? { sample_rate: readOptionalNumber(args, "sampleRate") } : {}),
-      };
+        voice ? compatibleCosyVoiceVoice(model, voice) : "",
+        readStringField(args, "format"),
+        readOptionalNumber(args, "sampleRate"),
+        speechSynthesisControls(args),
+      );
       result = await requestProviderJson({
         apiKey,
         url: endpoint(baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
@@ -1730,6 +1832,7 @@ export async function callMediaExtensionAction(
         model,
         voice,
         sampleRate: readOptionalNumber(args, "sampleRate"),
+        controls: speechSynthesisControls(args),
       });
       result = workspaceVoiceoverResult(synthesized, composition, scene.sceneStart);
       break;
@@ -1790,19 +1893,28 @@ export async function callMediaExtensionAction(
       const requestedVoice = readStringField(args, "voice");
       const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : "";
       const sampleRate = readOptionalNumber(args, "sampleRate");
+      const controls = speechSynthesisControls(args);
       const created: SynthesizedWorkspaceVoiceover[] = [];
       let synthesizedScenes: SynthesizedWorkspaceVoiceover[];
       try {
         synthesizedScenes = await mapWithConcurrency(scenes, VOICEOVER_BATCH_CONCURRENCY, async (scene) => {
+          const sceneModel = scene.model || model;
+          const sceneVoiceRequest = scene.voice || voice;
           const synthesized = await synthesizeWorkspaceVoiceover({
             config,
             context,
             apiKey,
             baseUrl,
             scene,
-            model,
-            voice,
+            model: sceneModel,
+            voice: sceneVoiceRequest ? compatibleCosyVoiceVoice(sceneModel, sceneVoiceRequest) : "",
             sampleRate,
+            controls: {
+              rate: scene.rate ?? controls.rate,
+              pitch: scene.pitch ?? controls.pitch,
+              volume: scene.volume ?? controls.volume,
+              instruction: scene.instruction || controls.instruction,
+            },
           });
           created.push(synthesized);
           return synthesized;

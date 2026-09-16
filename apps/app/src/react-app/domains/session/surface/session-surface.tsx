@@ -72,6 +72,7 @@ import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import {
+  readVideoVoiceoverAvailability,
   videoVoiceDisplayMetadata,
   type VideoVoiceAiReference,
 } from "../video/video-voice";
@@ -689,6 +690,10 @@ function voiceReferenceInstruction(reference: VideoVoiceAiReference | null) {
     `- Voice: ${reference.label}`,
     `- Voice ID: ${reference.voiceId}`,
     `- Model: ${reference.model}`,
+    `- Speech rate: ${reference.rate}`,
+    `- Pitch: ${reference.pitch}`,
+    `- Volume: ${reference.volume}`,
+    `- Expression instruction: ${reference.instruction || "none"}`,
     "Use the current video session's voiceover.json and the Video voiceover contract to synthesize and synchronize the narration requested by the user.",
   ].join("\n");
 }
@@ -795,7 +800,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     artifactCompletionRequirementKeyRef.current = key;
     pendingVideoDeliveryRef.current = {
       sourcePath: requirement.sourcePath,
-      requirements: videoDeliveryRequirementsForPrompt({}),
+      requirements: videoDeliveryRequirementsForPrompt({ voiceoverAvailable: false }),
       baselineFingerprint: requirement.baselineFingerprint,
       requestOrdinal: requirement.requestOrdinal,
       mustChange: true,
@@ -812,7 +817,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (detail?.sessionId !== props.sessionId || !detail.reference || typeof detail.reference !== "object") return;
       const candidate = detail.reference as Partial<VideoVoiceAiReference>;
       if (!candidate.voiceId?.trim() || !candidate.model?.trim() || !candidate.label?.trim()) return;
-      setSelectedVoiceReference({ voiceId: candidate.voiceId.trim(), model: candidate.model.trim(), label: candidate.label.trim() });
+      setSelectedVoiceReference({
+        voiceId: candidate.voiceId.trim(),
+        model: candidate.model.trim(),
+        label: candidate.label.trim(),
+        rate: typeof candidate.rate === "number" ? candidate.rate : 1,
+        pitch: typeof candidate.pitch === "number" ? candidate.pitch : 1,
+        volume: typeof candidate.volume === "number" ? candidate.volume : 50,
+        instruction: typeof candidate.instruction === "string" ? candidate.instruction : "",
+      });
       const current = getComposerDraft(useComposerStateStore.getState(), props.sessionId).trimEnd();
       if (!current.includes(DEFAULT_VOICEOVER_PROMPT)) {
         setComposerDraft(props.sessionId, `${current}${current ? "\n" : ""}${DEFAULT_VOICEOVER_PROMPT}`);
@@ -1370,10 +1383,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
     let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
       if (videoTask && !recoveryDraft) {
+        const voiceover = await readVideoVoiceoverAvailability(
+          props.client,
+          props.workspaceId,
+          props.sessionId,
+          props.workspaceRoot,
+        );
         const requirements = videoDeliveryRequirementsForPrompt({
           capabilityId: nextDraft.capability?.id,
           promptText: nextDraft.resolvedText ?? nextDraft.text,
           animationReferences: selectedAnimations.map((selection) => selection.item.name),
+          voiceoverEnabled: voiceover.enabled,
+          voiceoverAvailable: voiceover.configured,
         });
         const mustChange = false;
         if (hasVideoDeliveryRequirements(requirements)) {

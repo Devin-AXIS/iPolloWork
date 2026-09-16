@@ -14,6 +14,8 @@ import {
   BAILIAN_PRESET_VOICES,
   BAILIAN_PRESET_GROUPS,
   DEFAULT_COSYVOICE_MODEL,
+  defaultVideoVoiceoverSettings,
+  videoVoiceoverAvailability,
   migrateVideoVoiceoverSettings,
   parseVideoVoiceoverSettings,
   serializeVideoVoiceoverSettings,
@@ -63,10 +65,6 @@ function mediaOutput(value: unknown): Record<string, unknown> {
   return readRecord(value, "output");
 }
 
-function mediaConfigured(value: unknown): boolean {
-  return mediaOutput(value).configured === true;
-}
-
 function storageConfigured(value: unknown): boolean {
   const providers = mediaOutput(value).providers;
   return Array.isArray(providers) && providers.some((provider) => isRecord(provider) && provider.configured === true);
@@ -108,8 +106,20 @@ function customVoiceAvailabilityMessage(voice: CustomVoice | undefined) {
   return t("video.voice.error.cloned_unavailable");
 }
 
-function voiceSettings(voiceId: string, source: VideoVoiceoverSettings["source"], model = DEFAULT_COSYVOICE_MODEL): VideoVoiceoverSettings {
-  return { provider: "aliyun-bailian", model, voiceId, source, updatedAt: new Date().toISOString() };
+function voiceSettings(
+  current: VideoVoiceoverSettings | null,
+  voiceId: string,
+  source: VideoVoiceoverSettings["source"],
+  model = DEFAULT_COSYVOICE_MODEL,
+): VideoVoiceoverSettings {
+  return {
+    ...(current ?? defaultVideoVoiceoverSettings()),
+    model,
+    voiceId,
+    source,
+    selectionMode: "manual",
+    updatedAt: new Date().toISOString(),
+  };
 }
 
 async function readAudioDuration(file: File): Promise<number> {
@@ -158,7 +168,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
     window.dispatchEvent(new CustomEvent("ipollowork:add-voice-reference", {
       detail: {
         sessionId,
-        reference: { voiceId: activeVoice.voiceId, model: activeVoice.model, label: t("video.voice.reference_label", { label }) },
+        reference: { voiceId: activeVoice.voiceId, model: activeVoice.model, rate: activeVoice.rate, pitch: activeVoice.pitch, volume: activeVoice.volume, instruction: activeVoice.instruction, label: t("video.voice.reference_label", { label }) },
       },
     }));
   }, [activeVoice, customVoices, sessionId]);
@@ -214,11 +224,11 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
     setPresetVoiceId(voiceId);
     setMessage("");
     try {
-      await saveSettings(voiceSettings(voiceId, "preset"));
+      await saveSettings(voiceSettings(activeVoice, voiceId, "preset"));
     } catch (error) {
       setMessage(readableError(error));
     }
-  }, [saveSettings]);
+  }, [activeVoice, saveSettings]);
 
   const chooseCustomVoice = React.useCallback(async (voiceId: string) => {
     const voice = customVoices.find((item) => item.id === voiceId);
@@ -229,14 +239,14 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       return;
     }
     try {
-      await saveSettings(voiceSettings(voice.id, "cloned", voice.model));
+      await saveSettings(voiceSettings(activeVoice, voice.id, "cloned", voice.model));
     } catch (error) {
       setMessage(readableError(error));
     }
-  }, [customVoices, saveSettings]);
+  }, [activeVoice, customVoices, saveSettings]);
 
   const previewVoice = React.useCallback(async () => {
-    if (!client || !activeVoice) {
+    if (!client || !mediaReady || !activeVoice?.enabled || activeVoice.selectionMode === "auto") {
       setMessage(t("video.voice.preview_select_first"));
       return;
     }
@@ -248,13 +258,17 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
         const latestVoice = (await loadCustomVoices()).find((voice) => voice.id === activeVoice.voiceId);
         if (!latestVoice || !canSynthesizeCustomVoice(latestVoice)) throw new Error(customVoiceAvailabilityMessage(latestVoice));
         model = latestVoice.model;
-        if (model !== activeVoice.model) await saveSettings(voiceSettings(activeVoice.voiceId, "cloned", model));
+        if (model !== activeVoice.model) await saveSettings(voiceSettings(activeVoice, activeVoice.voiceId, "cloned", model));
       }
       const result = await client.callMedia("speech_synthesize", {
         text: t("video.voice.preview_sample"),
         voice: activeVoice.voiceId,
         model,
         format: "mp3",
+        rate: activeVoice.rate,
+        pitch: activeVoice.pitch,
+        volume: activeVoice.volume,
+        ...(activeVoice.instruction ? { instruction: activeVoice.instruction } : {}),
       }, context);
       if (!result.ok) throw new Error(result.message);
       const url = synthesizedAudioUrl(mediaOutput(result.result));
@@ -268,7 +282,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
     } finally {
       setPreviewing(false);
     }
-  }, [activeVoice, client, context]);
+  }, [activeVoice, client, context, loadCustomVoices, mediaReady, saveSettings]);
 
   const cloneVoice = React.useCallback(async (file: File) => {
     const invalid = validateVoiceSampleFile(file, {
@@ -302,7 +316,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
         setMessage(`${customVoiceAvailabilityMessage(clonedVoice)} ${t("video.voice.refresh_to_select")}`);
         return;
       }
-      await saveSettings(voiceSettings(voiceId, "cloned", model));
+      await saveSettings(voiceSettings(activeVoice, voiceId, "cloned", model));
       setMessage(t("video.voice.clone_success"));
     } catch (error) {
       setMessage(readableError(error));
@@ -311,7 +325,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
       setCloning(false);
       if (uploadInputRef.current) uploadInputRef.current.value = "";
     }
-  }, [client, context, loadCustomVoices, mediaReady, saveSettings, sessionId, workspaceId]);
+  }, [activeVoice, client, context, loadCustomVoices, mediaReady, saveSettings, sessionId, workspaceId]);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -334,29 +348,26 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
           client.readWorkspaceFile(workspaceId, videoVoiceoverSettingsPath(sessionId)).catch(() => null),
         ]);
         if (cancelled) return;
-        const configured = media.ok && mediaConfigured(media.result);
+        const configured = videoVoiceoverAvailability(media, saved?.content ?? null).configured;
         setMediaReady(configured);
-        if (saved) {
-          const parsed = parseVideoVoiceoverSettings(saved.content);
-          const restored = parsed ? migrateVideoVoiceoverSettings(parsed) : null;
-          if (restored && parsed && restored.voiceId !== parsed.voiceId) {
-            const migrated = { ...restored, updatedAt: new Date().toISOString() };
-            try {
-              const written = await client.writeWorkspaceFile(workspaceId, {
-                path: videoVoiceoverSettingsPath(sessionId),
-                content: serializeVideoVoiceoverSettings(migrated),
-                baseUpdatedAt: saved.updatedAt,
-              });
-              setSettings({ settings: migrated, updatedAt: written.updatedAt });
-              setMessage(t("video.voice.migration_success"));
-            } catch (error) {
-              setSettings({ settings: restored, updatedAt: saved.updatedAt });
-              setMessage(t("video.voice.migration_save_failed", { error: readableError(error) }));
-            }
-          } else {
-            setSettings({ settings: restored, updatedAt: saved.updatedAt });
+        const parsed = saved ? parseVideoVoiceoverSettings(saved.content) : null;
+        const restored = parsed ? migrateVideoVoiceoverSettings(parsed) : { ...defaultVideoVoiceoverSettings(), enabled: configured };
+        setSettings({ settings: restored, updatedAt: saved?.updatedAt ?? null });
+        if (restored.source === "preset") setPresetVoiceId(restored.voiceId);
+        // An unavailable provider must not create a saved preference that overrides
+        // the authorized default later. Existing user choices remain intact.
+        if (!configured) return;
+        if (!parsed || restored.voiceId !== parsed.voiceId) {
+          const next = { ...restored, updatedAt: new Date().toISOString() };
+          const written = await client.writeWorkspaceFile(workspaceId, {
+            path: videoVoiceoverSettingsPath(sessionId),
+            content: serializeVideoVoiceoverSettings(next),
+            baseUpdatedAt: saved?.updatedAt ?? null,
+          });
+          if (!cancelled) {
+            setSettings({ settings: next, updatedAt: written.updatedAt });
+            if (parsed) setMessage(t("video.voice.migration_success"));
           }
-          if (restored?.source === "preset") setPresetVoiceId(restored.voiceId);
         }
       } catch (error) {
         if (!cancelled) setMessage(readableError(error));
@@ -396,7 +407,7 @@ export function VideoVoicePanel({ sessionId, workspaceRoot, client, workspaceId,
         title={t("video.voice.title")}
         description={t("video.voice.subtitle")}
         icon={<AudioLines />}
-        actions={<Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!activeVoice || previewing} aria-label={t("video.voice.preview_current")}>
+        actions={<Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!mediaReady || !activeVoice?.enabled || activeVoice.selectionMode === "auto" || previewing} aria-label={t("video.voice.preview_current")}>
           {previewing ? <Loader2 className="animate-spin" /> : <Play />}
         </Button>}
         closeLabel={t("video.voice.close_settings")}

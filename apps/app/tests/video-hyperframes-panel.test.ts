@@ -1173,6 +1173,11 @@ describe("HyperFrames Video Studio", () => {
     });
     expect(contract).toContain('"targetDurationSeconds":120');
     expect(contract).toContain("preserve them exactly in the validator call");
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).voiceover).toBe(true);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作视频，不要配音" }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "继续修改画面", voiceoverEnabled: false }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频", voiceoverAvailable: false }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "请给视频添加旁白", voiceoverAvailable: false }).voiceover).toBe(false);
   });
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {
