@@ -1,4 +1,7 @@
 import { connect, debuggerUrlFor, evaluate, listTargets } from '../runner/cdp.mjs';
+import { EvalContext } from '../runner/context.mjs';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 const SIDEBAR = '[data-testid="sidebar-data-annotation"]';
 const FRAME = 'iframe[title="数据标注"]';
@@ -32,6 +35,7 @@ async function assertWorkbench(ctx) {
   ctx.assert(await ctx.eval(`document.querySelectorAll(${JSON.stringify(TAB)}).length === 1`), 'Opening must reuse one annotation tab');
   const bounds = await ctx.eval(`(() => {const r=document.querySelector(${JSON.stringify(FRAME)}).getBoundingClientRect();return {x:r.x,right:r.right,bottom:r.bottom,w:r.width,h:r.height,vw:innerWidth,vh:innerHeight};})()`);
   ctx.assert(bounds.x > 200 && bounds.right <= bounds.vw + 1 && bounds.bottom <= bounds.vh + 1 && bounds.w > 200 && bounds.h > 200, 'Annotation must be visible inside the right console');
+  await ctx.eval('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))', { awaitPromise: true });
 }
 
 export default {
@@ -64,6 +68,7 @@ export default {
           }
           await ctx.trustedClick('button[aria-label="添加侧面板入口"]');
           await ctx.waitFor('Boolean(document.querySelector(\'[data-testid^="side-panel-launcher-workspace-app:labelu-data-annotation:"]\'))');
+          await ctx.eval('new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))', { awaitPromise: true });
           await ctx.screenshot('console-launcher-menu', {
             claim: 'The console menu includes Data Annotation',
             voiceover: '右侧加号菜单中可以直接选择数据标注。',
@@ -89,12 +94,68 @@ export default {
           await ctx.eval('document.querySelector(\'[data-testid="required-plugin-notice"]\').scrollIntoView({block:"center"})');
         },
         assert: async () => {
+          await ctx.expectText('v0.3.2');
           ctx.assert(await ctx.eval('document.querySelector(\'[data-testid="required-plugin-notice"]\').innerText.includes("不可卸载")'), 'A built-in notice explains the policy');
           ctx.assert(!await ctx.eval('[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="卸载")'), 'There must be no uninstall control');
           ctx.assert(await ctx.eval('[...document.querySelectorAll(\'[role="switch"]\')].every(b=>b.disabled || b.getAttribute("aria-disabled")==="true")'), 'Required plugin controls cannot be disabled');
         },
         screenshot: { name: 'required-plugin-detail', requireText: ['不可卸载'], rejectText: ['Unexpected server error'] },
       });
+    },
+  }, {
+    name: 'Import text, save annotations, and resume after reload',
+    async run(ctx) {
+      await showSidebar(ctx);
+      await ctx.trustedClick(SIDEBAR);
+      await assertWorkbench(ctx);
+      const frameUrl = await ctx.eval(`document.querySelector(${JSON.stringify(FRAME)}).contentDocument.querySelector('#workbench').src`);
+      const target = (await listTargets(ctx.cdpBaseUrl)).find(entry => entry.type === 'iframe' && entry.url === frameUrl);
+      const client = await connect(debuggerUrlFor(ctx.cdpBaseUrl, target));
+      const child = new EvalContext({ client, outDir: ctx.outDir, flowId: ctx.flowId });
+      const title = `0.3.2 文字导入验证 ${Date.now()}`;
+      const content = '数字标注升级验证。\n第二段中文正文。';
+      try {
+        await ctx.prove('The bundled 0.3.2 workbench imports Chinese TXT into a text project', {
+          voiceover: '导入中文 TXT 文件，确认正文后创建文字标注项目。',
+          action: async () => {
+            await child.clickText('文字标注', { selector: '.modality-option' });
+            const fixture = join(ctx.outDir, 'annotation-import.txt');
+            await writeFile(fixture, content);
+            const { root } = await client.send('DOM.getDocument');
+            const { nodeId } = await client.send('DOM.querySelector', { nodeId: root.nodeId, selector: 'input[type="file"][accept*=".txt"]' });
+            await client.send('DOM.setFileInputFiles', { nodeId, files: [fixture] });
+            await child.waitForText('已导入');
+            ctx.assert(await child.eval(`document.querySelector('.text-project-form textarea').value === ${JSON.stringify(content)}`), 'Imported paragraphs must match the file');
+            await child.fill('.text-project-form input', title);
+            await child.trustedClick('.form-actions .primary-button');
+          },
+          assert: async () => {
+            await child.waitFor('Boolean(document.querySelector(\'textarea[aria-label="待标注正文"]\'))');
+            ctx.assert(await child.eval(`document.querySelector('textarea[aria-label="待标注正文"]').value === ${JSON.stringify(content)}`), 'The created project must preserve the imported text');
+          },
+          screenshot: { name: 'imported-text-project', requireText: ['数据标注'] },
+        });
+        await ctx.prove('Text ranges and classification remain saved after reloading the workbench', {
+          voiceover: '添加区间标签和文档分类，保存后重新加载，再打开项目确认结果仍在。',
+          action: async () => {
+            await child.eval(`document.querySelector('textarea[aria-label="待标注正文"]').setSelectionRange(0, 4)`);
+            await child.trustedClick('.text-actions button');
+            await child.fill('.classification-field input', '升级验证');
+            await child.trustedClick('.primary-button.compact');
+            await child.waitFor('document.querySelector(".primary-button.compact").disabled && !document.body.innerText.includes("未保存") && !document.body.innerText.includes("保存中")');
+            await child.eval('location.reload()');
+            await child.waitForText(title);
+            await child.clickText(title, { selector: '.project-row' });
+          },
+          assert: async () => {
+            await child.waitFor('Boolean(document.querySelector(".span-item"))');
+            ctx.assert(await child.eval(`document.querySelector('.classification-field input').value === '升级验证'`), 'Classification must survive reload');
+            ctx.assert(await child.eval(`document.querySelectorAll('.span-item').length === 1 && document.querySelector('.span-item').innerText.includes('数字标注')`), 'The saved text range must survive reload');
+            ctx.assert(await child.eval(`document.querySelector('textarea[aria-label="待标注正文"]').value === ${JSON.stringify(content)}`), 'Reload must preserve both text paragraphs');
+          },
+          screenshot: { name: 'resumed-text-annotations', requireText: ['数据标注'] },
+        });
+      } finally { client.close(); }
     },
   }],
 };

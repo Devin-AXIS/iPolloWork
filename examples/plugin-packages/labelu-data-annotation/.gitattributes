@@ -1,0 +1,4 @@
+# Preserve the supplied release's runtime and third-party license bytes.
+app/dist/** -text -whitespace
+service/dist/** -text -whitespace
+LICENSE-THIRD-PARTY.txt -text -whitespace

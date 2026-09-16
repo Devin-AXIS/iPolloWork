@@ -13,7 +13,7 @@ Use this plugin when the user wants to open 数据标注实训云, annotate an i
 2. Call `ipollowork_extension_call` with `extensionId: "labelu-data-annotation"`, `action: "open-workbench"`, and empty `args`.
 3. Immediately call `ipollowork_browser_open_url` with the exact returned `url` so the workbench opens in the built-in browser on the right.
 4. Do not paste, repeat, summarize, or ask the user to click the signed local URL in chat.
-5. When the workbench is visibly open, tell the user it is ready. The user either uploads their own image, video, or audio, enters text, imports a text-layer PDF, or selects a bundled training project with prepared media and labels, then annotates and saves it inside the visual workbench.
+5. Tell the user only that the workbench is open. The user either uploads their own image, video, or audio, enters text, imports a text-layer PDF, or selects a bundled training project with prepared media and labels, then annotates and saves it inside the visual workbench.
 
 ## Help through conversation
 
@@ -26,4 +26,4 @@ Use this plugin when the user wants to open 数据标注实训云, annotate an i
 
 - The chat side never selects or uploads media and never creates a project. It may only read saved project status when the user explicitly asks.
 - Do not use browser automation after opening the page unless the user explicitly asks for it.
-- The workbench supports user-driven image, video, audio, and text annotation, text-layer PDF import, bundled training projects, and saved-project continuation. PDF import extracts text only; scanned PDFs require OCR first. Do not claim review, assignment, automatic AI annotation, or multi-user workflow support.
+- The workbench supports user-driven image, video, audio, and text annotation, text-layer PDF, Word (DOC/DOCX), and TXT import, bundled training projects, and saved-project continuation. PDF import extracts text only; scanned PDFs require OCR first. Do not claim review, assignment, automatic AI annotation, or multi-user workflow support.

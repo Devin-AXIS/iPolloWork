@@ -8,6 +8,7 @@ import { Transform } from "node:stream";
 import { fileURLToPath } from "node:url";
 
 import { getDocument, VerbosityLevel } from "pdfjs-dist/legacy/build/pdf.mjs";
+import WordExtractor from "word-extractor";
 import type { TextItem } from "pdfjs-dist/types/src/display/api.js";
 
 type PluginRuntime = {
@@ -241,7 +242,7 @@ function isModality(value: unknown): value is Modality {
 }
 
 function validateProjectId(value: string): string {
-  if (!PROJECT_ID_RE.test(value)) throw new Error("projectId must contain only letters, numbers, dots, underscores, or hyphens");
+  if (!PROJECT_ID_RE.test(value)) throw Object.assign(new Error("projectId must contain only letters, numbers, dots, underscores, or hyphens"), { statusCode: 400 });
   return value;
 }
 
@@ -350,7 +351,12 @@ async function readProject(root: string, projectId: string): Promise<ProjectReco
   const currentPath = projectPath(root, projectId);
   const payload = await readFile(currentPath, "utf8").catch(async (error: unknown) => {
     if (fileErrorCode(error) !== "ENOENT") throw error;
-    return readFile(legacyTaskPath(root, projectId), "utf8");
+    return readFile(legacyTaskPath(root, projectId), "utf8").catch((legacyError: unknown) => {
+      if (fileErrorCode(legacyError) === "ENOENT") {
+        throw Object.assign(new Error("标注记录不存在或已删除。"), { statusCode: 404 });
+      }
+      throw legacyError;
+    });
   });
   const project = projectFromPayload(JSON.parse(payload));
   if (project.id !== projectId) throw new Error("saved annotation project is invalid");
@@ -406,8 +412,15 @@ function projectSummary(project: ProjectRecord) {
 }
 
 async function listProjects(root: string, limit: number): Promise<ReturnType<typeof projectSummary>[]> {
-  const projects = await Promise.all((await projectIds(root)).map((id) => readProject(root, id)));
+  const projects = await Promise.all((await projectIds(root)).map(async (id) => {
+    try { return await readProject(root, id); }
+    catch (error) {
+      if (error instanceof Error && Reflect.get(error, "statusCode") === 404) return null;
+      throw error;
+    }
+  }));
   return projects
+    .filter((project): project is ProjectRecord => project !== null)
     .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
     .slice(0, limit)
     .map(projectSummary);
@@ -765,17 +778,17 @@ async function requestBody(request: IncomingMessage): Promise<Record<string, unk
 async function requestBytes(request: IncomingMessage, maximumBytes: number): Promise<Buffer> {
   const contentLength = Number(request.headers["content-length"] ?? 0);
   if (Number.isFinite(contentLength) && contentLength > maximumBytes) {
-    throw Object.assign(new Error("PDF 文件不能超过 50 MB。"), { statusCode: 413 });
+    throw Object.assign(new Error(`文件不能超过 ${maximumBytes / 1024 / 1024} MB。`), { statusCode: 413 });
   }
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     size += bytes.length;
-    if (size > maximumBytes) throw Object.assign(new Error("PDF 文件不能超过 50 MB。"), { statusCode: 413 });
+    if (size > maximumBytes) throw Object.assign(new Error(`文件不能超过 ${maximumBytes / 1024 / 1024} MB。`), { statusCode: 413 });
     chunks.push(bytes);
   }
-  if (!size) throw Object.assign(new Error("PDF 文件为空。"), { statusCode: 400 });
+  if (!size) throw Object.assign(new Error("文件为空。"), { statusCode: 400 });
   return Buffer.concat(chunks);
 }
 
@@ -936,6 +949,16 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
           json(response, 201, { project: projectForBrowser(project, url.searchParams.toString()) });
           return;
         }
+        if (url.pathname === "/api/project" && request.method === "DELETE") {
+          const launch = launchFrom(url);
+          const projectId = projectIdFrom(url);
+          // Remove only owned record paths, never sourcePath (legacy records may refer to user files).
+          // Delete the legacy copy first so a migrated record cannot reappear through the read fallback.
+          await rm(legacyTaskPath(launch.workspaceRoot, projectId), { force: true });
+          await rm(projectPath(launch.workspaceRoot, projectId), { force: true });
+          json(response, 200, { ok: true });
+          return;
+        }
         if (url.pathname === "/api/project" && request.method === "GET") {
           const launch = launchFrom(url);
           const project = await readProject(launch.workspaceRoot, projectIdFrom(url));
@@ -982,6 +1005,41 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
           launchFrom(url);
           const bytes = await requestBytes(request, MAX_PDF_BYTES);
           json(response, 200, await extractPdfText(bytes));
+          return;
+        }
+        if (url.pathname === "/api/extract-document" && request.method === "POST") {
+          launchFrom(url);
+          const extension = extname(url.searchParams.get("name") ?? "").toLowerCase();
+          if (![".doc", ".docx", ".txt"].includes(extension)) {
+            throw Object.assign(new Error("请选择 Word（.doc、.docx）或 TXT 文件。"), { statusCode: 400 });
+          }
+          const bytes = await requestBytes(request, extension === ".txt" ? MAX_TEXT_BYTES : MAX_PDF_BYTES);
+          let textContent: string;
+          try {
+            if (extension === ".txt") {
+              const encoding = bytes[0] === 0xff && bytes[1] === 0xfe ? "utf-16le"
+                : bytes[0] === 0xfe && bytes[1] === 0xff ? "utf-16be" : "utf-8";
+              try {
+                textContent = new TextDecoder(encoding, { fatal: true }).decode(bytes);
+              } catch {
+                textContent = new TextDecoder("gb18030", { fatal: true }).decode(bytes);
+              }
+              if (textContent.includes("\u0000")) throw new Error("binary text");
+            } else {
+              const document = await new WordExtractor().extract(bytes);
+              textContent = document.getBody();
+            }
+          } catch {
+            throw Object.assign(new Error("无法读取文件，请确认文件格式正确、未损坏且未加密。"), { statusCode: 400 });
+          }
+          textContent = textContent.replace(/\r\n?/g, "\n").replace(/^\uFEFF/, "");
+          if (!textContent.trim()) {
+            throw Object.assign(new Error("文件中没有可提取的文字。"), { statusCode: 422 });
+          }
+          if (Buffer.byteLength(textContent) > MAX_TEXT_BYTES) {
+            throw Object.assign(new Error("提取的正文不能超过 5 MB。"), { statusCode: 413 });
+          }
+          json(response, 200, { textContent, characterCount: textContent.length });
           return;
         }
         if (url.pathname === "/api/project-text" && request.method === "POST") {

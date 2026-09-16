@@ -108,7 +108,7 @@ export default {
                 radio: { width: images[1]?.getBoundingClientRect().width || 0, height: images[1]?.getBoundingClientRect().height || 0 },
               };
             })`);
-            ctx.assert(cards.length === 3, `Expected three engine cards, found ${cards.length}.`);
+            ctx.assert(cards.length === 2, `Expected two engine cards, found ${cards.length}.`);
             ctx.assert(cards.every((card) => card.width >= 204 && card.height >= 119), "Engine cards should fill the available dialog width and remain at least 120px high.");
             ctx.assert(Math.max(...cards.map((card) => card.width)) - Math.min(...cards.map((card) => card.width)) <= 1, "Engine cards should share the dialog width evenly.");
             ctx.assert(Math.abs(cards[0].brandIcon.width - 19) <= 1 && Math.abs(cards[0].brandIcon.height - 24) <= 1, "OpenCode should use the 19×24 Figma icon.");
@@ -120,8 +120,8 @@ export default {
           },
           screenshot: {
             name: "new-project-engine-cards-light",
-            requireText: ["OpenCode", "DeepSeek Harness", "Codex Harness"],
-            rejectText: ["Something went wrong", "Ungrouped", "未分组"],
+            requireText: ["OpenCode", "DeepSeek Harness"],
+            rejectText: ["Codex Harness", "Something went wrong", "Ungrouped", "未分组"],
           },
         });
       },

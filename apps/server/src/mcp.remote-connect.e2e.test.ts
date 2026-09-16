@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { addMcp, listMcp, removeMcp } from "./mcp.js";
-import { readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { disposeRuntimeOpencodeConfigStore, readRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const WORKSPACE_ID = "ws_mcp_remote";
@@ -64,8 +64,11 @@ describe("mcp remote connect flow", () => {
       const listedAfterRemove = await listMcp(config, WORKSPACE_ID, workspaceRoot);
       expect(listedAfterRemove.some((entry) => entry.name === "simple-remote")).toBe(false);
     } finally {
+      await disposeRuntimeOpencodeConfigStore(config);
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
+      // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+      if (process.platform === "win32") Bun.gc(true);
       await rm(workspaceRoot, { recursive: true, force: true });
     }
   });

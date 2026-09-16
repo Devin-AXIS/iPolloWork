@@ -5,8 +5,7 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } fro
 import type { KeyboardEvent as ReactKeyboardEvent } from "react";
 
 const ImageAnnotator = lazy(() => import("@labelu/image-annotator-react").then((module) => ({ default: module.Annotator })));
-const VideoAnnotator = lazy(() => import("@labelu/video-annotator-react").then((module) => ({ default: module.Annotator })));
-const AudioAnnotator = lazy(() => import("@labelu/audio-annotator-react").then((module) => ({ default: module.Annotator })));
+const MediaAnnotator = lazy(() => import("./media-annotator"));
 
 type Modality = "image" | "video" | "audio" | "text";
 type AnnotationMap = Record<string, unknown>;
@@ -306,7 +305,7 @@ export function AnnotationApp() {
   const imageRef = useRef<ImageAnnotatorRef>(null);
   const mediaRef = useRef<AudioAndVideoAnnotatorRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const pdfInputRef = useRef<HTMLInputElement>(null);
+  const documentInputRef = useRef<HTMLInputElement>(null);
   const uploadModalityRef = useRef<Exclude<Modality, "text">>("image");
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [trainingTemplates, setTrainingTemplates] = useState<TrainingTemplateSummary[]>([]);
@@ -318,6 +317,8 @@ export function AnnotationApp() {
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState("");
   const [opening, setOpening] = useState("");
+  const [deleting, setDeleting] = useState("");
+  const [deleteCandidate, setDeleteCandidate] = useState("");
   const [uploading, setUploading] = useState<Modality | null>(null);
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
@@ -331,8 +332,8 @@ export function AnnotationApp() {
   const [textFormOpen, setTextFormOpen] = useState(false);
   const [textTitle, setTextTitle] = useState("");
   const [textDraft, setTextDraft] = useState("");
-  const [pdfImporting, setPdfImporting] = useState(false);
-  const [pdfNotice, setPdfNotice] = useState("");
+  const [documentImporting, setDocumentImporting] = useState(false);
+  const [documentNotice, setDocumentNotice] = useState("");
   const [textContent, setTextContent] = useState("");
   const [spans, setSpans] = useState<TextSpan[]>([]);
   const [classification, setClassification] = useState("");
@@ -416,6 +417,22 @@ export function AnnotationApp() {
     }
   }, [apiQuery, prepareProject]);
 
+  const deleteProject = useCallback(async (project: ProjectSummary) => {
+    if (deleting) return;
+    setDeleting(project.id);
+    setError("");
+    try {
+      const response = await fetch(endpoint("/api/project", apiQuery, { projectId: project.id }), { method: "DELETE" });
+      await responseJson<{ ok: boolean }>(response);
+      setProjects((current) => current.filter((item) => item.id !== project.id));
+      setDeleteCandidate("");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "删除失败，请重试。");
+    } finally {
+      setDeleting("");
+    }
+  }, [apiQuery, deleting]);
+
   const beginFileProject = useCallback((modality: Exclude<Modality, "text">) => {
     uploadModalityRef.current = modality;
     if (fileInputRef.current) fileInputRef.current.accept = modalityCopy[modality].accept;
@@ -441,33 +458,35 @@ export function AnnotationApp() {
     }
   }, [apiQuery, prepareProject]);
 
-  const importPdf = useCallback(async (file: File) => {
-    if (!file.name.toLocaleLowerCase().endsWith(".pdf")) {
-      setError("请选择 PDF 文件。");
+  const importDocument = useCallback(async (file: File) => {
+    const extension = file.name.toLowerCase().split(".").pop();
+    if (!extension || !["pdf", "doc", "docx", "txt"].includes(extension)) {
+      setError("请选择 PDF、Word（.doc、.docx）或 TXT 文件。");
       return;
     }
-    if (file.size > 50 * 1024 * 1024) {
-      setError("PDF 文件不能超过 50 MB。");
+    const maximumMB = extension === "txt" ? 5 : 50;
+    if (file.size > maximumMB * 1024 * 1024) {
+      setError(`文件不能超过 ${maximumMB} MB。`);
       return;
     }
-    setPdfImporting(true);
-    setPdfNotice("");
+    setDocumentImporting(true);
+    setDocumentNotice("");
     setError("");
     try {
-      const response = await fetch(endpoint("/api/extract-pdf", apiQuery), {
+      const response = await fetch(endpoint(extension === "pdf" ? "/api/extract-pdf" : "/api/extract-document", apiQuery, { name: file.name }), {
         method: "POST",
-        headers: { "content-type": "application/pdf" },
+        headers: { "content-type": file.type || "application/octet-stream" },
         body: file,
       });
-      const payload = await responseJson<{ textContent: string; pageCount: number; characterCount: number }>(response);
+      const payload = await responseJson<{ textContent: string; pageCount?: number; characterCount: number }>(response);
       setTextDraft(payload.textContent);
-      setTextTitle((current) => current.trim() || file.name.replace(/\.pdf$/i, "").slice(0, 200));
-      setPdfNotice(`已导入 ${payload.pageCount} 页，共 ${payload.characterCount} 个字符。请确认正文后开始标注。`);
+      setTextTitle((current) => current.trim() || file.name.replace(/\.[^.]+$/, "").slice(0, 200));
+      setDocumentNotice(`已导入${payload.pageCount ? ` ${payload.pageCount} 页，` : "，"}共 ${payload.characterCount} 个字符。请确认正文后开始标注。`);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "PDF 导入失败");
+      setError(cause instanceof Error ? cause.message : "文件导入失败");
     } finally {
-      setPdfImporting(false);
-      if (pdfInputRef.current) pdfInputRef.current.value = "";
+      setDocumentImporting(false);
+      if (documentInputRef.current) documentInputRef.current.value = "";
     }
   }, [apiQuery]);
 
@@ -488,7 +507,7 @@ export function AnnotationApp() {
       setTextFormOpen(false);
       setTextTitle("");
       setTextDraft("");
-      setPdfNotice("");
+      setDocumentNotice("");
       prepareProject(payload.project);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "文字项目创建失败");
@@ -809,13 +828,13 @@ export function AnnotationApp() {
         }}
       />
       <input
-        ref={pdfInputRef}
+        ref={documentInputRef}
         className="file-input"
         type="file"
-        accept=".pdf,application/pdf"
+        accept=".pdf,.doc,.docx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
-          if (file) void importPdf(file);
+          if (file) void importDocument(file);
         }}
       />
 
@@ -865,7 +884,7 @@ export function AnnotationApp() {
             >
               <div className="training-heading">
                 <h2>上传自己的素材</h2>
-                <p>选择标注类型后上传文件；文字项目可以直接输入正文或导入 PDF。</p>
+                <p>选择标注类型后上传文件；文字项目可以直接输入正文或导入 PDF、Word、TXT。</p>
               </div>
               <div className="modality-grid">
                 {(Object.keys(modalityCopy) as Modality[]).map((modality) => (
@@ -955,35 +974,35 @@ export function AnnotationApp() {
               <div className="section-heading">
                 <div>
                   <h2 id="new-text-title">新建文字标注</h2>
-                  <p>输入正文或从 PDF 提取文字，再进入区间标注页面。</p>
+                  <p>输入正文或从 PDF、Word、TXT 提取文字，再进入区间标注页面。</p>
                 </div>
                 <button className="text-button" type="button" onClick={() => setTextFormOpen(false)}>取消</button>
               </div>
               <div className="pdf-import-row">
                 <div>
-                  <strong>从 PDF 导入</strong>
-                  <span>支持含可复制文字的 PDF，最大 50 MB；扫描件需要先完成 OCR。</span>
+                  <strong>从文件导入</strong>
+                  <span>支持 PDF、Word（.doc / .docx，最大 50 MB）和 TXT（最大 5 MB）。扫描件需要先完成 OCR。</span>
                 </div>
                 <button
                   className="secondary-button"
                   type="button"
-                  disabled={pdfImporting || uploading === "text"}
-                  onClick={() => pdfInputRef.current?.click()}
+                  disabled={documentImporting || uploading === "text"}
+                  onClick={() => documentInputRef.current?.click()}
                 >
-                  {pdfImporting ? "正在提取…" : "选择 PDF"}
+                  {documentImporting ? "正在提取…" : "导入文件"}
                 </button>
               </div>
-              {pdfNotice ? <p className="pdf-import-notice" aria-live="polite">{pdfNotice}</p> : null}
+              {documentNotice ? <p className="pdf-import-notice" aria-live="polite">{documentNotice}</p> : null}
               <label>
                 项目名称
                 <input value={textTitle} placeholder="可选" onChange={(event) => setTextTitle(event.currentTarget.value)} />
               </label>
               <label>
                 正文
-                <textarea value={textDraft} placeholder="粘贴需要标注的文字，或从 PDF 导入" onChange={(event) => setTextDraft(event.currentTarget.value)} />
+                <textarea value={textDraft} placeholder="粘贴需要标注的文字，或从 PDF、Word、TXT 导入" onChange={(event) => setTextDraft(event.currentTarget.value)} />
               </label>
               <div className="form-actions">
-                <button className="primary-button" type="button" disabled={pdfImporting || uploading === "text"} onClick={() => void createTextProject()}>
+                <button className="primary-button" type="button" disabled={documentImporting || uploading === "text"} onClick={() => void createTextProject()}>
                   {uploading === "text" ? "正在创建…" : "创建并开始"}
                 </button>
               </div>
@@ -1001,11 +1020,11 @@ export function AnnotationApp() {
             {projects.length ? (
               <div className="project-list">
                 {projects.map((project) => (
+                  <div className="project-list-item" key={project.id} onKeyDown={(event) => { if (event.key === "Escape") setDeleteCandidate(""); }}>
                   <button
                     className="project-row"
                     type="button"
-                    key={project.id}
-                    disabled={opening === project.id}
+                    disabled={opening !== "" || deleting !== ""}
                     onClick={() => void openProject(project.id)}
                   >
                     <span className="project-type">{modalityCopy[project.modality].name.replace("标注", "")}</span>
@@ -1015,6 +1034,25 @@ export function AnnotationApp() {
                     </span>
                     <span className="project-time">{opening === project.id ? "正在打开…" : formatTime(project.updatedAt)}</span>
                   </button>
+                  {deleteCandidate === project.id ? <div className="project-delete-confirm" role="group" aria-label={`确认删除“${project.title}”`}>
+                    <span>删除此记录？<small>不可恢复，素材保留</small></span>
+                    <button type="button" disabled={deleting !== ""} onClick={() => void deleteProject(project)}>{deleting === project.id ? "删除中…" : "确认删除"}</button>
+                    <button type="button" disabled={deleting !== ""} onClick={() => setDeleteCandidate("")}>取消</button>
+                  </div> : <button
+                    className="project-delete-button"
+                    type="button"
+                    title={`删除“${project.title}”`}
+                    aria-label={`删除“${project.title}”的标注记录`}
+                    disabled={deleting !== "" || opening !== ""}
+                    onClick={() => setDeleteCandidate(project.id)}
+                  >
+                    {deleting === project.id ? <span aria-live="polite">…</span> : (
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6" />
+                      </svg>
+                    )}
+                  </button>}
+                  </div>
                 ))}
               </div>
             ) : <EmptyProjects />}
@@ -1064,7 +1102,8 @@ export function AnnotationApp() {
               ) : null}
               {activeProject.modality === "video" && mediaSample ? (
                 <Suspense fallback={<EngineLoading />}>
-                  <VideoAnnotator
+                  <MediaAnnotator
+                    modality="video"
                     key={`${activeProject.id}:${activeProject.revision}`}
                     ref={mediaRef}
                     samples={[mediaSample]}
@@ -1079,7 +1118,8 @@ export function AnnotationApp() {
               ) : null}
               {activeProject.modality === "audio" && mediaSample ? (
                 <Suspense fallback={<EngineLoading />}>
-                  <AudioAnnotator
+                  <MediaAnnotator
+                    modality="audio"
                     key={`${activeProject.id}:${activeProject.revision}`}
                     ref={mediaRef}
                     samples={[mediaSample]}

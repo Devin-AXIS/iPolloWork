@@ -16,6 +16,8 @@ let previousEnv: Record<string, string | undefined> = {};
 
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
   for (const [key, value] of Object.entries(previousEnv)) {
     if (value === undefined) delete process.env[key];

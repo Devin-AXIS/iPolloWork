@@ -19,7 +19,7 @@ export default {
       name: "Wrap engine cards without clipping their content",
       run: async (ctx) => {
         await ctx.prove("The engine cards wrap to fit a narrow project dialog without clipping content", {
-          voiceover: "窗口变窄时，引擎卡片会自动换行，第三张卡片会以相同尺寸落在下一行；名称、安装状态和单选标记都不会跑出卡片边界。",
+          voiceover: "窗口变窄时，引擎卡片会自动换行，第二张卡片会以相同尺寸落在下一行；名称、安装状态和单选标记都不会跑出卡片边界。",
           action: async () => {
             await ctx.eval(`(() => {
               localStorage.setItem('ipollowork.react.settings.theme-mode', 'light');
@@ -39,7 +39,7 @@ export default {
               label: "app content without a startup overlay",
             });
             await ctx.client.send("Emulation.setDeviceMetricsOverride", {
-              width: 720,
+              width: 460,
               height: 900,
               deviceScaleFactor: 1,
               mobile: false,
@@ -55,7 +55,7 @@ export default {
             });
             await ctx.waitFor(`(() => {
               const cards = [...document.querySelectorAll('[data-testid=project-engine-option]')];
-              return cards.length === 3 && cards[2].getBoundingClientRect().top > cards[0].getBoundingClientRect().bottom;
+              return cards.length === 2 && cards[1].getBoundingClientRect().top > cards[0].getBoundingClientRect().bottom;
             })()`, {
               timeoutMs: 10_000,
               label: "responsive engine card wrap",
@@ -85,17 +85,17 @@ export default {
               };
             })()`);
             const { dialog, cards, viewportWidth } = result;
-            ctx.assert(cards.length === 3, `Expected three engine cards, found ${cards.length}.`);
+            ctx.assert(cards.length === 2, `Expected two engine cards, found ${cards.length}.`);
             ctx.assert(cards.every((card) => card.width >= 204 && card.height >= 119), "Every engine card should retain its minimum readable size.");
-            ctx.assert(Math.abs(cards[0].width - cards[1].width) <= 1, "Cards on the first row should share the available width evenly.");
-            ctx.assert(Math.abs(cards[2].width - cards[0].width) <= 1 && Math.abs(cards[2].height - cards[0].height) <= 1 && cards[2].top > cards[0].bottom, "The final card should wrap to the next row without changing size.");
+            ctx.assert(Math.abs(cards[0].width - cards[1].width) <= 1, "Cards should share the available width evenly.");
+            ctx.assert(Math.abs(cards[1].width - cards[0].width) <= 1 && Math.abs(cards[1].height - cards[0].height) <= 1 && cards[1].top > cards[0].bottom, "The final card should wrap to the next row without changing size.");
             ctx.assert(cards.every((card) => card.contentLeft >= card.left && card.contentRight <= card.right), "Visible card content should remain inside every card boundary.");
             ctx.assert(dialog.left >= 16 && dialog.right <= viewportWidth - 16, "The project dialog should remain inside the narrow viewport.");
           },
           screenshot: {
             name: "new-project-engine-cards-responsive",
-            requireText: ["OpenCode", "DeepSeek Harness", "Codex Harness"],
-            rejectText: ["Loading...", "Something went wrong", "正在加载", "出了点问题"],
+            requireText: ["OpenCode", "DeepSeek Harness"],
+            rejectText: ["Codex Harness", "Loading...", "Something went wrong", "正在加载", "出了点问题"],
           },
         });
       },

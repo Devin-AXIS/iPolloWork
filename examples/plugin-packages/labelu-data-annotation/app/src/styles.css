@@ -6,6 +6,22 @@
   text-rendering: optimizeLegibility;
 }
 
+.media-selection-player { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; overflow: auto; }
+.editor-engine .labelu-audio-editor > :nth-child(3) { min-height: 0; }
+.media-selection-player > .labelu-audio-wrapper,
+.media-selection-player > .labelu-video-wrapper { flex: 1; min-height: 0; }
+.media-drag-panel { order: -1; flex: 0 0 auto; padding: 12px 20px; background: #fff; border-bottom: 1px solid #e5e7eb; }
+.media-drag-heading { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; font-size: 13px; }
+.media-drag-heading span, .media-drag-notice { color: #6b7280; font-size: 12px; }
+.media-drag-track { position: relative; height: 48px; margin: 10px 0 4px; border: 1px solid #cbd5e1; border-radius: 4px; background: #f1f5f9; cursor: crosshair; user-select: none; touch-action: none; }
+.media-drag-track:focus-visible { outline: 2px solid #2563eb; outline-offset: 2px; }
+.media-drag-track[aria-disabled="true"] { opacity: .5; cursor: default; }
+.media-drag-tick { position: absolute; top: 4px; transform: translateX(-50%); font-size: 11px; color: #475569; pointer-events: none; }
+.media-drag-tick:first-child { transform: none; }
+.media-drag-tick:nth-child(5) { transform: translateX(-100%); }
+.media-drag-preview { position: absolute; inset-block: 0; background: #2563eb33; border: 1px solid #2563eb; pointer-events: none; }
+.media-drag-notice { min-height: 18px; }
+
 * {
   box-sizing: border-box;
 }
@@ -490,14 +506,23 @@ textarea:focus-visible {
   gap: 12px;
   min-height: 62px;
   border: 0;
-  border-bottom: 1px solid #edf0f4;
   padding: 10px 14px;
   background: #ffffff;
   text-align: left;
   cursor: pointer;
 }
 
-.project-row:last-child {
+.project-list-item { display: flex; align-items: center; border-bottom: 1px solid #edf0f4; }
+.project-list-item .project-row { flex: 1; min-width: 0; }
+.project-delete-button { display: grid; place-items: center; flex: 0 0 36px; height: 36px; margin-right: 12px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #64748b; cursor: pointer; }
+.project-delete-button:hover:not(:disabled) { color: #dc2626; background: #fef2f2; }
+.project-delete-button:disabled { opacity: .45; cursor: default; }
+.project-delete-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 12px; }
+.project-delete-confirm small { display: block; color: #64748b; }
+.project-delete-confirm button { border: 1px solid #dbe2ea; border-radius: 6px; padding: 6px 8px; background: white; cursor: pointer; }
+.project-delete-confirm button:first-of-type { color: #dc2626; border-color: #fecaca; }
+.project-delete-confirm button:disabled { opacity: .5; cursor: default; }
+.project-list-item:last-child {
   border-bottom: 0;
 }
 

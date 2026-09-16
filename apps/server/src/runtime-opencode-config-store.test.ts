@@ -4,10 +4,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { addMcp, listMcp, setMcpEnabled } from "./mcp.js";
 import { buildiPolloWorkRuntimeConfig } from "./ipollowork-runtime-config.js";
-import { readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
+import { disposeiPolloWorkWorkspaceConfigStore, readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import { registerOpencodePluginBinding, unregisterOpencodePluginBinding } from "./opencode-plugin-projection.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import {
+  disposeRuntimeOpencodeConfigStore,
   onRuntimeOpencodeConfigWrite,
   readRuntimeProviderChannels,
   readRuntimeOpencodeConfig,
@@ -51,8 +52,12 @@ async function withWorkspace(fn: (input: { root: string; config: ServerConfig })
   try {
     await fn({ root, config: serverConfig(root, dbPath) });
   } finally {
+    await disposeRuntimeOpencodeConfigStore(serverConfig(root, dbPath));
+    await disposeiPolloWorkWorkspaceConfigStore(serverConfig(root, dbPath));
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
+    // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+    if (process.platform === "win32") Bun.gc(true);
     await rm(root, { recursive: true, force: true });
   }
 }

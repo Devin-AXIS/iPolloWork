@@ -41,8 +41,20 @@ it("ships the complete offline annotation runtime in desktop extraResources", as
   assert.ok(!resource.filter.some((pattern) => minimatch("node_modules/example/index.js", pattern)));
 });
 
+it("excludes stale Codex archives and checksums from every installer", async () => {
+  const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
+  for (const platform of ["mac", "linux", "win"]) {
+    const resource = config[platform].extraResources.find((entry) => entry.to === "engine-packs");
+    assert.ok(resource);
+    for (const suffix of [".tar.gz", ".tar.gz.sha256"]) {
+      assert.equal(resource.filter.some((pattern) => minimatch(`ipollowork-engine-codex-harness-windows-x64-0.149.0${suffix}`, pattern)), false);
+    }
+    assert.ok(resource.filter.some((pattern) => minimatch("ipollowork-engine-deepseek-harness-windows-x64-0.1.0-rc.6.tar.gz.sha256", pattern)));
+  }
+});
+
 it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
-  const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
+  const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
     readFile(new URL("./engine-package-manager.mjs", import.meta.url), "utf8"),
@@ -54,8 +66,6 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
     readFile(new URL("../../server/src/stdio-json-rpc-runtime.ts", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8"),
     readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../scripts/prepare-codex-runtime.mjs", import.meta.url), "utf8"),
-    readFile(new URL("../codex-runtime/package.json", import.meta.url), "utf8"),
     readFile(new URL("../../../pnpm-workspace.yaml", import.meta.url), "utf8"),
     readFile(new URL("../../../patches/@electron__osx-sign@1.3.1.patch", import.meta.url), "utf8"),
   ]);
@@ -65,8 +75,8 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
   const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";
   const windowsConfig = builderConfig.match(/\r?\nwin:\r?\n[\s\S]*$/)?.[0] ?? "";
-  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-engine-\*\.tar\.gz\.sha256/);
-  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-engine-\*\.tar\.gz"\s*$/m);
+  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-engine-deepseek-harness-\*\.tar\.gz\.sha256/);
+  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-engine-deepseek-harness-\*\.tar\.gz"\s*$/m);
   assert.match(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
@@ -75,7 +85,7 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(managerSource, /IPOLLOWORK_DSH_CLI/);
   assert.match(managerSource, /IPOLLOWORK_DSH_NODE_BIN/);
   assert.match(managerSource, /IPOLLOWORK_DSH_HOST_PLUGIN/);
-  assert.match(managerSource, /IPOLLOWORK_CODEX_CLI/);
+  assert.doesNotMatch(managerSource, /IPOLLOWORK_CODEX_CLI/);
   assert.match(managerSource, /engine-packs/);
   assert.match(managerSource, /checksum verification failed/);
   assert.match(managerSource, /bundledExpectedSha/);
@@ -89,7 +99,7 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.doesNotMatch(devSource, /prepare-codex-runtime\.mjs/);
   assert.match(packageSource, /prepare-dsh-runtime\.mjs/);
   assert.match(packageSource, /node-runtime/);
-  assert.match(packageSource, /prepare-codex-runtime\.mjs/);
+  assert.doesNotMatch(packageSource, /codex-runtime|@openai\/codex|codex-harness/);
   assert.match(packageSource, /--clean/);
   assert.match(windowsPackageSource, /package-engine-runtime\.mjs/);
   assert.match(macPackageSource, /package-engine-runtime\.mjs/);
@@ -101,9 +111,6 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(afterSignSource, /notarytool", "log"/);
   assert.match(desktopBuildWorkflow, /package:engine-runtimes/);
   assert.match(stdioRuntimeSource, /windowsHide: true/);
-  assert.match(codexPrepareSource, /Codex native Windows runtime was not installed/);
-  assert.match(codexPrepareSource, /CI: process\.env\.CI \|\| "1"/);
-  assert.match(codexRuntimeManifest, /"packageManager": "pnpm@11\.4\.0"/);
   assert.match(workspaceConfig, /@electron\/osx-sign@1\.3\.1.*@electron__osx-sign@1\.3\.1\.patch/);
   assert.match(osxSignPatch, /maxConcurrentFileOperations = 64/);
   assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
@@ -154,9 +161,7 @@ it("keeps native engine archives outside the notarized macOS app while retaining
   const enginePacksPath = path.join(appPath, "Contents", "Resources", "engine-packs");
   await mkdir(enginePacksPath, { recursive: true });
   const dshChecksum = path.join(enginePacksPath, "ipollowork-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz.sha256");
-  const codexChecksum = path.join(enginePacksPath, "ipollowork-engine-codex-harness-macos-arm64-1.0.0.tar.gz.sha256");
   await writeFile(dshChecksum, `${"a".repeat(64)}  dsh.tar.gz\n`);
-  await writeFile(codexChecksum, `${"b".repeat(64)}  codex.tar.gz\n`);
 
   try {
     assert.doesNotThrow(() => assertMacEngineTrustFiles(appPath));

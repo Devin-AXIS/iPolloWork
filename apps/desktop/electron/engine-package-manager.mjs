@@ -16,12 +16,10 @@ import {
 } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { compareVersions } from "./updater.mjs";
 
 const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
-const CODEX_ENGINE_ID = "codex-harness";
-const OPTIONAL_ENGINE_IDS = new Set([DSH_ENGINE_ID, CODEX_ENGINE_ID]);
+const OPTIONAL_ENGINE_IDS = new Set([DSH_ENGINE_ID]);
 const ENGINE_PACK_REQUEST_TIMEOUT_MS = 15_000;
 const ENGINE_PACK_IDLE_TIMEOUT_MS = 30_000;
 const ENGINE_PACK_GITHUB_MIRRORS = [
@@ -107,30 +105,28 @@ function officialCommandDirectories(platform, env, homeDir) {
   ], platform);
 }
 
-function officialPackageRelativePath(descriptor) {
-  return descriptor.id === DSH_ENGINE_ID
-    ? path.join("@deepseek-ai", "dsh", "lib", "bin.js")
-    : path.join("@openai", "codex", "bin", "codex.js");
+function officialPackageRelativePath() {
+  return path.join("@deepseek-ai", "dsh", "lib", "bin.js");
 }
 
-function officialPackageEntrypoints(descriptor, commandPath, platform) {
+function officialPackageEntrypoints(commandPath, platform) {
   const commandDirectory = path.dirname(commandPath);
   const moduleRoots = [path.join(commandDirectory, "node_modules")];
   if (platform !== "win32") {
     moduleRoots.push(path.resolve(commandDirectory, "..", "lib", "node_modules"));
   }
-  return moduleRoots.map((root) => path.join(root, officialPackageRelativePath(descriptor)));
+  return moduleRoots.map((root) => path.join(root, officialPackageRelativePath()));
 }
 
-async function normalizeOfficialRuntimePath(descriptor, executablePath, platform) {
+async function normalizeOfficialRuntimePath(executablePath, platform) {
   const resolvedPath = await realpath(executablePath).catch(() => executablePath);
   const wrapperExtension = path.extname(resolvedPath).toLowerCase();
   const requiresPackageEntrypoint = platform === "win32"
     && [".cmd", ".bat", ".ps1"].includes(wrapperExtension);
   if (requiresPackageEntrypoint) {
     for (const candidate of [
-      ...officialPackageEntrypoints(descriptor, executablePath, platform),
-      ...officialPackageEntrypoints(descriptor, resolvedPath, platform),
+      ...officialPackageEntrypoints(executablePath, platform),
+      ...officialPackageEntrypoints(resolvedPath, platform),
     ]) {
       if (await pathExists(candidate)) return realpath(candidate).catch(() => candidate);
     }
@@ -139,21 +135,13 @@ async function normalizeOfficialRuntimePath(descriptor, executablePath, platform
   return await pathExists(resolvedPath) ? resolvedPath : null;
 }
 
-function looksLikeOfficialRuntime(descriptor, executablePath) {
-  const normalizedPath = executablePath.replaceAll("\\", "/").toLowerCase();
-  if (descriptor.id === DSH_ENGINE_ID) {
-    return normalizedPath.includes("/node_modules/@deepseek-ai/dsh/");
-  }
-  return normalizedPath.includes("/node_modules/@openai/codex/")
-    || /\/[^/]+\.app\/contents\/resources\/codex(?:\.exe)?$/.test(normalizedPath)
-    || normalizedPath.includes("/windowsapps/openai.codex_")
-    || /\/appdata\/local\/openai\/codex\/bin\/[^/]+\/codex\.exe$/.test(normalizedPath)
-    || normalizedPath.includes("/.local/share/codex/");
+function looksLikeOfficialRuntime(executablePath) {
+  return executablePath.replaceAll("\\", "/").toLowerCase().includes("/node_modules/@deepseek-ai/dsh/");
 }
 
-async function externalEngineSource(descriptor, executablePath, fallbackSource) {
+async function externalEngineSource(executablePath, fallbackSource) {
   const resolvedPath = await realpath(executablePath).catch(() => executablePath);
-  return looksLikeOfficialRuntime(descriptor, resolvedPath) ? "official" : fallbackSource;
+  return looksLikeOfficialRuntime(resolvedPath) ? "official" : fallbackSource;
 }
 
 async function directoryEntries(root) {
@@ -165,7 +153,7 @@ async function directoryEntries(root) {
   }
 }
 
-async function officialGlobalPackageEntrypoints(descriptor, platform, env, homeDir) {
+async function officialGlobalPackageEntrypoints(platform, env, homeDir) {
   const explicitPrefix = env.NPM_CONFIG_PREFIX?.trim();
   const moduleRoots = platform === "win32"
     ? [
@@ -190,73 +178,15 @@ async function officialGlobalPackageEntrypoints(descriptor, platform, env, homeD
       if (entry.isDirectory()) moduleRoots.push(path.join(globalRoot, entry.name, "node_modules"));
     }
   }
-  const relativePath = officialPackageRelativePath(descriptor);
+  const relativePath = officialPackageRelativePath();
   return uniqueDirectories(moduleRoots, platform).map((root) => path.join(root, relativePath));
 }
 
-async function codexClientCandidates(platform, env, homeDir) {
-  if (platform === "darwin") {
-    return [
-      "/Applications/Codex.app/Contents/Resources/codex",
-      "/Applications/ChatGPT.app/Contents/Resources/codex",
-      path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex"),
-      path.join(homeDir, "Applications", "ChatGPT.app", "Contents", "Resources", "codex"),
-    ];
-  }
-  if (platform !== "win32") return [];
-
-  const candidates = [
-    env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "Microsoft", "WindowsApps", "codex.exe"),
-    homeDir && path.join(homeDir, ".local", "bin", "codex.exe"),
-  ].filter(Boolean);
-  const programFiles = env.ProgramFiles || env.PROGRAMFILES;
-  const windowsApps = programFiles && path.join(programFiles, "WindowsApps");
-  const appEntries = (await directoryEntries(windowsApps))
-    .filter((entry) => entry.isDirectory() && entry.name.toLowerCase().startsWith("openai.codex_"))
-    .sort((left, right) => right.name.localeCompare(left.name, undefined, { numeric: true }));
-  for (const entry of appEntries) {
-    candidates.push(path.join(windowsApps, entry.name, "app", "resources", "codex.exe"));
-  }
-  const localCodexBin = env.LOCALAPPDATA && path.join(env.LOCALAPPDATA, "OpenAI", "Codex", "bin");
-  for (const entry of await directoryEntries(localCodexBin)) {
-    if (entry.isDirectory()) candidates.push(path.join(localCodexBin, entry.name, "codex.exe"));
-  }
-  return candidates;
-}
-
-function probeRuntimeExecutable(executablePath, env) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let stdout = "";
-    const child = spawn(executablePath, ["--version"], {
-      env,
-      windowsHide: true,
-      stdio: ["ignore", "pipe", "ignore"],
-    });
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(0, 1024); });
-    const finish = (result) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      resolve(result);
-    };
-    const timeout = setTimeout(() => {
-      child.kill();
-      finish(false);
-    }, 5_000);
-    child.once("error", () => finish(false));
-    child.once("close", (code) => finish(code === 0
-      ? stdout.trim().match(/^codex-cli\s+(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?:\s|$)/)?.[1] || true
-      : false));
-  });
-}
-
-async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, probeRuntime }) {
+async function resolveOfficialRuntime(descriptor, { platform, env, homeDir }) {
   const resolveCandidate = async (candidate) => {
-    const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
-    if (!normalized || !looksLikeOfficialRuntime(descriptor, normalized)) return null;
-    return await probeRuntime(normalized) ? normalized : null;
+    const normalized = await normalizeOfficialRuntimePath(candidate, platform);
+    if (!normalized || !looksLikeOfficialRuntime(normalized)) return null;
+    return normalized;
   };
   const commandPath = commandOnPath(descriptor.command, {
     env,
@@ -267,27 +197,12 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
     const resolved = await resolveCandidate(commandPath);
     if (resolved) return resolved;
   }
-  for (const candidate of await officialGlobalPackageEntrypoints(descriptor, platform, env, homeDir)) {
+  for (const candidate of await officialGlobalPackageEntrypoints(platform, env, homeDir)) {
     if (!await pathExists(candidate)) continue;
     const resolved = await resolveCandidate(candidate);
     if (resolved) return resolved;
   }
-  if (descriptor.id !== CODEX_ENGINE_ID) return null;
-  const clients = [];
-  for (const candidate of await codexClientCandidates(platform, env, homeDir)) {
-    if (!await pathExists(candidate)) continue;
-    const resolved = await resolveCandidate(candidate);
-    if (resolved) clients.push({ path: resolved, version: await probeRuntime(resolved) });
-  }
-  // Desktop updates leave multiple hash-named builds behind. Directory order
-  // (and copy time) does not identify the newest compatible CLI. Probes are cached.
-  clients.sort((left, right) => {
-    const leftKnown = typeof left.version === "string";
-    const rightKnown = typeof right.version === "string";
-    if (leftKnown && rightKnown) return compareVersions(right.version, left.version) ?? 0;
-    return Number(rightKnown) - Number(leftKnown);
-  });
-  return clients[0]?.path ?? null;
+  return null;
 }
 
 function run(command, args, options = {}) {
@@ -417,7 +332,7 @@ async function copyFileWithProgress(sourcePath, targetPath, onProgress) {
   }
 }
 
-function engineDescriptor(id, versions, platform, architecture) {
+function engineDescriptor(id, versions, platform) {
   if (id === DSH_ENGINE_ID) {
     return {
       id,
@@ -432,32 +347,6 @@ function engineDescriptor(id, versions, platform, architecture) {
       hostPluginRelativePath: "ipollowork-host-tools.mjs",
       prepareScript: "prepare-dsh-runtime.mjs",
       developmentDirectory: "dsh-runtime",
-    };
-  }
-  if (id === CODEX_ENGINE_ID) {
-    return {
-      id,
-      name: "Codex Harness",
-      version: normalizeVersion(versions.codexHarness),
-      command: "codex",
-      cliRelativePath: platform === "win32"
-        ? path.join(
-            "node_modules",
-            "@openai",
-            architecture === "arm64" ? "codex-win32-arm64" : "codex-win32-x64",
-            "vendor",
-            architecture === "arm64" ? "aarch64-pc-windows-msvc" : "x86_64-pc-windows-msvc",
-            "bin",
-            "codex.exe",
-          )
-        : path.join("node_modules", "@openai", "codex", "bin", "codex.js"),
-      environmentKey: "IPOLLOWORK_CODEX_CLI",
-      versionEnvironmentKey: "IPOLLOWORK_CODEX_CLI_VERSION",
-      nodeRelativePath: null,
-      nodeEnvironmentKey: null,
-      hostPluginRelativePath: null,
-      prepareScript: "prepare-codex-runtime.mjs",
-      developmentDirectory: "codex-runtime",
     };
   }
   return null;
@@ -476,22 +365,20 @@ export function createEnginePackageManager(options) {
   const versions = {
     opencode: normalizeVersion(options.versions?.opencode),
     deepseekHarness: normalizeVersion(options.versions?.deepseekHarness),
-    codexHarness: normalizeVersion(options.versions?.codexHarness),
   };
   const root = path.join(options.app.getPath("userData"), "engine-packs");
   const operations = new Map();
   const inFlight = new Map();
-  const runtimeProbeCache = new Map();
   const externalOverrides = new Map();
   const externalDshHostPlugin = environment.IPOLLOWORK_DSH_HOST_PLUGIN?.trim() || null;
   for (const id of OPTIONAL_ENGINE_IDS) {
-    const descriptor = engineDescriptor(id, versions, platform, architecture);
+    const descriptor = engineDescriptor(id, versions, platform);
     const configured = environment[descriptor.environmentKey]?.trim();
     if (configured) externalOverrides.set(id, configured);
   }
 
   function descriptorFor(engineId) {
-    const descriptor = engineDescriptor(String(engineId ?? "").trim(), versions, platform, architecture);
+    const descriptor = engineDescriptor(String(engineId ?? "").trim(), versions, platform);
     if (!descriptor) throw new Error(`Unsupported optional engine: ${engineId}`);
     return descriptor;
   }
@@ -540,20 +427,6 @@ export function createEnginePackageManager(options) {
   function isWithinManagedPackage(descriptor, targetPath) {
     const relative = path.relative(managedPackageRoot(descriptor), targetPath);
     return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-  }
-
-  async function probeRuntime(descriptor, executablePath) {
-    if (descriptor.id !== CODEX_ENGINE_ID) return true;
-    const key = platform === "win32" ? executablePath.toLowerCase() : executablePath;
-    let pending = runtimeProbeCache.get(key);
-    if (!pending) {
-      pending = Promise.resolve(options.probeRuntime
-        ? options.probeRuntime({ engineId: descriptor.id, executablePath })
-        : probeRuntimeExecutable(executablePath, environment))
-        .catch(() => false);
-      runtimeProbeCache.set(key, pending);
-    }
-    return pending;
   }
 
   async function removeManagedPackage(descriptor) {
@@ -647,10 +520,10 @@ export function createEnginePackageManager(options) {
   /** @returns {Promise<{ path: string; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
   async function resolveRuntimeSource(descriptor) {
     const override = externalOverrides.get(descriptor.id);
-    if (override && existsSync(override) && await probeRuntime(descriptor, override)) {
+    if (override && existsSync(override)) {
       return {
         path: override,
-        source: await externalEngineSource(descriptor, override, "custom"),
+        source: await externalEngineSource(override, "custom"),
         nodePath: externalNodePath(descriptor),
       };
     }
@@ -662,7 +535,6 @@ export function createEnginePackageManager(options) {
       platform,
       env: environment,
       homeDir,
-      probeRuntime: (candidate) => probeRuntime(descriptor, candidate),
     });
     if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime)) {
       return { path: officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };

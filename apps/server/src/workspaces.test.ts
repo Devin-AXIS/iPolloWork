@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { BUILT_IN_WORKSPACE_ENGINE_IDS, isBuiltInWorkspaceEngineId } from "@ipollowork/types/workspace";
 
 import { buildWorkspaceInfos, findManagedEngineWorkspace } from "./workspaces.js";
 import { DEFAULT_ENGINE_ID, type WorkspaceInfo } from "./types.js";
@@ -22,6 +23,13 @@ function ws(fields: {
 }
 
 describe("workspace engine selection", () => {
+  test("only accepts OpenCode and DeepSeek Harness for new projects", () => {
+    expect([...BUILT_IN_WORKSPACE_ENGINE_IDS]).toEqual(["opencode", "deepseek-harness"]);
+    expect(isBuiltInWorkspaceEngineId("opencode")).toBe(true);
+    expect(isBuiltInWorkspaceEngineId("deepseek-harness")).toBe(true);
+    expect(isBuiltInWorkspaceEngineId("codex-harness")).toBe(false);
+  });
+
   test("defaults existing workspace configs to OpenCode", () => {
     const [workspace] = buildWorkspaceInfos([{ path: "./workspace" }], "/tmp");
     expect(workspace?.engineId).toBe(DEFAULT_ENGINE_ID);

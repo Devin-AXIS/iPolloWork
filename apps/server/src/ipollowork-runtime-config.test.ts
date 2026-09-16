@@ -13,6 +13,7 @@ import {
   writeRuntimeOpencodeConfig,
   writeRuntimeProviderChannels,
 } from "./runtime-opencode-config-store.js";
+import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
@@ -22,7 +23,12 @@ let previousDb: string | undefined;
 
 afterEach(async () => {
   while (cleanups.length) cleanups.pop()?.();
-  for (const config of configs.splice(0)) await disposeRuntimeOpencodeConfigStore(config);
+  for (const config of configs.splice(0)) {
+    await disposeRuntimeOpencodeConfigStore(config);
+    await disposeiPolloWorkWorkspaceConfigStore(config);
+  }
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
   if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;

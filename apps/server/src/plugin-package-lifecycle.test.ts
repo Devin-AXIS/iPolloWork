@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { copyFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, cp, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1638,11 +1638,12 @@ describe("plugin package lifecycle", () => {
     const base = `http://127.0.0.1:${server.port}`;
     const headers = { authorization: "Bearer token", "content-type": "application/json" };
     const path = `/workspace/${WORKSPACE_ID}/plugin-packages`;
+    let savedProjectId = "";
     try {
       const list = await fetch(base + path, { headers });
       expect(list.status).toBe(200);
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.1" }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.2" }),
       ]) });
       const ui = await fetch(`${base}${path}/labelu-data-annotation/ui/workbench`, { headers });
       expect(ui.status).toBe(200);
@@ -1660,6 +1661,14 @@ describe("plugin package lifecycle", () => {
       const page = await fetch(launch.result.url);
       expect(page.status).toBe(200);
       expect(await page.text()).toContain('<div id="root">');
+      const workbench = new URL(launch.result.url);
+      const created = await fetch(`${workbench.origin}/api/project-text?${workbench.searchParams}`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ title: "升级续标", textContent: "升级前保存的正文。" }),
+      });
+      expect(created.status).toBe(201);
+      savedProjectId = (await created.json()).project.id;
       for (const [suffix, method] of [
         ["", "DELETE"], ["", "PATCH"], ["/resources/labelu-data-annotation-workflow", "PATCH"],
       ]) {
@@ -1688,12 +1697,46 @@ describe("plugin package lifecycle", () => {
     try {
       const list = await fetch(`http://127.0.0.1:${restarted.port}${path}`, { headers });
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, disabledResourceIds: [] }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.2", disabledResourceIds: [] }),
       ]) });
+      const project = await fetch(`http://127.0.0.1:${restarted.port}/experimental/extensions/call`, {
+        method: "POST", headers,
+        body: JSON.stringify({ extensionId: "labelu-data-annotation", action: "get-project", args: { projectId: savedProjectId }, context: { directory: workspaceRoot, workspaceId: WORKSPACE_ID } }),
+      });
+      expect(project.status).toBe(200);
+      expect(await project.json()).toMatchObject({ ok: true, result: { id: savedProjectId, title: "升级续标", textContent: "升级前保存的正文。" } });
     } finally {
       await restarted.stop();
     }
-  });
+  }, 60_000);
+
+  test("upgrades an older bundled annotation package through startup", async () => {
+    const workspaceRoot = await createRoot("ipollowork-annotation-upgrade-");
+    const packageRoot = await createRoot("ipollowork-annotation-previous-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const lifecycle = await import("./plugin-package-lifecycle.js");
+    const bundledRoot = fileURLToPath(new URL("../../../examples/plugin-packages/labelu-data-annotation", import.meta.url));
+    const { manifest } = await lifecycle.previewPluginPackage({ packageRoot: bundledRoot });
+    for (const resource of manifest.resources) {
+      if (resource.path) await cp(join(bundledRoot, resource.path), join(packageRoot, resource.path), { recursive: true });
+    }
+    await writeFile(join(packageRoot, "ipollowork.plugin.json"), JSON.stringify({
+      ...manifest, package: { ...manifest.package, version: "0.3.1" },
+    }));
+    const config = serverConfig(workspaceRoot);
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    const server = await startServer(config);
+    try {
+      const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, {
+        headers: { authorization: "Bearer token" },
+      });
+      expect(response.status).toBe(200);
+      expect((await response.json()).items.find((item: { pluginId: string }) => item.pluginId === "labelu-data-annotation"))
+        .toMatchObject({ version: "0.3.2", previousVersion: "0.3.1", enabled: true });
+    } finally {
+      await server.stop();
+    }
+  }, 60_000);
 
   test("lists and installs every bundled service plugin through the user catalog API", async () => {
     const workspaceRoot = await createRoot("ipollowork-figma-catalog-api-");
@@ -1725,7 +1768,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "image-studio", version: "0.1.29", installedVersion: "0.1.29", updateAvailable: false },
           { pluginId: "video-console", version: "0.2.3", installedVersion: "0.2.3", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "labelu-data-annotation", version: "0.3.1", installedVersion: "0.3.1", updateAvailable: false },
+          { pluginId: "labelu-data-annotation", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
         ],
       });
 
@@ -2005,7 +2048,7 @@ describe("plugin package lifecycle", () => {
     } finally {
       await server.stop();
     }
-  });
+  }, 60_000);
 
   test("registers bundled MCP resources and follows enable and uninstall lifecycle", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");

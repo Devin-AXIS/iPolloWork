@@ -1,4 +1,5 @@
 import { cp, mkdir } from "node:fs/promises";
+import { builtinModules } from "node:module";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,14 +21,14 @@ export default defineConfig({
     },
   }],
   ssr: {
-    noExternal: ["pdfjs-dist"],
+    noExternal: ["pdfjs-dist", "word-extractor", "yauzl", "saxes", "xmlchars", "fd-slicer", "buffer-crc32", "pend"],
   },
   build: {
     emptyOutDir: true,
-    minify: true,
+    minify: false,
     outDir: serviceDist,
     rollupOptions: {
-      external: ["canvas", "path2d"],
+      external: [...builtinModules, /^node:/, "canvas", "path2d"],
       input: resolve(serviceRoot, "data-annotation.ts"),
       output: {
         entryFileNames: "data-annotation.mjs",

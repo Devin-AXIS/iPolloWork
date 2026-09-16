@@ -119,7 +119,7 @@ mac:
     - from: dist-engine-packs
       to: engine-packs
       filter:
-        - "ipollowork-engine-*.tar.gz.sha256"
+        - "ipollowork-engine-deepseek-harness-*.tar.gz.sha256"
     - from: resources/icons/mac
       to: icons/mac
       filter:
@@ -149,8 +149,8 @@ linux:
     - from: dist-engine-packs
       to: engine-packs
       filter:
-        - "ipollowork-engine-*.tar.gz"
-        - "ipollowork-engine-*.tar.gz.sha256"
+        - "ipollowork-engine-deepseek-harness-*.tar.gz"
+        - "ipollowork-engine-deepseek-harness-*.tar.gz.sha256"
     - from: resources/sidecars
       to: sidecars
       filter:
@@ -172,8 +172,8 @@ win:
     - from: dist-engine-packs
       to: engine-packs
       filter:
-        - "ipollowork-engine-*.tar.gz"
-        - "ipollowork-engine-*.tar.gz.sha256"
+        - "ipollowork-engine-deepseek-harness-*.tar.gz"
+        - "ipollowork-engine-deepseek-harness-*.tar.gz.sha256"
     - from: resources/icons
       to: icons
       filter:

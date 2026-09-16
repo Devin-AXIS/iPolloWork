@@ -5,7 +5,6 @@ import { Download, HardDrive, LoaderCircle, ShieldCheck, Trash2 } from "lucide-r
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { formatBytes, isDesktopRuntime } from "@/app/utils";
-import { publicAssetUrl } from "@/app/lib/public-asset";
 import type { EnginePackageInfo } from "@/app/lib/desktop";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
@@ -18,7 +17,6 @@ import projectEngineOpenCodeIcon from "../../session/chat/assets/project-engine-
 
 function engineIcon(engineId: string) {
   if (engineId === "deepseek-harness") return projectEngineDeepSeekIcon;
-  if (engineId === "codex-harness") return publicAssetUrl("ext-openai.svg");
   return projectEngineOpenCodeIcon;
 }
 

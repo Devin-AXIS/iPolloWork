@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 import { addMcp } from "./mcp.js";
 import { exportExtensions, redactMcpConfig, type ExportedMcp, type ExportedSkill } from "./extensions-export.js";
 import { startServer } from "./server.js";
@@ -42,8 +43,11 @@ async function withWorkspace(fn: (input: { root: string; config: ServerConfig })
     await mkdir(join(root, ".git"), { recursive: true });
     await fn({ root, config: serverConfig(root) });
   } finally {
+    await disposeRuntimeOpencodeConfigStore(serverConfig(root));
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
+    // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+    if (process.platform === "win32") Bun.gc(true);
     await rm(root, { recursive: true, force: true });
   }
 }

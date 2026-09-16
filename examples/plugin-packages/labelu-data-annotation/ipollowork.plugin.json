@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "labelu-data-annotation",
   "name": "数据标注实训云",
-  "description": "面向教学实训的多模态数据标注工作台，支持自有素材、PDF 文字导入、预设实训项目和已保存项目续标。",
+  "description": "面向教学实训的多模态数据标注工作台，支持自有素材、PDF、Word 和 TXT 文字导入、预设实训项目和已保存项目续标。",
   "category": "数据与分析",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -11,16 +11,16 @@
     "reference": "https://github.com/opendatalab/labelU-Kit"
   },
   "composer": {
-    "prompt": "数据标注通过右侧数据标注工作台使用。用户点击左侧“数据标注”或右侧控制台中的数据标注入口后，工作台会自动在 iframe 中打开，无需调用浏览器工具或展示本地带令牌地址。不要查找素材、索要路径或从对话创建标注任务。用户在工作台上传素材、输入文字、导入 PDF 或选择内置实训项目。仅在用户明确要求时调用 list-projects 和 get-project，只读查看已保存标注。"
+    "prompt": "数据标注通过右侧数据标注工作台使用。用户点击左侧“数据标注”或右侧控制台中的数据标注入口后，工作台会自动在 iframe 中打开，无需调用浏览器工具或展示本地带令牌地址。不要查找素材、索要路径或从对话创建标注任务。用户在工作台上传素材、输入文字、导入 PDF、Word 或 TXT 或选择内置实训项目。仅在用户明确要求时调用 list-projects 和 get-project，只读查看已保存标注。"
   },
   "package": {
-    "version": "0.3.1",
+    "version": "0.3.2",
     "publisher": {
-      "id": "smart-future-school",
-      "name": "智慧未来学校"
+      "id": "zjy-web222",
+      "name": "zjy-web222"
     },
     "compatibility": {
-      "ipollowork": ">=0.17.28"
+      "ipollowork": ">=0.50.0"
     },
     "updateId": "smart-future-school/data-annotation-training-cloud"
   },
@@ -47,15 +47,15 @@
     "translations": {
       "en": {
         "name": "Data Annotation Training Cloud",
-        "description": "A multimodal data annotation workbench for teaching and training, with user-owned media, PDF text import, prepared exercises, and resumable saved projects.",
+        "description": "A multimodal data annotation workbench for teaching and training, with user-owned media, PDF, Word, and TXT text import, prepared exercises, and resumable saved projects.",
         "category": "Data & Analytics",
         "composer": {
-          "prompt": "Use Data Annotation in the right-side workspace app. The sidebar Data Annotation entry and the console launcher open the workbench automatically in an iframe. Do not use browser tools or expose token-bearing local URLs. Do not search for media, request paths, or create annotation tasks from chat. Users upload media, enter text, import PDF files, or select bundled exercises in the workbench. Only call list-projects or get-project when explicitly asked to inspect saved annotations; chat operations are read-only."
+          "prompt": "Use Data Annotation in the right-side workspace app. The sidebar Data Annotation entry and the console launcher open the workbench automatically in an iframe. Do not use browser tools or expose token-bearing local URLs. Do not search for media, request paths, or create annotation tasks from chat. Users upload media, enter text, import PDF, Word, or TXT files, or select bundled exercises in the workbench. Only call list-projects or get-project when explicitly asked to inspect saved annotations; chat operations are read-only."
         },
         "resources": {
           "labelu-react-app": {
             "label": "Data Annotation Training Workbench",
-            "description": "An independent image, video, audio, and text annotation workbench with PDF text extraction and prepared exercises."
+            "description": "An independent image, video, audio, and text annotation workbench with PDF, Word, and TXT text extraction and prepared exercises."
           },
           "pdfjs-worker": {
             "label": "PDF Text Extraction Engine",
@@ -67,7 +67,7 @@
           },
           "labelu-data-annotation-service": {
             "label": "Data Annotation Training Service",
-            "description": "Starts the independent multimodal workbench, extracts text from imported PDF files, and saves projects and annotations created in the workbench."
+            "description": "Starts the independent multimodal workbench, extracts text from imported PDF, Word, and TXT files, and saves projects and annotations created in the workbench."
           },
           "labelu-data-annotation-workflow": {
             "label": "Data Annotation Training Workflow",
@@ -115,7 +115,7 @@
       "type": "file",
       "id": "labelu-react-app",
       "label": "数据标注实训页面",
-      "description": "独立运行的图片、视频、音频和文字标注页面，支持 PDF 文字提取并包含预设实训项目。",
+      "description": "独立运行的图片、视频、音频和文字标注页面，支持 PDF、Word 和 TXT 文字提取并包含预设实训项目。",
       "path": "app/dist",
       "required": true
     },
@@ -139,7 +139,7 @@
       "type": "local-service",
       "id": "labelu-data-annotation-service",
       "label": "数据标注实训服务",
-      "description": "启动独立多模态工作台，提取用户导入的 PDF 文字，并保存页面中创建的项目与标注结果。",
+      "description": "启动独立多模态工作台，提取用户导入的 PDF、Word 和 TXT 文字，并保存页面中创建的项目与标注结果。",
       "path": "service/dist/data-annotation.mjs",
       "requires": [
         "resource:labelu-react-app",

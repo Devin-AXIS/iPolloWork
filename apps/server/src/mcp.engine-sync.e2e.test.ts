@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { startServer, syncAllWorkspacesRuntimeMcpToEngine } from "./server.js";
-import { readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { disposeRuntimeOpencodeConfigStore, readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 type Served = { port: number; stop: (closeActiveConnections?: boolean) => void | Promise<void> };
@@ -24,6 +24,8 @@ const roots: string[] = [];
 
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
 });
 
@@ -146,6 +148,7 @@ describe("runtime MCP engine sync", () => {
       expectWorkOAuthProxy(addRequest, ipollowork.base, "posthog");
       expect(addRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -179,6 +182,7 @@ describe("runtime MCP engine sync", () => {
       expect(syncIndex).toBeGreaterThan(disposeIndex);
       expectWorkOAuthProxy(mock.requests[syncIndex], ipollowork.base, "posthog");
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -211,6 +215,7 @@ describe("runtime MCP engine sync", () => {
       expect(syncRequest).toBeDefined();
       expectWorkOAuthProxy(syncRequest, ipollowork.base, "posthog", false);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -244,6 +249,7 @@ describe("runtime MCP engine sync", () => {
       expect(disconnectRequest).toBeDefined();
       expect(disconnectRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -299,6 +305,7 @@ describe("runtime MCP engine sync", () => {
       });
       expect(listBody.engineSync?.failures.map((failure) => failure.name)).not.toContain("posthog");
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -332,6 +339,7 @@ describe("runtime MCP engine sync", () => {
         logRequests: false,
       };
 
+      stops.push(() => disposeRuntimeOpencodeConfigStore(config));
       await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({ ...current, mcp: { posthog: POSTHOG_CONFIG } }));
       await writeRuntimeOpencodeConfig(config, "ws_2", (current) => ({ ...current, mcp: { stripe: POSTHOG_CONFIG } }));
 
@@ -342,6 +350,7 @@ describe("runtime MCP engine sync", () => {
       expect(byName.get("posthog")).toContain(`directory=${encodeURIComponent(rootA)}`);
       expect(byName.get("stripe")).toContain(`directory=${encodeURIComponent(rootB)}`);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -373,6 +382,7 @@ describe("runtime MCP engine sync", () => {
         logRequests: false,
       };
 
+      stops.push(() => disposeRuntimeOpencodeConfigStore(config));
       await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({
         ...current,
         mcp: {
@@ -388,6 +398,7 @@ describe("runtime MCP engine sync", () => {
         .map((entry) => (entry.body as { name?: string } | null)?.name);
       expect(syncedNames).toEqual(["enabled"]);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -409,6 +420,7 @@ describe("runtime MCP engine sync", () => {
       const body = await response.json() as { items: Array<{ name: string }> };
       expect(body.items.some((item) => item.name === "posthog")).toBe(true);
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }
@@ -435,6 +447,7 @@ describe("runtime MCP engine sync", () => {
       const body = await response.json() as { code?: string };
       expect(body.code).toBe("opencode_engine_unreachable");
     } finally {
+      while (stops.length) await stops.pop()?.();
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     }

@@ -11,6 +11,8 @@ const roots: string[] = [];
 
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });

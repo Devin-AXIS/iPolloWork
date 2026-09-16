@@ -40,14 +40,10 @@ function run(command, args, cwd = desktopRoot) {
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
 
-function readRuntimeVersion(engineId) {
-  const manifestPath = engineId === "deepseek-harness"
-    ? resolve(desktopRoot, "dsh-runtime", "package.json")
-    : resolve(desktopRoot, "codex-runtime", "package.json");
+function readRuntimeVersion() {
+  const manifestPath = resolve(desktopRoot, "dsh-runtime", "package.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
-  return engineId === "deepseek-harness"
-    ? manifest.dependencies?.["@deepseek-ai/dsh"]
-    : manifest.dependencies?.["@openai/codex"];
+  return manifest.dependencies?.["@deepseek-ai/dsh"];
 }
 
 async function sha256File(targetPath) {
@@ -57,21 +53,15 @@ async function sha256File(targetPath) {
 }
 
 async function packageEngine(engineId, outputDirectory) {
-  const isDsh = engineId === "deepseek-harness";
-  const runtimeDirectoryName = isDsh ? "dsh-runtime" : "codex-runtime";
-  const prepareScript = isDsh ? "prepare-dsh-runtime.mjs" : "prepare-codex-runtime.mjs";
-  const runtimeRoot = resolve(desktopRoot, runtimeDirectoryName);
-  run(process.execPath, [resolve(__dirname, prepareScript)]);
-  if (isDsh) {
-    run(process.execPath, ["--test", resolve(desktopRoot, "electron", "dsh-host-tools.test.mjs")]);
-  }
+  const runtimeRoot = resolve(desktopRoot, "dsh-runtime");
+  run(process.execPath, [resolve(__dirname, "prepare-dsh-runtime.mjs")]);
+  run(process.execPath, ["--test", resolve(desktopRoot, "electron", "dsh-host-tools.test.mjs")]);
 
-  const version = readRuntimeVersion(engineId);
+  const version = readRuntimeVersion();
   if (!version) throw new Error(`Could not resolve ${engineId} version.`);
   const name = `ipollowork-engine-${engineId}-${targetPlatform()}-${targetArch()}-${version}.tar.gz`;
   const archivePath = resolve(outputDirectory, name);
-  const entries = ["package.json", "node_modules"];
-  if (isDsh) entries.push("ipollowork-host-tools.mjs", "node-runtime");
+  const entries = ["package.json", "node_modules", "ipollowork-host-tools.mjs", "node-runtime"];
   for (const entry of entries) {
     if (!existsSync(resolve(runtimeRoot, entry))) throw new Error(`Missing engine runtime entry: ${entry}`);
   }
@@ -83,15 +73,14 @@ async function packageEngine(engineId, outputDirectory) {
 
 const requested = argumentValue("--engine");
 const outputDirectory = resolve(argumentValue("--outdir") || resolve(desktopRoot, "dist-engine-packs"));
-if (process.argv.includes("--clean")) await rm(outputDirectory, { recursive: true, force: true });
-await mkdir(outputDirectory, { recursive: true });
-
 const engineIds = process.argv.includes("--all")
-  ? ["deepseek-harness", "codex-harness"]
+  ? ["deepseek-harness"]
   : requested
     ? [requested]
     : [];
-if (engineIds.length === 0 || engineIds.some((id) => id !== "deepseek-harness" && id !== "codex-harness")) {
-  throw new Error("Use --all or --engine deepseek-harness|codex-harness.");
+if (engineIds.length === 0 || engineIds.some((id) => id !== "deepseek-harness")) {
+  throw new Error("Use --all or --engine deepseek-harness.");
 }
+if (process.argv.includes("--clean")) await rm(outputDirectory, { recursive: true, force: true });
+await mkdir(outputDirectory, { recursive: true });
 for (const engineId of engineIds) await packageEngine(engineId, outputDirectory);

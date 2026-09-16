@@ -5,7 +5,6 @@ import path from "node:path";
 const constants = JSON.parse(await readFile(new URL("../../constants.json", import.meta.url), "utf8"));
 const ENGINES = [
   { id: "deepseek-harness", version: constants.deepseekHarnessVersion },
-  { id: "codex-harness", version: constants.codexHarnessVersion },
 ];
 
 function rowSelector(engineId) {
@@ -18,19 +17,19 @@ export default {
   kind: "user-facing",
   steps: [
     {
-      name: "Packaged app installs both optional engines without a network source",
+      name: "Packaged app installs DeepSeek Harness without a network source",
       run: async (ctx) => {
         await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 30_000,
           label: "packaged desktop control bridge",
         });
 
-        await ctx.prove("The packaged app installs Codex and DeepSeek from its verified offline engine bundles", {
-          voiceover: "Without a working engine download server, the packaged app still shows the real Codex and DeepSeek versions and installs both engines to a ready state from its built-in resources.",
+        await ctx.prove("The packaged app installs DeepSeek from its verified offline engine bundles", {
+          voiceover: "Without a working engine download server, the packaged app still shows the real DeepSeek versions and installs the engine to a ready state from its built-in resources.",
           action: async () => {
             await ctx.navigateHash("/settings/engines");
             await ctx.waitFor(
-              `document.querySelectorAll('[data-testid="engine-package-row"]').length === 3`,
+              `document.querySelectorAll('[data-testid="engine-package-row"]').length === 2`,
               { timeoutMs: 30_000, label: "all engine package rows" },
             );
 
@@ -77,8 +76,8 @@ export default {
           },
           screenshot: {
             name: "packaged-engines-ready-offline",
-            requireText: ["DeepSeek Harness", "Codex Harness"],
-            rejectText: ["unknown", "HTTP 404", "Engine package release metadata could not resolve"],
+            requireText: ["DeepSeek Harness"],
+            rejectText: ["Codex Harness", "unknown", "HTTP 404", "Engine package release metadata could not resolve"],
             hashIncludes: "/settings/engines",
           },
         });

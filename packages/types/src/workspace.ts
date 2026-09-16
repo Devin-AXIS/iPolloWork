@@ -100,7 +100,6 @@ export function stripDeepSeekHarnessInternalContext(value: string): string {
 export const BUILT_IN_WORKSPACE_ENGINE_IDS = [
   DEFAULT_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
-  CODEX_HARNESS_ENGINE_ID,
 ] as const;
 
 export type BuiltInWorkspaceEngineId = (typeof BUILT_IN_WORKSPACE_ENGINE_IDS)[number];

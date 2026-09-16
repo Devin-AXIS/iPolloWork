@@ -11,6 +11,51 @@ const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
+// Minimal DOCX containing two Chinese paragraphs, created independently of the parser.
+const TEXT_DOCX = Buffer.from("UEsDBBQAAAAIAPZVMF3UV5DVpAAAANMAAAARAAAAd29yZC9kb2N1bWVudC54bWyyKbdKyU8uzU3NK1GoyM3JK7Yqt1XKKCkpsNLXL07OSM1NLNbLL0jNq8jNScsvyk0sKdbLL0rXL88vSikoyk9OLS7OzEvPzdE3MjAw089NzMxTsrMpt0rKT6kE0QUgoghElNiF5xelKDxdv+dp69JnW7tfrJ9qow8SBpFFYBKsGFnH8zVrnuzqebZu67O1i59Na8eiXh9mlT7CG3YAAAAA//8DAFBLAwQUAAAACAD2VTBdrG4SWqQAAADcAAAAEwAAAFtDb250ZW50X1R5cGVzXS54bWxcjzEOwjAMRa9SZUXUiIEBtV3YgYELWKnbRsR2lBgot0cFqQPz13tPv7m9E5Vq5iildZNZOgIUPxFjqTWRzBwHzYxWas0jJPR3HAn2u90BvIqR2NYWh+uay5NyDj1VV8x2RqbWwUtzD736B5NYPXN01emHLeXWYUoxeLSgAk/p/5pbHYbgaeUXW8rqqZQgI8d6XRiDbBY9dA18T3UfAAAA//8DAFBLAQIUABQAAAAIAPZVMF3UV5DVpAAAANMAAAARAAAAAAAAAAAAAAAAAAAAAAB3b3JkL2RvY3VtZW50LnhtbFBLAQIUABQAAAAIAPZVMF2sbhJapAAAANwAAAATAAAAAAAAAAAAAAAAANMAAABbQ29udGVudF9UeXBlc10ueG1sUEsFBgAAAAACAAIAgAAAAKgBAAAAAA==", "base64");
+
+test("imports Word and Chinese TXT, preserves paragraphs, and rejects invalid input without saving projects", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-documents-"));
+  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  try {
+    const launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
+    const extract = (name: string, bytes: Buffer, authenticated = true) => fetch(
+      `${launch.origin}/api/extract-document?${authenticated ? launch.searchParams.toString() : ""}&name=${encodeURIComponent(name)}`,
+      { method: "POST", body: Uint8Array.from(bytes) },
+    );
+    for (const [name, bytes, expected] of [
+      ["例子.TXT", Buffer.from("\uFEFF中文正文\r\n第二段"), "中文正文\n第二段"],
+      ["utf16.txt", Buffer.from("\uFEFF中文正文", "utf16le"), "中文正文"],
+      ["gbk.txt", Buffer.from([0xd6, 0xd0, 0xce, 0xc4]), "中文"],
+      ["例子.docx", TEXT_DOCX, "Word 导入测试\n第二段正文\n"],
+    ] as const) {
+      const response = await extract(name, bytes);
+      assert.equal(response.status, 200, name);
+      assert.deepEqual(await response.json(), { textContent: expected, characterCount: expected.length });
+    }
+    for (const [name, bytes, status] of [
+      ["bad.doc", Buffer.from("not Word"), 400],
+      ["bad.docx", Buffer.from("not a ZIP"), 400],
+      ["empty.txt", Buffer.alloc(0), 400],
+      ["blank.txt", Buffer.from(" \n "), 422],
+      ["binary.txt", Buffer.from([0, 0, 1]), 400],
+      ["large.txt", Buffer.alloc(5 * 1024 * 1024 + 1, 65), 413],
+      ["file.exe", Buffer.from("text"), 400],
+    ] as const) {
+      const response = await extract(name, bytes);
+      assert.equal(response.status, status, name);
+      await response.arrayBuffer();
+    }
+    const unauthorized = await extract("valid.txt", Buffer.from("secret"), false);
+    assert.equal(unauthorized.status, 401);
+    await unauthorized.arrayBuffer();
+    assert.deepEqual(await service.actions["list-projects"]({}, { directory: root }), []);
+  } finally {
+    await service.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 function simplePdf(text?: string): Uint8Array<ArrayBuffer> {
   const escapedText = text?.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
   const content = escapedText ? `BT /F1 18 Tf 72 720 Td (${escapedText}) Tj ET` : "q Q";
@@ -287,6 +332,55 @@ test("opens a multimodal workbench and keeps conversational actions read-only", 
     const persisted = JSON.parse(await readFile(projectFile, "utf8")) as { annotations: unknown; schemaVersion: number };
     assert.equal(persisted.schemaVersion, 2);
     assert.deepEqual(persisted.annotations, textAnnotations);
+  } finally {
+    await service.dispose();
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("deletes only selected records across modalities and legacy copies, with authenticated and idempotent requests", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-delete-"));
+  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  try {
+    const launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
+    const base = join(root, ".ipollowork", "plugins", "labelu-data-annotation");
+    await mkdir(join(base, "projects"), { recursive: true });
+    await mkdir(join(base, "tasks"), { recursive: true });
+    const source = join(root, "source.txt");
+    await writeFile(source, "original media stays");
+    const record = (id: string, modality: string) => ({
+      schemaVersion: 2, id, title: id, modality, sourcePath: "source.txt", annotations: {}, labels: [], revision: 0,
+    });
+    for (const modality of ["image", "audio", "video", "text"]) {
+      await writeFile(join(base, "projects", `${modality}.json`), JSON.stringify(record(modality, modality)));
+    }
+    const legacy = { schemaVersion: 1, id: "legacy", title: "legacy", sourcePath: "source.txt", annotations: {} };
+    await writeFile(join(base, "tasks", "legacy.json"), JSON.stringify(legacy));
+    await writeFile(join(base, "tasks", "image.json"), JSON.stringify({ ...legacy, id: "image" }));
+    const endpoint = (id: string) => `${launch.origin}/api/project?${launch.searchParams}&projectId=${encodeURIComponent(id)}`;
+    const unauthorized = await fetch(`${launch.origin}/api/project?projectId=image`, { method: "DELETE" });
+    assert.equal(unauthorized.status, 401);
+    await unauthorized.arrayBuffer();
+    assert.equal((await service.actions["list-projects"]({}, { directory: root })).length, 5);
+    const invalid = await fetch(endpoint("../source"), { method: "DELETE" });
+    assert.equal(invalid.status, 400);
+    await invalid.arrayBuffer();
+    for (const [index, id] of ["image", "audio", "video", "text", "legacy"].entries()) {
+      const removed = await fetch(endpoint(id), { method: "DELETE" });
+      assert.equal(removed.status, 200);
+      assert.deepEqual(await removed.json(), { ok: true });
+      const listed = await service.actions["list-projects"]({}, { directory: root });
+      assert.equal(listed.length, 4 - index);
+      assert.ok(listed.every((item) => item.id !== id));
+      const missing = await fetch(endpoint(id));
+      assert.equal(missing.status, 404);
+      await missing.arrayBuffer();
+      const retry = await fetch(endpoint(id), { method: "DELETE" });
+      assert.equal(retry.status, 200);
+      await retry.arrayBuffer();
+      assert.equal(await readFile(source, "utf8"), "original media stays");
+    }
+    await assert.rejects(access(join(base, "tasks", "image.json")));
   } finally {
     await service.dispose();
     await rm(root, { recursive: true, force: true });

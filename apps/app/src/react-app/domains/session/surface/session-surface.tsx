@@ -2273,6 +2273,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           busy={chatStreaming}
           queuedCount={queuedMessages.length}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
+          inputDisabled={false}
           modelUnavailable={Boolean(props.modelUnavailable)}
           statusLabel={statusLabel(snapshot ?? undefined, chatStreaming)}
           modelPickerOpen={props.modelPickerOpen}

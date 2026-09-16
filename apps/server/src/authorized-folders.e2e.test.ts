@@ -88,6 +88,8 @@ afterEach(async () => {
   while (stops.length) {
     await stops.pop()?.();
   }
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) {
     await rm(roots.pop()!, { recursive: true, force: true });
   }
@@ -125,7 +127,7 @@ describe("authorized folders routes", () => {
     expect(body).toMatchObject({
       folders: ["/shared"],
       hiddenCount: 2,
-      workspaceRoot: root,
+      workspaceRoot: root.replaceAll("\\", "/"),
     });
   });
 

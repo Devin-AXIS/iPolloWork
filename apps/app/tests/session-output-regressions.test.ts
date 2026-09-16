@@ -25,7 +25,8 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain('mediaKindForPath(target.value) === "video"');
     expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("video-console", {');
     expect(sessionPageSource).toContain('intent: "edit-video"');
-    expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("image-studio", {');
+    expect(sessionPageSource).toContain('const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string)');
+    expect(sessionPageSource).toContain('intent: "edit-image"');
     expect(sessionPageSource).toContain('options?.viewer === "video" && videoArtifactSessionId');
   });
   test("empty projects hide task controls and render the no-task state", () => {

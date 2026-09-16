@@ -344,7 +344,7 @@ describe("workspace import preview", () => {
       expect(imported.preview).toEqual(preview);
       expect(await pathExists(auditLogPath("workspace"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -383,7 +383,7 @@ describe("workspace import preview", () => {
       expect(body.code).toBe("invalid_workspace_import_preview_fingerprint");
       expect(await pathExists(auditLogPath("workspace"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -426,7 +426,7 @@ describe("workspace import preview", () => {
       expect(await pathExists(join(workspace, "opencode.jsonc"))).toBe(false);
       expect(await pathExists(auditLogPath("workspace"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -472,7 +472,7 @@ describe("workspace import preview", () => {
       expect(await readFile(join(workspace, ".opencode", "agents", "demo.md"), "utf8")).toBe("Demo agent\n");
       expect(await readFile(auditLogPath("workspace"), "utf8")).toContain("Imported workspace config");
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -543,7 +543,7 @@ describe("workspace import preview", () => {
       expect(await readFile(join(workspace, ".opencode", "tools", "shared.ts"), "utf8")).toBe("shared tool\n");
       expect(await readFile(auditLogPath("workspace"), "utf8")).toContain("Imported workspace config (remove 3)");
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -592,7 +592,7 @@ describe("workspace import preview", () => {
       expect(await pathExists(join(workspace, ".opencode", "commands", "old-command.md"))).toBe(false);
       expect(await pathExists(join(workspace, ".opencode", "agents", "old.md"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -646,7 +646,7 @@ describe("workspace import preview", () => {
       expect(await readFile(join(workspace, "opencode.jsonc"), "utf8")).toContain("changed-after-preview");
       expect(await pathExists(auditLogPath("workspace"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -707,7 +707,7 @@ describe("workspace import preview", () => {
       expect(await readFile(join(workspace, "opencode.jsonc"), "utf8")).toContain("changed-during-approval");
       expect(await pathExists(auditLogPath("workspace"))).toBe(false);
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -744,7 +744,7 @@ describe("workspace import preview", () => {
       const body = await response.json() as { code: string };
       expect(body.code).toBe("invalid_workspace_import_preview_fingerprint");
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {
@@ -794,7 +794,7 @@ describe("workspace import preview", () => {
         "blocks new skill directory\n",
       );
     } finally {
-      server.stop(true);
+      await server.stop(true);
       if (originalDataDir === undefined) {
         delete process.env.IPOLLOWORK_DATA_DIR;
       } else {

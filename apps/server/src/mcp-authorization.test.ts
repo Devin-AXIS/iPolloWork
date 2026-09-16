@@ -12,19 +12,23 @@ import {
   startMcpAuthorization,
 } from "./mcp-authorization.js";
 import { listMcp, listRuntimeMcp } from "./mcp.js";
-import { readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
+import { disposeRuntimeOpencodeConfigStore, readRuntimeOpencodeConfig, writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
+const configs: ServerConfig[] = [];
 
 afterEach(async () => {
+  for (const config of configs.splice(0)) await disposeRuntimeOpencodeConfigStore(config);
+  // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+  if (process.platform === "win32") Bun.gc(true);
   while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
 });
 
 async function testConfig(): Promise<ServerConfig> {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-mcp-authorization-"));
   roots.push(root);
-  return {
+  const config: ServerConfig = {
     host: "127.0.0.1",
     port: 3210,
     token: "token",
@@ -41,6 +45,8 @@ async function testConfig(): Promise<ServerConfig> {
     logFormat: "pretty",
     logRequests: false,
   };
+  configs.push(config);
+  return config;
 }
 
 function json(value: unknown, status = 200): Response {

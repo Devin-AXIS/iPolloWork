@@ -68,13 +68,12 @@ function enginePackageVersions() {
       return {
         opencode: constants.opencodeVersion,
         deepseekHarness: constants.deepseekHarnessVersion,
-        codexHarness: constants.codexHarnessVersion,
       };
     } catch {
       // The settings surface reports unknown versions if constants are absent.
     }
   }
-  return { opencode: "unknown", deepseekHarness: "unknown", codexHarness: "unknown" };
+  return { opencode: "unknown", deepseekHarness: "unknown" };
 }
 const NATIVE_DEEP_LINK_EVENT = "ipollowork:deep-link-native";
 const DESKTOP_RESUMED_EVENT = "ipollowork:desktop-resumed";

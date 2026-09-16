@@ -212,7 +212,8 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(36);
+  expect(actions).toHaveLength(44);
+  expect(actions.filter((action) => action.extensionId === "video-generation")).toHaveLength(8);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
   expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(5);
   expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(15);
@@ -227,6 +228,8 @@ afterEach(async () => {
   while (stops.length) {
     await stops.pop()?.();
   }
+  // Bun/Drizzle statements release Windows file handles when finalized.
+  if (process.platform === "win32") Bun.gc(true);
   while (dirs.length) {
     const dir = dirs.pop();
     if (dir) await rm(dir, { recursive: true, force: true });
@@ -588,6 +591,14 @@ describe("extension and engine host tool gating", () => {
       "openai-image-generation/status",
       "storage/status",
       "storage/upload_workspace_file",
+      "video-generation/import",
+      "video-generation/inspect",
+      "video-generation/jobs",
+      "video-generation/local-edit",
+      "video-generation/read",
+      "video-generation/recover",
+      "video-generation/status",
+      "video-generation/submit",
     ]);
 
     const gated = await callCalendarListEvents(base);

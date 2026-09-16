@@ -4,10 +4,10 @@ export default {
   kind: "user-facing",
   steps: [
     {
-      name: "Official Codex and DeepSeek resources are ready",
+      name: "Official DeepSeek resources are ready",
       run: async (ctx) => {
-        await ctx.prove("Installed official Codex and DeepSeek resources are ready and cannot be uninstalled in iPolloWork", {
-          voiceover: "The engine manager finds the official Codex and DeepSeek installations already on this device, uses them immediately, and explains why iPolloWork does not offer install or uninstall actions for them.",
+        await ctx.prove("Installed official DeepSeek resources are ready and cannot be uninstalled in iPolloWork", {
+          voiceover: "The engine manager finds the official DeepSeek installations already on this device, uses them immediately, and explains why iPolloWork does not offer install or uninstall actions for them.",
           action: async () => {
             await ctx.waitFor("Boolean(window.__ipolloworkControl)", { timeoutMs: 30_000 });
             await ctx.navigateHash("/settings/engines");
@@ -15,21 +15,20 @@ export default {
           assert: async () => {
             await ctx.waitFor(`(() => {
               const rows = [...document.querySelectorAll('[data-testid="engine-package-row"]')];
-              return rows.some((row) => row.getAttribute('data-engine-id') === 'deepseek-harness')
-                && rows.some((row) => row.getAttribute('data-engine-id') === 'codex-harness');
+              return rows.some((row) => row.getAttribute('data-engine-id') === 'deepseek-harness');
             })()`, { timeoutMs: 30_000, label: "engine package rows" });
             await ctx.waitFor(
               `!document.querySelector('[data-testid="startup-logo-animation"]')`,
               { timeoutMs: 30_000, label: "startup overlay dismissed" },
             );
             const engines = await ctx.eval(`(() => [...document.querySelectorAll('[data-testid="engine-package-row"]')]
-              .filter((row) => ['deepseek-harness', 'codex-harness'].includes(row.getAttribute('data-engine-id')))
+              .filter((row) => ['deepseek-harness'].includes(row.getAttribute('data-engine-id')))
               .map((row) => ({
                 id: row.getAttribute('data-engine-id'),
                 text: row.innerText,
                 actions: [...row.querySelectorAll('button')].map((button) => button.innerText.trim()),
               })))()`);
-            ctx.assert(Array.isArray(engines) && engines.length === 2, "Expected both optional engine rows.");
+            ctx.assert(Array.isArray(engines) && engines.length === 1, "Expected the DeepSeek optional engine row.");
             for (const engine of engines) {
               ctx.assert(
                 engine.text.includes("Using official installation") || engine.text.includes("使用官方安装资源"),
@@ -44,7 +43,8 @@ export default {
           },
           screenshot: {
             name: "official-engine-resources",
-            requireText: ["DeepSeek Harness", "Codex Harness"],
+            requireText: ["DeepSeek Harness"],
+            rejectText: ["Codex Harness"],
             hashIncludes: "/settings/engines",
           },
         });

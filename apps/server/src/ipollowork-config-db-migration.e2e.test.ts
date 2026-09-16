@@ -15,7 +15,7 @@ import { mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
+import { disposeiPolloWorkWorkspaceConfigStore, readiPolloWorkWorkspaceConfig } from "./ipollowork-workspace-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 
@@ -51,6 +51,9 @@ async function withSandbox(fn: (input: { root: string; config: ServerConfig }) =
   try {
     await fn({ root, config: serverConfig(root) });
   } finally {
+    await disposeiPolloWorkWorkspaceConfigStore(serverConfig(root));
+    // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.
+    if (process.platform === "win32") Bun.gc(true);
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     await rm(root, { recursive: true, force: true });

@@ -436,13 +436,6 @@ function ProjectEngineOptions({
             icon: projectEngineDeepSeekIcon,
             iconClassName: "h-6 w-[33px]",
           },
-          {
-            id: CODEX_HARNESS_ENGINE_ID,
-            name: t("projects.engine_codex"),
-            description: t("projects.engine_codex_description"),
-            icon: publicAssetUrl("ext-openai.svg"),
-            iconClassName: "size-6 dark:invert",
-          },
         ].map((engine) => {
           const selected = value === engine.id;
           const enginePackage = enginePackages?.get(engine.id);
