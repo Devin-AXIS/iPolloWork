@@ -128,6 +128,9 @@ test("installs and removes a bundled optional engine package without touching Wo
       beforeUninstall: async () => {
         beforeUninstallCalls += 1;
         assert.equal(managerEnvironment.IPOLLOWORK_CODEX_CLI, undefined);
+        await manager.list();
+        assert.equal(managerEnvironment.IPOLLOWORK_CODEX_CLI, undefined, "settings polling must not reactivate an uninstalling engine");
+        if (beforeUninstallCalls === 1) throw new Error("runtime is busy");
         return () => {
           resumeRuntimeCalls += 1;
         };
@@ -165,11 +168,13 @@ test("installs and removes a bundled optional engine package without touching Wo
     assert.equal(managedFallback?.canUninstall, true);
     assert.equal(managedFallback?.installedBytes, null);
 
+    await assert.rejects(manager.uninstall("codex-harness"), /runtime is busy/);
+    assert.ok(managerEnvironment.IPOLLOWORK_CODEX_CLI?.includes(path.join("engine-packs", "codex-harness")), "an interrupted uninstall restores the launch environment");
     const removed = await manager.uninstall("codex-harness");
     assert.equal(removed.installed, false);
     assert.equal(removed.source, "none");
     assert.equal(removed.canUninstall, false);
-    assert.equal(beforeUninstallCalls, 1);
+    assert.equal(beforeUninstallCalls, 2);
     assert.equal(resumeRuntimeCalls, 1);
     assert.equal(await readFile(sentinelPath, "utf8"), '{"kept":true}\n');
     assert.equal(existsSync(path.join(userData, "engine-packs", "codex-harness")), false);
@@ -659,7 +664,7 @@ test("discovers an official Codex client outside the inherited PATH", async () =
   }
 });
 
-test("selects the newest runnable cached Codex version, keeps explicit overrides, and probes each path once", { skip: process.platform !== "win32" }, async () => {
+test("selects the newest runnable cached Codex version, keeps explicit overrides, and bounds failed probes", { skip: process.platform !== "win32" }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-cache-version-test-"));
   const environment = {
     PATH: path.join(root, "empty-bin"),
@@ -699,11 +704,79 @@ test("selects the newest runnable cached Codex version, keeps explicit overrides
     await manager.applyEnvironment();
     await manager.list();
     assert.match(environment.IPOLLOWORK_CODEX_CLI, /222-stable[\\/]codex\.exe$/);
-    assert.deepEqual([...probes.values()], [1, 1, 1, 1, 1]);
+    assert.deepEqual([...probes.values()], [1, 1, 1, 1, 2]);
     const explicit = [...versions.keys()][0];
     const overrideEnv = { ...environment, IPOLLOWORK_CODEX_CLI: explicit };
     await createEnginePackageManager({ ...options, env: overrideEnv }).applyEnvironment();
     assert.equal(overrideEnv.IPOLLOWORK_CODEX_CLI, explicit);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recovers local Codex discovery after transient failures without redundant downloads", async (t) => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-probe-recovery-"));
+  const bin = path.join(root, "Codex.app", "Contents", "Resources");
+  const officialCli = path.join(bin, process.platform === "win32" ? "codex.exe" : "codex");
+  await mkdir(bin, { recursive: true });
+  await writeFile(officialCli, "official-runtime\n");
+  const resolvedCli = await realpath(officialCli);
+  try {
+    for (const recovery of ["retry", "exception", "refresh", "install"]) {
+      await t.test(recovery, async (context) => {
+        context.mock.timers.enable({ apis: ["Date"], now: 1_000_000 });
+        const userData = path.join(root, recovery);
+        const environment = { PATH: bin, APPDATA: path.join(root, "app-data"), LOCALAPPDATA: path.join(root, "local-app-data") };
+        const managedCli = path.join(userData, "engine-packs", "codex-harness", "7.8.9", `${process.platform}-${process.arch}`, codexCliRelativePath());
+        if (recovery === "refresh") {
+          await mkdir(path.dirname(managedCli), { recursive: true });
+          await writeFile(managedCli, "running-managed-runtime\n");
+        }
+        let probes = 0;
+        let available = false;
+        let downloads = 0;
+        const manager = createEnginePackageManager({
+          app: { getPath: () => userData, getVersion: () => "1.0.0", isPackaged: true },
+          desktopRoot: path.join(root, "desktop"),
+          versions: { codexHarness: "7.8.9" },
+          env: environment,
+          homeDir: path.join(root, "home"),
+          probeRuntime: async ({ executablePath }) => {
+            assert.equal(executablePath, resolvedCli);
+            probes += 1;
+            if (recovery === "exception" && probes === 1) throw new Error("temporary spawn failure");
+            return available || ((recovery === "retry" || recovery === "exception") && probes > 1)
+              ? "0.154.0-alpha.6.2" : false;
+          },
+          fetch: async () => { downloads += 1; throw new Error("must reuse the local Codex"); },
+        });
+        await Promise.all([manager.applyEnvironment(), manager.list(), manager.list()]);
+        assert.equal(probes, 2, "concurrent discovery shares a single bounded retry");
+        if (recovery === "retry" || recovery === "exception") {
+          assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCli);
+        } else {
+          assert.equal(environment.IPOLLOWORK_CODEX_CLI, recovery === "refresh" ? managedCli : undefined);
+          available = true;
+          context.mock.timers.tick(29_999);
+          const cached = (await manager.list()).find((engine) => engine.id === "codex-harness");
+          assert.equal(cached.source, recovery === "refresh" ? "downloaded" : "none");
+          assert.equal(probes, 2, "polling does not repeatedly spawn an unavailable executable");
+          if (recovery === "refresh") {
+            context.mock.timers.tick(1);
+          } else {
+            const installed = await manager.install("codex-harness");
+            assert.equal(installed.source, "official", "install rechecks before the failure cache expires");
+          }
+        }
+        const recovered = (await manager.list()).find((engine) => engine.id === "codex-harness");
+        assert.equal(recovered.source, "official");
+        assert.equal(recovered.canInstall, false);
+        assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCli, "the next launch uses the discovered system runtime");
+        assert.equal(downloads, 0);
+        assert.equal(probes, recovery === "retry" || recovery === "exception" ? 2 : 3);
+        if (recovery === "refresh") assert.equal(await readFile(managedCli, "utf8"), "running-managed-runtime\n");
+      });
+    }
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { link, mkdir, readFile, readdir, realpath, rename, stat, unlink, writeFile } from "node:fs/promises";
-import { basename, dirname, extname, join } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, toNamespacedPath } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { MAX_VIDEO_MEDIA_BYTES, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
@@ -20,24 +20,37 @@ export async function avatarCutoutCli() {
   }
   return cli;
 }
-export async function removeAvatarBackground(input: string, output: string, signal: AbortSignal) {
+// CPU matting can take tens of seconds per second of footage. Scale the budget
+// with the clip so long avatars do not inherit the short-clip deadline.
+export function avatarCutoutTimeout(duration = 15) {
+  return Math.max(30 * 60_000, Math.ceil(duration) * 60_000);
+}
+export async function removeAvatarBackground(input: string, output: string, signal: AbortSignal, duration = 15) {
+  input = toNamespacedPath(input);
+  output = toNamespacedPath(output);
   const cli = await avatarCutoutCli();
-  // The raw input lives in renders/, which Studio excludes from its asset list.
   // Publish only the finished WebM so browsers never cache a partial header.
   const partial = join(dirname(input), `.${basename(output)}.${randomUUID()}.webm`);
+  const muxed = partial + ".mux.webm";
   try {
     await execute(process.execPath, [cli, "remove-background", input, "--output", partial, "--quality", "balanced", "--json"], {
-      windowsHide: true, timeout: 30 * 60_000, signal, maxBuffer: 1024 * 1024,
+      windowsHide: true, timeout: avatarCutoutTimeout(duration), signal, maxBuffer: 1024 * 1024,
       env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
     });
     const info = await stat(partial);
     if (!info.size) throw new Error("人物抠像结果为空。");
-    await rename(partial, output);
+    // The cutout CLI emits video only. Copy the alpha video and restore the
+    // original narration; optional audio mapping also supports silent inputs.
+    await execute(binary("ffmpeg"), ["-nostdin", "-v", "error", "-i", partial, "-i", input,
+      "-map", "0:v:0", "-map", "1:a:0?", "-c:v", "copy", "-c:a", "libopus",
+      "-metadata:s:v:0", "alpha_mode=1", muxed], { windowsHide: true, timeout: 120_000, signal });
+    await rename(muxed, output);
   } catch (error) {
     if (signal.aborted) throw error;
     throw new ApiError(422, "avatar_cutout_failed", "数字人视频已生成，但人物抠像未完成。请检查本地抠像工具和模型下载网络后重试保存，无需重新生成。");
   } finally {
     await unlink(partial).catch(() => undefined);
+    await unlink(muxed).catch(() => undefined);
   }
 }
 const MAX_BYTES = MAX_VIDEO_MEDIA_BYTES;
@@ -52,7 +65,7 @@ export const localVideoEditSchema = z.object({
   speed: z.number().min(.5).max(2), volume: z.number().min(0).max(1), crop: cropSchema,
 }).strict().refine(value => value.end - value.start >= .1, "保留时长至少为 0.1 秒。");
 type Edit = z.infer<typeof localVideoEditSchema>;
-const probeSchema = z.object({ streams: z.array(z.object({ codec_type: z.string(), codec_name: z.string().optional(), width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number().positive().max(3600) }) });
+const probeSchema = z.object({ streams: z.array(z.object({ codec_type: z.string(), codec_name: z.string().optional(), width: z.number().optional(), height: z.number().optional() })), format: z.object({ duration: z.coerce.number().positive() }) });
 const receiptSchema = z.object({ fingerprint: z.string(), path: z.string(), resultHash: z.string(), completed: z.boolean() });
 const binary = (name: "ffmpeg" | "ffprobe") => process.env[name === "ffmpeg" ? "HYPERFRAMES_FFMPEG_PATH" : "HYPERFRAMES_FFPROBE_PATH"]?.trim() || name;
 const hashText = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -72,7 +85,7 @@ async function videoFile(workspace: WorkspaceInfo, path: string) {
 }
 async function runBinary(name: "ffmpeg" | "ffprobe", args: string[], timeout: number) {
   try {
-    return await execute(binary(name), args, { windowsHide: true, timeout, maxBuffer: 1024 * 1024, encoding: "utf8" });
+    return await execute(binary(name), args.map(arg => isAbsolute(arg) ? toNamespacedPath(arg) : arg), { windowsHide: true, timeout, maxBuffer: 1024 * 1024, encoding: "utf8" });
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ENOENT") {
       throw new ApiError(503, "video_editor_unavailable", "本地剪辑需要 FFmpeg / FFprobe。请安装视频处理组件后重试；不需要绑定 AI 模型。");

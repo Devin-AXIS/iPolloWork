@@ -1,15 +1,54 @@
 import { afterEach, expect, test } from "bun:test";
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, toNamespacedPath } from "node:path";
 import { promisify } from "node:util";
-import { inspectNarrationDuration, mixAvatarNarration, inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
+import { avatarCutoutTimeout, removeAvatarBackground, inspectNarrationDuration, mixAvatarNarration, inspectLocalVideo, localVideoEditSchema, localVideoFilters, saveLocalVideo } from "./video-local-edit.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
 import type { ServerConfig } from "../types.js";
 const exec = promisify(execFile);
 const roots: string[] = [];
+test.each([true, false])("avatar cutout retains alpha and source audio presence (%s)", async hasAudio => {
+  const fixtureData = await fixture();
+  const root = join(fixtureData.root, ...Array.from({ length: 5 }, () => "long-cutout-透明-".repeat(3)));
+  await mkdir(root, { recursive: true });
+  await copyFile(join(fixtureData.root, "source.mp4"), join(root, "source.mp4"));
+  const workspace = { ...fixtureData.workspace, path: root };
+  expect(root.length).toBeGreaterThan(260);
+  const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";
+  const cli = join(root, "cutout.mjs");
+  // Stand in only for costly model inference; exercise real alpha encoding,
+  // narration remuxing, probing and atomic publication with bundled FFmpeg.
+  await writeFile(cli, `import {execFileSync} from 'node:child_process';
+execFileSync(process.env.HYPERFRAMES_FFMPEG_PATH || 'ffmpeg', ['-v','error','-i',process.argv[3],'-vf','format=rgba,colorkey=red:0.1:0.1','-an','-c:v','libvpx-vp9','-pix_fmt','yuva420p','-threads','1',process.argv[5]], {windowsHide:true});`);
+  const previous = process.env.HYPERFRAMES_CLI_PATH;
+  try {
+    process.env.HYPERFRAMES_CLI_PATH = cli;
+    let input = toNamespacedPath(join(root, "source.mp4"));
+    if (!hasAudio) {
+      await exec(ffmpeg, ["-v", "error", "-i", input, "-an", "-c:v", "copy", toNamespacedPath(join(root, "silent.mp4"))], { windowsHide: true });
+      input = toNamespacedPath(join(root, "silent.mp4"));
+    }
+    await removeAvatarBackground(input, join(root, "avatar.webm"), new AbortController().signal, 4);
+    const media = await inspectLocalVideo(workspace, "avatar.webm");
+    expect(media.hasAudio).toBe(hasAudio);
+    expect(media.duration).toBeCloseTo(4, 1);
+    const alpha = await exec(ffmpeg, ["-v", "error", "-c:v", "libvpx-vp9", "-i", toNamespacedPath(join(root, "avatar.webm")), "-vf", "alphaextract", "-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "gray", "pipe:1"], { encoding: "buffer", windowsHide: true });
+    expect(alpha.stdout.length).toBe(320 * 240);
+    expect(alpha.stdout[80]).toBeLessThan(10);
+    expect(alpha.stdout[240]).toBeGreaterThan(240);
+    expect((await readdir(root)).some(name => name.startsWith(".avatar.webm"))).toBe(false);
+  } finally {
+    if (previous === undefined) delete process.env.HYPERFRAMES_CLI_PATH;
+    else process.env.HYPERFRAMES_CLI_PATH = previous;
+  }
+}, 60_000);
+test("long avatar cutout receives a duration-scaled processing budget", () => {
+  expect(avatarCutoutTimeout(15)).toBe(30 * 60_000);
+  expect(avatarCutoutTimeout(61.3)).toBe(62 * 60_000);
+});
 test("transparent avatar WebM keeps its alpha channel after editing", async () => {
   const { root, config, workspace, edit } = await fixture();
   const ffmpeg = process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg";

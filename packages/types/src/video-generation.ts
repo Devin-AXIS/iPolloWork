@@ -1,6 +1,8 @@
 import { z } from "zod";
 
-export const MAX_AVATAR_SECONDS = 600;
+// Bound persisted job metadata separately from the model's per-call duration.
+export const MAX_AVATAR_SEGMENTS = 10_000;
+export const AVATAR_STANDARD_VIDEO = { resolution: "0.258048MP", shortEdge: 384, longEdge: 672 };
 export const avatarSegmentSchema = z.object({
   start: z.number().nonnegative(), end: z.number().positive(),
   status: z.enum(["pending", "submitting", "running", "succeeded", "failed", "uncertain", "save_failed"]),
@@ -8,9 +10,9 @@ export const avatarSegmentSchema = z.object({
 });
 export type AvatarSegment = z.infer<typeof avatarSegmentSchema>;
 export const avatarSequenceSchema = z.object({
-  duration: z.number().positive().max(MAX_AVATAR_SECONDS), audioPath: z.string(), imagePath: z.string(),
+  duration: z.number().positive(), audioPath: z.string(), imagePath: z.string(),
   ratio: z.enum(["9:16", "16:9"]),
-  segments: z.array(avatarSegmentSchema).min(1).max(64),
+  segments: z.array(avatarSegmentSchema).min(1).max(MAX_AVATAR_SEGMENTS),
   seams: z.array(z.object({ time: z.number(), difference: z.number(), blend: z.number() })).optional(),
 });
 

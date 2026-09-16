@@ -1,13 +1,12 @@
 /** @jsxImportSource react */
 import * as React from "react";
-import { avatarBackgroundForPrompt } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, AVATAR_STANDARD_VIDEO } from "@ipollowork/types/video-generation";
 import { videoAvatarContextSchema, videoJobsResultSchema, videoSubmitResultSchema, videoModelStatusSchema, type VideoAvatarContext, type VideoJob } from "@ipollowork/types/video-generation";
 import { Loader2, RefreshCw, ImagePlus, Check } from "lucide-react";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { videoProjectDirectory } from "./video-project";
 
 type Props = { client: iPolloWorkServerClient; workspaceId: string; workspaceRoot: string; sessionId: string };
@@ -23,7 +22,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   const [source, setSource] = React.useState<VideoAvatarContext | null>(null);
   const [ratio, setRatio] = React.useState("9:16");
   const [duration, setDuration] = React.useState("10");
-  const [prompt, setPrompt] = React.useState("人物面向镜头自然表现，保持人物身份和镜头稳定。");
+  const [prompt, setPrompt] = React.useState("人物面向镜头自然交流，神态放松，自然眨眼和轻微呼吸，表情随语气柔和变化。避免持续露齿笑、夸张张嘴和机械点头，保持人物身份与镜头稳定。");
   const [ready, setReady] = React.useState(false);
   const [checking, setChecking] = React.useState(true);
   const [busy, setBusy] = React.useState(false);
@@ -97,12 +96,12 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     }
   };
   const audioAvailable = Boolean(source?.audioCount && !source.audioIssue);
-  const canSubmit = ready && !checking && Boolean(image && prompt.trim() && source && (useAudio ? audioAvailable : source.content.trim()));
+  const canSubmit = ready && !checking && Boolean(image && prompt.trim() && source && (useAudio ? audioAvailable : source.content.trim() && Number.isFinite(Number(duration)) && Number(duration) >= 5));
   const submit = async () => {
     if (!canSubmit) throw new Error("请先检查人物图片、配音素材和 RunningHub Key 配置。");
     const result = videoSubmitResultSchema.parse(await call("submit", {
       requestId: crypto.randomUUID(), model: "minimax-h3-avatar", operation: "reference", prompt,
-      resolution: "0.589824MP", duration: useAudio ? String(source?.audioDuration) : duration, ratio,
+      resolution: AVATAR_STANDARD_VIDEO.resolution, duration: useAudio ? String(source?.audioDuration) : duration, ratio,
       imageRefs: image, avatarSource: useAudio ? "video-audio" : "video-content",
     }));
     if (mounted.current) { setJobs(current => [result.job, ...current.filter(job => job.id !== result.job.id)]); setMessage(result.job.message); }
@@ -115,7 +114,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     setPreview(previewRef.current);
   };
   return <div className="space-y-4" data-testid="video-avatar-panel">
-    <p className="text-xs leading-relaxed text-muted-foreground">上传人物图片，沿用图片的人物形象与视觉风格生成数字人。</p>
+    <p className="text-xs leading-relaxed text-muted-foreground">上传人物图片，沿用图片的人物形象与视觉风格生成数字人。使用 24GB 标准模式，优先保持人物和场景稳定。</p>
     <div className="space-y-2">
       <label className="block space-y-2 text-xs font-medium">人物图片
         <Input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; if (file) void act(() => upload(file)); }} />
@@ -131,18 +130,18 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
         <Button type="button" variant={!useAudio ? "secondary" : "outline"} aria-pressed={!useAudio} onClick={() => setUseAudio(false)}>不使用配音</Button>
       </div>
       <p role="status" className="text-xs leading-relaxed text-muted-foreground">{checking ? "正在读取当前视频配音…" : source?.audioIssue || (!source ? "暂时无法读取当前视频，请刷新重试。" : source.audioCount ? `当前视频有 ${source.audioCount} 段配音，共 ${source.audioDuration.toFixed(1)} 秒。` : "当前视频没有配音素材。")}</p>
-      <p className="text-xs leading-relaxed">{useAudio ? `数字人视频将与配音时长一致${source?.audioDuration ? `（${source.audioDuration.toFixed(1)} 秒）` : ""}，按视频时间线保留配音。超过 15 秒会自动分段生成并拼接，最多支持 10 分钟；按各段实际用量计费。` : "参考当前视频内容生成数字人，不使用视频配音，可自行选择生成时长。"}</p>
+      <p className="text-xs leading-relaxed">{useAudio ? `数字人视频将与配音时长一致${source?.audioDuration ? `（${source.audioDuration.toFixed(1)} 秒）` : ""}，按视频时间线保留配音。` : "参考当前视频内容生成数字人，不使用视频配音，可自行填写生成时长。"}超过 15 秒会自动分段生成并拼接，逐段检查画面连续性，按各段实际用量计费。</p>
     </fieldset>
     <fieldset className="space-y-2" disabled={busy}>
       <legend className="mb-2 text-xs font-medium">画面尺寸</legend>
       <div className="grid grid-cols-2 gap-2">
-        {(["9:16", "16:9"]).map(value => <button key={value} type="button" aria-pressed={ratio === value} aria-label={value === "9:16" ? "竖屏 576×1024" : "横屏 1024×576"} onClick={() => setRatio(value)} className={`relative flex min-w-0 flex-col items-center gap-2 rounded-xl border px-2 py-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${ratio === value ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:bg-muted/50"}`}>
+        {(["9:16", "16:9"]).map(value => <button key={value} type="button" aria-pressed={ratio === value} aria-label={value === "9:16" ? "竖屏 384×672" : "横屏 672×384"} onClick={() => setRatio(value)} className={`relative flex min-w-0 flex-col items-center gap-2 rounded-xl border px-2 py-3 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 ${ratio === value ? "border-primary bg-primary/5 text-foreground" : "border-border text-muted-foreground hover:bg-muted/50"}`}>
           <span className="flex h-8 items-center"><span className={`block rounded-sm border-2 ${value === "9:16" ? "h-8 w-5" : "h-5 w-8"}`} /></span>
-          <span>{value === "9:16" ? "竖屏 9:16" : "横屏 16:9"}</span><span className="text-[11px] text-muted-foreground">{value === "9:16" ? "576 × 1024" : "1024 × 576"}</span>{ratio === value ? <Check className="absolute right-2 top-2 size-3 text-primary" /> : null}
+          <span>{value === "9:16" ? "竖屏" : "横屏"}</span><span className="text-[11px] text-muted-foreground">{value === "9:16" ? `${AVATAR_STANDARD_VIDEO.shortEdge} × ${AVATAR_STANDARD_VIDEO.longEdge}` : `${AVATAR_STANDARD_VIDEO.longEdge} × ${AVATAR_STANDARD_VIDEO.shortEdge}`}</span>{ratio === value ? <Check className="absolute right-2 top-2 size-3 text-primary" /> : null}
         </button>)}
       </div>
     </fieldset>
-    {!useAudio ? <label className="block space-y-2 text-xs font-medium">生成时长<Select value={duration} onValueChange={value => { if (value) setDuration(value); }} disabled={busy}><SelectTrigger className="w-full" aria-label="数字人视频时长"><SelectValue>{duration} 秒</SelectValue></SelectTrigger><SelectContent>{Array.from({ length: 11 }, (_, i) => String(i + 5)).map(seconds => <SelectItem key={seconds} value={seconds}>{seconds} 秒</SelectItem>)}</SelectContent></Select></label> : null}
+    {!useAudio ? <label className="block space-y-2 text-xs font-medium">生成时长（秒）<Input type="number" min="5" step="0.1" aria-label="数字人视频时长" value={duration} onChange={event => setDuration(event.target.value)} disabled={busy} /></label> : null}
     <label className="block space-y-2 text-xs font-medium">动作描述<Textarea value={prompt} disabled={busy} maxLength={3000} onChange={event => setPrompt(event.target.value)} /></label>
     <p className="text-xs text-muted-foreground">{avatarBackgroundForPrompt(prompt) === "transparent" ? "本次生成：透明背景，仅保留人物。" : "本次生成：按描述保留场景背景。"}如需场景，请在动作描述中明确写出背景。放入画布后，右键人物可选择低层级（背景之上）或高层级（其他元素之上）。</p>
     <div className="space-y-2">
@@ -152,22 +151,26 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     </div>
     {message ? <p role="status" className="break-words text-xs">{message}</p> : null}
     <div className="flex items-center justify-between text-xs">本会话数字人任务<Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
-    {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs">
+    {jobs.map(job => {
+      const preparationFailed = job.avatarSequence?.segments.some(segment => ["failed", "save_failed"].includes(segment.status) && !segment.upstreamId && !segment.path);
+      return <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs">
       <p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p>
       <p className="break-words text-muted-foreground">{job.message}</p>
       {job.avatarSequence ? <div className="space-y-2">
         <p>已完成 {job.avatarSequence.segments.filter(segment => segment.status === "succeeded").length}/{job.avatarSequence.segments.length} 段 · {job.avatarSequence.duration.toFixed(1)} 秒</p>
-        {job.avatarSequence.segments.map((segment, index) => <div key={index} className="flex items-center justify-between gap-2">
+        {job.avatarSequence.segments.map((segment, index) => <div key={index} className="flex flex-wrap items-center justify-between gap-2">
           <span>第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒{segment.status === "succeeded" ? " · 已保存" : ""}</span>
-          {["failed", "save_failed"].includes(job.status) && (segment.status === "failed" || job.status === "save_failed" && job.avatarSequence?.segments.every(item => item.status === "succeeded")) ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("retry-segment", { id: job.id, index }); await refresh(); })}>重试此段（计费）</Button> : null}
+          {segment.status === "failed" && segment.path ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(segment.path))}>预览此段</Button> : null}
+          {["failed", "save_failed"].includes(job.status) && (segment.status === "failed" && Boolean(segment.upstreamId || segment.path) || job.status === "save_failed" && job.avatarSequence?.segments.every(item => item.status === "succeeded")) ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("retry-segment", { id: job.id, index }); await refresh(); })}>重试此段（计费）</Button> : null}
         </div>)}
       </div> : null}
       {job.path ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button> : null}
-      {["uncertain", "save_failed"].includes(job.status) ? <div className="space-y-2">
+      {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">
+        {preparationFailed ? <p className="text-muted-foreground">这一段尚未提交生成。恢复本地准备后继续首次生成，按服务商实际用量计费；已完成片段保留。</p> : null}
         {job.status === "uncertain" && !job.upstreamId && !job.avatarSequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input aria-label="已有服务商任务 ID" placeholder="填写当前片段已有的 RunningHub 任务 ID" value={recoveryIds[job.id] ?? ""} onChange={event => setRecoveryIds(current => ({ ...current, [job.id]: event.target.value }))} /> : null}
-        <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id, ...(recoveryIds[job.id]?.trim() ? { upstreamId: recoveryIds[job.id].trim() } : {}) }); await refresh(); })}>恢复查询或拼接（不重新生成）</Button>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id, ...(recoveryIds[job.id]?.trim() ? { upstreamId: recoveryIds[job.id].trim() } : {}) }); await refresh(); })}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接（不重新生成）"}</Button>
       </div> : null}
-    </div>)}
+    </div>})}
     {preview ? <video controls src={preview} className="max-h-80 w-full rounded-lg" /> : null}
   </div>;
 }

@@ -13,7 +13,7 @@ const requests: Array<Record<string, unknown>> = [];
 const jobs: VideoJob[] = [];
 const longProof = new URLSearchParams(location.search).has("long");
 if (longProof) jobs.push({ id: "31f13c04-a138-4499-b9e4-293796ec07cc", model: "minimax-h3-avatar", operation: "reference", prompt: "长数字人验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: "failed", path: "", upstreamId: "", message: "第 2/5 段失败；第 1 段已保存，可只重试失败片段。", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
-  avatarSequence: {duration:58,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:5},(_,index)=>({start:index*11.5,end:Math.min(58,index*11.5+12.5),status:index===0?"succeeded":index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:index===0?"saved-first.mp4":"",attempt:0}))} });
+  avatarSequence: {duration:58,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:5},(_,index)=>({start:index*11.5,end:Math.min(58,index*11.5+12.5),status:index===0?"succeeded":index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:index===0?"saved-first.mp4":index===1?"rejected-second.mp4":"",attempt:0}))} });
 let savedVoice = JSON.stringify({ provider: "aliyun-bailian", model: "cosyvoice-v3-flash", voiceId: "longanyang", source: "preset", updatedAt: new Date().toISOString() });
 let configured = longProof, hasNarration = longProof;
 let failUpload = false;
@@ -44,7 +44,7 @@ window.fetch = async (input, init) => {
       return json({ok:true,result:{job}});
     }
     if (action === "submit") {
-      const receipt=document.getElementById("submission-receipt"); if(receipt) receipt.textContent=JSON.stringify(args,null,2);
+      const receipt=document.getElementById("submission-receipt"); if(receipt&&!longProof) receipt.textContent=JSON.stringify(args,null,2);
       const job: VideoJob = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/assets/result.mp4", message: "已自动加入当前 Video Studio 素材库（模拟结果，没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0 };
       jobs.unshift(job); return json({ ok: true, result: { job } });
     }
