@@ -1200,6 +1200,24 @@ export function SessionRoute() {
           preferredProviderId: "tokenstar",
         });
       },
+      onSteerDraft: conversation.steerPrompt
+        ? async (draft: ComposerDraft, sessionId: string) => {
+            const targetSessionId = sessionId.trim() || selectedSessionId;
+            if (!targetSessionId) return false;
+            const parts = await draftToParts(
+              draft,
+              selectedWorkspaceRoot,
+              useDesignAiSelectionStore,
+              undefined,
+              { supportsNativeAttachments: selectedModelSupportsAttachments },
+            );
+            await conversation.steerPrompt?.({
+              sessionId: targetSessionId,
+              parts,
+            });
+            return true;
+          }
+        : undefined,
       providerConnectedCount: hasUsableModel
         ? 1
         : sessionProviderAuthSnapshot.connectedProviderIds.length,

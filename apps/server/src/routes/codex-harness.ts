@@ -116,6 +116,7 @@ const WRITE_METHODS = new Set([
   "thread/rollback",
   "thread/shellCommand",
   "turn/start",
+  "turn/steer",
   "turn/interrupt",
 ]);
 

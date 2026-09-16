@@ -468,7 +468,6 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   // Follow-up message UX (only relevant while the agent is busy):
   // - Enter queues the message to send once the agent finishes.
-  // - Cmd/Ctrl+Enter sends immediately (the agent adjusts mid-task).
   // - Escape arms a "Hit Escape again to stop the agent" prompt for 3s;
   //   a second Escape within that window stops the agent.
   const [escapeArmed, setEscapeArmed] = useState(false);
@@ -1899,9 +1898,9 @@ export function ReactSessionComposer(props: ComposerProps) {
               {/*
                 Action area.
                 - Idle: single "Run task" button (sends immediately).
-                - Busy: Stop is the only action that can interrupt the active
-                  run. The send button appends the draft to the queue, and its
-                  badge shows how many follow-ups are waiting.
+                - Busy: one button occupies the primary-action slot. With an
+                  empty draft it stops the run; with content it queues the
+                  follow-up and shows the pending count.
                   Escape arms a "Hit Escape again to stop the agent" prompt.
               */}
               <div className="ml-auto flex min-w-0 shrink-0 items-end gap-1.5 @max-[560px]/composer:gap-1">
@@ -1916,35 +1915,33 @@ export function ReactSessionComposer(props: ComposerProps) {
                         {t("composer.escape_to_stop")}
                       </span>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={props.onStop}
-                      className="mr-1 inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
-                      aria-label={t("composer.stop")}
-                      title={t("composer.stop")}
-                    >
-                      <Square size={12} fill="currentColor" />
-                    </button>
-                    <button
-                      type="button"
-                      onPointerDown={canSend ? handleActionPointerDown : undefined}
-                      onClick={canSend ? handleActionClick : undefined}
-                      disabled={!canSend}
-                      aria-label={t("composer.queue")}
-                      className={`relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors ${
-                        canSend
-                          ? "bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] hover:bg-[var(--dls-accent-hover)]"
-                          : "bg-gray-2 text-gray-10"
-                      }`}
-                      title={t("composer.queue_hint")}
-                    >
-                      <ArrowUp size={15} />
-                      {props.queuedCount > 0 ? (
-                        <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[9px] font-semibold leading-4 text-gray-1 ring-2 ring-[var(--dls-surface)]">
-                          {props.queuedCount > 99 ? "99+" : props.queuedCount}
-                        </span>
-                      ) : null}
-                    </button>
+                    {canSend ? (
+                      <button
+                        type="button"
+                        onPointerDown={handleActionPointerDown}
+                        onClick={handleActionClick}
+                        aria-label={t("composer.queue")}
+                        className="relative inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
+                        title={t("composer.queue_hint")}
+                      >
+                        <ArrowUp size={15} />
+                        {props.queuedCount > 0 ? (
+                          <span className="absolute -right-1.5 -top-1.5 flex min-w-4 items-center justify-center rounded-full bg-gray-12 px-1 text-[9px] font-semibold leading-4 text-gray-1 ring-2 ring-[var(--dls-surface)]">
+                            {props.queuedCount > 99 ? "99+" : props.queuedCount}
+                          </span>
+                        ) : null}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={props.onStop}
+                        className="inline-flex h-8 max-h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--dls-accent)] text-[var(--dls-accent-fg)] transition-colors hover:bg-[var(--dls-accent-hover)]"
+                        aria-label={t("composer.stop")}
+                        title={t("composer.stop")}
+                      >
+                        <Square size={12} fill="currentColor" />
+                      </button>
+                    )}
                   </>
                 ) : (
                   <Tooltip open={emptySubmitHintOpen}>

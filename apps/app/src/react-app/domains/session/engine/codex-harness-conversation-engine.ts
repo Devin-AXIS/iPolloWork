@@ -498,6 +498,30 @@ function codexHarnessConnection(input: {
       selectedAccessModes.set(sessionId, selectedAccessModes.get(request.sessionId) ?? "auto");
       return { sessionId };
     },
+    async steerPrompt(request) {
+      if (request.signal?.aborted) return { sessionId: request.sessionId };
+      let turnId = activeTurns.get(request.sessionId);
+      if (!turnId) {
+        const result = await client.call<{ thread?: unknown }>("thread/read", {
+          threadId: request.sessionId,
+          includeTurns: true,
+        });
+        turnId = activeCodexTurnId(result.thread) ?? undefined;
+      }
+      if (!turnId) throw new Error("The active task can no longer be guided");
+      const prepared = preparePrompt(request.parts);
+      if (prepared.applicationInstructions.length > 0) {
+        throw new Error("This queued task must be sent after the current task finishes");
+      }
+      const result = await client.call<{ turnId: string }>("turn/steer", {
+        threadId: request.sessionId,
+        expectedTurnId: turnId,
+        input: prepared.input,
+        ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
+      });
+      activeTurns.set(request.sessionId, result.turnId);
+      return { sessionId: request.sessionId };
+    },
     async listCommands() {
       return (await listPluginCapabilities())
         .filter((item) => item.type === "command")

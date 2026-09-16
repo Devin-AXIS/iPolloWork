@@ -409,6 +409,7 @@ export interface ConversationEngineConnection {
     reasoningEffort?: string;
   }): Promise<void>;
   sendPrompt(input: ConversationPromptInput): Promise<ConversationPromptResult>;
+  steerPrompt?(input: ConversationPromptInput): Promise<ConversationPromptResult>;
   listCommands(directory?: string): Promise<SlashCommandOption[]>;
   listModes(): Promise<ConversationMode[]>;
   listAccessModes?(input: { sessionId: string; directory?: string }): Promise<ConversationAccessMode[]>;
