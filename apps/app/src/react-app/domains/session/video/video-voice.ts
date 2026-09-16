@@ -1,21 +1,33 @@
+import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { videoProjectDirectory } from "./video-project";
 
 export const VOICEOVER_SETTINGS_FILE = "voiceover.json";
 export const MAX_VOICE_SAMPLE_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3-flash";
+export const DEFAULT_COSYVOICE_VOICE = "longanyang";
 const VIDEO_VOICE_DISPLAY_PREFIX = "Video voice display:";
 
 export type VideoVoiceSource = "preset" | "cloned";
+export type VideoVoiceSelectionMode = "auto" | "manual";
 
-export type VideoVoiceoverSettings = {
+export type VideoVoiceControls = {
+  rate: number;
+  pitch: number;
+  volume: number;
+  instruction: string;
+};
+
+export type VideoVoiceoverSettings = VideoVoiceControls & {
   provider: "aliyun-bailian";
   model: string;
   voiceId: string;
   source: VideoVoiceSource;
+  enabled: boolean;
+  selectionMode: VideoVoiceSelectionMode;
   updatedAt: string;
 };
 
-export type VideoVoiceAiReference = Pick<VideoVoiceoverSettings, "model" | "voiceId"> & {
+export type VideoVoiceAiReference = Pick<VideoVoiceoverSettings, "model" | "voiceId" | "rate" | "pitch" | "volume" | "instruction"> & {
   label: string;
 };
 
@@ -61,6 +73,26 @@ export const BAILIAN_PRESET_VOICES = [
   { id: "longshange_v3", group: "dialect" },
 ] as const;
 
+export const DEFAULT_VIDEO_VOICE_CONTROLS: VideoVoiceControls = {
+  rate: 1,
+  pitch: 1,
+  volume: 50,
+  instruction: "",
+};
+
+export function defaultVideoVoiceoverSettings(now = new Date().toISOString()): VideoVoiceoverSettings {
+  return {
+    provider: "aliyun-bailian",
+    model: DEFAULT_COSYVOICE_MODEL,
+    voiceId: DEFAULT_COSYVOICE_VOICE,
+    source: "preset",
+    enabled: true,
+    selectionMode: "auto",
+    ...DEFAULT_VIDEO_VOICE_CONTROLS,
+    updatedAt: now,
+  };
+}
+
 // Earlier Video Studio builds paired these v1 voices with cosyvoice-v3-flash.
 // Model Studio rejects that combination with its opaque Engine 418 response.
 const LEGACY_PRESET_VOICE_MIGRATIONS: Record<string, (typeof BAILIAN_PRESET_VOICES)[number]["id"]> = {
@@ -97,6 +129,29 @@ export function videoVoiceoverSettingsPath(sessionId: string) {
   return `${videoProjectDirectory(sessionId)}/${VOICEOVER_SETTINGS_FILE}`;
 }
 
+export function videoVoiceoverAvailability(status: unknown, savedContent: string | null) {
+  const configured = isRecord(status)
+    && status.ok === true
+    && isRecord(status.result)
+    && isRecord(status.result.output)
+    && status.result.output.configured === true;
+  const saved = savedContent ? parseVideoVoiceoverSettings(savedContent) : null;
+  return { configured, enabled: configured && saved?.enabled !== false };
+}
+
+export async function readVideoVoiceoverAvailability(
+  client: Pick<iPolloWorkServerClient, "callMedia" | "readWorkspaceFile">,
+  workspaceId: string,
+  sessionId: string,
+  workspaceRoot?: string,
+) {
+  const [status, saved] = await Promise.all([
+    client.callMedia("status", {}, workspaceRoot ? { directory: workspaceRoot } : undefined).catch(() => null),
+    client.readWorkspaceFile(workspaceId, videoVoiceoverSettingsPath(sessionId)).catch(() => null),
+  ]);
+  return videoVoiceoverAvailability(status, saved?.content ?? null);
+}
+
 export function parseVideoVoiceoverSettings(content: string): VideoVoiceoverSettings | null {
   try {
     const value: unknown = JSON.parse(content);
@@ -113,7 +168,23 @@ export function parseVideoVoiceoverSettings(content: string): VideoVoiceoverSett
       || (source !== "preset" && source !== "cloned")
       || typeof updatedAt !== "string" || !updatedAt.trim()
     ) return null;
-    return { provider, model, voiceId, source, updatedAt };
+    const rate = typeof value.rate === "number" && value.rate >= 0.5 && value.rate <= 2 ? value.rate : DEFAULT_VIDEO_VOICE_CONTROLS.rate;
+    const pitch = typeof value.pitch === "number" && value.pitch >= 0.5 && value.pitch <= 2 ? value.pitch : DEFAULT_VIDEO_VOICE_CONTROLS.pitch;
+    const volume = typeof value.volume === "number" && value.volume >= 0 && value.volume <= 100 ? value.volume : DEFAULT_VIDEO_VOICE_CONTROLS.volume;
+    const instruction = typeof value.instruction === "string" ? value.instruction.trim().slice(0, 100) : "";
+    return {
+      provider,
+      model,
+      voiceId,
+      source,
+      enabled: value.enabled !== false,
+      selectionMode: value.selectionMode === "auto" ? "auto" : "manual",
+      rate,
+      pitch,
+      volume,
+      instruction,
+      updatedAt,
+    };
   } catch {
     return null;
   }
@@ -145,7 +216,16 @@ export function parseVideoVoiceDisplayMetadata(text: string): VideoVoiceAiRefere
     const voiceId = readString(value, "voiceId");
     const model = readString(value, "model");
     const label = readString(value, "label");
-    return voiceId && model && label ? { voiceId, model, label } : null;
+    if (!voiceId || !model || !label) return null;
+    return {
+      voiceId,
+      model,
+      label,
+      rate: typeof value.rate === "number" ? value.rate : DEFAULT_VIDEO_VOICE_CONTROLS.rate,
+      pitch: typeof value.pitch === "number" ? value.pitch : DEFAULT_VIDEO_VOICE_CONTROLS.pitch,
+      volume: typeof value.volume === "number" ? value.volume : DEFAULT_VIDEO_VOICE_CONTROLS.volume,
+      instruction: typeof value.instruction === "string" ? value.instruction : "",
+    };
   } catch {
     return null;
   }

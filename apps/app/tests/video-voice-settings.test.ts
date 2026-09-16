@@ -7,6 +7,7 @@ import en from "../src/i18n/locales/en";
 
 import {
   DEFAULT_COSYVOICE_MODEL,
+  defaultVideoVoiceoverSettings,
   BAILIAN_PRESET_VOICES,
   BAILIAN_PRESET_GROUPS,
   MAX_VOICE_SAMPLE_BYTES,
@@ -18,10 +19,24 @@ import {
   validateVoiceSampleFile,
   videoVoiceDisplayMetadata,
   videoVoiceoverSettingsPath,
+  videoVoiceoverAvailability,
   voiceSampleWorkspacePath,
+  type VideoVoiceoverSettings,
 } from "../src/react-app/domains/session/video/video-voice";
 
 describe("video voiceover settings", () => {
+  test("defaults to voiceover only when the sound provider is configured", () => {
+    const available = { ok: true, result: { output: { configured: true } } };
+    const unavailable = { ok: true, result: { output: { configured: false } } };
+    const optedOut = serializeVideoVoiceoverSettings({
+      ...defaultVideoVoiceoverSettings("2026-09-14T00:00:00.000Z"),
+      enabled: false,
+    });
+    expect(videoVoiceoverAvailability(unavailable, null)).toEqual({ configured: false, enabled: false });
+    expect(videoVoiceoverAvailability(available, null)).toEqual({ configured: true, enabled: true });
+    expect(videoVoiceoverAvailability(available, optedOut)).toEqual({ configured: true, enabled: false });
+  });
+
   test("every curated preset has translated labels and survives project persistence unchanged", () => {
     expect(new Set(BAILIAN_PRESET_VOICES.map(voice => voice.id)).size).toBe(BAILIAN_PRESET_VOICES.length);
     for (const voice of BAILIAN_PRESET_VOICES) {
@@ -31,10 +46,7 @@ describe("video voiceover settings", () => {
           expect(Reflect.get(locale, key)).toBeTruthy();
         }
       }
-      const settings = {
-        provider: "aliyun-bailian" as const, model: DEFAULT_COSYVOICE_MODEL,
-        voiceId: voice.id, source: "preset" as const, updatedAt: "2026-09-14T00:00:00.000Z",
-      };
+      const settings: VideoVoiceoverSettings = { ...defaultVideoVoiceoverSettings("2026-09-14T00:00:00.000Z"), voiceId: voice.id, selectionMode: "manual" };
       expect(parseVideoVoiceoverSettings(serializeVideoVoiceoverSettings(settings))).toEqual(settings);
       expect(migrateVideoVoiceoverSettings(settings)).toEqual(settings);
     }
@@ -46,20 +58,18 @@ describe("video voiceover settings", () => {
   });
 
   test("serializes only non-secret project voice data", () => {
-    const content = serializeVideoVoiceoverSettings({
-      provider: "aliyun-bailian",
-      model: "cosyvoice-v3-flash",
+    const settings: VideoVoiceoverSettings = {
+      ...defaultVideoVoiceoverSettings("2026-07-15T10:00:00.000Z"),
       voiceId: "ipw-example",
       source: "cloned",
-      updatedAt: "2026-07-15T10:00:00.000Z",
-    });
-    expect(parseVideoVoiceoverSettings(content)).toEqual({
-      provider: "aliyun-bailian",
-      model: "cosyvoice-v3-flash",
-      voiceId: "ipw-example",
-      source: "cloned",
-      updatedAt: "2026-07-15T10:00:00.000Z",
-    });
+      selectionMode: "manual",
+      rate: 1.15,
+      pitch: 0.95,
+      volume: 62,
+      instruction: "请用温暖亲切的表达方式说。",
+    };
+    const content = serializeVideoVoiceoverSettings(settings);
+    expect(parseVideoVoiceoverSettings(content)).toEqual(settings);
     expect(content).not.toContain("key");
     expect(content).not.toContain("url");
   });
@@ -96,7 +106,7 @@ describe("video voiceover settings", () => {
   });
 
   test("round-trips the voice reference displayed in the AI conversation", () => {
-    const reference = { voiceId: "longanyang", model: DEFAULT_COSYVOICE_MODEL, label: "配音 · 龙安阳" };
+    const reference = { voiceId: "longanyang", model: DEFAULT_COSYVOICE_MODEL, label: "配音 · 龙安阳", rate: 1.1, pitch: 0.95, volume: 58, instruction: "请用温暖亲切的表达方式说。" };
     const metadata = videoVoiceDisplayMetadata(reference);
 
     expect(parseVideoVoiceDisplayMetadata(`Capability context\n${metadata}\nVoice instructions`)).toEqual(reference);

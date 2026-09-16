@@ -138,8 +138,10 @@ import {
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
+  videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
+import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -1659,17 +1661,28 @@ export function SessionRoute() {
           && videoTarget !== "media"
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
-        const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
-          capabilityId: draft.capability?.id,
-          promptText: videoPromptText,
-        });
         const videoTasks = videoSessionTemplates.length > 0
           ? videoSessionTemplates.map((template) => ({ sessionId: template.sessionId, template }))
           : isLegacyVideoTask
             ? [{ sessionId: targetSessionId, template: null }]
             : [];
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          let includeVoiceoverContext = videoDeliveryRequirements.voiceover;
+          const voiceover = selectedWorkspaceEndpoint
+            ? await readVideoVoiceoverAvailability(
+              selectedWorkspaceEndpoint.client,
+              selectedWorkspaceEndpoint.workspaceId,
+              sessionId,
+              selectedWorkspaceRoot,
+            )
+            : { configured: false, enabled: false };
+          const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
+            capabilityId: draft.capability?.id,
+            promptText: videoPromptText,
+            voiceoverAvailable: voiceover.configured,
+            voiceoverEnabled: voiceover.enabled,
+          });
+          let includeVoiceoverContext = videoDeliveryRequirements.voiceover
+            || videoPromptRequestsVoiceoverContext(draft.capability?.id, videoPromptText);
           if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
             const entryPath = template?.state.entry ?? videoProjectEntryPath(sessionId);
             const entry = await selectedWorkspaceEndpoint.client

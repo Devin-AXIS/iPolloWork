@@ -12,9 +12,11 @@ setLocale("zh");
 const category = new URLSearchParams(location.search).get("category") ?? "video";
 function Fixture() {
   const [open, setOpen] = useState(false);
+  const [category, setCategory] = useState("video");
   const [receipt, setReceipt] = useState(null);
   return <TooltipProvider><main className="min-h-screen bg-background p-10 text-foreground">
     <h1 className="mb-4 text-lg font-semibold">产品介绍视频</h1>
+    <select aria-label="验收模板类型" value={category} onChange={event => setCategory(event.target.value)}>{["slides","video","site","app","report","article","poster","cards","other"].map(value => <option key={value}>{value}</option>)}</select>
     <Button onClick={() => { setReceipt(null); setOpen(true); }}>使用模板</Button>
     {open ? <TemplateApplyDialog open mode="current-conversation" template={{ title: "产品介绍视频", category, surface: category === "video" ? "video" : "design" }} onClose={() => setOpen(false)} onSubmit={async (brief, references) => {
       const payload = await buildTemplateReferenceSubmitPayload(references, { brief });

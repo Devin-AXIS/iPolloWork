@@ -9,8 +9,11 @@ async function upload(ctx, files, holdRead = false) {
     for (const item of ${JSON.stringify(files)}) {
       const file = new File([item.text], item.name, { type: item.type });
       if (${holdRead}) {
-        const read = file.arrayBuffer.bind(file);
-        file.arrayBuffer = () => new Promise((resolve) => { window.__releaseReferenceRead = async () => resolve(await read()); });
+        const post = Worker.prototype.postMessage;
+        Worker.prototype.postMessage = function(message, ...options) {
+          Worker.prototype.postMessage = post;
+          window.__releaseReferenceRead = () => post.call(this, message, ...options);
+        };
       }
       transfer.items.add(file);
     }
@@ -30,95 +33,88 @@ async function assertFits(ctx) {
 
 export default {
   id: "template-reference-wizard",
-  title: "Template references: skip, parse, replace files, edit and submit",
+  title: "Template entry combines compact modes with local reference parsing",
   kind: "user-facing",
-  cdpTarget: { urlIncludes: "template-reference-fixture.html" },
-  steps: [{ name: "Two-step reference workflow", run: async (ctx) => {
-    await ctx.client.send("Emulation.setDeviceMetricsOverride", { width: 1280, height: 900, deviceScaleFactor: 1, mobile: false });
-    await ctx.client.send("Page.reload", {});
-    await ctx.waitForText("使用模板");
-    await ctx.prove("Reference upload is optional and comes before the brief", {
-      voiceover: "点击使用模板后，先选择是否上传参考文件；没有文件也能直接填写需求。",
-      action: () => ctx.clickText("使用模板"),
-      assert: async () => { await ctx.waitForText("是否上传参考文件？"); ctx.assert(await ctx.eval(`!document.querySelector('${dialog} textarea')`), "Brief is not shown in step one."); await assertFits(ctx); },
-      screenshot: { name: "reference-choice", requireText: ["是否上传参考文件？", "不上传，直接填写"] },
-    });
-    await ctx.prove("Skipping opens an editable empty brief", {
-      voiceover: "不上传文件时，第二步显示空白的信息表单，可以自行输入。",
-      action: () => ctx.clickText("不上传，直接填写"),
-      assert: async () => { await ctx.waitFor(`Boolean(document.querySelector('${dialog} textarea'))`); ctx.assert(await ctx.eval(`[...document.querySelectorAll('${dialog} input, ${dialog} textarea')].every(el => !el.value)`), "Skipped brief stays empty."); },
-      screenshot: { name: "manual-brief", requireText: ["填写信息"] },
-    });
-    await ctx.clickText("返回修改文件", { selector: `${dialog} button` });
-    await ctx.prove("Parsing shows progress and blocks the next step", {
-      voiceover: "上传后显示解析进度，解析期间不能进入下一步。",
-      action: () => upload(ctx, [{ name: "发布需求.md", type: "text/markdown", text: brief }], true),
-      assert: async () => {
-        await ctx.waitFor("typeof window.__releaseReferenceRead === 'function'");
-        ctx.assert(await ctx.eval(`Boolean(document.querySelector('${dialog} [role="progressbar"]')) && [...document.querySelectorAll('${dialog} button')].some(el => el.textContent.trim() === '下一步' && el.disabled)`), "Parser owns progress and next is disabled.");
-      },
-      screenshot: { name: "parsing", requireText: ["下一步", "发布需求.md"] },
-    });
-    await ctx.eval("window.__releaseReferenceRead()", { awaitPromise: true });
-    await ctx.prove("Finished parsing leaves only a compact filename list", {
-      voiceover: "解析完成后收起进度条，仅保留文件名和删除操作。",
-      action: () => ctx.waitFor(`!document.querySelector('${dialog} [role="progressbar"]')`),
-      assert: async () => {
-        await ctx.expectText("发布需求.md");
-        ctx.assert(await ctx.eval(`!document.querySelector('${dialog} details')`), "Extraction details are hidden.");
-        await ctx.expectNoText("下载解析结果（JSON）");
-        await ctx.expectNoText("不发原文件");
-      },
-      screenshot: { name: "parsed-reference", requireText: ["发布需求.md", "下一步"], rejectText: ["查看解析内容", "下载解析结果（JSON）", "不发原文件"] },
-    });
-    await ctx.prove("Prefilled fields stay editable and survive going back", {
-      voiceover: "第二步已填入文档中的标题、受众和需求，手动修改后返回上一步也会保留。",
-      action: async () => {
-        await ctx.clickText("下一步", { selector: `${dialog} button` });
-        await ctx.waitFor(`document.querySelector('${dialog} input')?.value === '秋季产品发布'`);
-        ctx.assert(await ctx.eval(`document.querySelector('${dialog} textarea').value.includes('团队协作')`), "Reference requirements prefilled.");
-        await ctx.fill(`${dialog} input`, "秋季发布 · 最终版");
-        await ctx.clickText("返回修改文件", { selector: `${dialog} button` });
-        await ctx.clickText("下一步", { selector: `${dialog} button` });
-      },
-      assert: async () => { ctx.assert(await ctx.eval(`document.querySelector('${dialog} input').value === '秋季发布 · 最终版'`), "User edits survive navigation."); await assertFits(ctx); },
-      screenshot: { name: "prefilled-brief", requireText: ["填写信息", "已根据参考文档"] },
-    });
-    await ctx.prove("Files can be replaced from the brief without losing manual edits", {
-      voiceover: "填写信息页显示当前文件，点击修改文件可返回删除并重新上传，手动编辑仍然保留。",
-      action: async () => {
-        await ctx.expectText("发布需求.md");
-        await ctx.clickText("修改文件", { selector: `${dialog} button` });
-        await ctx.eval(`document.querySelector('${dialog} button[aria-label="移除 发布需求.md"]').click()`);
-        await ctx.expectNoText("发布需求.md");
-        await upload(ctx, [{ name: "更新需求.md", type: "text/markdown", text: brief }]);
-        await ctx.waitFor(`!document.querySelector('${dialog} [role="progressbar"]')`);
-        await ctx.clickText("下一步", { selector: `${dialog} button` });
-      },
-      assert: async () => {
-        await ctx.expectText("更新需求.md");
-        await ctx.expectNoText("发布需求.md");
-        ctx.assert(await ctx.eval(`document.querySelector('${dialog} input').value === '秋季发布 · 最终版'`), "Replacing files preserves manually edited fields.");
-      },
-      screenshot: { name: "replaced-reference", requireText: ["更新需求.md", "修改文件", "返回修改文件"], rejectText: ["发布需求.md"] },
-    });
-    const submitted = await ctx.eval(`(() => { const button = [...document.querySelectorAll('${dialog} button')].at(-1); if (!button || button.disabled) return false; button.click(); return true; })()`);
-    ctx.assert(submitted, "Final submit is enabled.");
-    await ctx.waitFor("Boolean(window.__referenceReceipt)");
-    const receipt = await ctx.eval("window.__referenceReceipt");
-    ctx.assert(receipt.brief.title === "秋季发布 · 最终版" && receipt.context.files[0].text.includes("团队协作") && receipt.attachmentNames.includes("reference-context.json"), "Submission carries edited brief and actual parsed JSON.");
-    await ctx.output("submitted-reference-payload", JSON.stringify(receipt, null, 2));
-    await ctx.clickText("使用模板");
-    await ctx.client.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
-    await upload(ctx, [{ name: "无法解析.json", type: "application/json", text: "{" }]);
-    await ctx.prove("Failed parsing remains actionable on a narrow screen", {
-      voiceover: "解析失败会明确提示，可以更换文件或手动填写；窄屏下仍能操作。",
-      action: () => ctx.waitForText("未提取到可靠正文"),
-      assert: async () => { await assertFits(ctx); ctx.assert(await ctx.eval(`[...document.querySelectorAll('${dialog} button')].some(el => el.textContent.trim() === '下一步' && !el.disabled)`), "Failed references do not trap users."); },
-      screenshot: { name: "failed-mobile", requireText: ["未提取到可靠正文", "下一步"] },
-    });
-    await ctx.clickText("下一步", { selector: `${dialog} button` });
-    ctx.assert(await ctx.eval(`[...document.querySelectorAll('${dialog} input, ${dialog} textarea')].every(el => !el.value)`), "Failed extraction invents no brief.");
-    await assertFits(ctx);
+  steps: [{name: "Reference and custom modes preserve drafts and isolate submitted content", run: async ctx => {
+    const previousUrl = await ctx.eval("location.href");
+    const fixtureUrl = new URL("../support/template-reference-fixture.html", import.meta.url).pathname;
+    try {
+      await ctx.client.send("Page.navigate", {url: `http://localhost:5173/@fs${fixtureUrl}`});
+      await ctx.waitForText("使用模板");
+      const click = selector => ctx.trustedClick(selector);
+      const submit = `${dialog} [data-slot=dialog-footer] button:last-child`;
+      const start = async () => { await ctx.clickText("使用模板", {selector:"button"}); await ctx.waitFor(`Boolean(document.querySelector('#template-file-tab'))`); };
+      await start();
+      await ctx.prove("Reference mode is one upload card and optional requirements", {
+        action: async () => {},
+        assert: async () => {await assertFits(ctx);ctx.assert(await ctx.eval(`document.querySelectorAll('${dialog} textarea').length === 1 && !document.querySelector('${dialog} input:not([type=file])')`), "Only optional requirements are shown; no style field");},
+        screenshot: {name:"reference-entry",requireText:["参考文件","手动填写","补充要求"]},
+      });
+      await ctx.fill('[data-testid=template-file-instructions]', 'FILE_ONLY 要求：重点突出协作');
+      await click('#template-description-tab');
+      ctx.assert(await ctx.eval(`document.querySelector('${submit}').disabled`),'Empty custom content cannot submit');
+      await ctx.fill('[data-testid=template-title]', 'CUSTOM_ONLY 标题');
+      ctx.assert(await ctx.eval(`document.querySelector('${submit}').disabled`), 'Audience is required');
+      await ctx.fill('[data-testid=template-audience]', '设计团队');
+      ctx.assert(await ctx.eval(`!document.querySelector('${submit}').disabled`), 'Additional details are optional');
+      await ctx.fill('[data-testid=template-description]', 'CUSTOM_ONLY 为设计团队介绍新产品');
+      await click('#template-file-tab');
+      await ctx.prove("Parsing progress stays inside the file card and blocks file submission", {
+        action: () => upload(ctx,[{name:"发布需求.md",type:"text/markdown",text:brief}],true),
+        assert: async () => {await ctx.waitFor("typeof window.__releaseReferenceRead === 'function'");ctx.assert(await ctx.eval(`Boolean(document.querySelector('${dialog} [role=status]')) && document.querySelector('${submit}').disabled`),"Cannot submit files while parsing");},
+        screenshot:{name:"reference-parsing"},
+      });
+      await ctx.eval("window.__releaseReferenceRead()",{awaitPromise:true});
+      await ctx.waitFor(`!document.querySelector('${dialog} [role=status]')`);
+      await click('#template-description-tab');
+      ctx.assert(await ctx.eval("document.querySelector('[data-testid=template-description]').value.includes('CUSTOM_ONLY')"),"Custom draft survives switching");
+      await click('#template-file-tab');
+      ctx.assert(await ctx.eval("document.querySelector('[data-testid=template-file-instructions]').value.includes('FILE_ONLY')"),"File requirements survive switching");
+      ctx.assert(await ctx.eval(`!document.querySelector('${dialog} pre') && document.querySelector('[data-testid=template-reference-card]').getBoundingClientRect().height===48`), "Compact card hides parsed content");
+      await ctx.prove("File submission retains the new extraction context without the custom draft", {
+        action: () => click(submit),
+        assert: async () => {await ctx.waitFor("Boolean(window.__referenceReceipt)");const r=await ctx.eval('window.__referenceReceipt');ctx.assert(r.brief.title === '秋季产品发布' && r.brief.details.includes('FILE_ONLY') && !JSON.stringify(r).includes('CUSTOM_ONLY'),"File mode infers title and includes only its requirements");ctx.assert(r.context.files[0].source.name === '发布需求.md' && r.context.files[0].text.includes('团队协作'),"Full parsed evidence survives submission");},
+        screenshot:{name:"reference-receipt"},
+      });
+      await start();
+      await upload(ctx,[{name:"不得提交.md",type:"text/markdown",text:brief}]);
+      await ctx.waitFor(`!document.querySelector('${dialog} [role=status]')`);
+      await click('#template-description-tab');
+      await ctx.fill('[data-testid=template-title]', 'CUSTOM_ONLY 标题');
+      ctx.assert(await ctx.eval(`document.querySelector('${submit}').disabled`), 'Audience is required');
+      await ctx.fill('[data-testid=template-audience]', '设计团队');
+      ctx.assert(await ctx.eval(`!document.querySelector('${submit}').disabled`), 'Additional details are optional');
+      await ctx.fill('[data-testid=template-description]', 'CUSTOM_ONLY 创建一个简洁的网站');
+      await ctx.prove("Custom submission excludes the other mode's reference files", {
+        action: () => click(submit),
+        assert: async () => {await ctx.waitFor(`!document.querySelector('${dialog}')`);const r=await ctx.eval('window.__referenceReceipt');ctx.assert(r.brief.details === 'CUSTOM_ONLY 创建一个简洁的网站' && r.attachmentNames.length === 0,"No reference attachments leak into custom mode");},
+        screenshot:{name:"custom-receipt"},
+      });
+      await ctx.prove("All template categories require title and audience", {
+        action: async () => {
+          for(const category of ['slides','video','site','app','report','article','poster','cards','other']) {
+            await ctx.eval(`(() => {const select=document.querySelector('select[aria-label="验收模板类型"]');select.value=${JSON.stringify(category)};select.dispatchEvent(new Event('change',{bubbles:true}));})()`);
+            await start(); await click('#template-description-tab');
+            ctx.assert(await ctx.eval(`document.querySelectorAll('${dialog} [required]').length===2`),`${category} has two required fields`);
+            await ctx.eval(`document.querySelector('${dialog} button[aria-label="关闭"]').click()`);
+          }
+          await start(); await click('#template-description-tab');
+          await ctx.client.send('Emulation.setDeviceMetricsOverride',{width:520,height:740,deviceScaleFactor:1,mobile:false});
+          await ctx.eval("document.documentElement.dataset.theme='dark';document.documentElement.style.colorScheme='dark'");
+        },
+        assert: () => assertFits(ctx),
+        screenshot:{name:"compact-dark-entry"},
+      });
+      await click('#template-file-tab');
+      await upload(ctx,[{name:"取消解析.md",type:"text/markdown",text:brief}],true);
+      await ctx.waitFor(`Boolean(document.querySelector('${dialog} [role=status]'))`);
+      await click(`${dialog} button[aria-label="移除 取消解析.md"]`);
+      await ctx.eval("window.__releaseReferenceRead()",{awaitPromise:true});
+      await ctx.waitFor(`!document.querySelector('${dialog} [role=status]')`);
+      ctx.assert(await ctx.eval(`!document.querySelector('${dialog} li')`),"Removing a parsing file prevents late results from returning");
+    } finally {
+      await ctx.client.send('Emulation.clearDeviceMetricsOverride');
+      await ctx.client.send('Page.navigate',{url:previousUrl});
+    }
   }}],
 };

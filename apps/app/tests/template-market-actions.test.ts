@@ -230,8 +230,8 @@ describe("template market actions", () => {
     expect(sessionPage).toContain("if (await onImport(pendingImport, serverCategory)) setPendingImport(null)");
   });
 
-  test("surfaces reference warnings and template brief submission failures", () => {
-    expect(sessionPage).toContain("reference.ingestion?.warnings[0]");
+  test("surfaces reference read failures and template brief submission failures", () => {
+    expect(sessionPage).toContain('toast.warning(t("templates.brief.reference_status_failed")');
     expect(sessionPage).toContain('t("templates.brief.submit_failed")');
     expect(sessionPage).toContain("sentOriginal: reference.sendOriginal && canSendOriginalReference(reference.file)");
   });

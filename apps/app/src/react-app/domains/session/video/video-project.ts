@@ -109,11 +109,16 @@ export function videoDeliveryRequirementsForPrompt(input: {
   capabilityId?: string;
   promptText?: string;
   animationReferences?: readonly string[];
+  voiceoverEnabled?: boolean;
+  voiceoverAvailable?: boolean;
 }): VideoDeliveryRequirements {
   const text = input.promptText ?? "";
   const targetDurationSeconds = requestedVideoDurationSeconds(text);
+  const voiceoverExplicitlyDisabled = /(?:不要|无需|关闭|禁用|去掉)(?:旁白|配音)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i.test(text);
   return {
-    voiceover: videoPromptRequestsVoiceoverContext(input.capabilityId, text),
+    voiceover: voiceoverExplicitlyDisabled || input.voiceoverAvailable === false
+      ? false
+      : videoPromptRequestsVoiceoverContext(input.capabilityId, text) || (input.voiceoverEnabled ?? true),
     captions: /(?:字幕|caption(?:s|ing)?|subtitles?)/i.test(text),
     bgm: /(?:背景音乐|背景音樂|配乐|配樂|\bbgm\b|background music|music bed)/i.test(text),
     animationReferences: Array.from(new Set((input.animationReferences ?? []).filter(Boolean))),
@@ -244,13 +249,13 @@ export function videoTaskSystemContext(
     "Video voiceover contract:",
     "- iPolloWork's `media` extension and CosyVoice workspace synthesis actions are built into the installed desktop application. They are not provided by the HeyGen CLI or an npm package. Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI, and never ask the user to run an auth/login command.",
     "- Use `ipollowork_extension_list_actions` to discover the bundled `media` actions when needed, then call `ipollowork_extension_call` with extensionId `media`. If a bundled action call fails, report and fix that application capability error; do not replace it with user setup instructions or an external CLI.",
-    `- Read \`${projectPath}/voiceover.json\`; its \`voiceId\` and \`model\` are authoritative. Never use generic \`speech_synthesize\`, another provider, or ask for a key.`,
+    `- Read \`${projectPath}/voiceover.json\`. When \`enabled\` is false, preserve existing audio but do not generate or replace voiceover unless the user explicitly asks. When \`selectionMode\` is \`manual\`, its \`voiceId\` is authoritative. When it is \`auto\`, infer a compatible CosyVoice v3 preset from the narration language and use case; always pass an explicit voice instead of omitting narration. Carry \`rate\`, \`pitch\`, \`volume\`, and \`instruction\` into synthesis. Never use generic \`speech_synthesize\`, another provider, or ask for a key.`,
     "- Before synthesis, build the final valid `.scene.clip` structure once. Derive narration primarily from the page's existing headings, body copy, names, dates, metrics, labels, and other factual anchors; when the user asks to enrich it, connect those anchors into a coherent narrative instead of replacing them with generic filler.",
     "- Give each substantial narrated scene useful depth: normally 2–4 concise sentences and multiple specific page facts when the source supports them. Keep captions readable by revealing short phrases or at most two lines at a time, while retaining the complete transcript in the scene DOM.",
     "- Put the complete visible scene transcript in one or more elements marked `data-ipw-narration-source=\"true\"`. Other titles, numbers, badges, labels, and decorative text may remain in the scene and do not need to duplicate the narration. The synthesized `text` and `sceneText` must exactly equal the combined marked transcript.",
     "- If the user specifies a duration, estimate narration before synthesis (about 4 CJK characters or 2.5 Latin words per second), preserve the most informative page facts, and compact wording to fit. Never synthesize a one-minute request into an unrequested two-minute timeline.",
     "- A request for subtitles/captions alongside narration requires caption clips covering the spoken content; mark each timed caption clip `data-ipw-caption=\"true\"` and pass `requirements.captions: true` at the final gate.",
-    `- Build one ordered scene array, then make one media call with action \`speech_synthesize_workspace_batch\`, \`compositionPath: "${projectDirectory}/index.html"\`, the selected voice/model, the user's requested \`targetDurationSeconds\` when present, and one immutable \`assets/voiceover-<revision>-<scene>.mp3\` output per scene. The media action scopes this shorthand to the current composition's assets directory; never write narration to the workspace-root assets directory or another video project.`,
+    `- Build one ordered scene array, then make one media call with action \`speech_synthesize_workspace_batch\`, \`compositionPath: "${projectDirectory}/index.html"\`, the selected voice/model and delivery controls, the user's requested \`targetDurationSeconds\` when present, and one immutable \`assets/voiceover-<revision>-<scene>.mp3\` output per scene. A voice reference attached with a selected scene is a per-scene override: put its voice and supported delivery controls on that scene item while all other scenes inherit the batch defaults. The media action scopes this shorthand to the current composition's assets directory; never write narration to the workspace-root assets directory or another video project.`,
     "- The batch action synthesizes with bounded concurrency and returns items in visual order with cumulative shifts already applied. Treat each item's timing, timelinePatch, and audioElementHtml as authoritative; do not call per-scene synthesis or apply a shift twice.",
     "- If the batch action fails, use the error to correct its input and retry the same batch at most once. Never fall back to per-scene synthesis, generic speech_synthesize, provider URLs, shell downloads, or one request per scene; preserve successful cached work and report a provider outage instead of creating a slow or partial workflow.",
     "- In one final index edit, insert each returned audioElementHtml directly under the root composition; update its scene start/duration, every later scene/caption/transition/GSAP timestamp, and root duration. Keep narrated text visible through timing.endSeconds. Never overlap or accelerate narration.",
@@ -258,7 +263,7 @@ export function videoTaskSystemContext(
     "- Before inserting replacements, remove legacy narration nodes/manual playback and old voiceover references, but preserve BGM/SFX. Use exactly one timeline-owned `audio[data-ipw-voiceover=\"true\"]` per narrated scene with matching scene/text metadata.",
     `- A replace/regenerate voiceover or caption request is not complete when synthesis returns. It is complete only after you patch \`${projectDirectory}/index.html\` with the returned audio/timing and captions, then pass \`voiceover_timeline_validate\` for that exact sourcePath. Do not post a success summary between synthesis and the index edit.`,
     `- If execution is interrupted or continued, resume only from the current transcript and \`${projectDirectory}/index.html\`. Never use cross-session search/read to recover this task, enumerate the workspace's video directory, inspect sibling session projects, or switch to a different index.html.`,
-    "- If voice settings are absent or invalid, continue visually without choosing a random voice. The final local validation gate above is mandatory.",
+    "- Check the bundled media status before generating voiceover. Without a configured Alibaba Model Studio key, do not synthesize narration by default; keep existing audio and direct explicit voiceover requests to Authorization Center. Never ask the user to paste a key in chat. With authorization, absent or invalid voice settings use the default CosyVoice v3 automatic voice-matching profile with voiceover enabled. Preserve an explicit saved enabled=false preference. The final local validation gate above is mandatory.",
   ] : [
     "- Narration is opt-in for performance: do not synthesize speech unless the user selected a voice, explicitly requested narration, or the existing composition already contains voiceover nodes.",
   ];
