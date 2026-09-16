@@ -52,7 +52,7 @@
         </div>
 
         <div class="metric-grid" aria-label="运营概览数据">
-          <article class="metric"><span class="metric-kicker cyan">ACCOUNT</span><strong id="overview-account-count">0</strong><p>已授权账号</p></article>
+          <article class="metric"><span class="metric-kicker cyan">ACCOUNT</span><strong id="overview-account-count">0</strong><p>已连接账号</p></article>
           <article class="metric"><span class="metric-kicker pink">DRAFT</span><strong id="overview-draft-count">0</strong><p>当前账号草稿</p></article>
           <article class="metric"><span class="metric-kicker ink">ACTION</span><strong id="overview-job-count">0</strong><p>待处理或待核对</p></article>
         </div>
@@ -73,7 +73,7 @@
       </section>
 
       <section id="view-studio" class="view" aria-labelledby="studio-heading" hidden>
-        <div class="page-heading"><div><p class="eyebrow">CREATE</p><h2 id="studio-heading">视频创作</h2><p>准备文案与视频，保存后通过官方 API 发布。</p></div><button id="new-draft" type="button">新建草稿</button></div>
+        <div class="page-heading"><div><p class="eyebrow">CREATE</p><h2 id="studio-heading">视频创作</h2><p>准备文案与视频；优先使用已有 API 权限，其余由 AI 在网页发布。</p></div><button id="new-draft" type="button">新建草稿</button></div>
         <p class="capability-banner" data-capability="publish"><strong>发布权限</strong><span>正在核对当前账号授权…</span></p>
         <div class="studio-grid">
           <aside class="surface draft-rail">
@@ -110,7 +110,7 @@
       <section id="view-comments" class="view" aria-labelledby="comments-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">ENGAGE</p><h2 id="comments-heading">评论管理</h2><p>读取作品评论，确认内容后逐条发送回复。</p></div></div>
         <p class="capability-banner" data-capability="comments"><strong>评论权限</strong><span>正在核对当前账号授权…</span></p>
-        <form id="comments-form" class="surface"><fieldset><label>作品 Item ID<input id="comment-item" placeholder="从作品列表选择，或粘贴作品 Item ID" required></label><button type="submit" class="primary">读取评论</button></fieldset></form>
+        <form id="comments-form" class="surface"><fieldset><label>作品链接或 Item ID<input id="comment-item" placeholder="粘贴抖音作品链接，或从作品列表选择" required></label><label>作品网页链接（API 作品可选）<input id="comment-url" type="url" placeholder="https://www.douyin.com/video/..."></label><button type="submit" class="primary">读取评论</button></fieldset></form>
         <div id="comments-list" class="record-list"><p class="empty">选择作品后读取评论。是否可用取决于已获批的权限。</p></div>
         <button id="more-comments" class="load-more" type="button" hidden>加载更多评论</button>
       </section>
@@ -118,8 +118,8 @@
       <section id="view-search" class="view" aria-labelledby="search-heading" hidden>
         <div class="page-heading"><div><p class="eyebrow">DISCOVER</p><h2 id="search-heading">视频搜索</h2><p>优先使用开放平台 API，也可打开抖音搜索页。</p></div></div>
         <p class="capability-banner" data-capability="searchVideos"><strong>搜索权限</strong><span>正在核对应用配置…</span></p>
-        <form id="search-form" class="surface"><fieldset><label>搜索关键词<input id="search-keyword" placeholder="输入选题、行业或产品关键词" required></label><label>搜索设备标识（开放平台要求）<input id="search-device" maxlength="200" placeholder="填写应用使用的设备标识" required></label><div class="actions"><button type="submit" class="primary">通过 API 搜索</button><button type="button" data-browser="search">打开抖音搜索 ↗</button></div></fieldset></form>
-        <p class="hint">关键词搜索需应用获得相应开放权限，没有权限时会显示接口返回的原因。</p>
+        <form id="search-form" class="surface"><fieldset><label>搜索关键词<input id="search-keyword" placeholder="输入选题、行业或产品关键词" required></label><label>搜索设备标识（已有 API 能力时填写）<input id="search-device" maxlength="200" placeholder="可选；未配置时使用网页登录搜索"></label><div class="actions"><button type="submit" class="primary">搜索视频</button><button type="button" data-browser="search">打开抖音搜索 ↗</button></div></fieldset></form>
+        <p class="hint">有开放权限时优先使用 API；未配置或没有权限时，由 AI 在已登录的抖音网页中搜索。</p>
         <div id="search-list" class="record-list"><p class="empty">搜索结果将在这里显示。</p></div>
         <button id="more-search" class="load-more" type="button" hidden>加载更多结果</button>
       </section>
@@ -132,11 +132,14 @@
     </main>
   </div>
       <dialog id="account-dialog" class="account-dialog" aria-labelledby="accounts-heading">
-        <div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h2 id="accounts-heading">添加抖音账号</h2><p>使用抖音开放平台的官方授权与 API。</p></div><button id="close-account-dialog" type="button" aria-label="关闭账号弹窗">×</button></div>
+        <div class="page-heading"><div><p class="eyebrow">ACCOUNT</p><h2 id="accounts-heading">添加抖音账号</h2><p>普通用户扫码登录即可；已有 API 应用可在「开发者 API 接入」中连接。</p></div><button id="close-account-dialog" type="button" aria-label="关闭账号弹窗">×</button></div>
         <p id="account-feedback" class="feedback" role="status" aria-live="polite" hidden></p><div class="accounts-grid">
           <div class="setup-column">
-            <details id="settings-panel" class="surface" open>
-              <summary>开放平台应用配置 <span id="secret-status" class="muted">未配置</span></summary>
+            <section id="browser-login-panel" class="surface stack"><h3>用抖音扫码登录</h3><p class="hint">无需开发者账号或应用密钥。打开独立浏览器扫码登录，之后识别当前抖音号；登录状态会保留。</p><button id="connect-browser" class="primary" type="button">登录抖音 / 添加账号</button></section>
+            <details id="settings-panel" class="surface">
+              <summary>开发者 API 接入（可选） <span id="secret-status" class="muted">未配置</span></summary>
+              <p class="hint">仅在使用官方 API 时需要：先配置开发者应用，再授权抖音账号。普通用户使用网页登录即可。</p>
+              <section class="stack"><h3>① 配置应用</h3>
               <p class="hint">在 <a href="https://developer.open-douyin.com/" target="_blank" rel="noopener noreferrer">抖音开放平台 ↗</a> 创建应用、开通所需权限，并登记 HTTPS 授权回调地址。</p>
               <form id="settings-form"><fieldset>
                 <label>Client Key<input name="clientKey" id="client-key" autocomplete="off" required></label>
@@ -146,19 +149,19 @@
                 <p class="hint">配置仅提交给本地服务，密钥不会发送到当前 AI 会话。填写申请权限后，仍需平台审核和账号授权。</p>
                 <button class="primary" type="submit">保存应用配置</button>
               </fieldset></form>
-            </details>
-            <section id="authorization-panel" class="surface stack">
-              <div><p class="eyebrow">OAUTH</p><h3>授权新账号</h3></div>
+            </section>
+              <section id="authorization-panel" class="stack"><h3>② 授权账号</h3>
               <p class="hint">打开官方授权页面，扫码并同意授权。跳转后，复制浏览器地址栏的完整回调地址到下方。</p>
               <button id="start-authorization" class="primary" type="button">打开官方授权页</button>
               <form id="authorization-form"><fieldset>
                 <label>完整回调地址<input id="callback-url" type="url" autocomplete="off" placeholder="粘贴授权后的完整 URL" required></label>
                 <button type="submit">完成账号授权</button>
               </fieldset></form>
-            </section>
+              </section>
+            </details>
           </div>
         </div>
       </dialog>
-<dialog id="account-details-dialog" class="account-dialog" aria-label="当前账号授权信息"><div class="page-heading"><h2>账号授权信息</h2><button id="close-account-details" type="button" aria-label="关闭账号信息">×</button></div><div id="accounts-list" class="record-list"></div></dialog>
+<dialog id="account-details-dialog" class="account-dialog" aria-label="当前账号授权信息"><div class="page-heading"><h2>账号授权信息</h2><button id="close-account-details" type="button" aria-label="关闭账号信息">×</button></div><p id="account-details-feedback" class="feedback" role="status" hidden></p><div id="accounts-list" class="record-list"></div></dialog>
 </body>
 </html>

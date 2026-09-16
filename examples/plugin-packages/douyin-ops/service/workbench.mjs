@@ -37,10 +37,11 @@ export default function createWorkbench(runtime) {
     return { url: `${origin}/#token=${token}` };
   }
   const names = ['studio-state', 'list-accounts', 'start-authorization', 'import-media', 'save-draft', 'publish-draft',
-    'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job'];
+    'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job',
+    'connect-browser', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job', 'comment-video'];
   return {
     actions: { 'open-workbench': ensureStarted, ...Object.fromEntries(names.map(name => [name, async (input, context) => {
-      if (['publish-draft', 'reply-comment'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
+      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
       await ensureStarted();
       const response = await fetch(`${origin}/api/actions/${name}`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

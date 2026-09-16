@@ -72,6 +72,12 @@ function axProperty(node, name) {
   return (node?.properties ?? []).find((property) => property?.name === name)?.value?.value;
 }
 
+function accessibleName(node) {
+  const name = normalizeText(axValue(node.name));
+  const role = String(axValue(node.role) ?? "unknown");
+  return name || (WRITABLE_ROLES.has(role) ? `Unnamed ${role}` : "");
+}
+
 function quote(value) {
   return JSON.stringify(boundedText(value));
 }
@@ -153,7 +159,7 @@ function pluginDataPathAllowed(filePath, userDataRoot, workspaceId, extensionId)
 
 function snapshotLine(node, ref, depth) {
   const role = String(axValue(node.role) ?? "unknown");
-  const name = boundedText(axValue(node.name));
+  const name = boundedText(accessibleName(node));
   const protectedValue = axProperty(node, "protected") === true;
   const value = protectedValue ? "" : boundedText(axValue(node.value), 300);
   const details = [];
@@ -224,21 +230,32 @@ function automationMetadataFunction() {
       || ["checkbox", "menuitemcheckbox", "menuitemradio", "radio", "switch"].includes(role);
     const buttonLike = tag === "BUTTON" || role === "button" || tag === "A" || checkable
       || (tag === "INPUT" && ["button", "submit"].includes(type))
-      || style.cursor === "pointer";
+      || style.cursor === "pointer" || typeof this.onclick === "function";
     const writable = tag === "TEXTAREA" || (tag === "INPUT" && !["button", "submit", "checkbox", "radio", "file"].includes(type))
       || this.isContentEditable === true;
+    const label = this.getAttribute?.("aria-label") || this.getAttribute?.("data-placeholder") || this.getAttribute?.("placeholder") || "";
+    let context = "";
+    for (let parent = this.parentElement, depth = 0; parent && depth < 8; parent = parent.parentElement, depth++) {
+      const text = (parent.innerText || "").replace(/\\s+/g, " ").trim();
+      if (text.length > 600) break;
+      if (text) context = text;
+    }
     return {
       buttonLike,
+      context,
+      label,
       checkable,
       disabled: Boolean(this.disabled || this.readOnly || this.getAttribute?.("aria-disabled") === "true"),
       fileInput: tag === "INPUT" && type === "file",
       nativeSelect: tag === "SELECT",
       imageSrc: tag === "IMG" ? String(this.currentSrc || this.src || "").slice(0, 2048) : null,
+      rendered: rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden"
+        && style.pointerEvents !== "none",
       visible: rect.width > 0 && rect.height > 0 && rect.right > 0 && rect.bottom > 0
         && rect.left < viewportWidth && rect.top < viewportHeight
         && style.display !== "none" && style.visibility !== "hidden" && style.pointerEvents !== "none",
       unobstructed: Boolean(localPoint),
-      text: (this.innerText || this.textContent || "").replace(/\s+/g, " ").trim(),
+      text: (this.getAttribute?.("aria-label") || this.getAttribute?.("data-placeholder") || this.getAttribute?.("placeholder") || this.innerText || this.textContent || "").replace(/\\s+/g, " ").trim(),
       writable,
       x: (localPoint?.x ?? 0) + offsetX,
       y: (localPoint?.y ?? 0) + offsetY,
@@ -358,7 +375,7 @@ export function createBrowserRuntime({
     state.refs.set(ref, {
       backendNodeId,
       inferred,
-      name: boundedText(axValue(node.name), MAX_EXPECTED_NAME),
+      name: boundedText(accessibleName(node), MAX_EXPECTED_NAME),
       role: String(axValue(node.role) ?? "unknown"),
     });
     return ref;
@@ -380,6 +397,7 @@ export function createBrowserRuntime({
       state.url = tab.view.webContents.getURL();
 
       const lines = [];
+      const controlLines = [];
       let emitted = 0;
       let inferredControls = 0;
       let truncated = false;
@@ -400,12 +418,13 @@ export function createBrowserRuntime({
           const name = normalizeText(axValue(node.name));
           const interactive = !node.ignored && INTERACTIVE_ROLES.has(role);
           const content = !node.ignored && CONTENT_ROLES.has(role) && name && !insideNamedControl;
-          if (content && role === "StaticText") clickCandidates.push({ node, depth });
-          if ((interactive || content) && emitted < MAX_SNAPSHOT_NODES) {
+          if (content && role === "StaticText" && clickCandidates.length < MAX_SNAPSHOT_NODES * 4) clickCandidates.push({ node, depth });
+          // Reserve room for controls after long recommendation/comment lists.
+          if ((interactive || content) && emitted < MAX_SNAPSHOT_NODES - (interactive ? 0 : 50)) {
             const ref = interactive ? referenceFor(state, node) : null;
             lines.push(snapshotLine(node, ref, depth));
             emitted += 1;
-          } else if ((interactive || content) && emitted >= MAX_SNAPSHOT_NODES) {
+          } else if (interactive || content) {
             truncated = true;
           }
           for (const childId of node.childIds ?? []) {
@@ -415,8 +434,9 @@ export function createBrowserRuntime({
         for (const root of roots) visit(root);
         for (const node of tree.nodes) visit(node);
 
+        const inspected = new Map();
         for (const candidate of clickCandidates) {
-          if (emitted >= MAX_SNAPSHOT_NODES || inferredControls >= MAX_INFERRED_CONTROLS) break;
+          if (inferredControls >= MAX_INFERRED_CONTROLS) break;
           let ancestorId = parentById.get(candidate.node.nodeId);
           for (let depth = 0; ancestorId && depth < 4; depth += 1) {
             const ancestor = byId.get(ancestorId);
@@ -424,51 +444,72 @@ export function createBrowserRuntime({
             const backendNodeId = Number(ancestor?.backendDOMNodeId);
             if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) continue;
             if ([...state.refs.values()].some((entry) => entry.backendNodeId === backendNodeId)) break;
-            const objectId = await resolvedNode(debuggerApi, { backendNodeId }).catch(() => null);
-            const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
-            if (!metadata?.buttonLike || !metadata.visible || metadata.disabled) continue;
+            if (!inspected.has(backendNodeId)) {
+              const objectId = await resolvedNode(debuggerApi, { backendNodeId }).catch(() => null);
+              inspected.set(backendNodeId, objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null);
+            }
+            const metadata = inspected.get(backendNodeId);
+            if (!metadata?.buttonLike || !(metadata.rendered ?? metadata.visible) || metadata.disabled || !metadata.text || metadata.text.length > MAX_EXPECTED_NAME) continue;
             const pseudoNode = {
               backendDOMNodeId: backendNodeId,
-              name: { value: axValue(candidate.node.name) },
+              name: { value: metadata.text },
               properties: [],
               role: { value: "button" },
             };
             const ref = referenceFor(state, pseudoNode, { inferred: true });
-            lines.push(snapshotLine(pseudoNode, ref, candidate.depth));
-            emitted += 1;
+            controlLines.push(snapshotLine(pseudoNode, ref, candidate.depth)
+              + (metadata.context && metadata.context !== metadata.text ? ` context=${quote(metadata.context)}` : ""));
             inferredControls += 1;
             break;
           }
         }
       }
 
-      // Accessibility trees intentionally omit some hidden file inputs used by
-      // modern upload buttons. Chromium's flattened DOM gives those controls a
-      // safe ref without exposing selectors or arbitrary page evaluation.
+      // Some rich editors retain a zero-height previous input when opening an
+      // inline reply. Do not offer that stale editor as the active writable ref.
+      for (const [ref, entry] of state.refs) {
+        if (!WRITABLE_ROLES.has(entry.role)) continue;
+        const objectId = await resolvedNode(debuggerApi, entry).catch(() => null);
+        const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
+        const index = lines.findIndex(line => line.includes(`[${ref}]`));
+        if (metadata && !(metadata.rendered ?? metadata.visible)) {
+          if (index >= 0) lines.splice(index, 1);
+          state.refs.delete(ref);
+        } else if (index >= 0 && metadata?.context) lines[index] += ` context=${quote(metadata.context)}`;
+      }
+
+      // Supplement file inputs and role-less rich editors omitted by the AX
+      // tree, using DOM-backed refs without exposing arbitrary page evaluation.
       const flattened = await debuggerCommand(debuggerApi, "DOM.getFlattenedDocument", {
         depth: -1,
         pierce: true,
       }).catch(() => ({ nodes: [] }));
+      let supplementalControls = 0;
       for (const node of flattened?.nodes ?? []) {
-        if (emitted >= MAX_SNAPSHOT_NODES) {
+        if (supplementalControls >= MAX_INFERRED_CONTROLS) {
           truncated = true;
           break;
         }
         const attributes = domAttributes(node);
-        if (String(node?.nodeName ?? "").toUpperCase() !== "INPUT" || attributes.type?.toLowerCase() !== "file") continue;
+        const fileInput = String(node?.nodeName ?? "").toUpperCase() === "INPUT" && attributes.type?.toLowerCase() === "file";
+        const editor = ["", "true", "plaintext-only"].includes(attributes.contenteditable);
+        if (!fileInput && !editor) continue;
         const backendNodeId = Number(node?.backendNodeId);
         if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) continue;
         if ([...state.refs.values()].some((entry) => entry.backendNodeId === backendNodeId)) continue;
-        const name = attributes["aria-label"] || attributes.title || attributes.name || "Upload file";
+        const objectId = editor ? await resolvedNode(debuggerApi, { backendNodeId }).catch(() => null) : null;
+        const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
+        if (editor && (!metadata?.writable || !(metadata.rendered ?? metadata.visible) || metadata.disabled)) continue;
+        const name = editor ? metadata.label || "Unnamed textbox" : attributes["aria-label"] || attributes.title || attributes.name || "Upload file";
         const pseudoNode = {
           backendDOMNodeId: backendNodeId,
-          name: { value: name },
+          name: { value: boundedText(name, MAX_EXPECTED_NAME) },
           properties: [],
-          role: { value: "fileinput" },
+          role: { value: editor ? "textbox" : "fileinput" },
         };
-        const ref = referenceFor(state, pseudoNode);
-        lines.push(snapshotLine(pseudoNode, ref, 1));
-        emitted += 1;
+        const ref = referenceFor(state, pseudoNode, { inferred: editor });
+        controlLines.push(snapshotLine(pseudoNode, ref, 1));
+        supplementalControls += 1;
       }
 
       let imageUrl = null;
@@ -484,11 +525,13 @@ export function createBrowserRuntime({
         }
         if (tab.view.webContents.getURL() !== state.url) throw new Error("Browser page changed during snapshot.");
       }
+      const controls = controlLines.join("\n");
       let tree = lines.join("\n");
-      if (tree.length > MAX_SNAPSHOT_TEXT) {
-        tree = `${tree.slice(0, MAX_SNAPSHOT_TEXT - 25)}\n… snapshot truncated`;
+      if (tree.length + controls.length > MAX_SNAPSHOT_TEXT) {
+        tree = `${tree.slice(0, MAX_SNAPSHOT_TEXT - controls.length - 25)}\n… snapshot truncated`;
         truncated = true;
       }
+      if (controls) tree += `\n${controls}`;
       return {
         ok: true,
         provider: "builtin",
@@ -514,7 +557,7 @@ export function createBrowserRuntime({
     if (!current || current.ignored) throw new Error("Browser reference is stale. Take a new snapshot.");
     return {
       checked: axProperty(current, "checked"),
-      name: boundedText(axValue(current.name), MAX_EXPECTED_NAME),
+      name: boundedText(accessibleName(current), MAX_EXPECTED_NAME),
       role: String(axValue(current.role) ?? "unknown"),
     };
   }
@@ -701,10 +744,11 @@ export function createBrowserRuntime({
       const objectId = await resolvedNode(debuggerApi, entry);
       const metadata = await inspectElement(debuggerApi, objectId, { scrollIntoView: true });
       const current = entry.inferred
-        ? { name: boundedText(metadata?.text, MAX_EXPECTED_NAME), role: "button" }
+        ? { name: boundedText(entry.role === "textbox" ? metadata?.label || "Unnamed textbox" : metadata?.text, MAX_EXPECTED_NAME), role: entry.role }
         : await currentAccessibleEntry(debuggerApi, entry);
+      const editorEnter = key === "Enter" && metadata?.writable && WRITABLE_ROLES.has(current.role);
       requireExpectedName(action, current, "activation key");
-      if (!metadata?.visible || metadata.disabled || (!metadata.buttonLike && !ACTIVATABLE_ROLES.has(current.role))) {
+      if (!metadata?.visible || metadata.disabled || (!metadata.buttonLike && !ACTIVATABLE_ROLES.has(current.role) && !editorEnter)) {
         throw new Error("Browser activation-key target is not a visible enabled control.");
       }
       focusBrowserTarget(tab);
@@ -770,7 +814,7 @@ export function createBrowserRuntime({
     }
 
     const current = entry.inferred
-      ? { name: boundedText(metadata?.text, MAX_EXPECTED_NAME), role: "button" }
+      ? { name: boundedText(entry.role === "textbox" ? metadata?.label || "Unnamed textbox" : metadata?.text, MAX_EXPECTED_NAME), role: entry.role }
       : await currentAccessibleEntry(debuggerApi, entry);
     if (!metadata?.visible || metadata.disabled) {
       throw new Error("Browser target is not visible and enabled. Take a new snapshot after correcting the page state.");

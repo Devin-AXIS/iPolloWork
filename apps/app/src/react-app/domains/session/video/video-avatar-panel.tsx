@@ -17,6 +17,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
   const [imageName, setImageName] = React.useState("");
   const [imagePreview, setImagePreview] = React.useState("");
   const [imageMessage, setImageMessage] = React.useState("");
+  const [recoveryIds, setRecoveryIds] = React.useState<Record<string, string>>({});
   const imagePreviewRef = React.useRef("");
   const [useAudio, setUseAudio] = React.useState(false);
   const [source, setSource] = React.useState<VideoAvatarContext | null>(null);
@@ -130,7 +131,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
         <Button type="button" variant={!useAudio ? "secondary" : "outline"} aria-pressed={!useAudio} onClick={() => setUseAudio(false)}>不使用配音</Button>
       </div>
       <p role="status" className="text-xs leading-relaxed text-muted-foreground">{checking ? "正在读取当前视频配音…" : source?.audioIssue || (!source ? "暂时无法读取当前视频，请刷新重试。" : source.audioCount ? `当前视频有 ${source.audioCount} 段配音，共 ${source.audioDuration.toFixed(1)} 秒。` : "当前视频没有配音素材。")}</p>
-      <p className="text-xs leading-relaxed">{useAudio ? `数字人视频将与配音时长一致${source?.audioDuration ? `（${source.audioDuration.toFixed(1)} 秒）` : ""}，按视频时间线保留配音。` : "参考当前视频内容生成数字人，不使用视频配音，可自行选择生成时长。"}</p>
+      <p className="text-xs leading-relaxed">{useAudio ? `数字人视频将与配音时长一致${source?.audioDuration ? `（${source.audioDuration.toFixed(1)} 秒）` : ""}，按视频时间线保留配音。超过 15 秒会自动分段生成并拼接，最多支持 10 分钟；按各段实际用量计费。` : "参考当前视频内容生成数字人，不使用视频配音，可自行选择生成时长。"}</p>
     </fieldset>
     <fieldset className="space-y-2" disabled={busy}>
       <legend className="mb-2 text-xs font-medium">画面尺寸</legend>
@@ -151,7 +152,22 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     </div>
     {message ? <p role="status" className="break-words text-xs">{message}</p> : null}
     <div className="flex items-center justify-between text-xs">本会话数字人任务<Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
-    {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs"><p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p><p className="break-words text-muted-foreground">{job.message}</p>{job.path ? <div className="flex gap-2"><Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button></div> : null}{["uncertain", "save_failed"].includes(job.status) && job.upstreamId ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id }); await refresh(); })}>恢复查询（不重新生成）</Button> : null}</div>)}
+    {jobs.map(job => <div key={job.id} className="space-y-2 rounded-lg border p-2 text-xs">
+      <p>{job.status === "succeeded" ? "已完成" : ["running", "submitting", "saving"].includes(job.status) ? "生成处理中" : "需要处理"}</p>
+      <p className="break-words text-muted-foreground">{job.message}</p>
+      {job.avatarSequence ? <div className="space-y-2">
+        <p>已完成 {job.avatarSequence.segments.filter(segment => segment.status === "succeeded").length}/{job.avatarSequence.segments.length} 段 · {job.avatarSequence.duration.toFixed(1)} 秒</p>
+        {job.avatarSequence.segments.map((segment, index) => <div key={index} className="flex items-center justify-between gap-2">
+          <span>第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒{segment.status === "succeeded" ? " · 已保存" : ""}</span>
+          {["failed", "save_failed"].includes(job.status) && (segment.status === "failed" || job.status === "save_failed" && job.avatarSequence?.segments.every(item => item.status === "succeeded")) ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("retry-segment", { id: job.id, index }); await refresh(); })}>重试此段（计费）</Button> : null}
+        </div>)}
+      </div> : null}
+      {job.path ? <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(() => show(job.path))}>预览</Button> : null}
+      {["uncertain", "save_failed"].includes(job.status) ? <div className="space-y-2">
+        {job.status === "uncertain" && !job.upstreamId && !job.avatarSequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input aria-label="已有服务商任务 ID" placeholder="填写当前片段已有的 RunningHub 任务 ID" value={recoveryIds[job.id] ?? ""} onChange={event => setRecoveryIds(current => ({ ...current, [job.id]: event.target.value }))} /> : null}
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => void act(async () => { await call("recover", { id: job.id, ...(recoveryIds[job.id]?.trim() ? { upstreamId: recoveryIds[job.id].trim() } : {}) }); await refresh(); })}>恢复查询或拼接（不重新生成）</Button>
+      </div> : null}
+    </div>)}
     {preview ? <video controls src={preview} className="max-h-80 w-full rounded-lg" /> : null}
   </div>;
 }

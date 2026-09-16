@@ -1,10 +1,25 @@
 import { z } from "zod";
 
+export const MAX_AVATAR_SECONDS = 600;
+export const avatarSegmentSchema = z.object({
+  start: z.number().nonnegative(), end: z.number().positive(),
+  status: z.enum(["pending", "submitting", "running", "succeeded", "failed", "uncertain", "save_failed"]),
+  upstreamId: z.string(), path: z.string(), attempt: z.number().int().nonnegative(),
+});
+export type AvatarSegment = z.infer<typeof avatarSegmentSchema>;
+export const avatarSequenceSchema = z.object({
+  duration: z.number().positive().max(MAX_AVATAR_SECONDS), audioPath: z.string(), imagePath: z.string(),
+  ratio: z.enum(["9:16", "16:9"]),
+  segments: z.array(avatarSegmentSchema).min(1).max(64),
+  seams: z.array(z.object({ time: z.number(), difference: z.number(), blend: z.number() })).optional(),
+});
+
 export const videoJobSchema = z.object({
   id: z.string(), workspaceId: z.string(), sessionId: z.string(), model: z.string(),
   operation: z.string(), prompt: z.string(), fingerprint: z.string(), upstreamId: z.string(),
   workflowId: z.string().optional(),
   avatarBackground: z.enum(["transparent", "scene"]).optional(),
+  avatarSequence: avatarSequenceSchema.optional(),
   status: z.enum(["submitting", "running", "saving", "succeeded", "failed", "uncertain", "save_failed"]),
   path: z.string(), message: z.string(), createdAt: z.number(), updatedAt: z.number(), nextPoll: z.number(),
 });

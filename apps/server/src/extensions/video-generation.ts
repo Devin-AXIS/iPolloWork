@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, stat } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, posix } from "node:path";
 import { z } from "zod";
-import { avatarBackgroundForPrompt } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, MAX_AVATAR_SECONDS, type AvatarSegment } from "@ipollowork/types/video-generation";
+import { prepareAvatarSegments, sliceAvatarAudio, joinAvatarSegments } from "./video-avatar-segments.js";
 import { avatarCutoutCli, removeAvatarBackground } from "./video-local-edit.js";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { ApiError, providerApiError } from "../errors.js";
@@ -20,9 +21,9 @@ import { inspectLocalVideo, localVideoEditSchema, inspectNarrationDuration, mixA
 
 export const VIDEO_GENERATION_EXTENSION_ID = "video-generation";
 const ARK = "https://ark.cn-beijing.volces.com/api/v3";
-const RH = "https://www.runninghub.ai";
+const RH = "https://www.runninghub.cn";
 const H3_WORKFLOW = "2097511747551842305";
-const AVATAR_WORKFLOW = "2084814218431385601";
+const AVATAR_WORKFLOW = "2099699508878860290";
 const MAX_OUTPUT = 256 * 1024 * 1024;
 const CHUNK_SIZE = 1024 * 1024;
 const operations = z.enum(["text", "first", "first-last", "reference", "edit", "extend", "regenerate"]);
@@ -84,7 +85,7 @@ export function validateVideoSubmission(input: unknown): Submission {
   const model = videoModelDefinition(args.model);
   if (!model.operations.includes(args.operation)) fail("当前模型不支持此操作。");
   const allowedRatios = ["first", "first-last", "edit", "extend"].includes(args.operation) ? ["adaptive"] : model.ratios;
-  if (!model.resolutions.includes(args.resolution) || !(model.durations.includes(args.duration) || args.model === "minimax-h3-avatar" && args.avatarSource === "video-audio" && Number(args.duration) > 0 && Number(args.duration) <= 15) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
+  if (!model.resolutions.includes(args.resolution) || !(model.durations.includes(args.duration) || args.model === "minimax-h3-avatar" && args.avatarSource === "video-audio" && Number(args.duration) > 0 && Number(args.duration) <= MAX_AVATAR_SECONDS) || !allowedRatios.includes(args.ratio)) fail("所选分辨率、时长或画幅不受当前模型支持。");
   if (["first", "first-last", "edit", "extend"].includes(args.operation) && args.ratio !== "adaptive") fail("首帧、编辑和延长操作的画幅必须跟随输入素材。");
   if (args.operation === "edit" && args.duration !== "-1") fail("Seedance 视频编辑的时长必须跟随原视频。");
   if (["first", "first-last"].includes(args.operation) !== Boolean(args.firstFrame.trim())) fail("首帧模式需要首帧图片；其他模式请使用参考素材。");
@@ -112,6 +113,7 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   { action: "jobs", title: "Session video tasks", effect: "read", properties: { before: { type: "number" } } },
   { action: "submit", title: "Generate or edit video", effect: "write", properties: Object.fromEntries(Object.keys(submissionSchema.shape).map(key => [key, stringProperty])) },
   { action: "recover", title: "Resume an existing video task without resubmitting", effect: "write", properties: { id: stringProperty, upstreamId: stringProperty } },
+  { action: "retry-segment", title: "Retry one failed avatar segment", effect: "write", properties: { id: stringProperty, index: { type: "integer" } } },
   { action: "import", title: "Import video console media", effect: "write", properties: { filename: stringProperty, dataUrl: stringProperty } },
   { action: "read", title: "Read a bounded workspace media chunk", effect: "read", properties: { path: stringProperty, offset: { type: "number" } } },
   { action: "inspect", title: "Inspect a local video for toolbar editing", effect: "read", properties: { path: stringProperty } },
@@ -215,8 +217,7 @@ async function sourceUrl(workspace: WorkspaceInfo, source: string, kind: "image"
   if (model === "seedance-2.5") return `data:${file.mime};base64,${bytes.toString("base64")}`;
   const form = new FormData();
   form.set("file", new Blob([bytes], { type: file.mime }), basename(source));
-  form.set("apiKey", key); form.set("fileType", "input");
-  const response = await providerFetch(`${RH}/task/openapi/upload`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
+  const response = await providerFetch(`${RH}/openapi/v2/media/upload/binary`, { method: "POST", headers: { Authorization: `Bearer ${key}` }, body: form, redirect: "error", signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]) });
   const payload = JSON.parse(new TextDecoder().decode(await readLimitedRequestBody(response, 64 * 1024)));
   if (!response.ok) throw providerApiError(payload, response.status);
   const uploaded = z.object({ fileName: z.string().regex(/^[a-zA-Z0-9_/-]+\.(png|jpe?g|webp|mp3|wav)$/i) }).parse(workflowData(payload)).fileName;
@@ -341,8 +342,8 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
   const nodeInfoList = [{ nodeId: "17", fieldName: "prompt", fieldValue: args.prompt }];
   return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: H3_WORKFLOW, workflow: JSON.stringify(workflow), nodeInfoList, instanceType: "plus", addMetadata: false } };
 }
-export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess) {
-  const signal = AbortSignal.timeout(120_000);
+export async function videoRequest(workspace: WorkspaceInfo, args: Submission, key: string, config: ServerConfig, authorization: AuthorizationAccess, signal = AbortSignal.timeout(120_000)) {
+  if (args.model === "minimax-h3-avatar" && Number(args.duration) > 15) fail("长数字人需要通过分段任务提交，单段最多 15 秒。");
   let inputBytes = 0;
   const consume = (bytes: number) => { inputBytes += bytes; if (inputBytes > 45 * 1024 * 1024) fail("图片和音频参考合计超过 45 MB，请减少素材或改用公开链接。"); };
   const source = async (path: string, kind: "image" | "video" | "audio") => {
@@ -376,12 +377,12 @@ export async function videoRequest(workspace: WorkspaceInfo, args: Submission, k
   return args.model === "minimax-h3-avatar" ? avatarWorkflow(args, key, images[0], audio[0], signal) : h3Workflow(args, key, first, last, signal);
 }
 
-async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, url: string, signal: AbortSignal) {
+async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, url: string, signal: AbortSignal, segmentId?: string) {
   const parsed = new URL(httpsUrl(url));
   const domains = job.model === "seedance-2.5" ? ["volces.com", "volccdn.com", "byteimg.com"] : ["myqcloud.com", "runninghub.ai", "runninghub.cn", "aliyuncs.com", "rh-images.xiaoyaoyou.com"];
   if (!domains.some(domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`))) throw new Error("服务商返回了未受信任的视频下载域名，请联系管理员检查接口。");
-  const cutout = job.model === "minimax-h3-avatar" && job.avatarBackground === "transparent";
-  let path = `${await sessionDirectory(workspace, job.sessionId, job.model === "minimax-h3-avatar" && !cutout ? "assets" : "renders")}/${job.id}.mp4`;
+  const cutout = !segmentId && job.model === "minimax-h3-avatar" && job.avatarBackground === "transparent";
+  let path = `${await sessionDirectory(workspace, job.sessionId, !segmentId && job.model === "minimax-h3-avatar" && !cutout ? "assets" : "renders")}/${segmentId ?? job.id}.mp4`;
   const destination = await resolveWithinRoot(workspace.path, path);
   const existing = await stat(destination).catch(() => null);
   if (!existing) {
@@ -412,6 +413,7 @@ async function saveOutput(config: ServerConfig, workspace: WorkspaceInfo, job: V
       await rename(partial, destination);
     } finally { await file.close().catch(() => undefined); await rm(partial, { force: true }); }
   } else if (!existing.isFile() || existing.size === 0) throw new Error("产出路径已存在异常文件，不能覆盖。");
+  if (segmentId) return path;
   if (cutout) {
     const outputPath = `${await sessionDirectory(workspace, job.sessionId, "assets")}/avatar-${job.id}.webm`;
     const output = await resolveWithinRoot(workspace.path, outputPath);
@@ -435,7 +437,7 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
   const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
   // Persisted jobs from the previous native workflow still finish on node 7.
-  const outputNode = job.workflowId === AVATAR_WORKFLOW ? "142" : [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
+  const outputNode = [AVATAR_WORKFLOW, "2084814218431385601"].includes(job.workflowId ?? "") ? "142" : [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
   const video = outputs.find(item => item.nodeId === outputNode && item.fileType.toLowerCase() === "mp4");
   if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
   return { status, results: [{ url: video.fileUrl }] };
@@ -450,6 +452,10 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
       const workspace = config.workspaces.find(item => item.id === job.workspaceId);
       if (!workspace) throw new Error("发起任务的工作区已不可用，请恢复工作区后重试查询。");
       key = await credential(authorization, job.model);
+      if (job.avatarSequence) {
+        await advanceAvatarSequence(config, workspace, job, key, authorization, signal);
+        return;
+      }
       const data = object.parse(job.model === "seedance-2.5"
         ? await jsonRequest(`${ARK}/contents/generations/tasks/${encodeURIComponent(job.upstreamId)}`, key, undefined, signal)
         : job.workflowId ? await pollH3Workflow(job, key, signal)
@@ -477,6 +483,79 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
         message: safeError(error, key), nextPoll: Date.now() + 60_000 });
     }
   }));
+}
+
+async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceInfo, job: VideoJob, key: string, authorization: AuthorizationAccess, signal: AbortSignal) {
+  const sequence = job.avatarSequence;
+  if (!sequence) return;
+  const index = sequence.segments.findIndex(segment => segment.status !== "succeeded");
+  const persist = (patch: Partial<VideoJob>, segment?: Partial<AvatarSegment>) => {
+    if (segment && index >= 0) sequence.segments[index] = { ...sequence.segments[index], ...segment };
+    return updateVideoJob(config, job, { avatarSequence: sequence, nextPoll: Date.now() + 10_000, ...patch });
+  };
+  if (index < 0) {
+    await persist({ status: "saving", nextPoll: Date.now() + 35 * 60_000, message: "全部片段已生成，正在检查接缝并拼接完整配音…" });
+    try {
+      const output = `video/${job.sessionId}/renders/avatar-long-${job.id}.mp4`;
+      const joined = await joinAvatarSegments(workspace, sequence.segments, sequence.audioPath, sequence.duration, output, signal);
+      sequence.seams = joined.seams;
+      let path = joined.path;
+      if (job.avatarBackground === "transparent") {
+        path = `video/${job.sessionId}/assets/avatar-long-${job.id}.webm`;
+        await removeAvatarBackground(await resolveWithinRoot(workspace.path, output), await resolveWithinRoot(workspace.path, path), signal);
+      }
+      const media = await inspectLocalVideo(workspace, path);
+      if (Math.abs(media.duration - sequence.duration) > .15) throw new Error("拼接时长与完整配音不一致，片段已保留，请重试拼接。");
+      await recordSessionArtifact(config, workspace, job.sessionId, path, undefined, { id: job.id, kind: "video", model: job.model, completedAt: Date.now(), width: media.width, height: media.height, duration: media.duration });
+      await persist({ status: "succeeded", path, message: `${sequence.segments.length} 段已拼接为 ${sequence.duration.toFixed(1)} 秒数字人，完整配音已保留。` });
+    } catch (error) {
+      await persist({ status: "save_failed", message: safeError(error, key) });
+    }
+    return;
+  }
+  const segment = sequence.segments[index], label = `第 ${index + 1}/${sequence.segments.length} 段`;
+  if (["submitting", "uncertain", "failed", "save_failed"].includes(segment.status)) {
+    await persist({ status: segment.status === "failed" ? "failed" : segment.status === "save_failed" ? "save_failed" : "uncertain", message: `${label}需要处理；已完成片段保留。提交结果不明确时，请填写该段已有任务 ID 恢复查询。` });
+    return;
+  }
+  if (segment.status === "pending") {
+    let submitted = false;
+    try {
+      const audioPath = `video/${job.sessionId}/renders/avatar-${job.id}-${index}.wav`;
+      await sessionDirectory(workspace, job.sessionId, "renders");
+      await sliceAvatarAudio(workspace, sequence.audioPath, segment, audioPath, signal);
+      const args = validateVideoSubmission({ requestId: job.id, model: job.model, operation: "reference", prompt: `${job.prompt}\n固定镜头与构图，保持人物大小、位置、光线不变。动作轻微，避免转身或大幅挥手。`,
+        resolution: "0.589824MP", duration: String(segment.end - segment.start), ratio: sequence.ratio, imageRefs: sequence.imagePath, audioRefs: audioPath, avatarSource: "video-audio" });
+      // Keep one identity seed across segments; an explicit retry gets a new seed.
+      if (segment.attempt) args.requestId = createHash("sha256").update(`${job.id}:${index}:${segment.attempt}`).digest("hex").slice(0, 32).replace(/(.{8})(.{4})(.{4})(.{4})(.{12})/, "$1-$2-$3-$4-$5");
+      const request = await videoRequest(workspace, args, key, config, authorization, signal);
+      await persist({ status: "running", nextPoll: Date.now() + 300_000, message: `${label}正在提交…` }, { status: "submitting" });
+      submitted = true;
+      const result = await jsonRequest(request.url, key, request.body, signal);
+      const upstreamId = z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/).parse(object.parse(workflowData(result)).taskId);
+      await persist({ status: "running", message: `${label}正在生成，已完成 ${index} 段。` }, { status: "running", upstreamId });
+    } catch (error) {
+      const definite = !submitted || error instanceof ApiError && error.status < 500 && error.status !== 408;
+      await persist({ status: definite ? "failed" : "uncertain", message: `${label}：${safeError(error, key)}` }, { status: definite ? "failed" : "uncertain" });
+    }
+    return;
+  }
+  const result = await pollH3Workflow({ ...job, upstreamId: segment.upstreamId }, key, signal);
+  if (result.status === "failed") {
+    await persist({ status: "failed", message: `${label}生成失败，可只重试这一段。` }, { status: "failed" });
+  } else if (result.status === "success" && result.results) {
+    try {
+      const path = await saveOutput(config, workspace, job, result.results[0].url, signal, `avatar-${job.id}-${index}-${segment.attempt}`);
+      const media = await inspectLocalVideo(workspace, path);
+      if (media.duration + .08 < segment.end - segment.start) {
+        await persist({ status: "failed", message: `${label}已返回，但视频短于配音，请重试此片段。` }, { status: "failed", path });
+        return;
+      }
+      await persist({ status: "running", nextPoll: 0, message: `${label}已保存。` }, { status: "succeeded", path });
+    } catch (error) {
+      await persist({ status: "save_failed", message: `${label}：${safeError(error, key)}` }, { status: "save_failed" });
+    }
+  } else await persist({ status: "running", message: `${label}正在生成，已完成 ${index} 段。` });
 }
 
 export function startVideoJobWorker(config: ServerConfig) {
@@ -522,7 +601,7 @@ async function avatarContext(workspace: WorkspaceInfo, sessionId: string) {
     } catch { audioIssue = "无法读取配音素材，请检查文件是否存在、格式及大小是否有效，并确认 FFprobe 已安装。"; }
   }
   const audioDuration = clips.length ? Math.max(...clips.map(clip => clip.start + clip.duration)) : 0;
-  if (audioDuration > 15) audioIssue = `配音共 ${audioDuration.toFixed(1)} 秒，当前数字人单次最多支持 15 秒。请先缩短视频配音；不会自动截断。`;
+  if (audioDuration > MAX_AVATAR_SECONDS) audioIssue = `配音共 ${audioDuration.toFixed(1)} 秒，长数字人目前支持 ${MAX_AVATAR_SECONDS / 60} 分钟以内的配音。`;
   return { content: parsed.content, audioCount: clips.length, audioDuration, audioIssue, clips };
 }
 
@@ -581,6 +660,19 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
         await sessionDirectory(workspace, sessionId, "assets");
         await mixAvatarNarration(workspace, source.clips, args.audioRefs, source.audioDuration);
       }
+      if (args.model === "minimax-h3-avatar" && args.avatarSource === "video-audio" && Number(args.duration) > 15) {
+        const segments = await prepareAvatarSegments(workspace, args.audioRefs, Number(args.duration));
+        // Freeze the user's uploaded picture so later edits cannot alter an in-flight sequence.
+        const image = await mediaFile(workspace, args.imageRefs);
+        const imagePath = `video/${sessionId}/assets/avatar-reference-${args.requestId}${extname(args.imageRefs)}`;
+        if (image.size > 30 * 1024 * 1024) fail("人物图片最多 30 MB。");
+        await writeFile(await resolveWithinRoot(workspace.path, imagePath), await readFile(image.absolute), { flag: "wx" });
+        const ratio = args.ratio === "9:16" ? "9:16" : "16:9";
+        const job = await updateVideoJob(config, created.job, { status: "running", nextPoll: 0,
+          avatarSequence: { duration: Number(args.duration), audioPath: args.audioRefs, imagePath, ratio, segments },
+          message: `配音已分为 ${segments.length} 段，开始生成。` });
+        return { ok: true, result: { job } };
+      }
       const request = await videoRequest(workspace, args, key, config, authorization);
       submitted = true;
       const result = await jsonRequest(request.url, key, request.body);
@@ -599,8 +691,29 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     const args = z.object({ id: z.uuid(), upstreamId: z.string().regex(/^[a-zA-Z0-9_-]{1,200}$/).optional() }).parse(input);
     const job = await getVideoJob(config, args.id, workspace.id, sessionId);
     if (!["uncertain", "save_failed"].includes(job.status)) fail("只有待确认或保存失败的任务需要恢复。");
+    if (job.avatarSequence) {
+      const sequence = job.avatarSequence;
+      const index = sequence.segments.findIndex(segment => ["uncertain", "submitting", "save_failed"].includes(segment.status));
+      if (index >= 0) {
+        const segment = sequence.segments[index];
+        const upstreamId = segment.upstreamId || args.upstreamId;
+        if (!upstreamId) fail("请填写这一片段在服务商控制台中的已有任务 ID，避免重复计费。");
+        sequence.segments[index] = { ...segment, upstreamId, status: "running" };
+      }
+      return { ok: true, result: { job: await updateVideoJob(config, job, { avatarSequence: sequence, status: "running", nextPoll: 0, message: "继续已有片段和拼接，不重新生成已完成内容。" }) } };
+    }
     if (!job.upstreamId && !args.upstreamId) fail("请填写服务商控制台中的已有任务 ID。");
     return { ok: true, result: { job: await updateVideoJob(config, job, { status: "running", upstreamId: job.upstreamId || args.upstreamId || "", nextPoll: 0, message: "恢复查询已有任务，不会重新生成。" }) } };
+  }
+  if (action === "retry-segment") {
+    const args = z.object({ id: z.uuid(), index: z.number().int().min(0).max(63) }).strict().parse(input);
+    const job = await getVideoJob(config, args.id, workspace.id, sessionId);
+    const sequence = job.avatarSequence, segment = sequence?.segments[args.index];
+    const seamRetry = job.status === "save_failed" && sequence?.segments.every(item => item.status === "succeeded");
+    if (!sequence || !segment || !["failed", "save_failed"].includes(job.status) || !(segment.status === "failed" || seamRetry)) fail("只能重试已确认失败的片段，或拼接检查未通过的已完成片段。");
+    sequence.segments[args.index] = { ...segment, status: "pending", path: "", upstreamId: "", attempt: segment.attempt + 1 };
+    sequence.seams = undefined;
+    return { ok: true, result: { job: await updateVideoJob(config, job, { avatarSequence: sequence, status: "running", nextPoll: 0, message: `仅重新生成第 ${args.index + 1} 段，其余片段保留。` }) } };
   }
   if (action === "read") {
     const args = z.object({ path: z.string().max(1000), offset: z.number().int().nonnegative().default(0) }).parse(input);

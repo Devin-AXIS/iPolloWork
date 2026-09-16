@@ -526,12 +526,24 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         partition,
       },
     });
+    if (profileId?.startsWith("douyin-ops:")) view.webContents.setAudioMuted(true);
     const tab = { tabId, view, favicon: null, profileId, initialLoad: view.webContents.loadURL("about:blank") };
     browserTabs.set(tabId, tab);
     browserTabOrder.push(tabId);
     // Load about:blank immediately to preempt persistent-session restore.
     // Cookies live on the session object, not the document — they survive this.
+    // Douyin account sessions are web-only: site app-wake links must never
+    // reach the OS protocol handler (which prompts to install the client).
+    const blocksAppLaunch = targetUrl => profileId?.startsWith("douyin-ops:")
+      && !/^(https?:|about:|blob:|data:)/i.test(targetUrl);
+    view.webContents.on("will-frame-navigate", event => {
+      if (blocksAppLaunch(event.url)) event.preventDefault();
+    });
+    view.webContents.on("will-redirect", (event, targetUrl) => {
+      if (blocksAppLaunch(targetUrl)) event.preventDefault();
+    });
     view.webContents.setWindowOpenHandler(({ url: targetUrl }) => {
+      if (blocksAppLaunch(targetUrl)) return { action: "deny" };
       if (profileId && /^https?:\/\//i.test(targetUrl)) {
         createBrowserTab(targetUrl, { select: true, profileId, partition });
         return { action: "deny" };

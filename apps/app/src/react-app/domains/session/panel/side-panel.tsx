@@ -82,7 +82,7 @@ type SidePanelProps = {
   launcherItems?: SidePanelLauncherItem[];
   onClose: () => void;
   onAskAi?: (context: DesignAiSelectionContext) => void;
-  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
+  onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null; sourceTabId?: string }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onGenerateVideo?: (path:string, sourceSessionId:string) => void;
   onSwitchMedia?: (kind: "image" | "video") => void;
@@ -916,6 +916,7 @@ export function SidePanel({
               }}
               onClose={() => returnToProject(edit)}
             /> : <WorkspaceAppFrame
+              onRequestActivate={() => selectTab(tab.id)}
               active={visible}
               surface={tab.surface}
               client={client}
@@ -932,7 +933,7 @@ export function SidePanel({
               onSwitchMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onSwitchMedia : undefined}
               onOpenMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onOpenMedia : undefined}
               onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}
-              onSendMessage={onSendWorkspaceAppMessage}
+              onSendMessage={onSendWorkspaceAppMessage ? input => onSendWorkspaceAppMessage({ ...input, sourceTabId: tab.id }) : undefined}
               onRequestClose={() => closeTab(tab)}
             />}
           </div>
@@ -989,7 +990,7 @@ export function SidePanel({
               aiEditing={aiEditing}
               expanded={expanded}
               onSendMessage={onSendWorkspaceAppMessage ? async input => {
-                const result = await onSendWorkspaceAppMessage(input);
+                const result = await onSendWorkspaceAppMessage({ ...input, sourceTabId: activeTab.id });
                 return typeof result === "boolean" ? result : result.accepted;
               } : undefined}
             />

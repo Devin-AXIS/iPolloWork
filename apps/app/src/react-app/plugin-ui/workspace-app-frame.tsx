@@ -61,6 +61,7 @@ export type WorkspaceImageSave = { path: string; originalPath: string; saveMode:
 export type WorkspaceVideoResult = { path: string; sourcePath: string; requestId: string; saveMode?: "copy" | "overwrite"; revision?: string };
 
 type WorkspaceAppFrameProps = {
+  onRequestActivate?: () => void;
   active?: boolean;
   surface: PluginUiSurface;
   client: iPolloWorkServerClient;

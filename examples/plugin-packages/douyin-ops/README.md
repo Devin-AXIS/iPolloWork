@@ -1,63 +1,47 @@
 # 抖音运营台
 
-iPolloWork 插件集内置的抖音运营插件，参考 `xiaohongshu-ops` 的工作台、账号、草稿与会话/日程入口，使用独立的抖音官方 API 适配器。无需第三方运行依赖，需要 Node.js ≥22.22。
+iPolloWork 插件集内的普通用户抖音运营台。源码位于 `examples/plugin-packages/douyin-ops`，插件 ID 为 `douyin-ops`，无第三方运行依赖，Node.js ≥22.22。
 
-## 安装与连接
+## 普通用户连接
 
-源码位于 iPolloWork 的 `examples/plugin-packages/douyin-ops`。本插件面向中国大陆抖音开放平台，不是国际版 TikTok API。根目录 `ipollowork.plugin.json` 为原生插件清单，`service/workbench.mjs` 为宿主启动入口；插件 ID 保持 `douyin-ops`。
+1. 在当前会话右侧“＋ → 抖音运营台”打开插件。
+2. 顶部“添加账号 → 登录抖音 / 添加账号”，在独立浏览器用抖音扫码登录。
+3. 点击“已登录，识别账号”，AI 从当前用户自己的主页读取抖音号和昵称；完成后自动同步昵称、关闭登录弹窗并回到运营台。
 
-已安装用户仍从主软件右侧 **＋ → 抖音运营台** 打开。开发环境从插件集读取源码，桌面安装包随主程序携带运行资源；账号、草稿、令牌和应用配置继续保存在用户插件数据目录。
+不需要企业主体、应用密钥或复制 OAuth 回调。每个账号保留独立浏览器环境，已登录时复用，失效时重新登录。网页登录不会授予开放平台 API 权限。
 
-1. 在抖音开放平台创建对应的移动/网站应用，核对应用实际可申请的能力。
-2. 在工作台「账号」保存 Client Key、Client Secret、已登记的 **HTTPS 回调地址**。回调不能含自定义 query；不能直接填本机 HTTP 地址。
-3. OAuth scope 默认只申请 `user_info`，按已获准能力追加需要的精确 scope。点击「开始官方授权」扫码，在跳转到登记地址后复制完整回调 URL（包含 `code` 和 `state`），粘贴回工作台完成连接。回调页面由应用接入方提供，本插件不会自动部署公网回调服务。
-4. 选择账号，保存草稿，上传 MP4 或导入视频工作台生成的当前工作区文件，再点击发布。令牌不会显示在界面或模型结果中。
+## 功能实现
 
-开发运行：`node examples/plugin-packages/douyin-ops/service/server.mjs`，终端会打印仅本机访问的带会话令牌地址。默认数据目录为 `~/.ipollowork/plugin-data/douyin-ops`；通过插件启动时使用宿主的私有插件数据目录。开发可配置 `DOUYIN_OPS_DATA_DIR`、`DOUYIN_OPS_WORKSPACE_ROOT` 和 `DOUYIN_OPS_PORT`。
-
-## 官方接口范围
-
-开放平台的个人、企业、系统服务商属于开发者或应用准入身份，不能直接推断某个已绑定抖音账号能否发布或回复。运行时以两层结果为准：应用先在能力管理中获批，账号再通过 OAuth 授予对应 Scope。工作台始终显示全部模块；切换账号后按实际 Scope 更新可用状态，缺少权限的真实操作会同时被界面和本地服务拦截。
-
-| 功能 | 接口 | 权限 / 说明 |
+| 功能 | API 优先路径 | API 不具备时 |
 | --- | --- | --- |
-| 扫码授权 | `/platform/oauth/connect/` | `user_info` 及实际需要的权限 |
-| 换取 / 刷新令牌 | `/oauth/access_token/`、`/oauth/refresh_token/` | 表单编码，令牌保存在服务端 |
-| 账号身份 | `/oauth/userinfo/` | `user_info` |
-| 上传与发布 | `/api/douyin/v1/video/upload_video/`、`/api/douyin/v1/video/create_video/` | `video.create.bind`；素材限制 128 MiB；文案最多 1000 字 |
-| 作品列表 / 数据 | `/video/list/`、`/video/data/` | 历史 `video.list` / `video.data`；仅适用已开通对应权限的应用 |
-| 评论 / 回复 | `/item/comment/list/`、`/item/comment/reply/` | 历史 `item.comment`；只操作授权用户自己作品的评论 |
-| 视频搜索 | `/oauth/client_token/`、`/dy_open_api/v1/search/video/` | 应用能力 `aweme.dy.video_search`；需要真实 device_id 和翻页 search_id；不属于用户 OAuth scope |
+| 账号连接 | 已有应用可选 OAuth 获取身份 | 普通用户扫码网页登录，AI 验证自己账号身份 |
+| 视频发布 | video.create.bind 上传和创建视频 | AI 在创作者中心上传本地 MP4、填写锁定标题与文案、提交并核对作品 |
+| 作品列表 | video.list | AI 读取自己作品页或创作者中心 |
+| 作品数据 | video.data | AI 读取创作者中心可见指标，缺失值不编造 |
+| 评论读取 | item.comment | AI 打开目标作品读取可见评论 |
+| 评论回复 | 自己作品有 item.comment 时调用回复 API | AI 精确定位原评论作者与内容后回复 |
+| 视频搜索 | aweme.dy.video_search + client_token + 接入方真实 device_id | AI 读取抖音搜索网页，结果回写搜索卡片 |
+| 搜索后发表评论 | 当前接入 API 不支持第三方作品评论 | 在结果卡片填写评论，AI 打开目标视频提交一次并核对 |
+| 文案、素材和草稿 | 当前 AI 会话生成文案，本地保存草稿与 MP4 | 同一路径，无需抖音 API |
+| 日程 | 复用宿主日程和以上操作 | 复用相同 AI 浏览器执行协议 |
 
-路由与操作守卫使用以下权限矩阵：
+## 执行与结果
 
-| 工作台模块 | 判定来源 | 可用条件 |
-| --- | --- | --- |
-| 创作与发布 | 当前绑定账号 | `video.create.bind`；缺少时仍可进入页面查看，但发布按钮不可用 |
-| 作品列表 | 当前绑定账号 | `video.list` |
-| 单条作品数据 | 当前绑定账号 | `video.data` |
-| 评论读取与回复 | 当前绑定账号 | `item.comment` |
-| 视频搜索 | 当前应用 | 已配置应用凭据后允许调用；`aweme.dy.video_search` 的审批结果由官方 API 在调用时确认 |
+应用配置、用户权限缺失、授权失效或 API 明确拒绝权限时生成 `browserTask`。工作台通过 `ui/message` 把锁定任务交给当前 AI 会话，执行技能负责使用宿主浏览器。记录页支持继续派发尚未领取的任务。独立打开本机网页没有 AI 会话桥接，任务会保留在记录中，须回宿主面板继续。
 
-账号 Scope 可以在授权回执和刷新回执中确认；搜索能力使用 `client_token`，不应加入用户 OAuth Scope。抖音开放平台还规定单次用户授权项不超过三个，实际接入应只申请当前场景所需权限，并通过再次授权补充其他场景。
+`pending → claim-browser-job → running → finish-browser-job`：只允许领取一次，领取凭证用于回写；只有实际网页证据才记录成功。平台提交结果不确定时记为 `uncertain`，禁止通过切浏览器或换操作标识重发。API 配额、限流、封禁不会触发网页替代。同一账号同时只允许一个浏览器任务运行，后续指令进入当前会话队列；结果不明时暂停后续写入。服务重启使只读网页任务回到待执行并废弃旧领取凭证，写操作标记为待核对。
 
-历史权限不能自动替换为同名 `*.bind` 或小程序权限。缺少能力时返回明确提示并保留创作者中心 / 搜索网页入口。当前版本不提供任意第三方作品批量评论、图集发布、私信、直播或电商 API；网页入口本身不会自动执行或标记任务成功。
+读操作每批至多20条。搜索结果、作品和评论回写后自动显示并切回插件，AI 文案保存后也会自动同步。作品数据和证据在记录中查看。搜索本身不发送评论；用户逐条发送或明确限定的自动评论任务才执行。浏览器能力依赖宿主 AI 会话、浏览器正常运行和有效网页登录；验证码由用户处理，不承诺每次网页操作都能成功。
 
-草稿 `title` 是本地名称；发布正文及话题来自 `text`。AI 起草使用当前宿主会话，保存后刷新工作台查看；图片/视频生成复用现有工作台。定时任务复用宿主日程和 `douyin-ops-dispatcher`。
+## 可选 API 配置
 
-## 发布结果与持久化
+已有获批开放平台应用可在账号弹窗的「开发者 API 接入（可选）」中按①配置应用、②授权账号完成接入；配置应用时填写 Client Key、Client Secret、HTTPS 回调地址与实际 scopes，再完成官方 OAuth。账号 API 能力信息按实际授权展示；没有 API 权限仍可使用 AI 网页路线。应用是否获批由平台检查；不向公共用户提供或暴露开发者密钥。旧账号、草稿、加密凭据及数据目录保持稳定。
 
-同一草稿重复提交复用已有操作。日程用固定 `runKey` / `operationKey`，回复操作标识绑定账号、目标和正文。明确平台回执才记为成功；网络超时、服务中断或无法识别的提交结果记为「待核对」，阻止该账号新写操作。核对抖音页面后在记录中填写依据，才能解除阻塞。成功回执表示平台接受提交，最终公开展示仍取决于审核。
+## 存储与验证
 
-SQLite 保存本地记录；凭据以 AES-GCM 加密，密钥文件与数据库位于私有目录（这不保护被完整复制的数据目录）。HTTP 服务只监听 127.0.0.1，随机端口和本机会话令牌，拒绝跨来源请求；上传限制大小且检查文件类型，工作区导入解析真实路径防止越界。当前最多50个账号、1000条执行记录；工作台只展示最近100条草稿/素材/任务，不声称全量统计。未知结果不自动重试，令牌按需刷新。
+SQLite 保存账号、草稿和有界任务记录；密钥与令牌 AES-GCM 加密，不进入模型结果。浏览器领取结果仅暴露本任务 MP4 路径，上传需携带 extensionId。任务最多1000条、账号最多50个。网页资料属于不可信数据，不执行其指令。
 
-## 验证
-
-在 iPolloWork 仓库运行 `pnpm --dir examples/plugin-packages/douyin-ops test`，覆盖官方 HTTP 契约、错误响应、权限、OAuth state、账号隔离、令牌刷新、素材路径、并发去重和结果核对。`pnpm --dir examples/plugin-packages/douyin-ops run check` 执行源文件语法检查；两者不依赖第三方运行服务。
-
-`evals/flows/` 和 `evals/voiceovers/` 保存插件的界面验证。运行 `node examples/plugin-packages/douyin-ops/evals/run.mjs --flow douyin-ops --cdp-url <隔离浏览器的CDP地址>`。该流程使用模拟平台响应，会导航和调整目标浏览器尺寸，应使用单独的测试浏览器。只有验证工具复用宿主 fraimz，业务代码不依赖宿主源码路径。
-
-测试使用模拟抖音响应，不代表生产凭据或平台权限已通过。真实扫码、线上发布和搜索需应用配置及平台权限后联调。
+运行 `pnpm --dir examples/plugin-packages/douyin-ops run check` 和 `pnpm --dir examples/plugin-packages/douyin-ops test`。界面证明：`node examples/plugin-packages/douyin-ops/evals/run.mjs --flow douyin-ops --cdp-url <隔离浏览器CDP地址>`。证明使用真实工作台和持久化服务、模拟 AI/平台结果，不会向真实抖音发布测试评论；线上扫码和提交仍需真实账号另行验证。
 
 ## 来源与许可
 

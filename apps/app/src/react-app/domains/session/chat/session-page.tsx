@@ -125,7 +125,6 @@ import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
 
 import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
-import { promptWasDispatched } from "../artifacts/artifact-completion";
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
@@ -3000,12 +2999,21 @@ export function SessionPage(props: SessionPageProps) {
     if (!isElectronRuntime()) return;
     const browser = (window as Window).__IPOLLOWORK_ELECTRON__?.browser;
     if (!browser) return;
+    let stopped = false;
     const unsubOpen = browser.onPanelOpened?.(() => {
       if (preserveSidePanelOnPanelOpenRef.current) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
       setCurrentSidePanel("panel");
+      // An explicit browser open must also select a reused tab. Ordinary
+      // background state updates intentionally preserve the active plugin.
+      void browser.getState?.().then((state) => {
+        if (stopped || !state?.activeTabId || !state.tabs?.length || !props.selectedSessionId) return;
+        const store = usePanelTabStore.getState();
+        store.syncBrowserTabs(props.selectedSessionId, state.tabs, state.activeTabId);
+        store.selectTab(props.selectedSessionId, state.activeTabId);
+      }).catch((error: unknown) => console.error("Failed to activate browser tab", error));
     });
     const unsubClose = browser.onPanelClosed?.(() => {
       const remainingTabs = props.selectedSessionId
@@ -3019,7 +3027,7 @@ export function SessionPage(props: SessionPageProps) {
       }
       setCurrentSidePanel(null);
     });
-    return () => { unsubOpen?.(); unsubClose?.(); };
+    return () => { stopped = true; unsubOpen?.(); unsubClose?.(); };
   }, [props.selectedSessionId, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
@@ -3784,101 +3792,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [openDesignTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType]);
   useControlAction(seedDesignHtmlControlAction);
   useControlAction(seedDesignDeckControlAction);
-  const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.open_url",
-    label: "Open URL in built-in browser",
-    description: "Open a website in a new iPolloWork built-in browser tab and return its host-owned tab ID.",
-    sideEffect: "navigation",
-    requiresArgs: true,
-    args: [
-      { name: "url", type: "string", required: true, description: "The website URL to open." },
-      { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
-    ],
-    previewArgs: { url: "https://example.com" },
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const url = controlStringArg(args, "url");
-      if (!url) return { ok: false, error: "Missing URL." };
-      setCurrentSidePanel("panel");
-      const profileId = controlStringArg(args, "profileId");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId ? { profileId } : undefined);
-      return result;
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(openBrowserUrlControlAction);
-  const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.snapshot",
-    label: "Read built-in browser page",
-    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
-    sideEffect: "none",
-    requiresArgs: true,
-    args: [
-      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
-    ],
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const tabId = controlStringArg(args, "tabId");
-      if (!tabId) return { ok: false, error: "Missing tabId." };
-      setCurrentSidePanel("panel");
-      const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
-      if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
-      return snapshot({ tabId });
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(snapshotBrowserControlAction);
-  const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.act",
-    label: "Act in built-in browser",
-    description: "Execute a bounded ref-based browser action batch through real keyboard and pointer input.",
-    sideEffect: "mutation",
-    requiresArgs: true,
-    args: [
-      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
-      { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
-      { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
-      { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
-    ],
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const object = controlObjectArg(args);
-      const tabId = controlStringArg(args, "tabId");
-      const snapshotId = controlStringArg(args, "snapshotId");
-      const actions = object ? Reflect.get(object, "actions") : null;
-      if (!tabId || !snapshotId || !Array.isArray(actions)) {
-        return { ok: false, error: "tabId, snapshotId, and actions are required." };
-      }
-      setCurrentSidePanel("panel");
-      const act = window.__IPOLLOWORK_ELECTRON__?.browser?.act;
-      if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
-      return act({
-        tabId,
-        snapshotId,
-        workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
-        actions: actions.filter((action): action is Record<string, unknown> => (
-          Boolean(action) && typeof action === "object" && !Array.isArray(action)
-        )),
-      });
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(actInBrowserControlAction);
-  const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.set_proxy",
-    label: "Set built-in browser proxy",
-    description: "Route all built-in browser traffic through an HTTP/SOCKS proxy (e.g. to browse from another location). Applies to every built-in browser tab until cleared. Pass an empty proxy to restore system network settings.",
-    sideEffect: "mutation",
-    args: [
-      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWORK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
-    ],
-    previewArgs: { proxy: "env:DE" },
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const proxy = controlStringArg(args, "proxy") || "";
-      const setProxy = window.__IPOLLOWORK_ELECTRON__?.browser?.setProxy;
-      if (!setProxy) return { ok: false, error: "Built-in browser is not available." };
-      return setProxy(proxy);
-    },
-  }), []);
-  useControlAction(setBrowserProxyControlAction);
   const openArtifactRailPane = useCallback(() => {
     if (!hasArtifactTargets || !props.selectedSessionId) return;
     const activeTab = sessionPanelState.tabs.find((tab) => tab.id === sessionPanelState.activeTabId);
@@ -4000,29 +3913,31 @@ export function SessionPage(props: SessionPageProps) {
   const sendWorkspaceAppMessage = useCallback(async (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
+    sourceTabId?: string;
   }) => {
-    if (!props.selectedSessionId || (activePanelTab?.type !== "workspace-app" && activePanelTab?.type !== "plugin-studio")) return false;
-    const context = activePanelTab.type === "workspace-app"
+    const source = input.sourceTabId ? sessionPanelState.tabs.find(tab => tab.id === input.sourceTabId) : activePanelTab;
+    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio")) return false;
+    const context = source.type === "workspace-app"
       ? [
-          workspaceAppCapabilityInstruction(activePanelTab.label),
+          workspaceAppCapabilityInstruction(source.label),
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
-      : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
-    const outcome = await sendSessionDraft({
+      : pluginWorkshopSystemInstruction(source.pluginId);
+    useComposerStateStore.getState().appendQueuedDraft(props.selectedSessionId, {
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
       attachments: [],
       text: input.text,
       resolvedText: input.text,
       capability: {
-        id: activePanelTab.type === "workspace-app"
-          ? `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`
+        id: source.type === "workspace-app"
+          ? `workspace-app:${source.surface.pluginId}:${source.surface.resource.id}`
           : "plugin-workshop",
         instruction: context,
       },
-    }, props.selectedSessionId);
-    return { accepted: outcome ? promptWasDispatched(outcome) : false, sessionId: typeof outcome === "object" ? outcome.sessionId ?? props.selectedSessionId : props.selectedSessionId };
-  }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
+    });
+    return { accepted: true, sessionId: props.selectedSessionId };
+  }, [activePanelTab, props.selectedSessionId, sessionPanelState.tabs]);
   const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
   const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
     ? `design:${props.selectedSessionId}:${encodeURIComponent(launcherDesignPath)}`

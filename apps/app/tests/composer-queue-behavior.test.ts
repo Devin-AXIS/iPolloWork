@@ -25,6 +25,14 @@ const queuedMessagesPanelSource = readFileSync(
 );
 
 describe("composer queue behavior", () => {
+  test("plugin messages share the composer queue instead of dispatching a parallel turn", () => {
+    const page = readFileSync(resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"), "utf8");
+    const sender = page.slice(page.indexOf("  const sendWorkspaceAppMessage ="), page.indexOf("  const launcherDesignPath ="));
+    expect(sender).toContain("appendQueuedDraft(props.selectedSessionId,");
+    expect(sender).not.toContain("sendSessionDraft(");
+    expect(sender).toContain("capability:");
+    expect(sender).toContain("accepted: true");
+  });
   test("never lets keyboard modifiers bypass the queue", () => {
     const submitPlugin = editorSource.slice(
       editorSource.indexOf("function SubmitPlugin"),
