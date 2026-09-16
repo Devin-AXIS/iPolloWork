@@ -22,6 +22,8 @@ const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
 const CODEX_ENGINE_ID = "codex-harness";
 const OPTIONAL_ENGINE_IDS = new Set([DSH_ENGINE_ID, CODEX_ENGINE_ID]);
+const RUNTIME_PROBE_TIMEOUT_MS = 10_000;
+const FAILED_RUNTIME_PROBE_TTL_MS = 30_000;
 const ENGINE_PACK_REQUEST_TIMEOUT_MS = 15_000;
 const ENGINE_PACK_IDLE_TIMEOUT_MS = 30_000;
 const ENGINE_PACK_GITHUB_MIRRORS = [
@@ -235,20 +237,21 @@ function probeRuntimeExecutable(executablePath, env) {
     });
     child.stdout.setEncoding("utf8");
     child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(0, 1024); });
-    const finish = (result) => {
+    const finish = (result, reason = "") => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      if (!result) console.warn(`[engine-package] Codex version probe failed (${reason}): ${executablePath}`);
       resolve(result);
     };
     const timeout = setTimeout(() => {
       child.kill();
-      finish(false);
-    }, 5_000);
-    child.once("error", () => finish(false));
+      finish(false, "timeout");
+    }, RUNTIME_PROBE_TIMEOUT_MS);
+    child.once("error", (error) => finish(false, error.message));
     child.once("close", (code) => finish(code === 0
       ? stdout.trim().match(/^codex-cli\s+(\d+\.\d+\.\d+(?:-[\w.-]+)?)(?:\s|$)/)?.[1] || true
-      : false));
+      : false, `exit ${code}`));
   });
 }
 
@@ -545,15 +548,27 @@ export function createEnginePackageManager(options) {
   async function probeRuntime(descriptor, executablePath) {
     if (descriptor.id !== CODEX_ENGINE_ID) return true;
     const key = platform === "win32" ? executablePath.toLowerCase() : executablePath;
-    let pending = runtimeProbeCache.get(key);
-    if (!pending) {
-      pending = Promise.resolve(options.probeRuntime
-        ? options.probeRuntime({ engineId: descriptor.id, executablePath })
-        : probeRuntimeExecutable(executablePath, environment))
-        .catch(() => false);
-      runtimeProbeCache.set(key, pending);
-    }
-    return pending;
+    const cached = runtimeProbeCache.get(key);
+    if (cached && Date.now() < cached.retryAt) return cached.pending;
+    // Share in-flight work and successful probes, but let transient startup
+    // failures recover. A short negative cache bounds settings polling cost.
+    const entry = { pending: null, retryAt: Infinity };
+    entry.pending = (async () => {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const result = await (options.probeRuntime
+            ? options.probeRuntime({ engineId: descriptor.id, executablePath })
+            : probeRuntimeExecutable(executablePath, environment));
+          if (result) return result;
+        } catch {
+          // A failed spawn or a rejected probe gets the same bounded retry.
+        }
+      }
+      entry.retryAt = Date.now() + FAILED_RUNTIME_PROBE_TTL_MS;
+      return false;
+    })();
+    runtimeProbeCache.set(key, entry);
+    return entry.pending;
   }
 
   async function removeManagedPackage(descriptor) {
@@ -724,6 +739,9 @@ export function createEnginePackageManager(options) {
 
   /** @returns {Promise<import("@ipollowork/types/desktop-ipc").EnginePackageInfo[]>} */
   async function list() {
+    // Refresh the launch environment as well as the displayed availability.
+    // Keep managed files intact: an existing session may still be using them.
+    await applyEnvironment(null, false);
     const optional = await Promise.all([...OPTIONAL_ENGINE_IDS].map((id) => infoFor(descriptorFor(id))));
     /** @type {import("@ipollowork/types/desktop-ipc").EnginePackageInfo} */
     const opencode = {
@@ -744,13 +762,15 @@ export function createEnginePackageManager(options) {
     return [opencode, ...optional];
   }
 
-  async function applyEnvironment(skipEngineId = null) {
+  async function applyEnvironment(skipEngineId = null, cleanupRedundantPackages = true) {
     for (const id of OPTIONAL_ENGINE_IDS) {
       const descriptor = descriptorFor(id);
-      const runtime = id === skipEngineId ? null : await resolveRuntimeSource(descriptor);
+      const skipped = id === skipEngineId || operations.get(id)?.status === "uninstalling";
+      const runtime = skipped ? null : await resolveRuntimeSource(descriptor);
       const resolved = runtime?.path ?? null;
       if (
-        runtime?.source === "official"
+        cleanupRedundantPackages
+        && runtime?.source === "official"
         && !externalOverrides.has(id)
         && await pathExists(managedPackageRoot(descriptor))
       ) {
@@ -775,7 +795,7 @@ export function createEnginePackageManager(options) {
         const hostPlugin = path.join(installedRoot(descriptor), descriptor.hostPluginRelativePath);
         if (externalDshHostPlugin && existsSync(externalDshHostPlugin)) {
           environment.IPOLLOWORK_DSH_HOST_PLUGIN = externalDshHostPlugin;
-        } else if (id !== skipEngineId && existsSync(hostPlugin)) {
+        } else if (!skipped && existsSync(hostPlugin)) {
           environment.IPOLLOWORK_DSH_HOST_PLUGIN = hostPlugin;
         } else {
           delete environment.IPOLLOWORK_DSH_HOST_PLUGIN;
@@ -897,8 +917,17 @@ export function createEnginePackageManager(options) {
     const operation = operations.get(descriptor.id);
     if (operation && operation.status !== "failed") return infoFor(descriptor);
     if (operation?.status === "failed") clearOperation(descriptor.id);
+    if (descriptor.id === CODEX_ENGINE_ID) {
+      // Recheck failed local candidates before spending bandwidth on a download.
+      for (const [key, probe] of runtimeProbeCache) {
+        if (probe.retryAt !== Infinity) runtimeProbeCache.delete(key);
+      }
+    }
     const current = await infoFor(descriptor);
-    if (current.installed) return current;
+    if (current.installed) {
+      await applyEnvironment(null, false);
+      return current;
+    }
 
     setOperation(descriptor.id, {
       status: "downloading",
@@ -975,8 +1004,8 @@ export function createEnginePackageManager(options) {
       return infoFor(descriptor);
     } catch (error) {
       uninstallError = error;
-      await applyEnvironment();
       setOperation(descriptor.id, { status: "failed", error: safeErrorMessage(error) });
+      await applyEnvironment();
       throw error;
     } finally {
       if (typeof resumeRuntime === "function") {

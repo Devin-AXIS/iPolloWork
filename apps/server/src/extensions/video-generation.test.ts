@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { avatarBackgroundForPrompt } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
 
 test("avatar defaults to a transparent person unless the motion prompt requests scenery", () => {
   for (const prompt of ["人物自然说话，保持镜头稳定", "不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
@@ -58,7 +58,9 @@ function workflowFixture() {
 function avatarFixture() {
   const node = (class_type: string, inputs: Record<string, unknown>) => ({ class_type, inputs });
   return { code: 0, data: { prompt: JSON.stringify({
-    "136": node("MiniMaxH3ReferenceToVideo", { prompt: "author demo", ref_image_0: ["137", 0], ref_audio_0: ["199", 0], ref_image_size: "max" }),
+    "136": node("MiniMaxH3ReferenceToVideo", { prompt: "author demo", clip: ["128", 0], vae: ["119", 0], ref_image_0: ["137", 0], ref_audio_0: ["199", 0], ref_image_size: "max" }),
+    "119": node("VAELoader", { vae_name: "minimax_h3_video_vae_fp16.safetensors" }),
+    "128": node("CLIPLoader", { clip_name: "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", type: "minimax" }),
     "137": node("LoadImage", { image: "demo.png" }), "171": node("LoadAudio", { audio: "demo.mp3" }),
     "199": node("TrimAudioDuration", { audio: ["171", 0], start_index: 40, duration: 10 }),
     "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0] }),
@@ -86,11 +88,18 @@ test("avatar replaces demo media, starts at zero and preserves six steps in both
   await writeFile(join(root, "voice.wav"), "test-audio");
   Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : avatarFixture()));
   for (const ratio of ["9:16", "16:9"]) {
-    const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", duration: "10", ratio, imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth);
+    const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", duration: "10", ratio, imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth);
     if (!("workflow" in request.body)) throw new Error("Missing workflow");
     const graph = JSON.parse(request.body.workflow);
-    expect(request.body).toMatchObject({ workflowId: "2099699508878860290", instanceType: "plus" });
-    expect(graph["136"].inputs).toMatchObject({ width: ratio === "9:16" ? 576 : 1024, height: ratio === "9:16" ? 1024 : 576, length: 243, ref_image_size: "match" });
+    expect(request.body).toMatchObject({ workflowId: "2099368776771919873" });
+    expect(request.body).not.toHaveProperty("instanceType");
+    expect(graph["136"]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { width: ratio === "9:16" ? 384 : 672, height: ratio === "9:16" ? 672 : 384, length: 243, first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0] } });
+    expect(graph["174"].inputs.unet_name).toBe("minimax_h3_fl2va_int8_convrot.safetensors");
+    expect(graph.avatar_frame.inputs).toMatchObject({ crop: "center", image: ["137", 0] });
+    expect(graph.avatar_guide_72).toMatchObject({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], image: ["avatar_frame", 0], frame_idx: 72 } });
+    expect(graph.avatar_guide_144.inputs.positive).toEqual(["avatar_guide_72", 0]);
+    expect(graph["126"].inputs.conditioning).toEqual(["avatar_guide_144", 0]);
+    expect(graph.avatar_guide_216).toBeUndefined();
     expect(graph["199"].inputs).toMatchObject({ start_index: 0, duration: 10 });
     expect(graph["171"].inputs.audio).toBe("input/voice.wav");
     expect(graph["172"].inputs.source_audio).toEqual(["199", 0]);
@@ -153,7 +162,8 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
   const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
   expect(frames.url).toEndWith("/task/openapi/create");
-  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2097511747551842305",instanceType:"plus"});
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2097511747551842305"});
+  expect(frames.body).not.toHaveProperty("instanceType");
   if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
   const graph=JSON.parse(frames.body.workflow);
   expect(graph["24"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
@@ -165,6 +175,9 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   expect(graph["17"].inputs.length).toBe(124);
   expect(graph["7"].inputs).toMatchObject({format:"mp4",codec:"h264"});
   const text=await request({model:"minimax-h3",resolution:"1MP"});
+  expect(text.body).not.toHaveProperty("instanceType");
+  const first=await request({model:"minimax-h3",operation:"first",ratio:"adaptive",resolution:"0.5MP",firstFrame:input.firstFrame});
+  expect(first.body).not.toHaveProperty("instanceType");
   if(!("workflow" in text.body))throw new Error("Missing workflow graph");
   const textGraph=JSON.parse(text.body.workflow);
   expect(textGraph["17"].inputs).toMatchObject({width:1344,height:736});
@@ -313,6 +326,7 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
 test.each([
   ["2084814218431385601", "142"],
   ["2099699508878860290", "142"],
+  ["2099368776771919873", "142"],
   ["2084935567606894593", "92"],
   ["2084511826766811137", "7"],
   ["2097511747551842305", "7"],
@@ -616,6 +630,29 @@ test("avatar context reads actual narration duration, excludes BGM and prepares 
   expect(requests).toBe(0);
 });
 
+test("avatar accepts custom long timelines beyond ten minutes without submitting an oversized provider task", async () => {
+  const { root, call } = await setup();
+  const directory = join(root, "video/session-one");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "index.html"), '<h1>自然交流</h1>');
+  await writeFile(join(root, "person.png"), "picture");
+  let requests = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { requests++; throw new Error("must not bill"); });
+  const input = submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", imageRefs: "person.png", duration: "3601", avatarSource: "video-content" });
+  const result = await call("submit", input);
+  expect(result.result).toMatchObject({ job: { status: "running", avatarSequence: { duration: 3601, audioPath: "" } } });
+  const parsed = videoSubmitResultSchema.parse(result.result);
+  expect(parsed.job.avatarSequence?.segments.length).toBeGreaterThan(128);
+  expect(parsed.job.avatarSequence?.segments.every(segment => segment.end - segment.start <= 15)).toBe(true);
+  for (const duration of ["0", "-1", "NaN", "Infinity", "1e20"]) {
+    expect(() => validateVideoSubmission({ ...input, duration })).toThrow();
+  }
+  await writeFile(join(directory, "voice.wav"), narrationWav(8.2));
+  await writeFile(join(directory, "index.html"), '<audio data-ipw-voiceover="true" src="voice.wav" data-start="3601" data-duration="8.2"></audio>');
+  expect((await call("avatar-context")).result).toMatchObject({ audioDuration: 3609.2, audioIssue: "" });
+  expect(requests).toBe(0);
+});
+
 test("avatar context does not use unused files, muted narration or out-of-project audio", async () => {
   const {root, call} = await setup(); const directory=join(root,"video/session-one"); await mkdir(directory,{recursive:true});
   await writeFile(join(directory,"index.html"), '<h1>视频内容</h1><audio data-ipw-voiceover="true" src="voice.wav" data-volume="0" data-start="0" data-duration="5"></audio>');
@@ -679,20 +716,88 @@ test("long avatar retries only a confirmed failed segment and keeps completed ou
   expect(retried.avatarSequence?.segments[0]).toEqual(job.avatarSequence.segments[0]);
   expect(retried.avatarSequence?.segments[1]).toMatchObject({status:"pending",upstreamId:"",attempt:1});
   await expect(call("retry-segment",{id:job.id,index:1})).rejects.toThrow();
+  if (!retried.avatarSequence) throw new Error("missing retry sequence");
+  const failed = retried.avatarSequence.segments[1];
+  failed.status = "failed"; failed.path = "video/session-one/renders/rejected.mp4";
+  await updateVideoJob(config, retried, { status: "failed" });
+  await call("retry-segment", { id: job.id, index: 1 });
+  const split = (await getVideoJob(config, job.id, "workspace", context.sessionId)).avatarSequence;
+  if (!split) throw new Error("missing split sequence");
+  expect(split.segments).toHaveLength(3);
+  expect(split.segments[0]).toEqual(job.avatarSequence.segments[0]);
+  expect(split.segments[1].start).toBe(failed.start);
+  expect(split.segments[2].end).toBe(failed.end);
+  expect(split.segments[1].end - split.segments[2].start).toBeCloseTo(1);
+  expect(split.segments.slice(1).every(item => item.attempt === 2 && item.status === "pending" && item.end - item.start < 9)).toBe(true);
 });
 
-test("long avatar worker saves segments and publishes one complete result with real local stitching", async () => {
+test("local avatar preparation failure resumes without a new attempt and never auto-retries an uncertain submission", async () => {
+  const { root, config, call } = await setup();
+  await mkdir(join(root, "video/session-one"), { recursive: true });
+  await writeFile(join(root, "video/session-one/voice.wav"), narrationWav(26));
+  await writeFile(join(root, "video/session-one/index.html"), '<main data-composition-id="main" data-duration="26"><audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio></main>');
+  await writeFile(join(root, "person.png"), "image");
+  const input = submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", imageRefs: "person.png", duration: "26", avatarSource: "video-audio", prompt: "保留背景" });
+  await call("submit", input);
+  const original = process.env.HYPERFRAMES_FFMPEG_PATH;
+  let creates = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init?: RequestInit) => {
+    if (String(url).endsWith("/media/upload/binary")) {
+      const file = init?.body instanceof FormData ? init.body.get("file") : null;
+      return Response.json({ code: 0, data: { fileName: file instanceof File && file.type.startsWith("image/") ? "input/person.png" : "input/audio.wav" } });
+    }
+    if (String(url).endsWith("getJsonApiFormat")) return Response.json(avatarFixture());
+    if (String(url).endsWith("/create")) { creates++; return Response.json({ code: 0, data: { taskId: "first-accepted-task" } }); }
+    throw new Error("unexpected provider request");
+  });
+  try {
+    process.env.HYPERFRAMES_FFMPEG_PATH = join(root, "missing-ffmpeg");
+    await pollVideoJobs(config, auth);
+  } finally {
+    if (original === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    else process.env.HYPERFRAMES_FFMPEG_PATH = original;
+  }
+  let job = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("save_failed");
+  expect(job.message).toContain("尚未提交生成任务");
+  expect(job.message).not.toContain("Command failed");
+  expect(creates).toBe(0);
+  if (!job.avatarSequence) throw new Error("missing sequence");
+  const originalSegments = structuredClone(job.avatarSequence.segments);
+  // Old versions used failed for this exact pre-submission failure.
+  job.avatarSequence.segments[0].status = "failed";
+  await updateVideoJob(config, job, { status: "failed" });
+  await expect(call("retry-segment", { id: job.id, index: 0 })).rejects.toThrow("恢复准备");
+  await call("recover", { id: job.id });
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.avatarSequence?.segments[0]).toMatchObject({ status: "pending", attempt: 0, upstreamId: "" });
+  expect(job.avatarSequence?.segments.slice(1)).toEqual(originalSegments.slice(1));
+  await pollVideoJobs(config, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.status, job.message).toBe("running");
+  expect(creates).toBe(1);
+  expect(job.avatarSequence?.segments[0]).toMatchObject({ status: "running", upstreamId: "first-accepted-task", attempt: 0 });
+  if (!job.avatarSequence) throw new Error("missing sequence");
+  job.avatarSequence.segments[0] = { ...job.avatarSequence.segments[0], status: "uncertain", upstreamId: "" };
+  await updateVideoJob(config, job, { status: "uncertain" });
+  await expect(call("recover", { id: job.id })).rejects.toThrow("已有任务 ID");
+  expect(creates).toBe(1);
+}, 30_000);
+
+test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { drift: false, useAudio: false }, { drift: true, useAudio: false }])("long avatar stitches stable outputs and stops billing after scene drift: %j", async ({ drift, useAudio }) => {
   const {root,config,call}=await setup();
   const exec=promisify(execFile),ffmpeg=process.env.HYPERFRAMES_FFMPEG_PATH||"ffmpeg";
   await mkdir(join(root,"video/session-one"),{recursive:true});
   await writeFile(join(root,"video/session-one/voice.wav"),narrationWav(26));
-  await writeFile(join(root,"video/session-one/index.html"),'<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio>');
+  await writeFile(join(root,"video/session-one/index.html"),`<main data-composition-id="main" data-duration="26"><h1>自然交流</h1>${useAudio ? '<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio>' : ''}</main>`);
   await writeFile(join(root,"person.png"),"image");
-  const input=submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"9:16",imageRefs:"person.png",avatarSource:"video-audio",prompt:"保持白色背景"});
+  const input=submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.258048MP",ratio:"9:16",imageRefs:"person.png",duration:"26",avatarSource:useAudio?"video-audio":"video-content",prompt:"保持白色背景"});
   await call("submit",input);
   let job=await getVideoJob(config,input.requestId,"workspace",context.sessionId);
   if(!job.avatarSequence)throw new Error("missing sequence");
-  await exec(ffmpeg,["-v","error","-f","lavfi","-i","testsrc2=size=160x160:rate=24:duration=26","-c:v","libx264","-threads","1",join(root,"continuous.mp4")],{windowsHide:true});
+  expect(job.avatarSequence.duration).toBe(26);
+  expect(Boolean(job.avatarSequence.audioPath)).toBe(useAudio);
+  await exec(ffmpeg,["-v","error","-f","lavfi","-i","color=c=white:size=160x160:rate=24:duration=26",...(drift ? ["-vf", "negate=enable='gte(t,3)'"] : []),"-c:v","libx264","-threads","1",join(root,"continuous.mp4")],{windowsHide:true});
   const videos:Buffer[]=[];
   for(const [index,segment] of job.avatarSequence.segments.entries()) {
     const path=join(root,`provider-${index}.mp4`);
@@ -703,10 +808,16 @@ test("long avatar worker saves segments and publishes one complete result with r
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL,init?:RequestInit)=>{
     const address=String(url);
     if(address.endsWith("/media/upload/binary")) {const file=init?.body instanceof FormData?init.body.get("file"):null;return Response.json({code:0,data:{fileName:file instanceof File&&file.type.startsWith("image/")?"input/person.png":"input/audio.wav"}});}
-    if(address.endsWith("getJsonApiFormat"))return Response.json(avatarFixture());
-    if(address.endsWith("/create"))return Response.json({code:0,data:{taskId:`segment-${creates++}`}});
+    if(address.endsWith("getJsonApiFormat"))return Response.json(useAudio ? avatarFixture() : workflowFixture());
+    if(address.endsWith("/create")){
+      const body=JSON.parse(String(init?.body));
+      expect(body).not.toHaveProperty("instanceType");
+      expect(body.workflowId).toBe(useAudio ? "2099368776771919873" : "2097511747551842305");
+      if(!useAudio) expect(body.workflow).not.toContain("LoadAudio");
+      return Response.json({code:0,data:{taskId:`segment-${creates++}`}});
+    }
     if(address.endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
-    if(address.endsWith("/outputs")){const task=JSON.parse(String(init?.body)).taskId;return Response.json({code:0,data:[{nodeId:"142",fileType:"mp4",fileUrl:`https://rh-images.xiaoyaoyou.com/${task}.mp4`}]});}
+    if(address.endsWith("/outputs")){const task=JSON.parse(String(init?.body)).taskId;return Response.json({code:0,data:[{nodeId:useAudio?"142":"7",fileType:"mp4",fileUrl:`https://rh-images-tos.xiaoyaoyou.com/${task}.mp4`}]});}
     const match=/segment-(\d+)\.mp4$/.exec(address);if(match)return new Response(new Uint8Array(videos[Number(match[1])]));
     throw new Error("unexpected provider request");
   });
@@ -715,9 +826,22 @@ test("long avatar worker saves segments and publishes one complete result with r
     job=await getVideoJob(config,input.requestId,"workspace",context.sessionId);
     if(!["running","saving"].includes(job.status))break;
   }
+  if (drift) {
+    expect(job.status).toBe("failed"); expect(job.message).toContain("连续性检查未通过");
+    expect(job.avatarSequence?.segments[0].path).not.toBe("");
+    expect(job.avatarSequence?.segments[1].status).toBe("pending");
+    expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items.filter(item=>item.generation?.id===job.id)).toHaveLength(0);
+    await pollVideoJobs(config,auth); expect(creates).toBe(1);
+    return;
+  }
   expect(job.status).toBe("succeeded");
   expect(creates).toBe(2);
   expect(job.avatarSequence?.seams).toHaveLength(1);
+  expect(job.message).toContain("26.0 秒数字人");
+  const probe=await exec(process.env.HYPERFRAMES_FFPROBE_PATH||"ffprobe",["-v","error","-show_streams","-show_format","-of","json",join(root,job.path)],{windowsHide:true});
+  const media=JSON.parse(probe.stdout);
+  expect(Math.abs(Number(media.format.duration)-26)).toBeLessThan(.1);
+  expect(media.streams.filter((stream:{codec_type:string})=>stream.codec_type==="audio")).toHaveLength(useAudio?1:0);
   expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items.filter(item=>item.generation?.id===job.id)).toHaveLength(1);
   await pollVideoJobs(config,auth);expect(creates).toBe(2);
 },60_000);
@@ -730,6 +854,7 @@ test("avatar content mode uses the supplied image and selected dimensions withou
   if (!("workflow" in result.body)) throw new Error("Missing workflow");
   const graph=JSON.parse(result.body.workflow);
   expect(result.body.workflowId).toBe("2097511747551842305");
+  expect(result.body).not.toHaveProperty("instanceType");
   expect(graph["300"]).toMatchObject({class_type:"ImageScale",inputs:{width:1024,height:576}});
   expect(graph["17"].inputs.first_frame).toEqual(["300",0]);
   expect(result.body.workflow).not.toContain("LoadAudio");
@@ -743,7 +868,7 @@ test("avatar narration preserves fractional duration and style conditioning", as
   if (!("workflow" in result.body)) throw new Error("Missing workflow");
   const graph=JSON.parse(result.body.workflow);
   expect(graph["199"].inputs.duration).toBe(8.2);
-  expect(graph["136"].inputs.prompt).toContain("reference picture visual style");
+  expect(graph["136"].inputs.prompt).toContain("visual style");
   expect(graph["142"].inputs.trim_to_audio).toBe(true);
 });
 
@@ -762,7 +887,7 @@ test("avatar submit derives narration server-side and blocks missing keys before
   await expect(callVideoGenerationAction(config,{read:async()=>({})},"submit",input,context)).rejects.toThrow();
   expect(submitted).toBeNull();
   const result=await call("submit",input);
-  expect(result.result).toMatchObject({job:{status:"running",workflowId:"2099699508878860290"}});
+  expect(result.result).toMatchObject({job:{status:"running",workflowId:"2099368776771919873"}});
   if (!submitted) throw new Error("Submission missing");
   const graph=JSON.parse(String(Reflect.get(submitted,"workflow")));
   expect(graph["199"].inputs.duration).toBe(8.2);
