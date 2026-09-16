@@ -20,6 +20,37 @@
       "video"
     ],
     "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "label",
+      "binding": {
+        "variable": "items",
+        "encoding": "label-detail-list"
+      },
+      "columns": [
+        {
+          "id": "label",
+          "label": "Label",
+          "labelZh": "编号",
+          "type": "string",
+          "role": "label",
+          "required": true
+        },
+        {
+          "id": "detail",
+          "label": "Detail",
+          "labelZh": "内容",
+          "type": "string",
+          "role": "value",
+          "required": true
+        }
+      ],
+      "minRows": 1,
+      "maxRows": 4,
+      "highlightVariable": "highlight"
+    },
     "ai": {
       "slots": [
         "title",

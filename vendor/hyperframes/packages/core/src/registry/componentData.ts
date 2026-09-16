@@ -5,7 +5,11 @@ export type RegistryVisualComponentDataKind =
   | "route-value"
   | "series-value";
 
-export type RegistryVisualComponentDataEncoding = "json" | "key-value-list" | "route-value-list";
+export type RegistryVisualComponentDataEncoding =
+  | "json"
+  | "key-value-list"
+  | "route-value-list"
+  | "label-detail-list";
 
 export type RegistryVisualComponentDataColumnType = "string" | "number";
 
@@ -229,12 +233,39 @@ function parseRouteRows(
   return normalizeRows(rows, contract);
 }
 
+function parseLabelDetailRows(
+  value: string,
+  contract: RegistryVisualComponentDataContract,
+): ParsedVisualComponentData {
+  const labelColumn = findColumn(contract, ["id", "label"], 0);
+  const detailColumn = findColumn(contract, ["value"], 1);
+  if (!labelColumn || !detailColumn) {
+    return {
+      document: { version: 1, kind: contract.kind, rows: [] },
+      issues: [{ path: "columns", message: "Label-detail data needs two columns" }],
+    };
+  }
+
+  const rows = value
+    .split("|")
+    .map((entry) => {
+      const separator = entry.indexOf("::");
+      return {
+        [labelColumn.id]: (separator >= 0 ? entry.slice(0, separator) : entry).trim(),
+        [detailColumn.id]: (separator >= 0 ? entry.slice(separator + 2) : "").trim(),
+      };
+    })
+    .filter((row) => row[labelColumn.id] !== "");
+  return normalizeRows(rows, contract);
+}
+
 export function parseVisualComponentData(
   contract: RegistryVisualComponentDataContract,
   value: string,
 ): ParsedVisualComponentData {
   if (contract.binding.encoding === "json") return parseJsonRows(value, contract);
   if (contract.binding.encoding === "route-value-list") return parseRouteRows(value, contract);
+  if (contract.binding.encoding === "label-detail-list") return parseLabelDetailRows(value, contract);
   return parseKeyValueRows(value, contract);
 }
 
@@ -255,6 +286,15 @@ export function serializeVisualComponentData(
           `${row[sourceColumn.id] ?? ""}>${row[targetColumn.id] ?? ""}:${row[valueColumn.id] ?? ""}`,
       )
       .join(",");
+  }
+
+  if (contract.binding.encoding === "label-detail-list") {
+    const labelColumn = findColumn(contract, ["id", "label"], 0);
+    const detailColumn = findColumn(contract, ["value"], 1);
+    if (!labelColumn || !detailColumn) return "";
+    return document.rows
+      .map((row) => `${row[labelColumn.id] ?? ""}::${row[detailColumn.id] ?? ""}`)
+      .join("|");
   }
 
   const keyColumn = findColumn(contract, ["id", "label"], 0);

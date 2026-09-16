@@ -47,7 +47,11 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("aiEditing={isStreamingSessionStatus(");
+    expect(sessionPageSource).toContain("aiEditing={selectedSessionStatus");
+    expect(sessionPageSource).toContain('selectedSessionStatus.type === "busy"');
+    expect(sessionPageSource).toContain(
+      "isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])",
+    );
     expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
     expect(panelSource).toContain("active: aiEditing");
     expect(previewSource).toContain('data-testid="studio-ai-editing-status"');
@@ -68,6 +72,8 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
     expect(panelSource).toContain('event.data.panel === "style"');
+    expect(panelSource).toContain('event.data.panel === "avatar"');
+    expect(panelSource).toContain('setStudioHostPanel("avatar")');
     expect(panelSource).toContain('const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)');
     expect(panelSource).toContain('setStudioHostPanel("voice")');
     expect(panelSource).toContain('setStudioHostPanel("style")');
@@ -76,6 +82,8 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("designSystemOpen");
     expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
     expect(panelSource).toContain('data-testid="video-style-tab-content"');
+    expect(panelSource).toContain('testId="video-avatar-tab-content"');
+    expect(panelSource).toContain("<VideoAvatarPanel");
     expect(panelSource).not.toContain("<DesignSystemInspectorShell");
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
@@ -434,7 +442,9 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-host-action"');
     expect(studioHeaderSource).toContain('className="hf-studio-header-utilities flex items-center gap-1"');
     expect(studioHeaderSource).toContain('t("header.saveAsTemplate")');
-    expect(studioHeaderSource).toContain('<FloppyDisk className="h-4 w-4" weight="regular" aria-hidden="true" />');
+    expect(studioHeaderSource).toContain(
+      '<Save className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />',
+    );
     expect(studioHeaderSource.indexOf('t("header.saveAsTemplate")')).toBeLessThan(
       studioHeaderSource.indexOf('t("header.inspector")'),
     );
@@ -446,7 +456,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(voicePanelSource.match(/<SelectContent align="start">/g)).toHaveLength(2);
+    expect(voicePanelSource.match(/<SelectContent align="start"/g)).toHaveLength(3);
     expect(voicePanelSource).not.toContain("alignItemWithTrigger");
   });
 

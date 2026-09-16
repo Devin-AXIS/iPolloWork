@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 const source = readFileSync(new URL("./BlocksTab.tsx", import.meta.url), "utf8");
 
 describe("BlocksTab lazy preview media", () => {
+  it("closes the component preview after a successful insertion", () => {
+    expect(source).toContain("const added = await onAddBlock(block.name)");
+    expect(source).toContain("if (added) setPreviewOpen(false)");
+    expect(source).toContain("void handleAdd()");
+  });
+
   it("keeps a broken poster lightweight until hover intent loads the runtime", () => {
     expect(source).toContain("setPosterFailed(true)");
     expect(source).toContain("setTimeout(startPreview, 60)");
@@ -51,7 +57,7 @@ describe("BlocksTab lazy preview media", () => {
   it("names the catalog action as a component insert", () => {
     expect(source).toContain('"插入组件"');
     expect(source).toContain('"Insert component"');
-    expect(source).toContain('"在当前播放位置插入组件，并将后续片段顺延"');
+    expect(source).toContain("aria-label={insertLabel}");
     expect(source).not.toContain('"插入动画"');
     expect(source).not.toContain('"添加组件"');
     expect(source).not.toContain('"Add component"');
@@ -62,7 +68,8 @@ describe("BlocksTab lazy preview media", () => {
     expect(source).toContain("if (!onAddBlock || insertingBlockNameRef.current) return false");
     expect(source).toContain("const insertionBusy = insertingBlockName !== null");
     expect(source).toContain("disabled={insertionBusy}");
-    expect(source.match(/^\s+disabled=\{insertionBusy\}/gm)).toHaveLength(2);
+    expect(source).toContain("disabled={insertionBusy || !onAddBlock}");
+    expect(source.match(/\{insertAction\}/g)).toHaveLength(2);
     expect(source).toContain("draggable={!insertionBusy}");
     expect(source).toContain("aria-disabled={insertionBusy}");
     expect(source).not.toContain("const [adding, setAdding] = useState(false)");

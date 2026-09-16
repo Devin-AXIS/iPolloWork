@@ -126,6 +126,7 @@ async function waitForPersistedComponentInstances(projectDir, expectedCount) {
 const componentClipSelector = '[data-clip="true"][data-el-id*="feature-grid"]';
 const enabledSplitButtonSelector =
   'button[aria-label="当前片段时刻分割"]:not(:disabled), button[aria-label="Split clip at playhead"]:not(:disabled)';
+const INSERT_FOCUS_ONLY = process.env.IPOLLOWORK_EVAL_COMPONENT_INSERT_FOCUS === "1";
 
 export default {
   id: "video-component-clip-split",
@@ -168,7 +169,8 @@ export default {
             label: "Feature Grid timeline clip",
           });
 
-          await ctx.prove("An inserted component clip splits into two timeline clips", {
+          if (!INSERT_FOCUS_ONLY) {
+            await ctx.prove("An inserted component clip splits into two timeline clips", {
             claim: "Selecting Feature Grid with the playhead inside it enables the scissors button, and clicking it creates two persisted component clips.",
             voiceover: "选中已插入的组件后，播放头位于片段内部时剪刀会启用，点击即可把组件分成前后两个片段。",
             action: async () => {
@@ -216,6 +218,130 @@ export default {
               requireText: ["Feature Grid"],
               rejectText: ["Something went wrong", "Console errors in preview", "Failed to split"],
             },
+            });
+          }
+
+          await ctx.prove("A newly inserted component is selected and revealed in the timeline", {
+            claim: "After insertion, Agenda Opener is the selected clip and is visible inside the timeline viewport.",
+            voiceover: "插入组件后，时间轴会自动选中新组件，并把对应片段带到当前可视区域。",
+            action: async () => {
+              await ctx.eval(`window.postMessage(${JSON.stringify({
+                type: "ipollowork:studio-host-context",
+                projectId: basename(projectDir),
+                title: "Component toolbar proof",
+                branding: {
+                  title: "Video Studio",
+                  byline: "iPolloWork",
+                  bylineUrl: "#",
+                  repositoryUrl: "#",
+                },
+                actions: {
+                  reload: true,
+                  saveAsTemplate: true,
+                  openTemplates: false,
+                  askAi: false,
+                },
+              })}, "*")`);
+              await ctx.waitFor(
+                `document.querySelectorAll('.hf-studio-header-utilities .hf-studio-header-action').length === 2`,
+                { timeoutMs: 5_000, label: "grouped Studio header utilities" },
+              );
+              const componentsVisible = await ctx.eval(
+                'Boolean(document.querySelector("button[aria-label=\\"组件\\"]"))',
+              );
+              if (!componentsVisible) await ctx.trustedClick('button[aria-label="属性"]');
+              await ctx.trustedClick('button[aria-label="组件"]');
+              await ctx.waitFor(
+                'Boolean(document.querySelector("[data-testid=block-catalog-search]"))',
+                { timeoutMs: 20_000, label: "component catalog" },
+              );
+              await ctx.fill('[data-testid="block-catalog-search"]', "Agenda Opener");
+              await ctx.waitFor('Boolean(document.querySelector(\'[data-block-name="agenda-opener"]\'))', {
+                timeoutMs: 20_000,
+                label: "Agenda Opener component card",
+              });
+              await ctx.trustedClick('[data-block-name="agenda-opener"]');
+              await ctx.waitFor('Boolean(document.querySelector("[role=dialog]"))', {
+                timeoutMs: 20_000,
+                label: "Agenda Opener preview",
+              });
+              await ctx.trustedClick('[role="dialog"] button[aria-label="插入组件"]');
+              await ctx.waitFor(
+                `!document.querySelector('[role="dialog"]')`,
+                { timeoutMs: 30_000, label: "component preview closes after insertion" },
+              );
+              await ctx.waitFor(
+                `(() => {
+                  const toast = document.querySelector('[data-testid="studio-toast-surface"][data-tone="success"]');
+                  return toast?.textContent?.includes('Component added') === true;
+                })()`,
+                { timeoutMs: 5_000, label: "Agenda Opener success status card" },
+              );
+              await ctx.waitFor(
+                `(() => {
+                  const clip = [...document.querySelectorAll('[data-clip="true"].is-selected')]
+                    .find((candidate) => candidate.dataset.elId?.endsWith('#agenda-opener'));
+                  if (!clip) return false;
+                  const viewport = clip.closest('.hf-timeline-scroll');
+                  if (!viewport) return false;
+                  const clipRect = clip.getBoundingClientRect();
+                  const viewportRect = viewport.getBoundingClientRect();
+                  return clipRect.right > viewportRect.left
+                    && clipRect.left < viewportRect.right
+                    && clipRect.bottom > viewportRect.top
+                    && clipRect.top < viewportRect.bottom;
+                })()`,
+                { timeoutMs: 30_000, label: "selected visible Agenda Opener timeline clip" },
+              );
+            },
+            assert: async () => {
+              const selectedIds = await ctx.eval(
+                `[...document.querySelectorAll('[data-clip="true"].is-selected')]
+                  .map((clip) => clip.dataset.elId)`,
+              );
+              ctx.assert(
+                selectedIds.length === 1 && selectedIds[0]?.endsWith("#agenda-opener"),
+                `Expected one selected Agenda Opener clip, received ${JSON.stringify(selectedIds)}.`,
+              );
+              ctx.assert(
+                !(await ctx.eval(`Boolean(document.querySelector('[role="dialog"]'))`)),
+                "Expected the component preview to close after insertion.",
+              );
+              ctx.assert(
+                await ctx.eval(
+                  `Boolean(document.querySelector('[data-testid="studio-toast-surface"][data-tone="success"]'))`,
+                ),
+                "Expected the completed component task to show the shared success status card.",
+              );
+              const headerMetrics = await ctx.eval(`(() => {
+                const actions = [...document.querySelectorAll('.hf-studio-header-action')];
+                const properties = document.querySelector('.hf-studio-properties-action');
+                const exportButton = document.querySelector('.hf-studio-header-export');
+                const divider = document.querySelector('.hf-studio-header-actions-divider');
+                return {
+                  count: actions.length,
+                  heights: actions.map((button) => button.getBoundingClientRect().height),
+                  propertiesDirect: properties?.parentElement?.classList.contains('hf-studio-header-actions') === true,
+                  exportDirect: exportButton?.parentElement?.classList.contains('hf-studio-header-actions') === true,
+                  dividerHeight: divider?.getBoundingClientRect().height,
+                };
+              })()`);
+              ctx.assert(
+                headerMetrics.count === 4 && headerMetrics.heights.every((height) => height === 32),
+                `Expected four 32px header actions, received ${JSON.stringify(headerMetrics)}.`,
+              );
+              ctx.assert(
+                headerMetrics.propertiesDirect && headerMetrics.exportDirect && headerMetrics.dividerHeight === 18,
+                `Expected direct text actions and an 18px group divider, received ${JSON.stringify(headerMetrics)}.`,
+              );
+            },
+            screenshot: INSERT_FOCUS_ONLY
+              ? undefined
+              : {
+                  name: "inserted-component-selected-in-timeline",
+                  requireText: ["Agenda Opener"],
+                  rejectText: ["Something went wrong", "Failed to install block"],
+                },
           });
         } catch (error) {
           flowError = error;

@@ -8,9 +8,12 @@ export interface EditingFile {
   content: string | null;
 }
 
+export type ToastTone = "loading" | "success" | "error";
+export type ToastToneInput = ToastTone | "info" | "notice";
+
 export interface AppToast {
   message: string;
-  tone: "error" | "info" | "notice";
+  tone: ToastTone;
 }
 
 export function parseHostAiEditingMessage(value: unknown, projectId: string): boolean | null {

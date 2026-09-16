@@ -1,8 +1,11 @@
 /** @jsxImportSource react */
 import React from "react";
+import { HashRouter } from "react-router-dom";
 import { createRoot } from "react-dom/client";
 import { createiPolloWorkServerClient } from "../src/app/lib/ipollowork-server";
+import { VideoAvatarPanel } from "../src/react-app/domains/session/video/video-avatar-panel";
 import { VideoVoicePanel } from "../src/react-app/domains/session/video/video-voice-panel";
+import { DesignSystemDrawer } from "../src/react-app/domains/session/design/design-system-drawer";
 import "../src/app/index.css";
 import { setLocale } from "../src/i18n";
 import type { VideoJob } from "@ipollowork/types/video-generation";
@@ -14,7 +17,8 @@ const jobs: VideoJob[] = [];
 const longProof = new URLSearchParams(location.search).has("long");
 if (longProof) jobs.push({ id: "31f13c04-a138-4499-b9e4-293796ec07cc", model: "minimax-h3-avatar", operation: "reference", prompt: "长数字人验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: "failed", path: "", upstreamId: "", message: "第 2/5 段失败；第 1 段已保存，可只重试失败片段。", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
   avatarSequence: {duration:58,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:5},(_,index)=>({start:index*11.5,end:Math.min(58,index*11.5+12.5),status:index===0?"succeeded":index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:index===0?"saved-first.mp4":index===1?"rejected-second.mp4":"",attempt:0}))} });
-let savedVoice = JSON.stringify({ provider: "aliyun-bailian", model: "cosyvoice-v3-flash", voiceId: "longanyang", source: "preset", updatedAt: new Date().toISOString() });
+const voiceProofParams = new URLSearchParams(location.search);
+let savedVoice = voiceProofParams.get("saved") === "none" ? "" : JSON.stringify({ enabled: voiceProofParams.get("saved") !== "off", provider: "aliyun-bailian", model: "cosyvoice-v3-flash", voiceId: "longanyang", source: "preset", volume: voiceProofParams.has("volume") ? Number(voiceProofParams.get("volume")) : 50, updatedAt: new Date().toISOString() });
 let configured = longProof, hasNarration = longProof;
 let failUpload = false;
 const originalFetch = window.fetch.bind(window);
@@ -28,8 +32,9 @@ window.fetch = async (input, init) => {
     requests.push(body);
     const { action, extensionId, args } = body;
     if (extensionId === "media") {
-      if (action === "status") return json({ ok: true, result: { output: { configured: true } } });
-      if (action === "voice_list") return json({ ok: true, result: { output: { items: [] } } });
+      if (action === "status") return json({ ok: true, result: { output: { configured: voiceProofParams.get("auth") !== "off" } } });
+      if (action === "voice_list") return json({ ok: true, result: { output: { items: voiceProofParams.has("mine") ? [{ id: "proof-ready", name: "我的旁白", model: "cosyvoice-v3-flash", status: "OK" }, { id: "proof-deploying", name: "准备中的声音", model: "cosyvoice-v3-flash", status: "DEPLOYING" }] : [] } } });
+      if (action === "speech_synthesize") return json({ ok: true, result: { output: { output: { audio: { url: "data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YSADAACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgA==" } } } } });
       if (action === "speech_synthesize_workspace_file") return json({ ok: true, result: { output: { sourcePath: args.outputPath, durationSeconds: 8.2 } } });
     }
     if (extensionId === "storage") return json({ ok: true, result: { output: { providers: [] } } });
@@ -80,6 +85,7 @@ client.callMedia = async (action, args) => {
   return response.json();
 };
 client.readWorkspaceFile = async () => {
+  if (!savedVoice) throw new Error("Voice settings not found");
   const response = await window.fetch("https://avatar-proof.invalid/files/content");
   return response.json();
 };
@@ -87,13 +93,13 @@ client.writeWorkspaceFile = async (_workspaceId, payload) => {
   const response = await window.fetch("https://avatar-proof.invalid/files/content", { body: JSON.stringify(payload) });
   return response.json();
 };
-createRoot(document.getElementById("root")!).render(<div style={{ height: "100vh", padding: 32 }}>
+createRoot(document.getElementById("root")!).render(<HashRouter><div style={{ height: "100vh", padding: 32 }}>
   <h1>VideoStudio · 数字人视频</h1><p>组件集成验证：模拟云端结果，不产生费用。</p>
   <div className="flex gap-2"><button onClick={()=>{configured=!configured;window.dispatchEvent(new Event("focus"));}}>切换 Key 配置</button><button onClick={()=>{hasNarration=!hasNarration;window.dispatchEvent(new Event("focus"));}}>切换视频配音</button></div>
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
-    <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined}
-      />
+    {voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active /></div> : <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined}
+      />}
   </div>
-</div>);
+</div></HashRouter>);

@@ -248,7 +248,7 @@ function dispatchPlainKey(event: KeyboardEvent, key: string, cb: HotkeyCallbacks
       // that isn't in the raw `elements` list, so the s-key can't resolve them.
       // Nudge toward the razor tool instead of failing silently.
       if (!el && selectedElementId.includes("#")) {
-        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "info");
+        cb.showToast("Use the razor tool (B) to split clips inside a sub-composition", "error");
         return;
       }
     }

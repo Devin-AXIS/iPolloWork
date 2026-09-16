@@ -795,7 +795,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
         </button>
       )}
       <div className="mt-1 flex h-5 min-w-0 items-center justify-between gap-1 pl-1">
-        <div className="min-w-0 flex-1 truncate text-[12px] font-semibold text-black dark:text-panel-text-1">
+        <div className="min-w-0 flex-1 truncate text-xs font-medium text-black dark:text-panel-text-1">
           {template.title[locale]}
         </div>
         {applied ? (
@@ -804,7 +804,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
               type="button"
               data-animation-action="edit"
               onClick={(event) => void onEdit(template, event.currentTarget)}
-              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+              className="h-5 rounded-[2px] px-1 text-[11px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
             >
               {t("animation.edit")}
             </button>
@@ -813,7 +813,7 @@ const AnimationTemplateCard = memo(function AnimationTemplateCard({
               disabled={loading}
               data-animation-action="remove"
               onClick={() => void onRemove(template, applied)}
-              className="h-5 rounded-[2px] px-1 text-[10px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-wait disabled:opacity-60 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+              className="h-5 rounded-[2px] px-1 text-[11px] text-[#5a6774] transition-[color,background-color,transform] hover:bg-[#f5f6f9] active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-wait disabled:opacity-60 dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
             >
               {t("animation.remove")}
             </button>
@@ -1109,11 +1109,11 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
             onChange={(event) => setSearch(event.target.value)}
             placeholder={t("animation.searchPlaceholder")}
             aria-label={t("animation.searchLabel")}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
+            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-xs text-panel-text-1 outline-none placeholder:text-panel-text-4 focus:ring-1 focus:ring-[#1FBAC0]/50"
           />
         </div>
         {domEditSelection ? (
-          <div className="rounded-[8px] bg-[#1FBAC0]/10 px-3 py-2 text-[10px] leading-4 text-[#168e92]">
+          <div className="rounded-[8px] bg-[#1FBAC0]/10 px-3 py-2 text-[11px] leading-4 text-[#168e92]">
             {t("animation.selected", { label: domEditSelection.label })}
           </div>
         ) : null}
@@ -1135,7 +1135,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
                 data-category={id}
                 aria-pressed={category === id}
                 onClick={() => setCategory(id)}
-                className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-[10px] font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
+                className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
                   category === id
                     ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
                     : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
@@ -1147,7 +1147,7 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
           </div>
 
           {applyFailed ? (
-            <p role="alert" className="mx-4 mt-2 text-[10px] leading-4 text-red-500">
+            <p role="alert" className="mx-4 mt-2 text-[11px] leading-4 text-red-500">
               {t("animation.saveError")}
             </p>
           ) : null}

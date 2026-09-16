@@ -16,16 +16,16 @@ export default {
         await ctx.prove("Project media has a separate labeled studio action at regular width", {
           action: async () => { await ctx.eval(`${design}.getElementById('hero').click()`); },
           assert: async () => {
-            await ctx.waitFor("document.querySelector('[aria-label=在图片工作台编辑]')?.textContent==='图片编辑'");
+            await ctx.waitFor("document.querySelector('[aria-label=在素材工作台编辑]')?.textContent==='图片编辑'");
             ctx.assert(await ctx.eval("document.querySelectorAll('[data-testid=design-floating-toolbar] [aria-hidden=true].bg-border').length===2"), "Quick edits, studio entry and delete are separated");
-            ctx.assert(await ctx.eval("(()=>{const entry=document.querySelector('[aria-label=在图片工作台编辑]'),settings=document.querySelector('[aria-label=调整属性]');return entry.querySelectorAll('svg').length===1&&getComputedStyle(entry.querySelector('svg')).color===getComputedStyle(settings.querySelector('svg')).color})()"), "Entry uses one icon and the same neutral color as adjacent tools");
+            ctx.assert(await ctx.eval("document.querySelector('[aria-label=在素材工作台编辑] svg.lucide-image')!==null"), "Entry uses the shared Lucide image icon");
           },
           screenshot: {name:"project-toolbar-labeled"},
         });
         await ctx.prove("Every compact project toolbar action has a localized hover hint", {
           action: async () => {
             await ctx.client.send("Emulation.setDeviceMetricsOverride", {width:360,height:850,deviceScaleFactor:1,mobile:false});
-            await ctx.waitFor("document.querySelector('[aria-label=在图片工作台编辑]')?.textContent===''");
+            await ctx.waitFor("document.querySelector('[aria-label=在素材工作台编辑]')?.textContent===''");
           },
           assert: async () => {
             const buttons=await ctx.eval("[...document.querySelectorAll('[data-testid=design-floating-toolbar] button')].map(b=>b.getAttribute('aria-label'))");
@@ -45,10 +45,10 @@ export default {
             await ctx.client.send("Emulation.setDeviceMetricsOverride",{width:700,height:850,deviceScaleFactor:1,mobile:false});
           },
           assert: async () => {
-            await ctx.waitFor("document.querySelector('[aria-label=\"Edit in Image Studio\"]')?.textContent==='Edit image'");
-            const point=await ctx.eval("(()=>{const r=document.querySelector('[aria-label=\"Edit in Image Studio\"]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
+            await ctx.waitFor("document.querySelector('[aria-label=\"Edit in Media Studio\"]')?.textContent==='Edit image'");
+            const point=await ctx.eval("(()=>{const r=document.querySelector('[aria-label=\"Edit in Media Studio\"]').getBoundingClientRect();return{x:r.x+r.width/2,y:r.y+r.height/2}})()");
             await ctx.client.send('Input.dispatchMouseEvent',{type:'mouseMoved',...point});
-            await ctx.waitFor("document.querySelector('[data-slot=tooltip-content][data-open]')?.textContent==='Edit in Image Studio'");
+            await ctx.waitFor("document.querySelector('[data-slot=tooltip-content][data-open]')?.textContent==='Edit in Media Studio'");
           },
           screenshot:{name:"project-toolbar-english"},
         });
@@ -56,8 +56,8 @@ export default {
         await ctx.client.send("Emulation.clearDeviceMetricsOverride");
       await ctx.prove("The labeled entry still opens the selected image in an independent studio",{
         action:async()=>{
-          await ctx.trustedClick('[aria-label=在图片工作台编辑]');
-          await ctx.waitFor("document.querySelector('iframe[title=\"图片工作台\"]')?.contentDocument?.querySelector('#imageCanvas')?.width===800",{timeoutMs:60000});
+          await ctx.trustedClick('[aria-label=在素材工作台编辑]');
+          await ctx.waitFor("document.querySelector('iframe[title=\"素材工作台\"]')?.contentDocument?.querySelector('#imageCanvas')?.width===800",{timeoutMs:60000});
         },
         assert:async()=>{ctx.assert(await ctx.eval("!document.querySelector('[data-testid=design-panel] [data-testid=media-workbench]') && document.querySelector('[data-testid=media-workbench]')?.getBoundingClientRect().width>0"),"Independent studio retains selected source");},
         screenshot:{name:"toolbar-open-independent-studio"},
@@ -88,7 +88,10 @@ export default {
           for(const type of ['mouseMoved','mousePressed','mouseReleased'])await ctx.client.send('Input.dispatchMouseEvent',{type,...point,button:'left',clickCount:1});
           await ctx.prove("Video media entry is labeled and separated from quick edits and delete",{
             action:async()=>{await waitVideo("document.querySelector('[aria-label=在图片工作台编辑]')?.textContent==='图片编辑'");},
-            assert:async()=>{ctx.assert(await video("document.querySelectorAll('.hf-preview-text-toolbar__divider').length===2"),"Video entry has its own group");},
+            assert:async()=>{
+              ctx.assert(await video("document.querySelectorAll('.hf-preview-text-toolbar__divider').length===2"),"Video entry has its own group");
+              ctx.assert(await video("document.querySelectorAll('.hf-preview-text-toolbar button svg.lucide').length===4"),"Every video element action uses a Lucide icon");
+            },
             screenshot:{name:"video-project-toolbar-labeled"},
           });
           await ctx.prove("Every compact video toolbar action has a hover hint",{

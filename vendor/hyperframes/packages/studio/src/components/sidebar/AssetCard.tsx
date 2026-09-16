@@ -240,7 +240,7 @@ export function AssetCard({
         {/* Filename caption */}
         <div className="flex w-full min-w-0 items-start justify-between gap-1 px-0.5 pt-[7px] leading-4">
           <span
-            className="min-w-0 truncate text-[10px] font-medium text-panel-text-1"
+            className="min-w-0 truncate text-xs font-medium text-panel-text-1"
             title={fullName}
           >
             {fullName}

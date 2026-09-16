@@ -450,8 +450,8 @@ function TodoPanel(props: { todos: TodoItem[] }) {
               const cancelled = todo.status === "cancelled";
               const active = todo.status === "in_progress";
               return (
-                <div key={todo.id} className="flex items-start gap-2.5 pt-2.5 first:pt-2.5">
-                  <div className="flex items-center gap-1.5 pt-0.5">
+                <div key={todo.id} className="grid grid-cols-[18px_3ch_minmax(0,1fr)] items-start gap-x-2.5 pt-2.5 text-sm leading-relaxed">
+                  <div className="flex h-[1.625em] items-center">
                     <div
                       className={`flex size-4.5 items-center justify-center rounded-full border ${
                         done
@@ -466,8 +466,8 @@ function TodoPanel(props: { todos: TodoItem[] }) {
                       {done ? <Check size={10} /> : active ? <span className="size-1.5 rounded-full bg-amber-9" /> : null}
                     </div>
                   </div>
-                  <div className={`flex-1 text-sm leading-relaxed ${cancelled ? "text-gray-9 line-through" : "text-gray-12"}`}>
-                    <span className="mr-1.5 text-gray-9">{index + 1}.</span>
+                  <span className="text-right tabular-nums text-gray-9">{index + 1}.</span>
+                  <div className={`min-w-0 [overflow-wrap:anywhere] ${cancelled ? "text-gray-9 line-through" : "text-gray-12"}`}>
                     {todo.content}
                   </div>
                 </div>

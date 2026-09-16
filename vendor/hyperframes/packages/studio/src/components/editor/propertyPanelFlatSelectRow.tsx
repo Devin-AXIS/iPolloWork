@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, RotateCcw } from "../../icons/SystemIcons";
+import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
 import {
@@ -25,6 +25,8 @@ export function FlatDropdown({
   disabled,
   className = "",
   valueClassName = "",
+  icon,
+  menuWidth = 120,
   onChange,
 }: {
   ariaLabel: string;
@@ -33,6 +35,8 @@ export function FlatDropdown({
   disabled?: boolean;
   className?: string;
   valueClassName?: string;
+  icon?: ReactNode;
+  menuWidth?: number;
   onChange: (nextValue: string) => void;
 }) {
   const { tx } = useStudioI18n();
@@ -85,6 +89,7 @@ export function FlatDropdown({
         ref={buttonRef}
         type="button"
         aria-label={tx(ariaLabel)}
+        title={icon ? `${tx(ariaLabel)}: ${selectedLabel}` : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
@@ -108,11 +113,13 @@ export function FlatDropdown({
         }}
         className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
-        <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
-        <ChevronDown
-          size={16}
-          className={`flex-shrink-0 text-[#858a94] transition-transform ${open ? "rotate-180" : ""}`}
-        />
+        {icon ?? <>
+          <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
+          <ChevronDown
+            size={16}
+            className={`flex-shrink-0 text-[#858a94] transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </>}
       </button>
       {open &&
         anchorRect &&
@@ -126,10 +133,10 @@ export function FlatDropdown({
             style={{
               left: Math.min(
                 anchorRect.left,
-                Math.max(8, window.innerWidth - anchorRect.width - 8),
+                Math.max(8, window.innerWidth - Math.max(anchorRect.width, menuWidth) - 8),
               ),
               top: Math.min(anchorRect.bottom + 4, window.innerHeight - 48),
-              width: Math.max(anchorRect.width, 120),
+              width: Math.max(anchorRect.width, menuWidth),
             }}
           >
             {options.map((option, index) => {
@@ -219,7 +226,7 @@ export function FlatSelectRow({
         <span
           className={`flex-shrink-0 ${
             large
-              ? "text-[10px] font-normal text-[#858a94]"
+              ? "text-xs font-normal text-panel-text-3"
               : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
           }`}
         >
@@ -235,7 +242,7 @@ export function FlatSelectRow({
           className={large || valueOnly ? "flex-1" : ""}
           valueClassName={`font-sans ${
             large
-              ? `text-[13px] font-normal text-[#24262b] dark:text-panel-text-1 ${valueOnly ? "capitalize" : ""}`
+              ? `text-xs font-normal text-panel-text-1 ${valueOnly ? "capitalize" : ""}`
               : `text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`
           }`}
           onChange={(nextValue) => {

@@ -114,11 +114,11 @@ describe("video voiceover settings", () => {
   });
 
   test("localizes the embedded voice authorization prompt", () => {
-    expect(t("video.voice.configure_title", { lng: "en" })).toBe("Configure Alibaba Model Studio first");
+    expect(t("video.voice.configure_title", { lng: "en" })).toBe("Connect a voice service to enable voiceover");
     expect(t("video.voice.configure_description", { lng: "en" })).toBe(
       "Save your Alibaba Model Studio API key in Authorization Center to select and preview voices.",
     );
-    expect(t("video.voice.configure_title", { lng: "zh" })).toBe("请先配置阿里百炼");
+    expect(t("video.voice.configure_title", { lng: "zh" })).toBe("连接声音服务，开启配音");
 
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),

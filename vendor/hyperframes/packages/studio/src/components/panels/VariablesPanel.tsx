@@ -355,7 +355,7 @@ export const VariablesPanel = memo(function VariablesPanel({
       try {
         const changed = await persistVariables(label, mutate);
         if (changed) setRevision((r) => r + 1);
-        else showToast(`${label}: no change applied`, "info");
+        else showToast(`${label}: no change applied`, "error");
         return changed;
       } catch (err) {
         showToast(err instanceof Error ? err.message : String(err), "error");

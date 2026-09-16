@@ -4,11 +4,22 @@ import { flipScaleValue, parseCssScaleValue } from "./editor/propertyPanelFlatLa
 import {
   resolveInspectorElementKind,
   resolveInspectorGroupOrder,
-  resolveOpenInspectorGroup,
 } from "./editor/PropertyPanelFlat";
 import { parseHostAiEditingMessage } from "../utils/studioHelpers";
 
 describe("Studio right panel layout", () => {
+  it("keeps a newly inserted component selected and reveals it after project refresh", () => {
+    const handlers = readFileSync(new URL("../hooks/useBlockHandlers.ts", import.meta.url), "utf8");
+
+    expect(handlers).toContain("playerState.setSelectedElementId(insertedSelectionId)");
+    expect(handlers).toContain("playerState.requestClipReveal(insertedSelectionId)");
+    expect(handlers).toContain("clearDomSelection()");
+    expect(handlers).toContain("usePlayerStore.getState().requestClipReveal(selectionId)");
+    expect(handlers).toContain("if (!compositionLoading) pendingInsertedSelectionRef.current = null");
+    expect(handlers).not.toContain("clip.scrollIntoView");
+    expect(handlers).not.toContain("remainingAttempts = 20");
+  });
+
   it("accepts AI editing state only from the matching Studio project message", () => {
     expect(
       parseHostAiEditingMessage(
@@ -138,45 +149,14 @@ describe("Studio right panel layout", () => {
     ).toEqual(["media", "timing"]);
   });
 
-  it("opens the best available group without overriding a manual choice", () => {
-    expect(
-      resolveOpenInspectorGroup({
-        currentGroupId: "timing",
-        orderedGroupIds: ["animation", "timing"],
-        hasManualSelection: false,
-      }),
-    ).toBe("animation");
-    expect(
-      resolveOpenInspectorGroup({
-        currentGroupId: "layout",
-        orderedGroupIds: ["animation", "layout"],
-        hasManualSelection: true,
-      }),
-    ).toBe("layout");
-    expect(
-      resolveOpenInspectorGroup({
-        currentGroupId: "",
-        orderedGroupIds: ["media"],
-        hasManualSelection: false,
-      }),
-    ).toBe("media");
-    expect(
-      resolveOpenInspectorGroup({
-        currentGroupId: "",
-        orderedGroupIds: ["media", "timing"],
-        hasManualSelection: true,
-      }),
-    ).toBe("");
-  });
-
-  it("classifies inspector element types before preserving manual state", () => {
+  it("classifies inspector element types", () => {
     const panel = readFileSync(new URL("./editor/PropertyPanel.tsx", import.meta.url), "utf8");
     expect(resolveInspectorElementKind("p", true)).toBe("text");
     expect(resolveInspectorElementKind("IMG", false)).toBe("image");
     expect(resolveInspectorElementKind("video", false)).toBe("video");
     expect(resolveInspectorElementKind("audio", false)).toBe("audio");
     expect(resolveInspectorElementKind("div", false)).toBe("other");
-    expect(panel).toContain("key={resolveInspectorElementKind(element.tagName, sections.text)}");
+    expect(panel).toContain("key={selectionIdentityKey(element)}");
   });
 
   it("matches the Figma property-inspector group and timing states", () => {
@@ -209,14 +189,15 @@ describe("Studio right panel layout", () => {
     expect(header).toContain("rounded-[6px] px-3 py-2");
     expect(header).toContain("focus-visible:ring-[#1FBAC0]/40");
     expect(studioStyles).toContain("background-color: #1FBAC0 !important");
-    expect(primitives).toContain("flex h-12 w-full");
+    expect(primitives).toContain("hf-panel-accordion-header w-full");
+    expect(studioStyles).toContain(".hf-panel-accordion-header {");
     expect(primitives).toContain('large ? "h-[34px] rounded-[6px] px-[10px]"');
-    expect(primitives).toContain("px-[17px]");
-    expect(primitives).toContain("text-[12px] font-medium text-[#2c2d2a]");
-    expect(primitives).toContain("<ChevronRight size={16}");
+    expect(studioStyles).toContain("padding-inline: 16px;");
+    expect(primitives).toContain("hf-panel-accordion-label");
+    expect(primitives).toContain("<ChevronRight size={14}");
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(primitives).not.toContain("rotate-180 text-[#858a94]");
-    expect(primitives).toContain("shadow-[inset_3px_0_0_#1FBAC0]");
+    expect(studioStyles).toContain('data-expanded="true"');
     expect(primitives).toContain("<ChevronDown size={16}");
     expect(selects).toContain('large ? "h-[34px] rounded-[6px] pl-2 pr-4"');
     expect(selects).toContain('role="listbox"');
@@ -249,8 +230,8 @@ describe("Studio right panel layout", () => {
     expect(timing).toContain("flex h-[34px] min-w-0");
     expect(timing).toContain("rounded-[6px]");
     expect(timing).toContain("grid grid-cols-2 gap-2");
-    expect(timing).toContain("text-[10px] font-normal text-[#878984]");
-    expect(timing).toContain("text-[13px] font-normal text-[#242522]");
+    expect(timing).toContain("text-xs font-normal text-panel-text-3");
+    expect(timing).toContain("text-xs font-normal text-panel-text-1");
   });
 
   it("shares the desktop typography contract without changing canvas fonts", () => {
@@ -303,7 +284,7 @@ describe("Studio right panel layout", () => {
     expect(styles).toContain("--hf-panel-text-3: #8b8d98;");
     expect(theme).toContain('classList.toggle("dark", theme === "dark")');
     expect(tailwindConfig).toContain('darkMode: "selector"');
-    expect(primitives).toContain("dark:text-[10px] dark:leading-[14px] dark:text-panel-text-2");
+    expect(primitives).toContain("text-xs font-normal text-panel-text-1");
     expect(primitives).toContain("dark:bg-panel-accent/15 dark:text-panel-text-0");
     expect(primitives).toContain("focus-visible:ring-panel-accent/50");
     expect(toggle).toContain("active:scale-[0.96]");
@@ -495,7 +476,7 @@ describe("Studio right panel layout", () => {
     );
 
     expect(primitives).toContain("large = true");
-    expect(primitives).toContain('className="text-[10px] font-normal text-[#858a94]"');
+    expect(primitives).toContain('className="text-xs font-normal text-panel-text-3"');
     expect(primitives).toContain("flex h-[34px] w-full");
     expect(selects).toContain("large = true");
     expect(selects).toContain("const selectedLabel");
@@ -570,13 +551,15 @@ describe("Studio right panel layout", () => {
     expect(source).toContain('status === "applied"');
     expect(source).toContain('status === "selection-required"');
     expect(source).toContain('? "animation.selectElement"');
-    expect(source).toContain('"notice"');
+    expect(source).toContain('status === "selection-required" ? "error" : "success"');
     expect(toast).toContain('data-testid="studio-toast-surface"');
-    expect(toast).toContain('? "#FFFFFF"');
-    expect(toast).toContain('isNotice ? "text-black" : "text-neutral-200"');
-    expect(toast).toContain('isNotice ? "rounded-[6px] font-sans" : "rounded-2xl"');
-    expect(toast).toContain('? "none"');
-    expect(toast).toContain('? "0 8px 32px rgba(0,0,0,0.35)"');
+    expect(toast).toContain('data-tone={resolvedTone}');
+    expect(toast).toContain('rounded-xl border');
+    expect(toast).toContain('SpinnerGap');
+    expect(toast).toContain('CheckCircleIcon');
+    expect(toast).toContain('WarningIcon');
+    expect(toast).toContain('var(--hf-toast-bg)');
+    expect(toast).toContain('var(--hf-toast-${resolvedTone})');
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
     expect(source).not.toContain("const showAnimationProperties =");
     expect(source).not.toContain('rightPanelTab === "catalog"');
@@ -614,6 +597,8 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.animation": "Animation"');
+    expect(translations).toContain('"right.voice": "Sound"');
+    expect(translations).toContain('"right.voice": "声音"');
     expect(translations).toContain('"right.animationTemplates": "Animation templates"');
     expect(translations).toContain('"right.animationProperties": "Animation properties"');
     expect(translations).not.toContain('"right.catalog":');
@@ -661,10 +646,16 @@ describe("Studio right panel layout", () => {
     expect(shell).toContain("previewOnly ? (");
     expect(shell).toContain("<PreviewPane editingEnabled={false} />");
     expect(shell).toContain("!previewOnly && <StudioFeedbackBar />");
-    expect(header).toContain('<SlidersHorizontal className="hf-studio-properties-icon h-4 w-4 shrink-0" weight="regular"');
-    expect(header).toContain('<DownloadSimple className="h-4 w-4 shrink-0" weight="regular"');
+    expect(header).toContain('from "lucide-react"');
+    expect(header).not.toContain('@phosphor-icons/react');
+    expect(header).not.toContain('../icons/SystemIcons');
+    expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
+    expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
     expect(header).toContain('text-[var(--hf-panel-text-2)]');
-    expect(header).toContain("hover:border-[var(--hf-panel-text-3)]");
+    expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
+    const propertiesAction = header.match(/className=\{`hf-studio-header-action hf-studio-properties-action[\s\S]*?aria-label=/)?.[0];
+    expect(propertiesAction).toBeDefined();
+    expect(propertiesAction).not.toContain("border-[var(--hf-panel-border-input)]");
     expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
     expect(header).toContain("hf-studio-header-export");
     expect(header).toContain("hf-studio-properties-action");
@@ -672,24 +663,26 @@ describe("Studio right panel layout", () => {
     expect(header).toContain("hf-studio-header-views");
     expect(header).toContain("hf-studio-header-actions");
     expect(header).toContain("hf-studio-header-utilities");
+    expect(header).toContain("hf-studio-header-actions-divider");
     expect(header).toContain("hf-studio-header-action-label");
     expect(header).toContain(
       'aria-label={isRendering ? t("header.rendering") : t("header.export")}',
     );
     expect(styles).toContain(".hf-studio-header-export {");
-    expect(styles).toContain(".hf-studio-properties-action:hover");
-    expect(styles).toContain("background-color: var(--hf-studio-header-hover) !important;");
-    expect(styles).toContain("color: #ffffff !important;");
+    expect(styles).toContain("--hf-header-primary-bg:");
+    expect(styles).toContain("background-color: var(--hf-header-primary-bg) !important;");
+    expect(styles).toContain("color: var(--hf-header-primary-text) !important;");
+    expect(styles).toContain(".hf-studio-header-actions-divider {");
     expect(styles).toContain("@media (max-width: 720px)");
-    expect(styles).toContain("width: 36px;");
+    expect(styles).toContain("width: 32px;");
     expect(styles).toContain("gap: 8px;");
     expect(styles).toContain("gap: 4px;");
     expect(styles).toContain("container-name: hf-flat-inspector");
     expect(styles).toContain("@container hf-flat-inspector (max-width: 340px)");
     expect(styles).toContain(".hf-flat-responsive-grid {");
-    expect(styles).toContain(".hf-inspector-tabs-scroll {");
+    expect(styles).toContain(".hf-inspector-tabs-scroll button {");
     expect(panel).toContain("hf-inspector-tabs-scroll");
-    expect(panel).toContain("overflow-x-auto");
+    expect(panel).toContain("grid w-full min-w-0 grid-flow-col auto-cols-fr");
     expect(panel).toContain("absolute right-3 top-1/2");
     expect(panel).toContain("border-[0.5px] border-[var(--hf-studio-divider)]");
     expect(styles).toContain("--hf-studio-divider: rgba(255, 255, 255, 0.075)");
@@ -697,6 +690,20 @@ describe("Studio right panel layout", () => {
     expect(header).not.toContain('t("header.undo")');
     expect(header).not.toContain('t("header.capture")');
     expect(header).not.toContain("studio-toggle-fullscreen");
+  });
+
+  it("uses Lucide icons throughout the video header", () => {
+    const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+
+    expect(header).toContain('from "lucide-react"');
+    expect(header).not.toContain('@phosphor-icons/react');
+    expect(header).not.toContain('../icons/SystemIcons');
+    expect(header).toContain('<Save className="h-4 w-4" strokeWidth={1.75}');
+    expect(header).toContain('<RefreshCw className="h-4 w-4" strokeWidth={1.75}');
+    expect(header).toContain('<SlidersHorizontal className="h-4 w-4 shrink-0" strokeWidth={1.75}');
+    expect(header).toContain('<Download className="h-4 w-4 shrink-0" strokeWidth={1.75}');
+    expect(header).not.toContain("hover:border-[var(--hf-panel-border-input)]");
+    expect(header).toContain("hover:bg-[var(--hf-studio-header-hover)]");
   });
 
   it("keeps the empty property inspector off playback hot paths", () => {
@@ -797,7 +804,7 @@ describe("Studio right panel layout", () => {
     expect(toolbar).toContain("hf-timeline-toolbar");
     expect(toolbar).toContain("bg-[var(--hf-studio-toolbar-bg)]");
     expect(header).toContain("bg-[var(--hf-studio-header-bg)]");
-    expect(styles).toContain(".hf-studio-properties-icon");
+    expect(styles).not.toContain(".hf-studio-properties-icon");
     expect(styles).toContain(".hf-timeline-toolbar-icon");
     expect(styles).toContain("--hf-timeline-clip-bg: #18181b");
     expect(styles).toContain("--hf-timeline-clip-bg: #f5f6f9");
@@ -1074,6 +1081,7 @@ describe("Studio right panel layout", () => {
 
     expect(catalog).toContain("flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden");
     expect(catalog).toContain('data-testid="block-catalog-search"');
+    expect(catalog).not.toContain('data-testid="open-avatar-panel"');
     expect(catalog).toContain("Search components…");
     expect(catalog).toContain('locale === "zh" ? "组件分类" : "Component category"');
     expect(catalog).toContain('locale === "zh" ? "全部组件" : "All components"');
@@ -1109,7 +1117,7 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain('{ root: scrollRoot, rootMargin: "240px 0px", threshold: 0 }');
     expect(catalog).toContain("setTimeout(startPreview, 60)");
     expect(catalog).toContain("setPreviewing(true)");
-    expect(catalog).toContain('"components-catalog-help"');
+    expect(catalog).not.toContain('"components-catalog-help"');
     expect(catalog).not.toContain('data-testid="apply-motion-preset"');
     expect(catalog).toContain("src={compositionPlaybackUrl}");
     expect(catalog).toContain('preload="auto"');
@@ -1119,10 +1127,10 @@ describe("Studio right panel layout", () => {
     expect(catalog).toContain("tabIndex={0}");
     expect(catalog).toContain('data-testid="block-catalog-card"');
     expect(catalog).toContain("collapsedSections");
-    expect(catalog).toContain("CaretDown");
-    expect(catalog).toContain("CaretRight");
-    expect(catalog).toContain('weight="regular"');
-    expect(catalog).toContain("FunnelSimple");
+    expect(catalog).toContain("ChevronDown");
+    expect(catalog).toContain("ChevronRight");
+    expect(catalog).toContain("lucide-react");
+    expect(catalog).toContain("ListFilter");
     expect(catalog).toContain("handleAdd();");
     expect(catalog).toContain('"Ask AI"');
     expect(catalog).not.toContain("grid-rows-[minmax(0,1fr)_minmax(0,1fr)]");

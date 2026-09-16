@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
-import { ChevronDown, ChevronRight, RotateCcw } from "../../icons/SystemIcons";
+import { RotateCcw } from "../../icons/SystemIcons";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { CommitField } from "./propertyPanelPrimitives";
 import {
   VALUE_TIER_LABEL_CLASS,
@@ -63,7 +64,7 @@ export function FlatRow({
       <span
         className={`flex-shrink-0 ${
           large
-            ? "text-[10px] font-normal text-[#858a94]"
+            ? "text-xs font-normal text-panel-text-3"
             : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
         }`}
       >
@@ -74,11 +75,12 @@ export function FlatRow({
           data-flat-row-value="true"
           className={`min-w-0 flex-1 overflow-hidden font-sans ${
             large
-              ? "text-[13px] font-normal text-[#24262b]"
+              ? "text-xs font-normal text-panel-text-1"
               : `text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`
           }`}
         >
           <CommitField
+            className={large ? "text-xs font-normal text-panel-text-1" : undefined}
             value={value}
             disabled={disabled}
             liveCommit={liveCommit}
@@ -164,7 +166,7 @@ export function FlatSegmentedRow({
   const { tx } = useStudioI18n();
   return (
     <div className="grid gap-1">
-      <span className="text-[10px] font-normal text-[#858a94]">{tx(label)}</span>
+      <span className="text-xs font-normal text-panel-text-3">{tx(label)}</span>
       <span className="grid auto-cols-fr grid-flow-col items-center gap-1.5">
         {options.map((option, index) => (
           <span key={option.key} className="flex w-full items-center">
@@ -178,7 +180,7 @@ export function FlatSegmentedRow({
                 if (!option.active) track("segmented", label);
                 onChange(option.key);
               }}
-              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-[13px] transition-[color,background-color,box-shadow,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`flex h-[34px] w-full items-center justify-center rounded-[6px] px-2 text-xs transition-[color,background-color,box-shadow,transform] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${
                 option.active
                   ? "bg-[#171816] text-white dark:bg-panel-accent/15 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/40"
                   : "bg-panel-input text-panel-text-4 hover:text-panel-text-1 dark:text-panel-text-2 dark:hover:bg-panel-hover"
@@ -198,7 +200,7 @@ export function FlatSegmentedRow({
 /*  FlatGroupHeader — one-open-at-a-time accordion group header        */
 /*  (fixed-headers + scrollable-open-section layout, design_handoff    */
 /*  scrollable-open-section): renders ONLY the header bar — collapsed  */
-/*  button, or open-state title bar with the collapse control. Never   */
+/*  button, or open-state title bar with a leading collapse control.    */
 /*  positioned (no sticky, no stacking offsets) — it always sits in    */
 /*  normal document flow. The open group's body content is rendered by */
 /*  PropertyPanelFlat.tsx directly, in a dedicated scrollable region,   */
@@ -236,48 +238,44 @@ export function FlatGroupHeader({
         type="button"
         data-flat-group-collapsed="true"
         onClick={onToggleOpen}
-        className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 w-full items-center justify-between gap-2 border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] text-left transition-colors hover:bg-panel-input active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50`}
+        aria-expanded={false}
+        className={`${animateEntrance ? "hf-flat-group-enter " : ""}hf-panel-accordion-header w-full border-b-[0.5px] border-[var(--hf-studio-divider)] active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50`}
       >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
+        <span className="flex shrink-0 items-center gap-2">
+          <ChevronRight size={14} strokeWidth={1.5} className="hf-panel-accordion-chevron" />
+          <span className="hf-panel-accordion-label">
             {translatedTitle}
           </span>
-          {summary && (
-            <span className="min-w-0 truncate font-mono text-[8px] text-panel-text-4 dark:text-[10px] dark:leading-[14px] dark:text-panel-text-2">
-              {tx(summary)}
-            </span>
-          )}
         </span>
-        <ChevronRight size={16} className="flex-shrink-0 text-[#858a94]" />
+        {summary && (
+          <span className="ml-auto min-w-0 truncate text-right text-[12px] font-normal leading-4 text-panel-text-4" title={tx(summary)}>
+            {tx(summary)}
+          </span>
+        )}
       </button>
     );
   }
 
   return (
     <div
-      className={`${animateEntrance ? "hf-flat-group-enter " : ""}flex h-12 items-center justify-between border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg px-[17px] shadow-[inset_3px_0_0_#1FBAC0]`}
+      data-expanded="true"
+      className={`${animateEntrance ? "hf-flat-group-enter " : ""}hf-panel-accordion-header w-full border-b-[0.5px] border-[var(--hf-studio-divider)]`}
     >
       <button
         type="button"
         onClick={onToggleOpen}
-        className="flex h-full min-w-0 flex-1 items-center text-left active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
+        aria-expanded={true}
+        className="flex h-full min-w-0 flex-1 items-center gap-2 text-left active:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
         aria-label={tx(`Collapse ${title}`)}
       >
-        <span className="text-[12px] font-medium text-[#2c2d2a] dark:text-panel-text-1">
+        <ChevronDown size={14} strokeWidth={1.5} className="hf-panel-accordion-chevron" />
+        <span className="hf-panel-accordion-label">
           {translatedTitle}
         </span>
       </button>
       {accessory && (
         <span className="flex items-center gap-2.5 text-panel-text-5">{accessory}</span>
       )}
-      <button
-        type="button"
-        onClick={onToggleOpen}
-        title={tx("Collapse")}
-        className="flex h-full items-center pl-2 text-[#858a94] transition-[color,transform] hover:text-panel-text-1 active:scale-[0.96] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50"
-      >
-        <ChevronDown size={16} className="flex-shrink-0" />
-      </button>
     </div>
   );
 }
@@ -506,7 +504,7 @@ export function FlatSlider({
       <span
         className={
           large
-            ? "col-span-2 w-full text-[10px] font-normal text-[#858a94]"
+            ? "col-span-2 w-full text-xs font-normal text-panel-text-3"
             : "w-[72px] flex-shrink-0 text-[9px] text-panel-text-3"
         }
       >
@@ -647,7 +645,7 @@ export function FlatSlider({
           data-flat-slider-value="true"
           className={
             large
-              ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-[13px] font-normal text-[#24262b]"
+              ? "flex h-[34px] w-full items-center justify-between rounded-[6px] bg-panel-input px-4 font-sans text-xs font-normal text-panel-text-1"
               : `w-10 flex-shrink-0 text-right font-mono text-[9px] ${
                   tier === "explicitCustom" ? "text-panel-text-0" : "text-panel-text-3"
                 }`
@@ -656,7 +654,7 @@ export function FlatSlider({
           {large && displayValue.endsWith("%") ? (
             <>
               <span>{displayValue.slice(0, -1)}</span>
-              <span className="text-[10px] text-[#858a94]">%</span>
+              <span className="text-[11px] text-panel-text-3">%</span>
             </>
           ) : (
             displayValue

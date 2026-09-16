@@ -1,4 +1,4 @@
-export default {
+const flow = {
   id: "composer-context-health",
   title: "Composer shows context usage instead of the engine badge",
   kind: "user-facing",
@@ -60,3 +60,34 @@ export default {
     },
   ],
 };
+
+if (process.env.IPOLLOWORK_EVAL_TODO_LAYOUT === "1") {
+  flow.steps = [{name: "Task progress columns stay aligned across widths and statuses", run: async ctx => {
+    try {
+      await ctx.eval(`(async()=>{
+const s=await(await fetch('/src/react-app/domains/session/surface/session-surface.tsx')).text();
+const part=s.slice(s.indexOf('function TodoPanel('),s.indexOf('_s2(TodoPanel')).replace('_s2();','');
+const React=(await import('/node_modules/.vite/deps/react.js')).default;const {jsxDEV}=(await import('/node_modules/.vite/deps/react_jsx-dev-runtime.js')).default;const icons=await import('/node_modules/.vite/deps/lucide-react.js');const {createRoot}=(await import('/node_modules/.vite/deps/react-dom_client.js')).default;
+const Panel=new Function('useState','jsxDEV','Minimize2','Check','t',part+';return TodoPanel;')(React.useState,jsxDEV,icons.Minimize2,icons.Check,()=> '进度');
+const host=document.createElement('div');host.id='todo-layout-check';host.style.cssText='position:fixed;inset:20px auto auto 20px;background:var(--background);z-index:99999';document.body.append(host);const root=createRoot(host); window.__todoLayout={root,host,React,Panel};
+})()`, {awaitPromise:true});
+      for (const width of [320,480,760]) {
+        await ctx.prove(`Progress layout at ${width}px`, {
+          action: async () => {
+            await ctx.eval(`(() => {const {host,root,React,Panel}=window.__todoLayout;host.style.width='${width}px';root.render(React.createElement(Panel,{todos:Array.from({length:12},(_,i)=>({id:String(i),status:['completed','in_progress','pending','cancelled'][i%4],content:i%2 ? 'https://example.com/'+'long_filename_'.repeat(20) : '读取模板、简报与参考证据，确定叙事结构。'.repeat(3)}))}));})()`);
+            await ctx.waitFor("Boolean(document.querySelector('#todo-layout-check button'))");
+            if (!await ctx.eval("Boolean(document.querySelector('#todo-layout-check .max-h-60'))")) await ctx.eval("document.querySelector('#todo-layout-check button').click()");
+            await ctx.waitFor("document.querySelectorAll('#todo-layout-check .max-h-60 > div').length===12");
+          },
+          assert: async () => {
+            ctx.assert(await ctx.eval(`(() => {const list=document.querySelector('#todo-layout-check .max-h-60');const rows=[...list.children];const start=rows[0].lastElementChild.getBoundingClientRect().left;return list.scrollWidth===list.clientWidth && rows.every(row=>{const icon=row.firstElementChild.firstElementChild.getBoundingClientRect();const text=row.lastElementChild.getBoundingClientRect();return icon.width===18 && Math.abs(text.left-start)<1 && text.right<=list.getBoundingClientRect().right;});})()`), "All states keep 18px icons, aligned text columns and no horizontal overflow");
+          },
+          screenshot: {name:`todo-layout-${width}`,requireText:['进度']},
+        });
+        await ctx.eval("document.querySelector('#todo-layout-check button').click()");
+        await ctx.waitFor("!document.querySelector('#todo-layout-check .max-h-60')");
+      }
+    } finally {await ctx.eval("window.__todoLayout?.root.unmount();window.__todoLayout?.host.remove();delete window.__todoLayout;");}
+  }}];
+}
+export default flow;
