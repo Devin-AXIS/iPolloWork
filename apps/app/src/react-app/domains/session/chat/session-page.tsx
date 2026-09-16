@@ -6,7 +6,7 @@ import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -75,7 +75,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
@@ -1479,13 +1479,12 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
   onClose: () => void | Promise<void>;
 }) {
   const config = templateBriefConfigFor(template ?? { category: customCategory ?? "slides" });
-  const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [inputMode, setInputMode] = useState<"file" | "description">("file");
+  const [customBrief, setCustomBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [fileInstructions, setFileInstructions] = useState("");
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
-  const [step, setStep] = useState<"references" | "brief">("references");
-  const editedBriefFields = useRef(new Set<keyof TemplateBrief>());
-  const parsingReference = references.find((reference) => reference.status === "parsing");
+  const parsingReference = references.find(reference => reference.status === "parsing");
   const referenceBusy = Boolean(parsingReference);
-  const referenceProgress = references.length ? Math.round(references.reduce((sum, reference) => sum + (reference.progress ?? 0), 0) / references.length) : 0;
   const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
@@ -1498,15 +1497,6 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     const next = updater(referencesRef.current);
     referencesRef.current = next;
     setReferences(next);
-  };
-
-  const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
-    setBrief((current) => ({
-      title: editedBriefFields.current.has("title") ? current.title : inferred.title,
-      audience: editedBriefFields.current.has("audience") ? current.audience : inferred.audience,
-      details: editedBriefFields.current.has("details") ? current.details : inferred.details,
-      style: editedBriefFields.current.has("style") ? current.style : inferred.style,
-    }));
   };
 
   const addReferenceFiles = async (files: File[]) => {
@@ -1560,36 +1550,26 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
     updateReferences((current) => current.filter((item) => item.id !== id));
   };
 
-  const referenceFileList = references.length ? <ul className="space-y-1" aria-label={t("templates.brief.reference_files")}>
-    {references.map((reference) => <li key={reference.id} className="flex min-w-0 items-start gap-2 py-1.5 text-xs">
-      <FileText className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0 flex-1">
-        <p className="break-words leading-5">{reference.fileName} <span className="text-muted-foreground">({(reference.size / 1_000_000).toFixed(1)} MB)</span></p>
-        {reference.ingestion ? <p className="mt-0.5 text-muted-foreground">{t("templates.brief.reference_coverage", { count: (reference.ingestion.rawText ?? reference.ingestion.extractedText).length })}{reference.ingestion.coverage?.text !== "complete" ? ` · ${t("templates.brief.reference_partial")}` : ""}</p> : null}
-        {step === "brief" && reference.ingestion ? <details className="mt-2 font-normal">
-          <summary className="cursor-pointer text-muted-foreground">查看解析内容</summary>
-          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-3 text-xs">{(reference.ingestion.rawText ?? reference.ingestion.extractedText).slice(0, 20_000)}</pre>
-          {(reference.ingestion.rawText ?? reference.ingestion.extractedText).length > 20_000 ? <p className="mt-1 text-muted-foreground">此处预览前 20,000 字符，完整内容随提交保存。</p> : null}
-        </details> : null}
-        {reference.ingestion?.assets?.some((asset) => asset.file && ["image", "video", "audio"].includes(asset.kind)) ? <p className="mt-1 text-muted-foreground">已提取 {reference.ingestion.assets.filter((asset, index, all) => asset.file && ["image", "video", "audio"].includes(asset.kind) && all.findIndex((other) => other.file === asset.file) === index).length} 项素材，提交时保存到工作区供视频使用。</p> : null}
-        {reference.status === "weak" || reference.status === "failed" ? <p className="mt-0.5 text-muted-foreground">{t(reference.ingestion?.assets?.some((asset) => asset.file && asset.kind !== "document") ? "templates.brief.reference_visual_pending" : "templates.brief.reference_needs_input")}</p> : null}
-      </div>
-      {step === "references" ? <Button type="button" variant="ghost" size="icon-sm" className="size-6 shrink-0 text-muted-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button> : null}
-    </li>)}
-  </ul> : null;
-
-  const requiredFields = config.fields.filter((field) => !field.optional);
-  const completedRequiredFields = requiredFields.filter((field) => brief[field.key].trim()).length;
+  const usesFiles = inputMode === "file";
+  const inferred = useMemo(() => inferTemplateBriefFromIngestions(references.flatMap(reference => reference.ingestion ? [reference.ingestion] : [])), [references]);
+  const canSubmit = usesFiles
+    ? references.length > 0 && !referenceBusy && references.every(reference => reference.status !== "failed")
+    : Boolean(customBrief.title.trim() && customBrief.audience.trim());
   const submitApplication = async () => {
+    if (!canSubmit || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit(
-        { title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim(), style: brief.style?.trim() },
-        references,
-      );
-    } finally {
-      setSubmitting(false);
-    }
+      await onSubmit(usesFiles ? {
+        title: inferred.title || references[0].fileName,
+        audience: inferred.audience,
+        details: [inferred.details, fileInstructions.trim()].filter(Boolean).join("\n\n"),
+        style: inferred.style?.trim(),
+      } : {
+        title: customBrief.title.trim(),
+        audience: customBrief.audience.trim(),
+        details: customBrief.details.trim(),
+      }, usesFiles ? references : []);
+    } finally { setSubmitting(false); }
   };
 
   if (newTaskRequired && !conflictConfirmed) {
@@ -1621,13 +1601,13 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       <DialogContent
         data-testid="template-apply-dialog"
         showCloseButton={false}
-        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[800px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[800px]"
+        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[660px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-5 sm:p-7 ring-0 dark:ring-1 dark:ring-border sm:max-w-[660px]"
       >
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          className="absolute end-4 top-4 size-7 rounded-lg bg-transparent p-0 text-foreground/70 hover:text-foreground sm:end-6 sm:top-6"
           aria-label={t("common.close")}
           disabled={submitting}
           onClick={() => void onClose()}
@@ -1635,54 +1615,17 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
           <X className="size-4" />
         </Button>
 
-        <DialogHeader className="shrink-0 gap-1.5 pb-6 pe-8 text-left">
-          <DialogTitle className="text-ui-title-sm font-semibold leading-6">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
-          <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{template ? config.description : t("template_market.custom_description")}</DialogDescription>
+        <DialogHeader className="shrink-0 gap-2 pb-5 pe-8 text-left">
+          <DialogTitle className="text-lg font-semibold leading-6 tracking-tight">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
+          <DialogDescription className="max-w-lg text-xs leading-5 text-foreground/70">{t("templates.brief.input_description")}</DialogDescription>
         </DialogHeader>
 
-        <ol aria-label={t("templates.brief.steps")} className="mb-6 flex shrink-0 gap-6 border-b border-border pb-4 text-ui-control">
-          {(["references", "brief"] as const).map((item, index) => <li key={item} aria-current={step === item ? "step" : undefined} className={cn("flex items-center gap-2", step === item ? "font-medium text-foreground" : "text-muted-foreground")}>
-            <span className={cn("flex size-6 items-center justify-center rounded-full text-xs", step === item ? "bg-primary text-primary-foreground" : "bg-muted")}>{step === "brief" && index === 0 ? <Check className="size-3.5" /> : index + 1}</span>
-            {t(`templates.brief.step_${item}`)}
-          </li>)}
-        </ol>
-
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
-          {step === "references" ? <>
-          <section aria-labelledby="template-supplemental" className="space-y-4">
-            <h3 id="template-supplemental" className="text-ui-body font-semibold leading-5 text-foreground">{t("templates.brief.reference_question")}</h3>
-            <p className="text-ui-control leading-6 text-muted-foreground">{t("templates.brief.reference_intro")}</p>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
-              <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
-              <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
-            </div>
-
-            {parsingReference ? <div className="space-y-2.5 rounded-lg bg-muted/40 px-3 py-3" role="status" aria-live="polite">
-              <div className="flex items-center gap-2 text-xs">
-                <LoaderCircle className="size-3.5 shrink-0 animate-spin text-muted-foreground" />
-                <span className="min-w-0 flex-1 truncate text-muted-foreground" title={parsingReference.fileName}>{t("templates.brief.reference_parsing_file", { name: parsingReference.fileName })}</span>
-                <span className="shrink-0 font-medium tabular-nums text-foreground">{referenceProgress}%</span>
-              </div>
-              {parsingReference.progressDetail ? <p className="text-xs text-muted-foreground">{parsingReference.progressDetail}</p> : null}
-              <Progress value={referenceProgress} aria-label={t("templates.brief.reference_status_parsing")} className="[&_[data-slot=progress-track]]:h-1 [&_[data-slot=progress-track]]:bg-foreground/10 [&_[data-slot=progress-indicator]]:rounded-full [&_[data-slot=progress-indicator]]:bg-foreground/70 [&_[data-slot=progress-indicator]]:duration-300 [&_[data-slot=progress-indicator]]:motion-reduce:transition-none" />
-            </div> : null}
-            {referenceFileList}
-          </section>
-          </> : <>
-            <section className="space-y-1 border-b border-border pb-3" aria-labelledby="template-current-references">
-              <div className="flex items-center justify-between gap-3">
-                <h3 id="template-current-references" className="text-xs font-medium text-muted-foreground">{t("templates.brief.reference_files")}</h3>
-                <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={submitting} onClick={() => setStep("references")}>{t("templates.brief.reference_manage")}</Button>
-              </div>
-              {referenceFileList ?? <p className="text-xs text-muted-foreground">{t("templates.brief.reference_none")}</p>}
-            </section>
-            {references.some((reference) => reference.status === "ready") ? <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-5 text-muted-foreground">{t("templates.brief.reference_autofilled")}</p> : null}
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-0.5 pb-0.5">
           {customCategory && onCustomCategoryChange ? (
             <section className="space-y-1.5">
-              <label className="text-ui-body font-semibold leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
+              <label className="text-xs font-medium leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
               <Select value={customCategory} onValueChange={(value) => { if (value) onCustomCategoryChange(value); }}>
-                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>{t(`template_market.category.${customCategory}`)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1691,53 +1634,72 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
               </Select>
             </section>
           ) : null}
-          <section className="space-y-4">
-            {config.fields.map((field) => (
-              <label key={field.key} className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
-                <span>{field.label}{!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null}</span>
-                {field.key === "details" ? (
-                  <Textarea
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; editedBriefFields.current.add(field.key); setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[130px] min-h-[130px] resize-none rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                ) : (
-                  <Input
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; editedBriefFields.current.add(field.key); setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[34px] rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                )}
-              </label>
-            ))}
-            <label className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
-              <span>{t("template_market.style_label")}</span>
-              <Textarea aria-label={t("template_market.style_label")} value={brief.style ?? ""} disabled={submitting}
-                onChange={(event) => { const style = event.currentTarget.value; editedBriefFields.current.add("style"); setBrief((current) => ({ ...current, style })); }}
-                placeholder="可从参考文件回填，也可填写，例如：白色背景、深蓝文字、简洁排版。"
-                className="min-h-24 rounded-lg px-4 py-2 text-ui-control font-normal" />
-              <span className="text-xs font-normal text-muted-foreground">自动提取文件中的字体、配色与背景；可修改，生成时以此处为准。清空后使用模板默认风格。</span>
-            </label>
-          </section>
+          <Tabs value={inputMode} onValueChange={value => { if (value === "file" || value === "description") setInputMode(value); }}>
+            <TabsList className="h-9 w-full rounded-lg bg-muted/60 p-1" aria-label={t("templates.brief.input_mode")}>
+              <TabsTrigger id="template-file-tab" aria-controls="template-input-panel" value="file" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Upload className="size-3.5" />{t("templates.brief.use_file")}</TabsTrigger>
+              <TabsTrigger id="template-description-tab" aria-controls="template-input-panel" value="description" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Pencil className="size-3.5" />{t("templates.brief.describe")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div id="template-input-panel" role="tabpanel" aria-labelledby={`template-${inputMode}-tab`} className="space-y-4">
+          {inputMode === "description" ? <div className="space-y-4">
+            {(["title", "audience", "details"] satisfies (keyof TemplateBrief)[]).map(key => <label key={key} className="flex flex-col gap-2 text-xs font-medium text-foreground">
+              <span>{t(`templates.brief.manual_${key}`)}{key !== "details" ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null}</span>
+              {key === "details" ? <Textarea data-testid="template-description" rows={3} disabled={submitting} value={customBrief.details} onChange={event => { const details = event.currentTarget.value; setCustomBrief(current => ({ ...current, details })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 px-3.5 py-3 text-ui-control font-normal leading-5 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" /> : <Input data-testid={`template-${key}`} required disabled={submitting} value={customBrief[key]} onChange={event => { const value = event.currentTarget.value; setCustomBrief(current => ({ ...current, [key]: value })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="h-9 rounded-lg border-0 bg-muted/60 px-3.5 text-ui-control font-normal shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />}
+            </label>)}
+            </div> : null}
 
+          {usesFiles ? <section aria-labelledby="template-supplemental" className="space-y-3">
+            <h3 id="template-supplemental" className="text-xs font-medium leading-5 text-foreground">{t("templates.brief.reference_label")}</h3>
+            <div>
+              <Button data-testid="template-reference-formats-trigger" type="button" variant="ghost" className="h-auto min-h-[180px] w-full flex-col justify-center gap-3 whitespace-normal rounded-xl border-0 bg-muted/60 px-5 py-6 text-center shadow-none ring-0 before:hidden hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/15 dark:bg-muted/60 dark:hover:bg-muted/80" aria-label={t("templates.brief.upload_file")} aria-describedby="template-reference-formats template-reference-max-size" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>
+                <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+                  {referenceBusy ? <LoaderCircle className="size-5 animate-spin" /> : <Plus className="size-5" />}
+                </span>
+                <span className="text-ui-control font-medium text-foreground">{t("templates.brief.upload_file")}</span>
+                <span className="flex min-w-0 flex-col gap-1 text-xs font-normal leading-5 text-foreground/60">
+                  <span id="template-reference-formats">{t("templates.brief.reference_supported_formats")}</span>
+                  <span id="template-reference-max-size">{t("templates.brief.reference_max_size", { size: formatBytes(REFERENCE_MAX_BYTES) })}</span>
+                </span>
+              </Button>
+              <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
+            </div>
+
+            {references.length ? <ul className="flex flex-wrap gap-2" aria-label={t("templates.brief.reference_files")}>
+              {references.map(reference => <li key={reference.id} data-testid="template-reference-card" className="flex h-12 w-60 max-w-full min-w-0 items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2">
+                <Tooltip>
+                  <TooltipTrigger render={<button type="button" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground" aria-label={t(reference.status === "parsing" ? "templates.brief.reference_status_parsing" : `templates.brief.reference_card_${reference.status}`)} />}>
+                    {reference.status === "parsing" ? <LoaderCircle role="status" className="size-4 animate-spin" /> : reference.status === "weak" || reference.status === "failed" ? <CircleAlert className="size-4" /> : <FileText className="size-4" />}
+                  </TooltipTrigger>
+                  <TooltipContent positionerClassName="z-[90]">{reference.status === "parsing" ? `${reference.progress ?? 0}%` : t(reference.status === "failed" ? "templates.brief.reference_retry_hint" : reference.status === "weak" ? "templates.brief.reference_needs_input" : "templates.brief.reference_card_ready")}</TooltipContent>
+                </Tooltip>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-xs font-medium" title={reference.fileName}>{reference.fileName}</div>
+                  <div className="text-[10px] text-muted-foreground">{formatBytes(reference.size)}</div>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-foreground/70 hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+              </li>)}
+            </ul> : null}
+            <label className="flex flex-col gap-2 pt-1 text-xs font-medium text-foreground">
+              {t("templates.brief.file_instructions")}
+              <Textarea data-testid="template-file-instructions" rows={3} disabled={submitting} value={fileInstructions} onChange={event => setFileInstructions(event.currentTarget.value)} placeholder={t("templates.brief.file_instructions_placeholder")} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 dark:bg-muted/60 ring-0 px-3.5 py-3 text-ui-control font-normal leading-5 placeholder:text-foreground/70 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />
+            </label>
+          </section> : null}
+
+          </div>
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">
-            <h3 id="template-destination" className="flex items-center gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
+            <h3 id="template-destination" className="flex items-center gap-1.5 text-xs font-medium leading-5 text-foreground">
               {t("templates.brief.destination")}
               <span className="text-destructive" aria-hidden="true">*</span>
             </h3>
-            <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.destination_description")}</p>
-            <div className="flex items-center gap-4">
+            <p className="text-xs leading-5 text-foreground/70">{t("templates.brief.destination_description")}</p>
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={selectedProjectId} onValueChange={(value) => { if (value) onProjectChange(value); }}>
-                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>
                     {projects.find((project) => project.id === selectedProjectId)?.name
                       ?? destinationName
                       ?? t("workspace_list.workspace_fallback")}
-                    <span className="ms-1 text-muted-foreground">· {t("templates.brief.new_conversation")}</span>
+                    <span className="ms-1 text-foreground/70">· {t("templates.brief.new_conversation")}</span>
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1747,18 +1709,14 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
               {onRequestNewProject ? <Button type="button" variant="outline" className="h-[34px] shrink-0 rounded-lg px-3 text-ui-control" onClick={onRequestNewProject}><Plus className="size-3.5" />{t("templates.brief.new_project")}</Button> : null}
             </div>
           </section> : null}
-          </>}
         </div>
 
-        <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (step === "brief") setStep("references"); else if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{step === "brief" ? t("templates.brief.reference_back") : newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
-          {step === "references" ? <Button type="button" className="h-9 rounded-lg px-3" disabled={referenceBusy} onClick={() => {
-            applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(references.flatMap((reference) => reference.ingestion ? [reference.ingestion] : [])));
-            setStep("brief");
-          }}>{referenceBusy ? <LoaderCircle className="size-4 animate-spin" /> : null}{t(references.length ? "templates.brief.next" : "templates.brief.skip_references")}</Button> : <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || submitting} onClick={() => void submitApplication()}>
+        <DialogFooter className="mx-0 mb-0 mt-5 shrink-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0 pt-4 sm:justify-end">
+          <Button type="button" variant="ghost" className="h-9 rounded-lg px-4 text-foreground/70 hover:text-foreground" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
+          <Button type="button" className="h-9 rounded-lg px-4" disabled={!canSubmit || (usesFiles && referenceBusy) || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
-          </Button>}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
