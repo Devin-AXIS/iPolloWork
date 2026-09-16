@@ -445,7 +445,7 @@ describe("preview editing interactions", () => {
     );
     expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
     expect(assetsSource).not.toContain("const categoryLabels:");
-    expect(assetsSource).toContain("CaretDown");
+    expect(assetsSource).toContain("ChevronDown");
     expect(assetsSource).not.toContain("timelineChevronDown.svg?url");
     expect(assetsSource).toContain("e.stopPropagation()");
     expect(assetsSource).not.toContain("grid-cols-[minmax(0,194px)_104px]");
@@ -482,6 +482,21 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("beginDragSelection");
     expect(source).not.toContain("TextSelectionDrag");
     expect(styleSource).toMatch(/\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/);
+  });
+
+  it("uses Lucide icons throughout the selected-element toolbar", () => {
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('from "lucide-react"');
+    expect(source).not.toContain('@phosphor-icons/react');
+    expect(source).toContain('<SlidersHorizontal size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Sparkles size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Video size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Image size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Trash2 size={18} strokeWidth={1.75}');
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {

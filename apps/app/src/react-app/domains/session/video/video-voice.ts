@@ -50,27 +50,36 @@ const DEFAULT_VOICE_SAMPLE_VALIDATION_MESSAGES: VoiceSampleValidationMessages = 
 };
 
 export const BAILIAN_PRESET_GROUPS = ["narration", "warm", "character", "marketing", "dialect"] as const;
+export const BAILIAN_VOICE_LANGUAGES = ["all", "mandarin", "english", "dialect"] as const;
+export const BAILIAN_VOICE_GENDERS = ["all", "female", "male", "character"] as const;
+export const BAILIAN_VOICE_AGES = ["all", "young", "adult", "child", "senior", "character"] as const;
+export const BAILIAN_VOICE_STYLES = ["auto", "neutral", "warm", "energetic", "happy", "serious"] as const;
+
+export type BailianVoiceLanguage = Exclude<(typeof BAILIAN_VOICE_LANGUAGES)[number], "all">;
+export type BailianVoiceGender = Exclude<(typeof BAILIAN_VOICE_GENDERS)[number], "all">;
+export type BailianVoiceAge = Exclude<(typeof BAILIAN_VOICE_AGES)[number], "all">;
+export type BailianVoiceStyle = (typeof BAILIAN_VOICE_STYLES)[number];
 
 // Official cosyvoice-v3-flash catalog (2026-09-14):
 // https://help.aliyun.com/zh/model-studio/cosyvoice-voice-list
 // Display names and descriptions live in the locale dictionaries.
 export const BAILIAN_PRESET_VOICES = [
-  { id: "longanyang", group: "narration" },
-  { id: "longanhuan_v3", group: "narration" },
-  { id: "longanlang_v3", group: "narration" },
-  { id: "longyingmu_v3", group: "narration" },
-  { id: "longanzhi_v3", group: "narration" },
-  { id: "longanyun_v3", group: "warm" },
-  { id: "longwan_v3", group: "warm" },
-  { id: "longhuhu_v3", group: "character" },
-  { id: "longjielidou_v3", group: "character" },
-  { id: "longlaobo_v3", group: "character" },
-  { id: "longjiqi_v3", group: "character" },
-  { id: "longhouge_v3", group: "character" },
-  { id: "longanxuan_v3", group: "marketing" },
-  { id: "longyingxiao_v3", group: "marketing" },
-  { id: "longanyue_v3", group: "dialect" },
-  { id: "longshange_v3", group: "dialect" },
+  { id: "longanyang", group: "narration", gender: "male", age: "young", languages: ["mandarin", "english"] },
+  { id: "longanhuan_v3", group: "narration", gender: "female", age: "young", languages: ["mandarin", "english", "dialect"] },
+  { id: "longanlang_v3", group: "narration", gender: "male", age: "young", languages: ["mandarin"] },
+  { id: "longyingmu_v3", group: "narration", gender: "female", age: "adult", languages: ["mandarin"] },
+  { id: "longanzhi_v3", group: "narration", gender: "male", age: "adult", languages: ["mandarin"] },
+  { id: "longanyun_v3", group: "warm", gender: "male", age: "young", languages: ["mandarin"] },
+  { id: "longwan_v3", group: "warm", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longhuhu_v3", group: "character", gender: "female", age: "child", languages: ["mandarin"] },
+  { id: "longjielidou_v3", group: "character", gender: "male", age: "child", languages: ["mandarin"] },
+  { id: "longlaobo_v3", group: "character", gender: "male", age: "senior", languages: ["mandarin"] },
+  { id: "longjiqi_v3", group: "character", gender: "character", age: "character", languages: ["mandarin"] },
+  { id: "longhouge_v3", group: "character", gender: "character", age: "character", languages: ["mandarin"] },
+  { id: "longanxuan_v3", group: "marketing", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longyingxiao_v3", group: "marketing", gender: "female", age: "young", languages: ["mandarin"] },
+  { id: "longanyue_v3", group: "dialect", gender: "male", age: "young", languages: ["dialect"] },
+  { id: "longshange_v3", group: "dialect", gender: "male", age: "adult", languages: ["dialect"] },
 ] as const;
 
 export const DEFAULT_VIDEO_VOICE_CONTROLS: VideoVoiceControls = {
@@ -79,6 +88,21 @@ export const DEFAULT_VIDEO_VOICE_CONTROLS: VideoVoiceControls = {
   volume: 50,
   instruction: "",
 };
+
+export function videoVoiceInstruction(style: BailianVoiceStyle): string {
+  if (style === "neutral" || style === "auto") return "";
+  const instructions: Record<Exclude<BailianVoiceStyle, "auto" | "neutral">, string> = {
+    warm: "请用温暖亲切的表达方式说。",
+    energetic: "请用有活力、节奏明快的表达方式说。",
+    happy: "请用开心愉悦的情绪说。",
+    serious: "请用沉稳严肃的表达方式说。",
+  };
+  return instructions[style];
+}
+
+export function videoVoiceStyle(instruction: string): BailianVoiceStyle {
+  return BAILIAN_VOICE_STYLES.find((style) => videoVoiceInstruction(style) === instruction) ?? "auto";
+}
 
 export function defaultVideoVoiceoverSettings(now = new Date().toISOString()): VideoVoiceoverSettings {
   return {

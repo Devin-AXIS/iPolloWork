@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, type MutableRefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
@@ -27,7 +27,8 @@ import {
 import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useStudioI18n } from "../i18n";
-import { X } from "../icons/SystemIcons";
+import { X } from "lucide-react";
+import { Tooltip } from "./ui/Tooltip";
 import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
 import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
 
@@ -80,7 +81,7 @@ export interface StudioRightPanelProps {
     visualComponent?: RegistryVisualComponent;
     insertedElementId: string;
   } | null;
-  onCloseBlockParams?: () => void;
+  onBackFromBlockParams?: () => void;
   onBlockVariableChange?: (variableId: string, value: string | number | boolean) => Promise<void>;
   recordingState?: "idle" | "recording" | "preview";
   recordingDuration?: number;
@@ -116,7 +117,7 @@ export interface StudioRightPanelProps {
 export function StudioRightPanel({
   designPanelActive,
   activeBlockParams,
-  onCloseBlockParams,
+  onBackFromBlockParams,
   onBlockVariableChange,
   recordingState,
   recordingDuration,
@@ -146,12 +147,14 @@ export function StudioRightPanel({
     projectId,
     activeCompPath,
     showToast,
+    dismissToast,
     compositionDimensions,
     waitForPendingDomEditSaves,
     renderQueue,
   } = useStudioShellContext();
   const { captionEditMode } = useStudioPlaybackContext();
   const { t, tx } = useStudioI18n();
+  const [componentTab, setComponentTab] = useState<"presets" | "avatar">("presets");
 
   const {
     domEditSelection,
@@ -293,22 +296,26 @@ export function StudioRightPanel({
       if (!response.ok || !data.jobId) {
         throw new Error(data.error || `Background removal failed (${response.status})`);
       }
-      showToast("Removing background...", "info");
+      const loadingToastId = showToast("Removing background...", "loading");
       backgroundRemovalAbortRef.current?.abort();
       const controller = new AbortController();
       backgroundRemovalAbortRef.current = controller;
       try {
         const result = await waitForMediaJob(data.jobId, options.onProgress, controller.signal);
         await refreshFileTree();
-        showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "info");
+        dismissToast(loadingToastId);
+        showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "success");
         return result;
+      } catch (error) {
+        dismissToast(loadingToastId);
+        throw error;
       } finally {
         if (backgroundRemovalAbortRef.current === controller) {
           backgroundRemovalAbortRef.current = null;
         }
       }
     },
-    [projectId, refreshFileTree, showToast],
+    [dismissToast, projectId, refreshFileTree, showToast],
   );
   const handleHideAllSelected = () => {
     const { elements } = usePlayerStore.getState();
@@ -426,7 +433,7 @@ export function StudioRightPanel({
                     ? "animation.updated"
                     : "animation.removed",
             ),
-            "notice",
+            status === "selection-required" ? "error" : "success",
           )
         }
       />
@@ -474,7 +481,7 @@ export function StudioRightPanel({
   );
 
   const postHostPanel = useCallback(
-    (panel: "voice" | "style") => {
+    (panel: "voice" | "style" | "avatar") => {
       if (window.parent !== window) {
         window.parent.postMessage(
           {
@@ -512,15 +519,29 @@ export function StudioRightPanel({
       postHostPanel(rightPanelTab);
       return;
     }
+    if (rightPanelTab === "components" && componentTab === "avatar") {
+      postHostPanel("avatar");
+      return;
+    }
     closeHostPanel();
-  }, [closeHostPanel, postHostPanel, rightPanelTab]);
+  }, [closeHostPanel, componentTab, postHostPanel, rightPanelTab]);
+
+  useEffect(() => {
+    const handleHostPanel = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.data?.projectId !== projectId) return;
+      if (event.data.type === "ipollowork:video-studio-panel" && event.data.panel === "voice") {
+        setRightPanelTab("voice");
+      }
+    };
+    window.addEventListener("message", handleHostPanel);
+    return () => window.removeEventListener("message", handleHostPanel);
+  }, [projectId, setRightPanelTab]);
 
   useEffect(() => () => closeHostPanel(), [closeHostPanel]);
 
   const selectStudioPanel = (
     panel: "design" | "animation" | "animation-properties" | "assets" | "components",
   ) => {
-    closeHostPanel();
     setRightPanelTab(panel);
   };
 
@@ -572,8 +593,8 @@ export function StudioRightPanel({
                   {t("right.renders")}
                 </span>
               ) : (
-                <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-x-auto overflow-y-hidden pb-1">
-                  <div className="flex w-max items-center gap-[5px]">
+                <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-hidden">
+                  <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr items-center gap-1">
                     {STUDIO_INSPECTOR_PANELS_ENABLED && (
                       <PanelTabButton
                         label={t("right.design")}
@@ -627,7 +648,7 @@ export function StudioRightPanel({
                 aria-label={tx("Close right panel")}
                 title={tx("Close right panel")}
               >
-                <X size={14} weight="bold" />
+                <X aria-hidden="true" size={14} strokeWidth={2} />
               </button>
             </div>
             <div className="min-h-0 min-w-0 flex-1 overflow-hidden pt-3">
@@ -645,10 +666,39 @@ export function StudioRightPanel({
                       variableValues={activeBlockParams.variableValues}
                       visualComponent={activeBlockParams.visualComponent}
                       onVariableChange={onBlockVariableChange ?? (async () => {})}
-                      onClose={onCloseBlockParams ?? (() => {})}
+                      onBack={onBackFromBlockParams ?? (() => {})}
                     />
                   ) : componentsPanelActive ? (
-                    <BlocksTab onAddBlock={onAddBlock} />
+                    <div className="flex h-full min-h-0 flex-col">
+                      <div className="shrink-0 px-4 pb-3">
+                        <div
+                          role="group"
+                          aria-label={t("right.components")}
+                          data-testid="component-subtabs"
+                          className="grid h-[34px] grid-cols-2 gap-1 rounded-lg bg-panel-input p-1"
+                        >
+                          <Tooltip label={t("right.componentsHelp")} side="bottom" maxWidth={240}>
+                            <button
+                              type="button"
+                              aria-pressed={componentTab === "presets"}
+                              onClick={() => setComponentTab("presets")}
+                              className={`rounded-md text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${componentTab === "presets" ? "bg-panel-bg text-panel-text-1 shadow-sm" : "text-panel-text-3 hover:text-panel-text-1"}`}
+                            >
+                              {t("right.presetComponents")}
+                            </button>
+                          </Tooltip>
+                          <button
+                            type="button"
+                            aria-pressed={componentTab === "avatar"}
+                            onClick={() => setComponentTab("avatar")}
+                            className={`rounded-md text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${componentTab === "avatar" ? "bg-panel-bg text-panel-text-1 shadow-sm" : "text-panel-text-3 hover:text-panel-text-1"}`}
+                          >
+                            {t("right.avatar")}
+                          </button>
+                        </div>
+                      </div>
+                      {componentTab === "presets" && <BlocksTab onAddBlock={onAddBlock} />}
+                    </div>
                   ) : animationPanelActive ? (
                     animationPanel
                   ) : rightPanelTab === "assets" ? (

@@ -13,7 +13,11 @@ import {
   type InstalledComponentParams,
 } from "../utils/blockInstaller";
 import type { EditHistoryKind } from "../utils/editHistory";
-import { resolveTimelineSelectionSeekTime, type RightPanelTab } from "../utils/studioHelpers";
+import {
+  resolveTimelineSelectionSeekTime,
+  type RightPanelTab,
+  type ToastToneInput,
+} from "../utils/studioHelpers";
 import { applyPatchByTarget } from "../utils/sourcePatcher";
 import { saveProjectFilesWithHistory } from "../utils/studioFileHistory";
 import { preloadBlockCatalog } from "./useBlockCatalog";
@@ -33,12 +37,15 @@ interface BlockCtxDeps {
   markStudioWrite: () => void;
   refreshFileTree: () => Promise<void>;
   reloadPreview: () => void;
-  showToast: (message: string, tone?: "error" | "info") => void;
+  showToast: (message: string, tone?: ToastToneInput) => number;
+  dismissToast: (id: number) => void;
 }
 
 interface UseBlockHandlersParams {
   projectId: string | null;
   blockCtxDeps: BlockCtxDeps;
+  compositionLoading: boolean;
+  clearDomSelection: () => void;
   setCompositionLoading: (loading: boolean) => void;
   setRightCollapsed: (collapsed: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
@@ -58,6 +65,8 @@ export interface UseBlockHandlersResult {
 export function useBlockHandlers({
   projectId,
   blockCtxDeps,
+  compositionLoading,
+  clearDomSelection,
   setCompositionLoading,
   setRightCollapsed,
   setRightPanelTab,
@@ -67,6 +76,7 @@ export function useBlockHandlers({
   const activeBlockParamsRef = useRef(activeBlockParams);
   activeBlockParamsRef.current = activeBlockParams;
   const variableWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingInsertedSelectionRef = useRef<string | null>(null);
   const selectedElementId = usePlayerStore((state) => state.selectedElementId);
 
   const blockCtx = useMemo(
@@ -80,6 +90,7 @@ export function useBlockHandlers({
       refreshFileTree: blockCtxDeps.refreshFileTree,
       reloadPreview: blockCtxDeps.reloadPreview,
       showToast: blockCtxDeps.showToast,
+      dismissToast: blockCtxDeps.dismissToast,
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
@@ -92,6 +103,7 @@ export function useBlockHandlers({
       blockCtxDeps.refreshFileTree,
       blockCtxDeps.reloadPreview,
       blockCtxDeps.showToast,
+      blockCtxDeps.dismissToast,
     ],
   );
 
@@ -101,17 +113,20 @@ export function useBlockHandlers({
   const runBlockInstall = useCallback(
     async <T>(blockName: string, install: () => Promise<T | null>): Promise<T | null> => {
       if (installingBlockRef.current) {
-        blockCtx.showToast("A block is already installing — one moment…", "info");
+        blockCtx.showToast("A block is already installing — one moment…", "error");
         return null;
       }
       installingBlockRef.current = true;
       setCompositionLoading(true);
-      blockCtx.showToast(`Adding ${blockName}…`, "info");
+      const loadingToastId = blockCtx.showToast("Adding component…", "loading");
       try {
         const result = await install();
+        blockCtx.dismissToast(loadingToastId);
         if (result === null) setCompositionLoading(false);
+        else blockCtx.showToast("Component added", "success");
         return result;
       } catch (error) {
+        blockCtx.dismissToast(loadingToastId);
         setCompositionLoading(false);
         throw error;
       } finally {
@@ -142,6 +157,25 @@ export function useBlockHandlers({
     },
     [setRightCollapsed, setRightPanelTab],
   );
+
+  useEffect(() => {
+    const insertedElementId = pendingInsertedSelectionRef.current;
+    if (!insertedElementId) return;
+    const insertedElement = blockCtx.timelineElements.find(
+      (candidate) =>
+        candidate.domId === insertedElementId ||
+        candidate.hfId === insertedElementId ||
+        candidate.id === insertedElementId,
+    );
+    if (!insertedElement) return;
+    const selectionId = insertedElement.key ?? insertedElement.id;
+
+    if (selectedElementId !== selectionId) {
+      usePlayerStore.getState().setSelectedElementId(selectionId);
+    }
+    usePlayerStore.getState().requestClipReveal(selectionId);
+    if (!compositionLoading) pendingInsertedSelectionRef.current = null;
+  }, [blockCtx.timelineElements, compositionLoading, selectedElementId]);
 
   useEffect(() => {
     if (!projectId || !selectedElementId) return;
@@ -220,11 +254,24 @@ export function useBlockHandlers({
         duration: insertedDuration,
         compositionSrc: result.compositionPath,
       });
-      usePlayerStore.getState().requestSeek(previewTime ?? result.insertedStart);
+      const playerState = usePlayerStore.getState();
+      const insertedSelectionId = result.insertedElement.key ?? result.insertedElement.id;
+      if (
+        !playerState.elements.some(
+          (element) => (element.key ?? element.id) === insertedSelectionId,
+        )
+      ) {
+        playerState.setElements([...playerState.elements, result.insertedElement]);
+      }
+      clearDomSelection();
+      pendingInsertedSelectionRef.current = result.insertedElementId;
+      playerState.setSelectedElementId(insertedSelectionId);
+      playerState.requestClipReveal(insertedSelectionId);
+      playerState.requestSeek(previewTime ?? result.insertedStart);
       activateInstalledBlock(result);
       return true;
     },
-    [projectId, blockCtx, runBlockInstall, activateInstalledBlock],
+    [projectId, blockCtx, runBlockInstall, activateInstalledBlock, clearDomSelection],
   );
 
   const handleBlockVariableChange = useCallback(

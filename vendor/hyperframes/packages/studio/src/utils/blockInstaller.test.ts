@@ -103,7 +103,7 @@ describe("addBlockToProject", () => {
       },
       recordEdit: vi.fn(),
       markStudioWrite: vi.fn(),
-      refreshFileTree: vi.fn(),
+      refreshFileTree: vi.fn().mockResolvedValue(undefined),
       reloadPreview: vi.fn(),
       showToast: vi.fn(),
     });
@@ -147,7 +147,7 @@ describe("addBlockToProject", () => {
     } as Response);
 
     let writtenIndex = "";
-    await addBlockToProject({
+    const result = await addBlockToProject({
       projectId: "project-1",
       blockName: "route-map",
       activeCompPath: "index.html",
@@ -159,12 +159,22 @@ describe("addBlockToProject", () => {
       },
       recordEdit: vi.fn(),
       markStudioWrite: vi.fn(),
-      refreshFileTree: vi.fn(),
+      refreshFileTree: vi.fn().mockResolvedValue(undefined),
       reloadPreview: vi.fn(),
       showToast: vi.fn(),
     });
 
     expect(writtenIndex).toContain("z-index: 13");
+    expect(result?.insertedElement).toMatchObject({
+      id: "route-map",
+      key: "index.html#route-map",
+      label: "Route Map",
+      start: 0,
+      duration: 3.2,
+      track: 6,
+      sourceFile: "index.html",
+      compositionSrc: "compositions/components/route-map.html",
+    });
   });
 
   it("ripple-inserts a catalog animation at the playhead on an independent effect track", async () => {

@@ -25,6 +25,7 @@ export function CommitField({
   max,
   step,
   ariaLabel,
+  className,
   onPreview,
   onCommit,
 }: {
@@ -43,6 +44,7 @@ export function CommitField({
   max?: number;
   step?: number;
   ariaLabel?: string;
+  className?: string;
   onPreview?: (nextValue: string) => void;
   onCommit: (nextValue: string) => void;
 }) {
@@ -147,7 +149,7 @@ export function CommitField({
         scheduleCommit(nextDraft);
       }}
       title={parseNumericToken(value) ? tx("Scroll or use Arrow keys to adjust") : undefined}
-      className={`min-w-0 w-full bg-transparent text-[11px] font-medium text-neutral-100 outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${
+      className={`min-w-0 w-full bg-transparent outline-none disabled:cursor-not-allowed disabled:text-neutral-600 ${className ?? "text-[11px] font-medium text-neutral-100"} ${
         align === "right" ? "text-right" : "text-left"
       }`}
     />

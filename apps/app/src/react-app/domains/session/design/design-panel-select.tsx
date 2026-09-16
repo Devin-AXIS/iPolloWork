@@ -84,7 +84,7 @@ export function DesignPanelSelect<T extends string>({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        {showValue ? <span className={cn("min-w-0 flex-1 truncate text-[13px] text-foreground", textClassName)}>{selected?.label ?? value}</span> : null}
+        {showValue ? <span className={cn("min-w-0 flex-1 truncate text-xs font-normal text-foreground", textClassName)}>{selected?.label ?? value}</span> : null}
         <img src={panelSelectChevron} alt="" width="16" height="16" className={cn("block size-4 shrink-0 transition-transform", open && "rotate-180")} />
       </button>
       {open && menuRect ? createPortal(

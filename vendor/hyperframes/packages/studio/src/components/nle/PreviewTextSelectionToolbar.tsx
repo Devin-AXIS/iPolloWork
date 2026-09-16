@@ -6,7 +6,7 @@ import {
   useState,
   type CSSProperties,
 } from "react";
-import { ImageSquare, VideoCamera, SlidersHorizontal, Sparkle, Trash } from "@phosphor-icons/react";
+import { Image, SlidersHorizontal, Sparkles, Trash2, Video } from "lucide-react";
 import { type DomEditSelection } from "../editor/domEditing";
 import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
 import { Tooltip } from "../ui/Tooltip";
@@ -512,51 +512,58 @@ export function PreviewTextSelectionToolbar({
       )}
       <Tooltip label={tx("Open Design properties")}>
         <button
-        type="button"
-        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label={tx("Open Design properties")}
-        onClick={openDesignProperties}
-      >
-        <SlidersHorizontal size={18} />
-      </button>
+          type="button"
+          className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+          aria-label={tx("Open Design properties")}
+          onClick={openDesignProperties}
+        >
+          <SlidersHorizontal size={18} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </Tooltip>
       <Tooltip label={tx("Ask AI about selected element")}>
         <button
-        type="button"
-        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-        aria-label={tx("Ask AI about selected element")}
-        onClick={askAiAboutSelection}
-      >
-        <Sparkle size={18} />
-      </button>
+          type="button"
+          className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+          aria-label={tx("Ask AI about selected element")}
+          onClick={askAiAboutSelection}
+        >
+          <Sparkles size={18} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </Tooltip>
       {window.parent !== window && activeSelection && projectId && resolveEditableVideoImage(activeSelection, projectId) ? (
         <>
-        <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
-        <Tooltip label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}>
-        <button type="button" className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
-          style={containerWidth >= 480 ? { width: "auto", gap: 6, paddingInline: 4, fontSize: 12, fontWeight: 500 } : undefined}
-          aria-label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}
-          onClick={() => void openImageWorkbench(activeSelection)}>
-          {activeSelection.element.tagName === "VIDEO" ? <VideoCamera size={18} /> : <ImageSquare size={18} />}
-          {containerWidth >= 480 ? <span>{tx(activeSelection.element.tagName === "VIDEO" ? "Edit video" : "Edit image")}</span> : null}
-        </button>
-        </Tooltip>
+          <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
+          <Tooltip label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}>
+            <button
+              type="button"
+              className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button"
+              style={containerWidth >= 480 ? { width: "auto", gap: 6, paddingInline: 4, fontSize: 12, fontWeight: 500 } : undefined}
+              aria-label={tx(activeSelection.element.tagName === "VIDEO" ? "Edit in Video Console" : "Edit in Image Studio")}
+              onClick={() => void openImageWorkbench(activeSelection)}
+            >
+              {activeSelection.element.tagName === "VIDEO" ? (
+                <Video size={18} strokeWidth={1.75} aria-hidden="true" />
+              ) : (
+                <Image size={18} strokeWidth={1.75} aria-hidden="true" />
+              )}
+              {containerWidth >= 480 ? <span>{tx(activeSelection.element.tagName === "VIDEO" ? "Edit video" : "Edit image")}</span> : null}
+            </button>
+          </Tooltip>
         </>
       ) : null}
       <span className="hf-preview-text-toolbar__divider" aria-hidden="true" />
       <Tooltip label={tx("Delete selected element")}>
         <button
-        type="button"
-        className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
-        aria-label={tx("Delete selected element")}
-        // Keep the text input focused until click removes the toolbar. Otherwise
-        // its blur save races the delete and can write the element back.
-        onPointerDown={(event) => event.preventDefault()}
-        onClick={deleteSelectedElement}
-      >
-        <Trash size={18} />
-      </button>
+          type="button"
+          className="hf-preview-text-toolbar__button hf-preview-text-toolbar__icon-button hf-preview-text-toolbar__delete-button"
+          aria-label={tx("Delete selected element")}
+          // Keep the text input focused until click removes the toolbar. Otherwise
+          // its blur save races the delete and can write the element back.
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={deleteSelectedElement}
+        >
+          <Trash2 size={18} strokeWidth={1.75} aria-hidden="true" />
+        </button>
       </Tooltip>
     </div>
   );

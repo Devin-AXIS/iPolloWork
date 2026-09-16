@@ -69,6 +69,17 @@
   --hf-animation-preview-text: #f8fafc;
   --hf-animation-preview-primary: #1FBAC0;
   --hf-animation-preview-accent: #7c3aed;
+  --hf-toast-bg: rgba(24, 24, 27, 0.96);
+  --hf-toast-border: rgba(255, 255, 255, 0.1);
+  --hf-toast-text: #f4f4f5;
+  --hf-toast-muted: #8b8d98;
+  --hf-toast-loading: #38bdf8;
+  --hf-toast-success: #4ade80;
+  --hf-toast-error: #fb7185;
+  --hf-toast-shadow: 0 12px 32px rgba(0, 0, 0, 0.32);
+  --hf-header-primary-bg: #f4f4f5;
+  --hf-header-primary-hover: #e4e4e7;
+  --hf-header-primary-text: #18181b;
 }
 
 :root[data-ipollowork-theme="light"] {
@@ -116,9 +127,19 @@
   --hf-animation-preview-text: #18181b;
   --hf-animation-preview-primary: #168e92;
   --hf-animation-preview-accent: #6d4aff;
+  --hf-toast-bg: rgba(255, 255, 255, 0.98);
+  --hf-toast-border: #dfe3e8;
+  --hf-toast-text: #18181b;
+  --hf-toast-muted: #71717a;
+  --hf-toast-loading: #0284c7;
+  --hf-toast-success: #15803d;
+  --hf-toast-error: #dc2626;
+  --hf-toast-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+  --hf-header-primary-bg: #18181b;
+  --hf-header-primary-hover: #27272a;
+  --hf-header-primary-text: #ffffff;
 }
 
-:root:not([data-ipollowork-theme="light"]) .hf-studio-properties-icon,
 :root:not([data-ipollowork-theme="light"]) .hf-timeline-toolbar-icon {
   filter: invert(1) brightness(1.25);
   opacity: 0.9;
@@ -194,25 +215,16 @@ body {
 }
 
 .hf-studio-header-export {
-  background-color: #000000 !important;
-  color: #ffffff !important;
+  background-color: var(--hf-header-primary-bg) !important;
+  color: var(--hf-header-primary-text) !important;
 }
 
 .hf-studio-header-export:hover {
-  background-color: #292927 !important;
+  background-color: var(--hf-header-primary-hover) !important;
 }
 
 .hf-studio-header-export:active {
-  background-color: #444440 !important;
-}
-
-.hf-studio-properties-action {
-  background-color: transparent !important;
-}
-
-.hf-studio-properties-action:hover,
-.hf-studio-properties-action:active {
-  background-color: var(--hf-studio-header-hover) !important;
+  opacity: 0.88;
 }
 
 .hf-studio-header-title,
@@ -232,6 +244,13 @@ body {
 
 .hf-studio-header-utilities {
   gap: 4px;
+}
+
+.hf-studio-header-actions-divider {
+  width: 1px;
+  height: 18px;
+  flex: 0 0 1px;
+  background: var(--hf-panel-hairline);
 }
 
 @media (max-width: 720px) {
@@ -260,9 +279,9 @@ body {
 
   .hf-studio-header-action {
     display: grid;
-    width: 36px;
-    min-width: 36px;
-    height: 36px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
     place-items: center;
     padding: 0;
   }
@@ -1557,6 +1576,44 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
 }
 
 /* Flat inspector group header/body entrance (FlatGroupHeader) */
+.hf-panel-accordion-header {
+  display: flex;
+  height: 48px;
+  align-items: center;
+  gap: 8px;
+  padding-inline: 16px;
+  background: var(--hf-panel-bg);
+  color: var(--hf-panel-text-1);
+  text-align: left;
+  transition: background-color 120ms ease;
+}
+
+.hf-panel-accordion-header:hover {
+  background: var(--hf-panel-input);
+}
+
+.hf-panel-accordion-header[aria-expanded="true"],
+.hf-panel-accordion-header[data-expanded="true"] {
+  box-shadow: inset 3px 0 0 #1fbac0;
+}
+
+.hf-panel-accordion-chevron {
+  flex: none;
+  color: #858a94;
+}
+
+.hf-panel-accordion-label {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.hf-panel-accordion-count {
+  color: var(--hf-panel-text-3);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 @keyframes hf-flat-group-in {
   from {
     opacity: 0;
@@ -1613,22 +1670,19 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   border-color: var(--hf-panel-hairline);
 }
 
-.hf-inspector-tabs-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: #b8bab7 transparent;
+.hf-inspector-tabs-scroll > div > span {
+  display: block;
+  min-width: 0;
 }
-
-.hf-inspector-tabs-scroll::-webkit-scrollbar {
-  height: 4px;
+.hf-inspector-tabs-scroll button {
+  width: 100%;
+  min-width: 0;
+  padding-inline: 4px;
 }
-
-.hf-inspector-tabs-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.hf-inspector-tabs-scroll::-webkit-scrollbar-thumb {
-  border-radius: 999px;
-  background: #b8bab7;
+.hf-inspector-tabs-scroll button > span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 @media (prefers-reduced-motion: reduce) {

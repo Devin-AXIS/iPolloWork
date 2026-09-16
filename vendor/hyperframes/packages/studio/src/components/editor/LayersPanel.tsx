@@ -371,7 +371,7 @@ export const LayersPanel = memo(function LayersPanel() {
   const visibleLayers = getVisibleLayers(layers, collapsed);
 
   const handleSingleSibling = useCallback(() => {
-    showToast("Only one layer at this level", "info");
+    showToast("Only one layer at this level", "error");
   }, [showToast]);
 
   const {
