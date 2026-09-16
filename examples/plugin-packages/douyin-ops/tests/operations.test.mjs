@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Store } from '../service/store.mjs';
 import { Operations } from '../service/operations.mjs';
+import { ApiError } from '../service/api.mjs';
 
 const settings = { clientKey: 'test-client', clientSecret: 'fixture-secret', redirectUri: 'https://example.com/callback', scopes: 'user_info,video.create.bind,video.list,video.data,item.comment' };
 const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypisom'), Buffer.alloc(20)]);
@@ -94,14 +95,14 @@ test('refresh is single flight and never extends the refresh token deadline or s
 test('missing scope fails before network I/O; renewed scope is checked again', async t => {
   const f = await fixture(t), { account } = await f.connect();
   f.store.put('account', { ...account, scopes: ['user_info'] });
-  await assert.rejects(f.ops.action('list-videos', { accountId: account.id }), /video.list/);
+  await assert.rejects(f.ops.apiAction('list-videos', { accountId: account.id }), /video.list/);
   const draft = f.ops.saveDraft({ accountId: account.id, title: '受限草稿', text: '内容' }).draft;
-  await assert.rejects(f.ops.action('publish-draft', { accountId: account.id, draftId: draft.id, operationKey: 'blocked-publish' }), /video.create.bind/);
-  await assert.rejects(f.ops.action('reply-comment', { accountId: account.id, itemId: 'item', commentId: 'comment', content: '回复', operationKey: 'blocked-reply' }), /item.comment/);
+  await assert.rejects(f.ops.apiAction('publish-draft', { accountId: account.id, draftId: draft.id, operationKey: 'blocked-publish' }), /video.create.bind/);
+  await assert.rejects(f.ops.apiAction('reply-comment', { accountId: account.id, itemId: 'item', commentId: 'comment', content: '回复', operationKey: 'blocked-reply' }), /item.comment/);
   assert.equal(f.calls.length, 0);
   f.store.put('account', { ...account, expiresAt: 0 });
   f.api.refreshToken = async () => ({ access_token: 'limited', scope: 'user_info', expires_in: 3600 });
-  await assert.rejects(f.ops.action('list-videos', { accountId: account.id }), /video.list/);
+  await assert.rejects(f.ops.readApi('list-videos', { accountId: account.id }), /video.list/);
 });
 
 test('public state derives route capabilities from each account granted scopes', async t => {
@@ -203,6 +204,18 @@ test('crashed in-progress jobs are marked uncertain on restart', async t => {
   assert.equal(f.store.get('job', job.id).status, 'uncertain');
 });
 
+test('interrupted browser reads can be reclaimed after restart and invalidate the old claim', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  const { job } = await f.ops.action('search-videos', { accountId: account.id, keyword: '萌宠', count: 2 });
+  const old = await f.ops.action('claim-browser-job', { jobId: job.id, ...identity });
+  const restarted = new Operations({ store: f.store, dataDir: f.dataDir, workspaceRoot: f.workspaceRoot, api: f.api });
+  assert.equal(f.store.get('job', job.id).status, 'pending');
+  const next = await restarted.action('claim-browser-job', { jobId: job.id, ...identity });
+  await assert.rejects(restarted.action('finish-browser-job', { jobId: job.id, ...identity, executionToken: old.executionToken, outcome: 'succeeded', evidence: '旧执行器', items: [] }), /凭证/);
+  await restarted.action('finish-browser-job', { jobId: job.id, ...identity, executionToken: next.executionToken, outcome: 'succeeded', evidence: '重新读取，页面确认无结果', items: [] });
+  assert.equal(f.store.get('job', job.id).status, 'succeeded');
+});
+
 test('official search uses cached app token and preserves device/search identifiers', async t => {
   const f = await fixture(t);
   const args = { keyword: '日常生活', deviceId: '9007199254740993' };
@@ -215,4 +228,105 @@ test('official search uses cached app token and preserves device/search identifi
   assert.equal(calls[1][1].searchId, 'search-id');
   assert.equal(calls[1][1].clientToken, 'app-only-token');
   assert.doesNotMatch(JSON.stringify(f.ops.state()), /app-only-token/);
+});
+
+async function browserAccount(f) {
+  const { account } = await f.ops.action('connect-browser');
+  const identity = { accountId: account.id, actualProfileId: `douyin-ops:${account.browserProfileId}`, actualAccount: 'creator123', nickname: '普通用户', profileUrl: 'https://www.douyin.com/user/real-user', evidence: '从当前登录用户“我”入口读取：抖音号 creator123' };
+  await f.ops.action('verify-browser-account', identity);
+  return { account, identity };
+}
+
+test('ordinary accounts connect without OAuth, isolate profiles and cannot switch verified identity', async t => {
+  const f = await fixture(t); f.store.remove('settings', 'application');
+  const first = await f.ops.action('connect-browser'), retry = await f.ops.action('connect-browser');
+  assert.equal(first.account.id, retry.account.id);
+  const { account, identity } = await browserAccount(f);
+  const second = await f.ops.action('connect-browser');
+  assert.notEqual(second.account.browserProfileId, account.browserProfileId);
+  await assert.rejects(f.ops.action('verify-browser-account', { ...identity, actualProfileId: 'wrong' }), /环境/);
+  await assert.rejects(f.ops.action('verify-browser-account', { ...identity, actualAccount: 'other', evidence: 'other' }), /其他账号/);
+  assert.equal(f.calls.length, 0);
+  assert.equal(f.ops.account(account.id).openId, undefined);
+});
+
+test('browser search persists real results, then a third-party comment is claimed once and target-checked', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  const { job } = await f.ops.action('search-videos', { accountId: account.id, keyword: '收纳', count: 5 });
+  assert.equal(job.transport, 'browser'); assert.equal(job.status, 'pending');
+  const claim = await f.ops.action('claim-browser-job', { jobId: job.id, ...identity });
+  await assert.rejects(f.ops.action('claim-browser-job', { jobId: job.id, ...identity }), /已领取/);
+  const receipt = { jobId: job.id, ...identity, executionToken: claim.executionToken, outcome: 'succeeded', evidence: '搜索页面显示一条匹配作品', items: [{ title: '桌面收纳', link: 'https://www.douyin.com/video/123456', nickname: '其他作者' }] };
+  await f.ops.action('finish-browser-job', receipt);
+  assert.equal(f.store.get('job', job.id).result.list[0].link, receipt.items[0].link);
+  assert.doesNotMatch(JSON.stringify(f.ops.state()), new RegExp(claim.executionToken));
+  const input = { accountId: account.id, targetUrl: receipt.items[0].link, content: '分区收纳的思路很清楚。', operationKey: 'comment-on-search-1' };
+  const comment = await f.ops.action('comment-video', input);
+  assert.equal((await f.ops.action('comment-video', input)).job.id, comment.job.id);
+  await assert.rejects(f.ops.action('comment-video', { ...input, content: '改掉原文' }), /不能更换/);
+  const execution = await f.ops.action('claim-browser-job', { jobId: comment.job.id, ...identity });
+  const finish = { jobId: comment.job.id, ...identity, executionToken: execution.executionToken, outcome: 'succeeded', resultUrl: input.targetUrl, evidence: '发送后页面出现当前用户的新评论，内容与任务一致。' };
+  await assert.rejects(f.ops.action('finish-browser-job', { ...finish, resultUrl: 'https://www.douyin.com/video/999' }), /目标作品/);
+  await f.ops.action('finish-browser-job', finish);
+  assert.equal(f.calls.length, 0);
+});
+
+test('API permissions are preferred, explicit denial falls back, timeouts and quotas do not', async t => {
+  const f = await fixture(t), { account } = await f.connect();
+  await f.ops.action('list-videos', { accountId: account.id });
+  assert.equal(f.calls.filter(call => call[0] === 'videos').length, 1);
+  f.api.listVideos = async () => { throw new ApiError('无权限', { code: 28001018 }); };
+  const read = await f.ops.action('list-videos', { accountId: account.id });
+  assert.equal(read.job.transport, 'browser');
+  const readClaim = await f.ops.action('claim-browser-job', { jobId: read.job.id, actualProfileId: `douyin-ops:${account.browserProfileId}` });
+  await f.ops.action('finish-browser-job', { jobId: read.job.id, actualProfileId: readClaim.profileId, executionToken: readClaim.executionToken, outcome: 'succeeded', evidence: '自己的作品页面确认没有作品', items: [] });
+  f.api.listVideos = async () => { throw new ApiError('配额耗尽', { code: 28003017 }); };
+  await assert.rejects(f.ops.action('list-videos', { accountId: account.id }), /配额/);
+  f.api.replyComment = async () => { throw new ApiError('timeout', { code: 'TIMEOUT', uncertain: true }); };
+  const result = await f.ops.action('reply-comment', { accountId: account.id, itemId: 'own-video', commentId: 'c', content: '谢谢', operationKey: 'timeout' });
+  assert.equal(result.job.status, 'uncertain'); assert.equal(result.browserTask, undefined);
+});
+
+test('browser publishing locks draft and queued browser writes block API writes', async t => {
+  const f = await fixture(t), { account } = await f.connect();
+  f.store.put('account', { ...account, scopes: ['user_info'] });
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.importMedia({ sourcePath: 'video.mp4' });
+  const { draft } = f.ops.saveDraft({ accountId: account.id, title: '视频', text: '已确认文案', assetId: asset.id });
+  const input = { accountId: account.id, draftId: draft.id, operationKey: 'web-publish' };
+  const result = await f.ops.action('publish-draft', input);
+  assert.equal(result.job.status, 'pending');
+  assert.equal((await f.ops.action('publish-draft', input)).job.id, result.job.id);
+  assert.throws(() => f.ops.saveDraft({ ...draft, text: 'changed' }), /锁定/);
+  assert.throws(() => f.ops.beginJob(account.id, 'reply', 'another', {}), /正在执行/);
+});
+
+test('browser links route data without pretending to be API IDs, and read counts are enforced', async t => {
+  const f = await fixture(t), { account } = await f.connect();
+  const link = 'https://www.douyin.com/video/1234567890';
+  const data = await f.ops.action('video-data', { accountId: account.id, itemIds: [link] });
+  assert.equal(data.job.targetUrl, link);
+  assert.equal(data.job.transport, 'browser');
+  assert.deepEqual(f.calls, []);
+  const comments = await f.ops.action('list-comments', { accountId: account.id, itemId: link, count: 1 });
+  const claim = await f.ops.action('claim-browser-job', { jobId: comments.job.id, actualProfileId: `douyin-ops:${account.browserProfileId}` });
+  const finish = { jobId: comments.job.id, executionToken: claim.executionToken, actualProfileId: claim.profileId, outcome: 'succeeded', evidence: '模拟实际评论列表' };
+  await assert.rejects(f.ops.action('finish-browser-job', { ...finish, items: [{ title: '第一条' }, { title: '第二条' }] }), /数量/);
+  await f.ops.action('finish-browser-job', { ...finish, items: [{ title: '第一条', link, content: '第一条', nickname: '作者' }] });
+});
+
+test('browser instructions queue while only one job may own an account browser', async t => {
+  const f = await fixture(t), { account } = await f.ops.action('connect-browser');
+  const identity = { accountId: account.id, actualProfileId: `douyin-ops:${account.browserProfileId}`, actualAccount: 'fixture-user', nickname: '测试账号', profileUrl: 'https://www.douyin.com/user/fixture', evidence: '自己的抖音号 fixture-user' };
+  await f.ops.action('verify-browser-account', identity);
+  const input = { accountId: account.id, targetUrl: 'https://www.douyin.com/video/1234567890', content: '锁定评论' };
+  const a = await f.ops.action('comment-video', { ...input, operationKey: 'queue-a' });
+  const b = await f.ops.action('comment-video', { ...input, operationKey: 'queue-b' });
+  const claim = await f.ops.action('claim-browser-job', { ...identity, jobId: a.job.id });
+  await assert.rejects(f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id }), /上一项任务/);
+  assert.equal(f.store.get('job', b.job.id).status, 'pending');
+  await f.ops.action('finish-browser-job', { ...identity, jobId: a.job.id, executionToken: claim.executionToken, outcome: 'uncertain', evidence: '模拟提交后反馈中断' });
+  await assert.rejects(f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id }), /待核对/);
+  f.ops.resolveJob({ jobId: a.job.id, outcome: 'failed', evidence: '模拟核对没有提交' });
+  assert.equal((await f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id })).job.status, 'running');
 });

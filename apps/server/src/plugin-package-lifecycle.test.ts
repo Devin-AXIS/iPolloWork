@@ -13,7 +13,7 @@ import {
   PluginEngineAdapterRegistry,
   type PluginEngineAdapter,
 } from "./plugin-engine-adapter.js";
-import { bundledPluginPackageIds } from "./plugin-package-catalog.js";
+import { catalogPluginPackageIds } from "./plugin-package-catalog.js";
 import { buildDeepSeekHarnessPatch } from "./deepseek-harness-patch.js";
 import { disposeiPolloWorkWorkspaceConfigStore } from "./ipollowork-workspace-config-store.js";
 import {
@@ -790,11 +790,19 @@ describe("plugin package lifecycle", () => {
     await writeFile(join(legacyRoot, "skills", "reference-analyzer", "SKILL.md"), skillText.replace("name: ipollowork-reference-analyzer", "name: reference-analyzer"), "utf8");
     await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: legacyRoot });
     await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "video-agent", enabled });
+    // Existing installations may have exposed this core Skill as an extension.
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: sharedRoot });
+    if (enabled) await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "reference-context" });
+    else await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "reference-context", enabled: false });
     const server = await startServer(config);
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, { headers: { authorization: "Bearer token" } });
       expect(response.status).toBe(200);
       const sharedPath = join(workspaceRoot, ".opencode", "skills", "ipollowork-reference-analyzer", "SKILL.md");
+      expect((await response.json()).items).not.toEqual(expect.arrayContaining([expect.objectContaining({ pluginId: "reference-context" })]));
+      const catalog = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages/catalog`, { headers: { authorization: "Bearer token" } });
+      expect(catalog.status).toBe(200);
+      expect((await catalog.json()).items).not.toEqual(expect.arrayContaining([expect.objectContaining({ pluginId: "reference-context" })]));
       expect(await readFile(sharedPath, "utf8")).toBe(skillText);
       await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
       const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
@@ -1025,7 +1033,7 @@ describe("plugin package lifecycle", () => {
       expect(response.status).toBe(200);
       const payload = await response.json();
       const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
-      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      expect(pluginIds).toEqual([...catalogPluginPackageIds]);
       for (const item of payload.items as Array<{
         pluginId: string;
         engineCompatibility: Array<{ engineId: string; status: string }>;
@@ -1063,7 +1071,7 @@ describe("plugin package lifecycle", () => {
       expect(response.status).toBe(200);
       const payload = await response.json();
       const pluginIds = payload.items.map((item: { pluginId: string }) => item.pluginId);
-      expect(pluginIds).toEqual([...bundledPluginPackageIds]);
+      expect(pluginIds).toEqual([...catalogPluginPackageIds]);
       for (const item of payload.items as Array<{
         pluginId: string;
         engineCompatibility: Array<{ engineId: string; status: string }>;
@@ -1707,7 +1715,6 @@ describe("plugin package lifecycle", () => {
           { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
-          { pluginId: "reference-context", version: "0.1.1", installedVersion: "0.1.1", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.0", installedVersion: "1.0.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],

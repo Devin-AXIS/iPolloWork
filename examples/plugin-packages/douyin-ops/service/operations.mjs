@@ -2,6 +2,7 @@ import { randomUUID, randomBytes, createHash } from 'node:crypto';
 import { mkdir, realpath, stat, copyFile, open, unlink } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, basename, extname } from 'node:path';
 import { DouyinApi, ApiError, CAPABILITY_SCOPES, MAX_VIDEO_BYTES } from './api.mjs';
+import { BrowserOperations, routedActions, canUseBrowser } from './browser.mjs';
 
 export { MAX_VIDEO_BYTES } from './api.mjs';
 export function fail(message, code = 'invalid_input') { throw Object.assign(new Error(message), { code }); }
@@ -52,9 +53,12 @@ export class Operations {
   constructor({ store, dataDir, workspaceRoot, api = new DouyinApi({ timeoutMs: 60_000 }) }) {
     this.store = store; this.dataDir = dataDir; this.workspaceRoot = workspaceRoot; this.api = api;
     this.refreshing = new Map(); this.clientTokenPending = null;
+    this.browser = new BrowserOperations(this);
     // A process may have exited after an external submit but before its receipt.
     for (const job of store.list('job', null, 1000)) if (job.status === 'running') {
-      store.put('job', { ...job, status: 'uncertain', message: '服务在执行期间退出，请先到抖音核对结果。' });
+      const readOnly = job.transport === 'browser' && ['search-videos', 'list-videos', 'list-comments', 'video-data'].includes(job.browserAction);
+      store.put('job', { ...job, status: readOnly ? 'pending' : 'uncertain', message: readOnly ? '读取期间服务重启，可继续交给 AI 重新读取。' : '服务在执行期间退出，请先到抖音核对结果。' });
+      if (readOnly) store.setSecret(`browser-job:${job.id}`, null);
     }
   }
   settings() {
@@ -64,7 +68,7 @@ export class Operations {
     const current = this.settings();
     const clientKey = text(input.clientKey, 'Client Key', 200);
     const clientSecret = text(input.clientSecret, 'Client Secret', 500, true);
-    if (current.clientKey && current.clientKey !== clientKey && this.store.list('account').length) fail('已有账号绑定当前应用，请继续使用原 Client Key。');
+    if (current.clientKey && current.clientKey !== clientKey && this.store.list('account').some(account => account.openId)) fail('已有账号绑定当前应用，请继续使用原 Client Key。');
     let redirect;
     try { redirect = new URL(input.redirectUri); } catch { fail('请填写开放平台登记的 HTTPS 回调地址'); }
     if (redirect.protocol !== 'https:' || redirect.search || redirect.hash || redirect.username || redirect.password) fail('回调地址必须为 HTTPS，且不能带查询参数、片段或登录凭据');
@@ -208,7 +212,7 @@ export class Operations {
         if (previous.fingerprint !== fingerprint) fail('相同操作标识不能更换目标或内容', 'operation_conflict');
         return { job: previous, created: false };
       }
-      if (this.store.list('job', accountId, 1000).some(job => ['running', 'uncertain'].includes(job.status))) fail('该账号有正在执行或待核对的操作，请先检查执行记录', 'account_busy');
+      if (this.store.list('job', accountId, 1000).some(job => ['pending', 'running', 'uncertain'].includes(job.status))) fail('该账号有正在执行或待核对的操作，请先检查执行记录', 'account_busy');
       if (this.store.list('job', null, 1000).length >= 1000) fail('已达到本地执行记录上限（1000），请先整理记录');
       const job = this.store.put('job', { id: randomUUID(), accountId, kind, operationKey: key, payload, fingerprint, status: 'running', message: '正在提交', createdAt: Date.now() });
       return { job, created: true };
@@ -221,6 +225,7 @@ export class Operations {
       return this.store.put('job', { ...job, status: 'succeeded', message: '已收到抖音提交回执，最终展示以平台审核为准', result, finishedAt: Date.now() });
     } catch (error) {
       return this.store.put('job', { ...job, status: error.uncertain === false ? 'failed' : 'uncertain',
+        errorCode: error instanceof ApiError ? error.code : undefined,
         message: error instanceof ApiError ? error.message : '未收到确定结果，请到抖音核对后再操作。', finishedAt: Date.now() });
     }
   }
@@ -245,7 +250,7 @@ export class Operations {
       uploaded = await this.api.uploadVideo({ ...credentials, filePath: resolve(this.dataDir, 'assets', `${draft.assetId}.mp4`) });
       if (!uploaded.video?.video_id) fail('视频上传没有返回素材标识');
     } catch (error) {
-      const result = this.store.put('job', { ...job, status: 'failed', message: `素材上传失败，尚未发起发布。${error instanceof ApiError ? error.message : '请检查素材和授权。'}`, finishedAt: Date.now() });
+      const result = this.store.put('job', { ...job, status: 'failed', errorCode: error instanceof ApiError ? error.code : undefined, message: `素材上传失败，尚未发起发布。${error instanceof ApiError ? error.message : '请检查素材和授权。'}`, finishedAt: Date.now() });
       this.store.put('draft', { ...draft, status: 'failed', jobId: result.id });
       return { job: result };
     }
@@ -326,6 +331,31 @@ export class Operations {
   }
   async action(name, input = {}) {
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail('参数必须为对象');
+    if (name === 'connect-browser') return this.browser.connect(input);
+    if (name === 'verify-browser-account') return this.browser.verify(input);
+    if (name === 'claim-browser-job') return this.browser.claim(input);
+    if (name === 'finish-browser-job') return this.browser.finish(input);
+    if (routedActions.has(name)) {
+      if (input.operationKey && input.accountId) {
+        const existing = this.store.byOperation('job', input.accountId, input.operationKey);
+        if (existing?.transport === 'browser') return this.browser.prepare(name, input, existing.reason);
+      }
+      if (name === 'comment-video' || (name === 'reply-comment' && input.targetUrl && !input.ownVideo)) return this.browser.prepare(name, input, '第三方作品互动使用网页');
+      if (name === 'list-comments' && !input.ownVideo && (input.targetUrl || input.itemId?.startsWith('https://'))) return this.browser.prepare(name, input, '按作品链接读取网页评论');
+      if (name === 'video-data' && input.itemIds?.some(id => typeof id === 'string' && id.startsWith('https://'))) return this.browser.prepare(name, input, '按真实作品链接读取网页数据');
+      if (name === 'search-videos' && (!this.settings().secretConfigured || !input.deviceId)) return this.browser.prepare(name, input, '未配置搜索 API 或设备标识');
+      try {
+        const result = await this.apiAction(name, input);
+        if (result.job?.status === 'failed' && canUseBrowser({ code: result.job.errorCode })) return this.browser.prepare(name, input, 'API 明确拒绝权限，转网页处理', result.job);
+        return result;
+      } catch (error) {
+        if (!canUseBrowser(error)) throw error;
+        return this.browser.prepare(name, input, error.message);
+      }
+    }
+    return this.apiAction(name, input);
+  }
+  async apiAction(name, input = {}) {
     switch (name) {
       case 'studio-state': return this.state();
       case 'list-accounts': return { accounts: this.accounts() };

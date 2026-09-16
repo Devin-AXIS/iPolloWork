@@ -20,6 +20,7 @@ export function ServiceWorkbenchFrame(props: {
   workspaceId: string;
   workspaceRoot: string;
   sessionId?: string | null;
+  onRequestActivate?: () => void;
   onSendMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   className?: string;
 }) {
@@ -27,6 +28,8 @@ export function ServiceWorkbenchFrame(props: {
   const [frameLoad, setFrameLoad] = useState(0);
   const sendMessageRef = useRef(props.onSendMessage);
   sendMessageRef.current = props.onSendMessage;
+  const activateRef = useRef(props.onRequestActivate);
+  activateRef.current = props.onRequestActivate;
   const workbench = useQuery({
     queryKey: ["plugin-service-workbench", props.client.baseUrl, props.workspaceId, props.workspaceRoot,
       props.sessionId, props.surface.pluginId, props.surface.resource.id],
@@ -82,6 +85,10 @@ export function ServiceWorkbenchFrame(props: {
       } : undefined);
       return {};
     });
+    bridge.onrequestdisplaymode = async () => {
+      activateRef.current?.();
+      return { mode: "inline" };
+    };
     bridge.onmessage = async ({ content }) => {
       const text = content.flatMap(item => item.type === "text" ? [item.text] : []).join("\n").trim();
       if (!text || text.length > 30_000 || !sendMessageRef.current) return { isError: true };

@@ -64,7 +64,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { bundledPluginPackageIds, catalogPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds, catalogPluginPackageIds, defaultBundledPluginPackageIds, isInternalPluginPackage, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -695,7 +695,7 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         || !preview.manifest.source.trusted) continue;
 
       const installed = installedById.get(pluginId);
-      if (!installed && suppressed.has(pluginId)) continue;
+      if (!installed && suppressed.has(pluginId) && !isInternalPluginPackage(pluginId)) continue;
       if (!installed) {
         await installPluginPackage({
           serverConfig: config,
@@ -706,6 +706,9 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
           serverConfig: config,
           packageRoot,
         });
+      }
+      if (installed && !installed.enabled && isInternalPluginPackage(pluginId)) {
+        await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });
       }
     } catch (error) {
       logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
@@ -1934,7 +1937,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
-    const items = (await listInstalledPluginPackages({ serverConfig: config })).map((item) => ({
+    const items = (await listInstalledPluginPackages({ serverConfig: config })).filter(item => !isInternalPluginPackage(item.pluginId)).map((item) => ({
       ...item,
       ...pluginPackageEngineState(workspace, item.manifest),
     }));

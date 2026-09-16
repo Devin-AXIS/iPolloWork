@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "douyin-ops",
   "name": "抖音运营台",
-  "description": "多账号抖音运营插件：按每个账号的官方授权权限显示发布、作品数据和评论能力，并提供应用级视频搜索、AI 会话与日程调用。",
+  "description": "面向普通用户的多账号抖音运营台：网页登录、视频发布、作品数据、评论回复及搜索后评论；可用 API 优先，其余由 AI 操作浏览器。",
   "category": "营销",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.1.11",
+    "version": "0.2.9",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -22,7 +22,7 @@
     "updateId": "local/douyin-ops"
   },
   "composer": {
-    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker；账号以 list-accounts 的 OAuth openId 为准。优先调用官方API，按实际scope执行；草稿不自动发布。日程传稳定runKey及operationKey；待核对不可重发。密钥和授权回调仅在工作台输入。"
+    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker。普通用户用 connect-browser 登录并验证真实抖音号，无需开发者配置。有权限优先 API，返回 browserTask 必须用宿主浏览器完成并回写；pending 不是成功。搜索后评论用 comment-video。操作标识保持稳定。"
   },
   "resources": [
     {
@@ -61,7 +61,7 @@
         {
           "id": "studio-state",
           "title": "查看运营台状态",
-          "description": "读取账号、实际授权能力、最近草稿、素材和执行结果，不返回平台令牌。",
+          "description": "读取账号、最近草稿、素材和执行结果，不返回平台令牌。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -73,7 +73,7 @@
         {
           "id": "list-accounts",
           "title": "列出抖音账号",
-          "description": "按用户指定账号选择；返回真实 OAuth 身份、已授予 Scope 和逐项功能状态。",
+          "description": "按用户指定账号选择；返回真实 OAuth 身份和已授予权限。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -161,7 +161,7 @@
         {
           "id": "publish-draft",
           "title": "发布抖音视频",
-          "description": "仅在用户授权发布已保存内容后执行；要求video.create.bind。operationKey重试不可改变。超时返回待核对，禁止重发。",
+          "description": "仅在用户授权发布已保存内容后执行；要求video.create.bind。operationKey重试不可改变。超时返回待核对，禁止重发。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -193,7 +193,7 @@
         {
           "id": "list-videos",
           "title": "查询授权账号作品",
-          "description": "官方历史video.list接口，仅适用已开通权限的应用。每页最多20条。",
+          "description": "官方历史video.list接口，仅适用已开通权限的应用。每页最多20条。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -230,7 +230,7 @@
         {
           "id": "video-data",
           "title": "查询作品数据",
-          "description": "官方历史video.data接口，查询1至20个属于授权账号的作品。",
+          "description": "官方历史video.data接口，查询1至20个属于授权账号的作品。itemIds 也接受实际 /video/ 作品链接，此时走网页读取。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -261,7 +261,7 @@
         {
           "id": "list-comments",
           "title": "查询作品评论",
-          "description": "官方历史item.comment接口，查询授权账号自己的公开视频评论。",
+          "description": "官方历史item.comment接口，查询授权账号自己的公开视频评论。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -292,6 +292,14 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 20
+              },
+              "targetUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "ownVideo": {
+                "type": "boolean"
               }
             },
             "required": [
@@ -304,7 +312,7 @@
         {
           "id": "reply-comment",
           "title": "回复作品评论",
-          "description": "仅按用户授权回复指定评论；要求item.comment。operationKey必须稳定，不重复提交。",
+          "description": "仅按用户授权回复指定评论；要求item.comment。operationKey必须稳定，不重复提交。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -333,12 +341,28 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 700
+              },
+              "targetUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "targetComment": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "targetAuthor": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "ownVideo": {
+                "type": "boolean"
               }
             },
             "required": [
               "accountId",
-              "itemId",
-              "commentId",
               "content",
               "operationKey"
             ],
@@ -348,7 +372,7 @@
         {
           "id": "search-videos",
           "title": "搜索抖音视频",
-          "description": "使用官方应用令牌和aweme.dy.video_search能力。deviceId填写平台要求的设备标识；翻页必须原样传回searchId和cursor。",
+          "description": "使用官方应用令牌和aweme.dy.video_search能力。deviceId填写平台要求的设备标识；翻页必须原样传回searchId和cursor。 API 不可用时返回 browserTask，必须读取 douyin-ops-worker 并通过宿主浏览器完成、回写结果；pending 不是成功。",
           "effect": "read",
           "inputSchema": {
             "type": "object",
@@ -383,11 +407,15 @@
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 20
+              },
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
               }
             },
             "required": [
-              "keyword",
-              "deviceId"
+              "keyword"
             ],
             "additionalProperties": false
           }
@@ -477,8 +505,319 @@
             ],
             "additionalProperties": false
           }
+        },
+        {
+          "id": "connect-browser",
+          "title": "登录抖音账号",
+          "description": "创建或复用独立浏览器环境。返回入口；打开不等于已验证登录。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "verify-browser-account",
+          "title": "记录网页登录身份",
+          "description": "必须从当前浏览器的自己账号页面实际读取抖音号、昵称和主页地址；不能根据他人主页或昵称猜测。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "actualProfileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "actualAccount": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "nickname": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "profileUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              }
+            },
+            "required": [
+              "accountId",
+              "actualProfileId",
+              "actualAccount",
+              "nickname",
+              "profileUrl",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "claim-browser-job",
+          "title": "领取网页任务",
+          "description": "独占领取后按 douyin-ops-worker 使用宿主浏览器执行；素材路径在领取结果中返回。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "actualProfileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "actualAccount": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "jobId",
+              "actualProfileId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "finish-browser-job",
+          "title": "保存网页操作结果",
+          "description": "只记录实际页面证据；提交后不确定必须 outcome=uncertain，不可重发。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "executionToken": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "actualProfileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "actualAccount": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "outcome": {
+                "type": "string",
+                "enum": [
+                  "succeeded",
+                  "failed",
+                  "uncertain"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "resultUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "items": {
+                "type": "array",
+                "maxItems": 20,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "item_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "comment_id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "nickname": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "content": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "targetAuthor": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "link": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    },
+                    "statistics": {
+                      "type": "object",
+                      "properties": {
+                        "play_count": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "digg_count": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "comment_count": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "share_count": {
+                          "anyOf": [
+                            {
+                              "type": "string",
+                              "maxLength": 40
+                            },
+                            {
+                              "type": "number"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "title"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "jobId",
+              "executionToken",
+              "actualProfileId",
+              "outcome",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "comment-video",
+          "title": "在视频下发表评论",
+          "description": "对指定实际作品链接发布一条顶层评论，通过 AI 浏览器执行；operationKey 重试不变。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "targetUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "content": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 300
+              },
+              "operationKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "targetUrl",
+              "content",
+              "operationKey"
+            ],
+            "additionalProperties": false
+          }
         }
-      ]
+      ],
+      "browserSession": {
+        "origin": "https://www.douyin.com",
+        "paths": [
+          "/"
+        ],
+        "observeAction": "observe-browser-session"
+      }
     },
     {
       "type": "file",
@@ -500,10 +839,10 @@
     "translations": {
       "en": {
         "name": "Douyin Operations",
-        "description": "Official API account authorization, video drafts and publishing, analytics, comment replies and search, with AI and scheduled tasks.",
+        "description": "Douyin console for ordinary users: browser login, API-first operations, AI browser publishing, analytics, search and comments.",
         "category": "Marketing",
         "composer": {
-          "prompt": "Open the console with open-workbench and read douyin-ops-worker. Use official APIs with granted scopes. Keep operation identifiers stable and reconcile uncertain submissions before further writes."
+          "prompt": "Read douyin-ops-worker. Connect with browser login. Prefer available APIs; execute browserTask with host browser tools and persist actual evidence. Never repeat uncertain submissions."
         },
         "resources": {
           "douyin-ops-worker": {
