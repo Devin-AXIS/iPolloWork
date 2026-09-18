@@ -10,6 +10,7 @@ type CodexThreadItem = {
   id: string;
   clientId?: string | null;
   text?: string;
+  phase?: "commentary" | "final_answer";
   content?: Array<Record<string, unknown> | string>;
   summary?: string[];
   command?: string;
@@ -252,7 +253,7 @@ export function mapCodexMessages(thread: CodexThread) {
       ? userItem.clientId?.trim() || userItem.id
       : undefined;
     const hasVisibleResult = turn.items.some((item) => (
-      (item.type === "agentMessage" || item.type === "plan")
+      (item.type === "plan" || (item.type === "agentMessage" && item.phase !== "commentary"))
       && Boolean((item.text ?? contentText(item.content)).trim())
     ));
     const outcomeError = turn.status === "failed"
@@ -274,6 +275,7 @@ export function mapCodexMessages(thread: CodexThread) {
           id: messageId,
           sessionID: thread.id,
           role,
+          ...(item.type === "agentMessage" && item.phase ? { codexPhase: item.phase } : {}),
           ...(role === "assistant" && parentUserMessageId ? { parentID: parentUserMessageId } : {}),
           time: { created, completed },
           ...(role === "assistant" && outcomeError

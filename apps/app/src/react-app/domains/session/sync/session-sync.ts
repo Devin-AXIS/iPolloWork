@@ -1055,7 +1055,9 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
       trackTaskFailed(event.sessionId, Date.now() - runStartedAt);
     }
     notifyDesktopEvent({ type: "task.failed", sessionId: event.sessionId, errorText });
-    useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText);
+    const turnId = event.parentUserMessageId
+      ?? latestUserMessage(queryClient.getQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId)) ?? [])?.id;
+    useSessionActivityStore.getState().setError(workspaceId, event.sessionId, errorText, turnId);
     if (isTrackedSession(entry, event.sessionId)) {
       if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
       queryClient.setQueryData(statusKey(workspaceId, event.sessionId), idleStatus);
@@ -1300,7 +1302,8 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
       trackTaskCompleted(event.sessionId, Date.now() - runStartedAt);
       notifyDesktopEvent({ type: "task.completed", sessionId: event.sessionId });
     }
-    useSessionActivityStore.getState().setRunStatus(workspaceId, event.sessionId, idleStatus);
+    const turnId = latestUserMessage(queryClient.getQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId)) ?? [])?.id;
+    useSessionActivityStore.getState().finishRun(workspaceId, event.sessionId, "completed", turnId);
     const tracked = isTrackedSession(entry, event.sessionId);
     if (tracked) queryClient.setQueryData(statusKey(workspaceId, event.sessionId), idleStatus);
     for (const listener of entry.sessionStatusListeners) listener({ sessionId: event.sessionId, status: idleStatus });
@@ -1622,10 +1625,10 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
   ));
 
   if (snapshotErrorText) {
-    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText);
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText, latestUserMessage(incoming)?.id);
   } else if (terminalWithoutOutput) {
     const latestUser = latestUserMessage(incoming);
-    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR);
+    useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR, latestUserMessage(incoming)?.id);
     queryClient.setQueryData<UIMessage[]>(key, (current = []) => upsertMessage(
       current,
       createSessionErrorUIMessage(latestUser?.id ?? safeSnapshot.session.id, NO_FINAL_OUTPUT_ERROR, {
@@ -1633,6 +1636,19 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
         ...(latestUser ? { parentUserMessageId: latestUser.id } : {}),
       }),
     ));
+  } else if (safeSnapshot.status.type === "idle" && !preserveBusy && snapshotAcknowledgesRun) {
+    const latestAssistant = incoming.findLast((message) => message.role === "assistant");
+    const metadata = latestAssistant?.metadata;
+    const ipollowork = metadata && typeof metadata === "object" && "ipollowork" in metadata
+      ? metadata.ipollowork : null;
+    const finalText = latestAssistant?.parts.some((part) => part.type === "text" && part.text.trim().length > 0)
+      && latestAssistant.parts.every((part) => part.type !== "dynamic-tool" && !part.type.startsWith("tool-"));
+    if (ipollowork && typeof ipollowork === "object" && "completed" in ipollowork
+      && typeof ipollowork.completed === "number"
+      && !("codexPhase" in ipollowork && ipollowork.codexPhase === "commentary")
+      && finalText) {
+      useSessionActivityStore.getState().finishRun(workspaceId, safeSnapshot.session.id, "completed", latestUserMessage(incoming)?.id);
+    }
   }
 
   if (!preserveBusy) {

@@ -15,6 +15,19 @@ describe("Codex Harness session read model", () => {
     }
     expect(mapCodexThread({ id: "idle", status: { type: "idle" } }).codex.activeFlags).toEqual([]);
   });
+  test("preserves Codex message phases when rebuilding the transcript", () => {
+    const messages = mapCodexMessages({
+      id: "thread-codex",
+      turns: [{
+        id: "turn-1", status: "completed",
+        items: [
+          { type: "agentMessage", id: "progress", phase: "commentary", text: "Checking" },
+          { type: "agentMessage", id: "answer", phase: "final_answer", text: "Done" },
+        ],
+      }],
+    });
+    expect(messages.map((message) => message.info.codexPhase)).toEqual(["commentary", "final_answer"]);
+  });
   test("preserves user image content as file parts", () => {
     const messages = mapCodexMessages({
       id: "thread-codex",

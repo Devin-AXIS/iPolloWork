@@ -199,6 +199,9 @@ function messageForItem(
     completed ? { created: at, completed: at } : { created: at },
     {
       codexItemType: type,
+      ...(type === "agentMessage" && (item.phase === "commentary" || item.phase === "final_answer")
+        ? { codexPhase: item.phase }
+        : {}),
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     },
   );
@@ -447,9 +450,9 @@ export function mapCodexHarnessEvent(
     if (turnKey && item.type === "userMessage" && message) {
       state.parentUserMessageIdByTurn.set(turnKey, message.id);
     }
-    state.itemKinds.set(id, stringValue(item.type) ?? "");
+    state.itemKinds.set(id, item.type === "agentMessage" && item.phase === "commentary" ? "commentary" : stringValue(item.type) ?? "");
     if (turnKey) state.itemTurnKeys.set(id, turnKey);
-    if (turnKey && (item.type === "agentMessage" || item.type === "plan") && itemContentText(item).trim()) {
+    if (turnKey && (item.type === "plan" || (item.type === "agentMessage" && item.phase !== "commentary")) && itemContentText(item).trim()) {
       state.visibleResultTurns.add(turnKey);
     }
     if (turnKey && item.type !== "userMessage") {
@@ -480,7 +483,7 @@ export function mapCodexHarnessEvent(
         const turnKey = typeof params.turnId === "string"
           ? `${threadId}:${params.turnId}`
           : state.itemTurnKeys.get(params.itemId);
-        if (turnKey) state.visibleResultTurns.add(turnKey);
+        if (turnKey && state.itemKinds.get(params.itemId) !== "commentary") state.visibleResultTurns.add(turnKey);
       }
       const recovered: ConversationEvent[] = state.retryingThreads.delete(threadId)
         ? [{ type: "session.status", sessionId: threadId, status: { type: "busy" } }]

@@ -3,14 +3,44 @@ import { readFileSync } from "node:fs";
 
 import {
   getActiveAssistantMessageId,
+  getMessageCompleted,
+  getMessageCreated,
   getAssistantRenderGroups,
   getScheduleApplyResult,
   groupMessages,
+  isAssistantCommentaryMessage,
   isMessageGroup,
   splitAssistantRenderGroups,
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("reads stable transcript timing from both conversation metadata formats", () => {
+    const iPolloMessage = { id: "assistant-time", role: "assistant", parts: [], metadata: { ipollowork: { created: 100, completed: 2_100 } } } satisfies Parameters<typeof getMessageCreated>[0];
+    const legacyMessage = { id: "assistant-legacy-time", role: "assistant", parts: [], metadata: { opencode: { created: 200, completed: 2_200 } } } satisfies Parameters<typeof getMessageCreated>[0];
+    expect(getMessageCreated(iPolloMessage)).toBe(100);
+    expect(getMessageCompleted(iPolloMessage)).toBe(2_100);
+    expect(getMessageCreated(legacyMessage)).toBe(200);
+    expect(getMessageCompleted(legacyMessage)).toBe(2_200);
+  });
+  test("keeps Codex commentary in the process while an in-progress final answer is eligible for the result", () => {
+    const commentary = {
+      id: "progress",
+      role: "assistant",
+      metadata: { ipollowork: { codexPhase: "commentary" } },
+      parts: [{ type: "text", text: "Checking the files", state: "done" }],
+    } satisfies Parameters<typeof isAssistantCommentaryMessage>[0];
+    const answer = {
+      id: "answer",
+      role: "assistant",
+      metadata: { ipollowork: { codexPhase: "final_answer" } },
+      parts: [{ type: "text", text: "The fix is", state: "streaming" }],
+    } satisfies Parameters<typeof isAssistantCommentaryMessage>[0];
+
+    expect(isAssistantCommentaryMessage(commentary)).toBe(true);
+    expect(isAssistantCommentaryMessage(answer)).toBe(false);
+    expect(getAssistantRenderGroups(answer.parts, true)).toEqual([{ kind: "text", text: "The fix is" }]);
+  });
+
   test("omits failed tool attempts from progress without mutating history or hiding the final explanation", () => {
     const parts = [
       { type: "reasoning", text: "正在准备内容", state: "done" },
@@ -60,17 +90,18 @@ describe("assistant process collapse sections", () => {
     })
   })
 
-  test("opens while streaming and defaults completed or historical work to collapsed", () => {
+  test("starts compact and preserves the user's disclosure choice throughout the run", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("const [isOpen, setIsOpen] = React.useState(isStreaming)");
-    expect(source).toContain("if (isStreaming) {");
-    expect(source).toContain("setIsOpen(true)");
-    expect(source).toContain("else if (previousStreamingRef.current)");
-    expect(source).toContain("setIsOpen(false)");
+    expect(source).toContain("const [isOpen, setIsOpen] = React.useState(false)");
+    expect(source).toContain("getAssistantProcessState(isStreaming, hasError)");
+    expect(source).toContain("getToolActivityLabel(activeTool.part)");
+    expect(source).toContain('runOutcome === "running"');
+    expect(source).toContain("getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))");
+    expect(source).toContain("message.id === latestTurnAssistantMessageId");
     expect(source).toContain("aria-expanded={isOpen}");
     expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
     expect(source).toContain("<AssistantProcessDisclosure");

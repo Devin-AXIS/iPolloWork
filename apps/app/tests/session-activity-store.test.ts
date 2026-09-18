@@ -10,12 +10,29 @@ describe("session activity store", () => {
     });
   });
 
-  test("clears a session back to idle when a non-running status arrives", () => {
+  test("keeps one run active across a transient idle status until the terminal event", () => {
     useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "busy" });
     expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("thinking");
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("running");
+    const startedAt = useSessionActivityStore.getState().recordsByWorkspaceId.ws_1?.ses_1?.runStartedAt;
+    expect(typeof startedAt).toBe("number");
 
     useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "idle" });
     expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("idle");
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("running");
+    expect(useSessionActivityStore.getState().recordsByWorkspaceId.ws_1?.ses_1?.runStartedAt).toBe(startedAt);
+
+    useSessionActivityStore.getState().finishRun("ws_1", "ses_1", "completed");
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("completed");
+    const endedAt = useSessionActivityStore.getState().recordsByWorkspaceId.ws_1?.ses_1?.runEndedAt;
+    expect(typeof endedAt).toBe("number");
+    useSessionActivityStore.getState().finishRun("ws_1", "ses_1", "completed");
+    expect(useSessionActivityStore.getState().recordsByWorkspaceId.ws_1?.ses_1?.runEndedAt).toBe(endedAt);
+
+    useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "busy" });
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("running");
+    useSessionActivityStore.getState().finishRun("ws_1", "ses_1", "stopped");
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("stopped");
   });
 
   test("keeps a terminal error visible across a trailing idle event and clears it for the next run", () => {
@@ -26,6 +43,7 @@ describe("session activity store", () => {
 
     expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("error");
     expect(useSessionActivityStore.getState().getSessionError("ws_1", "ses_1")).toBe("provider failed");
+    expect(useSessionActivityStore.getState().getRunOutcome("ws_1", "ses_1")).toBe("failed");
 
     useSessionActivityStore.getState().setRunStatus("ws_1", "ses_1", { type: "busy" });
     expect(useSessionActivityStore.getState().getStatus("ws_1", "ses_1")).toBe("thinking");

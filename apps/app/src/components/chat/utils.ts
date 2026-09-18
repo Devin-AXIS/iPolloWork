@@ -16,6 +16,12 @@ interface MessageGroup {
 export type UIMessageWithIndex = { index: number, message: UIMessage }
 type MessageListItem = MessageGroup | UIMessageWithIndex
 
+export function isAssistantCommentaryMessage(message: UIMessage): boolean {
+  const metadata = isRecord(message.metadata) ? message.metadata : null
+  const ipollowork = isRecord(metadata?.ipollowork) ? metadata.ipollowork : null
+  return ipollowork?.codexPhase === "commentary"
+}
+
 export type ScheduleApplyResult = {
   itemCount: number
   focusAt: number
@@ -274,13 +280,15 @@ export function getMessageCompleted(message: UIMessage): number | null {
 
 function getMessageOpencodeTime(message: UIMessage, key: "created" | "completed"): number | null {
   const metadata: unknown = message.metadata
-  if (!metadata || typeof metadata !== "object" || !("opencode" in metadata)) return null
-
-  const opencode: unknown = metadata.opencode
-  if (!opencode || typeof opencode !== "object" || !(key in opencode)) return null
-
-  const timestamp: unknown = Reflect.get(opencode, key)
-  return typeof timestamp === "number" ? timestamp : null
+  if (!metadata || typeof metadata !== "object") return null
+  for (const source of ["ipollowork", "opencode"]) {
+    if (!(source in metadata)) continue
+    const timing: unknown = Reflect.get(metadata, source)
+    if (!timing || typeof timing !== "object" || !(key in timing)) continue
+    const timestamp: unknown = Reflect.get(timing, key)
+    if (typeof timestamp === "number" && Number.isFinite(timestamp)) return timestamp
+  }
+  return null
 }
 
 export function formatProcessDuration(durationMs: number): string {

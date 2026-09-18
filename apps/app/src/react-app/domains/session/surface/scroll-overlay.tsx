@@ -42,10 +42,12 @@ const JumpToStartButton = memo(function JumpToStartButton({
 
 type JumpToLatestButtonProps = {
   onJumpToLatest: (behavior?: ScrollBehavior) => void;
+  showNewContent: boolean;
 };
 
 const JumpToLatestButton = memo(function JumpToLatestButton({
   onJumpToLatest,
+  showNewContent,
 }: JumpToLatestButtonProps) {
   const handleClick = useCallback(() => {
     onJumpToLatest("smooth");
@@ -54,13 +56,14 @@ const JumpToLatestButton = memo(function JumpToLatestButton({
   return (
     <button
       type="button"
-      className="flex size-8 items-center justify-center rounded-lg text-dls-text transition-colors hover:bg-dls-hover"
+      className="flex h-8 items-center justify-center gap-1 rounded-lg px-2 text-dls-text transition-colors hover:bg-dls-hover"
       data-testid="jump-to-latest"
       aria-label={t("session.scroll.jump_to_latest")}
       title={t("session.scroll.jump_to_latest")}
       onClick={handleClick}
     >
       <ArrowDown className="size-3.5" />
+      {showNewContent ? <span className="text-xs">{t("session.scroll.new_content")}</span> : null}
     </button>
   );
 });
@@ -93,7 +96,7 @@ export const SessionScrollOverlay = memo(function SessionScrollOverlay({
           <JumpToStartButton onJumpToStartOfMessage={onJumpToStartOfMessage} />
         ) : null}
         {showJumpToLatest ? (
-          <JumpToLatestButton onJumpToLatest={onJumpToLatest} />
+          <JumpToLatestButton onJumpToLatest={onJumpToLatest} showNewContent={isStreaming} />
         ) : null}
       </div>
     </div>
