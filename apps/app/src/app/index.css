@@ -305,18 +305,25 @@ body {
   -moz-osx-font-smoothing: auto;
 }
 
-html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
-  font-size: 15px;
-  font-weight: 500;
-  line-height: 24px;
+[data-chat-readable-text="true"] {
+  font-size: 13px;
+  line-height: 1.5;
 }
 
-html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(p, li) {
-  line-height: 24px;
+[data-chat-readable-text="true"] :is(p, li) {
+  line-height: 1.5;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
+  font-weight: 500;
 }
 
 html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(strong, b) {
   font-weight: 600;
+}
+
+html:lang(zh) .chat-process-heading {
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", var(--ipollowork-font-sans);
 }
 
 html:lang(zh) .settings-description {

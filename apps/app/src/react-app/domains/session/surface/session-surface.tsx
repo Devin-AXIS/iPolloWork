@@ -103,7 +103,7 @@ import { useSessionScrollController } from "./scroll-controller";
 import { SessionScrollOverlay } from "./scroll-overlay";
 import { SessionFindBar } from "./find-bar";
 import { useSessionFindStore } from "./find-store";
-import { getSessionActivityStatusLabel, useSessionActivityStore, type SessionActivityStatus } from "@/react-app/domains/session/status/session-activity-store";
+import { getSessionActivityStatusLabel, readStoredRunTimings, useSessionActivityStore, type SessionActivityStatus } from "@/react-app/domains/session/status/session-activity-store";
 import { PendingConfirmationNotice, PermissionApprovalPanel } from "@/react-app/domains/session/chat/permission-approval-modal";
 import { QuestionPanel } from "@/react-app/domains/session/modals/question-modal";
 import { QueuedMessagesPanel } from "@/react-app/domains/session/modals/queued-messages-panel";
@@ -128,7 +128,7 @@ import {
   getComposerQueuedDrafts,
   useComposerStateStore,
 } from "./composer-state-store";
-import { MessageList, VideoJobStatus } from "@/components/chat/message-list";
+import { MessageList, RunIssueNotice, VideoJobStatus } from "@/components/chat/message-list";
 import {
   assignArtifactRequestOwnership,
   artifactDirectoryPath,
@@ -422,6 +422,19 @@ function latestAssistantMessageCompleted(messages: UIMessage[]) {
   return typeof metadata?.ipollowork?.completed === "number";
 }
 
+function finalAssistantTextCompleted(messages: UIMessage[]) {
+  const latestUserIndex = messages.findLastIndex((message) => message.role === "user");
+  const latest = messages.slice(latestUserIndex + 1).findLast((message) => message.role === "assistant");
+  if (!latest || !latestAssistantMessageCompleted(messages)) return false;
+  const metadata = latest.metadata;
+  const ipollowork = metadata && typeof metadata === "object" && "ipollowork" in metadata
+    ? metadata.ipollowork : null;
+  const commentary = ipollowork && typeof ipollowork === "object" && "codexPhase" in ipollowork
+    && ipollowork.codexPhase === "commentary";
+  return !commentary
+    && latest.parts.some((part) => part.type === "text" && part.text.trim().length > 0);
+}
+
 function TodoPanel(props: { todos: TodoItem[] }) {
   const [expanded, setExpanded] = useState(false);
   const todos = props.todos.filter((todo) => todo.content.trim());
@@ -512,10 +525,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
 }) {
   return (
     <div className="mx-auto max-w-[800px] px-3 py-3 sm:px-5">
-      <div className="rounded-2xl border border-red-6/30 bg-red-3/15 px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="text-sm font-medium text-red-11">{error.message}</div>
+      <RunIssueNotice key={error.message} detail={error.message} kind={error.kind === "model-not-found" ? "model-not-found" : undefined} onDismiss={onDismiss}>
             {error.kind === "model-not-found" ? (
               <div className="mt-2 flex flex-wrap gap-2">
                 {error.suggestions && error.suggestions.length > 0 ? (
@@ -545,17 +555,7 @@ function SessionErrorCard({ error, onDismiss, onChangeModel, onOpenModelPicker }
                 </button>
               </div>
             ) : null}
-          </div>
-          <button
-            type="button"
-            className="shrink-0 rounded-full p-1 text-red-10 transition-colors hover:bg-red-3 hover:text-red-11"
-            onClick={onDismiss}
-            aria-label={t("session.dismiss_error")}
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3.5 3.5l7 7M10.5 3.5l-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
-          </button>
-        </div>
-      </div>
+      </RunIssueNotice>
     </div>
   );
 }
@@ -711,6 +711,15 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const sessionActivityStatus = useSessionActivityStore(
     (state) => state.statusesByWorkspaceId[props.workspaceId]?.[props.sessionId] ?? "idle",
   );
+  const runOutcome = useSessionActivityStore(
+    (state) => state.recordsByWorkspaceId[props.workspaceId]?.[props.sessionId]?.runOutcome ?? null,
+  );
+  const runStartedAt = useSessionActivityStore(
+    (state) => state.recordsByWorkspaceId[props.workspaceId]?.[props.sessionId]?.runStartedAt ?? null,
+  );
+  const runEndedAt = useSessionActivityStore(
+    (state) => state.recordsByWorkspaceId[props.workspaceId]?.[props.sessionId]?.runEndedAt ?? null,
+  );
   const draft = useComposerStateStore((state) => getComposerDraft(state, props.sessionId));
   const attachments = useComposerStateStore((state) => getComposerAttachments(state, props.sessionId));
   const mentions = useComposerStateStore((state) => getComposerMentions(state, props.sessionId));
@@ -732,6 +741,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
   const [stopAcknowledged, setStopAcknowledged] = useState(false);
+  const [stoppedImageMessageIds, setStoppedImageMessageIds] = useState<Set<string>>(() => new Set());
   const [artifactRequestOwnership, setArtifactRequestOwnership] = useState<ArtifactRequestOwnership[]>([]);
   const [showDelayedLoading, setShowDelayedLoading] = useState(false);
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
@@ -1041,8 +1051,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
   }, [props.onModeSelectionLockedChange]);
   const liveStatus = statusState ?? snapshot?.status ?? IDLE_STATUS;
   const activityRunActive = ACTIVE_SESSION_ACTIVITY_STATUSES.has(sessionActivityStatus);
+  const runSettled = runOutcome === "completed" || runOutcome === "failed" || runOutcome === "stopped";
   const chatStreaming = !stopAcknowledged
-    && (sending || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive);
+    && (sending || (!runSettled && (runOutcome === "running" || liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive)));
   const waitingFor = stopAcknowledged ? null
     : props.activePermission ? "approval"
     : props.activeQuestion ? "input"
@@ -1059,19 +1070,23 @@ export function SessionSurface(props: SessionSurfaceProps) {
       return "submitted";
     }
 
-    if (liveStatus.type === "retry") {
+    if (!runSettled && liveStatus.type === "retry") {
       return "retrying";
     }
 
-    if (liveStatus.type === "busy" || activityRunActive) {
+    if (!runSettled && (runOutcome === "running" || liveStatus.type === "busy" || activityRunActive)) {
       return "streaming";
     }
 
     return "ready";
-  }, [activityRunActive, liveStatus, sending, stopAcknowledged]);
+  }, [activityRunActive, liveStatus, runOutcome, runSettled, sending, stopAcknowledged]);
   const renderedMessages = useMemo(
     () => deriveRenderedSessionMessages({ transcriptState, snapshot }),
     [snapshot, transcriptState],
+  );
+  const runTimings = useMemo(
+    () => readStoredRunTimings(props.workspaceId, props.sessionId),
+    [props.workspaceId, props.sessionId, runOutcome],
   );
   const studioArtifacts = useSessionArtifacts(props.client, props.workspaceId, props.sessionId);
   const imageResultLabel = t("session.outputs.image_generated");
@@ -1105,6 +1120,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   );
   const latestAssistantCompleted = useMemo(
     () => latestAssistantMessageCompleted(renderedMessages),
+    [renderedMessages],
+  );
+  const finalTextCompleted = useMemo(
+    () => finalAssistantTextCompleted(renderedMessages),
     [renderedMessages],
   );
   useEffect(() => {
@@ -1151,6 +1170,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
       .slice(awaitingAssistantBaseline)
       .some(messageHasVisibleAssistantOutput);
   }, [awaitingAssistantBaseline, renderedMessages]);
+  const finalizingRun = chatStreaming && finalTextCompleted && !runSettled
+    && (awaitingAssistantBaseline === null || assistantOutputAfterAwaitStart);
   const showAssistantWaitState = awaitingAssistantBaseline !== null && !assistantOutputAfterAwaitStart;
   const showAssistantRespondingState = awaitingAssistantBaseline !== null && assistantOutputAfterAwaitStart && chatStreaming;
   const effectiveActivityStatus: SessionActivityStatus = sessionActivityStatus !== "idle"
@@ -1373,6 +1394,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
       : null;
+    if (clientUserMessageId === null) {
+      useSessionActivityStore.getState().setRunStatus(props.workspaceId, props.sessionId, { type: "busy" });
+    }
     activeClientUserMessageIdRef.current = clientUserMessageId;
     const dispatchAbort = new AbortController();
     promptDispatchAbortRef.current = dispatchAbort;
@@ -1456,6 +1480,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       // finishes. Keep the optimistic busy latch until the session's idle
       // event; only release immediately when the route did not dispatch.
       if (!dispatched && !dispatchAbort.signal.aborted) {
+        useSessionActivityStore.getState().finishRun(props.workspaceId, props.sessionId, "stopped");
         rollbackOptimisticSessionPrompt(props.workspaceId, props.sessionId, clientUserMessageId);
         setAwaitingAssistantBaseline(null);
         runActivityObservedRef.current = false;
@@ -1470,6 +1495,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (pendingImageStudioRefreshRef.current === imageStudioRefresh) pendingImageStudioRefreshRef.current = null;
       if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;
       if (dispatchAbort.signal.aborted) {
+        useSessionActivityStore.getState().finishRun(props.workspaceId, props.sessionId, "stopped");
         setAwaitingAssistantBaseline(null);
         runActivityObservedRef.current = false;
         setSending(false);
@@ -1756,6 +1782,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
     setError(null);
+    const lastUserIndex = displayMessages.findLastIndex((message) => message.role === "user");
+    const imageMessageIds = displayMessages.slice(lastUserIndex + 1)
+      .filter((message) => message.role === "assistant" && message.parts.some((part) => part.type === "file"))
+      .map((message) => message.id);
     // Establish the transcript tombstone at click time, before awaiting a
     // native interrupt or an idle snapshot. Otherwise a late snapshot can
     // replay this run while the engine adapter is still confirming Stop.
@@ -1812,13 +1842,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
     pendingVideoDeliveryRef.current = null;
     pendingArtifactCompletionRef.current = null;
     pendingImageStudioRefreshRef.current = null;
+    if (imageMessageIds.length > 0) {
+      setStoppedImageMessageIds((current) => new Set([...current, ...imageMessageIds]));
+    }
     setAwaitingAssistantBaseline(null);
     runActivityObservedRef.current = false;
     setSending(false);
     setStopAcknowledged(true);
+    useSessionActivityStore.getState().finishRun(
+      props.workspaceId,
+      props.sessionId,
+      "stopped",
+      displayMessages.findLast((message) => message.role === "user")?.id,
+    );
     if (aborted) captureAnalyticsEvent("task_run_stopped", {});
     void snapshotQuery.refetch();
-  }, [chatStreaming, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, snapshotQuery.refetch]);
+  }, [chatStreaming, displayMessages, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);
@@ -1838,6 +1877,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
     runActivityObservedRef.current = false;
     setSending(false);
   }, [sessionActivityStatus]);
+
+  useEffect(() => {
+    if (runOutcome !== "completed" || !sending || !assistantOutputAfterAwaitStart || !latestAssistantCompleted) return;
+    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
+    runActivityObservedRef.current = false;
+    setSending(false);
+  }, [assistantOutputAfterAwaitStart, latestAssistantCompleted, runOutcome, sending]);
 
   useEffect(() => {
     if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive) {
@@ -2396,7 +2442,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           inputDisabled={false}
           disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}
           modelUnavailable={Boolean(props.modelUnavailable)}
-          statusLabel={waitingLabel ?? statusLabel(snapshot ?? undefined, chatStreaming)}
+          statusLabel={waitingLabel ?? (finalizingRun
+            ? t("session.status_finalizing")
+            : statusLabel(runSettled ? undefined : snapshot ?? undefined, chatStreaming))}
           modelPickerOpen={props.modelPickerOpen}
           selectedModel={props.selectedModel}
           onModelPickerOpenChange={props.onModelPickerOpenChange}
@@ -2606,9 +2654,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                     onOpenModelPicker={props.onModelClick}
                   />
                 ) : (
-                  <div className="mx-auto max-w-xl rounded-3xl border border-red-6/40 bg-red-3/20 px-6 py-5 text-sm text-red-11">
-                    {snapshotQuery.error instanceof Error ? snapshotQuery.error.message : t("session.failed_to_load")}
-                  </div>
+                  <RunIssueNotice detail={snapshotQuery.error instanceof Error ? snapshotQuery.error.message : t("session.failed_to_load")} />
                 )}
               </div>
             ) : displayMessages.length === 0 && effectiveActivityStatus !== "idle" ? (
@@ -2664,6 +2710,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         artifactContext={props.artifactContext}
                         activeMessageBaseline={awaitingAssistantBaseline}
                         assistantWaitLabel={props.assistantWaitLabel}
+                        stoppedImageMessageIds={stoppedImageMessageIds}
+                        stopAcknowledged={stopAcknowledged}
+                        runOutcome={runOutcome}
+                        finalizing={finalizingRun}
+                        runStartedAt={runStartedAt}
+                        runEndedAt={runEndedAt}
+                        runTimings={runTimings}
                       />
                       <VideoJobStatus jobs={studioArtifacts.data?.pages[0]?.videoJobs} />
                     </MessageListProvider>

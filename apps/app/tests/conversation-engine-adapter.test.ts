@@ -887,8 +887,27 @@ describe("conversation engine adapters", () => {
       params: {
         threadId: "codex-thread",
         turnId: "turn-1",
+        startedAtMs: 9,
+        item: { type: "agentMessage", id: "progress-1", phase: "commentary", text: "Checking" },
+      },
+    }, state)).toEqual([expect.objectContaining({
+      type: "message.upsert",
+      message: expect.objectContaining({
+        id: "progress-1",
+        metadata: expect.objectContaining({
+          ipollowork: expect.objectContaining({ codexPhase: "commentary" }),
+        }),
+      }),
+    })]);
+
+    expect(mapCodexHarnessEvent({
+      type: "notification",
+      method: "item/started",
+      params: {
+        threadId: "codex-thread",
+        turnId: "turn-1",
         startedAtMs: 10,
-        item: { type: "agentMessage", id: "answer-1", text: "" },
+        item: { type: "agentMessage", id: "answer-1", phase: "final_answer", text: "" },
       },
     }, state)).toEqual([expect.objectContaining({
       type: "message.upsert",
@@ -896,7 +915,7 @@ describe("conversation engine adapters", () => {
         id: "answer-1",
         role: "assistant",
         metadata: expect.objectContaining({
-          ipollowork: expect.objectContaining({ parentUserMessageId: "ipollowork-user-1" }),
+          ipollowork: expect.objectContaining({ parentUserMessageId: "ipollowork-user-1", codexPhase: "final_answer" }),
         }),
       }),
     })]);
@@ -922,6 +941,7 @@ describe("conversation engine adapters", () => {
         item: {
           type: "agentMessage",
           id: "answer-1",
+          phase: "final_answer",
           content: [{ type: "text", text: "完成" }],
         },
       },
@@ -1624,6 +1644,7 @@ describe("conversation engine adapters", () => {
           role: "assistant",
           sessionID: "ses",
           parentID: "user-msg",
+          codexPhase: "final_answer",
           time: { created: 1 },
           tokens: { input: 5_000, output: 400, reasoning: 0, cache: { read: 1_000, write: 0 } },
         },
@@ -1637,7 +1658,7 @@ describe("conversation engine adapters", () => {
       id: "msg",
       role: "assistant",
       metadata: expect.objectContaining({
-        ipollowork: expect.objectContaining({ parentUserMessageId: "user-msg" }),
+        ipollowork: expect.objectContaining({ parentUserMessageId: "user-msg", codexPhase: "final_answer" }),
       }),
       parts: [expect.objectContaining({ type: "text", text: "Hello" })],
     })]);

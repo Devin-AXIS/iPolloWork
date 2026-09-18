@@ -6,7 +6,7 @@ import {
   CalendarDays,
   Check,
   Clock3,
-  ChevronDown,
+  ChevronRight,
   Copy,
   Download,
   FileIcon,
@@ -19,13 +19,15 @@ import {
 import {
   DynamicToolUIPart,
   isFileUIPart,
+  isToolUIPart,
   ToolUIPart,
   type FileUIPart,
   type UIMessage,
 } from "ai"
 import type { SessionStatus } from "@opencode-ai/sdk/v2/client"
+import { classifyProviderFailure } from "@ipollowork/types/provider-errors"
 import { openDesktopUrl } from "@/app/lib/desktop"
-import { downloadTextAsFile } from "@/app/lib/download"
+import { downloadBlobAsFile, downloadTextAsFile } from "@/app/lib/download"
 import { publicAssetUrl } from "@/app/lib/public-asset"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
@@ -50,6 +52,7 @@ import {
 } from "@/components/chat/artifact"
 import {
   assignArtifactRequestOwnership,
+  artifactPathMatchesTarget,
   getArtifactsFromMessages,
   inferArtifactRequestOwnership,
   selectArtifactsForRequest,
@@ -58,6 +61,7 @@ import {
   selectTemplateEntryArtifacts,
   useArtifacts,
   type ArtifactInteractionContext,
+  type ArtifactItem,
   type ArtifactRequestOwnership,
 } from "@/lib/artifacts"
 import {
@@ -74,6 +78,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu"
 import { Image } from "@/components/ui/image"
+import { toast } from "@/components/ui/sonner"
+import { useOpenTargets } from "@/lib/target-provider"
 import {
   Message,
   MessageAction,
@@ -101,17 +107,36 @@ import type { ThreadStatus } from "@/lib/messages"
 import {
   collectToolParts,
   getActiveToolLabel,
+  getToolActivityLabel,
+  isToolPartInFlight,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
+const MESSAGE_ACTIONS_CLASS_NAME = "flex gap-0 [&_button]:size-7 [&_button_svg:not([class*='size-'])]:size-3.5"
 const StudioDeliveryPaths = React.createContext<readonly string[]>([])
+const EMPTY_STOPPED_IMAGE_MESSAGE_IDS: ReadonlySet<string> = new Set()
+
+function selectInlineImageArtifacts(messages: readonly UIMessage[], artifacts: readonly ArtifactItem[]) {
+  return messages.flatMap((message) => message.parts.filter(isFileUIPart))
+    .filter((part) => getFileMediaType(part).startsWith("image/"))
+    .flatMap((part) => {
+      const matches = artifacts.filter((artifact) => artifact.type === "image"
+        && artifact.target.kind === "file"
+        && artifact.target.exists === true
+        && (artifactPathMatchesTarget(artifact.path, getFileUrl(part)) || artifact.name === getFileTitle(part)))
+      return matches.length === 1 ? matches : []
+    })
+}
 
 type RenderAssistantGroupOptions = {
   highlightQuery?: string
   artifactPaths?: readonly string[]
+  streaming?: boolean
+  imageStatus?: "failed" | "stopped"
+  inlineImageArtifacts?: readonly ArtifactItem[]
 }
 
 function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>[number], index: number, options: RenderAssistantGroupOptions = {}) {
@@ -125,6 +150,7 @@ function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>
         className="text-foreground prose w-full min-w-0 flex-1 rounded-lg bg-transparent p-0"
         data-chat-readable-text="true"
         markdown
+        isStreaming={options.streaming}
         highlightQuery={options.highlightQuery}
       >
         {text}
@@ -146,9 +172,13 @@ function renderAssistantGroup(group: ReturnType<typeof getAssistantRenderGroups>
   }
 
   if (group.kind === "file") {
+    const imageArtifact = options.inlineImageArtifacts?.find((artifact) =>
+      artifactPathMatchesTarget(artifact.path, getFileUrl(group.part))
+      || artifact.name === getFileTitle(group.part)
+    )
     return (
       <div key={`file-${index}`} className="w-full">
-        <FileMessage part={group.part} tone="assistant" />
+        <FileMessage part={group.part} tone="assistant" streaming={options.streaming} imageStatus={options.imageStatus} artifact={imageArtifact} />
       </div>
     )
   }
@@ -326,10 +356,15 @@ function retryDelaySeconds(status: RetryStatus) {
 interface FileMessageProps {
   part: FileUIPart
   tone: "user" | "assistant"
+  streaming?: boolean
+  imageStatus?: "failed" | "stopped"
+  artifact?: ArtifactItem
 }
 
-// TODO: Add tone to the file message
-function FileMessage({ part }: FileMessageProps) {
+function FileMessage({ part, tone, streaming, imageStatus, artifact }: FileMessageProps) {
+  const { client, workspaceId } = useMessageList()
+  const { onOpenTarget } = useOpenTargets()
+  const [downloading, setDownloading] = React.useState(false)
   const title = getFileTitle(part)
   const badge = getMediaBadge(part)
   const mediaType = getFileMediaType(part)
@@ -337,13 +372,38 @@ function FileMessage({ part }: FileMessageProps) {
   const isImage = mediaType.startsWith("image/") && url.length > 0
 
   if (isImage) {
+    const statusLabel = artifact && imageStatus ? t("image.preview.ready")
+      : imageStatus === "failed" ? t("image.preview.failed")
+      : imageStatus === "stopped" ? t("image.preview.stopped")
+        : streaming ? artifact ? t("image.preview.saved_processing") : t("image.preview.generating")
+          : artifact ? t("image.preview.ready") : t("image.preview.preview_ready")
     return (
-      <Image
-        src={url}
-        alt={title}
-        loading="lazy"
-        decoding="async"
-      />
+      <div className="flex max-w-full flex-col items-start gap-2">
+        {tone === "assistant" ? (
+          <span className="rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground" data-testid="assistant-image-status" aria-live="polite">{statusLabel}</span>
+        ) : null}
+        <Image src={url} alt={title} previewMaxHeight={tone === "user" ? 160 : undefined} loading="lazy" decoding="async" />
+        {tone === "assistant" && artifact ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            {onOpenTarget ? (
+              <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => onOpenTarget(artifact.target)}>{t("image.preview.open")}</button>
+            ) : null}
+            {client && workspaceId ? (
+              <button type="button" disabled={downloading} className="underline underline-offset-2 hover:text-foreground disabled:opacity-50" onClick={async () => {
+                setDownloading(true)
+                try {
+                  const result = await client.downloadWorkspaceFile(workspaceId, artifact.path)
+                  downloadBlobAsFile(artifact.name, new Blob([result.data], { type: result.contentType ?? "application/octet-stream" }))
+                } catch (error) {
+                  toast.error(error instanceof Error ? error.message : t("artifact.download_failed"))
+                } finally {
+                  setDownloading(false)
+                }
+              }}>{t("image.preview.download")}</button>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
     )
   }
 
@@ -473,9 +533,10 @@ type AssistantMessageProps = {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
+  imageStatus?: "failed" | "stopped"
 }
 
-function assistantProcessSummary(groups: AssistantProcessRenderGroup[], durationMs: number | null) {
+function assistantProcessSummary(groups: AssistantProcessRenderGroup[]) {
   let reasoningCount = 0
   let toolCount = 0
   let fileCount = 0
@@ -494,69 +555,93 @@ function assistantProcessSummary(groups: AssistantProcessRenderGroup[], duration
   if (reasoningCount > 0) segments.push(t("message.process_reasoning_count", { count: reasoningCount }))
   if (toolCount > 0) segments.push(t("message.process_tool_count", { count: toolCount }))
   if (fileCount > 0) segments.push(t("message.process_file_count", { count: fileCount }))
-  if (durationMs !== null) segments.push(t("message.process_duration", { duration: formatProcessDuration(durationMs) }))
   return segments.length > 0 ? segments.join(" · ") : t("message.process_steps")
+}
+
+function formatElapsedDuration(durationMs: number) {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000))
+  const seconds = totalSeconds % 60
+  const minutes = Math.floor(totalSeconds / 60) % 60
+  const hours = Math.floor(totalSeconds / 3600)
+  return [
+    hours > 0 ? t("message.elapsed_hours", { count: hours }) : null,
+    hours > 0 || minutes > 0 ? t("message.elapsed_minutes", { count: minutes }) : null,
+    t("message.elapsed_seconds", { count: seconds }),
+  ].filter(Boolean).join(" ")
+}
+
+function useElapsedNow(startedAt: number | null, active: boolean) {
+  const [now, setNow] = React.useState(() => Date.now())
+  React.useEffect(() => {
+    if (!active || startedAt === null) return
+    setNow(Date.now())
+    const interval = window.setInterval(() => setNow(Date.now()), 1_000)
+    return () => window.clearInterval(interval)
+  }, [active, startedAt])
+  return now
 }
 
 function AssistantProcessDisclosure(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
+  finalizing?: boolean
   hasError?: boolean
+  stopped?: boolean
+  hasDetails?: boolean
+  startedAt?: number | null
+  endedAt?: number | null
   durationMs: number | null
   children: React.ReactNode
   contentClassName?: string
 }) {
-  const { groups, isStreaming, hasError = false, durationMs, children, contentClassName } = props
+  const { groups, isStreaming, finalizing = false, hasError = false, stopped = false, hasDetails = true, startedAt = null, endedAt = null, durationMs, children, contentClassName } = props
   const { waitingLabel } = useMessageList()
   const awaitingConfirmation = isStreaming && Boolean(waitingLabel)
-  const [isOpen, setIsOpen] = React.useState(isStreaming)
-  const previousStreamingRef = React.useRef(isStreaming)
-
-  React.useEffect(() => {
-    if (isStreaming) {
-      setIsOpen(true)
-    } else if (previousStreamingRef.current) {
-      setIsOpen(false)
-    }
-    previousStreamingRef.current = isStreaming
-  }, [isStreaming])
-
+  const [isOpen, setIsOpen] = React.useState(false)
+  const now = useElapsedNow(startedAt, isStreaming)
+  const activeTool = isStreaming ? groups.findLast((group) => group.kind === "tool" && isToolPartInFlight(group.part)) : undefined
+  const currentStep = activeTool?.kind === "tool" ? getToolActivityLabel(activeTool.part) : null
   const processState = getAssistantProcessState(isStreaming, hasError)
-  const label = awaitingConfirmation ? waitingLabel : processState === "streaming"
+  const elapsedMs = startedAt !== null && (isStreaming || endedAt !== null)
+    ? Math.max(0, (isStreaming ? now : endedAt ?? now) - startedAt)
+    : durationMs
+  const elapsed = elapsedMs === null ? null : formatElapsedDuration(elapsedMs)
+  const label = stopped ? t("message.elapsed_stopped") : awaitingConfirmation ? waitingLabel : finalizing
+    ? t("session.status_finalizing")
+    : processState === "streaming"
     ? t("message.process_in_progress")
     : processState === "failed"
       ? t("message.process_failed")
       : t("message.process_completed")
+  const heading = elapsed === null ? label
+    : isStreaming ? `${label} · ${t("message.elapsed_running", { duration: elapsed })}`
+    : processState === "completed" && !stopped ? t("message.elapsed_total", { duration: elapsed })
+    : `${stopped ? label : t("message.elapsed_failed")} · ${t("message.elapsed_total", { duration: elapsed })}`
+  const content = (
+    <>
+      <span className="min-w-0 truncate">{heading}
+        {currentStep ? <span className="ml-1 text-muted-foreground/85">· {currentStep}</span> : null}
+        {elapsed === null && hasDetails ? <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups)}</span> : null}
+      </span>
+      {hasDetails ? <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", isOpen && "rotate-90")} aria-hidden /> : null}
+    </>
+  )
 
   return (
     <div className="w-full">
-      <button
+      {hasDetails ? <button
         type="button"
         className={cn(
-          "text-muted-foreground hover:text-foreground flex w-full items-center gap-2 rounded-md px-0 py-1 text-left text-sm transition-colors",
-          processState === "failed" && "text-destructive hover:text-destructive",
+          "chat-process-heading text-muted-foreground hover:text-foreground flex w-full items-center gap-2 border-b border-border/70 px-0 py-2 text-left text-xs font-medium transition-colors",
+          processState === "failed" && "text-muted-foreground",
         )}
         aria-expanded={isOpen}
         aria-label={isOpen ? t("message.collapse_process") : t("message.expand_process")}
         onClick={() => setIsOpen((open) => !open)}
-      >
-        {awaitingConfirmation ? (
-          <Clock3 className="size-3.5 shrink-0" aria-hidden />
-        ) : processState === "streaming" ? (
-          <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
-        ) : processState === "failed" ? (
-          <AlertTriangle className="size-3.5 shrink-0" aria-hidden />
-        ) : (
-          <Check className="size-3.5 shrink-0" aria-hidden />
-        )}
-        <span className="min-w-0 truncate">
-          {label}
-          <span className="ml-1 text-muted-foreground/75">{assistantProcessSummary(groups, durationMs)}</span>
-        </span>
-        <ChevronDown className={cn("ml-auto size-3.5 shrink-0 transition-transform", isOpen && "rotate-180")} aria-hidden />
-      </button>
-      {isOpen ? (
+      >{content}</button> : <div className="chat-process-heading text-muted-foreground flex items-center gap-2 border-b border-border/70 py-2 text-xs font-medium">{content}</div>}
+      {hasDetails && isOpen ? (
         <div className={cn("mt-2 flex w-full flex-col gap-2 border-l border-border/70 pl-4", contentClassName)}>
+          <p className="text-xs text-muted-foreground/75">{assistantProcessSummary(groups)}</p>
           {children}
         </div>
       ) : null}
@@ -568,8 +653,10 @@ function AssistantProcessSection(props: {
   groups: AssistantProcessRenderGroup[]
   isStreaming: boolean
   durationMs: number | null
+  imageStatus?: "failed" | "stopped"
+  inlineImageArtifacts?: readonly ArtifactItem[]
 }) {
-  const { groups, isStreaming, durationMs } = props
+  const { groups, isStreaming, durationMs, imageStatus, inlineImageArtifacts } = props
 
   if (groups.length === 0) {
     return null
@@ -577,13 +664,13 @@ function AssistantProcessSection(props: {
 
   return (
     <AssistantProcessDisclosure groups={groups} isStreaming={isStreaming} durationMs={durationMs}>
-      {groups.map((group, index) => renderAssistantGroup(group, index))}
+      {groups.map((group, index) => renderAssistantGroup(group, index, { streaming: isStreaming, imageStatus, inlineImageArtifacts }))}
     </AssistantProcessDisclosure>
   )
 }
 
 const AssistantMessage = React.memo(
-  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: AssistantMessageProps) => {
+  ({ message, artifactMessages, isStreaming, hideProcess = false, showLatestArtifactsTitle = false, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext, imageStatus }: AssistantMessageProps) => {
     const deliveredPaths = React.useContext(StudioDeliveryPaths)
     const { client, workspaceId, showThinking, highlightQuery, sessionId, sessionTitle, onOpenVideoStudio } = useMessageList()
     const assistantRenderGroups = React.useMemo(
@@ -602,6 +689,8 @@ const AssistantMessage = React.memo(
     const responseArtifacts = useArtifacts(artifactMessages ?? [message], {
       supplementalFiles: artifactFiles ?? (templateEntryPath ? [templateEntryPath] : undefined),
     })
+    const inlineImageArtifacts = React.useMemo(() => selectInlineImageArtifacts(artifactMessages ?? [message], responseArtifacts), [artifactMessages, message, responseArtifacts])
+    const inlineImagePaths = inlineImageArtifacts.map((artifact) => artifact.path)
     const visibleArtifactPaths = React.useMemo(() => {
       if (isStreaming) return []
       const requestArtifacts = selectArtifactsForRequest(
@@ -622,21 +711,23 @@ const AssistantMessage = React.memo(
         data-message-id={message.id}
         data-message-role={message.role}
       >
-        <div className="group flex w-full flex-col gap-0 space-y-2">
+        <div className="group flex w-full flex-col gap-0 space-y-4">
           {hideProcess ? null : (
             <AssistantProcessSection
               groups={assistantRenderSections.processGroups}
               isStreaming={isStreaming}
               durationMs={durationMs}
+              imageStatus={imageStatus}
+              inlineImageArtifacts={inlineImageArtifacts}
             />
           )}
           {assistantRenderSections.resultGroups.map((group, index) =>
-            renderAssistantGroup(group, index, { highlightQuery, artifactPaths: visibleArtifactPaths })
+            renderAssistantGroup(group, index, { highlightQuery, artifactPaths: visibleArtifactPaths, streaming: isStreaming, imageStatus, inlineImageArtifacts })
           )}
           {!isStreaming ? (
             <ArtifactList
               messages={artifactMessages ?? [message]}
-              excludedPaths={isStudioResultMessage(message) ? undefined : deliveredPaths}
+              excludedPaths={isStudioResultMessage(message) ? inlineImagePaths : [...deliveredPaths, ...inlineImagePaths]}
               client={client}
               workspaceId={workspaceId}
               sessionId={sessionId}
@@ -787,7 +878,7 @@ const UserMessage = React.memo(
         <ContextMenu>
           <ContextMenuTrigger
             render={
-              <div className="group flex w-full flex-col items-end gap-1">
+              <div className="group relative flex w-full flex-col items-end gap-1">
                 {message.parts.filter(isFileUIPart).map((part, index) => (
                   <FileMessage key={`${part.url}-${index}`} part={part} tone="user" />
                 ))}
@@ -824,11 +915,7 @@ const UserMessage = React.memo(
                   </MessageContent>
                 ) : null}
                 {!isStreaming && (
-                  <MessageActions
-                    className={cn(
-                      "flex items-center gap-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100"
-                    )}
-                  >
+                  <MessageActions className={cn(MESSAGE_ACTIONS_CLASS_NAME, "pointer-events-none absolute right-0 top-full z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100")}>
                     <MessageTimestamp message={message} className="mr-1.5" />
                     <CopyMessageButton messages={[message]} />
                     {messageText ? (
@@ -912,10 +999,11 @@ type MessageComponentProps = {
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactContext?: ArtifactInteractionContext
+  imageStatus?: "failed" | "stopped"
 }
 
 const MessageComponent = React.memo(
-  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext }: MessageComponentProps) => {
+  ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext, imageStatus }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
       return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
     }
@@ -945,6 +1033,7 @@ const MessageComponent = React.memo(
           templateEntryPath={templateEntryPath}
           artifactFiles={artifactFiles}
           artifactContext={artifactContext}
+          imageStatus={imageStatus}
         />
       )
     }
@@ -960,21 +1049,25 @@ const MessageComponent = React.memo(
 
 MessageComponent.displayName = "MessageComponent"
 
-const LoadingMessage = React.memo(({ label, paused = false }: { label?: string; paused?: boolean }) => (
+const LoadingMessage = React.memo(({ label, paused = false, startedAt = null }: { label?: string; paused?: boolean; startedAt?: number | null }) => {
+  const now = useElapsedNow(startedAt, true)
+  const elapsed = startedAt === null ? null : formatElapsedDuration(now - startedAt)
+  return (
   <Message className="mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-2 md:px-10">
     <div className="group flex w-full flex-col gap-0">
-      <div className="flex items-center gap-2 px-1 py-1 text-sm text-muted-foreground">
+      <div className="chat-process-heading flex items-center gap-2 px-1 py-1 text-xs font-medium text-muted-foreground">
         {paused ? <Clock3 className="size-4 shrink-0" aria-hidden /> : <img
           src={publicAssetUrl("ipollowork-thinking-logo-v2.gif")}
           alt=""
           aria-hidden="true"
           className="size-6 shrink-0 object-contain"
         />}
-        <span>{label ?? t("session.assistant_thinking")}</span>
+        <span>{label ?? t("session.assistant_thinking")}{elapsed ? ` · ${t("message.elapsed_running", { duration: elapsed })}` : ""}</span>
       </div>
     </div>
   </Message>
-))
+  )
+})
 
 LoadingMessage.displayName = "LoadingMessage"
 
@@ -982,15 +1075,57 @@ interface ErrorMessageProps {
   error: string | null
 }
 
+export function RunIssueNotice({ detail, kind, onDismiss, children }: {
+  detail?: string | null
+  kind?: "stopped" | "model-not-found"
+  onDismiss?: () => void
+  children?: React.ReactNode
+}) {
+  const interrupted = kind === "stopped" || /MessageAbortedError|run was interrupted before it finished/i.test(detail ?? "")
+  const modelUnavailable = kind === "model-not-found" || /model is not supported|model (?:is )?not (?:available|found)|unsupported model/i.test(detail ?? "")
+  const providerFailure = !interrupted && !modelUnavailable ? classifyProviderFailure(detail) : null
+  const title = interrupted ? t("session.run_stopped_title")
+    : modelUnavailable ? t("session.model_unavailable_title")
+      : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_title")
+        : providerFailure?.code === "provider_quota_exhausted" ? t("session.provider_quota_title")
+          : providerFailure?.code === "provider_rate_limited" ? t("session.provider_rate_title")
+            : t("session.run_failed_title")
+  const description = interrupted ? t("session.run_stopped_hint")
+    : modelUnavailable ? t("session.model_unavailable_hint")
+      : providerFailure?.code === "provider_auth_failed" ? t("session.provider_auth_hint")
+        : providerFailure?.code === "provider_quota_exhausted" ? t("session.provider_quota_hint")
+          : providerFailure?.code === "provider_rate_limited" ? t("session.provider_rate_hint")
+            : t("session.run_failed_hint")
+
+  return (
+    <div className="w-full rounded-xl border border-border bg-muted/40 px-3 py-2.5 text-sm text-foreground" role="status" data-testid="run-issue-notice">
+      <div className="flex items-start gap-2">
+        {interrupted ? <Clock3 size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />
+          : <AlertTriangle size={16} className="mt-0.5 shrink-0 text-muted-foreground" aria-hidden />}
+        <div className="min-w-0 flex-1">
+          <p className="font-medium">{title}</p>
+          <p className="mt-0.5 text-muted-foreground">{description}</p>
+          {children ? <div className="mt-2">{children}</div> : null}
+          {detail ? <details className="mt-2 text-xs text-muted-foreground">
+            <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
+            <div className="mt-2 rounded-md border border-border bg-background p-2">
+              <pre className="max-h-48 overflow-auto whitespace-pre-wrap break-all font-mono">{detail}</pre>
+              <button type="button" className="mt-2 inline-flex items-center gap-1 hover:text-foreground" onClick={() => void navigator.clipboard.writeText(detail)}>
+                <Copy size={12} aria-hidden />{t("session.copy_error_details")}
+              </button>
+            </div>
+          </details> : null}
+        </div>
+        {onDismiss ? <button type="button" className="shrink-0 text-muted-foreground hover:text-foreground" onClick={onDismiss} aria-label={t("session.dismiss_error")}>×</button> : null}
+      </div>
+    </div>
+  )
+}
+
 function ErrorMessage({ error }: ErrorMessageProps) {
   return (
     <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0 md:px-10">
-      <div className="group flex w-full flex-col items-start gap-0">
-        <div className="text-foreground flex min-w-0 flex-1 flex-row items-start gap-2 rounded-lg border-2 border-red-300 bg-red-300/20 px-2 py-1">
-          <AlertTriangle size={16} className="mt-0.5 shrink-0 text-destructive" />
-          <p className="whitespace-pre-wrap text-destructive">{error}</p>
-        </div>
-      </div>
+      <RunIssueNotice key={error} detail={error} />
     </Message>
   )
 }
@@ -1004,7 +1139,7 @@ function RetryActionButton(props: { link: string; label: string }) {
     <Button
       variant="outline"
       size="sm"
-      className="h-7 border-amber-500/70 bg-amber-50 text-xs text-amber-950 hover:bg-amber-100"
+      className="h-7 text-xs"
       onClick={() => void openDesktopUrl(props.link)}
     >
       {props.label}
@@ -1025,30 +1160,34 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
   const info = status.attempt === 0 && status.next === 0
     ? t("session.model_connection_retry_wait")
     : seconds > 0
-    ? `Retrying in ${seconds}s · attempt ${status.attempt}`
-    : `Retrying · attempt ${status.attempt}`
+    ? t("session.retry_countdown", { seconds, attempt: status.attempt })
+    : t("session.retry_attempt", { attempt: status.attempt })
   const action = status.action
 
   return (
     <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0 md:px-10">
       <div className="group flex w-full flex-col items-start gap-0">
-        <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 rounded-lg border-2 border-amber-300 bg-amber-300/20 px-3 py-2">
+        <div className="text-foreground flex min-w-0 flex-1 flex-col gap-2 rounded-xl border border-border bg-muted/40 px-3 py-2">
           <div className="flex items-start gap-2">
-            <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-amber-700" />
+            <LoaderCircle size={16} className="mt-0.5 shrink-0 animate-spin text-muted-foreground" />
             <div className="min-w-0 space-y-1">
-              <p className="whitespace-pre-wrap text-sm font-medium text-amber-900">{status.message}</p>
-              <p className="text-xs text-amber-800">{info}</p>
+              <p className="text-sm font-medium">{t("session.retry_recovering")}</p>
+              <p className="text-xs text-muted-foreground">{info}</p>
             </div>
           </div>
           {action ? (
-            <div className="ml-6 space-y-1 border-t border-amber-400/60 pt-2">
-              <p className="text-xs font-medium text-amber-950">{action.title}</p>
-              <p className="text-xs text-amber-900">{action.message}</p>
+            <div className="ml-6 space-y-1 border-t border-border pt-2">
+              <p className="text-xs font-medium">{action.title}</p>
+              <p className="text-xs text-muted-foreground">{action.message}</p>
               {action.link ? (
                 <RetryActionButton link={action.link} label={action.label} />
               ) : null}
             </div>
           ) : null}
+          <details className="ml-6 text-xs text-muted-foreground">
+            <summary className="w-fit cursor-pointer hover:text-foreground">{t("session.error_details")}</summary>
+            <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-all rounded-md border border-border bg-background p-2 font-mono">{status.message}</pre>
+          </details>
         </div>
       </div>
     </Message>
@@ -1103,24 +1242,38 @@ interface AssistantMessageGroupProps {
   items: UIMessageWithIndex[]
   messages: UIMessage[]
   isStreaming: boolean
+  finalizing?: boolean
   templateEntryPath?: string
   artifactFiles?: readonly string[]
   artifactRequestOwnership?: readonly ArtifactRequestOwnership[]
   artifactContext?: ArtifactInteractionContext
   latestAssistantMessageId?: string
   activeAssistantMessageId?: string
+  imageStatus?: "failed" | "stopped"
+  runIncomplete?: boolean
+  runOutcome?: "running" | "completed" | "failed" | "stopped" | null
+  runStartedAt?: number | null
+  runEndedAt?: number | null
+  runTimings?: Record<string, { startedAt: number; endedAt: number }>
 }
 
 function MessageGroup({
   items,
   messages,
   isStreaming,
+  finalizing = false,
   templateEntryPath,
   artifactFiles,
   artifactRequestOwnership = [],
   artifactContext,
   latestAssistantMessageId,
   activeAssistantMessageId,
+  imageStatus,
+  runIncomplete = false,
+  runOutcome = null,
+  runStartedAt = null,
+  runEndedAt = null,
+  runTimings = {},
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage, sessionTitle, showThinking } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -1134,8 +1287,6 @@ function MessageGroup({
   const isLiveGroup = isStreaming && items.some(
     (item) => item.message.id === activeAssistantMessageId,
   )
-  const previousLiveGroupRef = React.useRef(isLiveGroup)
-  const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current
   const stepsRef = React.useRef<HTMLDivElement>(null)
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
@@ -1150,6 +1301,11 @@ function MessageGroup({
       isLatestAssistantGroup,
     ),
     [artifactFiles, artifactRequestOwnership, isLatestAssistantGroup, requestOrdinal],
+  )
+  const groupArtifacts = useArtifacts(artifactMessages, { supplementalFiles: requestArtifactFiles })
+  const inlineImageArtifacts = React.useMemo(
+    () => selectInlineImageArtifacts(artifactMessages, groupArtifacts),
+    [artifactMessages, groupArtifacts],
   )
   const hasRequestArtifacts = React.useMemo(
     () => selectArtifactsForRequest(
@@ -1176,54 +1332,63 @@ function MessageGroup({
     }
   })
 
-  React.useEffect(() => {
-    previousLiveGroupRef.current = isLiveGroup
-  }, [isLiveGroup])
-
   if (!lastItem || (isMessageEmptyGroup(items) && requestArtifactFiles.length === 0)) {
     return null
   }
 
-  const renderableItems = getRenderableMessages(items)
-  const lastTextMessage = getLastTextPart(lastItem.message)
+  const renderableItems = getRenderableMessages(items.filter((item) => !isSessionErrorMessage(item.message)))
+  const lastTextMessage = lastRealItem ? getLastTextPart(lastRealItem.message) : null
 
   const itemRenderData = items.map((item) => {
     const groups = getAssistantRenderGroups(item.message.parts, showThinking)
     return { item, groups, sections: splitAssistantRenderGroups(groups) }
   })
-  const textResultItemIndex = itemRenderData.findLastIndex(({ groups }) =>
-    groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
+  const textResultItemIndex = itemRenderData.findLastIndex(({ item, groups }) =>
+    !isAssistantCommentaryMessage(item.message)
+      && !isSessionErrorMessage(item.message)
+      && groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
   )
-  const resultItemIndex = isLiveGroup
-    ? -1
-    : textResultItemIndex >= 0
-      ? textResultItemIndex
-      : hasRequestArtifacts || requestArtifactFiles.length > 0
-        ? itemRenderData.length - 1
-        : -1
+  const resultItemIndex = textResultItemIndex >= 0
+    ? textResultItemIndex
+    : !isLiveGroup && (hasRequestArtifacts || requestArtifactFiles.length > 0)
+      ? itemRenderData.findLastIndex(({ item }) => !isSessionErrorMessage(item.message))
+      : -1
   const resultData = resultItemIndex >= 0 ? itemRenderData[resultItemIndex] : null
-  const processRenderGroups = itemRenderData.flatMap(({ groups, sections }, index) => {
+  const processRenderGroups = itemRenderData.flatMap(({ item, groups, sections }, index) => {
+    if (isSessionErrorMessage(item.message)) return []
     const processGroups = index === resultItemIndex ? sections.processGroups : groups
     return processGroups.filter(
       (group): group is AssistantProcessRenderGroup => group.kind !== "text",
     )
   })
-  const hasProcessContent = itemRenderData.some(({ groups, sections }, index) =>
-    (index === resultItemIndex ? sections.processGroups : groups).length > 0,
+  const hasProcessContent = itemRenderData.some(({ item, groups, sections }, index) =>
+    !isSessionErrorMessage(item.message)
+      && (index === resultItemIndex ? sections.processGroups : groups).length > 0,
   )
-  const processStartedAt = getMessageCreated(items[0].message)
-  const processCompletedAt = getMessageCompleted(lastItem.message)
+  const precedingUser = messages.slice(0, items[0].index).findLast((message) => message.role === "user" && !isInternalContinuationMessage(message))
+  const latestUser = messages.findLast((message) => message.role === "user" && !isInternalContinuationMessage(message))
+  const storedTiming = precedingUser ? runTimings[precedingUser.id] : undefined
+  const currentTurn = isLatestAssistantGroup && precedingUser?.id === latestUser?.id
+  const processStartedAt = storedTiming?.startedAt
+    ?? (currentTurn ? runStartedAt : null)
+    ?? (precedingUser ? getMessageCreated(precedingUser) : null)
+  const processCompletedAt = storedTiming?.endedAt
+    ?? (currentTurn ? runEndedAt : null)
+    ?? getMessageCompleted(lastRealItem?.message ?? lastItem.message)
   const processDurationMs = processStartedAt !== null
     && processCompletedAt !== null
     && processCompletedAt >= processStartedAt
     ? processCompletedAt - processStartedAt
     : null
   const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
+  const sessionErrorItem = items.find((item) => isSessionErrorMessage(item.message))
+  const hasToolFailure = isLiveGroup && items.some(({ message }) => message.parts.some((part) => isToolUIPart(part) && part.state === "output-error"))
 
   const renderProcessItem = (
     data: (typeof itemRenderData)[number],
     groupIndex: number,
   ) => {
+    if (isSessionErrorMessage(data.item.message)) return null
     const groups = groupIndex === resultItemIndex ? data.sections.processGroups : data.groups
     if (groups.length === 0) return null
 
@@ -1235,20 +1400,25 @@ function MessageGroup({
         data-message-role={data.item.message.role}
       >
         <div className="flex w-full flex-col gap-2">
-          {groups.map((group, index) => renderAssistantGroup(group, index))}
+          {groups.map((group, index) => renderAssistantGroup(group, index, { streaming: isLiveGroup, imageStatus, inlineImageArtifacts }))}
         </div>
       </Message>
     )
   }
 
   return (
-    <div className="flex flex-col gap-2 group/message-group" data-testid="assistant-message-group">
-      {hasProcessContent ? (
+    <div className="group/message-group relative mt-4 flex flex-col gap-3 first:mt-0" data-testid="assistant-message-group">
+      {hasProcessContent || processStartedAt !== null ? (
         <div className={ASSISTANT_COLUMN_CLASS_NAME} data-testid="assistant-process-column">
           <AssistantProcessDisclosure
             groups={processRenderGroups}
             isStreaming={isLiveGroup}
-            hasError={hasSessionError}
+            finalizing={finalizing && isLiveGroup}
+            hasError={hasSessionError || runIncomplete}
+            stopped={runOutcome === "stopped" && currentTurn}
+            hasDetails={hasProcessContent}
+            startedAt={processStartedAt}
+            endedAt={processCompletedAt}
             durationMs={processDurationMs}
             contentClassName="max-h-[520px] overflow-y-auto"
           >
@@ -1258,14 +1428,9 @@ function MessageGroup({
           </AssistantProcessDisclosure>
         </div>
       ) : null}
+      {hasToolFailure ? <p className={cn(ASSISTANT_COLUMN_CLASS_NAME, "text-xs text-muted-foreground")} role="status">{t("session.step_failed_continuing")}</p> : null}
       {resultData ? (
-        <div
-          data-assistant-result="true"
-          className={cn(
-            resultEnteredAfterLiveRun
-              && "animate-in fade-in-0 slide-in-from-left-2 duration-200 motion-reduce:animate-none",
-          )}
-        >
+        <div data-assistant-result="true">
           <MessageComponent
             message={resultData.item.message}
             artifactMessages={artifactMessages}
@@ -1280,16 +1445,18 @@ function MessageGroup({
             templateEntryPath={isLatestAssistantGroup ? templateEntryPath : undefined}
             artifactFiles={requestArtifactFiles}
             artifactContext={artifactContext}
+            imageStatus={hasSessionError ? "failed" : imageStatus}
           />
         </div>
       ) : null}
+      {sessionErrorItem ? <ErrorMessage error={getMessagesText([sessionErrorItem.message]) || t("message.session_failed")} /> : null}
       {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
         <div
-          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-150 group-hover/message-group:opacity-100")}
+          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "pointer-events-none absolute left-0 top-full z-10 flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-150 group-hover/message-group:pointer-events-auto group-hover/message-group:opacity-100 group-focus-within/message-group:pointer-events-auto group-focus-within/message-group:opacity-100")}
           data-testid="assistant-message-actions"
         >
-          <MessageActions className="flex gap-0">
+          <MessageActions className={MESSAGE_ACTIONS_CLASS_NAME}>
             <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
             <SaveMessageAsMarkdownButton messages={renderableItems.map((item) => item.message)} />
             <QuoteFollowUpButton messages={renderableItems.map((item) => item.message)} />
@@ -1318,7 +1485,7 @@ function MessageGroup({
               </>
             ) : null}
           </MessageActions>
-          <MessageTimestamp message={lastItem.message} />
+          <MessageTimestamp message={lastRealItem?.message ?? lastItem.message} />
           {/* <MessageSources messages={items.map((item) => item.message)} /> */}
         </div>
       )}
@@ -1336,12 +1503,19 @@ interface MessageListProps {
   artifactContext?: ArtifactInteractionContext
   activeMessageBaseline?: number | null
   assistantWaitLabel?: string
+  stoppedImageMessageIds?: ReadonlySet<string>
+  stopAcknowledged?: boolean
+  runOutcome?: "running" | "completed" | "failed" | "stopped" | null
+  finalizing?: boolean
+  runStartedAt?: number | null
+  runEndedAt?: number | null
+  runTimings?: Record<string, { startedAt: number; endedAt: number }>
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {} }: MessageListProps) {
   const { sessionTitle, waitingLabel } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
-  const isStreaming = status === "submitted" || status === "streaming" || status === "retrying"
+  const isStreaming = !stopAcknowledged && (runOutcome === "running" || (runOutcome === null && (status === "submitted" || status === "streaming" || status === "retrying")))
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const supplementalArtifactFiles = React.useMemo(
     () => [...new Set([
@@ -1365,6 +1539,10 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     () => getLatestArtifactAssistantMessageId(messages),
     [messages],
   )
+  const latestTurnAssistantMessageId = React.useMemo(() => {
+    const latestUserIndex = messages.findLastIndex(message => message.role === "user" && !isInternalContinuationMessage(message))
+    return getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))
+  }, [messages])
   const activeAssistantMessageId = React.useMemo(
     () => isStreaming ? getActiveAssistantMessageId(messages.filter(message => !isStudioResultMessage(message)), activeMessageBaseline) : undefined,
     [activeMessageBaseline, isStreaming, messages],
@@ -1386,12 +1564,22 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               items={item.messages}
               messages={messages}
               isStreaming={isStreaming}
+              finalizing={finalizing}
+              runOutcome={runOutcome}
+              runStartedAt={runStartedAt}
+              runEndedAt={runEndedAt}
+              runTimings={runTimings}
               templateEntryPath={templateEntryPath}
               artifactFiles={supplementalArtifactFiles}
               artifactRequestOwnership={resolvedArtifactRequestOwnership}
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
               activeAssistantMessageId={activeAssistantMessageId}
+              runIncomplete={Boolean(error || stopAcknowledged) && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)}
+              imageStatus={error && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)
+                ? "failed"
+                : item.messages.some(({ message }) => stoppedImageMessageIds.has(message.id))
+                  ? "stopped" : undefined}
             />
           )
         }
@@ -1412,7 +1600,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
           : undefined
 
         return (
-          <div key={item.message.id}>
+          <div key={item.message.id} className="mt-8 first:mt-0">
             <MessageComponent
               message={item.message}
               isLastMessage={isLastMessage}
@@ -1427,16 +1615,21 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               templateEntryPath={item.message.id === latestAssistantMessageId ? templateEntryPath : undefined}
               artifactFiles={isStudioResultMessage(item.message) ? undefined : requestArtifactFiles}
               artifactContext={artifactContext}
+              imageStatus={error && item.message.id === latestTurnAssistantMessageId
+                ? "failed"
+                : stoppedImageMessageIds.has(item.message.id)
+                  ? "stopped" : undefined}
             />
           </div>
         )
       })}
 
       {(status === "submitted" || status === "streaming") && !activeAssistantMessageId
-        ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} />
+        ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} startedAt={runStartedAt} />
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
       {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
+      {stopAcknowledged && !error && !hasSessionErrorMessage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0 md:px-10"><RunIssueNotice kind="stopped" /></Message> : null}
     </div>
     </StudioDeliveryPaths.Provider>
   )

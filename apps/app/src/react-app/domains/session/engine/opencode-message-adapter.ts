@@ -50,7 +50,7 @@ function defaultErrorMessage(name: string | null, fallback: string) {
   if (name === "MessageOutputLengthError") return "The model reached its output limit before finishing";
   if (name === "StructuredOutputError") return "The model could not produce valid structured output";
   if (name === "ContextOverflowError") return "The conversation is too large for the model context window";
-  if (name === "MessageAbortedError") return "The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.";
+  if (name === "MessageAbortedError") return "The run was interrupted before it finished.";
   return fallback;
 }
 
@@ -291,11 +291,13 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
       && typeof message.info.parentID === "string"
       ? message.info.parentID.trim()
       : "";
+    const codexPhase = "codexPhase" in message.info ? message.info.codexPhase : undefined;
     const metadata = conversationMessageMetadata(
       { created, completed },
       {
         ...(contextUsage ? { contextUsage } : {}),
         ...(parentUserMessageId ? { parentUserMessageId } : {}),
+        ...(codexPhase === "commentary" || codexPhase === "final_answer" ? { codexPhase } : {}),
       },
     );
     const uiMessage = {

@@ -110,7 +110,7 @@ describe("tool part mapper", () => {
     expect(describeOpencodeSessionError({
       name: "MessageAbortedError",
       message: "Aborted",
-    })).toBe("The run was interrupted before it finished. If you clicked Stop, the interruption was requested by you.");
+    })).toBe("The run was interrupted before it finished.");
   });
 
   test("turns exhausted 429 retries into an actionable provider error", () => {
@@ -445,7 +445,14 @@ describe("tool part mapper", () => {
         messageId: "assistant-third",
         completedAt: 42,
       });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "idle" },
+      });
+      expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBe("running");
       __applySessionSyncEventForTest(syncInput, { type: "session.idle", sessionId: "session-a" });
+      expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBe("completed");
 
       transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a")) ?? [];
       expect(transcript.at(-2)).toMatchObject({ id: "user-third", role: "user" });

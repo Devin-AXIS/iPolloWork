@@ -682,22 +682,6 @@ describe("session output issue regressions", () => {
     expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
   });
 
-  test("the final assistant result enters from the left after a live run", () => {
-    const source = readFileSync(
-      new URL("../src/components/chat/message-list.tsx", import.meta.url),
-      "utf8",
-    );
-    const resultEntry = source.slice(
-      source.indexOf('data-assistant-result="true"'),
-      source.indexOf("message={resultData.item.message}"),
-    );
-
-    expect(source).toContain("const resultEnteredAfterLiveRun = !isLiveGroup && previousLiveGroupRef.current");
-    expect(resultEntry).toContain("slide-in-from-left-2");
-    expect(resultEntry).not.toContain("slide-in-from-right");
-    expect(resultEntry).toContain("motion-reduce:animate-none");
-  });
-
   test("video and presentation sessions show only scoped openable outputs", () => {
     const artifactSource = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),
