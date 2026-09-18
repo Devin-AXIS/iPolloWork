@@ -16,6 +16,7 @@ import {
 export interface FlatDropdownOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 export function FlatDropdown({
@@ -54,7 +55,7 @@ export function FlatDropdown({
   const close = () => setOpen(false);
   const selectIndex = (index: number) => {
     const option = options[index];
-    if (!option) return;
+    if (!option || option.disabled) return;
     onChange(option.value);
     close();
     buttonRef.current?.focus();
@@ -109,7 +110,13 @@ export function FlatDropdown({
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           const delta = event.key === "ArrowDown" ? 1 : -1;
-          selectIndex((selectedIndex + delta + options.length) % options.length);
+          for (let step = 1; step <= options.length; step++) {
+            const index = (selectedIndex + delta * step + options.length) % options.length;
+            if (!options[index]?.disabled) {
+              selectIndex(index);
+              break;
+            }
+          }
         }}
         className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
@@ -147,8 +154,9 @@ export function FlatDropdown({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  disabled={option.disabled}
                   onClick={() => selectIndex(index)}
-                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 ${
+                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
                     selected
                       ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-accent/15 dark:text-panel-text-1 dark:ring-1 dark:ring-inset dark:ring-panel-accent/35"
                       : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input dark:active:bg-panel-hover"

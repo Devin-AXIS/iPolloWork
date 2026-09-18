@@ -28,7 +28,6 @@ import type { BackgroundRemovalProgress } from "./editor/propertyPanelTypes";
 import { timelineKeysForSelections, type ToggleHiddenHandler } from "../utils/studioHelpers";
 import { useStudioI18n } from "../i18n";
 import { X } from "lucide-react";
-import { Tooltip } from "./ui/Tooltip";
 import { postVideoAiSelectionToHost } from "./editor/domEditingAgentPrompt";
 import { MIN_RIGHT_PANEL_WIDTH } from "../hooks/usePanelLayout";
 
@@ -111,6 +110,8 @@ export interface StudioRightPanelProps {
   }) => Promise<void>;
   onToggleElementHidden?: ToggleHiddenHandler;
   onAddBlock?: (blockName: string) => Promise<boolean>;
+  onAddAssetToTimeline?: (path: string) => void;
+  focusedHostAsset?: string;
 }
 
 // fallow-ignore-next-line complexity
@@ -130,6 +131,8 @@ export function StudioRightPanel({
   recordEdit,
   onToggleElementHidden,
   onAddBlock,
+  onAddAssetToTimeline,
+  focusedHostAsset,
 }: StudioRightPanelProps) {
   const {
     rightWidth,
@@ -154,7 +157,7 @@ export function StudioRightPanel({
   } = useStudioShellContext();
   const { captionEditMode } = useStudioPlaybackContext();
   const { t, tx } = useStudioI18n();
-  const [componentTab, setComponentTab] = useState<"presets" | "avatar">("presets");
+  const [roleTab, setRoleTab] = useState<"avatar" | "voice">("voice");
 
   const {
     domEditSelection,
@@ -498,6 +501,7 @@ export function StudioRightPanel({
   );
 
   const openHostPanel = (panel: "voice" | "style") => {
+    if (panel === "voice" && rightPanelTab !== "voice") setRoleTab("voice");
     setRightPanelTab(panel);
   };
 
@@ -516,20 +520,17 @@ export function StudioRightPanel({
 
   useEffect(() => {
     if (rightPanelTab === "voice" || rightPanelTab === "style") {
-      postHostPanel(rightPanelTab);
-      return;
-    }
-    if (rightPanelTab === "components" && componentTab === "avatar") {
-      postHostPanel("avatar");
+      postHostPanel(rightPanelTab === "voice" ? roleTab : "style");
       return;
     }
     closeHostPanel();
-  }, [closeHostPanel, componentTab, postHostPanel, rightPanelTab]);
+  }, [closeHostPanel, roleTab, postHostPanel, rightPanelTab]);
 
   useEffect(() => {
     const handleHostPanel = (event: MessageEvent) => {
       if (event.source !== window.parent || event.data?.projectId !== projectId) return;
       if (event.data.type === "ipollowork:video-studio-panel" && event.data.panel === "voice") {
+        setRoleTab("voice");
         setRightPanelTab("voice");
       }
     };
@@ -589,9 +590,9 @@ export function StudioRightPanel({
           <>
             <div className="relative z-30 flex h-[49px] min-w-0 items-center overflow-hidden border-b-[0.5px] border-[var(--hf-studio-divider)] bg-panel-bg pl-3 pr-11">
               {exportDrawer ? (
-                <span className="min-w-0 flex-1 truncate text-xs font-semibold text-neutral-200">
+                <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-panel-text-1">
                   {t("right.renders")}
-                </span>
+                </h2>
               ) : (
                 <div className="hf-inspector-tabs-scroll flex min-w-0 flex-1 items-center overflow-hidden">
                   <div className="grid w-full min-w-0 grid-flow-col auto-cols-fr items-center gap-1">
@@ -624,7 +625,7 @@ export function StudioRightPanel({
                       }}
                     />
                     <PanelTabButton
-                      label={t("right.voice")}
+                      label={t("right.role")}
                       tooltip={t("right.voiceTooltip")}
                       active={rightPanelTab === "voice"}
                       onClick={() => openHostPanel("voice")}
@@ -669,36 +670,7 @@ export function StudioRightPanel({
                       onBack={onBackFromBlockParams ?? (() => {})}
                     />
                   ) : componentsPanelActive ? (
-                    <div className="flex h-full min-h-0 flex-col">
-                      <div className="shrink-0 px-4 pb-3">
-                        <div
-                          role="group"
-                          aria-label={t("right.components")}
-                          data-testid="component-subtabs"
-                          className="grid h-[34px] grid-cols-2 gap-1 rounded-lg bg-panel-input p-1"
-                        >
-                          <Tooltip label={t("right.componentsHelp")} side="bottom" maxWidth={240}>
-                            <button
-                              type="button"
-                              aria-pressed={componentTab === "presets"}
-                              onClick={() => setComponentTab("presets")}
-                              className={`rounded-md text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${componentTab === "presets" ? "bg-panel-bg text-panel-text-1 shadow-sm" : "text-panel-text-3 hover:text-panel-text-1"}`}
-                            >
-                              {t("right.presetComponents")}
-                            </button>
-                          </Tooltip>
-                          <button
-                            type="button"
-                            aria-pressed={componentTab === "avatar"}
-                            onClick={() => setComponentTab("avatar")}
-                            className={`rounded-md text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${componentTab === "avatar" ? "bg-panel-bg text-panel-text-1 shadow-sm" : "text-panel-text-3 hover:text-panel-text-1"}`}
-                          >
-                            {t("right.avatar")}
-                          </button>
-                        </div>
-                      </div>
-                      {componentTab === "presets" && <BlocksTab onAddBlock={onAddBlock} />}
-                    </div>
+                    <BlocksTab onAddBlock={onAddBlock} />
                   ) : animationPanelActive ? (
                     animationPanel
                   ) : rightPanelTab === "assets" ? (
@@ -709,13 +681,22 @@ export function StudioRightPanel({
                       onImport={handleImportFiles}
                       onDelete={handleDeleteFile}
                       onRename={handleRenameFile}
+                      onAddAssetToTimeline={onAddAssetToTimeline}
+                      focusedHostAsset={focusedHostAsset}
                     />
-                  ) : rightPanelTab === "voice" || rightPanelTab === "style" ? (
-                    <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">
-                      {rightPanelTab === "voice"
-                        ? t("right.voiceTooltip")
-                        : t("right.styleTooltip")}
+                  ) : rightPanelTab === "voice" ? (
+                    <div className="shrink-0 px-4 pb-3">
+                      <div role="group" aria-label={t("right.role")} data-testid="role-subtabs" className="grid h-[34px] grid-cols-2 gap-1 rounded-lg bg-panel-input p-1">
+                        {["voice", "avatar"].map(tab => (
+                          <button key={tab} type="button" aria-pressed={roleTab === tab} onClick={() => setRoleTab(tab === "avatar" ? "avatar" : "voice")}
+                            className={`rounded-md text-xs font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent ${roleTab === tab ? "bg-panel-bg text-panel-text-1 shadow-sm" : "text-panel-text-3 hover:text-panel-text-1"}`}>
+                            {t(tab === "avatar" ? "right.avatar" : "right.voice")}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                  ) : rightPanelTab === "style" ? (
+                    <div className="grid h-full place-items-center px-6 text-center text-xs text-neutral-500">{t("right.styleTooltip")}</div>
                   ) : inspectorTabActive ? (
                     propertyPanel
                   ) : (

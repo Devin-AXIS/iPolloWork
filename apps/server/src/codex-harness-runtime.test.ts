@@ -35,6 +35,7 @@ import {
   codexHarnessTurnCollaborationMode,
   projectCodexHarnessProviderList,
 } from "./routes/codex-harness.js";
+import { StdioJsonRpcProcess } from "./stdio-json-rpc-runtime.js";
 import { buildCodexHarnessAdditionalContext } from "./workspace-session-runtime.js";
 import { disposeRuntimeOpencodeConfigStore } from "./runtime-opencode-config-store.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
@@ -236,6 +237,57 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       },
     });
   });
+
+  test("preserves long multilingual runtime instructions without splitting Unicode characters", () => {
+    const system = `Start\n${"视频与配音🎙️".repeat(1500)}\nVideo voiceover contract: enabled=true\n${"Scene requirements\n".repeat(500)}End`;
+    const context = buildCodexHarnessAdditionalContext(system, []);
+    const entries = Object.entries(context ?? {});
+    expect(entries.length).toBeGreaterThan(1);
+    expect(entries.map(([, entry]) => entry.value).join("")).toBe(system);
+    for (const [, entry] of entries) {
+      expect(Buffer.byteLength(entry.value, "utf8")).toBeLessThanOrEqual(768);
+      expect(entry.value).not.toContain("�");
+      expect(entry.kind).toBe("application");
+    }
+    expect(entries.map(([key]) => key)).toEqual(entries.map(([key]) => key).sort());
+    expect(buildCodexHarnessAdditionalContext("", [])).toBeUndefined();
+  });
+
+  test.skipIf(!process.env.IPOLLOWORK_CODEX_CONTEXT_PROOF_CLI)("native Codex receives every application instruction before model execution", async () => {
+    const command = process.env.IPOLLOWORK_CODEX_CONTEXT_PROOF_CLI;
+    if (!command) throw new Error("Set IPOLLOWORK_CODEX_CONTEXT_PROOF_CLI to the native Codex binary");
+    const root = await mkdtemp(join(tmpdir(), "ipollowork-context-proof-"));
+    roots.push(root);
+    const original = `START\n${"旁白🔊\n".repeat(3000)}Video voiceover contract: SYNTHESIZE_REQUIRED\n${"scene detail ".repeat(6000)}END`;
+    let capture: (body: unknown) => void = () => undefined;
+    const received = new Promise<unknown>((resolve) => { capture = resolve; });
+    const server = createServer(async (request, response) => {
+      let body = "";
+      for await (const chunk of request) body += chunk;
+      capture(JSON.parse(body));
+      // Stop before generation: no remote request, credential or model cost.
+      response.writeHead(400).end("Local transport proof complete");
+    });
+    servers.push(server);
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Missing local proof port");
+    await writeFile(join(root, "config.toml"), `model_provider = "proof"\nmodel = "gpt-5.5"\n[model_providers.proof]\nname = "Local proof"\nbase_url = "http://127.0.0.1:${address.port}/v1"\nwire_api = "responses"\nrequest_max_retries = 0\nstream_max_retries = 0\n`);
+    const runtimeProcess = new StdioJsonRpcProcess({ name: "Context proof", command, args: ["app-server", "--stdio"], cwd: root,
+      env: { HOME: root, CODEX_HOME: root, PATH: process.env.PATH } });
+    try {
+      await runtimeProcess.call("initialize", { clientInfo: { name: "ipollowork-proof", version: "1" }, capabilities: { experimentalApi: true } });
+      const started = await runtimeProcess.call<{ thread: { id: string } }>("thread/start", { cwd: root, modelProvider: "proof", model: "gpt-5.5", approvalPolicy: "never", sandbox: "read-only", ephemeral: true });
+      await runtimeProcess.call("turn/start", { threadId: started.thread.id, input: [{ type: "text", text: "Reply OK.", text_elements: [] }], additionalContext: buildCodexHarnessAdditionalContext(original, []) });
+      const body = await received;
+      if (!isRecord(body) || !Array.isArray(body.input)) throw new Error("Missing model input");
+      const fragments = body.input.flatMap((message) => isRecord(message) && message.role === "developer" && Array.isArray(message.content) ? message.content : [])
+        .flatMap((content) => isRecord(content) && typeof content.text === "string" && content.text.startsWith("<ipollowork.runtime.") ? [content.text] : []);
+      expect(fragments.length).toBeGreaterThan(1);
+      expect(fragments.some((text) => text.includes("tokens truncated"))).toBe(false);
+      expect(fragments.map((text) => text.replace(/^<ipollowork.runtime.\d+>/, "").replace(/<\/ipollowork.runtime.\d+>$/, "")).join("")).toBe(original);
+    } finally { await runtimeProcess.close(); }
+  }, 30_000);
 
   test("preserves every authored Codex user text block", () => {
     const messages = mapCodexMessages({

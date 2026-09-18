@@ -1,4 +1,4 @@
-import { DotsSixVertical, LinkSimple } from "@phosphor-icons/react";
+import { GripVertical, Link2 } from "lucide-react";
 import { type PointerEvent as ReactPointerEvent } from "react";
 import type { TimelineElement, TimelineKind } from "../store/playerStore";
 import type { TimelineTheme, TimelineTrackStyle } from "./timelineTheme";
@@ -185,7 +185,7 @@ export function TimelineLayerHeader({
             title={tx(`Bound group: ${bindingId}`)}
             aria-label={tx(`Bound group: ${bindingId}`)}
           >
-            <LinkSimple size={11} weight="bold" aria-hidden="true" />
+            <Link2 size={11} strokeWidth={2.5} aria-hidden="true" />
           </span>
         )}
       </div>
@@ -236,7 +236,7 @@ export function TimelineLayerHeader({
               if (canReorder) onReorderPointerDown?.(event, first);
             }}
           >
-            <DotsSixVertical size={14} weight="bold" aria-hidden="true" />
+            <GripVertical size={14} strokeWidth={2.5} aria-hidden="true" />
           </button>
         )}
       </span>

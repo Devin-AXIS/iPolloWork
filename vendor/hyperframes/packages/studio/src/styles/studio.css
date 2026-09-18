@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+.hf-export-button {
+  height: 34px;
+  border-radius: 6px;
+  background: var(--hf-panel-text-0);
+  color: var(--hf-panel-bg);
+}
+
+.hf-export-button:hover:not(:disabled) {
+  background: var(--hf-panel-text-2);
+}
+
 /*
  * Studio is a dark-only UI — pin the user-agent color scheme to dark so that
  * browser-native chrome (scrollbars, form controls, focus rings) picks the
@@ -138,6 +149,38 @@
   --hf-header-primary-bg: #18181b;
   --hf-header-primary-hover: #27272a;
   --hf-header-primary-text: #ffffff;
+}
+
+.hf-timeline-toolbar-edit {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.hf-timeline-toolbar[data-toolbar-layout="narrow"] {
+  gap: 8px;
+  padding-inline: 8px;
+}
+
+.hf-timeline-toolbar[data-toolbar-layout="narrow"] .hf-timeline-toolbar-edit,
+.hf-timeline-toolbar[data-toolbar-layout="narrow"] .hf-timeline-toolbar-view {
+  gap: 4px;
+}
+
+.hf-timeline-toolbar-group[popover] {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  overflow: visible;
+  padding: 12px;
+  border: 1px solid var(--hf-panel-border-input);
+  border-radius: 8px;
+  background: var(--hf-panel-bg);
+  color: var(--hf-panel-text-1);
+  box-shadow: 0 8px 24px #0002;
+}
+
+.hf-timeline-toolbar-group[popover]:not(:popover-open) {
+  display: none;
 }
 
 :root:not([data-ipollowork-theme="light"]) .hf-timeline-toolbar-icon {

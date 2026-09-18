@@ -1,3 +1,5 @@
+import type { ComposerAttachment } from "@/app/types";
+
 /**
  * Which attachment media types can be sent to the model as file parts.
  *
@@ -22,4 +24,10 @@ export function isModelReadableAttachment(mimeType: string) {
 export function attachmentRequiresNativeModelSupport(mimeType: string) {
   const mime = mimeType.toLowerCase();
   return mime.startsWith("image/") || mime === "application/pdf";
+}
+
+export function composerAttachmentRequiresNativeModelSupport(
+  attachment: Pick<ComposerAttachment, "delivery" | "mimeType">,
+) {
+  return attachment.delivery !== "workspace" && attachmentRequiresNativeModelSupport(attachment.mimeType);
 }

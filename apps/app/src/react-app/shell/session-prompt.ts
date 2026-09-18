@@ -8,7 +8,7 @@ import {
 } from "@ipollowork/design-studio";
 import { useDesignAiSelectionStore } from "@/react-app/domains/session/design/design-ai-selection-store";
 import { firstLineLocalFileParts } from "@/react-app/domains/session/sync/prompt-file-parts";
-import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
+import { composerAttachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
 import { appMentionInstruction } from "@/react-app/domains/session/surface/composer/app-mentions";
 
 type DesignSelectionScope = {
@@ -331,7 +331,7 @@ export async function draftToParts(
     ...(await Promise.all(
       draft.attachments.filter((attachment) => attachment.delivery !== "workspace").map(async (attachment) => {
         if (options.supportsNativeAttachments === false) {
-          if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
+          if (composerAttachmentRequiresNativeModelSupport(attachment)) {
             throw new Error("The selected model cannot read image or PDF attachments.");
           }
           return {

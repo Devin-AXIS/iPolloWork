@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Ellipsis, ZoomIn, type LucideIcon } from "lucide-react";
 import {
   useEnableKeyframes,
   isPlayheadWithinTween,
@@ -29,6 +30,7 @@ import { findMatchingTimelineElementId } from "../utils/studioHelpers";
 import { useStudioShellContext } from "../contexts/StudioContext";
 import { useStudioI18n } from "../i18n";
 import { requestPreviewZoomReset } from "./nle/previewZoom";
+import { resolveFloatingPanelPosition } from "./editor/floatingPanel";
 import undoIconSrc from "../icons/figmaToolbarUndo.svg?url";
 import redoIconSrc from "../icons/figmaToolbarRedo.svg?url";
 import dividerIconSrc from "../icons/figmaToolbarDivider.svg?url";
@@ -112,6 +114,82 @@ function ToolbarIcon({
   );
 }
 
+// Keep the same controls and portal slots mounted when they move into a popover.
+function ToolbarGroup({ collapsed, label, icon: Icon, toolbarWidth, children, value }: {
+  collapsed: boolean;
+  label: string;
+  icon: LucideIcon;
+  toolbarWidth: number;
+  children: ReactNode;
+  value?: string;
+}) {
+  const id = useId();
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+  const [position, setPosition] = useState({ left: 0, top: 0 });
+
+  useEffect(() => setOpen(false), [collapsed]);
+  useEffect(() => {
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || !panelRef.current?.matches(":popover-open")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      panelRef.current.hidePopover();
+      triggerRef.current?.focus();
+    };
+    window.addEventListener("keydown", dismiss, true);
+    return () => window.removeEventListener("keydown", dismiss, true);
+  }, []);
+  useLayoutEffect(() => {
+    if (!collapsed || !open || !triggerRef.current || !panelRef.current) return;
+    const { left, top } = resolveFloatingPanelPosition(
+      triggerRef.current.getBoundingClientRect(),
+      { width: window.innerWidth, height: window.innerHeight },
+      panelRef.current.getBoundingClientRect(),
+    );
+    setPosition({ left, top });
+  }, [collapsed, open, toolbarWidth]);
+
+  return (
+    <div className="contents">
+      {collapsed && (
+        <Tooltip label={label}>
+          <button
+            ref={triggerRef}
+            type="button"
+            popoverTarget={id}
+            aria-label={label}
+            aria-haspopup="dialog"
+            aria-expanded={open}
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-panel-text-3 hover:bg-panel-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40"
+          >
+            <Icon size={16} strokeWidth={1.75} />
+          </button>
+        </Tooltip>
+      )}
+      <div
+        id={id}
+        ref={panelRef}
+        popover={collapsed ? "auto" : undefined}
+        role={collapsed ? "dialog" : "group"}
+        aria-label={label}
+        onToggle={(event) => setOpen(event.newState === "open")}
+        className="hf-timeline-toolbar-group"
+        style={collapsed ? { ...position, visibility: open ? "visible" : "hidden" } : undefined}
+      >
+        {collapsed && (
+          <div className="mb-2 flex items-center justify-between gap-3 text-xs text-panel-text-2">
+            <span>{label}</span>
+            {value && <span className="tabular-nums">{value}</span>}
+          </div>
+        )}
+        <div className="flex shrink-0 items-center gap-2">{children}</div>
+      </div>
+    </div>
+  );
+}
+
 // fallow-ignore-next-line complexity
 export function TimelineToolbar({
   domEditSession,
@@ -120,6 +198,18 @@ export function TimelineToolbar({
   onDeleteDomElement,
 }: TimelineToolbarProps) {
   const { tx } = useStudioI18n();
+  const toolbarRef = useRef<HTMLDivElement>(null);
+  const [toolbarWidth, setToolbarWidth] = useState(0);
+  useLayoutEffect(() => {
+    const toolbar = toolbarRef.current;
+    if (!toolbar) return;
+    const measure = () => setToolbarWidth(toolbar.getBoundingClientRect().width);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(toolbar);
+    return () => observer.disconnect();
+  }, []);
+  const layout = toolbarWidth >= 560 ? "full" : toolbarWidth >= 420 ? "compact" : "narrow";
   const [pendingAction, setPendingAction] = useState<"split" | "keyframe" | "delete" | null>(
     null,
   );
@@ -203,11 +293,13 @@ export function TimelineToolbar({
 
   return (
     <div
-      className="hf-timeline-toolbar flex h-11 items-center justify-between border-y border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-toolbar-bg)] px-4"
+      ref={toolbarRef}
+      className="hf-timeline-toolbar flex h-11 items-center justify-between gap-4 border-y border-[var(--hf-panel-hairline)] bg-[var(--hf-studio-toolbar-bg)] px-4"
       data-testid="figma-timeline-toolbar"
+      data-toolbar-layout={layout}
       data-preserve-studio-selection="true"
     >
-      <div className="flex min-w-0 items-center gap-2">
+      <div className="hf-timeline-toolbar-edit flex min-w-0 items-center gap-2">
         <Tooltip label={tx(editHistory.undoLabel ? `Undo ${editHistory.undoLabel}` : "Undo")}>
           <button
             type="button"
@@ -248,7 +340,7 @@ export function TimelineToolbar({
             <ToolbarIcon src={scissorsIconSrc} />
           </button>
         </Tooltip>
-        <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex items-center" />
+        <div id={CANVAS_SNAP_TOOLBAR_SLOT_ID} className="flex shrink-0 items-center" />
         {STUDIO_KEYFRAMES_ENABLED && (
           <Tooltip
             label={tx(
@@ -304,46 +396,54 @@ export function TimelineToolbar({
         </Tooltip>
       </div>
 
-      <div className="flex shrink-0 items-center gap-2">
-        <Tooltip label={tx("Zoom timeline out")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Zoom timeline out")}
-            onClick={() => {
+      <div className="hf-timeline-toolbar-view flex shrink-0 items-center gap-2">
+        <ToolbarGroup
+          collapsed={layout !== "full"}
+          label={tx("Timeline zoom")}
+          icon={ZoomIn}
+          toolbarWidth={toolbarWidth}
+          value={`${timelineZoomPercent}%`}
+        >
+          <Tooltip label={tx("Zoom timeline out")}>
+            <button
+              type="button"
+              className={iconButton}
+              aria-label={tx("Zoom timeline out")}
+              onClick={() => {
+                setZoomMode("manual");
+                setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
+              }}
+            >
+              <ToolbarIcon src={zoomOutIconSrc} />
+            </button>
+          </Tooltip>
+          <input
+            type="range"
+            min="0"
+            max="100"
+            value={timelineZoomPercentToSlider(timelineZoomPercent)}
+            title={`${timelineZoomPercent}%`}
+            aria-label={tx("Timeline zoom")}
+            onChange={(event) => {
               setZoomMode("manual");
-              setManualZoomPercent(getNextTimelineZoomPercent("out", zoomMode, manualZoomPercent));
+              setManualZoomPercent(timelineSliderToZoomPercent(Number(event.target.value)));
             }}
-          >
-            <ToolbarIcon src={zoomOutIconSrc} />
-          </button>
-        </Tooltip>
-        <input
-          type="range"
-          min="0"
-          max="100"
-          value={timelineZoomPercentToSlider(timelineZoomPercent)}
-          title={`${timelineZoomPercent}%`}
-          aria-label={tx("Timeline zoom")}
-          onChange={(event) => {
-            setZoomMode("manual");
-            setManualZoomPercent(timelineSliderToZoomPercent(Number(event.target.value)));
-          }}
-          className="w-[90px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-px [&::-webkit-slider-runnable-track]:bg-[#b8bab7] [&::-webkit-slider-thumb]:-mt-[3.5px] [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#858a94]"
-        />
-        <Tooltip label={tx("Zoom timeline in")}>
-          <button
-            type="button"
-            className={iconButton}
-            aria-label={tx("Zoom timeline in")}
-            onClick={() => {
-              setZoomMode("manual");
-              setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
-            }}
-          >
-            <ToolbarIcon src={zoomInIconSrc} />
-          </button>
-        </Tooltip>
+            className="w-[90px] cursor-pointer appearance-none bg-transparent [&::-webkit-slider-runnable-track]:h-px [&::-webkit-slider-runnable-track]:bg-[#b8bab7] [&::-webkit-slider-thumb]:-mt-[3.5px] [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#858a94]"
+          />
+          <Tooltip label={tx("Zoom timeline in")}>
+            <button
+              type="button"
+              className={iconButton}
+              aria-label={tx("Zoom timeline in")}
+              onClick={() => {
+                setZoomMode("manual");
+                setManualZoomPercent(getNextTimelineZoomPercent("in", zoomMode, manualZoomPercent));
+              }}
+            >
+              <ToolbarIcon src={zoomInIconSrc} />
+            </button>
+          </Tooltip>
+        </ToolbarGroup>
         <Tooltip label={tx("Reset video to fit")}>
           <button
             type="button"
@@ -355,28 +455,35 @@ export function TimelineToolbar({
             <ToolbarIcon src={fitIconSrc} />
           </button>
         </Tooltip>
-        <Tooltip label={tx(capturing ? "Capturing current frame" : "Capture current frame")}>
-          <a
-            href={captureFrameHref}
-            download={captureFrameFilename}
-            onClick={handleCaptureFrameClick}
-            className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait bg-[#f2f2f0]" : ""}`}
-            aria-label={tx(capturing ? "Capturing current frame" : "Capture current frame")}
-            aria-disabled={capturing}
-            aria-busy={capturing}
-          >
-            {capturing ? (
-              <span
-                className="size-4 animate-spin rounded-full border-[1.5px] border-[#858a94]/30 border-t-[#858a94] motion-reduce:animate-none"
-                aria-hidden="true"
-              />
-            ) : (
-              <ToolbarIcon src={cameraIconSrc} />
-            )}
-          </a>
-        </Tooltip>
-        <div id={CANVAS_GRID_TOOLBAR_SLOT_ID} className="flex items-center" />
-        <div id={SHORTCUTS_TOOLBAR_SLOT_ID} className="flex items-center" />
+        <ToolbarGroup
+          collapsed={layout === "narrow"}
+          label={tx("More tools")}
+          icon={Ellipsis}
+          toolbarWidth={toolbarWidth}
+        >
+          <Tooltip label={tx(capturing ? "Capturing current frame" : "Capture current frame")}>
+            <a
+              href={captureFrameHref}
+              download={captureFrameFilename}
+              onClick={handleCaptureFrameClick}
+              className={`${iconButton} ${capturing ? "pointer-events-none cursor-wait bg-[#f2f2f0]" : ""}`}
+              aria-label={tx(capturing ? "Capturing current frame" : "Capture current frame")}
+              aria-disabled={capturing}
+              aria-busy={capturing}
+            >
+              {capturing ? (
+                <span
+                  className="size-4 animate-spin rounded-full border-[1.5px] border-[#858a94]/30 border-t-[#858a94] motion-reduce:animate-none"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ToolbarIcon src={cameraIconSrc} />
+              )}
+            </a>
+          </Tooltip>
+          <div id={CANVAS_GRID_TOOLBAR_SLOT_ID} className="flex items-center" />
+          <div id={SHORTCUTS_TOOLBAR_SLOT_ID} className="flex items-center" />
+        </ToolbarGroup>
       </div>
     </div>
   );

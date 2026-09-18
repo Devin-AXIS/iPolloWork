@@ -1,3 +1,5 @@
+import type { VideoJob } from "./video-generation.js";
+
 /**
  * Shared wire contract for workspace records.
  *
@@ -38,7 +40,7 @@ export type SessionArtifactPage = {
   videoJobs?: Array<{
     id: string;
     model: string;
-    status: "submitting" | "running" | "saving" | "succeeded" | "failed" | "uncertain" | "save_failed";
+    status: VideoJob["status"];
     updatedAt: number;
   }>;
 };

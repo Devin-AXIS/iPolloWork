@@ -142,7 +142,8 @@ describe("template brief", () => {
       briefPath: "design/ses_b/brief.json",
     });
 
-    expect(video).toContain("Decide whether narration materially helps");
+    expect(video).toContain("Follow the Video voiceover contract and saved voiceover.json settings");
+    expect(video).not.toContain("Decide whether narration materially helps");
     expect(video).toContain("content-led storyboard");
     expect(video).toContain("add, remove, reorder, or retime scenes");
     expect(video).toContain("If brief.style is empty, preserve the template theme");

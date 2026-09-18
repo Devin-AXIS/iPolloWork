@@ -84,9 +84,99 @@ export async function getVideoJob(config: ServerConfig, id: string, workspaceId:
 }
 
 export async function updateVideoJob(config: ServerConfig, job: VideoJob, patch: Partial<VideoJob>) {
-  const next = { ...job, ...patch, updatedAt: Date.now() };
   const db = await openDb(config);
-  try { put(db, next); return next; } finally { db.close(); }
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ?", job.id)[0];
+    if (!current) throw new ApiError(404, "video_job_not_found", "视频任务不存在。");
+    // A worker may finish after the user stops a task. Its stale snapshot must
+    // never restart polling or replace the stopped state.
+    const next = ["stopped", "paused"].includes(current.status) ? current : { ...job, ...patch, pauseRequested: patch.pauseRequested ?? current.pauseRequested, updatedAt: Date.now() };
+    if (next !== current) put(db, next);
+    db.exec("COMMIT");
+    return next;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
+export async function requestVideoJobPause(config: ServerConfig, id: string, workspaceId: string, sessionId: string) {
+  const db = await openDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ? AND workspace_id = ? AND session_id = ?", id, workspaceId, sessionId)[0];
+    if (!current) throw new ApiError(404, "video_job_not_found", "当前会话中没有这个视频任务。");
+    if (current.status !== "running" || !current.avatarSequence) throw new ApiError(409, "video_job_not_pausable", "当前任务不能暂停，请刷新状态。");
+    const next = current.pauseRequested ? current : { ...current, pauseRequested: true, updatedAt: Date.now(), message: "将在当前片段完成后暂停。" };
+    if (next !== current) put(db, next);
+    db.exec("COMMIT");
+    return next;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
+export async function finishVideoJobPause(config: ServerConfig, id: string) {
+  const db = await openDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ?", id)[0];
+    if (!current) throw new ApiError(404, "video_job_not_found", "视频任务不存在。");
+    const next: VideoJob = current.status === "running" && current.pauseRequested
+      ? { ...current, status: "paused", nextPoll: 0, updatedAt: Date.now(), message: "已暂停。继续生成会保留已完成片段。" }
+      : current;
+    if (next !== current) put(db, next);
+    db.exec("COMMIT");
+    return next;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
+export async function resumeVideoJob(config: ServerConfig, id: string, workspaceId: string, sessionId: string) {
+  const db = await openDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ? AND workspace_id = ? AND session_id = ?", id, workspaceId, sessionId)[0];
+    if (!current) throw new ApiError(404, "video_job_not_found", "当前会话中没有这个视频任务。");
+    if (current.status !== "paused") throw new ApiError(409, "video_job_not_paused", "任务未暂停，请刷新状态。");
+    const next: VideoJob = { ...current, status: "running", pauseRequested: false, nextPoll: 0, updatedAt: Date.now(), message: "继续生成未完成片段。" };
+    put(db, next);
+    db.exec("COMMIT");
+    return next;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
+export async function stopVideoJob(config: ServerConfig, id: string, workspaceId: string, sessionId: string) {
+  const db = await openDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ? AND workspace_id = ? AND session_id = ?", id, workspaceId, sessionId)[0];
+    if (!current) throw new ApiError(404, "video_job_not_found", "当前会话中没有这个视频任务。");
+    if (!["submitting", "running", "saving", "paused", "uncertain", "stopped"].includes(current.status)) {
+      throw new ApiError(409, "video_job_not_active", "任务已结束，无需停止。");
+    }
+    const stopped: VideoJob = current.status === "stopped" ? current : {
+      ...current, status: "stopped", nextPoll: 0, updatedAt: Date.now(),
+      message: "已停止后续生成。正在请求取消已提交的片段；服务商可能仍会计费。",
+    };
+    if (stopped !== current) put(db, stopped);
+    db.exec("COMMIT");
+    return { previous: current, job: stopped, changed: stopped !== current };
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
+}
+
+export async function updateStoppedVideoJobMessage(config: ServerConfig, id: string, message: string) {
+  const db = await openDb(config);
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    const current = rows(db, "SELECT data FROM video_jobs WHERE id = ?", id)[0];
+    if (!current || current.status !== "stopped") throw new ApiError(409, "video_job_not_stopped", "任务状态已变化，请刷新。");
+    const next = { ...current, message, updatedAt: Date.now() };
+    put(db, next);
+    db.exec("COMMIT");
+    return next;
+  } catch (error) { db.exec("ROLLBACK"); throw error; }
+  finally { db.close(); }
 }
 
 export async function claimVideoJobs(config: ServerConfig, now = Date.now()) {

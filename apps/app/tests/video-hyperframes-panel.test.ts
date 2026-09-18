@@ -275,7 +275,7 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
     expect(voiceSource).toContain("width={embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain('top-[90px]');
-    expect(voiceSource).toContain('top-[90px]');
+    expect(voiceSource).toContain('top-[148px]');
     expect(panelSource).not.toContain('top-[82px]');
     expect(voiceSource).not.toContain('top-[82px]');
     expect(voiceSource).not.toContain("flex w-[400px]");
@@ -465,7 +465,7 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
-    const initialLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    let cancelled = false;");
+    const initialLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    let cancelled = false;\n    setLoading(true);");
     const deferredLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    if (activeTab !== \"mine\"");
     const initialLoad = voicePanelSource.slice(initialLoadStart, deferredLoadStart);
 
@@ -474,7 +474,7 @@ describe("HyperFrames Video Studio", () => {
     expect(initialLoad).not.toContain('callMedia("voice_list"');
     expect(initialLoad).not.toContain('callStorage("status"');
     expect(voicePanelSource).toContain('if (activeTab !== "mine"');
-    expect(voicePanelSource).toContain("Promise.allSettled([");
+    expect(voicePanelSource).toContain("await loadCustomVoices();");
   });
 
   test("allows voice cloning without requiring separately configured object storage", () => {
@@ -483,7 +483,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(voicePanelSource).toContain('t("video.voice.temp_storage_help")');
+    expect(voicePanelSource).not.toContain('callStorage("status"');
     expect(voicePanelSource).toContain("disabled={cloning}");
     expect(voicePanelSource).not.toContain("disabled={!storageReady || cloning}");
     expect(voicePanelSource).not.toContain("!mediaReady || !storageReady");

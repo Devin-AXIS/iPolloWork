@@ -1,15 +1,15 @@
 /**
  * CapCut-style asset preview overlay rendered inside PreviewPane.
  *
- * Shown when the user clicks an asset card that has NOT yet been added to the
- * timeline. Displays the media (image / video / audio) as a compact floating
+ * Shown when the user clicks any image/video asset card, whether or not it is
+ * already on the timeline. Displays the media as a compact floating
  * card over the canvas — the canvas stays visible behind a barely-tinted
  * click-catcher — without modifying the composition (no undo entry, no file
  * mutation).
  *
  * Dismiss: X button, Escape key, click outside the card, or any playhead
  * activity (starting playback / seeking) — the canvas refocuses.
- * Switching to another not-added asset replaces the current preview.
+ * Switching to another asset replaces the current preview.
  */
 import { useEffect, useCallback } from "react";
 import { VIDEO_EXT, IMAGE_EXT } from "../../utils/mediaTypes";

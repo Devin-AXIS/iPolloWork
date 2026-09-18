@@ -1,5 +1,5 @@
 import { memo, useState, useCallback, useMemo, useRef } from "react";
-import { Plus, FolderSimplePlus } from "@phosphor-icons/react";
+import { Plus, FolderPlus } from "lucide-react";
 import {
   buildTree,
   sortChildren,
@@ -230,14 +230,14 @@ export const FileTree = memo(function FileTree({
               className="p-0.5 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 transition-colors"
               title="New File"
             >
-              <Plus size={12} weight="bold" />
+              <Plus size={12} strokeWidth={2.5} />
             </button>
             <button
               onClick={() => handleNewFolder("")}
               className="p-0.5 rounded hover:bg-neutral-800 text-neutral-600 hover:text-neutral-400 transition-colors"
               title="New Folder"
             >
-              <FolderSimplePlus size={12} weight="duotone" />
+              <FolderPlus size={12} strokeWidth={1.8} />
             </button>
           </div>
         </div>

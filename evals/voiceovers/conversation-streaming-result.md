@@ -26,7 +26,7 @@
 
 13. When an inline preview cannot be matched to a saved output, the preview stays labeled as a preview and the separate saved-file card remains available.
 
-14. If one tool step fails while the assistant continues, the progress area states that one step did not succeed. Raw tool output stays out of the main conversation.
+14. If one tool step fails while the assistant continues, the result area still says it is preparing the result. It does not show a separate failed-step notice or raw tool output in the main conversation.
 
 15. During an automatic retry, the conversation shows a calm retry status and countdown. The transport error remains in collapsed technical details.
 

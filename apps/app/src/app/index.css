@@ -326,6 +326,14 @@ html:lang(zh) .chat-process-heading {
   font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", var(--ipollowork-font-sans);
 }
 
+/* Match the existing macOS Chinese readability correction in settings/chat.
+   PingFang's 400 fallback can render as ExtraLight in Electron; keep captions
+   readable and express inspector hierarchy through size and semantic color. */
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography,
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography :where(p, span, label, button, input, textarea, legend, [role="option"]):not(.font-semibold) {
+  font-weight: 500;
+}
+
 html:lang(zh) .settings-description {
   font-weight: 500;
 }

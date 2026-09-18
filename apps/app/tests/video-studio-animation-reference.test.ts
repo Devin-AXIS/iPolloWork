@@ -41,13 +41,20 @@ describe("Video Studio animation reference handoff", () => {
     expect(surfaceSource).toContain('toast.success(t("new_conversation.animations.added_to_ai"))');
   });
 
-  test("both voice tabs hand the selected voice to the same AI composer flow", () => {
-    expect(voicePanelSource.match(/<VoiceAiButton/g)).toHaveLength(2);
-    expect(voicePanelSource).toContain('new CustomEvent("ipollowork:add-voice-reference"');
-    expect(voicePanelSource).toContain('t("video.voice.ai_action")');
-    expect(surfaceSource).toContain('data-composer-token="voice-reference"');
-    expect(surfaceSource).toContain('const DEFAULT_VOICEOVER_PROMPT = "请用这段话给我视频做配音"');
-    expect(surfaceSource).toContain('toast.success(t("new_conversation.animations.added_to_ai"))');
+  test("the voice picker groups both libraries without changing the generation action", () => {
+    expect(voicePanelSource.match(/<VoiceAiButton/g)).toHaveLength(1);
+    expect(voicePanelSource).toContain('data-testid="voice-selection-trigger"');
+    expect(voicePanelSource.indexOf('data-testid="voice-subtabs"')).toBeGreaterThan(voicePanelSource.indexOf('data-testid="voice-picker"'));
+    expect(voicePanelSource).toContain('setActiveTab(activeVoice.source === "cloned" ? "mine" : "preset")');
+    expect(voicePanelSource).toContain('const selectedVoiceReady = activeVoice?.source === "preset"');
+    expect(voicePanelSource).not.toContain('activeTab === "mine" && canSynthesizeCustomVoice');
+    expect(voicePanelSource).toContain("requestVideoVoiceover({");
+    expect(voicePanelSource).toContain("conversationId,");
+    expect(voicePanelSource).toContain("videoSessionId: sessionId");
+    expect(surfaceSource).toContain("window.addEventListener(VIDEO_VOICEOVER_REQUEST");
+    expect(surfaceSource).toContain("videoProjectEntryPath(request.videoSessionId)");
+    expect(surfaceSource).toContain("Do not create or apply another template.");
+    expect(surfaceSource).toContain("requirements.voiceover=true");
   });
 
   test("localizes the complete voice panel instead of rendering Chinese copy in English", () => {
@@ -59,7 +66,7 @@ describe("Video Studio animation reference handoff", () => {
     expect(voicePanelSource).toContain('t("video.voice.auto_title")');
     expect(englishLocaleSource).toContain('"video.voice.preset_tab": "Preset voices"');
     expect(englishLocaleSource).toContain('"video.voice.my_voices_tab": "My voices"');
-    expect(englishLocaleSource).toContain('"video.voice.ai_action": "Use for selected scene"');
+    expect(englishLocaleSource).toContain('"video.voice.update_action": "Update video voiceover"');
     expect(englishLocaleSource).toContain('"video.voice.preset_name.longanyang": "Long Anyang"');
     expect(chineseLocaleSource).toContain('"video.voice.preset_tab": "官方音色"');
     expect(chineseLocaleSource).toContain('"video.voice.my_voices_tab": "我的声音"');

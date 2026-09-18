@@ -257,7 +257,6 @@
         "@hyperframes/sdk": "workspace:*",
         "@hyperframes/studio-server": "workspace:*",
         "@ipollowork/types": "file:../../../../packages/types",
-        "@phosphor-icons/react": "^2.1.10",
         "bpm-detective": "^2.0.5",
         "dompurify": "^3.4.13",
         "gsap": "^3.13.0",
@@ -795,7 +794,6 @@
 
     "@oxlint/binding-win32-x64-msvc": ["@oxlint/binding-win32-x64-msvc@1.64.0", "https://registry.npmmirror.com/@oxlint/binding-win32-x64-msvc/-/binding-win32-x64-msvc-1.64.0.tgz", { "os": "win32", "cpu": "x64" }, "sha512-9CBR+LO0JVST87fNTzzNxS5I29jIUO5gxT9i9+M3SDHHALElj9sY1Prf12tad3vIRC6OD7Ehtvvh+sn13vSwHw=="],
 
-    "@phosphor-icons/react": ["@phosphor-icons/react@2.1.10", "https://registry.npmmirror.com/@phosphor-icons/react/-/react-2.1.10.tgz", { "peerDependencies": { "react": ">= 16.8", "react-dom": ">= 16.8" } }, "sha512-vt8Tvq8GLjheAZZYa+YG/pW7HDbov8El/MANW8pOAz4eGxrwhnbfrQZq0Cp4q8zBEu8NIhHdnr+r8thnfRSNYA=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "https://registry.npmmirror.com/@protobufjs/aspromise/-/aspromise-1.1.2.tgz", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

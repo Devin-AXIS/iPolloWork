@@ -423,9 +423,9 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('e.dataTransfer.types.includes("Files")');
     expect(assetsSource).toContain("onImport?.(e.dataTransfer.files)");
     expect(assetsSource).toContain("Drop files to upload");
-    expect(assetsSource).toContain('title={tx("Source selection is not available yet")}');
-    expect(assetsSource).toContain("disabled");
-    expect(assetsSource).toContain("Project 01");
+    expect(assetsSource).not.toContain("Source selection is not available yet");
+    expect(assetsSource).not.toContain("Project 01");
+    expect(assetsSource).toContain('type="search"');
     expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");
     expect(assetsSource).not.toContain("bg-[#2c2d2a] text-white");
     expect(assetsSource).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
@@ -435,7 +435,7 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
     expect(assetsSource).toContain("figmaAssetsImport.svg?url");
     expect(assetsSource).toContain("figmaAssetsSearch.svg?url");
-    expect(assetsSource).toContain("<select");
+    expect(assetsSource).not.toContain("<select");
     expect(assetsSource).toContain('className="flex h-[34px] w-auto flex-none');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");

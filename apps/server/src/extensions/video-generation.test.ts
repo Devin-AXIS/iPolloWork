@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { avatarBackgroundForPrompt, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
+import { avatarBackgroundForPrompt, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
 
 test("avatar defaults to a transparent person unless the motion prompt requests scenery", () => {
   for (const prompt of ["人物自然说话，保持镜头稳定", "不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
@@ -24,7 +24,7 @@ import { PROVIDER_FETCH_SYMBOL } from "../provider-fetch.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
 import { validatePluginPackageManifest } from "../plugin-package-manifest.js";
 import { callVideoGenerationAction, pollVideoJobs, validateVideoSubmission, videoRequest } from "./video-generation.js";
-import { claimVideoJobs, getVideoJob, updateVideoJob } from "./video-jobs.js";
+import { claimVideoJobs, createVideoJob, finishVideoJobPause, getVideoJob, updateVideoJob } from "./video-jobs.js";
 
 const roots: string[] = [];
 const initialCutoutCli = process.env.HYPERFRAMES_CLI_PATH;
@@ -661,6 +661,72 @@ test("avatar context does not use unused files, muted narration or out-of-projec
   expect((await call("avatar-context")).result).toMatchObject({audioCount:0,audioIssue:"配音素材必须位于当前视频工程。"});
 });
 
+test("avatar profiles persist independently, bind one timeline narration clip, and deleting a profile preserves its job", async () => {
+  const { root, call } = await setup();
+  const directory = join(root, "video/session-one");
+  await mkdir(join(directory, "assets"), { recursive: true });
+  await writeFile(join(directory, "assets/person-one.png"), "person one");
+  await writeFile(join(directory, "assets/person-two.png"), "person two");
+  await writeFile(join(directory, "first.wav"), narrationWav(20));
+  await writeFile(join(directory, "second.wav"), narrationWav(21));
+  await writeFile(join(directory, "index.html"), '<main><h1>双人讲解</h1><audio id="vo-first" data-ipw-voiceover="true" data-ipw-scene-id="scene-one" data-ipw-voice="voice-a" src="first.wav" data-start="0" data-duration="20"></audio><audio id="vo-second" data-ipw-voiceover="true" data-ipw-scene-id="scene-two" data-ipw-voice="voice-b" src="second.wav" data-start="20" data-duration="21"></audio></main>');
+  const audio = videoAvatarContextSchema.parse((await call("avatar-context")).result);
+  expect(audio.audioClips).toMatchObject([{ id: "all", duration: 41 }, { label: "scene-one", voiceId: "voice-a", start: 0 }, { label: "scene-two", voiceId: "voice-b", start: 20, duration: 21 }]);
+  const secondClip = audio.audioClips?.[2];
+  if (!secondClip) throw new Error("missing second clip");
+  const first = avatarProfileResultSchema.parse((await call("avatar-profile-save", { name: "数字人 1", imagePath: "video/session-one/assets/person-one.png", imageName: "person-one.png", prompt: "自然讲述", audioClipId: "all" })).result).profile;
+  const second = avatarProfileResultSchema.parse((await call("avatar-profile-save", { name: "数字人 2", imagePath: "video/session-one/assets/person-two.png", imageName: "person-two.png", prompt: "轻声讲述", ratio: "16:9", audioClipId: secondClip.id })).result).profile;
+  const saved = avatarProfilesResultSchema.parse((await call("avatar-profiles")).result).profiles;
+  expect(saved).toHaveLength(2);
+  expect(saved[0]?.id).toBe(first.id);
+  expect(saved[1]?.audioClipId).toBe(secondClip.id);
+  await expect(call("avatar-profile-save", { id: first.id, name: "过期改动", expectedUpdatedAt: first.updatedAt - 1 })).rejects.toThrow("其他窗口修改");
+  const renamed = avatarProfileResultSchema.parse((await call("avatar-profile-save", { id: first.id, name: "主持人", expectedUpdatedAt: first.updatedAt })).result).profile;
+  expect(renamed.name).toBe("主持人");
+  expect(renamed.imagePath).toBe(first.imagePath);
+  expect(avatarProfilesResultSchema.parse((await call("avatar-profiles")).result).profiles[1]?.name).toBe("数字人 2");
+  let providerCalls = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { providerCalls += 1; throw new Error("must not bill"); });
+  const generated = videoSubmitResultSchema.parse((await call("submit", submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", avatarProfileId: second.id, avatarProfileUpdatedAt: second.updatedAt, avatarClipId: secondClip.id }))).result).job;
+  expect(generated).toMatchObject({ avatarProfileId: second.id, avatarProfileUpdatedAt: second.updatedAt, avatarAudioFingerprint: secondClip.fingerprint, avatarSequence: { duration: 21, ratio: "16:9" } });
+  expect(providerCalls).toBe(0);
+  await writeFile(join(directory, "index.html"), '<main><h1>双人讲解</h1><audio id="vo-first" data-ipw-voiceover="true" data-ipw-scene-id="scene-one" data-ipw-voice="voice-a" src="first.wav" data-start="0" data-duration="20"></audio><audio id="vo-second" data-ipw-voiceover="true" data-ipw-scene-id="scene-two" data-ipw-voice="voice-b" src="second.wav" data-start="20" data-duration="20"></audio></main>');
+  const updatedClip = videoAvatarContextSchema.parse((await call("avatar-context")).result).audioClips?.[2];
+  expect(updatedClip?.id).toBe(secondClip.id);
+  expect(updatedClip?.fingerprint).not.toBe(generated.avatarAudioFingerprint);
+  expect((await call("avatar-profile-delete", { id: second.id })).result).toEqual({ deleted: true });
+  expect(avatarProfilesResultSchema.parse((await call("avatar-profiles")).result).profiles.map(profile => profile.id)).toEqual([first.id]);
+  expect((await call("jobs")).result).toMatchObject({ jobs: [{ id: generated.id, avatarProfileId: second.id }] });
+});
+
+test("avatar profile rejects missing narration, unsafe images and stale clip binding before any provider call", async () => {
+  const { root, call } = await setup();
+  await mkdir(join(root, "video/session-one/assets"), { recursive: true });
+  await writeFile(join(root, "video/session-one/assets/person.png"), "picture");
+  await expect(call("avatar-profile-save", { name: "Outside", imagePath: "../person.png" })).rejects.toThrow();
+  await expect(call("avatar-profile-save", { name: "Missing", imagePath: "video/session-one/assets/missing.png" })).rejects.toThrow();
+  const profile = avatarProfileResultSchema.parse((await call("avatar-profile-save", { name: "人物", imagePath: "video/session-one/assets/person.png", prompt: "自然交流", audioClipId: "missing-clip" })).result).profile;
+  let providerCalls = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { providerCalls += 1; throw new Error("must not bill"); });
+  await expect(call("submit", submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", avatarProfileId: profile.id }))).rejects.toThrow("配音");
+  await writeFile(join(root, "video/session-one/voice.wav"), narrationWav(20));
+  await writeFile(join(root, "video/session-one/index.html"), '<audio id="vo" data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="20"></audio>');
+  await expect(call("submit", submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", avatarProfileId: profile.id }))).rejects.toThrow("重新选择配音片段");
+  expect(providerCalls).toBe(0);
+  expect((await call("jobs")).result).toMatchObject({ jobs: [] });
+});
+
+test("simultaneous avatar creation keeps both drafts in a new video session", async () => {
+  const { root, call } = await setup();
+  const [first, second] = await Promise.all([
+    call("avatar-profile-save", { name: "人物 A" }),
+    call("avatar-profile-save", { name: "人物 B" }),
+  ]);
+  expect(avatarProfileResultSchema.parse(first.result).profile.id).not.toBe(avatarProfileResultSchema.parse(second.result).profile.id);
+  expect(avatarProfilesResultSchema.parse((await call("avatar-profiles")).result).profiles.map(profile => profile.name).sort()).toEqual(["人物 A", "人物 B"]);
+  expect(JSON.parse(await readFile(join(root, "video/session-one/avatar-profiles.json"), "utf8"))).toHaveProperty("profiles");
+});
+
 test("long avatar persists uncertain submissions and resumes the exact segment without another billable POST", async () => {
   const { root, config, call } = await setup();
   await mkdir(join(root, "video/session-one"), { recursive: true });
@@ -729,6 +795,124 @@ test("long avatar retries only a confirmed failed segment and keeps completed ou
   expect(split.segments[2].end).toBe(failed.end);
   expect(split.segments[1].end - split.segments[2].start).toBeCloseTo(1);
   expect(split.segments.slice(1).every(item => item.attempt === 2 && item.status === "pending" && item.end - item.start < 9)).toBe(true);
+});
+
+test("stopping an avatar cancels its active RunningHub segment and prevents stale worker updates", async () => {
+  const { config, call } = await setup();
+  const id = randomUUID();
+  const { job } = await createVideoJob(config, {
+    id, workspaceId: "workspace", sessionId: context.sessionId, model: "minimax-h3-avatar", operation: "reference",
+    prompt: "自然交流", fingerprint: "stop-proof", upstreamId: "", workflowId: "2099368776771919873", status: "running",
+    path: "", message: "第 2/3 段正在生成", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
+    avatarSequence: { duration: 36, audioPath: "voice.wav", imagePath: "person.png", ratio: "9:16", segments: [
+      { start: 0, end: 12, status: "succeeded", upstreamId: "first-task", path: "first.mp4", attempt: 0 },
+      { start: 12, end: 24, status: "running", upstreamId: "active-task", path: "", attempt: 0 },
+      { start: 24, end: 36, status: "pending", upstreamId: "", path: "", attempt: 0 },
+    ] },
+  });
+  const cancels: string[] = [];
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init?: RequestInit) => {
+    expect(String(url)).toEndWith("/task/openapi/cancel");
+    const body = JSON.parse(String(init?.body));
+    expect(body.apiKey).toBe("test-rh-secret");
+    cancels.push(body.taskId);
+    return Response.json({ code: 0, msg: "success", data: null });
+  });
+  await expect(call("stop", { id }, { ...context, sessionId: "other-session" })).rejects.toThrow();
+  const stopped = videoSubmitResultSchema.parse((await call("stop", { id })).result).job;
+  expect(stopped.status).toBe("stopped");
+  expect(stopped.avatarSequence?.segments[0].path).toBe("first.mp4");
+  expect(cancels).toEqual(["active-task"]);
+  expect((await claimVideoJobs(config)).some(item => item.id === id)).toBe(false);
+  expect((await updateVideoJob(config, job, { status: "running", nextPoll: 0 })).status).toBe("stopped");
+  expect((await getVideoJob(config, id, "workspace", context.sessionId)).status).toBe("stopped");
+  await call("stop", { id });
+  expect(cancels).toEqual(["active-task"]);
+});
+
+test("avatar pause waits for a segment boundary and resume keeps completed segments", async () => {
+  const { config, call } = await setup();
+  const id = randomUUID();
+  const { job } = await createVideoJob(config, {
+    id, workspaceId: "workspace", sessionId: context.sessionId, model: "minimax-h3-avatar", operation: "reference",
+    prompt: "自然交流", fingerprint: "pause-proof", upstreamId: "", status: "running", path: "", message: "生成中",
+    createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
+    avatarSequence: { duration: 24, audioPath: "voice.wav", imagePath: "person.png", ratio: "9:16", segments: [
+      { start: 0, end: 12, status: "running", upstreamId: "active-task", path: "", attempt: 0 },
+      { start: 12, end: 24, status: "pending", upstreamId: "", path: "", attempt: 0 },
+    ] },
+  });
+  await expect(call("pause", { id }, { ...context, sessionId: "other-session" })).rejects.toThrow();
+  const requested = videoSubmitResultSchema.parse((await call("pause", { id })).result).job;
+  expect(requested.status).toBe("running");
+  expect(requested.pauseRequested).toBe(true);
+  const staleWorkerUpdate = await updateVideoJob(config, job, { message: "当前片段正在生成" });
+  expect(staleWorkerUpdate.pauseRequested).toBe(true);
+  if (!staleWorkerUpdate.avatarSequence) throw new Error("missing sequence");
+  const segments = structuredClone(staleWorkerUpdate.avatarSequence.segments);
+  segments[0] = { ...segments[0], status: "succeeded", path: "first.mp4", completedAt: Date.now() };
+  await updateVideoJob(config, staleWorkerUpdate, { avatarSequence: { ...staleWorkerUpdate.avatarSequence, segments } });
+  const paused = await finishVideoJobPause(config, id);
+  expect(paused.status).toBe("paused");
+  expect((await claimVideoJobs(config)).some(item => item.id === id)).toBe(false);
+  expect((await call("resume", { id })).result).toMatchObject({ job: { status: "running", pauseRequested: false } });
+  const resumed = await getVideoJob(config, id, "workspace", context.sessionId);
+  expect(resumed.avatarSequence?.segments.map(segment => segment.status)).toEqual(["succeeded", "pending"]);
+  expect((await claimVideoJobs(config)).some(item => item.id === id)).toBe(true);
+  await call("pause", { id });
+  await updateVideoJob(config, await getVideoJob(config, id, "workspace", context.sessionId), { nextPoll: 0 });
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { throw new Error("A paused task must not submit the next segment"); });
+  await pollVideoJobs(config, auth);
+  expect((await getVideoJob(config, id, "workspace", context.sessionId)).status).toBe("paused");
+});
+
+test("a failed provider cancellation still stops future avatar segments", async () => {
+  const { config, call } = await setup();
+  const id = randomUUID();
+  await createVideoJob(config, {
+    id, workspaceId: "workspace", sessionId: context.sessionId, model: "minimax-h3-avatar", operation: "reference",
+    prompt: "自然交流", fingerprint: "stop-failure", upstreamId: "current-task", status: "running", path: "", message: "生成中",
+    createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
+  });
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({ code: 805, msg: "TASK_STATUS_ERROR", data: null }));
+  const stopped = videoSubmitResultSchema.parse((await call("stop", { id })).result).job;
+  expect(stopped.status).toBe("stopped");
+  expect(stopped.message).toContain("取消请求未确认");
+  expect((await claimVideoJobs(config)).some(item => item.id === id)).toBe(false);
+});
+
+test("stopping an in-flight avatar poll aborts its local request", async () => {
+  const { config, call } = await setup();
+  const id = randomUUID();
+  await createVideoJob(config, {
+    id, workspaceId: "workspace", sessionId: context.sessionId, model: "minimax-h3-avatar", operation: "reference",
+    prompt: "自然交流", fingerprint: "stop-in-flight", upstreamId: "", workflowId: "2099368776771919873",
+    status: "running", path: "", message: "生成中", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
+    avatarSequence: { duration: 20, audioPath: "voice.wav", imagePath: "person.png", ratio: "9:16", segments: [
+      { start: 0, end: 10, status: "running", upstreamId: "active-task", path: "", attempt: 0 },
+      { start: 10, end: 20, status: "pending", upstreamId: "", path: "", attempt: 0 },
+    ] },
+  });
+  let enteredPoll = () => {};
+  const pollingStarted = new Promise<void>(resolve => { enteredPoll = resolve; });
+  let aborted = false;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init?: RequestInit) => {
+    if (String(url).endsWith("/task/openapi/cancel")) return Response.json({ code: 0, msg: "success", data: null });
+    if (String(url).endsWith("/task/openapi/status")) {
+      enteredPoll();
+      return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => {
+        aborted = true;
+        reject(new DOMException("Aborted", "AbortError"));
+      }, { once: true }));
+    }
+    throw new Error("No new provider task should be submitted after stop");
+  });
+  const polling = pollVideoJobs(config, auth);
+  await pollingStarted;
+  await call("stop", { id });
+  await polling;
+  expect(aborted).toBe(true);
+  expect((await getVideoJob(config, id, "workspace", context.sessionId)).status).toBe("stopped");
 });
 
 test("local avatar preparation failure resumes without a new attempt and never auto-retries an uncertain submission", async () => {
