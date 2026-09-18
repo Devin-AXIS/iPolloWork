@@ -105,7 +105,7 @@ export function Tooltip({ label, children, delay = 400, side = "top", maxWidth }
               {label}
             </div>
           </div>,
-          document.body,
+          triggerRef.current?.closest("[popover]") ?? document.body,
         )}
     </>
   );

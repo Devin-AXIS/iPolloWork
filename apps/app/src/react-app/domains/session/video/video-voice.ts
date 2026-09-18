@@ -268,7 +268,87 @@ export function validateVoiceSampleFile(
   return null;
 }
 
+/** Encode a bounded, mono PCM recording in the WAV format accepted by voice cloning. */
+export function encodeVoiceSampleWav(samples: Float32Array, sampleRate: number) {
+  if (!Number.isInteger(sampleRate) || sampleRate < 8000 || sampleRate > 48000) throw new Error("Invalid recording sample rate");
+  const count = Math.min(samples.length, sampleRate * 60);
+  const buffer = new ArrayBuffer(44 + count * 2);
+  const view = new DataView(buffer);
+  const text = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index++) view.setUint8(offset + index, value.charCodeAt(index));
+  };
+  text(0, "RIFF");
+  view.setUint32(4, 36 + count * 2, true);
+  text(8, "WAVE");
+  text(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  text(36, "data");
+  view.setUint32(40, count * 2, true);
+  for (let index = 0; index < count; index++) {
+    const sample = Number.isFinite(samples[index]) ? Math.max(-1, Math.min(1, samples[index])) : 0;
+    view.setInt16(44 + index * 2, sample * (sample < 0 ? 32768 : 32767), true);
+  }
+  return buffer;
+}
+
 export function voiceSampleWorkspacePath(sessionId: string, fileName: string, timestamp = Date.now()) {
   const extension = fileName.split(".").pop()?.toLowerCase() || "wav";
   return `${videoProjectDirectory(sessionId)}/.voice-samples/${timestamp}-${extension}.${extension}`;
+}
+
+/** Read what is actually attached to the composition, never infer it from a draft preference. */
+export function appliedVideoVoices(content: string) {
+  const document = new DOMParser().parseFromString(content, "text/html");
+  return Array.from(document.getElementsByTagName("audio")).filter((audio) =>
+    audio.getAttribute("src") && (
+      audio.getAttribute("data-ipw-voiceover") === "true"
+      || /^(?:voiceover|vo-|narration-)/.test(audio.getAttribute("id") ?? "")
+    ),
+  ).map((audio) => ({
+    voiceId: audio.getAttribute("data-ipw-voice"),
+    model: audio.getAttribute("data-ipw-voice-model"),
+    rate: audio.getAttribute("data-ipw-voice-rate"),
+    pitch: audio.getAttribute("data-ipw-voice-pitch"),
+    volume: audio.getAttribute("data-ipw-voice-volume"),
+    instruction: audio.getAttribute("data-ipw-voice-instruction"),
+  }));
+}
+
+export type AppliedVideoVoice = ReturnType<typeof appliedVideoVoices>[number];
+
+export function videoVoiceNeedsUpdate(settings: VideoVoiceoverSettings, voices: readonly AppliedVideoVoice[]) {
+  return voices.length === 0 || voices.some((voice) =>
+    !voice.voiceId || voice.model !== settings.model
+    || (settings.selectionMode === "manual" && voice.voiceId !== settings.voiceId)
+    || voice.rate === null || Number(voice.rate) !== settings.rate
+    || voice.pitch === null || Number(voice.pitch) !== settings.pitch
+    || voice.volume === null || Number(voice.volume) !== settings.volume
+    || voice.instruction !== settings.instruction,
+  );
+}
+
+export const VIDEO_VOICEOVER_REQUEST = "ipollowork:generate-video-voiceover";
+export type VideoVoiceoverRequest = {
+  conversationId: string;
+  videoSessionId: string;
+  settings: VideoVoiceoverSettings;
+  updating: boolean;
+  resolve: (dispatched: boolean) => void;
+  reject: (error: Error) => void;
+};
+
+export function requestVideoVoiceover(input: Omit<VideoVoiceoverRequest, "resolve" | "reject">) {
+  return new Promise<boolean>((resolve, reject) => {
+    const event = new CustomEvent<VideoVoiceoverRequest>(VIDEO_VOICEOVER_REQUEST, {
+      cancelable: true,
+      detail: { ...input, resolve, reject },
+    });
+    if (window.dispatchEvent(event)) reject(new Error("The video conversation is not available."));
+  });
 }

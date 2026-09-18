@@ -138,6 +138,16 @@ export const ShortcutsPanel = memo(function ShortcutsPanel({
     };
   }, [showShortcuts]);
 
+  useEffect(() => {
+    const group = toolbarSlot?.closest(".hf-timeline-toolbar-group");
+    if (!group) return;
+    const closeWithGroup = () => {
+      if (!group.matches(":popover-open")) setShowShortcuts(false);
+    };
+    group.addEventListener("toggle", closeWithGroup);
+    return () => group.removeEventListener("toggle", closeWithGroup);
+  }, [toolbarSlot]);
+
   const commitJumpFrame = useCallback(() => {
     if (disabled) return;
     const frame = Number.parseInt(jumpFrame, 10);

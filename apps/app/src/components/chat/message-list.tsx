@@ -19,7 +19,6 @@ import {
 import {
   DynamicToolUIPart,
   isFileUIPart,
-  isToolUIPart,
   ToolUIPart,
   type FileUIPart,
   type UIMessage,
@@ -1197,7 +1196,8 @@ const RetryMessage = React.memo(({ status }: RetryMessageProps) => {
 RetryMessage.displayName = "RetryMessage"
 
 export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/workspace").SessionArtifactPage["videoJobs"] }) {
-  const visible = (jobs ?? []).filter(job => job.status !== "succeeded");
+  // Avatar tasks have their own persistent progress dialog and compact history in Video Studio.
+  const visible = (jobs ?? []).filter(job => job.model !== "minimax-h3-avatar" && job.status !== "succeeded" && job.status !== "stopped" && job.status !== "paused");
   const failedJobs = visible.filter(job => job.status === "failed" || job.status === "save_failed");
   const renderJob = (job: (typeof visible)[number]) => {
     const failed = job.status === "failed" || job.status === "save_failed";
@@ -1382,7 +1382,6 @@ function MessageGroup({
     : null
   const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
   const sessionErrorItem = items.find((item) => isSessionErrorMessage(item.message))
-  const hasToolFailure = isLiveGroup && items.some(({ message }) => message.parts.some((part) => isToolUIPart(part) && part.state === "output-error"))
 
   const renderProcessItem = (
     data: (typeof itemRenderData)[number],
@@ -1428,7 +1427,16 @@ function MessageGroup({
           </AssistantProcessDisclosure>
         </div>
       ) : null}
-      {hasToolFailure ? <p className={cn(ASSISTANT_COLUMN_CLASS_NAME, "text-xs text-muted-foreground")} role="status">{t("session.step_failed_continuing")}</p> : null}
+      {isLiveGroup && !resultData && !hasSessionError ? (
+        <p
+          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "flex items-center gap-2 text-sm text-muted-foreground")}
+          data-testid="assistant-result-pending"
+          role="status"
+        >
+          <span className="size-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden="true" />
+          {t("session.result_pending")}
+        </p>
+      ) : null}
       {resultData ? (
         <div data-assistant-result="true">
           <MessageComponent

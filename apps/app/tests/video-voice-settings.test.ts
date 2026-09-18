@@ -1,11 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { DOMParser } from "@xmldom/xmldom";
+Object.assign(globalThis, { DOMParser });
 
 import { t } from "../src/i18n";
 import zh from "../src/i18n/locales/zh";
 import en from "../src/i18n/locales/en";
 
 import {
+  encodeVoiceSampleWav,
+  appliedVideoVoices,
+  videoVoiceNeedsUpdate,
   DEFAULT_COSYVOICE_MODEL,
   defaultVideoVoiceoverSettings,
   BAILIAN_PRESET_VOICES,
@@ -25,6 +30,23 @@ import {
 } from "../src/react-app/domains/session/video/video-voice";
 
 describe("video voiceover settings", () => {
+  test("reads the applied voice separately from pending preferences and ignores background music", () => {
+    const html = `<html><body><audio src="bgm.mp3"></audio><audio src="voice.mp3" data-ipw-voiceover="true" data-ipw-voice="longyingmu_v3" data-ipw-voice-model="cosyvoice-v3-flash" data-ipw-voice-rate="1" data-ipw-voice-pitch="1" data-ipw-voice-volume="50" data-ipw-voice-instruction=""></audio></body></html>`;
+    const voices = appliedVideoVoices(html);
+    expect(voices).toHaveLength(1);
+    expect(voices[0]?.voiceId).toBe("longyingmu_v3");
+    const automatic = defaultVideoVoiceoverSettings();
+    expect(videoVoiceNeedsUpdate(automatic, voices)).toBe(false);
+    expect(videoVoiceNeedsUpdate({ ...automatic, selectionMode: "manual" }, voices)).toBe(true);
+    expect(videoVoiceNeedsUpdate({ ...automatic, rate: 1.2 }, voices)).toBe(true);
+    expect(videoVoiceNeedsUpdate({ ...automatic, volume: 0 }, voices)).toBe(true);
+    expect(videoVoiceNeedsUpdate({ ...automatic, selectionMode: "manual", voiceId: "longyingmu_v3" }, voices)).toBe(false);
+    expect(videoVoiceNeedsUpdate(automatic, [])).toBe(true);
+    const legacy = appliedVideoVoices('<html><body><audio id="voiceover-old" src="old.mp3"></audio></body></html>');
+    expect(legacy[0]?.voiceId).toBeFalsy();
+    expect(videoVoiceNeedsUpdate(automatic, legacy)).toBe(true);
+  });
+
   test("defaults to voiceover only when the sound provider is configured", () => {
     const available = { ok: true, result: { output: { configured: true } } };
     const unavailable = { ok: true, result: { output: { configured: false } } };
@@ -126,5 +148,30 @@ describe("video voiceover settings", () => {
     );
     expect(panelSource).toContain('t("video.voice.configure_title")');
     expect(panelSource).toContain('t("video.voice.configure_description")');
+  });
+});
+
+
+describe("recorded voice sample encoding", () => {
+  test("writes playable mono PCM WAV headers and clips amplitudes", () => {
+    const data = encodeVoiceSampleWav(new Float32Array([-2, -0.5, 0, 0.5, 2, NaN]), 24000);
+    const view = new DataView(data);
+    expect(new TextDecoder().decode(data.slice(0, 4))).toBe("RIFF");
+    expect(new TextDecoder().decode(data.slice(8, 12))).toBe("WAVE");
+    expect(view.getUint32(4, true)).toBe(data.byteLength - 8);
+    expect(view.getUint16(22, true)).toBe(1);
+    expect(view.getUint32(24, true)).toBe(24000);
+    expect(view.getUint32(28, true)).toBe(48000);
+    expect(view.getUint16(34, true)).toBe(16);
+    expect(view.getUint32(40, true)).toBe(12);
+    expect(Array.from({ length: 6 }, (_, index) => view.getInt16(44 + index * 2, true))).toEqual([-32768, -16384, 0, 16383, 32767, 0]);
+  });
+
+  test("bounds recordings at 60 seconds below the provider's size limit", () => {
+    const data = encodeVoiceSampleWav(new Float32Array(24000 * 61), 24000);
+    expect(data.byteLength).toBe(44 + 24000 * 60 * 2);
+    expect(data.byteLength).toBeLessThan(MAX_VOICE_SAMPLE_BYTES);
+    expect(validateVoiceSampleFile({ name: "voice-recording.wav", size: data.byteLength })).toBeNull();
+    expect(() => encodeVoiceSampleWav(new Float32Array(1), 0)).toThrow();
   });
 });

@@ -135,7 +135,8 @@ export function resolveInspectorGroupOrder({
  * (same one-directional-import precedent as FlatTextSection). Rendered only
  * when STUDIO_FLAT_INSPECTOR_ENABLED is on; owns the inspector group state.
  *
- * The most relevant available group opens by default; users can open others independently.
+ * Every available group with parameters opens by default; users can close or
+ * reopen groups independently.
  */
 // fallow-ignore-next-line complexity
 export function PropertyPanelFlat({
@@ -317,9 +318,7 @@ export function PropertyPanelFlat({
     availableGroupIds,
   });
   const orderedGroupKey = orderedGroupIds.join("|");
-  const [openGroupIds, setOpenGroupIds] = useState<string[]>(() =>
-    orderedGroupIds[0] ? [orderedGroupIds[0]] : [],
-  );
+  const [openGroupIds, setOpenGroupIds] = useState<string[]>(() => orderedGroupIds);
   const hasManualGroupSelectionRef = useRef(false);
   useEffect(() => {
     const available = orderedGroupKey ? orderedGroupKey.split("|") : [];
@@ -327,7 +326,7 @@ export function PropertyPanelFlat({
       if (hasManualGroupSelectionRef.current) {
         return current.filter((id) => available.includes(id));
       }
-      return available[0] ? [available[0]] : [];
+      return available;
     });
   }, [orderedGroupKey]);
 

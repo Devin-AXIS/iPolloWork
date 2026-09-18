@@ -271,7 +271,7 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   if (STUDIO_FLAT_INSPECTOR_ENABLED || props.inspectorMode === "animation") {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
-    // twice). A new selection gets its own relevant default group.
+    // twice). A new selection opens all of its available parameter groups.
     return (
       <PropertyPanelFlat
         {...props}

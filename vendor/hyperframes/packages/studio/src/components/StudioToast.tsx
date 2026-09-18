@@ -1,9 +1,4 @@
-import {
-  CheckCircleIcon,
-  SpinnerGap,
-  WarningIcon,
-  XIcon,
-} from "@phosphor-icons/react";
+import { CircleCheck, LoaderCircle, TriangleAlert, X } from "lucide-react";
 import { useStudioI18n } from "../i18n";
 import type { ToastTone } from "../utils/studioHelpers";
 
@@ -22,10 +17,10 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
   const statusColor = `var(--hf-toast-${resolvedTone})`;
   const StatusIcon =
     resolvedTone === "loading"
-      ? SpinnerGap
+      ? LoaderCircle
       : resolvedTone === "success"
-        ? CheckCircleIcon
-        : WarningIcon;
+        ? CircleCheck
+        : TriangleAlert;
   return (
     <div
       role={isError ? "alert" : "status"}
@@ -46,7 +41,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
           className={resolvedTone === "loading" ? "shrink-0 animate-spin" : "shrink-0"}
           color={statusColor}
           size={17}
-          weight="bold"
+          strokeWidth={2.5}
         />
         <span className="min-w-0 flex-1 break-words leading-5 text-[var(--hf-toast-text)]">
           {message}
@@ -58,7 +53,7 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
             className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[var(--hf-toast-muted)] transition-colors hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-toast-text)]"
             aria-label={tx("Dismiss")}
           >
-            <XIcon size={11} weight="bold" />
+            <X size={11} strokeWidth={2.5} />
           </button>
         )}
       </div>

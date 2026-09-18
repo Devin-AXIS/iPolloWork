@@ -44,7 +44,7 @@ function VirtualAssetSlot({
         render()
       ) : kind === "tile" ? (
         <div aria-hidden="true" className="min-w-0">
-          <div className="aspect-[37/26] w-full rounded-lg bg-panel-input/35" />
+          <div className="h-[100px] w-full rounded-lg bg-panel-input/35" />
           <div className="h-[23px]" />
         </div>
       ) : (
@@ -62,6 +62,7 @@ interface AssetsTabProps {
   onDelete?: (path: string) => void;
   onRename?: (oldPath: string, newPath: string) => void;
   onAddAssetToTimeline?: (path: string) => void;
+  focusedHostAsset?: string;
 }
 
 export type UsageFilter = "all" | "used" | "unused";
@@ -145,6 +146,7 @@ export const AssetsTab = memo(function AssetsTab({
   onDelete,
   onRename,
   onAddAssetToTimeline,
+  focusedHostAsset,
 }: AssetsTabProps) {
   const { tx } = useStudioI18n();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -156,6 +158,12 @@ export const AssetsTab = memo(function AssetsTab({
   const [copiedPath, setCopiedPath] = useState<string | null>(null);
   const [usageFilter, setUsageFilter] = useState<"all" | "used" | "unused">("all");
   const [searchQuery, setSearchQuery] = useState("");
+  useEffect(() => {
+    if (!focusedHostAsset) return;
+    setUsageFilter("all");
+    setCollapsedCategories(new Set());
+    setSearchQuery(focusedHostAsset.split("/").pop()?.replace(/\.[^.]*$/, "") ?? "");
+  }, [focusedHostAsset]);
   const [collapsedCategories, setCollapsedCategories] = useState<Set<MediaCategory>>(new Set());
   const [manifest, setManifest] = useState<
     Map<string, { description?: string; duration?: number; width?: number; height?: number }>
@@ -368,19 +376,19 @@ export const AssetsTab = memo(function AssetsTab({
           </div>
         </div>
       )}
-      {/* Header — matches design panel Section pattern */}
+      {/* Search and import share the same compact row. */}
       <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[15px] pt-3">
-        <div className="flex items-end gap-2">
-          <label className="grid min-w-0 flex-1 gap-[5px] text-xs font-normal leading-4 text-panel-text-3">
-            {tx("Source")}
-            <select
-              disabled
-              title={tx("Source selection is not available yet")}
-              value="project-01"
-              className="h-[34px] min-w-0 cursor-not-allowed rounded-md border-0 bg-panel-input px-[11px] text-xs font-normal text-panel-text-1 opacity-100 outline-none"
-            >
-              <option value="project-01">{tx("Project 01")}</option>
-            </select>
+        <div className="flex h-[34px] items-center gap-2">
+          <label className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md bg-panel-input px-[11px]">
+            <img src={searchIconSrc} alt="" className="h-4 w-4 flex-none" />
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder={tx("Search assets…")}
+              aria-label={tx("Search assets…")}
+              className="min-w-0 w-full bg-transparent text-xs text-panel-text-1 outline-none placeholder:text-panel-text-4"
+            />
           </label>
           {/* Import */}
           {onImport && (
@@ -408,17 +416,6 @@ export const AssetsTab = memo(function AssetsTab({
               />
             </>
           )}
-        </div>
-
-        <div className="mt-[10px] flex h-[34px] items-center gap-2 rounded-md bg-panel-input px-[11px]">
-          <img src={searchIconSrc} alt="" className="h-4 w-4 flex-none" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={tx("Search assets…")}
-            className="min-w-0 w-full bg-transparent text-xs text-panel-text-1 outline-none placeholder:text-panel-text-4"
-          />
         </div>
 
         <div className="mt-[10px] flex flex-wrap gap-1.5">

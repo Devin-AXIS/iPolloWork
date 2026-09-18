@@ -964,6 +964,7 @@ export function SidePanel({
         ))}
         {activeTab?.type === "video" ? (
           <VideoPanel
+            conversationId={sessionId}
             key={activeTab.id}
             title={activeTab.label}
             sessionId={activeTab.sessionId}

@@ -23,6 +23,7 @@ import { useSdkSelectionSync } from "./hooks/useSdkSelectionSync";
 import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAddAssetAtPlayhead } from "./hooks/useAddAssetAtPlayhead";
+import { useAssetPreviewStore } from "./utils/assetPreviewStore";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useIPolloWorkHostHistoryBridge } from "./hooks/useIPolloWorkHostHistoryBridge";
 import { useClipboard } from "./hooks/useClipboard";
@@ -279,6 +280,33 @@ export function StudioApp() {
     [timelineEditing.handleTimelineGroupMove],
   );
   const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const [focusedHostAsset, setFocusedHostAsset] = useState("");
+  useEffect(() => {
+    if (!projectId || window.parent === window) return;
+    const handleHostAsset = (event: MessageEvent) => {
+      if (event.source !== window.parent || event.data?.type !== "ipollowork:video-avatar-asset" || event.data.projectId !== projectId) return;
+      const { action, path, requestId } = event.data;
+      if ((action !== "view" && action !== "insert") || typeof path !== "string" || !/^(assets|renders)\/[\w./-]+\.(mp4|webm)$/i.test(path) || typeof requestId !== "string") return;
+      void (async () => {
+        try {
+          await fileManager.refreshFileTree();
+          if (action === "view") {
+            panelLayout.setRightCollapsed(false);
+            panelLayout.setRightPanelTab("assets");
+            setFocusedHostAsset(path);
+            useAssetPreviewStore.getState().setPreviewAsset(path, projectId);
+          } else {
+            await timelineEditing.handleTimelineAssetDrop(path, { start: usePlayerStore.getState().currentTime, track: 0 }, undefined, true);
+          }
+          window.parent.postMessage({ type: "ipollowork:video-avatar-asset-result", projectId, requestId, ok: true }, "*");
+        } catch (error) {
+          window.parent.postMessage({ type: "ipollowork:video-avatar-asset-result", projectId, requestId, ok: false, error: error instanceof Error ? error.message : "素材操作失败" }, "*");
+        }
+      })();
+    };
+    window.addEventListener("message", handleHostAsset);
+    return () => window.removeEventListener("message", handleHostAsset);
+  }, [fileManager, panelLayout, projectId, timelineEditing]);
   const clearDomSelectionRef = useRef<() => void>(() => {});
   const clearDomSelection = useCallback(() => clearDomSelectionRef.current(), []);
   const {
@@ -629,6 +657,8 @@ export function StudioApp() {
                               recordEdit={editHistory.recordEdit}
                               onToggleElementHidden={timelineEditing.handleToggleElementHidden}
                               onAddBlock={handleAddBlock}
+                              onAddAssetToTimeline={handleAddAssetAtPlayhead}
+                              focusedHostAsset={focusedHostAsset}
                             />
                           </Suspense>
                         )

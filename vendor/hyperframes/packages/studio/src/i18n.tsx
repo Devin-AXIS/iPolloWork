@@ -45,8 +45,6 @@ type TranslationKey =
   | "sidebar.compsTooltip"
   | "sidebar.assetsTooltip"
   | "assets.import"
-  | "assets.source"
-  | "assets.sourceUnavailable"
   | "assets.searchPlaceholder"
   | "assets.dropUpload"
   | "assets.mediaTypes"
@@ -90,6 +88,7 @@ type TranslationKey =
   | "right.resizePanes"
   | "right.design"
   | "right.designTooltip"
+  | "right.role"
   | "right.voice"
   | "right.voiceTooltip"
   | "right.style"
@@ -167,8 +166,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.compsTooltip": "Compositions and sub-compositions",
     "sidebar.assetsTooltip": "Videos, images, audio, fonts",
     "assets.import": "Import",
-    "assets.source": "Source",
-    "assets.sourceUnavailable": "Source selection is not available yet",
     "assets.searchPlaceholder": "Search assets...",
     "assets.dropUpload": "Drop files to upload",
     "assets.mediaTypes": "Images, video, audio, and fonts",
@@ -212,8 +209,9 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "Resize Layers and Design panes",
     "right.design": "Layers",
     "right.designTooltip": "Element styles and properties",
-    "right.voice": "Sound",
-    "right.voiceTooltip": "Voiceover and sound settings",
+    "right.role": "Narration",
+    "right.voice": "Voiceover",
+    "right.voiceTooltip": "Voiceover and avatar narration",
     "right.style": "Style",
     "right.styleTooltip": "Video design system",
     "right.componentsHelp": "Components follow the current theme. After insertion, adjust their settings or ask AI to edit them.",
@@ -289,8 +287,6 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "sidebar.compsTooltip": "合成与子合成",
     "sidebar.assetsTooltip": "视频、图片、音频、字体",
     "assets.import": "导入",
-    "assets.source": "来源",
-    "assets.sourceUnavailable": "暂不支持选择来源",
     "assets.searchPlaceholder": "搜索素材...",
     "assets.dropUpload": "拖放文件以上传",
     "assets.mediaTypes": "图片、视频、音频和字体",
@@ -334,8 +330,9 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "调整图层与设计面板高度",
     "right.design": "图层",
     "right.designTooltip": "元素风格和属性",
-    "right.voice": "声音",
-    "right.voiceTooltip": "配音与声音设置",
+    "right.role": "讲解",
+    "right.voice": "配音",
+    "right.voiceTooltip": "配音与数字人讲解",
     "right.style": "主题",
     "right.styleTooltip": "视频设计系统",
     "right.componentsHelp": "组件会跟随当前主题。插入后可调整参数，也可以让 AI 帮你修改。",
@@ -551,8 +548,8 @@ const studioLiteralZh: Record<string, string> = {
   Fonts: "字体",
   "Drop files to upload": "拖入文件以上传",
   "Images, video, audio, and fonts": "图片、视频、音频和字体",
-  "Source selection is not available yet": "暂不支持切换素材来源",
-  "Project 01": "项目 01",
+  "Insert asset": "插入素材",
+  "Locate on timeline": "定位到时间线",
   Import: "导入",
   "Search assets…": "搜索素材…",
   All: "全部",
@@ -827,6 +824,7 @@ const studioLiteralZh: Record<string, string> = {
   Text: "文本",
   Timeline: "时间轴",
   "Timeline zoom": "时间轴缩放",
+  "More tools": "更多工具",
   Timing: "时间",
   "Toggle grid": "显示或隐藏网格",
   "Toggle snapping": "开启或关闭吸附",

@@ -15,7 +15,7 @@ import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
 import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
-import { SpinnerGap } from "@phosphor-icons/react";
+import { LoaderCircle } from "lucide-react";
 import { useStudioI18n } from "../../i18n";
 import { parseHostAiEditingMessage } from "../../utils/studioHelpers";
 import { resolveEditableVideoImage } from "../../utils/imageWorkbench";
@@ -238,7 +238,7 @@ export function PreviewPane({
             className="flex h-[34px] min-w-[241px] max-w-[calc(100%_-_32px)] items-center rounded-[6px] bg-[#087b82] px-4 py-2 text-[#a9e7ea]"
           >
             <span className="flex min-w-[207px] items-center justify-between gap-2">
-              <SpinnerGap
+              <LoaderCircle
                 className="size-4 shrink-0 animate-spin text-[#a9e7ea] motion-reduce:animate-none"
                 aria-hidden="true"
               />

@@ -139,7 +139,7 @@ describe("Composer model and reasoning menu", () => {
     const composer = readFileSync(composerPath, "utf8");
 
     expect(route).toContain("supportsNativeAttachments: selectedModelSupportsAttachments");
-    expect(route).toContain("attachmentRequiresNativeModelSupport(attachment.mimeType)");
+    expect(route).toContain("draft.attachments.some(composerAttachmentRequiresNativeModelSupport)");
     expect(route).toContain("{ supportsNativeAttachments: effectiveModelSupportsAttachments }");
     expect(route).toContain('t("composer.attachments_require_multimodal")');
     expect(composer).not.toContain("attachmentsEnabled");

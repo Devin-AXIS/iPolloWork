@@ -1,4 +1,4 @@
-import { ArrowLeft, CaretRight } from "@phosphor-icons/react";
+import { ArrowLeft, ChevronRight } from "lucide-react";
 import { trackStudioEvent } from "../../utils/studioTelemetry";
 import { useStudioI18n } from "../../i18n";
 
@@ -39,7 +39,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         title={tx("Back (Esc, or double-click empty timeline)")}
         aria-label={tx("Back to parent composition")}
       >
-        <ArrowLeft size={12} weight="bold" />
+        <ArrowLeft size={12} strokeWidth={2.5} />
       </button>
 
       {/* Breadcrumb path */}
@@ -47,7 +47,7 @@ export function CompositionBreadcrumb({ stack, onNavigate }: CompositionBreadcru
         const isLast = i === stack.length - 1;
         return (
           <span key={level.id} className="flex items-center gap-1">
-            {i > 0 && <CaretRight size={10} className="text-neutral-600 flex-shrink-0" />}
+            {i > 0 && <ChevronRight size={10} className="text-neutral-600 flex-shrink-0" />}
             {isLast ? (
               <span className="text-xs text-neutral-200 font-medium">{level.label}</span>
             ) : (

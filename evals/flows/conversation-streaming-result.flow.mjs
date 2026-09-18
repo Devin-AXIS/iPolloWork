@@ -273,9 +273,11 @@ export default {
             const process = host.querySelector('[data-testid=assistant-process-column]');
             return { open: process.querySelector('button')?.getAttribute('aria-expanded'),
               commentary: process.textContent.includes('我先检查相关文件'),
+              pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
-          ctx.assert(state.open === "false" && !state.commentary && !state.result, JSON.stringify(state));
+          ctx.assert(state.open === "false" && !state.commentary && !state.result
+            && state.pending?.includes("正在准备结果"), JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'true'");
           await ctx.eval("window.__streamingAnswerProof.pauseProcess()");
@@ -291,7 +293,7 @@ export default {
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "正在准备结果"] },
       }),
     },
     {
@@ -311,10 +313,11 @@ export default {
             const process = host.querySelector('[data-testid=assistant-process-column]');
             const result = host.querySelector('[data-assistant-result]');
             return { sameNode: result === window.__streamingAnswerProof.resultNode,
+              pending: Boolean(host.querySelector('[data-testid=assistant-result-pending]')),
               belowProcess: process.getBoundingClientRect().bottom <= result.getBoundingClientRect().top,
               text: result.textContent, processText: process.textContent };
           })()`);
-          ctx.assert(state.sameNode && state.belowProcess && state.text.includes("最终建议")
+          ctx.assert(state.sameNode && !state.pending && state.belowProcess && state.text.includes("最终建议")
             && !state.processText.includes("最终建议") && state.processText.includes("正在收尾"), JSON.stringify(state));
         },
         screenshot: { name: "streaming-result", requireText: ["正在收尾", "最终建议"] },
@@ -578,18 +581,19 @@ export default {
       }),
     },
     {
-      name: "Recoverable tool failure stays a progress status",
-      run: (ctx) => ctx.prove("A failed step does not expose its raw tool error during an active run", {
+      name: "Recoverable tool failure keeps the result pending",
+      run: (ctx) => ctx.prove("A failed step leaves a quiet pending result without exposing its raw tool error", {
         voiceover: vo[13],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showToolFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof')?.textContent.includes('有一步未成功')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在准备结果')");
         },
         assert: async () => {
           const text = await ctx.eval("document.querySelector('#streaming-answer-proof')?.textContent");
-          ctx.assert(text.includes("任务仍在进行") && !text.includes("ENOENT /secret/path"), text);
+          ctx.assert(text.includes("正在准备结果") && !text.includes("有一步未成功")
+            && !text.includes("ENOENT /secret/path"), text);
         },
-        screenshot: { name: "recoverable-tool-failure", requireText: ["有一步未成功", "任务仍在进行"] },
+        screenshot: { name: "recoverable-tool-failure", requireText: ["正在准备结果"] },
       }),
     },
     {

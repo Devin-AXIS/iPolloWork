@@ -1,6 +1,7 @@
 import { CreativeContextSchema } from "@ipollowork/types/reference-context";
 import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
 import { ingestReferenceFile } from "../src/react-app/domains/session/references/ingestion";
+import { composerAttachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
 import { describe, expect, test } from "bun:test";
 import {
   persistedAttachmentInstruction,
@@ -107,8 +108,11 @@ test("reference uploads keep at most three requests active and preserve order", 
 test("Creative Context publishes only after its dependencies and binds all local media paths", async () => {
   const file = new File(["Product reference with sufficient detail for generation."], "source.txt");
   const ingestion = await ingestReferenceFile(file);
-  ingestion.assets!.push({ kind: "image", sourcePart: "page 1", path: "photo.png", file: new File(["photo"], "photo.png") });
+  ingestion.assets!.push({ kind: "image", sourcePart: "page 1", path: "photo.png", file: new File(["photo"], "photo.png", { type: "image/png" }) });
   const payload = await buildTemplateReferenceSubmitPayload([{ id: ingestion.id, file, fileName: file.name, size: file.size, mimeType: ingestion.mimeType, status: "ready", sendOriginal: false, ingestion }]);
+  expect(payload.attachments.some(composerAttachmentRequiresNativeModelSupport)).toBe(false);
+  const parts = await draftToParts({ text: "Use my references", parts: [{ type: "text", text: "Use my references" }], attachments: payload.attachments }, "/workspace", undefined, undefined, { supportsNativeAttachments: false });
+  expect(parts).toEqual([{ type: "text", text: "Use my references" }]);
   const uploaded = new Map<string, File>();
   const saved = await persistComposerAttachments({ attachments: [...payload.attachments].reverse(), workspaceId: "ws", sessionId: "session", client: {
     uploadInbox: async (_workspaceId, file, options) => {

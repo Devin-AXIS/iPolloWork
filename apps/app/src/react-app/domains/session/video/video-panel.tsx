@@ -44,6 +44,7 @@ export {
 type VideoPanelProps = {
   title: string;
   sessionId: string;
+  conversationId?: string;
   workspaceRoot: string;
   client: VideoStudioClient | null;
   workspaceId: string | null;
@@ -97,7 +98,7 @@ function isIPolloWorkServerClient(client: VideoStudioClient | null): client is i
   return Boolean(client && "createVoiceRealtimeSession" in client);
 }
 
-export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceId, runtime, features = IPOLLOWORK_VIDEO_STUDIO_FEATURES, branding, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
+export function VideoPanel({ title, sessionId, conversationId = sessionId, workspaceRoot, client, workspaceId, runtime, features = IPOLLOWORK_VIDEO_STUDIO_FEATURES, branding, isRemoteWorkspace = false, aiEditing = false, expanded = false, onExpandedChange, onAskAi, onSaveAsTemplate }: VideoPanelProps) {
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const studioChromeReadyRef = React.useRef(false);
   const studioReadyFallbackRef = React.useRef<number | null>(null);
@@ -135,6 +136,33 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
     revision,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
+  const handleAvatarAsset = React.useCallback((action: "view" | "insert", workspacePath: string) => {
+    const frameWindow = studioFrameRef.current?.contentWindow;
+    const prefix = `${videoProjectDirectory(sessionId)}/`;
+    if (!frameWindow || !workspacePath.startsWith(prefix)) return Promise.reject(new Error("视频工作区尚未就绪，请稍后重试。"));
+    const path = workspacePath.slice(prefix.length);
+    const projectId = videoProjectId(sessionId);
+    const requestId = crypto.randomUUID();
+    const targetOrigin = new URL(studioUrl).origin;
+    return new Promise<void>((resolve, reject) => {
+      const cleanup = () => { window.clearTimeout(timer); window.removeEventListener("message", handleResult); };
+      const handleResult = (event: MessageEvent) => {
+        if (event.source !== frameWindow || event.origin !== targetOrigin || event.data?.type !== "ipollowork:video-avatar-asset-result" || event.data.projectId !== projectId || event.data.requestId !== requestId) return;
+        cleanup();
+        if (event.data.ok === true) resolve();
+        else reject(new Error(typeof event.data.error === "string" ? event.data.error : "素材操作失败"));
+      };
+      const timer = window.setTimeout(() => { cleanup(); reject(new Error("Video Studio 没有响应，请重试。")); }, 10_000);
+      window.addEventListener("message", handleResult);
+      frameWindow.postMessage({ type: "ipollowork:video-avatar-asset", projectId, requestId, action, path }, targetOrigin);
+    });
+  }, [sessionId, studioUrl]);
+  const avatarPreviewUrl = React.useCallback((workspacePath: string) => {
+    const prefix = `${videoProjectDirectory(sessionId)}/`;
+    if (!workspacePath.startsWith(prefix)) throw new Error("数字人素材不属于当前视频。");
+    const path = workspacePath.slice(prefix.length).split("/").map(encodeURIComponent).join("/");
+    return `${new URL(studioUrl).origin}/api/projects/${encodeURIComponent(videoProjectId(sessionId))}/preview/${path}`;
+  }, [sessionId, studioUrl]);
   const compositionPath = `${projectDirectory}/index.html`;
   const designTokenPath = `${projectDirectory}/design-tokens.css`;
   const designTokenValues = React.useMemo<DesignTokenValues>(
@@ -860,6 +888,8 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
           }} /> : null}
           {features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? <VideoVoicePanel
             sessionId={sessionId}
+            conversationId={conversationId}
+            generating={aiEditing}
             workspaceRoot={workspaceRoot}
             client={client}
             workspaceId={workspaceId}
@@ -883,6 +913,8 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
               workspaceId={workspaceId}
               workspaceRoot={workspaceRoot}
               sessionId={sessionId}
+              onAssetAction={handleAvatarAsset}
+              previewAssetUrl={avatarPreviewUrl}
               onOpenVoice={() => studioFrameRef.current?.contentWindow?.postMessage({
                 type: "ipollowork:video-studio-panel",
                 projectId: videoProjectId(sessionId),

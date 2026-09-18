@@ -1,4 +1,4 @@
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { Eye, EyeOff } from "lucide-react";
 import { X } from "../../icons/SystemIcons";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
@@ -42,9 +42,9 @@ export function InspectorHeaderActions({
           className="flex h-6 w-6 items-center justify-center rounded text-neutral-500 transition-colors hover:bg-neutral-800 hover:text-neutral-300"
         >
           {selectedElementHidden ? (
-            <EyeSlash size={13} weight="bold" aria-hidden="true" />
+            <EyeOff size={13} strokeWidth={2.5} aria-hidden="true" />
           ) : (
-            <Eye size={13} weight="bold" aria-hidden="true" />
+            <Eye size={13} strokeWidth={2.5} aria-hidden="true" />
           )}
         </button>
       )}

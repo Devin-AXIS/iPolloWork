@@ -40,6 +40,7 @@ import type {
   TodoItem,
 } from "@/app/types";
 import {
+  artifactContentFingerprint,
   artifactCompletionRecoveryInstruction,
   checkArtifactCompletion,
   promptArtifactCompletionTargets,
@@ -72,6 +73,11 @@ import { publicAssetUrl } from "@/app/lib/public-asset";
 import { parseSlashCommandInvocation } from "./composer/slash-command";
 import { useDesignAiSelectionStore } from "../design/design-ai-selection-store";
 import {
+  appliedVideoVoices,
+  videoVoiceNeedsUpdate,
+  type VideoVoiceoverSettings,
+  VIDEO_VOICEOVER_REQUEST,
+  type VideoVoiceoverRequest,
   readVideoVoiceoverAvailability,
   videoVoiceDisplayMetadata,
   type VideoVoiceAiReference,
@@ -169,6 +175,7 @@ type SessionError = {
 };
 
 type PendingVideoDeliveryValidation = {
+  expectedVoice?: VideoVoiceoverSettings;
   sourcePath: string;
   requirements: VideoDeliveryRequirements;
   baselineFingerprint: string | null;
@@ -1373,7 +1380,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   // Core sender used only while the session is idle. Busy follow-ups remain
   // in the local queue until the current run has completed.
-  const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[]) => {
+  const sendDraft = useCallback(async (nextDraft: ComposerDraft, draftAttachments: ComposerAttachment[], voiceoverRequest?: Pick<VideoVoiceoverRequest, "videoSessionId" | "settings">) => {
     setError(null);
     setStopAcknowledged(false);
     runActivityObservedRef.current = false;
@@ -1401,7 +1408,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const dispatchAbort = new AbortController();
     promptDispatchAbortRef.current = dispatchAbort;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
-    const videoTask = newConversationMode === "video"
+    const videoTask = Boolean(voiceoverRequest) || newConversationMode === "video"
       || props.artifactContext?.kind === "video"
       || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
     let pendingDelivery: PendingVideoDeliveryValidation | null = null;
@@ -1410,7 +1417,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         const voiceover = await readVideoVoiceoverAvailability(
           props.client,
           props.workspaceId,
-          props.sessionId,
+          voiceoverRequest?.videoSessionId ?? props.sessionId,
           props.workspaceRoot,
         );
         const requirements = videoDeliveryRequirementsForPrompt({
@@ -1420,15 +1427,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
           voiceoverEnabled: voiceover.enabled,
           voiceoverAvailable: voiceover.configured,
         });
-        const mustChange = false;
+        const mustChange = Boolean(voiceoverRequest);
         if (hasVideoDeliveryRequirements(requirements)) {
-          const sourcePath = props.artifactContext?.kind === "video"
+          const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
             ? props.artifactContext.entryPath
             : templateEntryPath || videoProjectEntryPath(props.sessionId);
           pendingDelivery = {
             sourcePath,
             requirements,
-            baselineFingerprint: null,
+            baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
+            expectedVoice: voiceoverRequest?.settings,
             requestOrdinal,
             mustChange,
             recoveryAttempted: false,
@@ -1515,6 +1523,35 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }
   }, [newConversationMode, openTargets, props.artifactContext, props.engineId, props.onSendDraft, props.sessionId, props.templateEntryPath, props.workspaceId, renderedMessages.length, selectedAnimations, selectedImageReference, visibleUserRequestCount]);
 
+  useEffect(() => {
+    const generateVoiceover = (event: Event) => {
+      if (!(event instanceof CustomEvent)) return;
+      const request: VideoVoiceoverRequest = event.detail;
+      if (request.conversationId !== props.sessionId) return;
+      event.preventDefault();
+      if (chatStreaming) {
+        request.reject(new Error(t("video.voice.busy_error")));
+        return;
+      }
+      const sourcePath = videoProjectEntryPath(request.videoSessionId);
+      const text = t(request.updating ? "video.voice.update_action" : "video.voice.generate_action");
+      const instruction = [
+        `Edit only the existing video at ${sourcePath}. Do not create or apply another template.`,
+        `Generate narration for the entire video using the current scene content and these settings: ${JSON.stringify(request.settings)}.`,
+        "When selectionMode is auto, select a compatible voice for the scene language and content. Otherwise use the specified voiceId.",
+        "Use media/speech_synthesize_workspace_batch. Preserve existing audio until every replacement is synthesized successfully; then apply the returned audioElementHtml (including voice metadata) and synchronized timing in one final source edit.",
+        "Preserve visuals, background music, and unrelated edits. Validate this exact sourcePath with media/voiceover_timeline_validate and requirements.voiceover=true before reporting completion.",
+      ].join("\n");
+      void sendDraft({
+        mode: "prompt", text, resolvedText: text,
+        parts: [{ type: "text", text }], attachments: [],
+        capability: { id: "video-voice-reference", instruction },
+      }, [], request).then((dispatched) => request.resolve(Boolean(dispatched)), request.reject);
+    };
+    window.addEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
+    return () => window.removeEventListener(VIDEO_VOICEOVER_REQUEST, generateVoiceover);
+  }, [chatStreaming, props.sessionId, sendDraft]);
+
   const programmaticDraftIdRef = useRef<string | null>(null);
   useEffect(() => {
     const pending = props.pendingProgrammaticDraft;
@@ -1552,7 +1589,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           pending.targets.map((target) => target.sourcePath),
         ));
         pendingArtifactCompletionRef.current = null;
-        setSending(false);
+        if (!pendingVideoDeliveryRef.current) setSending(false);
         return;
       }
       if (!pending.recoveryAttempted) {
@@ -1599,8 +1636,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const mutationIssue = pending.mustChange
         ? unchangedVideoArtifactIssue(pending.baselineFingerprint, currentContent)
         : null;
-      let issues: VideoDeliveryValidationOutput["issues"] = mutationIssue ? [mutationIssue] : [];
-      if (!mutationIssue) {
+      const settingsIssue = pending.expectedVoice && videoVoiceNeedsUpdate(pending.expectedVoice, appliedVideoVoices(currentContent))
+        ? { code: "voiceover_settings_not_applied", message: "The requested voice or delivery controls have not been applied to the generated audio. Synthesize replacements and preserve the returned data-ipw-voice metadata." }
+        : null;
+      let issues: VideoDeliveryValidationOutput["issues"] = mutationIssue ? [mutationIssue] : settingsIssue ? [settingsIssue] : [];
+      if (!mutationIssue && !settingsIssue) {
         const response = await props.client.callExtensionAction({
           extensionId: "media",
           action: "voiceover_timeline_validate",
@@ -1905,7 +1945,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
       // ordinary assistant-completion metadata so a tool-only/incomplete turn
       // cannot release a queued follow-up and overwrite this turn's gate.
       if (pendingArtifactCompletionRef.current) {
-        void validatePendingArtifactCompletion();
+        void validatePendingArtifactCompletion().then(() => {
+          if (!pendingArtifactCompletionRef.current && pendingVideoDeliveryRef.current) return validatePendingVideoDelivery();
+        });
       } else if (pendingVideoDeliveryRef.current) {
         void validatePendingVideoDelivery();
       } else if (assistantOutputAfterAwaitStart && !latestAssistantCompleted) {

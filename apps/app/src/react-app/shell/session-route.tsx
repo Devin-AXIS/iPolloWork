@@ -98,7 +98,7 @@ import {
   destroyWorkspaceSessionResources,
   rollbackOptimisticSessionPrompt,
 } from "@/react-app/domains/session/sync/session-sync";
-import { attachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
+import { composerAttachmentRequiresNativeModelSupport } from "@/react-app/domains/session/sync/attachment-support";
 import {
   designHtmlThemeSystemContext,
   type DesignAiSelectionContext,
@@ -1358,7 +1358,7 @@ export function SessionRoute() {
         const effectiveModelSupportsAttachments = modelSupportsAttachments(providerCatalog, effectiveModel);
         if (
           !effectiveModelSupportsAttachments
-          && draft.attachments.some((attachment) => attachmentRequiresNativeModelSupport(attachment.mimeType))
+          && draft.attachments.some(composerAttachmentRequiresNativeModelSupport)
         ) {
           await finishStartedExecution("failed", t("composer.attachments_require_multimodal"));
           toast.warning(t("composer.attachments_require_multimodal"));
@@ -1535,7 +1535,8 @@ export function SessionRoute() {
         const explicitlyTargetedTemplateSessionIds = new Set([
           ...designSelectionContexts.map((context) => context.sessionId),
           ...conversationTemplates
-            .filter((template) => parts.some((part) =>
+            .filter((template) => (draft.capability?.id === "video-voice-reference"
+              && draft.capability.instruction.includes(template.state.entry)) || parts.some((part) =>
               part.type === "text"
               && (part.text.includes(template.state.entry) || part.text.includes(template.state.briefPath)),
             ))

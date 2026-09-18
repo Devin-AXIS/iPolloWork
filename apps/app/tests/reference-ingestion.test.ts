@@ -36,6 +36,8 @@ import {
   prepareOriginalReferenceAttachment,
 } from "../src/react-app/domains/session/references/ingestion";
 import { buildTemplateReferenceSubmitPayload } from "../src/react-app/domains/session/references/template-reference-submit";
+import { composerAttachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
+import { draftToParts } from "../src/react-app/shell/session-prompt";
 import type { TemplateReferenceItem } from "../src/react-app/domains/session/references/types";
 import {
   inferTemplateBriefFromIngestions,
@@ -659,6 +661,31 @@ describe("reference ingestion router", () => {
     const failedProgress: number[] = [];
     await ingestReferenceFile(new File(["{"], "broken.json", { type: "application/json" }), (value) => failedProgress.push(value));
     expect(failedProgress.at(-1)).toBe(100);
+  });
+
+  test("sends a parsed PDF through the workspace without requiring image input", async () => {
+    const file = new File([createTextPdf("Product reference for a video")], "reference.pdf", { type: "application/pdf" });
+    const ingestion = await ingestReferenceFile(file);
+    const reference: TemplateReferenceItem = {
+      id: ingestion.id,
+      file,
+      fileName: file.name,
+      mimeType: ingestion.mimeType,
+      size: file.size,
+      status: "ready",
+      sendOriginal: false,
+      ingestion,
+    };
+    const payload = await buildTemplateReferenceSubmitPayload([reference]);
+    expect(payload.attachments.filter((attachment) => attachment.mimeType === "application/pdf")).toMatchObject([
+      { delivery: "workspace" },
+    ]);
+    expect(payload.attachments.some(composerAttachmentRequiresNativeModelSupport)).toBe(false);
+    expect(await draftToParts({ text: "Create a video", parts: [{ type: "text", text: "Create a video" }], attachments: payload.attachments }, "", undefined, undefined, { supportsNativeAttachments: false })).toEqual([
+      { type: "text", text: "Create a video" },
+    ]);
+    const withOriginal = await buildTemplateReferenceSubmitPayload([{ ...reference, sendOriginal: true }]);
+    expect(withOriginal.attachments.some(composerAttachmentRequiresNativeModelSupport)).toBe(true);
   });
 
   test("does not allow a partially parsed reference batch to be submitted", async () => {

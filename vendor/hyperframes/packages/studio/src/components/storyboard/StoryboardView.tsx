@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Copy, Check } from "@phosphor-icons/react";
+import { Copy, Check } from "lucide-react";
 import { useStoryboard } from "../../hooks/useStoryboard";
 import { useProjectSignaturePoll } from "../../hooks/useProjectSignaturePoll";
 import { copyTextToClipboard } from "../../utils/clipboard";

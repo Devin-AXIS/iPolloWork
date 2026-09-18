@@ -555,9 +555,10 @@ describe("Studio right panel layout", () => {
     expect(toast).toContain('data-testid="studio-toast-surface"');
     expect(toast).toContain('data-tone={resolvedTone}');
     expect(toast).toContain('rounded-xl border');
-    expect(toast).toContain('SpinnerGap');
-    expect(toast).toContain('CheckCircleIcon');
-    expect(toast).toContain('WarningIcon');
+    expect(toast).toContain('from "lucide-react"');
+    expect(toast).toContain('LoaderCircle');
+    expect(toast).toContain('CircleCheck');
+    expect(toast).toContain('TriangleAlert');
     expect(toast).toContain('var(--hf-toast-bg)');
     expect(toast).toContain('var(--hf-toast-${resolvedTone})');
     expect(source).not.toContain('setRightPanelTab("animation-properties")');
@@ -597,8 +598,13 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"header.inspector": "属性"');
     expect(translations).toContain('"right.renders": "Export"');
     expect(translations).toContain('"right.animation": "Animation"');
-    expect(translations).toContain('"right.voice": "Sound"');
-    expect(translations).toContain('"right.voice": "声音"');
+    expect(translations).toContain('"right.role": "Narration"');
+    expect(translations).toContain('"right.role": "讲解"');
+    expect(translations).toContain('"right.voice": "Voiceover"');
+    expect(translations).toContain('"right.voice": "配音"');
+    expect(translations).toContain('"right.avatar": "Avatar"');
+    expect(translations).toContain('"right.avatar": "数字人"');
+    expect(translations).toContain('"right.voiceTooltip": "配音与数字人讲解"');
     expect(translations).toContain('"right.animationTemplates": "Animation templates"');
     expect(translations).toContain('"right.animationProperties": "Animation properties"');
     expect(translations).not.toContain('"right.catalog":');
@@ -608,7 +614,10 @@ describe("Studio right panel layout", () => {
     expect(translations).toContain('"right.animation": "动画"');
     expect(translations).toContain('"right.animationTemplates": "动画模板"');
     expect(translations).toContain('"right.animationProperties": "动画属性"');
-    expect(panel).toContain('label={t("right.voice")}');
+    expect(panel).toContain('label={t("right.role")}');
+    expect(panel).toContain('useState<"avatar" | "voice">("voice")');
+    expect(panel).toContain('if (panel === "voice" && rightPanelTab !== "voice") setRoleTab("voice")');
+    expect(panel).toContain('{["voice", "avatar"].map(tab => (');
     expect(panel).toContain('label={t("right.style")}');
     expect(panel).toContain('label={t("right.components")}');
     expect(panel.indexOf('label={t("right.components")}')).toBeGreaterThan(
@@ -628,7 +637,7 @@ describe("Studio right panel layout", () => {
     expect(panel).toContain('rightPanelTab === "voice" || rightPanelTab === "style"');
     expect(panel).toContain("width: rightWidth");
     expect(panel).toContain("minWidth: MIN_RIGHT_PANEL_WIDTH");
-    expect(panel).toContain("postHostPanel(rightPanelTab)");
+    expect(panel).toContain('postHostPanel(rightPanelTab === "voice" ? roleTab : "style")');
     expect(panel).toContain("useEffect(() => () => closeHostPanel(), [closeHostPanel])");
     expect(tabButton).toContain('style={active ? { color: "#ffffff" } : undefined}');
     expect(tabButton).not.toContain("!text-white");

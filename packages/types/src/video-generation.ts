@@ -3,10 +3,25 @@ import { z } from "zod";
 // Bound persisted job metadata separately from the model's per-call duration.
 export const MAX_AVATAR_SEGMENTS = 10_000;
 export const AVATAR_STANDARD_VIDEO = { resolution: "0.258048MP", shortEdge: 384, longEdge: 672 };
+export const MAX_AVATAR_PROFILES = 50;
+export const avatarProfileSchema = z.object({
+  id: z.uuid(), name: z.string().trim().min(1).max(80),
+  imagePath: z.string().max(4096), imageName: z.string().max(255),
+  ratio: z.enum(["9:16", "16:9"]), prompt: z.string().max(8000),
+  audioClipId: z.string().max(100), updatedAt: z.number().int().nonnegative(),
+});
+export type AvatarProfile = z.infer<typeof avatarProfileSchema>;
+export const avatarProfilesResultSchema = z.object({ profiles: z.array(avatarProfileSchema).max(MAX_AVATAR_PROFILES) });
+export const avatarProfileResultSchema = z.object({ profile: avatarProfileSchema });
+export const avatarAudioClipSchema = z.object({
+  id: z.string(), label: z.string(), start: z.number().nonnegative(),
+  duration: z.number().positive(), voiceId: z.string(), fingerprint: z.string(),
+});
 export const avatarSegmentSchema = z.object({
   start: z.number().nonnegative(), end: z.number().positive(),
   status: z.enum(["pending", "submitting", "running", "succeeded", "failed", "uncertain", "save_failed"]),
   upstreamId: z.string(), path: z.string(), attempt: z.number().int().nonnegative(),
+  startedAt: z.number().int().nonnegative().optional(), completedAt: z.number().int().nonnegative().optional(),
 });
 export type AvatarSegment = z.infer<typeof avatarSegmentSchema>;
 export const avatarSequenceSchema = z.object({
@@ -21,8 +36,11 @@ export const videoJobSchema = z.object({
   operation: z.string(), prompt: z.string(), fingerprint: z.string(), upstreamId: z.string(),
   workflowId: z.string().optional(),
   avatarBackground: z.enum(["transparent", "scene"]).optional(),
+  avatarProfileId: z.uuid().optional(), avatarProfileUpdatedAt: z.number().int().nonnegative().optional(),
+  avatarAudioFingerprint: z.string().optional(),
   avatarSequence: avatarSequenceSchema.optional(),
-  status: z.enum(["submitting", "running", "saving", "succeeded", "failed", "uncertain", "save_failed"]),
+  status: z.enum(["submitting", "running", "saving", "paused", "succeeded", "failed", "uncertain", "save_failed", "stopped"]),
+  pauseRequested: z.boolean().optional(),
   path: z.string(), message: z.string(), createdAt: z.number(), updatedAt: z.number(), nextPoll: z.number(),
 });
 export type VideoJob = z.infer<typeof videoJobSchema>;
@@ -35,6 +53,7 @@ export const videoAvatarContextSchema = z.object({
   audioDuration: z.number().nonnegative(),
   audioCount: z.number().int().nonnegative(),
   audioIssue: z.string(),
+  audioClips: z.array(avatarAudioClipSchema).optional(),
 });
 export type VideoAvatarContext = z.infer<typeof videoAvatarContextSchema>;
 

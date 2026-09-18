@@ -129,13 +129,31 @@ export function buildCodexHarnessAdditionalContext(
   model?: WorkspaceSessionModel | null,
 ): Record<string, { value: string; kind: "application" }> | undefined {
   const context: Record<string, { value: string; kind: "application" }> = {};
-  if (typeof system === "string" && system.trim()) {
-    context["ipollowork.runtime"] = { value: system.trim(), kind: "application" };
-  }
-  const pluginText = pluginInstructions.map((instruction) => instruction.trim()).filter(Boolean).join("\n\n");
-  if (pluginText) {
-    context["ipollowork.plugins"] = { value: pluginText, kind: "application" };
-  }
+  // Codex bounds each additionalContext entry independently. A single long
+  // runtime entry silently loses its middle (including delivery requirements).
+  // Bound UTF-8 bytes, not JS characters, so CJK text stays below that budget.
+  const addContext = (key: string, text: string) => {
+    const chunks: string[] = [];
+    let chunk = "";
+    let bytes = 0;
+    for (const character of text) {
+      const size = Buffer.byteLength(character, "utf8");
+      if (bytes + size > 768) {
+        chunks.push(chunk);
+        chunk = "";
+        bytes = 0;
+      }
+      chunk += character;
+      bytes += size;
+    }
+    if (chunk) chunks.push(chunk);
+    chunks.forEach((value, index) => {
+      const source = chunks.length === 1 ? key : `${key}.${String(index).padStart(4, "0")}`;
+      context[source] = { value, kind: "application" };
+    });
+  };
+  if (typeof system === "string") addContext("ipollowork.runtime", system.trim());
+  addContext("ipollowork.plugins", pluginInstructions.map((instruction) => instruction.trim()).filter(Boolean).join("\n\n"));
   const providerID = model?.providerID.trim();
   const modelID = model?.modelID.trim();
   if (providerID && modelID) {
