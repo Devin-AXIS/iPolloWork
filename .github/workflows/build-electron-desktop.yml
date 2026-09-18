@@ -98,7 +98,11 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: ipollowork-electron-${{ matrix.artifact }}
-          path: apps/desktop/dist-electron/**
+          # macOS keeps native engine archives outside the notarized app.
+          # Retain the matching archives for the same-version release upload.
+          path: |
+            apps/desktop/dist-electron/**
+            apps/desktop/dist-engine-packs/**
 
   electron-macos-notarization-smoke:
     name: Electron macOS notarization smoke
