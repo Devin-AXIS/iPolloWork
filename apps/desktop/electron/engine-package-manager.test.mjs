@@ -75,6 +75,9 @@ test("installs and removes a bundled optional engine package without touching Wo
       beforeUninstall: async () => {
         beforeUninstallCalls += 1;
         assert.equal(env.IPOLLOWORK_DSH_CLI, undefined);
+        await manager.list();
+        assert.equal(env.IPOLLOWORK_DSH_CLI, undefined, "settings polling must not reactivate an uninstalling engine");
+        if (beforeUninstallCalls === 1) throw new Error("runtime is busy");
         return () => { resumeRuntimeCalls += 1; };
       },
     });
@@ -93,11 +96,13 @@ test("installs and removes a bundled optional engine package without touching Wo
     assert.equal(managedFallback?.source, "downloaded");
     assert.equal(managedFallback?.canUninstall, true);
     assert.equal(managedFallback?.installedBytes, null);
+    await assert.rejects(manager.uninstall("deepseek-harness"), /runtime is busy/);
+    assert.ok(env.IPOLLOWORK_DSH_CLI?.includes(path.join("engine-packs", "deepseek-harness")), "an interrupted uninstall restores the launch environment");
     const removed = await manager.uninstall("deepseek-harness");
     assert.equal(removed.installed, false);
     assert.equal(removed.source, "none");
     assert.equal(removed.canUninstall, false);
-    assert.equal(beforeUninstallCalls, 1);
+    assert.equal(beforeUninstallCalls, 2);
     assert.equal(resumeRuntimeCalls, 1);
     assert.equal(await readFile(sentinelPath, "utf8"), '{"kept":true}\n');
     assert.equal(existsSync(path.join(userData, "engine-packs", "deepseek-harness")), false);

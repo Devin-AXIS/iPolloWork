@@ -39,6 +39,7 @@ function openAssetContextMenu(
 function useProbedDuration(src: string, skip: boolean): number | null | undefined {
   const [duration, setDuration] = useState<number | null | undefined>(undefined);
   useEffect(() => {
+    setDuration(undefined);
     if (skip) return;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -124,8 +125,9 @@ export function AssetCard({
   const serveUrl = resolveMediaPreviewUrl(asset, projectId);
   const isVideo = VIDEO_EXT.test(asset);
   const isImage = IMAGE_EXT.test(asset);
-  const probedDuration = useProbedDuration(serveUrl, !isVideo || duration != null);
-  const resolvedDuration = duration ?? probedDuration ?? undefined;
+  const knownDuration = duration != null && Number.isFinite(duration) && duration > 0 ? duration : undefined;
+  const probedDuration = useProbedDuration(serveUrl, !isVideo || knownDuration != null);
+  const resolvedDuration = knownDuration ?? probedDuration ?? undefined;
   const durationLabel = formatDuration(resolvedDuration ?? 0);
 
   // Drag-threshold click gate: track pointer-down position so we can ignore
@@ -233,24 +235,23 @@ export function AssetCard({
             </span>
           )}
 
-          {/* Duration stays visible without competing with the usage badge. */}
-          {durationLabel && (
-            <span className="absolute left-[7px] top-[7px] rounded bg-neutral-950/80 px-1.5 py-[3px] text-[9px] font-medium leading-none text-white tabular-nums">
-              {durationLabel}
-            </span>
-          )}
         </div>
 
         {/* Filename caption */}
         <div className="flex w-full min-w-0 items-start justify-between gap-1 px-0.5 pt-[7px] leading-4">
           <span
-            className="min-w-0 truncate text-[10px] font-medium text-panel-text-1"
+            className="min-w-0 truncate text-xs font-medium text-panel-text-1"
             title={fullName}
           >
             {fullName}
           </span>
           <span className="flex-none text-[9px] uppercase text-panel-text-3">{extension}</span>
         </div>
+        {isVideo && (
+          <div data-testid="asset-video-duration" className="px-0.5 pt-0.5 text-[10px] leading-4 text-panel-text-3 tabular-nums">
+            {durationLabel || "—"}
+          </div>
+        )}
       </div>
 
       {contextMenu && (

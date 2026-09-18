@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
+import { GripVertical, Trash2, ArrowLeft, Image as ImageIcon, Video, Check, ChevronLeft, ChevronRight, Code2, Focus, Github, Layers3, Loader2, Minus, Monitor, MousePointer2, Palette, Plus, Presentation, Save, Share2, SlidersHorizontal, Smartphone, Sparkles, Undo2 } from "lucide-react";
 
 import {
   IPOLLOWORK_DESIGN_STUDIO_FEATURES,
@@ -10,7 +10,6 @@ import {
   type DesignStudioFeatures,
 } from "@ipollowork/design-studio";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
-import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { hydrateDesignMedia } from "./design-media";
 import { useDesignMediaWorkbench } from "./use-design-media-workbench";
@@ -68,12 +67,7 @@ import { DesignSaveMenu } from "./design-save-menu";
 import { DesignSystemDrawer } from "./design-system-drawer";
 import { DesignTemplateDialog } from "./design-template-dialog";
 import floatingToolbarAiIcon from "./assets/floating-toolbar-ai.svg";
-import floatingToolbarDivider from "./assets/floating-toolbar-divider.svg";
 import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg";
-import floatingToolbarGrip from "./assets/floating-toolbar-grip.svg";
-import floatingToolbarPalette from "./assets/floating-toolbar-palette.svg";
-import floatingToolbarSettings from "./assets/floating-toolbar-settings.svg";
-import floatingToolbarTrash from "./assets/floating-toolbar-trash.svg";
 import { linkedDesignTokenPath, mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "./design-system-files";
 import {
   buildTemplateTokenCss,
@@ -128,6 +122,7 @@ import {
 } from "./pptx-entrance-animations";
 
 type DesignPanelProps = {
+  conversationId?: string;
   sessionId: string;
   client: DesignStudioClient | null;
   workspaceId: string | null;
@@ -163,7 +158,12 @@ const PDF_PAGE_WIDTH_MM = 297;
 const PDF_PAGE_HEIGHT_MM = 167.0625;
 const LOCAL_IMAGE_ACCEPT = "image/*";
 const DESIGN_ACTION_BUTTON_CLASS = "size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground [&_svg]:!size-[18px] [&_svg]:stroke-[1.5]";
-const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+const FLOATING_TOOLBAR_BUTTON_CLASS = "grid size-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+
+function FloatingToolbarTooltip({ label, children }: { label: string; children: React.ReactElement }) {
+  return <Tooltip><TooltipTrigger aria-label={label} render={children} /><TooltipContent positionerClassName="z-[140]">{label}</TooltipContent></Tooltip>;
+}
+
 
 function isDesignRuntimeMessage(value: unknown): value is DesignRuntimeMessage {
   if (!value || typeof value !== "object") return false;
@@ -480,6 +480,7 @@ function updateSelectionValue(selection: DesignSelection, field: DesignField, va
 
 export function DesignPanel({
   sessionId,
+  conversationId = sessionId,
   client,
   workspaceId,
   mediaClient = null,
@@ -878,6 +879,7 @@ export function DesignPanel({
     const pageIdentity = `${sessionId}:${activePagePath}`;
     const pageChanged = hydratedPageRef.current !== pageIdentity;
     if (!shouldHydrateDesignSource(pageChanged, fileQuery.data.content, draftRef.current)) return;
+    if (!pageChanged) pendingViewRestoreRef.current = capturePreviewView(fileQuery.data.content);
     draftRef.current = fileQuery.data.content;
     setPendingCanvasChange(false);
     setDraft(fileQuery.data.content);
@@ -1492,11 +1494,29 @@ export function DesignPanel({
     },
   });
 
+  const capturePreviewView = (targetSource: string): DesignViewRestore => ({
+    id: crypto.randomUUID(),
+    targetSource,
+    previewRevision: previewRevisionRef.current + 1,
+    frameRevision: `${activePagePath}:${previewRevisionRef.current + 1}`,
+    frameLoaded: false,
+    frameRestored: false,
+    deckRestored: false,
+    deckIndex: deckRef.current?.index ?? null,
+    frameScrollX: frameViewRef.current.scrollX,
+    frameScrollY: frameViewRef.current.scrollY,
+    panLeft: presentationPanRef.current?.scrollLeft ?? 0,
+    panTop: presentationPanRef.current?.scrollTop ?? 0,
+    selectionLocator: selection?.locator ?? null,
+  });
+
   const mediaWorkbench = useDesignMediaWorkbench({
+    sessionId: conversationId, projectSessionId: sessionId,
     client: mediaClient, workspaceId, page: activePagePath, selection,
     enabled: editing && !isMultiSelection && !selection?.locked && !isRemoteWorkspace && viewedVersionPath === "current" && Boolean(mediaClient),
     saveCurrent: async () => (await saveMutation.mutateAsync()).content,
     onReload: (content, updatedAt) => {
+      pendingViewRestoreRef.current = capturePreviewView(content);
       queryClient.setQueryData<LoadedHtml>(["design-html", workspaceId, activePagePath], { content, updatedAt });
       draftRef.current = content;
       setDraft(content); setSavedSource(content); setPendingCanvasChange(false);
@@ -1734,23 +1754,6 @@ export function DesignPanel({
   };
 
   const undo = async () => {
-    const pan = presentationPanRef.current;
-    const selectionLocator = selection?.locator ?? null;
-    const restoreView = (targetSource: string): DesignViewRestore => ({
-      id: crypto.randomUUID(),
-      targetSource,
-      previewRevision: previewRevisionRef.current + 1,
-      frameRevision: `${activePagePath}:${previewRevisionRef.current + 1}`,
-      frameLoaded: false,
-      frameRestored: false,
-      deckRestored: false,
-      deckIndex: deckRef.current?.index ?? null,
-      frameScrollX: frameViewRef.current.scrollX,
-      frameScrollY: frameViewRef.current.scrollY,
-      panLeft: pan?.scrollLeft ?? 0,
-      panTop: pan?.scrollTop ?? 0,
-      selectionLocator,
-    });
     if (pendingViewRestoreRef.current) return;
     const popped = popDesignUndoHistory(historyRef.current, {
       html: draftRef.current,
@@ -1759,7 +1762,7 @@ export function DesignPanel({
     setHistory(popped.history);
     const previous = popped.previous;
     if (previous !== undefined) {
-      const restore = restoreView(previous.html);
+      const restore = capturePreviewView(previous.html);
       pendingViewRestoreRef.current = restore;
       draftRef.current = previous.html;
       setPendingCanvasChange(false);
@@ -1781,7 +1784,7 @@ export function DesignPanel({
     }
     const checkpoint = useDesignAiSelectionStore.getState().latestUndoCheckpoint(sessionId, activePagePath);
     if (!checkpoint || !client || !workspaceId) return;
-    const restore = restoreView(checkpoint.beforeHtml);
+    const restore = capturePreviewView(checkpoint.beforeHtml);
     pendingViewRestoreRef.current = restore;
     try {
       const current = await client.readWorkspaceFile(workspaceId, activePagePath);
@@ -2027,9 +2030,6 @@ export function DesignPanel({
   return (
     <div ref={panelRef} className="relative flex h-full min-h-0 flex-col bg-background" data-testid="design-panel">
       <input ref={mediaWorkbench.input} type="file" className="sr-only" aria-label={t("design.properties.action.choose_media")} onChange={event => { void mediaWorkbench.importFile(event.currentTarget.files?.[0]); event.currentTarget.value = ""; }} />
-      {mediaWorkbench.binding && mediaClient && workspaceId ? <MediaWorkbench key={mediaWorkbench.binding.source.requestId} source={mediaWorkbench.binding.source}
-        client={mediaClient} workspaceId={workspaceId} workspaceRoot={workspaceRoot} sessionId={sessionId}
-        returnLabel={t("media.workbench.back_design")} onApply={mediaWorkbench.apply} onClose={mediaWorkbench.close} /> : null}
       <input
         ref={imageInputRef}
         type="file"
@@ -2320,7 +2320,9 @@ export function DesignPanel({
                         setPreviewLoaded(true);
                         const frameWindow = iframeRef.current?.contentWindow;
                         const pending = pendingViewRestoreRef.current;
-                        if (pending && !expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision)) return;
+                        // Asset hydration replaces the provisional HTML iframe. Restore only in the
+                        // hydrated frame so its successor cannot discard the selected element.
+                        if (pending && (!hydratedPreviewSource || !expectsDesignRestoreFrame(pending, previewSource, previewRevision, activeFrameRevision))) return;
                         if (pending) pending.frameLoaded = true;
                         if (activePageHash && !pending) frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");
                         frameWindow?.postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "set-editing", editing }, "*");
@@ -2354,42 +2356,38 @@ export function DesignPanel({
                     onPointerUp={(event) => event.stopPropagation()}
                     onClick={(event) => event.stopPropagation()}
                   >
-                    <button
+                    <FloatingToolbarTooltip label={t("design.toolbar.drag")}><button
                       type="button"
-                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
+                      className="grid size-6 shrink-0 touch-none cursor-grab place-items-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:cursor-grabbing"
                       onPointerDown={startFloatingDrag}
                       onPointerMove={moveFloatingToolbar}
                       onPointerUp={stopFloatingDrag}
                       onPointerCancel={stopFloatingDrag}
                       onLostPointerCapture={stopFloatingDrag}
-                      aria-label="Move floating toolbar"
-                      title="Drag toolbar"
                     >
-                      <img src={floatingToolbarGrip} alt="" className="size-4 select-none" draggable={false} />
-                    </button>
+                      <GripVertical className="size-4" strokeWidth={1.5} />
+                    </button></FloatingToolbarTooltip>
                     {quickEdit && (!isMultiSelection || quickEdit === "color") ? (
                       <div className="flex items-center gap-1">
-                        <Button
+                        <FloatingToolbarTooltip label={t("common.back")}><Button
                           variant="ghost"
                           size="icon-xs"
                           onClick={() => setQuickEdit(null)}
-                          aria-label="Back to design tools"
                         >
                           <ArrowLeft />
-                        </Button>
+                        </Button></FloatingToolbarTooltip>
                         {quickEdit === "color" ? (
                           <div className="flex items-center gap-1 px-0.5" aria-label={selection.colorField === "color" ? "Quick text colors" : "Quick background colors"}>
                             {COLOR_SWATCHES.slice(0, 6).map((color) => (
-                              <button
-                                key={color}
+                              <FloatingToolbarTooltip key={color} label={`${t(selection.colorField === "color" ? "design.properties.field.text_color" : "design.properties.field.background_color")} ${color}`}><button
                                 type="button"
                                 className="size-6 rounded-full border border-black/10 shadow-sm transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                                 style={{ backgroundColor: color }}
                                 onClick={() => applyField(selection.colorField, color, false)}
-                                aria-label={`Set ${selection.colorField === "color" ? "text" : "background"} color ${color}`}
-                              />
+                              /></FloatingToolbarTooltip>
                             ))}
-                            <label
+                            <FloatingToolbarTooltip label={t("design.toolbar.custom_color")}>
+                              <label
                               className="relative grid size-6 cursor-pointer place-items-center rounded-full border border-border bg-muted text-muted-foreground"
                               aria-label={selection.colorField === "color" ? "Choose custom text color" : "Choose custom background color"}
                             >
@@ -2402,10 +2400,11 @@ export function DesignPanel({
                                 aria-label={selection.colorField === "color" ? "Custom text color" : "Custom background color"}
                               />
                             </label>
+                            </FloatingToolbarTooltip>
                           </div>
                         ) : quickEdit === "fontSize" ? (
                           <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize - 1)} aria-label="Decrease font size"><Minus /></Button>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_decrease")}><Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize - 1)}><Minus /></Button></FloatingToolbarTooltip>
                             <Input
                               autoFocus
                               type="number"
@@ -2417,7 +2416,7 @@ export function DesignPanel({
                               onChange={(event) => setFontSize(Number(event.currentTarget.value) || 1)}
                             />
                             <span className="text-[10px] text-muted-foreground">px</span>
-                            <Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize + 1)} aria-label="Increase font size"><Plus /></Button>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_increase")}><Button variant="ghost" size="icon-xs" onClick={() => setFontSize(fontSize + 1)}><Plus /></Button></FloatingToolbarTooltip>
                           </div>
                         ) : (
                           <Input
@@ -2432,79 +2431,77 @@ export function DesignPanel({
                             }}
                           />
                         )}
-                        <Button variant="ghost" size="icon-xs" onClick={() => setQuickEdit(null)} aria-label="Done quick editing">
+                        <FloatingToolbarTooltip label={t("common.done")}><Button variant="ghost" size="icon-xs" onClick={() => setQuickEdit(null)}>
                           <Check />
-                        </Button>
+                        </Button></FloatingToolbarTooltip>
                       </div>
                     ) : (
                       <div className="flex items-center gap-3">
                         {!isMultiSelection && selection.canEditText ? (
                           <>
-                            <button
+                            <FloatingToolbarTooltip label={t("design.toolbar.edit_text")}><button
                               type="button"
                               className="flex h-6 shrink-0 items-center rounded px-1 transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("text")}
-                              aria-label="Edit selected text"
                             >
                               <img src={floatingToolbarEditText} alt="" className="h-4 w-auto select-none" draggable={false} />
-                            </button>
-                            <button
+                            </button></FloatingToolbarTooltip>
+                            <FloatingToolbarTooltip label={t("design.toolbar.font_size")}><button
                               type="button"
                               className="h-6 shrink-0 rounded px-1 text-base font-normal leading-6 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                               onClick={() => beginQuickEdit("fontSize")}
-                              aria-label="Change selected font size"
                             >
                               {fontSize}
-                            </button>
+                            </button></FloatingToolbarTooltip>
                           </>
                         ) : null}
-                        <Button
+                        <FloatingToolbarTooltip label={t("design.toolbar.settings")}><Button
                           variant={elementPropertiesOpen ? "secondary" : "ghost"}
+                          className="text-muted-foreground hover:text-foreground"
                           size="icon-xs"
                           onClick={toggleElementProperties}
-                          aria-label="Toggle advanced design settings"
                           aria-pressed={elementPropertiesOpen}
                         >
-                          <img src={floatingToolbarSettings} alt="" className="size-[18px] select-none" draggable={false} />
-                        </Button>
+                          <SlidersHorizontal className="size-[18px]" strokeWidth={1.5} />
+                        </Button></FloatingToolbarTooltip>
                         {isMultiSelection || selection.tag !== "img" ? (
-                          <button
+                          <FloatingToolbarTooltip label={t(selection.colorField === "color" ? "design.properties.field.text_color" : "design.properties.field.background_color")}><button
                             type="button"
                             className={FLOATING_TOOLBAR_BUTTON_CLASS}
                             onClick={() => beginQuickEdit("color")}
-                            aria-label={selection.colorField === "color" ? "Change selected text color" : "Change selected background color"}
-                            title={selection.colorField === "color" ? "Text color" : "Background color"}
                           >
-                            <img src={floatingToolbarPalette} alt="" className="size-[18px] select-none" draggable={false} />
-                          </button>
+                            <Palette className="size-[18px]" strokeWidth={1.5} />
+                          </button></FloatingToolbarTooltip>
                         ) : null}
-                        {!isMultiSelection ? <button
+                        {!isMultiSelection ? <FloatingToolbarTooltip label={t("design.toolbar.ask_ai")}><button
                           type="button"
                           className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => void askAiAboutSelection()}
                           disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== "current"}
-                          aria-label="Ask AI about selected element"
-                          title="Ask AI"
                         >
                           <img src={floatingToolbarAiIcon} alt="" className="size-[18px] select-none" draggable={false} />
-                        </button> : null}
-                        {mediaWorkbench.canOpen ? <Tooltip><TooltipTrigger render={<button
-                          type="button" className={FLOATING_TOOLBAR_BUTTON_CLASS} disabled={mediaWorkbench.busy}
-                          onClick={() => void mediaWorkbench.open()}
-                          aria-label={t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}>
-                          {mediaWorkbench.busy ? <Loader2 className="size-[18px] animate-spin motion-reduce:animate-none" /> : selection.media?.kind === "video" ? <Video className="size-[18px]" /> : <ImageIcon className="size-[18px]" />}
-                        </button>} /><TooltipContent positionerClassName="z-[140]">{t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}</TooltipContent></Tooltip> : null}
-                        <img src={floatingToolbarDivider} alt="" className="h-[22.5px] w-px shrink-0 select-none" draggable={false} />
-                        <button
+                        </button></FloatingToolbarTooltip> : null}
+                        {mediaWorkbench.canOpen ? <>
+                          <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+                          <FloatingToolbarTooltip label={t(selection.media?.kind === "video" ? "media.workbench.edit_video" : "media.workbench.edit_image")}>
+                            <button type="button"
+                              className={cn(FLOATING_TOOLBAR_BUTTON_CLASS, !compactToolbar && "flex w-auto gap-1.5 px-1 text-xs font-medium")}
+                              disabled={mediaWorkbench.busy}
+                              onClick={() => void mediaWorkbench.open()}>
+                              {mediaWorkbench.busy ? <Loader2 className="size-[18px] animate-spin motion-reduce:animate-none" /> : selection.media?.kind === "video" ? <Video className="size-[18px]" strokeWidth={1.5} /> : <ImageIcon className="size-[18px]" strokeWidth={1.5} />}
+                              {!compactToolbar ? <span>{t(selection.media?.kind === "video" ? "design.toolbar.edit_video" : "design.toolbar.edit_image")}</span> : null}
+                            </button>
+                          </FloatingToolbarTooltip>
+                        </> : null}
+                        <span className="h-5 w-px shrink-0 bg-border" aria-hidden="true" />
+                        <FloatingToolbarTooltip label={t(isMultiSelection ? "design.toolbar.delete_many" : "design.toolbar.delete")}><button
                           type="button"
                           className={FLOATING_TOOLBAR_BUTTON_CLASS}
                           onClick={() => setDeleteConfirmationOpen(true)}
                           disabled={!selectionSummary.selections.some((member) => member.canDelete)}
-                          aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
-                          title={isMultiSelection ? "Delete selected elements" : "Delete selected element"}
                         >
-                          <img src={floatingToolbarTrash} alt="" className="size-[18px] select-none" draggable={false} />
-                        </button>
+                          <Trash2 className="size-[18px]" strokeWidth={1.5} />
+                        </button></FloatingToolbarTooltip>
                       </div>
                     )}
                   </div>

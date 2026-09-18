@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../engine-host-tools.js";
 import { z } from "zod";
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 
@@ -218,6 +219,26 @@ describe("iPolloWorkExtensionsPreview session tools", () => {
 });
 
 describe("iPolloWorkExtensionsPreview UI control tools", () => {
+  test("shares video deliverable routing between engine tools and system context", async () => {
+    const plugin = await iPolloWorkExtensionsPreview();
+    const system = await transformedSystem(plugin);
+    expect(system).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
+    expect(plugin.tool.ipollowork_extension_list_actions.description).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
+    expect(system).toContain("editable HyperFrames HTML composition supported by Video Studio");
+    expect(system).toContain("Only on the footage/plugin path");
+    expect(system).toContain("raw clip alone does not complete that task");
+  });
+  test("forwards the selected persistent account profile to the shared browser host", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    const args = { url: "https://creator.example.com/home", profileId: "operations-console:11111111-1111-4111-8111-111111111111" };
+    await plugin.tool.ipollowork_browser_open_url.execute(args, { directory: "/tmp/main" });
+    expect(fake.requests.find(request => request.pathname === "/engine-tools/call")?.body).toMatchObject({
+      name: "ipollowork_browser_open_url", args,
+    });
+    expect(() => z.object(plugin.tool.ipollowork_browser_open_url.args).parse({ ...args, profileId: "../other" })).toThrow();
+  });
+
   test("omits UI-control tools and steering by default", async () => {
     delete process.env.IPOLLOWORK_UI_CONTROL_TOOLS;
     const plugin = await iPolloWorkExtensionsPreview();

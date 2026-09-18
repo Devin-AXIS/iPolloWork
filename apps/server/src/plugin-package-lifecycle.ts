@@ -63,6 +63,7 @@ const LEGACY_RESOURCE_KEYS = [
   "ui",
 ] as const;
 const TRUSTED_IMPORT_PUBLISHER_KEYS = new Map([
+  ["zjy-web222/social-plugins-2026", ["MCowBQYDK2VwAyEALRoUrXZv4MA0yQNSErqW6OZlXxLgchbfZF8eZyqhU5s="]],
   [
     "smart-future-school/smart-future-school-2026",
     [
@@ -1274,7 +1275,8 @@ export async function readInstalledPluginUiResource(input: {
   resourceId: string;
 }): Promise<InstalledPluginUiResource> {
   const state = await readState(input.serverConfig);
-  const installed = state.packages[input.pluginId];
+  const pluginId = (input.pluginId === "image-studio" || input.pluginId === "video-console") && state.packages["media-studio"] ? "media-studio" : input.pluginId;
+  const installed = state.packages[pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   if (!installed.enabled) throw new ApiError(409, "plugin_package_disabled", "Plugin package is disabled");
   if (installed.disabledResourceIds.includes(input.resourceId)) {
@@ -1290,12 +1292,12 @@ export async function readInstalledPluginUiResource(input: {
   if (!version.files.some((file) => file.path === resource.path)) {
     throw new ApiError(500, "plugin_package_state_invalid", "Plugin UI resource file is missing from the installed package");
   }
-  const html = await readFile(resolveWithin(artifactRoot(input.serverConfig, input.pluginId, version.version), resource.path), "utf8");
+  const html = await readFile(resolveWithin(artifactRoot(input.serverConfig, pluginId, version.version), resource.path), "utf8");
   if (Buffer.byteLength(html, "utf8") > 5 * 1024 * 1024) {
     throw new ApiError(413, "plugin_ui_resource_too_large", "Plugin UI resource exceeds the 5MB limit");
   }
   return {
-    pluginId: input.pluginId,
+    pluginId,
     version: version.version,
     resource: resource as InstalledPluginUiResource["resource"],
     html,
@@ -1659,7 +1661,8 @@ export async function resolveInstalledPluginService(input: {
   pluginId: string;
 }): Promise<InstalledPluginService> {
   const state = await readState(input.serverConfig);
-  const installed = state.packages[input.pluginId];
+  const pluginId = (input.pluginId === "image-studio" || input.pluginId === "video-console") && state.packages["media-studio"] ? "media-studio" : input.pluginId;
+  const installed = state.packages[pluginId];
   if (!installed) throw new ApiError(404, "plugin_package_not_installed", "Plugin package is not installed");
   if (!installed.enabled) throw new ApiError(409, "plugin_package_disabled", "Plugin package is disabled");
   const version = installed.versions[installed.currentVersion];
@@ -1669,13 +1672,13 @@ export async function resolveInstalledPluginService(input: {
   if (!servicePath) throw new ApiError(404, "plugin_service_not_found", "Plugin package does not provide a local service");
   const sourcePath = pluginEngineSourcePath({
     manifest,
-    artifactRoot: artifactRoot(input.serverConfig, input.pluginId, version.version),
+    artifactRoot: artifactRoot(input.serverConfig, pluginId, version.version),
     files: version.files,
   }, servicePath) ?? servicePath;
   return {
     manifest,
     version: version.version,
-    modulePath: resolveWithin(artifactRoot(input.serverConfig, input.pluginId, version.version), sourcePath),
+    modulePath: resolveWithin(artifactRoot(input.serverConfig, pluginId, version.version), sourcePath),
   };
 }
 
@@ -1959,12 +1962,34 @@ async function uninstallPluginPackageUnlocked(input: {
   return { status: "uninstalled", pluginId: input.pluginId, version: current.version };
 }
 
+// Retire old package registrations only after the unified package is installed.
+// Service data and workspace outputs stay in place; reconciliation restores shared skills.
+async function retireLegacyMediaPackages(config: ServerConfig): Promise<void> {
+  const state = await readState(config);
+  if (!state.packages["media-studio"]) return;
+  try {
+    for (const pluginId of ["image-studio", "video-console"]) {
+      if (state.packages[pluginId]) await uninstallPluginPackageUnlocked({ serverConfig: config, pluginId });
+    }
+  } finally {
+    await reconcilePluginPackagesGlobally(config);
+  }
+}
+
 export function installPluginPackage(input: Parameters<typeof installPluginPackageUnlocked>[0]) {
-  return enqueueLifecycleMutation(input.serverConfig, () => installPluginPackageUnlocked(input));
+  return enqueueLifecycleMutation(input.serverConfig, async () => {
+    const result = await installPluginPackageUnlocked(input);
+    if (result.pluginId === "media-studio") await retireLegacyMediaPackages(input.serverConfig);
+    return result;
+  });
 }
 
 export function updatePluginPackage(input: Parameters<typeof updatePluginPackageUnlocked>[0]) {
-  return enqueueLifecycleMutation(input.serverConfig, () => updatePluginPackageUnlocked(input));
+  return enqueueLifecycleMutation(input.serverConfig, async () => {
+    const result = await updatePluginPackageUnlocked(input);
+    if (result.pluginId === "media-studio") await retireLegacyMediaPackages(input.serverConfig);
+    return result;
+  });
 }
 
 export function rollbackPluginPackage(input: Parameters<typeof rollbackPluginPackageUnlocked>[0]) {

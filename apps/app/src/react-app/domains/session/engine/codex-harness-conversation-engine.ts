@@ -213,6 +213,25 @@ function codexHarnessConnection(input: {
   const selectedModes = new Map<string, CodexModeId>();
   const selectedAccessModes = new Map<string, CodexAccessModeId>();
   const liveState = createCodexLiveState();
+  let requestRevision = 0;
+  let refreshingRequests: Promise<void> | null = null;
+  const refreshRequests = () => {
+    if (refreshingRequests) return refreshingRequests;
+    const revision = requestRevision;
+    refreshingRequests = (async () => {
+      const requests = await client.call<WorkspaceEngineEvent[]>("ipollowork/pendingRequests");
+      // A live request/resolution received after the read started takes precedence.
+      if (revision !== requestRevision) return;
+      const restored = requests.flatMap((request) => mapCodexHarnessEvent(request, createCodexLiveState()));
+      permissions.clear();
+      questions.clear();
+      for (const event of restored) {
+        if (event.type === "permission.asked") permissions.set(event.permission.id, event.permission);
+        if (event.type === "question.asked") questions.set(event.question.id, event.question);
+      }
+    })().finally(() => { refreshingRequests = null; });
+    return refreshingRequests;
+  };
   let pluginCapabilitiesCache: { at: number; items: Awaited<ReturnType<typeof client.pluginCapabilities>> } | null = null;
 
   const listPluginCapabilities = async () => {
@@ -267,6 +286,7 @@ function codexHarnessConnection(input: {
     },
     async subscribe(subscription) {
       for await (const envelope of client.events(subscription.signal)) {
+        if (envelope.type === "request" || ["serverRequest/resolved", "turn/completed", "thread/closed"].includes(String(envelope.method))) requestRevision += 1;
         const params = eventParams(envelope);
         if (envelope.type === "notification" && envelope.method === "turn/started" && params) {
           const threadId = typeof params.threadId === "string" ? params.threadId : null;
@@ -278,6 +298,20 @@ function codexHarnessConnection(input: {
           const turn = isRecord(params.turn) ? params.turn : null;
           const turnId = typeof turn?.id === "string" ? turn.id : null;
           if (threadId && (!turnId || activeTurns.get(threadId) === turnId)) activeTurns.delete(threadId);
+          for (const [requestId, permission] of permissions) {
+            if (permission.sessionId !== threadId) continue;
+            const requestTurnId = codexNativeRequest(permission.native)?.params.turnId;
+            if (requestTurnId && requestTurnId !== turnId) continue;
+            permissions.delete(requestId);
+            subscription.onEvent({ type: "permission.replied", sessionId: permission.sessionId, requestId });
+          }
+          for (const [requestId, question] of questions) {
+            if (question.sessionId !== threadId) continue;
+            const requestTurnId = codexNativeRequest(question.native)?.params.turnId;
+            if (requestTurnId && requestTurnId !== turnId) continue;
+            questions.delete(requestId);
+            subscription.onEvent({ type: "question.replied", sessionId: question.sessionId, requestId });
+          }
         }
         if (envelope.type === "notification" && envelope.method === "serverRequest/resolved" && params) {
           const requestId = typeof params.requestId === "string" || typeof params.requestId === "number"
@@ -314,15 +348,18 @@ function codexHarnessConnection(input: {
       }
     },
     async listPermissions(request) {
+      await refreshRequests();
       return [...permissions.values()].filter((permission) => permission.sessionId === request.sessionId);
     },
     async replyPermission(request) {
       const native = codexNativeRequest(request.permission.native);
       if (!native) throw new Error("Codex permission response is no longer available");
       await replyNativePermission(request.permission, request.reply);
+      requestRevision += 1;
       permissions.delete(request.permission.id);
     },
     async listQuestions(request) {
+      await refreshRequests();
       return [...questions.values()].filter((question) => question.sessionId === request.sessionId);
     },
     async replyQuestion(request) {
@@ -335,6 +372,7 @@ function codexHarnessConnection(input: {
           : []
       )));
       await client.respond(native.rpcId, { answers });
+      requestRevision += 1;
       questions.delete(request.question.id);
     },
     async create(directory) {
@@ -459,6 +497,30 @@ function codexHarnessConnection(input: {
       selectedModes.set(sessionId, mode);
       selectedAccessModes.set(sessionId, selectedAccessModes.get(request.sessionId) ?? "auto");
       return { sessionId };
+    },
+    async steerPrompt(request) {
+      if (request.signal?.aborted) return { sessionId: request.sessionId };
+      let turnId = activeTurns.get(request.sessionId);
+      if (!turnId) {
+        const result = await client.call<{ thread?: unknown }>("thread/read", {
+          threadId: request.sessionId,
+          includeTurns: true,
+        });
+        turnId = activeCodexTurnId(result.thread) ?? undefined;
+      }
+      if (!turnId) throw new Error("The active task can no longer be guided");
+      const prepared = preparePrompt(request.parts);
+      if (prepared.applicationInstructions.length > 0) {
+        throw new Error("This queued task must be sent after the current task finishes");
+      }
+      const result = await client.call<{ turnId: string }>("turn/steer", {
+        threadId: request.sessionId,
+        expectedTurnId: turnId,
+        input: prepared.input,
+        ...(request.clientUserMessageId ? { clientUserMessageId: request.clientUserMessageId } : {}),
+      });
+      activeTurns.set(request.sessionId, result.turnId);
+      return { sessionId: request.sessionId };
     },
     async listCommands() {
       return (await listPluginCapabilities())

@@ -25,6 +25,14 @@ const queuedMessagesPanelSource = readFileSync(
 );
 
 describe("composer queue behavior", () => {
+  test("plugin messages share the composer queue instead of dispatching a parallel turn", () => {
+    const page = readFileSync(resolve(import.meta.dir, "../src/react-app/domains/session/chat/session-page.tsx"), "utf8");
+    const sender = page.slice(page.indexOf("  const sendWorkspaceAppMessage ="), page.indexOf("  const launcherDesignPath ="));
+    expect(sender).toContain("appendQueuedDraft(props.selectedSessionId,");
+    expect(sender).not.toContain("sendSessionDraft(");
+    expect(sender).toContain("capability:");
+    expect(sender).toContain("accepted: true");
+  });
   test("never lets keyboard modifiers bypass the queue", () => {
     const submitPlugin = editorSource.slice(
       editorSource.indexOf("function SubmitPlugin"),
@@ -43,8 +51,10 @@ describe("composer queue behavior", () => {
       composerSource.indexOf("{props.busy ? (") + 4000,
     );
 
-    expect(busyActions).toContain("onPointerDown={canSend ? handleActionPointerDown : undefined}");
-    expect(busyActions).toContain("onClick={canSend ? handleActionClick : undefined}");
+    expect(busyActions).toContain("{canSend ? (");
+    expect(busyActions).toContain("onPointerDown={handleActionPointerDown}");
+    expect(busyActions).toContain("onClick={handleActionClick}");
+    expect(busyActions).toContain("onClick={props.onStop}");
     expect(busyActions).toContain('title={t("composer.queue_hint")}');
     expect(busyActions).not.toContain("onSteer");
     expect(composerSource).not.toContain("onSteer:");
@@ -97,6 +107,7 @@ describe("composer queue behavior", () => {
     expect(editorSource).toContain("submitDisabled?: boolean;");
     expect(editorSource).toContain("disabled={props.submitDisabled ?? props.disabled}");
     expect(sessionSurfaceSource).toContain("inputDisabled={false}");
+    expect(sessionSurfaceSource).toContain('disabled={model.transitionState !== "idle" || Boolean(props.modelUnavailable)}');
   });
 
   test("treats a turn error as recoverable instead of failing the session route", () => {
@@ -215,9 +226,44 @@ describe("composer queue behavior", () => {
     expect(sendHandler).toContain("restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState)");
   });
 
-  test("renders the queued list in a floating panel above the composer", () => {
-    expect(queuedMessagesPanelSource).toContain("absolute bottom-full left-0 right-0");
-    expect(queuedMessagesPanelSource).toContain("bg-dls-surface");
+  test("renders the queued list as part of the composer surface", () => {
+    expect(queuedMessagesPanelSource).toContain("border-b border-dls-border/70 bg-transparent");
+    expect(queuedMessagesPanelSource).not.toContain("absolute bottom-full");
+    expect(queuedMessagesPanelSource).not.toContain("shadow-");
+  });
+
+  test("offers native mid-turn guidance only when the active engine supports it", () => {
+    const conversationEngineSource = readFileSync(
+      resolve(import.meta.dir, "../src/react-app/domains/session/engine/conversation-engine.ts"),
+      "utf8",
+    );
+    const codexEngineSource = readFileSync(
+      resolve(import.meta.dir, "../src/react-app/domains/session/engine/codex-harness-conversation-engine.ts"),
+      "utf8",
+    );
+    const deepSeekEngineSource = readFileSync(
+      resolve(import.meta.dir, "../src/react-app/domains/session/engine/deepseek-harness-conversation-engine.ts"),
+      "utf8",
+    );
+    const openCodeEngineSource = readFileSync(
+      resolve(import.meta.dir, "../src/react-app/domains/session/engine/opencode-conversation-engine.ts"),
+      "utf8",
+    );
+    const codexRouteSource = readFileSync(
+      resolve(import.meta.dir, "../../server/src/routes/codex-harness.ts"),
+      "utf8",
+    );
+
+    expect(conversationEngineSource).toContain("steerPrompt?(input: ConversationPromptInput)");
+    expect(codexEngineSource).toContain('client.call<{ turnId: string }>("turn/steer"');
+    expect(codexEngineSource).toContain("expectedTurnId: turnId");
+    expect(deepSeekEngineSource).toContain('mode: "steer"');
+    expect(openCodeEngineSource).not.toContain("steerPrompt");
+    expect(codexRouteSource).toContain('"turn/steer"');
+    expect(sessionSurfaceSource).toContain("onSteer={props.onSteerDraft ? steerQueuedDraft : undefined}");
+    expect(queuedMessagesPanelSource).toContain('t("composer.steer_queued")');
+    expect(queuedMessagesPanelSource).toContain("<Send size={14} strokeWidth={1.75}");
+    expect(queuedMessagesPanelSource).toContain("text-sm font-medium text-gray-11");
   });
 
   test("does not expose drag reordering for queued messages", () => {

@@ -2,10 +2,19 @@ import { describe, expect, test } from "bun:test";
 
 import {
   mapCodexMessages,
+  mapCodexThread,
   type CodexThread,
 } from "./codex-harness-session-read-model.js";
 
 describe("Codex Harness session read model", () => {
+  test("preserves native approval and input waiting flags in snapshots", () => {
+    for (const flag of ["waitingOnApproval", "waitingOnUserInput"]) {
+      const session = mapCodexThread({ id: "waiting", status: { type: "active", activeFlags: [flag] } });
+      expect(session.status.type).toBe("busy");
+      expect(session.codex).toEqual({ status: "active", activeFlags: [flag] });
+    }
+    expect(mapCodexThread({ id: "idle", status: { type: "idle" } }).codex.activeFlags).toEqual([]);
+  });
   test("preserves user image content as file parts", () => {
     const messages = mapCodexMessages({
       id: "thread-codex",

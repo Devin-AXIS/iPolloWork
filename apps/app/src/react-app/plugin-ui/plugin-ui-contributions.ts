@@ -5,7 +5,7 @@ import type {
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import { activePluginEngineCompatibility } from "@/app/lib/plugin-package-readiness";
-import type { PluginContribution, PluginUiResource } from "@ipollowork/types/plugins";
+import type { PluginContribution, PluginResource, PluginUiResource } from "@ipollowork/types/plugins";
 
 export type PluginUiSurface = {
   id: string;
@@ -15,8 +15,34 @@ export type PluginUiSurface = {
   description: string;
   iconSrc: string | null;
   action: string | null;
-  resource: PluginUiResource;
+  resource: PluginUiResource | (PluginResource & { type: "local-service" });
 };
+
+// Engine identities remain stable for persisted tabs and iframe messages.
+// The package identity owns installation, resources, and service calls.
+export function isMediaStudioPlugin(pluginId: string) {
+  return pluginId === "media-studio" || pluginId === "image-studio" || pluginId === "video-console";
+}
+
+export function mediaStudioEngine(surface: PluginUiSurface): string {
+  if (surface.pluginId !== "media-studio") return surface.pluginId;
+  return surface.resource.id === "console" ? "video-console" : "image-studio";
+}
+
+export function workspaceAppServiceAction(surface: PluginUiSurface, action: string): string {
+  if (surface.pluginId !== "media-studio") return action;
+  return mediaStudioEngine(surface) === "video-console" ? `video-${action}` : action === "status" ? "image-status" : action;
+}
+
+export function workspaceAppTabId(surface: PluginUiSurface) {
+  return isMediaStudioPlugin(surface.pluginId) ? "workspace-app:media-studio" : `workspace-app:${surface.id}`;
+}
+
+export function workspaceAppLaunchers(surfaces: PluginUiSurface[]) {
+  const media = surfaces.find(item => mediaStudioEngine(item) === "image-studio")
+    ?? surfaces.find(item => mediaStudioEngine(item) === "video-console");
+  return surfaces.filter(item => !isMediaStudioPlugin(item.pluginId) || item === media);
+}
 
 export type PluginConversationTemplate = {
   id: string;
@@ -61,6 +87,7 @@ function uiSurface(
     && entry.id === contribution.ref
     && Boolean(entry.path && entry.ui)
     && !item.disabledResourceIds.includes(entry.id)
+    && !activePluginEngineCompatibility(item)?.unsupportedResourceIds.includes(entry.id)
   ));
   if (!resource?.path || !resource.ui) return null;
   return {
@@ -82,7 +109,9 @@ export function resolveInstalledPluginContributions(
   const settingsPages: PluginUiSurface[] = [];
   const conversationTemplates: PluginConversationTemplate[] = [];
 
+  const hasUnifiedPackage = items.some(item => item.pluginId === "media-studio");
   for (const item of items) {
+    if (hasUnifiedPackage && (item.pluginId === "image-studio" || item.pluginId === "video-console")) continue;
     if (!item.enabled) continue;
     if (activePluginEngineCompatibility(item)?.status === "unsupported") continue;
     item.manifest.contributions?.forEach((contribution, index) => {
@@ -102,6 +131,31 @@ export function resolveInstalledPluginContributions(
         mode: contribution.mode ?? "work",
       });
     });
+    // UI resources without an explicit placement still need a workbench entry.
+    const placedResourceIds = new Set(item.manifest.contributions
+      ?.filter((entry) => entry.type === "workspace-app" || entry.type === "settings-page")
+      .map((entry) => entry.ref));
+    for (const resource of item.manifest.resources) {
+      if (resource.type !== "ui" || placedResourceIds.has(resource.id)) continue;
+      const surface = uiSurface(item, { type: "workspace-app", ref: resource.id }, 0);
+      if (surface) workspaceApps.push(surface);
+    }
+    // Some packages serve their workbench from a local service instead of a UI resource.
+    // Prefer their UI when one exists, so each workbench has only one launcher.
+    if (!item.manifest.resources.some((resource) => resource.type === "ui" && resource.path && resource.ui)) {
+      const service = item.manifest.resources.find((resource) => resource.type === "local-service"
+        && !item.disabledResourceIds.includes(resource.id)
+        && !activePluginEngineCompatibility(item)?.unsupportedResourceIds.includes(resource.id)
+        && resource.actions?.some((action) => action.id === "open-workbench"));
+      if (service?.type === "local-service") {
+        workspaceApps.push({
+          id: `${item.pluginId}:workspace-app:${service.id}`,
+          pluginId: item.pluginId, pluginName: item.name, label: item.name,
+          description: item.manifest.description, iconSrc: item.manifest.icon?.src?.trim() || null,
+          action: "open-workbench", resource: { ...service, type: "local-service" },
+        });
+      }
+    }
   }
 
   const byLabel = <Value extends { label: string }>(left: Value, right: Value) => left.label.localeCompare(right.label);

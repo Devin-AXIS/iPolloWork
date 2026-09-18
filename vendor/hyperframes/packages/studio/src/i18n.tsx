@@ -94,6 +94,9 @@ type TranslationKey =
   | "right.voiceTooltip"
   | "right.style"
   | "right.styleTooltip"
+  | "right.componentsHelp"
+  | "right.presetComponents"
+  | "right.avatar"
   | "right.components"
   | "right.componentsTooltip"
   | "right.assets"
@@ -209,10 +212,13 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "Resize Layers and Design panes",
     "right.design": "Layers",
     "right.designTooltip": "Element styles and properties",
-    "right.voice": "Voice",
-    "right.voiceTooltip": "Voiceover settings",
+    "right.voice": "Sound",
+    "right.voiceTooltip": "Voiceover and sound settings",
     "right.style": "Style",
     "right.styleTooltip": "Video design system",
+    "right.componentsHelp": "Components follow the current theme. After insertion, adjust their settings or ask AI to edit them.",
+    "right.presetComponents": "Presets",
+    "right.avatar": "Avatar",
     "right.components": "Components",
     "right.componentsTooltip": "Reusable, theme-aware visual components",
     "right.assets": "Assets",
@@ -328,10 +334,13 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
     "right.resizePanes": "调整图层与设计面板高度",
     "right.design": "图层",
     "right.designTooltip": "元素风格和属性",
-    "right.voice": "配音",
-    "right.voiceTooltip": "视频配音设置",
+    "right.voice": "声音",
+    "right.voiceTooltip": "配音与声音设置",
     "right.style": "主题",
     "right.styleTooltip": "视频设计系统",
+    "right.componentsHelp": "组件会跟随当前主题。插入后可调整参数，也可以让 AI 帮你修改。",
+    "right.presetComponents": "预设组件",
+    "right.avatar": "数字人",
     "right.components": "组件",
     "right.componentsTooltip": "可复用并跟随主题的视觉组件",
     "right.assets": "素材",
@@ -379,6 +388,10 @@ const messages: Record<StudioLocale, Record<TranslationKey, string>> = {
  */
 const studioLiteralZh: Record<string, string> = {
   "3D Transform": "3D 变换",
+  Title: "标题",
+  Items: "条目",
+  "Highlighted item": "高亮条目",
+  "Supporting note": "补充说明",
   "Add a new animation effect to this element": "为此元素添加动画效果",
   "Add animation": "添加动画",
   "Add keyframe": "添加关键",
@@ -520,6 +533,8 @@ const studioLiteralZh: Record<string, string> = {
   best: "最佳",
   "Ask AI": "交给AI",
   "Ask AI about selected element": "让 AI 处理所选元素",
+  "Edit image": "图片编辑",
+  "Edit video": "视频编辑",
   "Edit in Image Studio": "在图片工作台编辑",
   "Edit in Video Console": "在视频控制台编辑",
   "Copy prompt to AI agent": "将提示词复制给 AI Agent",
@@ -590,6 +605,8 @@ const studioLiteralZh: Record<string, string> = {
   "Current file media": "当前文件中的媒体",
   "Custom LUT": "自定义 LUT",
   Cutout: "抠图",
+  "Low layer · above background": "低层级 · 仅在背景之上",
+  "High layer · above content": "高层级 · 盖住其他元素",
   Circle: "圆形",
   Column: "纵向",
   Custom: "自定义",

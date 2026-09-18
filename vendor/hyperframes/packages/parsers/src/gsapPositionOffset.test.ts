@@ -1,6 +1,24 @@
 import { describe, expect, it } from "vitest";
+import { runInNewContext } from "node:vm";
 import { parseGsapScriptAcorn } from "./gsapParserAcorn";
-import { offsetPositionPathsInScript, syncPositionHoldsBeforeKeyframes } from "./gsapParser";
+import { addAnimationToScript, offsetPositionPathsInScript, syncPositionHoldsBeforeKeyframes } from "./gsapParser";
+
+describe("inserting a dragged avatar into a template timeline", () => {
+  for (const nested of [
+    'if (false) tl.to("#title", { x: 20 });',
+    '[0, 1, 2].forEach(i => { if (i) tl.to("#title", { x: i }); });',
+    'const add = (selector) => { if (selector) tl.to(selector, { x: 20 }); }; add("#title");',
+  ]) {
+    it(`inserts once in the timeline scope: ${nested}`, () => {
+      const source = `(() => { const tl = gsap.timeline({paused:true}); ${nested} })();`;
+      const result = addAnimationToScript(source, { targetSelector: "#avatar", method: "set", properties: { x: 80, y: 25 }, position: 0 });
+      const targets: string[] = [];
+      const timeline = { to: (selector: string) => targets.push(selector), set: (selector: string) => targets.push(selector) };
+      runInNewContext(result.script, { gsap: { timeline: () => timeline } });
+      expect(targets.filter(target => target === "#avatar")).toHaveLength(1);
+    });
+  }
+});
 
 describe("offsetPositionPathsInScript", () => {
   it("moves every authored position phase and its base without losing motion metadata", () => {

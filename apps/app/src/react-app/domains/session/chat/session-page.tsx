@@ -6,7 +6,7 @@ import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Check, ChevronDown, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
+import { Check, ChevronDown, CircleAlert, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
 import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
@@ -57,7 +57,6 @@ import {
   artifactDirectoryPath,
   artifactPathIsWithinDirectory,
   artifactPathMatchesTarget,
-  getArtifactsFromMessages,
 } from "@/lib/artifacts";
 import { Button } from "@/components/ui/button";
 import { MessageContent } from "@/components/ui/message";
@@ -76,6 +75,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/sonner";
@@ -125,7 +125,6 @@ import { workspaceSettingsRoute } from "../../../shell/workspace-routes";
 
 import { isElectronRuntime } from "../../../../app/utils";
 import { isCollectibleArtifactTarget, isLocalhostBrowserTarget, isOpenableFileTarget, type OpenTarget } from "../artifacts/open-target";
-import { promptWasDispatched } from "../artifacts/artifact-completion";
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { VoicePanel } from "../voice/voice-panel";
 import { designAiSelectionToken, type DesignAiSelectionContext } from "@ipollowork/design-studio";
@@ -144,6 +143,9 @@ import {
   type VideoArtifactCompletionRequirement,
 } from "../video/video-project";
 import { isStreamingSessionStatus } from "../sidebar/utils";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import type { ConversationStatus } from "../engine/conversation-engine";
+import { statusKey } from "../sync/session-sync";
 import {
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
@@ -154,6 +156,7 @@ import {
 } from "../templates/template-brief";
 import {
   REFERENCE_FILE_ACCEPT,
+  REFERENCE_MAX_BYTES,
   canSendOriginalReference,
   ingestReferenceFile,
   isReferenceFile,
@@ -167,7 +170,7 @@ import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
 import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
-import { SidePanel, SidePanelLauncherIcon, type SidePanelLauncherItem } from "../panel/side-panel";
+import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
 import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
@@ -177,6 +180,10 @@ import { cn } from "@/lib/utils";
 import {
   resolveInstalledPluginContributions,
   useInstalledPluginContributions,
+  isMediaStudioPlugin,
+  mediaStudioEngine,
+  workspaceAppTabId,
+  workspaceAppLaunchers,
 } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { WorkspaceAppModelContext } from "@/react-app/plugin-ui/workspace-app-frame";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
@@ -218,12 +225,12 @@ const CUSTOM_TEMPLATE_CATEGORIES: readonly TemplateCategory[] = [
 ];
 
 type PendingTemplateApplication =
-  | { item: TemplateCatalogItem; origin: "market"; resourceScope: WorkContextId }
+  | { item: TemplateCatalogItem; origin: "market" | "project-task"; resourceScope: WorkContextId }
   | { item: TemplateCatalogItem; origin: "conversation-conflict"; resourceScope: WorkContextId; existingTemplateTitle?: string };
 
 type PendingCustomTemplateApplication = {
   category: TemplateCategory;
-  target: "new-task" | "current-session";
+  target: "new-task" | "project-task" | "current-session";
   allowCategoryChange: boolean;
 };
 
@@ -806,6 +813,8 @@ export type SessionPageProps = {
   sessionLoadingById: (sessionId: string | null) => boolean;
   providerAuthModal?: ProviderAuthModalProps | null;
   activePermission?: ConversationPermission | null;
+  refreshInteractions?: () => void;
+  interactionsRefreshing?: boolean;
   permissionReplyBusy?: boolean;
   respondPermission?: (requestID: string, reply: "once" | "always" | "reject") => void;
   safeStringify?: (value: unknown) => string;
@@ -872,6 +881,15 @@ function InitialProjectTaskStarter({
   const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [toolImportedPlugins, setToolImportedPlugins] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
+
+  // Keep the unsent starter input available when a workbench creates a session.
+  useEffect(() => {
+    const scope = `new-task:${workspaceId ?? "new-project"}:${engineId?.trim() || DEFAULT_ENGINE_ID}`;
+    const store = useComposerStateStore.getState();
+    store.setDraft(scope, draft);
+    store.setAttachments(scope, attachments);
+    store.setPasteParts(scope, pastedText);
+  }, [workspaceId, engineId, draft, attachments, pastedText]);
 
   const opencodeClient = useMemo(
     () => opencodeBaseUrl && ipolloworkToken
@@ -1437,7 +1455,7 @@ function DesignStarter({ client, workspaceId, templates, loading, busyId, error,
   </>);
 }
 
-function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
+export function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCategoryChange, destinationName, newTaskRequired = false, conflictTemplateTitle, projects, selectedProjectId, onProjectChange, onRequestNewProject, onSubmit, onClose }: {
   open: boolean;
   mode: TemplateApplyMode;
   template: TemplateManifestV1 | null;
@@ -1454,13 +1472,19 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
   onClose: () => void | Promise<void>;
 }) {
   const config = templateBriefConfigFor(template ?? { category: customCategory ?? "slides" });
-  const [brief, setBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [inputMode, setInputMode] = useState<"file" | "description">("file");
+  const [customBrief, setCustomBrief] = useState<TemplateBrief>({ title: "", audience: "", details: "" });
+  const [fileInstructions, setFileInstructions] = useState("");
   const [references, setReferences] = useState<TemplateReferenceItem[]>([]);
-  const [referenceBusy, setReferenceBusy] = useState(false);
+  const parsingReference = references.find(reference => reference.status === "parsing");
+  const referenceBusy = Boolean(parsingReference);
   const [conflictConfirmed, setConflictConfirmed] = useState(!newTaskRequired);
   const [submitting, setSubmitting] = useState(false);
   const referenceInputRef = useRef<HTMLInputElement>(null);
   const referencesRef = useRef<TemplateReferenceItem[]>([]);
+
+  const referenceControllers = useRef(new Map<string, AbortController>());
+  useEffect(() => () => { referencesRef.current = []; for (const controller of referenceControllers.current.values()) controller.abort(); referenceControllers.current.clear(); }, []);
 
   const updateReferences = (updater: (current: TemplateReferenceItem[]) => TemplateReferenceItem[]) => {
     const next = updater(referencesRef.current);
@@ -1468,20 +1492,12 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
     setReferences(next);
   };
 
-  const applyReferenceBriefAutofill = (inferred: TemplateBrief) => {
-    if (!inferred.title && !inferred.audience && !inferred.details) return;
-    setBrief((current) => ({
-      title: current.title.trim() ? current.title : inferred.title,
-      audience: current.audience.trim() ? current.audience : inferred.audience,
-      details: current.details.trim() ? current.details : inferred.details,
-    }));
-    toast.success(t("templates.brief.reference_autofilled"));
-  };
-
   const addReferenceFiles = async (files: File[]) => {
     if (!files.length) return;
     const unsupported = files.filter((file) => !isReferenceFile(file));
-    const supported = files.filter((file) => isReferenceFile(file));
+    const oversized = files.filter((file) => isReferenceFile(file) && file.size > REFERENCE_MAX_BYTES);
+    if (oversized.length) toast.warning(t("templates.brief.reference_too_large"), { description: oversized.map((file) => file.name).join("、") });
+    const supported = files.filter((file) => isReferenceFile(file) && file.size <= REFERENCE_MAX_BYTES);
     if (unsupported.length) {
       toast.warning(
         unsupported.length === 1
@@ -1491,7 +1507,6 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       );
     }
     if (!supported.length) return;
-    setReferenceBusy(true);
     const pending = supported.map((file) => ({
       id: `${file.name}-${file.lastModified}-${Math.random().toString(36).slice(2)}`,
       file,
@@ -1500,48 +1515,54 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       size: file.size,
       status: "parsing" as const,
       sendOriginal: false,
+      progress: 0,
     }));
     updateReferences((current) => [...current, ...pending]);
 
-    try {
-      const results = await Promise.all(pending.map(async (item): Promise<TemplateReferenceItem> => {
-        try {
-          const ingestion = await ingestReferenceFile(item.file);
-          const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
-          return { ...item, mimeType: ingestion.mimeType, status, ingestion };
-        } catch (error) {
-          toast.warning(t("templates.brief.reference_status_failed"), {
-            description: error instanceof Error ? error.message : item.fileName,
-          });
-          return { ...item, status: "failed" };
-        }
-      }));
-      const activeResults = results.filter((result) => referencesRef.current.some((reference) => reference.id === result.id));
-      updateReferences((current) => current.map((item) => activeResults.find((result) => result.id === item.id) ?? item));
-      applyReferenceBriefAutofill(inferTemplateBriefFromIngestions(
-        activeResults.flatMap((result) => result.ingestion ? [result.ingestion] : []),
-      ));
-    } finally {
-      setReferenceBusy(false);
+    // Parse sequentially to bound PDF/ZIP memory and show each completed file immediately.
+    for (const item of pending) {
+      if (!referencesRef.current.some((reference) => reference.id === item.id)) continue;
+      const controller = new AbortController();
+      referenceControllers.current.set(item.id, controller);
+      try {
+        const ingestion = await ingestReferenceFile(item.file, (progress, progressDetail) => {
+          updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, progress, progressDetail } : reference));
+        }, controller.signal);
+        const status: TemplateReferenceItem["status"] = ingestion.quality === "high" || ingestion.quality === "medium" ? "ready" : ingestion.quality === "low" ? "weak" : "failed";
+        updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, mimeType: ingestion.mimeType, status, ingestion, progress: 100 } : reference));
+      } catch (error) {
+        if (controller.signal.aborted) continue;
+        toast.warning(t("templates.brief.reference_status_failed"), { description: error instanceof Error ? error.message : item.fileName });
+        updateReferences((current) => current.map((reference) => reference.id === item.id ? { ...reference, status: "failed", progress: 100 } : reference));
+      } finally { referenceControllers.current.delete(item.id); }
     }
   };
 
   const removeReference = (id: string) => {
+    referenceControllers.current.get(id)?.abort();
     updateReferences((current) => current.filter((item) => item.id !== id));
   };
 
-  const requiredFields = config.fields.filter((field) => !field.optional);
-  const completedRequiredFields = requiredFields.filter((field) => brief[field.key].trim()).length;
+  const usesFiles = inputMode === "file";
+  const inferred = useMemo(() => inferTemplateBriefFromIngestions(references.flatMap(reference => reference.ingestion ? [reference.ingestion] : [])), [references]);
+  const canSubmit = usesFiles
+    ? references.length > 0 && !referenceBusy && references.every(reference => reference.status !== "failed")
+    : Boolean(customBrief.title.trim() && customBrief.audience.trim());
   const submitApplication = async () => {
+    if (!canSubmit || submitting) return;
     setSubmitting(true);
     try {
-      await onSubmit(
-        { title: brief.title.trim(), audience: brief.audience.trim(), details: brief.details.trim() },
-        references,
-      );
-    } finally {
-      setSubmitting(false);
-    }
+      await onSubmit(usesFiles ? {
+        title: inferred.title || references[0].fileName,
+        audience: inferred.audience,
+        details: [inferred.details, fileInstructions.trim()].filter(Boolean).join("\n\n"),
+        style: inferred.style?.trim(),
+      } : {
+        title: customBrief.title.trim(),
+        audience: customBrief.audience.trim(),
+        details: customBrief.details.trim(),
+      }, usesFiles ? references : []);
+    } finally { setSubmitting(false); }
   };
 
   if (newTaskRequired && !conflictConfirmed) {
@@ -1573,13 +1594,13 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
       <DialogContent
         data-testid="template-apply-dialog"
         showCloseButton={false}
-        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[800px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-6 ring-0 dark:ring-1 dark:ring-border sm:max-w-[800px]"
+        className="flex max-h-[calc(100dvh-32px)] w-[calc(100%-32px)] max-w-[660px] flex-col gap-0 overflow-hidden rounded-[16px] bg-popover p-5 sm:p-7 ring-0 dark:ring-1 dark:ring-border sm:max-w-[660px]"
       >
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="absolute end-6 top-6 size-6 rounded-[2px] bg-transparent p-0"
+          className="absolute end-4 top-4 size-7 rounded-lg bg-transparent p-0 text-foreground/70 hover:text-foreground sm:end-6 sm:top-6"
           aria-label={t("common.close")}
           disabled={submitting}
           onClick={() => void onClose()}
@@ -1587,17 +1608,17 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
           <X className="size-4" />
         </Button>
 
-        <DialogHeader className="shrink-0 gap-1.5 pb-6 pe-8 text-left">
-          <DialogTitle className="text-ui-title-sm font-semibold leading-6">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
-          <DialogDescription className="max-w-2xl text-ui-control leading-[22px]">{template ? config.description : t("template_market.custom_description")}</DialogDescription>
+        <DialogHeader className="shrink-0 gap-2 pb-5 pe-8 text-left">
+          <DialogTitle className="text-lg font-semibold leading-6 tracking-tight">{template?.title ?? t("template_market.custom_title")}</DialogTitle>
+          <DialogDescription className="max-w-lg text-xs leading-5 text-foreground/70">{t("templates.brief.input_description")}</DialogDescription>
         </DialogHeader>
 
-        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-0.5 pb-0.5">
           {customCategory && onCustomCategoryChange ? (
             <section className="space-y-1.5">
-              <label className="text-ui-body font-semibold leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
+              <label className="text-xs font-medium leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
               <Select value={customCategory} onValueChange={(value) => { if (value) onCustomCategoryChange(value); }}>
-                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>{t(`template_market.category.${customCategory}`)}</SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1606,67 +1627,72 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
               </Select>
             </section>
           ) : null}
-          <section className="space-y-4">
-            {config.fields.map((field) => (
-              <label key={field.key} className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
-                <span>{field.label}{!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null}</span>
-                {field.key === "details" ? (
-                  <Textarea
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[130px] min-h-[130px] resize-none rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                ) : (
-                  <Input
-                    required={!field.optional}
-                    value={brief[field.key]}
-                    onChange={(event) => { const value = event.currentTarget.value; setBrief((current) => ({ ...current, [field.key]: value })); }}
-                    placeholder={field.placeholder}
-                    className="h-[34px] rounded-lg px-4 py-2 text-ui-control font-normal leading-[18px] placeholder:text-muted-foreground/70"
-                  />
-                )}
-              </label>
-            ))}
-          </section>
+          <Tabs value={inputMode} onValueChange={value => { if (value === "file" || value === "description") setInputMode(value); }}>
+            <TabsList className="h-9 w-full rounded-lg bg-muted/60 p-1" aria-label={t("templates.brief.input_mode")}>
+              <TabsTrigger id="template-file-tab" aria-controls="template-input-panel" value="file" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Upload className="size-3.5" />{t("templates.brief.use_file")}</TabsTrigger>
+              <TabsTrigger id="template-description-tab" aria-controls="template-input-panel" value="description" className="h-7 gap-1.5 rounded-md text-xs" disabled={submitting}><Pencil className="size-3.5" />{t("templates.brief.describe")}</TabsTrigger>
+            </TabsList>
+          </Tabs>
+          <div id="template-input-panel" role="tabpanel" aria-labelledby={`template-${inputMode}-tab`} className="space-y-4">
+          {inputMode === "description" ? <div className="space-y-4">
+            {(["title", "audience", "details"] satisfies (keyof TemplateBrief)[]).map(key => <label key={key} className="flex flex-col gap-2 text-xs font-medium text-foreground">
+              <span>{t(`templates.brief.manual_${key}`)}{key !== "details" ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null}</span>
+              {key === "details" ? <Textarea data-testid="template-description" rows={3} disabled={submitting} value={customBrief.details} onChange={event => { const details = event.currentTarget.value; setCustomBrief(current => ({ ...current, details })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 px-3.5 py-3 text-ui-control font-normal leading-5 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" /> : <Input data-testid={`template-${key}`} required disabled={submitting} value={customBrief[key]} onChange={event => { const value = event.currentTarget.value; setCustomBrief(current => ({ ...current, [key]: value })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="h-9 rounded-lg border-0 bg-muted/60 px-3.5 text-ui-control font-normal shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />}
+            </label>)}
+            </div> : null}
 
-          <section aria-labelledby="template-supplemental" className="space-y-1.5">
-            <h3 id="template-supplemental" className="text-ui-body font-semibold leading-5 text-foreground">{t("templates.brief.supplemental_information")}</h3>
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-              <Button type="button" variant="outline" className="h-9 rounded-lg px-3 text-ui-control" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>{referenceBusy ? <LoaderCircle className="size-3.5 animate-spin" /> : <Download className="size-3.5" />}{t("templates.brief.upload_file")}</Button>
-              <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.reference_supported_formats")}</p>
+          {usesFiles ? <section aria-labelledby="template-supplemental" className="space-y-3">
+            <h3 id="template-supplemental" className="text-xs font-medium leading-5 text-foreground">{t("templates.brief.reference_label")}</h3>
+            <div>
+              <Button data-testid="template-reference-formats-trigger" type="button" variant="ghost" className="h-auto min-h-[180px] w-full flex-col justify-center gap-3 whitespace-normal rounded-xl border-0 bg-muted/60 px-5 py-6 text-center shadow-none ring-0 before:hidden hover:bg-muted/80 focus-visible:ring-2 focus-visible:ring-ring/15 dark:bg-muted/60 dark:hover:bg-muted/80" aria-label={t("templates.brief.upload_file")} aria-describedby="template-reference-formats template-reference-max-size" disabled={referenceBusy || submitting} onClick={() => referenceInputRef.current?.click()}>
+                <span aria-hidden="true" className="flex size-11 shrink-0 items-center justify-center rounded-full bg-foreground text-background">
+                  {referenceBusy ? <LoaderCircle className="size-5 animate-spin" /> : <Plus className="size-5" />}
+                </span>
+                <span className="text-ui-control font-medium text-foreground">{t("templates.brief.upload_file")}</span>
+                <span className="flex min-w-0 flex-col gap-1 text-xs font-normal leading-5 text-foreground/60">
+                  <span id="template-reference-formats">{t("templates.brief.reference_supported_formats")}</span>
+                  <span id="template-reference-max-size">{t("templates.brief.reference_max_size", { size: formatBytes(REFERENCE_MAX_BYTES) })}</span>
+                </span>
+              </Button>
               <input ref={referenceInputRef} type="file" multiple accept={REFERENCE_FILE_ACCEPT} className="hidden" onChange={(event) => { const files = Array.from(event.currentTarget.files ?? []); event.currentTarget.value = ""; void addReferenceFiles(files); }} />
             </div>
 
-            {references.length ? <div className="grid gap-2">
-              {references.map((reference) => <div key={reference.id} className="flex min-w-0 items-center gap-2 rounded-lg border border-border bg-background px-2.5 py-2">
-                <FileText className="size-3.5 shrink-0 text-muted-foreground" />
+            {references.length ? <ul className="flex flex-wrap gap-2" aria-label={t("templates.brief.reference_files")}>
+              {references.map(reference => <li key={reference.id} data-testid="template-reference-card" className="flex h-12 w-60 max-w-full min-w-0 items-center gap-2.5 rounded-lg bg-muted/40 px-3 py-2">
+                <Tooltip>
+                  <TooltipTrigger render={<button type="button" className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground" aria-label={t(reference.status === "parsing" ? "templates.brief.reference_status_parsing" : `templates.brief.reference_card_${reference.status}`)} />}>
+                    {reference.status === "parsing" ? <LoaderCircle role="status" className="size-4 animate-spin" /> : reference.status === "weak" || reference.status === "failed" ? <CircleAlert className="size-4" /> : <FileText className="size-4" />}
+                  </TooltipTrigger>
+                  <TooltipContent positionerClassName="z-[90]">{reference.status === "parsing" ? `${reference.progress ?? 0}%` : t(reference.status === "failed" ? "templates.brief.reference_retry_hint" : reference.status === "weak" ? "templates.brief.reference_needs_input" : "templates.brief.reference_card_ready")}</TooltipContent>
+                </Tooltip>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-xs font-medium">{reference.fileName}</div>
-                  <div className="text-[10px] text-muted-foreground">{reference.status === "parsing" ? t("templates.brief.reference_status_parsing") : reference.status === "ready" ? t("templates.brief.reference_status_ready", { quality: reference.ingestion?.quality ?? "high" }) : reference.status === "weak" ? t("templates.brief.reference_status_weak") : t("templates.brief.reference_status_failed")}</div>
-                  {reference.ingestion?.warnings[0] ? <div className="truncate text-[10px] text-muted-foreground" title={reference.ingestion.warnings[0]}>{reference.ingestion.warnings[0]}</div> : null}
+                  <div className="truncate text-xs font-medium" title={reference.fileName}>{reference.fileName}</div>
+                  <div className="text-[10px] text-muted-foreground">{formatBytes(reference.size)}</div>
                 </div>
-                <Button type="button" variant={reference.sendOriginal ? "secondary" : "ghost"} size="sm" className="h-7 shrink-0 rounded-lg px-2 text-[10px]" disabled={reference.status === "parsing" || !canSendOriginalReference(reference.file) || submitting} onClick={() => updateReferences((current) => current.map((item) => item.id === reference.id ? { ...item, sendOriginal: !item.sendOriginal } : item))}>{reference.sendOriginal ? t("templates.brief.reference_send_original_on") : t("templates.brief.reference_send_original_off")}</Button>
-                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-muted-foreground hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
-              </div>)}
-            </div> : null}
-          </section>
+                <Button type="button" variant="ghost" size="icon-sm" className="size-7 shrink-0 rounded-lg text-foreground/70 hover:text-foreground" aria-label={t("templates.brief.reference_remove", { name: reference.fileName })} disabled={submitting} onClick={() => removeReference(reference.id)}><X className="size-3.5" /></Button>
+              </li>)}
+            </ul> : null}
+            <label className="flex flex-col gap-2 pt-1 text-xs font-medium text-foreground">
+              {t("templates.brief.file_instructions")}
+              <Textarea data-testid="template-file-instructions" rows={3} disabled={submitting} value={fileInstructions} onChange={event => setFileInstructions(event.currentTarget.value)} placeholder={t("templates.brief.file_instructions_placeholder")} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 dark:bg-muted/60 ring-0 px-3.5 py-3 text-ui-control font-normal leading-5 placeholder:text-foreground/70 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />
+            </label>
+          </section> : null}
 
+          </div>
           {mode === "market" && projects && selectedProjectId && onProjectChange ? <section aria-labelledby="template-destination" className="space-y-1.5">
-            <h3 id="template-destination" className="flex items-center gap-1.5 text-ui-body font-semibold leading-5 text-foreground">
+            <h3 id="template-destination" className="flex items-center gap-1.5 text-xs font-medium leading-5 text-foreground">
               {t("templates.brief.destination")}
               <span className="text-destructive" aria-hidden="true">*</span>
             </h3>
-            <p className="text-ui-control leading-5 text-muted-foreground">{t("templates.brief.destination_description")}</p>
-            <div className="flex items-center gap-4">
+            <p className="text-xs leading-5 text-foreground/70">{t("templates.brief.destination_description")}</p>
+            <div className="flex flex-wrap items-center gap-2">
               <Select value={selectedProjectId} onValueChange={(value) => { if (value) onProjectChange(value); }}>
-                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg bg-background px-2 text-ui-control data-[size=default]:h-[34px]">
+                <SelectTrigger className="h-[34px] min-w-0 flex-1 rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
                   <SelectValue>
                     {projects.find((project) => project.id === selectedProjectId)?.name
                       ?? destinationName
                       ?? t("workspace_list.workspace_fallback")}
-                    <span className="ms-1 text-muted-foreground">· {t("templates.brief.new_conversation")}</span>
+                    <span className="ms-1 text-foreground/70">· {t("templates.brief.new_conversation")}</span>
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
@@ -1678,9 +1704,9 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
           </section> : null}
         </div>
 
-        <DialogFooter className="mx-0 mb-0 shrink-0 flex-row gap-4 rounded-none border-0 bg-transparent p-0 pt-6 sm:justify-end">
-          <Button type="button" variant="outline" className="h-9 rounded-lg px-3" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
-          <Button type="button" className="h-9 rounded-lg px-3" disabled={completedRequiredFields !== requiredFields.length || referenceBusy || submitting} onClick={() => void submitApplication()}>
+        <DialogFooter className="mx-0 mb-0 mt-5 shrink-0 flex-row justify-end gap-2 rounded-none border-0 bg-transparent p-0 pt-4 sm:justify-end">
+          <Button type="button" variant="ghost" className="h-9 rounded-lg px-4 text-foreground/70 hover:text-foreground" disabled={submitting} onClick={() => { if (newTaskRequired) setConflictConfirmed(false); else void onClose(); }}>{newTaskRequired ? t("common.back") : t("common.cancel")}</Button>
+          <Button type="button" className="h-9 rounded-lg px-4" disabled={!canSubmit || (usesFiles && referenceBusy) || submitting} onClick={() => void submitApplication()}>
             {submitting ? <LoaderCircle className="size-4 animate-spin" /> : null}
             {mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel}
           </Button>
@@ -1691,6 +1717,12 @@ function TemplateApplyDialog({ open, mode, template, customCategory, onCustomCat
 }
 
 export function SessionPage(props: SessionPageProps) {
+  // Observe the same status cache as the composer: Stop settles it immediately
+  // and session-sync suppresses stale busy events until the next prompt.
+  const { data: selectedSessionStatus } = useQuery<ConversationStatus>({
+    queryKey: statusKey(props.runtimeWorkspaceId ?? "", props.selectedSessionId ?? ""),
+    queryFn: skipToken,
+  });
   const locale = currentLocale();
   const { config: shellConfig } = useShellConfig();
   const navigate = useNavigate();
@@ -1937,12 +1969,6 @@ export function SessionPage(props: SessionPageProps) {
       : undefined,
     [artifactCatalogState, artifactContext, artifactScopeKey],
   );
-  const videoOutput = useMemo(() => (
-    currentVideoEntryPath
-      ? getArtifactsFromMessages(conversationMessages, accessibleTargets, { includeTargetFallbacks: true })
-        .find((artifact) => artifactPathMatchesTarget(artifact.path, currentVideoEntryPath)) ?? null
-      : null
-  ), [accessibleTargets, conversationMessages, currentVideoEntryPath]);
   const autoCollapsedSidebarRef = useRef(false);
   const autoCollapsedSidePanelRef = useRef<SessionPanelView | null>(null);
   const lastRightPanelViewRef = useRef<SessionPanelView>("launcher");
@@ -1953,9 +1979,6 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
   }, []);
-  const autoOpenedDesignTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoTemplateRef = useRef<string | null>(null);
-  const autoOpenedVideoOutputRef = useRef<string | null>(null);
   const templateBriefDismissed = Boolean(
     currentTemplateSessionData && dismissedTemplateBriefSessionIds.has(currentTemplateSessionData.sessionId),
   );
@@ -2034,18 +2057,6 @@ export function SessionPage(props: SessionPageProps) {
       });
       setSessionTypeRevision((value) => value + 1);
       setTemplateSessionRevision((value) => value + 1);
-      if (result.manifest.surface === "design") {
-        openTab(props.selectedSessionId, {
-          id: `design:${props.selectedSessionId}:${encodeURIComponent(result.state.entry)}`,
-          type: "design",
-          label: result.state.entry.split("/").filter(Boolean).pop() || "Design",
-          sessionId: templateSessionId,
-          path: result.state.entry,
-        });
-        setSidePanelState(props.selectedSessionId, "design");
-      } else {
-        openVideoStudio(templateSessionId);
-      }
       return true;
     } catch (error) {
       if (isTemplateSessionConflict(error)) {
@@ -2057,7 +2068,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       setTemplateBusyId(null);
     }
-  }, [openTab, openVideoStudio, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate, setSidePanelState]);
+  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, requireNewTaskForTemplate]);
   const refreshTemplateCatalog = useCallback(async () => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
     const requestId = ++templateCatalogRequestIdRef.current;
@@ -2420,7 +2431,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       await props.ipolloworkServerClient.writeWorkspaceFile(props.runtimeWorkspaceId, {
         path: state.briefPath,
         content: JSON.stringify({
@@ -2605,29 +2616,6 @@ export function SessionPage(props: SessionPageProps) {
       return;
     }
   }, [isVideoSession, props.selectedSessionId, setSidePanelState]);
-  useEffect(() => {
-    if (!props.selectedSessionId || !isVideoSession || !videoOutput) return;
-    const status = props.sidebar.sessionStatusById[props.selectedSessionId] ?? "idle";
-    if (status !== "idle") return;
-    const outputKey = `${props.selectedSessionId}:${videoOutput.messageId}:${videoOutput.path}`;
-    if (autoOpenedVideoOutputRef.current === outputKey) return;
-    autoOpenedVideoOutputRef.current = outputKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [isVideoSession, openCurrentVideoStudio, props.selectedSessionId, props.sidebar.sessionStatusById, videoOutput]);
-  useEffect(() => {
-    const autoOpenTemplateProject = currentTemplateSessionData?.authoring === true
-      || currentTemplateSessionData?.manifest.id.startsWith("personal.") === true
-      || currentTemplateSessionData?.hasBrief === true;
-    if (!props.selectedSessionId || !isVideoSession || !autoOpenTemplateProject) return;
-    const templateKey = `${props.selectedSessionId}:${currentTemplateSessionData.state.entry}`;
-    if (autoOpenedVideoTemplateRef.current === templateKey) return;
-    autoOpenedVideoTemplateRef.current = templateKey;
-    openCurrentVideoStudio({ auto: true });
-  }, [currentTemplateSessionData, isVideoSession, openCurrentVideoStudio, props.selectedSessionId]);
-  useEffect(() => {
-    autoOpenedVideoOutputRef.current = null;
-    autoOpenedVideoTemplateRef.current = null;
-  }, [props.selectedSessionId]);
   const voiceExtension = useMemo(
     () => IPOLLOWORK_EXTENSION_CATALOG.find((entry) => getExtensionId(entry) === "ipollowork-voice") ?? null,
     [],
@@ -2689,7 +2677,9 @@ export function SessionPage(props: SessionPageProps) {
   const openCustomTemplate = useCallback((category: TemplateCategory, target: PendingCustomTemplateApplication["target"], allowCategoryChange = false) => {
     setTemplateMarketOpen(false);
     setPendingCustomTemplateApplication({ category, target, allowCategoryChange });
-    if (target === "new-task") {
+    if (target === "project-task") {
+      setPendingTemplateProjectId(props.selectedWorkspaceId);
+    } else if (target === "new-task") {
       const selectedProjectId = templateDestinationProjects.some((project) => project.id === props.selectedWorkspaceId)
         ? props.selectedWorkspaceId
         : templateDestinationProjects[0]?.id;
@@ -2712,7 +2702,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const persistedBrief = {
         template: t("template_market.custom_title"),
         category: application.category,
@@ -2729,7 +2719,7 @@ export function SessionPage(props: SessionPageProps) {
         ...brief,
       };
       let createdSessionId: string | null = null;
-      if (application.target === "new-task") {
+      if (application.target !== "current-session") {
         if (!props.onCreateTaskFromCustom) return;
         createdSessionId = await props.onCreateTaskFromCustom(pendingTemplateProjectId, {
           category: application.category,
@@ -2748,18 +2738,6 @@ export function SessionPage(props: SessionPageProps) {
         setSessionType(createdSessionId, sessionTypeForTemplate(created.manifest));
         setTemplateSessionData({ ...created, hasBrief: true, applyMode: "current-conversation" });
         setTemplateSessionRevision((value) => value + 1);
-        if (created.manifest.surface === "design") {
-          openTab(createdSessionId, {
-            id: `design:${createdSessionId}:${encodeURIComponent(created.state.entry)}`,
-            type: "design",
-            label: created.state.entry.split("/").filter(Boolean).pop() || "Design",
-            sessionId: createdSessionId,
-            path: created.state.entry,
-          });
-          setSidePanelState(createdSessionId, "panel");
-        } else {
-          openVideoStudio(createdSessionId);
-        }
       }
       if (!createdSessionId) return;
       setPendingTemplateDispatch({
@@ -2782,7 +2760,7 @@ export function SessionPage(props: SessionPageProps) {
     } finally {
       if (referencePayload && !dispatchTransferred) revokeTemplateReferenceAttachmentPreviews(referencePayload.attachments);
     }
-  }, [openTab, openVideoStudio, pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, setSidePanelState, templateDestinationProjects]);
+  }, [pendingCustomTemplateApplication, pendingTemplateProjectId, props.ipolloworkServerClient, props.onCreateTaskFromCustom, props.runtimeWorkspaceId, props.selectedSessionId, templateDestinationProjects]);
   const submitPendingTemplateApplication = useCallback(async (
     brief: TemplateBrief,
     references: TemplateReferenceItem[],
@@ -2798,7 +2776,7 @@ export function SessionPage(props: SessionPageProps) {
     let referencePayload: Awaited<ReturnType<typeof buildTemplateReferenceSubmitPayload>> | undefined;
     let dispatchTransferred = false;
     try {
-      referencePayload = await buildTemplateReferenceSubmitPayload(references);
+      referencePayload = await buildTemplateReferenceSubmitPayload(references, { brief });
       const createdSessionId = await props.onCreateTaskFromTemplate(pendingTemplateProjectId, {
         templateId: template.id,
         resourceScope: application.resourceScope,
@@ -2949,15 +2927,6 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setCurrentSidePanel]);
 
-  useEffect(() => {
-    if (!props.selectedSessionId || !designTemplateEntryPath) return;
-    const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`;
-    if (autoOpenedDesignTemplateRef.current === templateKey) return;
-    autoOpenedDesignTemplateRef.current = templateKey;
-    if (sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design") return;
-    openDesignTab(designTemplateEntryPath);
-  }, [activePanelTab, designTemplateEntryPath, openDesignTab, props.selectedSessionId, sessionSidePanel]);
-
   const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {
     userOpenedSidebarWhileNarrowRef.current = false;
     setMainWorkspaceView(null);
@@ -2982,12 +2951,21 @@ export function SessionPage(props: SessionPageProps) {
     if (!isElectronRuntime()) return;
     const browser = (window as Window).__IPOLLOWORK_ELECTRON__?.browser;
     if (!browser) return;
+    let stopped = false;
     const unsubOpen = browser.onPanelOpened?.(() => {
       if (preserveSidePanelOnPanelOpenRef.current) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
       }
       setCurrentSidePanel("panel");
+      // An explicit browser open must also select a reused tab. Ordinary
+      // background state updates intentionally preserve the active plugin.
+      void browser.getState?.().then((state) => {
+        if (stopped || !state?.activeTabId || !state.tabs?.length || !props.selectedSessionId) return;
+        const store = usePanelTabStore.getState();
+        store.syncBrowserTabs(props.selectedSessionId, state.tabs, state.activeTabId);
+        store.selectTab(props.selectedSessionId, state.activeTabId);
+      }).catch((error: unknown) => console.error("Failed to activate browser tab", error));
     });
     const unsubClose = browser.onPanelClosed?.(() => {
       const remainingTabs = props.selectedSessionId
@@ -3001,7 +2979,7 @@ export function SessionPage(props: SessionPageProps) {
       }
       setCurrentSidePanel(null);
     });
-    return () => { unsubOpen?.(); unsubClose?.(); };
+    return () => { stopped = true; unsubOpen?.(); unsubClose?.(); };
   }, [props.selectedSessionId, setCurrentSidePanel]);
   const {
     leftSidebarResizing,
@@ -3321,7 +3299,7 @@ export function SessionPage(props: SessionPageProps) {
     const sessionId = sourceSessionId ?? props.selectedSessionId;
     if (!sessionId) return;
     openTab(sessionId, {
-      id: `workspace-app:${surface.id}`,
+      id: workspaceAppTabId(surface),
       type: "workspace-app",
       label: surface.label,
       sessionId,
@@ -3331,13 +3309,16 @@ export function SessionPage(props: SessionPageProps) {
     setCurrentSidePanel("panel");
   }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
   const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
-    const surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    const surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === pluginId);
     if (surface) {
-      openWorkspaceApp(surface, launch, sourceSessionId);
+      const sourcePath = launch?.source?.path;
+      const origin = sourcePath && [...usePanelTabStore.getState().mediaEdits].reverse().find(item=>item.workspaceId===props.runtimeWorkspaceId && item.sessionId===(sourceSessionId ?? props.selectedSessionId)
+        && [item.source.path,...item.results,...(item.relatedResults ?? [])].includes(sourcePath));
+      openWorkspaceApp(surface, origin && launch ? {...launch,originRequestId:origin.source.requestId} : launch, sourceSessionId);
       return;
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
-  }, [openWorkspaceApp, workspaceApps]);
+  }, [openWorkspaceApp, workspaceApps, props.runtimeWorkspaceId, props.selectedSessionId]);
   const dataAnnotationOpening = useRef(false);
   const openDataAnnotation = useCallback(() => {
     const client = props.ipolloworkServerClient;
@@ -3364,21 +3345,27 @@ export function SessionPage(props: SessionPageProps) {
     }).finally(() => { dataAnnotationOpening.current = false; });
   }, [openWorkspaceApp, prioritizeRightPanel, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedSessionKnown, props.selectedWorkspaceId, props.sidebar, selectedWorkspaceProject, setSidePanelState]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
-    let surface = workspaceApps.find((entry) => entry.pluginId === "image-studio");
+    let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
       const packages = await props.ipolloworkServerClient
         .listPluginPackages(props.runtimeWorkspaceId)
         .catch(() => null);
       surface = packages
-        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => entry.pluginId === "image-studio")
+        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio")
         : undefined;
     }
     if (!surface) {
       toast.error(t("artifact.image_studio_install_required"));
       return;
     }
+    const sessionId = sourceSessionId ?? props.selectedSessionId;
+    if (props.runtimeWorkspaceId && sessionId && usePanelTabStore.getState().openMediaEditResult(props.runtimeWorkspaceId, sessionId, target.value, surface)) {
+      setCurrentSidePanel("panel");
+      return;
+    }
     openWorkspaceApp(surface, {
       intent: "edit-image",
+      requestId: crypto.randomUUID(),
       source: {
         kind: "workspace-file",
         path: target.value,
@@ -3386,10 +3373,8 @@ export function SessionPage(props: SessionPageProps) {
         preview: target.preview,
       },
     }, sourceSessionId);
-  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
+  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setCurrentSidePanel, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
-    // SessionSurface automatically previews newly discovered targets after an
-    // agent finishes. Video tasks already have a dedicated preview surface.
     if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);
@@ -3425,6 +3410,11 @@ export function SessionPage(props: SessionPageProps) {
     if (target.kind === "file" && mediaKindForPath(target.value) === "video") {
       if (options?.auto) return;
       prioritizeRightPanel();
+      const videoSurface = workspaceApps.find(item => mediaStudioEngine(item) === "video-console");
+      if (videoSurface && props.runtimeWorkspaceId && sourceId && usePanelTabStore.getState().openMediaEditResult(props.runtimeWorkspaceId, sourceId, target.value, videoSurface)) {
+        setCurrentSidePanel("panel");
+        return;
+      }
       openWorkspaceAppForPlugin("video-console", {
         intent: "edit-video",
         requestId: crypto.randomUUID(),
@@ -3600,12 +3590,12 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     const restoredPanel = lastRightPanelViewRef.current;
-    if (restoredPanel === "launcher") {
+    if (!props.selectedSessionId || restoredPanel === "launcher") {
       setSessionPanelView("launcher");
       return;
     }
     setCurrentSidePanel(restoredPanel);
-  }, [closeRightPane, effectiveSidePanelView, setCurrentSidePanel, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, props.selectedSessionId, setCurrentSidePanel, sidePanelOpen]);
   const openDesignRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     openDesignTab();
@@ -3779,99 +3769,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [openDesignTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType]);
   useControlAction(seedDesignHtmlControlAction);
   useControlAction(seedDesignDeckControlAction);
-  const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.open_url",
-    label: "Open URL in built-in browser",
-    description: "Open a website in a new iPolloWork built-in browser tab and return its host-owned tab ID.",
-    sideEffect: "navigation",
-    requiresArgs: true,
-    args: [
-      { name: "url", type: "string", required: true, description: "The website URL to open." },
-    ],
-    previewArgs: { url: "https://example.com" },
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const url = controlStringArg(args, "url");
-      if (!url) return { ok: false, error: "Missing URL." };
-      setCurrentSidePanel("panel");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url);
-      return result;
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(openBrowserUrlControlAction);
-  const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.snapshot",
-    label: "Read built-in browser page",
-    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
-    sideEffect: "none",
-    requiresArgs: true,
-    args: [
-      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
-    ],
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const tabId = controlStringArg(args, "tabId");
-      if (!tabId) return { ok: false, error: "Missing tabId." };
-      setCurrentSidePanel("panel");
-      const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
-      if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
-      return snapshot({ tabId });
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(snapshotBrowserControlAction);
-  const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.act",
-    label: "Act in built-in browser",
-    description: "Execute a bounded ref-based browser action batch through real keyboard and pointer input.",
-    sideEffect: "mutation",
-    requiresArgs: true,
-    args: [
-      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
-      { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
-      { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
-      { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
-    ],
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const object = controlObjectArg(args);
-      const tabId = controlStringArg(args, "tabId");
-      const snapshotId = controlStringArg(args, "snapshotId");
-      const actions = object ? Reflect.get(object, "actions") : null;
-      if (!tabId || !snapshotId || !Array.isArray(actions)) {
-        return { ok: false, error: "tabId, snapshotId, and actions are required." };
-      }
-      setCurrentSidePanel("panel");
-      const act = window.__IPOLLOWORK_ELECTRON__?.browser?.act;
-      if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
-      return act({
-        tabId,
-        snapshotId,
-        workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
-        actions: actions.filter((action): action is Record<string, unknown> => (
-          Boolean(action) && typeof action === "object" && !Array.isArray(action)
-        )),
-      });
-    },
-  }), [setCurrentSidePanel]);
-  useControlAction(actInBrowserControlAction);
-  const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
-    id: "browser.set_proxy",
-    label: "Set built-in browser proxy",
-    description: "Route all built-in browser traffic through an HTTP/SOCKS proxy (e.g. to browse from another location). Applies to every built-in browser tab until cleared. Pass an empty proxy to restore system network settings.",
-    sideEffect: "mutation",
-    args: [
-      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWORK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
-    ],
-    previewArgs: { proxy: "env:DE" },
-    disabled: !isElectronRuntime(),
-    execute: async (args) => {
-      const proxy = controlStringArg(args, "proxy") || "";
-      const setProxy = window.__IPOLLOWORK_ELECTRON__?.browser?.setProxy;
-      if (!setProxy) return { ok: false, error: "Built-in browser is not available." };
-      return setProxy(proxy);
-    },
-  }), []);
-  useControlAction(setBrowserProxyControlAction);
   const openArtifactRailPane = useCallback(() => {
     if (!hasArtifactTargets || !props.selectedSessionId) return;
     const activeTab = sessionPanelState.tabs.find((tab) => tab.id === sessionPanelState.activeTabId);
@@ -3993,29 +3890,31 @@ export function SessionPage(props: SessionPageProps) {
   const sendWorkspaceAppMessage = useCallback(async (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
+    sourceTabId?: string;
   }) => {
-    if (!props.selectedSessionId || (activePanelTab?.type !== "workspace-app" && activePanelTab?.type !== "plugin-studio")) return false;
-    const context = activePanelTab.type === "workspace-app"
+    const source = input.sourceTabId ? sessionPanelState.tabs.find(tab => tab.id === input.sourceTabId) : activePanelTab;
+    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio")) return false;
+    const context = source.type === "workspace-app"
       ? [
-          workspaceAppCapabilityInstruction(activePanelTab.label),
+          workspaceAppCapabilityInstruction(source.label),
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
-      : pluginWorkshopSystemInstruction(activePanelTab.pluginId);
-    const outcome = await sendSessionDraft({
+      : pluginWorkshopSystemInstruction(source.pluginId);
+    useComposerStateStore.getState().appendQueuedDraft(props.selectedSessionId, {
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
       attachments: [],
       text: input.text,
       resolvedText: input.text,
       capability: {
-        id: activePanelTab.type === "workspace-app"
-          ? `workspace-app:${activePanelTab.surface.pluginId}:${activePanelTab.surface.resource.id}`
+        id: source.type === "workspace-app"
+          ? `workspace-app:${source.surface.pluginId}:${source.surface.resource.id}`
           : "plugin-workshop",
         instruction: context,
       },
-    }, props.selectedSessionId);
-    return outcome ? promptWasDispatched(outcome) : false;
-  }, [activePanelTab, props.selectedSessionId, sendSessionDraft]);
+    });
+    return { accepted: true, sessionId: props.selectedSessionId };
+  }, [activePanelTab, props.selectedSessionId, sessionPanelState.tabs]);
   const launcherDesignPath = designTemplateEntryPath?.replaceAll("\\", "/").trim() || "";
   const launcherDesignTabId = launcherDesignPath && props.selectedSessionId
     ? `design:${props.selectedSessionId}:${encodeURIComponent(launcherDesignPath)}`
@@ -4027,7 +3926,10 @@ export function SessionPage(props: SessionPageProps) {
   const designOpen = Boolean(launcherDesignTabId && sessionPanelState.tabs.some((tab) => tab.id === launcherDesignTabId));
   const videoOpen = Boolean(launcherVideoSessionId && sessionPanelState.tabs.some((tab) => tab.id === `video:${launcherVideoSessionId}`));
   const filesOpen = sessionPanelState.tabs.some((tab) => tab.type === "artifact" && launcherArtifactTargetIds.has(tab.id));
-  const sidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
+  const [pendingLauncher, setPendingLauncher] = useState<{ itemId: string; sessionId: string; workspaceId: string } | null>(null);
+  const [launcherBusy, setLauncherBusy] = useState(false);
+  const launcherCreationRef = useRef(false);
+  const rawSidePanelLauncherItems = useMemo<SidePanelLauncherItem[]>(() => [
     {
       id: "web",
       label: t("session.side_panel.web"),
@@ -4035,7 +3937,7 @@ export function SessionPage(props: SessionPageProps) {
       shortcut: "⌘T",
       icon: "web",
       onClick: addBrowserPanelTab,
-      disabled: !isElectronRuntime(),
+      disabled: !props.selectedWorkspaceId || !isElectronRuntime(),
     },
     {
       id: "design",
@@ -4043,7 +3945,7 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       icon: "design",
       onClick: showDesignRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
+      disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || designOpen,
     },
     {
       id: "files",
@@ -4060,7 +3962,7 @@ export function SessionPage(props: SessionPageProps) {
       group: "content",
       icon: "video",
       onClick: showVideoRailPane,
-      disabled: !props.selectedSessionId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
+      disabled: !props.selectedWorkspaceId || props.selectedWorkspaceDisplay.workspaceType === "remote" || videoOpen,
     },
     {
       id: "plugin-workshop",
@@ -4070,15 +3972,64 @@ export function SessionPage(props: SessionPageProps) {
       onClick: openPluginWorkshop,
       disabled: !props.selectedWorkspaceId,
     },
-    ...workspaceApps.map<SidePanelLauncherItem>((surface) => ({
-      id: `workspace-app:${surface.id}`,
-      label: surface.label,
+    ...workspaceAppLaunchers(workspaceApps).map<SidePanelLauncherItem>((surface) => ({
+      id: workspaceAppTabId(surface),
+      label: isMediaStudioPlugin(surface.pluginId) ? t("media.studio.title") : surface.label,
       group: "studio",
-      icon: surface.pluginId === "image-studio" ? "image-studio" : "workspace-app",
+      icon: mediaStudioEngine(surface) === "image-studio" ? "image-studio" : mediaStudioEngine(surface) === "video-console" ? "video-console" : "workspace-app",
       onClick: () => openWorkspaceApp(surface),
-      disabled: !props.selectedSessionId || sessionPanelState.tabs.some((tab) => tab.type === "workspace-app" && tab.surface.id === surface.id),
+      disabled: !props.selectedWorkspaceId || sessionPanelState.tabs.some((tab) => tab.id === workspaceAppTabId(surface)),
     })),
   ], [addBrowserPanelTab, designOpen, filesOpen, hasArtifactTargets, locale, openPluginWorkshop, openWorkspaceApp, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType, props.selectedWorkspaceId, sessionPanelState.tabs, showArtifactRailPane, showDesignRailPane, showVideoRailPane, videoOpen, workspaceApps]);
+  const sidePanelLauncherItems = rawSidePanelLauncherItems.map((item) => ({
+    ...item,
+    disabled: item.disabled || launcherBusy,
+    onClick: () => {
+      if (item.disabled || launcherCreationRef.current) return;
+      if (props.selectedSessionId) {
+        item.onClick();
+        return;
+      }
+      launcherCreationRef.current = true;
+      setLauncherBusy(true);
+      const workspaceId = props.selectedWorkspaceId;
+      const scope = `new-task:${workspaceId ?? "new-project"}:${props.selectedWorkspaceDisplay.engineId?.trim() || DEFAULT_ENGINE_ID}`;
+      void (async () => {
+        try {
+          const sessionId = await props.sidebar.onCreateTaskInWorkspace(workspaceId, "work");
+          if (!sessionId) throw new Error(t("plugin_workshop.create_session_failed"));
+          const store = useComposerStateStore.getState();
+          const draft = store.sessions[scope];
+          if (draft) store.restoreSessionIfEmpty(sessionId, draft);
+          setPendingLauncher({ itemId: item.id, sessionId, workspaceId });
+        } catch (error) {
+          launcherCreationRef.current = false;
+          setLauncherBusy(false);
+          toast.error(error instanceof Error ? error.message : t("plugin_workshop.create_session_failed"));
+        }
+      })();
+    },
+  }));
+  useEffect(() => {
+    if (!pendingLauncher) return;
+    if (pendingLauncher.workspaceId !== props.selectedWorkspaceId) {
+      setPendingLauncher(null);
+      launcherCreationRef.current = false;
+      setLauncherBusy(false);
+      return;
+    }
+    // Run with the new session's callbacks, never the blank conversation's closures.
+    if (pendingLauncher.sessionId !== props.selectedSessionId) return;
+    setPendingLauncher(null);
+    launcherCreationRef.current = false;
+    setLauncherBusy(false);
+    if (pendingLauncher.itemId === "plugin-workshop") {
+      setSessionPanelView(null);
+      openPluginWorkshopForSession(pendingLauncher.sessionId);
+    } else {
+      rawSidePanelLauncherItems.find((item) => item.id === pendingLauncher.itemId)?.onClick();
+    }
+  }, [pendingLauncher, props.selectedSessionId, props.selectedWorkspaceId, rawSidePanelLauncherItems, openPluginWorkshopForSession]);
   const removeAccessibleTarget = useCallback((target: OpenTarget) => {
     const nextHiddenIds = new Set(hiddenAccessibleTargetIds);
     nextHiddenIds.add(target.id);
@@ -4400,9 +4351,9 @@ export function SessionPage(props: SessionPageProps) {
   }, [props.selectedSessionId]);
 
   useEffect(() => {
-    if (!showProjectNoTasksState || !sidePanelOpen) return;
+    if (!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher") return;
     closeRightPane();
-  }, [closeRightPane, showProjectNoTasksState, sidePanelOpen]);
+  }, [closeRightPane, effectiveSidePanelView, showProjectNoTasksState, sidePanelOpen]);
 
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
@@ -4752,7 +4703,6 @@ export function SessionPage(props: SessionPageProps) {
                           aria-label={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           title={sidePanelOpen ? t("session.right_panel_close") : t("session.right_panel_open")}
                           aria-pressed={sidePanelOpen}
-                          disabled={!props.selectedSessionId && !sidePanelOpen}
                           onClick={toggleRightPanel}
                           data-testid="right-panel-toggle"
                         >
@@ -4867,21 +4817,14 @@ export function SessionPage(props: SessionPageProps) {
                     templatesLoading={starterTemplateCatalogLoading}
                     templateBusyId={templateBusyId}
                     getTemplateCover={getStarterTemplateCover}
-                    onUseTemplate={async (templateId, surface) => {
+                    onUseTemplate={(templateId) => {
                       if (templateBusyId) return;
-                      setTemplateBusyId(templateId);
-                      try {
-                        await Promise.resolve(props.sidebar.onCreateTaskInWorkspace(
-                          props.selectedWorkspaceId,
-                          surface === "video" ? "video" : "design",
-                          templateId,
-                          PERSONAL_WORK_CONTEXT_ID,
-                        ));
-                      } finally {
-                        setTemplateBusyId((current) => current === templateId ? null : current);
-                      }
+                      const item = starterTemplateCatalog.find((template) => template.manifest.id === templateId);
+                      if (!item) return;
+                      setPendingTemplateProjectId(props.selectedWorkspaceId);
+                      setPendingTemplateApplication({ item, origin: "project-task", resourceScope: PERSONAL_WORK_CONTEXT_ID });
                     }}
-                    onUseCustomTemplate={(category) => openCustomTemplate(category, "new-task")}
+                    onUseCustomTemplate={(category) => openCustomTemplate(category, selectedProject && !selectedProject.workspace.isDefault ? "project-task" : "new-task")}
                     onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}
                     onRequestTemplates={() => void refreshStarterTemplateCatalog()}
                     pendingDraft={props.initialTaskDraftPending}
@@ -4947,6 +4890,8 @@ export function SessionPage(props: SessionPageProps) {
                         ipolloworkToken={reactSessionToken}
                         todos={props.todos}
                         activePermission={props.activePermission}
+                        refreshInteractions={props.refreshInteractions}
+                        interactionsRefreshing={props.interactionsRefreshing}
                         permissionReplyBusy={props.permissionReplyBusy}
                         respondPermission={props.respondPermission}
                         activeQuestion={props.activeQuestion}
@@ -4996,6 +4941,7 @@ export function SessionPage(props: SessionPageProps) {
                           });
                           return null;
                         }}
+                        onUseCustomTemplate={(category) => openCustomTemplate(category, "current-session")}
                         onMaterializeTemplate={(templateId) => {
                           const template = starterTemplateCatalog.find((item) => item.manifest.id === templateId);
                           if (template) void applyTemplateToCurrentSession(template, PERSONAL_WORK_CONTEXT_ID, "new-conversation");
@@ -5159,22 +5105,10 @@ export function SessionPage(props: SessionPageProps) {
                   }}
                 >
                   {sidePanelOpen && effectiveSidePanelView === "launcher" ? (
-                    <div className="flex h-full flex-col bg-background px-6 pt-16 text-[#6B7280] min-[960px]:px-10 min-[960px]:pt-[44vh]">
-                      <div className="w-full max-w-[240px] space-y-5">
-                        {sidePanelLauncherItems.map((item) => {
-                          return (
-                            <button
-                              key={item.id}
-                              type="button"
-                              className="flex h-9 w-full items-center gap-3 rounded-xl px-2 text-left text-[14px] font-normal tracking-[-0.56px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-                              onClick={item.onClick}
-                              disabled={item.disabled}
-                            >
-                              <SidePanelLauncherIcon item={item} />
-                              <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                            </button>
-                          );
-                        })}
+                    <div className="flex h-full flex-col bg-background">
+                      <div className="flex h-10 shrink-0 items-center gap-2 border-b px-2">
+                        <SidePanelLauncherMenu launcherItems={sidePanelLauncherItems} />
+                        {launcherBusy ? <LoaderCircle className="size-4 animate-spin text-muted-foreground" role="status" aria-label={t("templates.starter.loading")} /> : null}
                       </div>
                     </div>
                   ) : sidePanelOpen && activeSidePanel === "voice" ? (
@@ -5216,10 +5150,13 @@ export function SessionPage(props: SessionPageProps) {
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
-                        aiEditing={isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
+                        aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
+                        onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}
                         onEditImage={openImageStudio}
+                        onSwitchMedia={kind => openWorkspaceAppForPlugin(kind === "image" ? "image-studio" : "video-console", {intent:`generate-${kind}`,requestId:crypto.randomUUID()})}
+                        onOpenMedia={(path,kind) => void openTarget({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:kind === "image" ? "image" : "external",confidence:1,reason:"media-studio-import"})}
                         onSaveAsTemplate={hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === "local" ? openTemplateSave : undefined}
                         expanded={rightPanelExpanded}
                         titlebarInset={rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)}
@@ -5310,7 +5247,7 @@ export function SessionPage(props: SessionPageProps) {
       {pendingTemplateApplication ? (
         <TemplateApplyDialog
           key={`pending:${pendingTemplateApplication.origin}:${pendingTemplateApplication.item.manifest.id}`}
-          open={!createProjectOpen && templateDestinationProjects.length > 0}
+          open={!createProjectOpen && (pendingTemplateApplication.origin === "project-task" || templateDestinationProjects.length > 0)}
           mode={pendingTemplateApplication.origin === "market" ? "market" : "new-conversation"}
           template={pendingTemplateApplication.item.manifest}
           destinationName={templateDestinationProjects.find((project) => project.id === pendingTemplateProjectId)?.name ?? t("workspace_list.workspace_fallback")}
@@ -5328,8 +5265,8 @@ export function SessionPage(props: SessionPageProps) {
       {pendingCustomTemplateApplication ? (
         <TemplateApplyDialog
           key={`custom:${pendingCustomTemplateApplication.target}`}
-          open={!createProjectOpen && (pendingCustomTemplateApplication.target === "current-session" || templateDestinationProjects.length > 0)}
-          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : "market"}
+          open={!createProjectOpen && (pendingCustomTemplateApplication.target !== "new-task" || templateDestinationProjects.length > 0)}
+          mode={pendingCustomTemplateApplication.target === "current-session" ? "current-conversation" : pendingCustomTemplateApplication.target === "project-task" ? "new-conversation" : "market"}
           template={null}
           customCategory={pendingCustomTemplateApplication.category}
           onCustomCategoryChange={pendingCustomTemplateApplication.allowCategoryChange

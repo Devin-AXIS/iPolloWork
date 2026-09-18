@@ -417,6 +417,8 @@ async function reconcileLiveSession(input: SyncScope, entry: SyncEntry, sessionI
   if (!isTrackedSession(entry, sessionId)) return;
   if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
   entry.reconcilingSessionIds.add(sessionId);
+  const queryClient = getReactQueryClient();
+  const sessionBeforeRead = queryClient.getQueryData<ConversationSnapshot>(snapshotKey(input.workspaceId, sessionId))?.session;
   try {
     const snapshot = await readSnapshot(sessionId);
     if (!isTrackedSession(entry, sessionId)) return;
@@ -424,6 +426,12 @@ async function reconcileLiveSession(input: SyncScope, entry: SyncEntry, sessionI
     // newer than this observational snapshot and must win.
     if (!activityIsLive(useSessionActivityStore.getState().getStatus(input.workspaceId, sessionId))) return;
     seedSessionState(input.workspaceId, snapshot);
+    queryClient.setQueryData<ConversationSnapshot>(snapshotKey(input.workspaceId, sessionId), (current) => {
+      if (!current) return snapshot;
+      // Preserve session metadata from a newer live event while still recovering
+      // waitingOnApproval/waitingOnUserInput when the event was missed.
+      return current.session === sessionBeforeRead ? { ...current, session: snapshot.session } : current;
+    });
   } catch {
     // Event streaming remains the primary path. A failed reconciliation is
     // retried only while the session is still active.
@@ -1406,9 +1414,7 @@ function startSync(input: SyncOptions) {
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
   let silentStreamReconcileTimer: ReturnType<typeof setInterval> | null = null;
   let activeConnectionController: AbortController | null = null;
-  let lastEventAt = Date.now();
   let retryDelayMs = 1_000;
-  const silentStreamReconcileMs = 30_000;
 
   const scheduleRetry = () => {
     if (disposed || controller.signal.aborted || retryTimer) return;
@@ -1429,12 +1435,10 @@ function startSync(input: SyncOptions) {
     activeConnectionController = connectionController;
     try {
       retryDelayMs = 1_000;
-      lastEventAt = Date.now();
       await input.connection.subscribe({
         signal: connectionController.signal,
         onEvent: (event) => {
           if (controller.signal.aborted || connectionController.signal.aborted || !entry) return;
-          lastEventAt = Date.now();
           applyEvent(entry, input.workspaceId, event);
         },
       });
@@ -1454,11 +1458,9 @@ function startSync(input: SyncOptions) {
   void connect();
   silentStreamReconcileTimer = setInterval(() => {
     if (disposed || controller.signal.aborted || retryTimer) return;
-    if (Date.now() - lastEventAt < silentStreamReconcileMs) return;
-    // Long reasoning and render commands can legitimately produce no domain
-    // events for more than 30 seconds. Do not tear down a healthy stream;
-    // reconcile the selected live sessions instead so a missed terminal event
-    // cannot leave the UI permanently busy.
+    // Workspace events from other tasks must not postpone recovery of a missed
+    // approval/terminal update. Reads are restricted to tracked live sessions
+    // and coalesced per session; the healthy event stream remains connected.
     if (entry) void reconcileTrackedLiveSessions(input, entry);
   }, 10_000);
 

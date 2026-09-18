@@ -18,6 +18,15 @@ export type WorkspaceKind = "local" | "remote";
 export type SessionArtifact = {
   path: string;
   previousPaths?: string[];
+  generation?: {
+    id: string;
+    kind: "image" | "video";
+    model: string;
+    completedAt: number;
+    width?: number;
+    height?: number;
+    duration?: number;
+  };
   size: number;
   updatedAt: number;
 };
@@ -25,6 +34,13 @@ export type SessionArtifact = {
 export type SessionArtifactPage = {
   items: SessionArtifact[];
   nextCursor: number | null;
+  /** Latest backend job states, independent of the conversation turn lifecycle. */
+  videoJobs?: Array<{
+    id: string;
+    model: string;
+    status: "submitting" | "running" | "saving" | "succeeded" | "failed" | "uncertain" | "save_failed";
+    updatedAt: number;
+  }>;
 };
 
 export type WorkspaceRemoteKind = "opencode" | "ipollowork";

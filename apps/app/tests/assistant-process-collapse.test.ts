@@ -11,6 +11,24 @@ import {
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("omits failed tool attempts from progress without mutating history or hiding the final explanation", () => {
+    const parts = [
+      { type: "reasoning", text: "正在准备内容", state: "done" },
+      { type: "dynamic-tool", toolName: "ipollowork_browser_snapshot", toolCallId: "failed-browser", state: "output-error", input: {}, errorText: "Browser timeout" },
+      { type: "tool-bash", toolCallId: "failed-command", state: "output-error", input: { command: "example" }, errorText: "Exit code 1" },
+      { type: "dynamic-tool", toolName: "save-post-draft", toolCallId: "saved", state: "output-available", input: {}, output: { ok: true } },
+      { type: "text", text: "草稿已保存；发布仍需处理登录问题。" },
+    ] satisfies Parameters<typeof getAssistantRenderGroups>[0];
+    const before = JSON.stringify(parts);
+    for (const showThinking of [true, false]) {
+      const groups = getAssistantRenderGroups(parts, showThinking);
+      expect(groups.filter(group => group.kind === "tool").map(group => group.part.toolCallId)).toEqual(["saved"]);
+      expect(groups.at(-1)).toEqual({ kind: "text", text: "草稿已保存；发布仍需处理登录问题。" });
+    }
+    expect(JSON.stringify(parts)).toBe(before);
+    expect(getAssistantRenderGroups([parts[1], parts[2]], true)).toEqual([]);
+  });
+
   test("finds a completed schedule import across OpenCode and MCP tool result envelopes", () => {
     const messages = [{
       id: "assistant-schedule",

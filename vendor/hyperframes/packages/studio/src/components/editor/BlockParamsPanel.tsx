@@ -1,5 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
+  ArrowLeft,
+  Check,
+  CircleAlert,
+  GripVertical,
+  LoaderCircle,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
+import {
   createVisualComponentDataRow,
   parseVisualComponentData,
   serializeVisualComponentData,
@@ -19,9 +29,10 @@ import { ColorField } from "./propertyPanelColor";
 import { FlatRow, FlatSlider } from "./propertyPanelFlatPrimitives";
 import { FlatSelectRow } from "./propertyPanelFlatSelectRow";
 import { FlatToggle } from "./propertyPanelFlatToggle";
-import { PROPERTY_INPUT_DEBOUNCE_MS } from "./propertyPanelPrimitives";
+import { CommitField, PROPERTY_INPUT_DEBOUNCE_MS } from "./propertyPanelPrimitives";
 
 type BlockVariableValue = string | number | boolean;
+type SaveState = "saved" | "saving" | "error";
 
 interface BlockParamsPanelProps {
   blockTitle: string;
@@ -30,7 +41,7 @@ interface BlockParamsPanelProps {
   variableValues: Record<string, BlockVariableValue>;
   visualComponent?: RegistryVisualComponent;
   onVariableChange: (variableId: string, value: BlockVariableValue) => Promise<void>;
-  onClose: () => void;
+  onBack: () => void;
 }
 
 export const BlockParamsPanel = memo(function BlockParamsPanel({
@@ -40,77 +51,60 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   variableValues,
   visualComponent,
   onVariableChange,
-  onClose,
+  onBack,
 }: BlockParamsPanelProps) {
   const { locale } = useStudioI18n();
   const [legacyValues, setLegacyValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(params.map((param) => [param.key, param.default])),
   );
   const [savingVariable, setSavingVariable] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>("saved");
+  const saveRequestIdRef = useRef(0);
 
   const handleVariableCommit = useCallback(
     (variableId: string, value: unknown) => {
       if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
         return;
       }
+      const requestId = saveRequestIdRef.current + 1;
+      saveRequestIdRef.current = requestId;
       setSavingVariable(variableId);
-      void onVariableChange(variableId, value).finally(() => setSavingVariable(null));
+      setSaveState("saving");
+      void onVariableChange(variableId, value)
+        .then(() => {
+          if (saveRequestIdRef.current === requestId) setSaveState("saved");
+        })
+        .catch(() => {
+          if (saveRequestIdRef.current === requestId) setSaveState("error");
+        })
+        .finally(() => {
+          if (saveRequestIdRef.current === requestId) setSavingVariable(null);
+        });
     },
     [onVariableChange],
   );
 
   return (
     <div className="flex h-full flex-col" data-testid="block-params-panel">
-      <div className="border-b border-panel-border px-4 pb-3 pt-1">
-        <div className="flex items-start gap-3">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[12px] font-semibold text-panel-text-1">{blockTitle}</div>
-            <div className="mt-1 text-[9px] text-panel-text-3">
-              {visualComponent
-                ? locale === "zh"
-                  ? "组件变量"
-                  : "Component variables"
-                : locale === "zh"
-                  ? "片段参数"
-                  : "Clip parameters"}
-            </div>
-          </div>
+      <div className="border-b border-panel-border px-4 py-2.5">
+        <div className="flex min-w-0 items-center gap-2">
           <button
             type="button"
-            onClick={onClose}
-            className="grid size-6 flex-none place-items-center rounded-md text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1"
-            aria-label={locale === "zh" ? "关闭参数" : "Close parameters"}
+            onClick={onBack}
+            className="grid size-7 flex-none place-items-center rounded-md text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40"
+            aria-label={locale === "zh" ? "返回组件列表" : "Back to components"}
+            title={locale === "zh" ? "返回组件列表" : "Back to components"}
           >
-            <span aria-hidden="true" className="text-base leading-none">
-              ×
-            </span>
+            <ArrowLeft className="size-4" strokeWidth={1.75} aria-hidden="true" />
           </button>
+          <h2 className="min-w-0 flex-1 truncate text-[12px] font-semibold text-panel-text-1">
+            {blockTitle}
+          </h2>
+          <SaveStatus state={saveState} locale={locale} />
         </div>
-
-        {visualComponent ? (
-          <div className="mt-3 flex flex-wrap gap-1.5">
-            <span className="rounded-full bg-[#1FBAC0]/12 px-2 py-1 text-[9px] font-medium text-[#2abec3]">
-              {locale === "zh" ? "跟随主题" : "Theme linked"}
-            </span>
-            <span className="rounded-full bg-panel-input px-2 py-1 text-[9px] font-medium text-panel-text-3">
-              {visualComponent.surfaces.map((surface) => surface.toUpperCase()).join(" · ")}
-            </span>
-          </div>
-        ) : null}
       </div>
 
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {visualComponent?.ai?.slots.length ? (
-          <div className="rounded-lg border border-[#1FBAC0]/15 bg-[#1FBAC0]/[0.06] px-3 py-2.5">
-            <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-[#2abec3]">
-              {locale === "zh" ? "AI 可编辑区域" : "AI-editable slots"}
-            </div>
-            <div className="mt-1.5 text-[10px] leading-4 text-panel-text-3">
-              {visualComponent.ai.slots.join(" · ")}
-            </div>
-          </div>
-        ) : null}
-
         <DesignPanelInputProvider ui="flat" section="component-variables">
           <div className="space-y-3">
             {variables.map((variable) => {
@@ -119,6 +113,7 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
                 return (
                   <ComponentDataFormField
                     key={variable.id}
+                    label={variable.label}
                     contract={dataContract}
                     value={String(variableValues[variable.id] ?? variable.default)}
                     liveCommit={variable.update === "live"}
@@ -141,8 +136,6 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
                   key={variable.id}
                   variable={createDataHighlightVariable(variable, dataContract, dataValue)}
                   value={variableValues[variable.id] ?? variable.default}
-                  saving={savingVariable === variable.id}
-                  locale={locale}
                   onCommit={(value) => handleVariableCommit(variable.id, value)}
                 />
               );
@@ -168,8 +161,6 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
                       key={param.key}
                       variable={variable}
                       value={value}
-                      saving={false}
-                      locale={locale}
                       onCommit={(nextValue) =>
                         setLegacyValues((current) => ({
                           ...current,
@@ -188,7 +179,44 @@ export const BlockParamsPanel = memo(function BlockParamsPanel({
   );
 });
 
+function SaveStatus({ state, locale }: { state: SaveState; locale: "en" | "zh" }) {
+  const label =
+    state === "saving"
+      ? locale === "zh"
+        ? "保存中"
+        : "Saving"
+      : state === "error"
+        ? locale === "zh"
+          ? "保存失败"
+          : "Save failed"
+        : locale === "zh"
+          ? "已自动保存"
+          : "Autosaved";
+  const icon =
+    state === "saving" ? (
+      <LoaderCircle className="size-3 animate-spin" strokeWidth={1.75} aria-hidden="true" />
+    ) : state === "error" ? (
+      <CircleAlert className="size-3" strokeWidth={1.75} aria-hidden="true" />
+    ) : (
+      <Check className="size-3" strokeWidth={1.75} aria-hidden="true" />
+    );
+
+  return (
+    <span
+      className={`flex flex-none items-center gap-1 text-[9px] ${
+        state === "error" ? "text-red-500" : "text-panel-text-3"
+      }`}
+      aria-live="polite"
+      data-save-state={state}
+    >
+      {icon}
+      {label}
+    </span>
+  );
+}
+
 function ComponentDataFormField({
+  label,
   contract,
   value,
   liveCommit,
@@ -196,6 +224,7 @@ function ComponentDataFormField({
   locale,
   onCommit,
 }: {
+  label: string;
   contract: RegistryVisualComponentDataContract;
   value: string;
   liveCommit: boolean;
@@ -203,8 +232,10 @@ function ComponentDataFormField({
   locale: "en" | "zh";
   onCommit: (value: string) => void;
 }) {
+  const { tx } = useStudioI18n();
   const parsed = useMemo(() => parseVisualComponentData(contract, value), [contract, value]);
   const [rows, setRows] = useState<VisualComponentDataRow[]>(parsed.document.rows);
+  const [draggedRowIndex, setDraggedRowIndex] = useState<number | null>(null);
   const rowsRef = useRef(parsed.document.rows);
   const sectionRef = useRef<HTMLElement>(null);
   const commitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -291,10 +322,22 @@ function ComponentDataFormField({
     });
   };
 
+  const reorderRow = (fromIndex: number, toIndex: number) => {
+    if (fromIndex === toIndex) return;
+    const nextRows = [...rowsRef.current];
+    const movedRows = nextRows.splice(fromIndex, 1);
+    const movedRow = movedRows[0];
+    if (!movedRow) return;
+    nextRows.splice(toIndex, 0, movedRow);
+    commitRows(nextRows);
+  };
+
+  const displayLabel = tx(label.replace(/\s*\(.+\)\s*$/, ""));
+
   return (
     <section
       ref={sectionRef}
-      className="space-y-2 rounded-lg border border-panel-border bg-panel-input/35 p-2.5"
+      className="space-y-2"
       data-component-data-contract={contract.kind}
       onBlurCapture={(event) => {
         const nextTarget = event.relatedTarget;
@@ -303,58 +346,72 @@ function ComponentDataFormField({
       }}
     >
       <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-[10px] font-semibold text-panel-text-1">
-            {locale === "zh"
-              ? contract.mode === "override"
-                ? "数据覆盖"
-                : "结构化数据"
-              : contract.mode === "override"
-                ? "Data overrides"
-                : "Structured data"}
-          </div>
-          <div className="mt-0.5 text-[8px] uppercase tracking-[0.1em] text-[#2abec3]">
-            {locale === "zh" ? "AI 可读取 · 实时校验" : "AI-readable · validated"}
-          </div>
-        </div>
-        <span className="rounded-full bg-panel-bg px-2 py-1 text-[8px] text-panel-text-3">
-          {rows.length} {locale === "zh" ? "行" : "rows"}
+        <span className="text-[10px] font-normal text-panel-text-3">{displayLabel}</span>
+        <span className="text-[9px] text-panel-text-3">
+          {locale === "zh" ? `${rows.length} 项` : `${rows.length} items`}
         </span>
       </div>
 
-      <div className="space-y-2">
+      <div className="space-y-1.5">
         {rows.map((row, rowIndex) => (
           <div
-            key={`${String(row[contract.rowId] ?? "row")}-${rowIndex}`}
-            className="rounded-md border border-panel-border bg-panel-bg/75 p-2"
+            key={rowIndex}
+            className={`group flex min-w-0 items-center gap-1 rounded-[6px] bg-panel-input px-2 py-1.5 transition-opacity ${
+              draggedRowIndex === rowIndex ? "opacity-50" : ""
+            }`}
             data-component-data-row={rowIndex}
+            onDragOver={(event) => {
+              if (draggedRowIndex === null) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "move";
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              if (draggedRowIndex !== null) reorderRow(draggedRowIndex, rowIndex);
+              setDraggedRowIndex(null);
+            }}
           >
-            <div className="grid gap-2">
-              {contract.columns.map((column) => (
-                <label key={column.id} className="grid gap-1">
-                  <span className="text-[8px] font-medium text-panel-text-3">
-                    {locale === "zh" ? (column.labelZh ?? column.label) : column.label}
-                  </span>
-                  <input
-                    type={column.type === "number" ? "number" : "text"}
-                    value={row[column.id] ?? ""}
-                    disabled={saving && !liveCommit}
-                    aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
-                    onChange={(event) => updateCell(rowIndex, column, event.target.value)}
-                    className="h-7 min-w-0 rounded-md border border-panel-border bg-panel-input px-2 text-[10px] text-panel-text-1 outline-none transition-colors focus:border-[#1FBAC0]/60 disabled:opacity-60"
-                  />
-                </label>
-              ))}
-            </div>
-            <div className="mt-2 flex justify-end">
+            {contract.columns.map((column, columnIndex) => (
+              <input
+                key={column.id}
+                type={column.type === "number" ? "number" : "text"}
+                value={row[column.id] ?? ""}
+                disabled={saving && !liveCommit}
+                aria-label={`${locale === "zh" ? (column.labelZh ?? column.label) : column.label} ${rowIndex + 1}`}
+                onChange={(event) => updateCell(rowIndex, column, event.target.value)}
+                className={`h-6 min-w-0 bg-transparent px-1 text-[11px] text-panel-text-1 outline-none placeholder:text-panel-text-4 disabled:opacity-60 ${
+                  columnIndex === 0
+                    ? "w-12 flex-none font-medium"
+                    : "flex-1 border-l border-panel-border pl-2"
+                }`}
+                placeholder={locale === "zh" ? (column.labelZh ?? column.label) : column.label}
+              />
+            ))}
+            <button
+              type="button"
+              draggable
+              onDragStart={(event) => {
+                setDraggedRowIndex(rowIndex);
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("text/plain", String(rowIndex));
+              }}
+              onDragEnd={() => setDraggedRowIndex(null)}
+              className="grid size-6 flex-none cursor-grab place-items-center rounded text-panel-text-4 transition-colors hover:bg-panel-hover hover:text-panel-text-2 active:cursor-grabbing focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40"
+              aria-label={`${locale === "zh" ? "拖动排序" : "Drag to reorder"} ${rowIndex + 1}`}
+              title={locale === "zh" ? "拖动排序" : "Drag to reorder"}
+            >
+              <GripVertical className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+            </button>
+            <div className="w-0 overflow-visible">
               <button
                 type="button"
                 disabled={saving || rows.length <= (contract.minRows ?? 0)}
                 onClick={() => commitRows(rows.filter((_, index) => index !== rowIndex))}
-                className="rounded px-1.5 py-1 text-[8px] text-panel-text-3 transition-colors hover:bg-panel-input hover:text-panel-text-1 disabled:opacity-35"
+                className="grid size-6 -translate-x-6 place-items-center rounded bg-panel-input text-panel-text-4 opacity-0 shadow-sm transition-[opacity,color,background-color] hover:bg-panel-hover hover:text-red-500 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40 disabled:pointer-events-none group-hover:opacity-100"
                 aria-label={`${locale === "zh" ? "删除数据行" : "Remove data row"} ${rowIndex + 1}`}
+                title={locale === "zh" ? "删除条目" : "Remove item"}
               >
-                {locale === "zh" ? "删除" : "Remove"}
+                <Trash2 className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
               </button>
             </div>
           </div>
@@ -365,9 +422,10 @@ function ComponentDataFormField({
         type="button"
         disabled={saving || (contract.maxRows !== undefined && rows.length >= contract.maxRows)}
         onClick={() => commitRows([...rows, createVisualComponentDataRow(contract)])}
-        className="h-7 w-full rounded-md border border-dashed border-panel-border text-[9px] font-medium text-panel-text-3 transition-colors hover:border-[#1FBAC0]/45 hover:text-[#2abec3] disabled:opacity-35"
+        className="flex h-8 w-full items-center justify-center gap-1.5 rounded-[6px] border border-dashed border-panel-border text-[10px] text-panel-text-3 transition-colors hover:border-panel-accent/45 hover:bg-panel-input hover:text-panel-text-1 disabled:cursor-not-allowed disabled:opacity-35"
       >
-        + {locale === "zh" ? "添加数据行" : "Add data row"}
+        <Plus className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+        {locale === "zh" ? "添加条目" : "Add item"}
       </button>
 
       {issues.length ? (
@@ -375,9 +433,6 @@ function ComponentDataFormField({
           {issues[0]?.message}
         </p>
       ) : null}
-      <div className="text-right text-[8px] uppercase text-panel-text-4">
-        {saving ? (locale === "zh" ? "保存中" : "Saving") : contract.kind}
-      </div>
     </section>
   );
 }
@@ -388,6 +443,7 @@ function createDataHighlightVariable(
   value: string,
 ): RegistryVariable {
   if (!contract?.highlightVariable || variable.id !== contract.highlightVariable) return variable;
+  if (variable.type === "number") return variable;
   const rows = parseVisualComponentData(contract, value).document.rows;
   const sourceColumn = contract.columns.find((column) => column.role === "source");
   const targetColumn = contract.columns.find((column) => column.role === "target");
@@ -414,14 +470,10 @@ function createDataHighlightVariable(
 function VariableFormField({
   variable,
   value,
-  saving,
-  locale,
   onCommit,
 }: {
   variable: RegistryVariable;
   value: BlockVariableValue;
-  saving: boolean;
-  locale: "en" | "zh";
   onCommit: (value: BlockVariableValue) => void;
 }) {
   const current = value ?? variable.default;
@@ -494,10 +546,9 @@ function VariableFormField({
     }
     default:
       control = (
-        <FlatRow
+        <BlockTextField
           label={variable.label}
           value={String(current)}
-          tier={tier}
           liveCommit={variable.update === "live"}
           placeholder={variable.type === "string" ? variable.placeholder : undefined}
           maxLength={variable.type === "string" ? variable.maxLength : undefined}
@@ -510,19 +561,61 @@ function VariableFormField({
   return (
     <div data-variable-id={variable.id} className="space-y-1.5">
       {control}
-      <div className="flex min-h-4 items-start gap-2 px-1">
-        {variable.description ? (
-          <p className="min-w-0 flex-1 text-[9px] leading-4 text-panel-text-3">
-            {variable.description}
-          </p>
-        ) : (
-          <span className="flex-1" />
-        )}
-        <span className="flex-none text-[8px] uppercase text-panel-text-4">
-          {saving ? (locale === "zh" ? "保存中" : "Saving") : (variable.update ?? "live")}
-        </span>
-      </div>
+      {variable.description ? (
+        <p className="px-1 text-[9px] leading-4 text-panel-text-3">{variable.description}</p>
+      ) : null}
     </div>
+  );
+}
+
+function BlockTextField({
+  label,
+  value,
+  liveCommit,
+  placeholder,
+  maxLength,
+  onCommit,
+  onReset,
+}: {
+  label: string;
+  value: string;
+  liveCommit: boolean;
+  placeholder?: string;
+  maxLength?: number;
+  onCommit: (value: string) => void;
+  onReset?: () => void;
+}) {
+  const { tx } = useStudioI18n();
+  const translatedLabel = tx(label);
+
+  return (
+    <label className="grid min-w-0 gap-1.5">
+      <span className="text-[10px] font-normal text-panel-text-3">{translatedLabel}</span>
+      <span className="group flex h-[34px] min-w-0 items-center rounded-[6px] border border-transparent bg-panel-input px-2.5 transition-colors focus-within:border-panel-accent/50">
+        <span className="min-w-0 flex-1 text-[13px] text-panel-text-1">
+          <CommitField
+            value={value}
+            liveCommit={liveCommit}
+            align="left"
+            placeholder={placeholder}
+            maxLength={maxLength}
+            ariaLabel={translatedLabel}
+            onCommit={onCommit}
+          />
+        </span>
+        {onReset ? (
+          <button
+            type="button"
+            onClick={onReset}
+            className="grid size-6 flex-none place-items-center rounded text-panel-text-4 opacity-0 transition-[opacity,color,background-color] hover:bg-panel-hover hover:text-panel-text-1 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/40 group-hover:opacity-100"
+            aria-label={tx(`Reset ${label}`)}
+            title={tx("Reset")}
+          >
+            <RotateCcw className="size-3.5" strokeWidth={1.75} aria-hidden="true" />
+          </button>
+        ) : null}
+      </span>
+    </label>
   );
 }
 

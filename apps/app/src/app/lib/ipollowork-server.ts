@@ -1,7 +1,9 @@
+import { VerifiedInboxReceiptSchema, type InboxUploadOptions } from "@ipollowork/types/reference-context";
 import type { Message, Part, Session, Todo } from "@opencode-ai/sdk/v2/client";
 import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { desktopFetch } from "./desktop";
 import { isDesktopRuntime } from "./runtime-env";
+import { fetchWithTimeout as fetchWithRequestTimeout } from "./request-timeout";
 import type { ExecResult, OpencodeConfigFile, WorkspaceInfo, WorkspaceList } from "./desktop";
 import type { DenResourceSnapshot } from "./den-types";
 import type { HyperframesCatalogItem } from "@ipollowork/types/hyperframes";
@@ -1046,32 +1048,14 @@ async function fetchWithTimeout(
     return fetchImpl(url, init);
   }
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const signal = controller?.signal;
-  const initWithSignal = signal && !init.signal ? { ...init, signal } : init;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      try {
-        controller?.abort();
-      } catch {
-        // ignore
-      }
-      reject(new Error("请求超时，请稍后重试。"));
-    }, timeoutMs);
-  });
-
   try {
-    return await Promise.race([fetchImpl(url, initWithSignal), timeoutPromise]);
+    return await fetchWithRequestTimeout(fetchImpl, url, init, timeoutMs, "请求超时，请稍后重试。");
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
     if (name === "AbortError") {
       throw new Error("请求超时，请稍后重试。");
     }
     throw new Error(serviceErrorMessage(error));
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
   }
 }
 
@@ -1137,7 +1121,7 @@ async function requestBinary(
   baseUrl: string,
   path: string,
   options: { method?: string; token?: string; hostToken?: string; headers?: Record<string, string>; body?: BodyInit; timeoutMs?: number; direct?: boolean } = {},
-): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null }>{
+): Promise<{ data: ArrayBuffer; contentType: string | null; filename: string | null; detail: string | null }>{
   const url = `${baseUrl}${path}`;
   const fetchImpl = options.direct ? globalThis.fetch : resolveFetch(url);
   const response = await fetchWithTimeout(
@@ -1162,7 +1146,7 @@ async function requestBinary(
   const filenameRaw = filenameMatch?.[1] ?? filenameMatch?.[2] ?? null;
   const filename = filenameRaw ? decodeURIComponent(filenameRaw) : null;
   const data = await response.arrayBuffer();
-  return { data, contentType, filename };
+  return { data, contentType, filename, detail: response.headers.get("x-artifact-detail") };
 }
 
 async function requestRawJson<T>(
@@ -1692,7 +1676,7 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         { token, hostToken, timeoutMs: timeouts.config },
       ),
     listBundledPluginPackages: (workspaceId: string) =>
-      requestJson<{ items: iPolloWorkBundledPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
+      requestJson<{ items: iPolloWorkBundledPluginPackageItem[]; errors?: string[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages/catalog`, {
         token,
         hostToken,
         timeoutMs: timeouts.config,
@@ -2024,12 +2008,15 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
         hostToken,
         method: "DELETE",
       }),
-    uploadInbox: async (workspaceId: string, file: File, options?: { path?: string }) => {
+    uploadInbox: async (workspaceId: string, file: File, options?: InboxUploadOptions) => {
       const id = workspaceId.trim();
       if (!id) throw new Error("workspaceId is required");
       if (!file) throw new Error("file is required");
       const form = new FormData();
       form.append("file", file);
+      const digest = options?.verify || options?.referenceAssembly ? Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", await file.arrayBuffer())), (byte) => byte.toString(16).padStart(2, "0")).join("") : undefined;
+      if (digest) form.append("sha256", digest);
+      if (options?.referenceAssembly) form.append("referenceAssembly", JSON.stringify(options.referenceAssembly));
       if (options?.path?.trim()) {
         form.append("path", options.path.trim());
       }
@@ -2060,6 +2047,11 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       }
 
       const body = result.text.trim();
+      if (digest) {
+        const receipt = VerifiedInboxReceiptSchema.parse(JSON.parse(body));
+        if (receipt.sha256 !== (options?.referenceAssembly?.sha256 ?? digest) || receipt.bytes !== (options?.referenceAssembly?.bytes ?? file.size)) throw new Error("附件落盘校验失败，未开始生成，请重试上传。");
+        return receipt;
+      }
       if (body) {
         try {
           const parsed = JSON.parse(body) as Partial<iPolloWorkInboxUploadResult>;
@@ -2235,6 +2227,9 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
           },
         },
       ),
+
+    downloadWorkspaceThumbnail: (workspaceId: string, path: string) =>
+      requestBinary(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/files/raw?thumbnail=1&path=${encodeURIComponent(path)}`, { token, hostToken, timeoutMs: timeouts.binary }),
 
     downloadWorkspaceFile: (workspaceId: string, path: string) =>
       requestBinary(

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Clapperboard, ExternalLink, Eye, FolderOpen, Globe2, Loader2, Palette } from "lucide-react";
 
 import type { DesktopApplication } from "@/app/lib/desktop";
@@ -8,6 +8,8 @@ import { isElectronRuntime } from "@/app/utils";
 import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 import type { OpenTargetOptions } from "@/lib/target-provider";
 import { t } from "@/i18n";
+
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 
 const SUPPORTED_PANEL_PREVIEWS = new Set(["markdown", "sheet", "slides", "image", "pdf", "html", "text"]);
 
@@ -19,7 +21,6 @@ type LinkActionMenuProps = {
 };
 
 export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: LinkActionMenuProps) {
-  const menuRef = useRef<HTMLDivElement>(null);
   const [apps, setApps] = useState<DesktopApplication[] | null>(null);
   const [appsLoading, setAppsLoading] = useState(false);
   const canOpenInPanel = target.kind === "file" && SUPPORTED_PANEL_PREVIEWS.has(target.preview);
@@ -27,23 +28,6 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
   const canOpenInVideoStudio = isHtmlFile
     && /(?:^|\/)video\/[^/]+\/index\.html$/i.test(target.value.replaceAll("\\", "/"));
   const canOpenExternally = isElectronRuntime() && target.kind === "file";
-
-  useEffect(() => {
-    function handleOutside(event: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        onClose();
-      }
-    }
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("mousedown", handleOutside);
-    document.addEventListener("keydown", handleEscape);
-    return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [onClose]);
 
   useEffect(() => {
     if (!canOpenExternally) return;
@@ -94,83 +78,64 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
     onClose();
   };
 
-  const top = anchorRect.bottom + 4;
-  const left = anchorRect.left;
-
   return (
-    <div
-      ref={menuRef}
-      className="fixed z-50 min-w-52 rounded-lg border border-border bg-popover/95 p-1 shadow-lg backdrop-blur-xl"
-      style={{ top, left }}
-    >
-      <button
-        type="button"
+    <DropdownMenu open onOpenChange={open => { if (!open) onClose(); }}>
+      <DropdownMenuTrigger aria-label={t("session.outputs.more_actions")} style={{position:"fixed",left:anchorRect.left,top:anchorRect.top,width:anchorRect.width,height:anchorRect.height,opacity:0,pointerEvents:"none"}} />
+      <DropdownMenuContent align="end" className="w-64 max-w-[calc(100vw-16px)]" positionerClassName="z-[80]">
+      <DropdownMenuItem
         onClick={handleOpenDefault}
         disabled={!canOpenExternally}
-        className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-50"
       >
         <ExternalLink className="size-4 shrink-0" />
         {t("link_action.open_default")}
-      </button>
+      </DropdownMenuItem>
       {canOpenInPanel ? (
-        <button
-          type="button"
+        <DropdownMenuItem
           onClick={handleOpenInPanel}
-          className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
         >
           <Eye className="size-4 shrink-0" />
           {t(isHtmlFile ? "link_action.open_recommended" : "link_action.open_panel")}
-        </button>
+        </DropdownMenuItem>
       ) : null}
       {isHtmlFile ? (
         <>
-          <button
-            type="button"
+          <DropdownMenuItem
             onClick={() => handleOpenWithViewer("design")}
-            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
           >
             <Palette className="size-4 shrink-0" />
             {t("link_action.open_design")}
-          </button>
-          <button
-            type="button"
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => handleOpenWithViewer("preview")}
-            className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
           >
             <Globe2 className="size-4 shrink-0" />
             {t("link_action.open_web_preview")}
-          </button>
+          </DropdownMenuItem>
           {canOpenInVideoStudio ? (
-            <button
-              type="button"
+            <DropdownMenuItem
               onClick={() => handleOpenWithViewer("video")}
-              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10"
             >
               <Clapperboard className="size-4 shrink-0" />
               {t("link_action.open_video_studio")}
-            </button>
+            </DropdownMenuItem>
           ) : null}
         </>
       ) : null}
-      <button
-        type="button"
+      <DropdownMenuItem
         onClick={handleReveal}
         disabled={!canOpenExternally}
-        className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-50"
       >
         <FolderOpen className="size-4 shrink-0" />
         {t("link_action.show_in_folder")}
-      </button>
+      </DropdownMenuItem>
       {canOpenExternally && apps && apps.length > 0 ? (
         <>
           <div className="my-1 h-px bg-foreground/5" />
           <div className="max-h-48 overflow-y-auto">
             {apps.map((app) => (
-              <button
+              <DropdownMenuItem
                 key={app.appPath}
-                type="button"
                 onClick={() => void handleOpenWithApp(app)}
-                className="flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
               >
                 {app.icon ? (
                   <img src={app.icon} alt="" className="size-4 shrink-0 object-contain" />
@@ -178,7 +143,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
                   <span className="size-4 shrink-0" />
                 )}
                 <span className="truncate">{app.name}</span>
-              </button>
+              </DropdownMenuItem>
             ))}
           </div>
         </>
@@ -191,6 +156,7 @@ export function LinkActionMenu({ target, anchorRect, onOpenTarget, onClose }: Li
           </div>
         </>
       ) : null}
-    </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

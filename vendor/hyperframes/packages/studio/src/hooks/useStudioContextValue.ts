@@ -1,13 +1,14 @@
 import { useMemo } from "react";
 import { STUDIO_INSPECTOR_PANELS_ENABLED } from "../components/editor/manualEditingAvailability";
 import type { StudioContextValue } from "../contexts/StudioContext";
-import type { RightInspectorPanes } from "../utils/studioHelpers";
+import type { RightInspectorPanes, ToastToneInput } from "../utils/studioHelpers";
 
 interface StudioContextInput {
   projectId: string;
   activeCompPath: string | null;
   setActiveCompPath: (path: string | null) => void;
-  showToast: (message: string, tone?: "error" | "info" | "notice") => void;
+  showToast: (message: string, tone?: ToastToneInput) => number;
+  dismissToast: (id: number) => void;
   previewIframeRef: React.MutableRefObject<HTMLIFrameElement | null>;
   captionEditMode: boolean;
   compositionLoading: boolean;
@@ -43,6 +44,7 @@ export function buildStudioContextValue(input: StudioContextInput): StudioContex
     activeCompPath: input.activeCompPath,
     setActiveCompPath: input.setActiveCompPath,
     showToast: input.showToast,
+    dismissToast: input.dismissToast,
     previewIframeRef: input.previewIframeRef,
     captionEditMode: input.captionEditMode,
     compositionLoading: input.compositionLoading,

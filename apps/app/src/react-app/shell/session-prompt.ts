@@ -1,3 +1,4 @@
+import { bindCreativeContextFiles, CreativeContextSchema, ReferenceContextPartsSchema, type InboxUploadOptions, type ReferenceAssembly } from "@ipollowork/types/reference-context";
 import type { ComposerAttachment, ComposerDraft } from "@/app/types";
 import type { ConversationPromptPart } from "@/react-app/domains/session/engine/conversation-engine";
 import type { Language } from "@/i18n";
@@ -28,10 +29,11 @@ type DraftToPartsOptions = {
 };
 
 type InboxUploadClient = {
+  capabilities?: () => Promise<{ toolProviders?: { files?: { maxBytes: number; injection?: boolean } } }>;
   uploadInbox: (
     workspaceId: string,
     file: File,
-    options?: { path?: string },
+    options?: InboxUploadOptions,
   ) => Promise<{ path: string }>;
 };
 
@@ -82,34 +84,73 @@ export async function persistComposerAttachments(input: {
 }): Promise<PersistedComposerAttachment[]> {
   const workspaceId = input.workspaceId.trim();
   if (!workspaceId || input.attachments.length === 0) return [];
+  if (input.client.capabilities && input.attachments.some((item) => item.delivery === "workspace")) {
+    const capability = (await input.client.capabilities()).toolProviders?.files;
+    if (capability?.injection === false) throw new Error("当前服务器未启用附件上传。");
+    const oversized = capability ? input.attachments.find((item) => item.file.size > capability.maxBytes) : undefined;
+    if (oversized) throw new Error(`${oversized.name} 超过当前服务器附件上限 ${capability!.maxBytes} 字节，请调整服务器配置或拆分文件。`);
+  }
   const sessionSegment = safeAttachmentPathSegment(input.sessionId, "session");
-  const uploaded = await Promise.all(input.attachments.map(async (attachment) => {
-    const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
-    const filename = safeAttachmentPathSegment(attachment.name, "file");
-    const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
-    try {
-      const result = await input.client.uploadInbox(workspaceId, attachment.file, { path: requestedPath });
-      const inboxPath = result.path.trim().replace(/^\/+/, "");
-      if (!inboxPath) return null;
-      return {
-        attachmentId: attachment.id,
-        name: attachment.name,
-        workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
-      } satisfies PersistedComposerAttachment;
-    } catch (error) {
-      console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
-      return null;
-    }
-  }));
+  const uploaded: Array<PersistedComposerAttachment | null> = [];
+  // Publish the primary context only after all source files and parts are durable.
+  const priority = (item: ComposerAttachment) => item.delivery !== "workspace" ? 0 : item.name === "creative-context.json" ? 2 : item.name === "reference-context.json" ? 1 : 0;
+  const attachments = [...input.attachments].sort((a, b) => priority(a) - priority(b));
+  // Reference packages can contain many large files; bound concurrent request bodies.
+  for (let offset = 0; offset < attachments.length;) {
+    const remaining = attachments.slice(offset);
+    const contextIndex = remaining.findIndex((item) => priority(item) > 0);
+    const batch = remaining.slice(0, contextIndex === 0 ? 1 : Math.min(3, contextIndex < 0 ? remaining.length : contextIndex));
+    offset += batch.length;
+    uploaded.push(...await Promise.all(batch.map(async (attachment) => {
+      const attachmentSegment = safeAttachmentPathSegment(attachment.id, "attachment");
+      const filename = safeAttachmentPathSegment(attachment.name, "file");
+      const requestedPath = `chat-attachments/${sessionSegment}/${attachmentSegment}-${filename}`;
+      try {
+        let referenceAssembly: ReferenceAssembly | undefined;
+        let file = attachment.file;
+        if (attachment.delivery === "workspace" && attachment.name === "creative-context.json") {
+          const context = CreativeContextSchema.parse(JSON.parse(await file.text()));
+          const bound = bindCreativeContextFiles(context, uploaded.filter((item): item is PersistedComposerAttachment => item !== null));
+          file = new File([JSON.stringify(bound)], file.name, { type: file.type });
+        }
+        if (attachment.delivery === "workspace" && attachment.name === "reference-context.json") {
+          const raw = JSON.parse(await attachment.file.text());
+            const manifest = raw?.storage === "json-string-parts" ? ReferenceContextPartsSchema.parse(raw) : undefined;
+            if (manifest) {
+              referenceAssembly = { sha256: manifest.sha256, bytes: manifest.bytes, parts: manifest.parts.map((part) => {
+              const saved = uploaded.find((item) => item?.name === part.attachmentName);
+              if (!saved) throw new Error(`参考文件缺少分片：${part.attachmentName}`);
+              return { path: saved.workspacePath.replace(/^\.opencode\/ipollowork\/inbox\//, ""), bytes: part.bytes };
+            }) };
+          }
+        }
+        const result = await input.client.uploadInbox(workspaceId, file, { path: requestedPath, verify: attachment.delivery === "workspace", referenceAssembly });
+        const inboxPath = result.path.trim().replace(/^\/+/, "");
+        if (!inboxPath) throw new Error("Attachment upload returned no workspace path.");
+        return {
+          attachmentId: attachment.id,
+          name: attachment.name,
+          workspacePath: `.opencode/ipollowork/inbox/${inboxPath}`,
+        } satisfies PersistedComposerAttachment;
+      } catch (error) {
+        if (attachment.delivery === "workspace") throw error;
+        console.warn(`[composer-attachments] Could not persist ${attachment.name} to the workspace inbox`, error);
+        return null;
+      }
+    })));
+  }
   return uploaded.filter((item): item is PersistedComposerAttachment => item !== null);
 }
 
 export function persistedAttachmentInstruction(items: PersistedComposerAttachment[]): string | null {
   if (items.length === 0) return null;
-  const lines = items.map((item) => `- ${item.name}: ${item.workspacePath}`);
+  const hasContext = items.some((item) => item.name === "creative-context.json");
+  const lines = items.filter((item) => !hasContext || !/^reference-\d+-asset-|^reference-context-part-/.test(item.name))
+    .map((item) => `- ${item.name}: ${item.workspacePath}`);
   return [
     "The user-provided chat attachments were also saved as local workspace files so tools and plugins can use them:",
     ...lines,
+    ...(hasContext ? ["creative-context.json contains verified workspace paths for indexed originals and assets. For omitted assets, resolve the evidence attachmentName against neighboring inbox filenames (attachment-id prefix + attachmentName); verify existence before use. Reference JSON parts have already been reconstructed; read reference-context.json directly."] : []),
     "Use these workspace-relative paths when a tool or plugin asks for a local media path. Do not ask the user to upload the same files again.",
   ].join("\n");
 }
@@ -288,7 +329,7 @@ export async function draftToParts(
   parts.push(...firstLineLocalFileParts(draft.resolvedText ?? draft.text, root));
   parts.push(
     ...(await Promise.all(
-      draft.attachments.map(async (attachment) => {
+      draft.attachments.filter((attachment) => attachment.delivery !== "workspace").map(async (attachment) => {
         if (options.supportsNativeAttachments === false) {
           if (attachmentRequiresNativeModelSupport(attachment.mimeType)) {
             throw new Error("The selected model cannot read image or PDF attachments.");

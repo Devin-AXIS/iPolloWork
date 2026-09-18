@@ -2,6 +2,7 @@ import { isReasoningUIPart, isToolUIPart, type DynamicToolUIPart, type FileUIPar
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
 import { t } from "@/i18n"
 import { formatFileSize } from "@/lib/utils"
+import { getAssistantFileMentionPaths, localFilePathFromHref } from "@/react-app/domains/session/artifacts/open-target"
 import {
   type ArtifactItem,
   getArtifactStudioTarget,
@@ -137,8 +138,8 @@ export function artifactCardDescription(artifact: ArtifactItem, sourceText: stri
 }
 
 function normalizedArtifactPath(path: string) {
-  const normalized = path.trim().replaceAll("\\", "/").replace(/^\.\//, "")
-  return /(?:^|\/)((?:design|video)\/[^\s]+)$/i.exec(normalized)?.[1] ?? normalized
+  const normalized = (localFilePathFromHref(path) || path).trim().replaceAll("\\", "/").replace(/^\.\//, "")
+  return /(?:^|\/)((?:design|video)\/.+)$/i.exec(normalized)?.[1] ?? normalized
 }
 
 /** Keep delivery paths in the artifact card instead of repeating path-only lines in the reply. */
@@ -149,6 +150,11 @@ export function stripArtifactPathLines(text: string, artifactPaths: readonly str
   return text
     .split(/\r?\n/)
     .filter((line) => {
+      // A standalone delivery link renders another card; keep the canonical card below.
+      if (/^\s*(?:(?:[-+*]|\d+[.)])\s+)?\[[^\]]+\]\((?:<[^>]+>|[^)]+)\)[。.;；]?\s*$/.test(line)) {
+        const linkedPath = getAssistantFileMentionPaths(line)[0]
+        if (linkedPath && paths.includes(normalizedArtifactPath(linkedPath))) return false
+      }
       const normalizedLine = line.replaceAll("\\", "/").replace(/[`*_]/g, "").trim()
       const labelledPath = /^(?:生成文件|更新(?:文件)?|音频(?:位于|文件)?|文件(?:路径)?|输出(?:文件)?|保存(?:到|至)?|路径|generated file|updated file|audio(?: files?)?|file|output|saved to)\s*[:：-]/i.test(normalizedLine)
       if (labelledPath) return false
@@ -162,6 +168,10 @@ export function stripArtifactPathLines(text: string, artifactPaths: readonly str
         || withoutPunctuation === `./${mentionedPath}`
       return !standalonePath
     })
+    .map(line => line.replace(/(?<!!)\[([^\]\n]+)\]\(\s*(?:<([^>\n]+)>|([^\s)]+))(?:\s+"[^"\n]*")?\s*\)/g, (link: string, label: string, bracketedHref: string | undefined, href: string | undefined) => {
+      const path = localFilePathFromHref(bracketedHref ?? href ?? "")
+      return path && paths.includes(normalizedArtifactPath(path)) ? label : link
+    }))
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd()
@@ -336,6 +346,10 @@ export function getActiveAssistantMessageId(
   )?.id
 }
 
+export function isStudioResultMessage(message: UIMessage) {
+  return message.id.startsWith("studio-result:")
+}
+
 export function groupMessages(messages: UIMessage[]): MessageListItem[] {
   const items: MessageListItem[] = []
   const visibleMessages = messages.flatMap((message, index) =>
@@ -352,9 +366,15 @@ export function groupMessages(messages: UIMessage[]): MessageListItem[] {
       continue
     }
 
+    if (isStudioResultMessage(item.message)) {
+      items.push({ messages: [item] })
+      index++
+      continue
+    }
+
     const assistantMessages: UIMessageWithIndex[] = []
 
-    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant") {
+    while (index < visibleMessages.length && visibleMessages[index].message.role === "assistant" && !isStudioResultMessage(visibleMessages[index].message)) {
       assistantMessages.push(visibleMessages[index])
       index++
     }
@@ -443,7 +463,9 @@ export function getAssistantRenderGroups(
       continue
     }
 
-    if (isToolUIPart(part)) {
+    // Intermediate tool failures remain in session history for diagnostics.
+    // The conversation shows useful progress and the assistant's final outcome.
+    if (isToolUIPart(part) && part.state !== "output-error") {
       groups.push({ kind: "tool", part })
     }
   }

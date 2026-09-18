@@ -238,7 +238,11 @@ describe("plugin package manifest", () => {
     expect(result.manifest.id).toBe("wechat-official");
     expect(result.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(7);
     const service = result.manifest.resources.find((resource) => resource.type === "local-service");
-    expect(service?.actions).toHaveLength(18);
+    expect(service?.actions).toHaveLength(21);
+    expect(service?.actions?.find((action) => action.id === "open-workbench")).toMatchObject({ effect: "read" });
+    expect(service?.actions?.find((action) => action.id === "select-account")).toMatchObject({ effect: "write" });
+    expect(result.manifest.resources.find((resource) => resource.id === "wechat-official-studio"))
+      .toMatchObject({ type: "file", path: "ui" });
     expect(service?.actions?.find((action) => action.id === "reply-comment")).toMatchObject({ effect: "write" });
     expect(service?.actions?.find((action) => action.id === "delete-comment")).toMatchObject({ effect: "destructive" });
     expect(result.manifest.authorization?.methods).toMatchObject([{
@@ -308,11 +312,11 @@ describe("plugin package manifest", () => {
     });
   });
 
-  test("accepts Image Studio as a self-contained workspace app with independently managed skills", async () => {
+  test("accepts Media Studio as a single package with both workspace views with independently managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
-    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ipollowork.plugin.json", import.meta.url)).json();
-    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
-    const editingSkill = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/skills/image-editing/SKILL.md", import.meta.url)).text();
+    const manifest = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ipollowork.plugin.json", import.meta.url)).json();
+    const workspaceUi = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
+    const editingSkill = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/skills/image-editing/SKILL.md", import.meta.url)).text();
 
     const result = validatePluginPackageManifest(manifest);
 
@@ -322,18 +326,19 @@ describe("plugin package manifest", () => {
     expect(result.manifest.contributions).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: "workspace-app", ref: "studio" }),
     ]));
-    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(1);
+    expect(result.manifest.resources.filter((resource) => resource.type === "ui")).toHaveLength(2);
     expect(result.manifest.resources.filter((resource) => resource.type === "local-service")).toHaveLength(1);
     expect(result.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id)).toEqual([
       "image-generation",
       "image-editing",
     ]);
-    expect(result.manifest.package?.version).toBe("0.1.29");
+    expect(result.manifest.package?.version).toMatch(/^\d+\.\d+\.\d+$/);
     expect(workspaceUi).toContain('data-tool="smart"');
     expect(workspaceUi).toContain('data-tool="ellipse"');
     expect(workspaceUi).toContain('data-operation="subtract"');
     expect(workspaceUi).toContain('id="redo"');
-    expect(workspaceUi.match(/data-lucide=/g)).toHaveLength(20);
+    expect(workspaceUi).toContain('data-lucide="arrow-left"');
+    expect(workspaceUi).toContain('data-lucide="info"');
     expect(workspaceUi).toContain('data-lucide="wand-sparkles"');
     expect(workspaceUi).toContain('data-lucide="square-dashed"');
     expect(workspaceUi).toContain('data-lucide="circle-dashed"');
@@ -366,7 +371,7 @@ describe("plugin package manifest", () => {
     expect(workspaceUi).toContain('id="documentTitle"');
     expect(workspaceUi).toContain('id="downloadImage"');
     expect(workspaceUi).toContain('id="emptyBack"');
-    expect(workspaceUi).toContain(".empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: #fff; }");
+    expect(workspaceUi).toContain(".empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: var(--surface); }");
     expect(workspaceUi).toContain(".empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }");
     expect(workspaceUi).toContain('src="data:image/png;base64,');
     expect(workspaceUi).toContain('mode: "start"');
@@ -378,8 +383,8 @@ describe("plugin package manifest", () => {
     expect(editingSkill).toContain("both an image preview and a reusable file card");
   });
 
-  test("Image Studio lists the full catalog, selects a connected model, and marks authorization actions", async () => {
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+  test("Image Studio lists the full catalog but waits for the user to select a configured model", async () => {
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const apply = ui.match(/    function applyProviderModels\(provider\) \{[\s\S]*?\n    \}/)?.[0];
     expect(apply).toBeDefined();
     const state: {
@@ -405,8 +410,8 @@ describe("plugin package manifest", () => {
     ];
     runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "api" })})`, context);
     expect(state.models).toEqual(catalog.filter((entry): entry is NonNullable<typeof entry> => entry !== null));
-    expect(state.model).toBe("browser");
-    expect(state.providerReady).toBe(true);
+    expect(state.model).toBe("");
+    expect(state.providerReady).toBe(false);
     state.model = "ark";
     runInNewContext(`update(${JSON.stringify({ models: catalog, defaultModel: "browser" })})`, context);
     expect(state.model).toBe("ark");
@@ -414,15 +419,19 @@ describe("plugin package manifest", () => {
     expect(state.models).toEqual([]);
     expect(state.model).toBe("");
     expect(state.providerReady).toBe(false);
-    expect(ui).toContain("options: selectOptions.model");
-    expect(ui).toContain('action: "open-authorizations"');
-    expect(ui).toContain("disabled: !model.available");
+    expect(ui).toContain('id="modelMenu"');
+    expect(ui).toContain('ipollowork:image-studio:model-menu');
+    expect(ui).toContain("filter(entry => entry.available && entry.configured)");
+    expect(ui).toContain('model: ""');
+    expect(ui).not.toContain('model: "openai/gpt-image-2"');
+    expect(ui).not.toContain('properties: { prompt: { type: "string" }, model:');
+    expect(ui).toContain('Never choose or change the model for the user.');
   });
 
   test("Image Studio derives controls from the model catalog, resets incompatible drafts and rejects invalid updates", async () => {
     const { openAiImageGenerationStatus } = await import("./extensions/openai-image-generation.js");
     const { models } = await openAiImageGenerationStatus({ read: async () => ({}) });
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const functions = ["selectedModel", "normalizeModelParameters", "updateParameters", "actionArguments", "publishContext"].map((name) => {
       const source = ui.match(new RegExp(`    function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n    \\}`))?.[0];
       if (!source) throw new Error(`Missing ${name}`);
@@ -444,13 +453,7 @@ describe("plugin package manifest", () => {
     const inspect = (expression: string) => runInNewContext(expression, context);
     expect(inspect('inspector.fields.find(f => f.id === "size").options.map(o => o.value)')).toEqual(models[0]?.parameters.size?.values);
     expect(inspect('inspector.fields.find(f => f.id === "quality").value')).toBe("high");
-    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => o.action || null)')).toEqual([
-      "open-authorizations",
-      "open-authorizations",
-      "open-authorizations",
-      null,
-    ]);
-    expect(inspect('inspector.fields.find(f => f.id === "model").options.map(o => Boolean(o.disabled))')).toEqual([false, false, false, true]);
+    expect(inspect('inspector.fields.some(f => f.id === "model")')).toBe(false);
     expect(inspect('update({model: models[2].id, prompt: "Kept draft", size: "1536x1024", quality: "high"})')).toMatchObject({ size: "2K", prompt: "Kept draft", style: "minimal" });
     expect(inspect('actionArguments()')).not.toHaveProperty("quality");
     expect(inspect('inspector.fields.some(f => f.id === "quality")')).toBe(false);
@@ -464,7 +467,9 @@ describe("plugin package manifest", () => {
     expect(inspect('update({model: models[0].id})')).toMatchObject({ size: "auto", quality: "auto" });
     for (const key of ["style", "camera", "lighting"]) {
       const values: string[] = inspect(`inspector.fields.find(f => f.id === "${key}").options.map(o => o.value)`);
-      expect(values.length).toBeGreaterThanOrEqual(14);
+      expect(values[0]).toBe("auto");
+      expect(values.length).toBeGreaterThanOrEqual(4);
+      expect(values.length).toBeLessThanOrEqual(6);
       expect(new Set(values).size).toBe(values.length);
       expect(inspect(`inspector.fields.find(f => f.id === "${key}").live`)).toBe(true);
     }
@@ -480,7 +485,7 @@ describe("plugin package manifest", () => {
   });
 
   test("Image Studio confirms overwrite before sending and preserves the saved copy on failure", async () => {
-    const ui = await Bun.file(new URL("../../../examples/plugin-packages/image-studio/ui/image-studio.html", import.meta.url)).text();
+    const ui = await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ui/image-studio.html", import.meta.url)).text();
     const source = ui.match(/    async function saveEditedResult\(mode\) \{[\s\S]*?\n    \}/)?.[0];
     expect(source).toBeDefined();
     const calls: unknown[] = [];
@@ -737,6 +742,28 @@ describe("plugin package manifest", () => {
       "resources.0.path",
       "resources.0.ui",
     ]));
+
+    // Local workbenches choose an available port each time their service starts.
+    for (const frameDomain of ["http://127.0.0.1:*", "http://localhost:*", "http://[::1]:*"]) {
+      expect(validatePluginPackageManifest({
+        ...manifest,
+        permissions: [{ id: "network", reason: "Embed a local workbench." }],
+        resources: [{
+          ...manifest.resources[0],
+          ui: { ...manifest.resources[0].ui, csp: { frameDomains: [frameDomain] } },
+        }],
+      }).success).toBe(true);
+    }
+    for (const frameDomain of ["http://example.com:*", "http://127.0.0.1.evil.test:*", "http://127.0.0.1:*/*", "http://*:*"]) {
+      expect(validatePluginPackageManifest({
+        ...manifest,
+        permissions: [{ id: "network", reason: "Embed a workbench." }],
+        resources: [{
+          ...manifest.resources[0],
+          ui: { ...manifest.resources[0].ui, csp: { frameDomains: [frameDomain] } },
+        }],
+      }).success).toBe(false);
+    }
 
     const undeclaredNetwork = validatePluginPackageManifest({
       ...manifest,

@@ -1,8 +1,15 @@
+import {
+  CheckCircleIcon,
+  SpinnerGap,
+  WarningIcon,
+  XIcon,
+} from "@phosphor-icons/react";
 import { useStudioI18n } from "../i18n";
+import type { ToastTone } from "../utils/studioHelpers";
 
 interface StudioToastProps {
   message: string;
-  tone?: "error" | "info" | "notice";
+  tone?: ToastTone;
   /** Plays the exit animation when true (owner removes the node after ~160ms). */
   leaving?: boolean;
   onDismiss?: () => void;
@@ -10,8 +17,15 @@ interface StudioToastProps {
 
 export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastProps) {
   const { tx } = useStudioI18n();
-  const isError = tone === "error";
-  const isNotice = tone === "notice";
+  const resolvedTone = tone ?? "error";
+  const isError = resolvedTone === "error";
+  const statusColor = `var(--hf-toast-${resolvedTone})`;
+  const StatusIcon =
+    resolvedTone === "loading"
+      ? SpinnerGap
+      : resolvedTone === "success"
+        ? CheckCircleIcon
+        : WarningIcon;
   return (
     <div
       role={isError ? "alert" : "status"}
@@ -19,59 +33,32 @@ export function StudioToast({ message, tone, leaving, onDismiss }: StudioToastPr
     >
       <div
         data-testid="studio-toast-surface"
-        className={`relative flex max-w-[min(420px,calc(100vw-48px))] items-center gap-3 overflow-hidden py-3 pl-4 pr-2 text-[12px] ${
-          isNotice ? "rounded-[6px] font-sans" : "rounded-2xl"
-        }`}
+        data-tone={resolvedTone}
+        className="relative flex min-w-[240px] max-w-[min(420px,calc(100vw-48px))] items-center gap-3 overflow-hidden rounded-xl border px-3 py-2.5 font-sans text-[12px]"
         style={{
-          background: isError
-            ? "linear-gradient(135deg, rgba(127,29,29,0.55), rgba(80,10,10,0.45))"
-            : isNotice
-              ? "#FFFFFF"
-              : "linear-gradient(135deg, rgba(38,38,38,0.88), rgba(23,23,23,0.82))",
-          backdropFilter: isNotice ? undefined : "blur(16px) saturate(1.6)",
-          WebkitBackdropFilter: isNotice ? undefined : "blur(16px) saturate(1.6)",
-          border: isNotice
-            ? "none"
-            : `1px solid ${isError ? "rgba(239,68,68,0.18)" : "rgba(255,255,255,0.08)"}`,
-          boxShadow: isNotice
-            ? "0 8px 32px rgba(0,0,0,0.35)"
-            : [
-                "0 8px 32px rgba(0,0,0,0.35)",
-                `inset 0 1px 0 ${
-                  isError ? "rgba(239,68,68,0.12)" : "rgba(255,255,255,0.06)"
-                }`,
-                "inset 0 -1px 0 rgba(0,0,0,0.15)",
-              ].join(", "),
+          background: "var(--hf-toast-bg)",
+          borderColor: "var(--hf-toast-border)",
+          boxShadow: "var(--hf-toast-shadow)",
         }}
       >
-        <span
-          className={`min-w-0 break-words leading-5 ${
-            isError ? "text-red-200" : isNotice ? "text-black" : "text-neutral-200"
-          }`}
-        >
+        <StatusIcon
+          aria-hidden="true"
+          className={resolvedTone === "loading" ? "shrink-0 animate-spin" : "shrink-0"}
+          color={statusColor}
+          size={17}
+          weight="bold"
+        />
+        <span className="min-w-0 flex-1 break-words leading-5 text-[var(--hf-toast-text)]">
           {message}
         </span>
         {onDismiss && (
           <button
             type="button"
             onClick={onDismiss}
-            className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md transition-colors ${
-              isNotice
-                ? "text-black/45 hover:bg-black/5 hover:text-black"
-                : "text-neutral-500 hover:bg-white/10 hover:text-neutral-300"
-            }`}
+            className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-md text-[var(--hf-toast-muted)] transition-colors hover:bg-[var(--hf-panel-hover)] hover:text-[var(--hf-toast-text)]"
             aria-label={tx("Dismiss")}
           >
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 10 10"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.5"
-            >
-              <path d="M2 2l6 6M8 2l-6 6" />
-            </svg>
+            <XIcon size={11} weight="bold" />
           </button>
         )}
       </div>

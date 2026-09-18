@@ -55,12 +55,13 @@ describe("Video Studio animation reference handoff", () => {
     expect(voicePanelSource).toContain('t("video.voice.preset_tab")');
     expect(voicePanelSource).toContain('t("video.voice.my_voices_tab")');
     expect(voicePanelSource).toContain('t("video.voice.official_presets")');
-    expect(voicePanelSource).toContain('t("video.voice.choose_official")');
+    expect(voicePanelSource).toContain('t("video.voice.search_placeholder")');
+    expect(voicePanelSource).toContain('t("video.voice.auto_title")');
     expect(englishLocaleSource).toContain('"video.voice.preset_tab": "Preset voices"');
     expect(englishLocaleSource).toContain('"video.voice.my_voices_tab": "My voices"');
-    expect(englishLocaleSource).toContain('"video.voice.ai_action": "Ask AI"');
+    expect(englishLocaleSource).toContain('"video.voice.ai_action": "Use for selected scene"');
     expect(englishLocaleSource).toContain('"video.voice.preset_name.longanyang": "Long Anyang"');
-    expect(chineseLocaleSource).toContain('"video.voice.preset_tab": "百炼音色"');
+    expect(chineseLocaleSource).toContain('"video.voice.preset_tab": "官方音色"');
     expect(chineseLocaleSource).toContain('"video.voice.my_voices_tab": "我的声音"');
   });
 });

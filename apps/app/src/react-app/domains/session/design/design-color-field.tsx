@@ -54,7 +54,7 @@ export function DesignColorField({ value, onChange, label = "Color", mixed = fal
         textClassName="text-[10px] uppercase text-muted-foreground"
       />
       <Input
-        className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-[13px] uppercase shadow-none focus-visible:ring-0"
+        className="h-7 min-w-0 flex-1 border-0 bg-transparent px-0 text-right text-xs uppercase shadow-none focus-visible:ring-0"
         value={mixed ? "" : draft}
         placeholder={mixed ? "Mixed" : undefined}
         onFocus={() => onChange(hex, true)}

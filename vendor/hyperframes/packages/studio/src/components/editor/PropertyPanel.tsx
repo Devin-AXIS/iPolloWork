@@ -28,7 +28,7 @@ import {
   STUDIO_FLAT_INSPECTOR_ENABLED,
   STUDIO_KEYFRAMES_ENABLED,
 } from "./manualEditingAvailability";
-import { PropertyPanelFlat, resolveInspectorElementKind } from "./PropertyPanelFlat";
+import { PropertyPanelFlat } from "./PropertyPanelFlat";
 import { createGsapLivePreview } from "./gsapLivePreview";
 import { usePlayerStore, liveTime } from "../../player";
 import { TimingSection } from "./propertyPanelTimingSection";
@@ -271,11 +271,11 @@ export const PropertyPanel = memo(function PropertyPanel(props: PropertyPanelPro
   if (STUDIO_FLAT_INSPECTOR_ENABLED || props.inspectorMode === "animation") {
     // Forward the raw props (handlers, ids, assets, recording, fonts, etc.) and
     // the values the legacy path already computed above (so they aren't derived
-    // twice). PropertyPanelFlat owns the one-open group state.
+    // twice). A new selection gets its own relevant default group.
     return (
       <PropertyPanelFlat
         {...props}
-        key={resolveInspectorElementKind(element.tagName, sections.text)}
+        key={selectionIdentityKey(element)}
         element={element}
         styles={styles}
         sections={sections}

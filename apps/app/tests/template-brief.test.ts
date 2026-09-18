@@ -12,6 +12,7 @@ import { setLocale } from "../src/i18n";
 import {
   conversationArtifactSessionId,
   conversationTemplateBrief,
+  conversationVideoTarget,
   inferConversationTemplateIntent,
   inferConversationTemplateIntents,
   isConversationTemplateSessionId,
@@ -144,8 +145,8 @@ describe("template brief", () => {
     expect(video).toContain("Decide whether narration materially helps");
     expect(video).toContain("content-led storyboard");
     expect(video).toContain("add, remove, reorder, or retime scenes");
-    expect(video).toContain("preserve its current theme as the visual source of truth");
-    expect(video).toContain("do not change the managed theme block");
+    expect(video).toContain("If brief.style is empty, preserve the template theme");
+    expect(video).toContain("/* ipw-theme:start */");
     expect(video).not.toContain("colorPalette");
     expect(app).toContain("build the complete prototype");
     expect(app).toContain("or turn it into a marketing website");
@@ -199,7 +200,7 @@ describe("template brief", () => {
       briefPath: "design/ses_morrow/brief.json",
     });
 
-    expect(prompt.length).toBeLessThan(2_200);
+    expect(prompt.length).toBeLessThan(2_500);
     expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
     expect(prompt).toContain("Apply it now in this turn");
     expect(prompt).toContain("Do not reply only with confirmation");
@@ -229,6 +230,59 @@ describe("template brief", () => {
     ]);
     expect(conversationArtifactSessionId("ses_bank", "slides")).toBe("ses_bank-artifact-slides");
     expect(conversationArtifactSessionId("x".repeat(256), "video")).toHaveLength(256);
+  });
+
+  test.each([
+    "生成视频",
+    "帮我做一个 30 秒竖屏产品宣传片，最后导出 MP4",
+    "根据这张图片制作写实视频",
+    "生成 HTML 视频",
+    "生成 Video Studio 支持的视频",
+    "生成 Video Stuido 支持的视频",
+    "生成介绍 Sora 的视频",
+    "不用插件，生成视频",
+    "不要视频素材，生成视频",
+    "Make a video without a plugin",
+    "用可灵生成视频素材，再合成完整视频",
+    "用这些视频素材制作宣传片",
+    "先生成视频素材，然后剪辑成宣传片",
+    "Generate footage and assemble the clips into a complete video",
+    "给现有视频添加新生成的视频素材",
+    "生成一段视频素材加到当前视频里",
+    "用视频素材在 Video Studio 生成视频",
+  ])("routes a composition request to exactly one video artifact: %s", (prompt) => {
+    expect(conversationVideoTarget(prompt)).toBe("studio");
+    expect(inferConversationTemplateIntents(prompt).map((intent) => intent.category)).toEqual(["video"]);
+  });
+
+  test.each([
+    "用插件生成视频",
+    "用可灵插件生成视频",
+    "用可灵生成视频",
+    "用 Seedance 生成视频",
+    "通过视频模型生成视频",
+    "只生成视频素材",
+    "生成一段原始视频",
+    "生成镜头素材视频",
+    "生成图生视频",
+    "生成视频素材，不要 HTML 视频",
+    "不要用 Video Studio，用插件生成视频",
+    "不是 HTML 视频，生成纯视频素材",
+    "在 Video Studio 里用插件生成视频素材",
+    "Generate a video using Runway",
+    "Generate B-roll footage",
+    "Make a raw video clip",
+  ])("leaves explicit footage requests to media tools: %s", (prompt) => {
+    expect(conversationVideoTarget(prompt)).toBe("media");
+    expect(inferConversationTemplateIntents(prompt)).toEqual([]);
+  });
+
+  test("keeps unrelated deliverables when a video is explicitly plugin-generated", () => {
+    expect(inferConversationTemplateIntents("制作产品 PPT，并用插件生成视频").map((intent) => intent.category)).toEqual(["slides"]);
+    expect(inferConversationTemplateIntents("生成 HTML 视频和一个官网").map((intent) => intent.category)).toEqual(["video", "site"]);
+    expect(inferConversationTemplateIntent("写一个图生视频脚本")).toBeNull();
+    expect(inferConversationTemplateIntent("如何用插件生成视频")).toBeNull();
+    expect(conversationVideoTarget("生成一个官网")).toBeNull();
   });
 
   test("allocates isolated repeated template instances under one conversation", () => {
@@ -377,4 +431,19 @@ describe("template brief", () => {
     expect(prompt).toContain("do not rebuild the result as a generic split hero");
   });
 
+});
+
+
+test.each(["site", "app", "slides", "poster", "cards", "report", "article", "video", "other", "resume"] as const)("%s template honors editable brief style", (category) => {
+  const prompt = templateBriefPrompt({ template: { category, title: "Reference style", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
+  expect(prompt).toContain("Reference/brief.style sets INITIAL defaults only");
+  expect(prompt).toContain("later user theme/token edits win");
+  expect(prompt).toContain("Preserve fixed-brand assets");
+});
+
+
+test.each(["ipollowork.wechat-article", `${ARTIFACT_DELIVERY_ID_PREFIX}slides`])("%s also treats reference colors as replaceable defaults", (id) => {
+  const prompt = templateBriefPrompt({ template: { id, category: "slides", title: "Example", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
+  expect(prompt).toContain("Reference/brief.style sets INITIAL defaults only");
+  expect(prompt).toContain("No hardcoded theme colors");
 });

@@ -411,6 +411,22 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("blocks missing GSAP and persists safe timeline initialization at the final gate", async () => {
+    const workspace = await workspaceConfig();
+    const path = join(workspace.root, "video.html");
+    await writeFile(path, '<main data-composition-id="main" data-duration="54"></main><script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script>');
+    const result = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_gsap" }] } } });
+    const repaired = await readFile(path, "utf8");
+    expect(repaired).toContain("window.__timelines = window.__timelines || {};");
+    await writeFile(path, '<script src="gsap.min.js"></script>' + repaired);
+    const missingAsset = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(missingAsset).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_script_asset" }] } } });
+    await writeFile(join(workspace.root, "gsap.min.js"), "/* dependency fixture, not executed by the validator */");
+    const valid = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(valid).toMatchObject({ ok: true, result: { output: { valid: true } } });
+  });
+
   test("rejects completion when explicitly requested media deliverables are absent", () => {
     const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5">
       <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
@@ -566,6 +582,7 @@ describe("Media Center extension", () => {
     const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let activeSynthesisRequests = 0;
     let maximumSynthesisRequests = 0;
+    const synthesisInputs: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (!url.includes("SpeechSynthesizer")) {
@@ -576,6 +593,7 @@ describe("Media Center extension", () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       activeSynthesisRequests -= 1;
       const body = JSON.parse(String(init?.body));
+      synthesisInputs.push(body.input);
       const sceneName = body.input.text === "Intro" ? "intro" : "details";
       return new Response(JSON.stringify({ output: { audio: { url: `https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/${sceneName}.mp3` } } }), {
         status: 200,
@@ -590,7 +608,7 @@ describe("Media Center extension", () => {
       {
         scenes: [
           { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "assets/voiceover-batch-intro.mp3" },
-          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "assets/voiceover-batch-details.mp3" },
+          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "assets/voiceover-batch-details.mp3", voice: "longanyang", rate: 1.2, volume: 64, instruction: "请用沉稳严肃的表达方式说。" },
         ],
         compositionPath: "video/session/index.html",
         voice: "longyingmu_v3",
@@ -599,6 +617,8 @@ describe("Media Center extension", () => {
     );
 
     expect(maximumSynthesisRequests).toBe(2);
+    expect(synthesisInputs.find((input) => input.text === "Intro")).toMatchObject({ voice: "longyingmu_v3", rate: 1, pitch: 1, volume: 50 });
+    expect(synthesisInputs.find((input) => input.text === "Details")).toMatchObject({ voice: "longanyang", rate: 1.2, pitch: 1, volume: 64, instruction: "请用沉稳严肃的表达方式说。" });
     expect(result).toMatchObject({
       result: {
         output: {
@@ -778,6 +798,37 @@ describe("Media Center extension", () => {
       },
     });
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
+  });
+
+  test("passes CosyVoice delivery controls through the public synthesis contract", async () => {
+    globalThis.fetch = ((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "cosyvoice-v3-flash",
+        input: {
+          text: "A warm launch narration",
+          voice: "longanyang",
+          format: "mp3",
+          rate: 1.15,
+          pitch: 0.95,
+          volume: 62,
+          instruction: "请用温暖亲切的表达方式说。",
+        },
+      });
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/controlled.mp3" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "A warm launch narration",
+      voice: "longanyang",
+      format: "mp3",
+      rate: 1.15,
+      pitch: 0.95,
+      volume: 62,
+      instruction: "请用温暖亲切的表达方式说。",
+    }, {});
   });
 
   test("explains CosyVoice 418 responses without exposing provider internals", async () => {

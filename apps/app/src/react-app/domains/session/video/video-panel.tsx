@@ -20,6 +20,7 @@ import { DesignSystemDrawer } from "../design/design-system-drawer";
 import { mergeTemplateTokenCss, parseDesignTokenValues, refreshTemplateTokenCss, replaceDesignTokenValue, type DesignTokenValues } from "../design/design-system-files";
 import { buildStableTokenBridgeCss, buildTemplateTokenCss, getDesignSystemTheme, type DesignSystemTheme } from "../design/design-system-registry";
 import { ensureHtmlDesignSystemContract, readAppliedDesignSystemId } from "../design/design-system-theme-contract";
+import { StudioInspectorPanel } from "../panel/studio-inspector-panel";
 import {
   HYPERFRAMES_STUDIO_LABEL,
   hyperframesStudioPort,
@@ -28,6 +29,7 @@ import {
   videoProjectId,
 } from "./video-project";
 import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
+import { VideoAvatarPanel } from "./video-avatar-panel";
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 import { VideoImageWorkbench } from "./video-image-workbench";
@@ -57,7 +59,7 @@ type VideoPanelProps = {
 };
 
 type StudioStartupStage = "starting-service" | "waiting-for-studio" | "loading-frame";
-type StudioHostPanel = "voice" | "style" | null;
+type StudioHostPanel = "avatar" | "voice" | "style" | null;
 
 type StudioHistoryFiles = Record<"index.html" | "design-tokens.css", {
   before: string;
@@ -235,7 +237,9 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
       if (typeof event.data.width === "number" && Number.isFinite(event.data.width)) {
         setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)));
       }
-      if (event.data.panel === "voice") {
+      if (event.data.panel === "avatar") {
+        if (features.voice) setStudioHostPanel("avatar");
+      } else if (event.data.panel === "voice") {
         if (features.voice) setStudioHostPanel("voice");
       } else if (event.data.panel === "style") {
         if (features.designSystem) setStudioHostPanel("style");
@@ -864,6 +868,28 @@ export function VideoPanel({ title, sessionId, workspaceRoot, client, workspaceI
             embeddedWidth={studioPanelWidth}
             embedded
           /> : null}
+          {features.voice && isIPolloWorkServerClient(client) && workspaceId ? <StudioInspectorPanel
+            ariaLabel={t("video.voice.avatar_tab")}
+            className={`absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover ${studioHostPanel === "avatar" ? "" : "hidden"}`}
+            width={studioPanelWidth}
+            embedded
+            testId="video-avatar-tab-content"
+            bodyClassName="p-4"
+          >
+            <VideoAvatarPanel
+              key={sessionId}
+              active={studioHostPanel === "avatar"}
+              client={client}
+              workspaceId={workspaceId}
+              workspaceRoot={workspaceRoot}
+              sessionId={sessionId}
+              onOpenVoice={() => studioFrameRef.current?.contentWindow?.postMessage({
+                type: "ipollowork:video-studio-panel",
+                projectId: videoProjectId(sessionId),
+                panel: "voice",
+              }, new URL(studioUrl).origin)}
+            />
+          </StudioInspectorPanel> : null}
           {features.designSystem && studioHostPanel === "style" ? <div className="absolute bottom-0 right-0 top-[90px] z-20 flex min-w-0 max-w-full overflow-hidden border-l border-border bg-background" style={{ width: studioPanelWidth }} data-testid="video-style-tab-content">
             <DesignSystemDrawer
               embedded

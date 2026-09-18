@@ -116,6 +116,7 @@ const WRITE_METHODS = new Set([
   "thread/rollback",
   "thread/shellCommand",
   "turn/start",
+  "turn/steer",
   "turn/interrupt",
 ]);
 
@@ -310,6 +311,9 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
     const method = typeof body.method === "string" ? body.method.trim() : "";
     if (method === "ipollowork/providerList") {
       return Response.json({ value: await providerList(runtime.forWorkspace(workspace)) });
+    }
+    if (method === "ipollowork/pendingRequests") {
+      return Response.json({ value: runtime.forWorkspace(workspace).pendingRequests() });
     }
     if (!READ_METHODS.has(method) && !WRITE_METHODS.has(method)) {
       throw new ApiError(400, "invalid_payload", `Unsupported Codex Harness method: ${method || "missing"}`);

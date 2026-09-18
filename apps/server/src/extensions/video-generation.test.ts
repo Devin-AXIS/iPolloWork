@@ -1,6 +1,18 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtemp, readFile, readdir, rm, rmdir, symlink, writeFile } from "node:fs/promises";
+import { avatarBackgroundForPrompt, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
+
+test("avatar defaults to a transparent person unless the motion prompt requests scenery", () => {
+  for (const prompt of ["人物自然说话，保持镜头稳定", "不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
+    expect(avatarBackgroundForPrompt(prompt)).toBe("transparent");
+  }
+  for (const prompt of ["背景是海边", "保留原图背景", "人物站在公园，面向镜头", "a studio backdrop"]) {
+    expect(avatarBackgroundForPrompt(prompt)).toBe("scene");
+  }
+});
+import { mkdir, mkdtemp, readFile, readdir, rm, symlink, unlink, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runInNewContext } from "node:vm";
@@ -15,6 +27,7 @@ import { callVideoGenerationAction, pollVideoJobs, validateVideoSubmission, vide
 import { claimVideoJobs, getVideoJob, updateVideoJob } from "./video-jobs.js";
 
 const roots: string[] = [];
+const initialCutoutCli = process.env.HYPERFRAMES_CLI_PATH;
 const oldFetch: unknown = Reflect.get(globalThis, PROVIDER_FETCH_SYMBOL);
 const auth: AuthorizationAccess = { read: async (id): Promise<Readonly<Record<string,string>>> => id === "volcengine-video" ? { ARK_API_KEY: "test-ark-secret" } : id === "runninghub-video" ? { RUNNINGHUB_API_KEY: "test-rh-secret" } : {} };
 const context = { workspaceId: "workspace", sessionId: "session-one" };
@@ -22,6 +35,9 @@ const context = { workspaceId: "workspace", sessionId: "session-one" };
 const mp4 = Buffer.from([0,0,0,20,102,116,121,112,105,115,111,109,0,0,0,0,105,115,111,109]);
 async function setup() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-video-test-")); roots.push(root);
+  // Mock tool availability; provider tests never execute a local model.
+  process.env.HYPERFRAMES_CLI_PATH = join(root, "cutout.mjs");
+  await writeFile(process.env.HYPERFRAMES_CLI_PATH, "");
   const config: ServerConfig = { host:"127.0.0.1",port:0,token:"token",hostToken:"host",configPath:join(root,"server.json"),approval:{mode:"auto",timeoutMs:0},corsOrigins:[],workspaces:[{id:"workspace",name:"Workspace",path:root,preset:"starter",workspaceType:"local"}],authorizedRoots:[root],readOnly:false,startedAt:Date.now(),tokenSource:"generated",hostTokenSource:"generated",logFormat:"pretty",logRequests:false };
   return { root, config, call: (action: string, input: unknown = {}, owner = context) => callVideoGenerationAction(config,auth,action,input,owner) };
 }
@@ -36,11 +52,73 @@ function workflowFixture() {
     "10": { class_type: "BasicGuider", inputs: { conditioning: ["17",0] } },
     "9": { class_type: "BasicScheduler", inputs: { steps: 25 } },
     "16": { class_type: "RandomNoise", inputs: { noise_seed: 42 } },
-    "24": { class_type: "LoadImage", inputs: { image: "template-first.png" } },
-    "25": { class_type: "LoadImage", inputs: { image: "template-last.png" } },
   }) } };
 }
+
+function avatarFixture() {
+  const node = (class_type: string, inputs: Record<string, unknown>) => ({ class_type, inputs });
+  return { code: 0, data: { prompt: JSON.stringify({
+    "136": node("MiniMaxH3ReferenceToVideo", { prompt: "author demo", clip: ["128", 0], vae: ["119", 0], ref_image_0: ["137", 0], ref_audio_0: ["199", 0], ref_image_size: "max" }),
+    "119": node("VAELoader", { vae_name: "minimax_h3_video_vae_fp16.safetensors" }),
+    "128": node("CLIPLoader", { clip_name: "qwen3vl_32b_minimax_h3_int8_convrot.safetensors", type: "minimax" }),
+    "137": node("LoadImage", { image: "demo.png" }), "171": node("LoadAudio", { audio: "demo.mp3" }),
+    "199": node("TrimAudioDuration", { audio: ["171", 0], start_index: 40, duration: 10 }),
+    "172": node("VRGDG_MiniMaxH3AudioDrive", { av_latent: ["136", 1], source_audio: ["199", 0] }),
+    "125": node("SamplerCustomAdvanced", { latent_image: ["172", 0], guider: ["126", 0], sigmas: ["124", 0], noise: ["129", 0] }),
+    "126": node("BasicGuider", { conditioning: ["136", 0], model: ["196", 0] }),
+    "124": node("BasicScheduler", { steps: 6 }), "129": node("RandomNoise", { noise_seed: 999 }),
+    "122": node("VAEDecode", { samples: ["125", 0] }),
+    "142": node("VHS_VideoCombine", { images: ["122", 0], audio: ["172", 1], frame_rate: 24 }),
+    "174": node("UNETLoader", { unet_name: "minimax_h3_ref2va_int8_convrot.safetensors" }),
+    "196": node("LoraLoaderModelOnly", { model: ["174", 0], lora_name: "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors" }),
+    "999": node("LoadAudio", { audio: "unused-demo.mp3" }),
+  }) } };
+}
+
+test("avatar requires one image and local audio and rejects incompatible modes", () => {
+  const base = { model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "person.png", audioRefs: "voice.wav" };
+  expect(validateVideoSubmission(submission(base)).model).toBe("minimax-h3-avatar");
+  for (const patch of [{ audioRefs: "" }, { imageRefs: "" }, { imageRefs: "a.png\nb.png" }, { audioRefs: "https://example.com/voice.mp3" }, { ratio: "1:1" }, { duration: "30" }, { generateAudio: "true" }]) {
+    expect(() => validateVideoSubmission(submission({ ...base, ...patch }))).toThrow();
+  }
+});
+
+test("avatar replaces demo media, starts at zero and preserves six steps in both orientations", async () => {
+  const { root, config } = await setup();
+  await writeFile(join(root, "voice.wav"), "test-audio");
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : avatarFixture()));
+  for (const ratio of ["9:16", "16:9"]) {
+    const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", duration: "10", ratio, imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth);
+    if (!("workflow" in request.body)) throw new Error("Missing workflow");
+    const graph = JSON.parse(request.body.workflow);
+    expect(request.body).toMatchObject({ workflowId: "2099368776771919873" });
+    expect(request.body).not.toHaveProperty("instanceType");
+    expect(graph["136"]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { width: ratio === "9:16" ? 384 : 672, height: ratio === "9:16" ? 672 : 384, length: 243, first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0] } });
+    expect(graph["174"].inputs.unet_name).toBe("minimax_h3_fl2va_int8_convrot.safetensors");
+    expect(graph.avatar_frame.inputs).toMatchObject({ crop: "center", image: ["137", 0] });
+    expect(graph.avatar_guide_72).toMatchObject({ class_type: "MiniMaxH3AddGuide", inputs: { positive: ["136", 0], latent: ["136", 1], image: ["avatar_frame", 0], frame_idx: 72 } });
+    expect(graph.avatar_guide_144.inputs.positive).toEqual(["avatar_guide_72", 0]);
+    expect(graph["126"].inputs.conditioning).toEqual(["avatar_guide_144", 0]);
+    expect(graph.avatar_guide_216).toBeUndefined();
+    expect(graph["199"].inputs).toMatchObject({ start_index: 0, duration: 10 });
+    expect(graph["171"].inputs.audio).toBe("input/voice.wav");
+    expect(graph["172"].inputs.source_audio).toEqual(["199", 0]);
+    expect(graph["142"].inputs).toMatchObject({ audio: ["199", 0], trim_to_audio: true });
+    expect(graph["124"].inputs.steps).toBe(6);
+    expect(graph["999"]).toBeUndefined();
+    expect(request.body.workflow).not.toContain("author demo");
+  }
+});
+
+test("avatar rejects changed audio wiring before creating a billable task", async () => {
+  const { root, config } = await setup(); await writeFile(join(root, "voice.wav"), "test-audio");
+  const fixture = avatarFixture(); const graph = JSON.parse(fixture.data.prompt); graph["172"].inputs.av_latent = ["wrong", 0]; fixture.data.prompt = JSON.stringify(graph);
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
+  await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow("尚未提交");
+});
 afterEach(async () => {
+  if (initialCutoutCli === undefined) delete process.env.HYPERFRAMES_CLI_PATH;
+  else process.env.HYPERFRAMES_CLI_PATH = initialCutoutCli;
   if (oldFetch === undefined) Reflect.deleteProperty(globalThis,PROVIDER_FETCH_SYMBOL); else Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,oldFetch);
   for (const root of roots.splice(0)) await rm(root,{recursive:true,force:true});
 });
@@ -55,6 +133,7 @@ test("only bound video models appear, without credentials or unsupported knobs",
 });
 
 test("rejects unsupported mode combinations before any network call",()=>{
+  expect(()=>validateVideoSubmission({prompt:"missing model"})).toThrow("用户");
   for(const patch of [
     {model:"minimax-h3",operation:"edit",resolution:"2K"},
     {operation:"edit",videoRefs:"https://example.com/input.mp4"},
@@ -83,7 +162,8 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async()=>Response.json(workflowFixture()));
   const frames=await request({...input,model:"minimax-h3",resolution:"0.5MP"});
   expect(frames.url).toEndWith("/task/openapi/create");
-  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2084511826766811137",instanceType:"plus"});
+  expect(frames.body).toMatchObject({apiKey:"key",workflowId:"2097511747551842305"});
+  expect(frames.body).not.toHaveProperty("instanceType");
   if(!("workflow" in frames.body))throw new Error("Missing workflow graph");
   const graph=JSON.parse(frames.body.workflow);
   expect(graph["24"]).toMatchObject({class_type:"LoadImageFromUrl",inputs:{image:input.firstFrame}});
@@ -95,6 +175,9 @@ test("maps Seedance first/last images and edit, and H3 first/last images into th
   expect(graph["17"].inputs.length).toBe(124);
   expect(graph["7"].inputs).toMatchObject({format:"mp4",codec:"h264"});
   const text=await request({model:"minimax-h3",resolution:"1MP"});
+  expect(text.body).not.toHaveProperty("instanceType");
+  const first=await request({model:"minimax-h3",operation:"first",ratio:"adaptive",resolution:"0.5MP",firstFrame:input.firstFrame});
+  expect(first.body).not.toHaveProperty("instanceType");
   if(!("workflow" in text.body))throw new Error("Missing workflow graph");
   const textGraph=JSON.parse(text.body.workflow);
   expect(textGraph["17"].inputs).toMatchObject({width:1344,height:736});
@@ -118,7 +201,7 @@ test("duplicate submissions are idempotent; restart saves only into initiating s
   const job=await getVideoJob(reloaded,args.requestId,"workspace",context.sessionId);
   expect(job.status).toBe("succeeded");expect(job.path).toBe(`video/${context.sessionId}/renders/${args.requestId}.mp4`);
   expect(await readFile(join(root,job.path))).toEqual(mp4);
-  expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items).toHaveLength(1);
+  expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items).toMatchObject([{ path: job.path, generation: { id: job.id, kind: "video", model: job.model } }]);
   expect((await listSessionArtifacts(config,"workspace","session-two")).items).toHaveLength(0);
   await pollVideoJobs(reloaded,auth);expect(creates).toBe(1);
   await expect(call("recover",{id:job.id},{...context,sessionId:"session-two"})).rejects.toThrow("当前会话");
@@ -222,7 +305,7 @@ test("H3 refuses a changed public graph before billing and never resubmits an un
     expect(job.status).toBe(changed?"failed":"uncertain");
     expect(creates).toBe(changed?0:1);
     expect(job.message).not.toContain("test-rh-secret");
-    expect(job.workflowId).toBe("2084511826766811137");
+    expect(job.workflowId).toBe("2097511747551842305");
   }
 });
 
@@ -240,16 +323,23 @@ test("existing H3 standard-model jobs keep their original query endpoint",async(
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
 });
 
-test("existing H3 workflow jobs still download output node 92",async()=>{
+test.each([
+  ["2084814218431385601", "142"],
+  ["2099699508878860290", "142"],
+  ["2099368776771919873", "142"],
+  ["2084935567606894593", "92"],
+  ["2084511826766811137", "7"],
+  ["2097511747551842305", "7"],
+])("H3 workflow %s keeps its saved output node %s",async(workflowId, nodeId)=>{
   const {config,call}=await setup();
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>url.endsWith("getJsonApiFormat")?Response.json(workflowFixture()):Response.json({code:0,data:{taskId:"old-h3-task",taskStatus:"QUEUED"}}));
   const args=submission({model:"minimax-h3",resolution:"0.5MP"});
   await call("submit",args);
   const job=await getVideoJob(config,args.requestId,"workspace",context.sessionId);
-  await updateVideoJob(config,job,{workflowId:"2084935567606894593"});
+  await updateVideoJob(config,job,{workflowId});
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL)=>{
     if(String(url).endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
-    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId:"92"}]});
+    if(String(url).endsWith("/outputs"))return Response.json({code:0,data:[{fileUrl:"https://rh-images.xiaoyaoyou.com/old.mp4",fileType:"mp4",nodeId}]});
     expect(String(url)).toBe("https://rh-images.xiaoyaoyou.com/old.mp4");return new Response(mp4);
   });
   await pollVideoJobs(config,auth);
@@ -305,30 +395,57 @@ test("read-only and path escapes are rejected; preview is chunked",async()=>{
   await expect(call("read",{path:"outside/clip.mp4"})).rejects.toThrow("escapes");
   await symlink(outside,join(root,"video"),process.platform==="win32"?"junction":"dir");
   await expect(call("import",{filename:"clip.mp4",dataUrl:`data:video/mp4;base64,${mp4.toString("base64")}`})).rejects.toThrow("escapes");
-  await rmdir(join(root,"outside"));await rmdir(join(root,"video"));
+  await unlink(join(root,"outside"));await unlink(join(root,"video"));
 });
 
 test("plugin manifest is valid and advertises only host-backed actions",async()=>{
-  const manifest=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ipollowork.plugin.json",import.meta.url)).json();
+  const manifest=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ipollowork.plugin.json",import.meta.url)).json();
   const result=validatePluginPackageManifest(manifest);expect(result.success).toBe(true);
   if(!result.success)throw new Error(JSON.stringify(result.issues));
   expect(result.manifest.contributions).toContainEqual(expect.objectContaining({type:"workspace-app",ref:"console"}));
+  expect(JSON.stringify(manifest)).toContain('"required":["requestId","model","operation","prompt","resolution","duration","ratio"]');
+});
+
+test("empty video workbench opens generation settings without switching H3 to an editor model",async()=>{
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html",import.meta.url)).text();
+  const start=html.indexOf("function openSettings()");
+  const callback=html.slice(start,html.indexOf("\n",start));
+  const edits:string[]=[];
+  const state={mode:"edit",previewPath:"",model:"minimax-h3",openRequest:""};
+  const sandbox={state,crypto:{randomUUID:()=> "open-settings"},publish:()=>{},mode:(value:string)=>{state.mode=value;},useSource:(path:string)=>edits.push(path)};
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(state).toMatchObject({mode:"generate",model:"minimax-h3",openRequest:"open-settings"});
+  expect(edits).toEqual([]);
+  state.mode="edit";state.previewPath="video/original.mp4";
+  runInNewContext(callback+"openSettings();",sandbox);
+  expect(edits).toEqual(["video/original.mp4"]);
 });
 
 test("video inspector resets incompatible fields and publishes the real host contract",async()=>{
   const {call}=await setup();
   const provider=(await call("status")).result;
-  const html=await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html",import.meta.url)).text();
+  const html=await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html",import.meta.url)).text();
   const definitions=html.slice(html.indexOf("const state ="),html.indexOf("function post("));
   const functions=html.slice(html.indexOf("function model()"),html.indexOf("async function refresh("));
   const sandbox: Record<string,unknown>={
-    provider, INSPECTOR:"ai.ipollo/inspector",disposed:false,
+    document:{documentElement:{lang:"zh"}}, provider, INSPECTOR:"ai.ipollo/inspector",disposed:false,
     request:async (_method:string,context:unknown)=>{sandbox.published=context;},
   };
   runInNewContext(`${definitions}\n${functions}\nglobalThis.state=state;state.mode='generate';state.models=provider.models;state.ratios=provider.ratios;state.host={sessionId:'session'};normalized();publish();`,sandbox);
   const result=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
-  expect(result.model).toBe("seedance-2.5");
-  expect(parsePluginUiInspectorContext(result.inspector)?.fields.some(field=>field.id==="generateAudio"&&field.advanced)).toBe(true);
+  expect(result.model).toBe("");
+  expect(parsePluginUiInspectorContext(result.inspector)?.submitDisabled).toBe(true);
+  expect(parsePluginUiInspectorContext(result.inspector)?.fields.map(field=>field.id)).toEqual(["prompt"]);
+  runInNewContext("state.model='minimax-h3';normalized();publish();",sandbox);
+  const selected=runInNewContext(`({inspector:published.structuredContent[INSPECTOR],model:state.model})`,sandbox);
+  expect(selected.model).toBe("minimax-h3");
+  expect(runInNewContext("state.resolution",sandbox)).toBe("0.5MP");
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.filter(field=>field.control==="select").map(field=>field.id)).toEqual(["operation","resolution","duration","ratio"]);
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.some(field=>field.advanced)).toBe(false);
+  expect(parsePluginUiInspectorContext(selected.inspector)?.fields.some(field=>field.id==="generateAudio")).toBe(false);
+  const unavailable=runInNewContext("state.model='';state.models=provider.models.filter(item=>item.id!=='minimax-h3');normalized();state.model",sandbox);
+  expect(unavailable).toBe("");
+  runInNewContext("state.models=provider.models;",sandbox);
   const switched=runInNewContext(`state.model='minimax-h3';state.mode='generate';state.operation='edit';state.duration='30';state.resolution='1080p';const changed=normalized();publish();({changed,operation:state.operation,duration:state.duration,inspector:published.structuredContent[INSPECTOR]})`,sandbox);
   expect(switched.operation).toBe("text");expect(switched.duration).toBe("5");
   const ratioField = parsePluginUiInspectorContext(switched.inspector)?.fields.find(field=>field.id==="ratio");
@@ -350,70 +467,49 @@ test("video inspector resets incompatible fields and publishes the real host con
   runInNewContext(`publish()`,sandbox);
   expect(runInNewContext(`published.structuredContent`,sandbox)).toEqual({});
   expect(html).toContain('const HOST = "ai.ipollo/workspace"');
-  expect(html).toContain('"ui/message"');
+  expect(html).not.toContain('"ui/message"');
   expect(html).not.toContain('call("prepare-prompt"');
+  expect(html).toContain('params.filter(key=>key!=="model")');
 });
 
-test("one click expands with the current session AI and automatically submits exactly once", async () => {
-  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
-  const signature = html.slice(html.indexOf("function promptSignature()"), html.indexOf("\n", html.indexOf("function promptSignature()")));
-  const runner = signature + "\n" + html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
-  const calls: string[] = [], messages: unknown[] = [], timers: Array<() => void> = [];
+test("generate directly submits the current prompt and settings without chat expansion", async () => {
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
-  const sandbox: Record<string,unknown> = { crypto: { randomUUID }, setTimeout(callback: () => void) { timers.push(callback); }, render() {}, publish() {}, tell() {}, refresh: async () => {},
-    request: async (method: string, args: unknown) => { calls.push(method); messages.push(args); return {}; },
-    call: async (action: string) => {
-      calls.push(action);
-      return { job: { id: "job", status: "running", message: "submitted" } };
-    },
+  const selectors = html.slice(html.indexOf("function model()"), html.indexOf("function normalized()"));
+  const runner = html.slice(html.indexOf("async function run()"), html.indexOf("async function importMedia("));
+  const calls: Array<{ action: string; args: Record<string, unknown> }> = [];
+  const sandbox = { document:{documentElement:{lang:"zh"}}, crypto: { randomUUID }, render() {}, publish() {}, tell() {}, openModelMenu() {}, refresh: async () => {},
+    request() { throw new Error("Generation must not send chat messages"); },
+    call: async (action: string, args: Record<string, unknown>) => { calls.push({ action, args }); return { job: { id: "job", status: "running", message: "submitted" } }; },
   };
-  runInNewContext(definitions+"\n"+runner+"\nglobalThis.state=state;state.model='minimax-h3';state.prompt='夸父追日';state.style='史诗电影';state.host={sessionId:'session'};", sandbox);
+  runInNewContext(definitions+"\n"+selectors+"\n"+runner+"\nglobalThis.state=state;state.models=[{id:'minimax-h3',operations:['text']}];state.model='minimax-h3';state.prompt='夸父追日';state.duration='5';state.ratio='16:9';state.host={sessionId:'session'};", sandbox);
+  expect(await runInNewContext("run()", sandbox)).toMatchObject({ job: { id: "job", status: "running" } });
+  expect(calls).toHaveLength(1);
+  expect(calls[0]).toMatchObject({ action: "submit", args: { prompt: "夸父追日", duration: "5", ratio: "16:9", model: "minimax-h3" } });
+  runInNewContext("state.style='史诗电影'", sandbox);
   await runInNewContext("run()", sandbox);
-  expect(calls).toEqual(["ui/message"]);
-  expect(JSON.stringify(messages)).toContain("史诗电影");
-  expect(JSON.stringify(messages)).toContain("夸父追日");
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("正在扩写");
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:'wrong',prompt:'ignore'})",sandbox)).rejects.toThrow("过期");
-  const reply = "acceptExpandedPrompt({requestId:state.expansion.id,prompt:'integrated_multimodal_description: [Shot 1] Kuafu runs. overall_soundscape: wind. non_diegetic_music: drums.'})";
-  runInNewContext("globalThis.previousId=state.expansion.id",sandbox);
-  await runInNewContext(reply,sandbox);
-  expect(calls).toEqual(["ui/message", "submit"]);
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:previousId,prompt:'duplicate'})",sandbox)).rejects.toThrow("过期");
-  runInNewContext("state.firstFrame='new.png'",sandbox);
-  await runInNewContext("run()",sandbox);
-  runInNewContext("state.camera='特写'",sandbox);
-  await expect(runInNewContext("acceptExpandedPrompt({requestId:state.expansion.id,prompt:'stale'})",sandbox)).rejects.toThrow("过期");
-  expect(calls).toEqual(["ui/message", "submit", "ui/message"]);
-  runInNewContext("state.expansion=null",sandbox);
-  sandbox.request=async()=>({isError:true});
-  await expect(runInNewContext("run()",sandbox)).rejects.toThrow("未接收");
-  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
-  sandbox.request=async()=>({});
-  await runInNewContext("run()",sandbox);
-  runInNewContext("state.host.sessionId='another-session'",sandbox);
-  await expect(runInNewContext(reply,sandbox)).rejects.toThrow("过期");
-  timers.at(-1)?.();
-  expect(runInNewContext("state.expansion",sandbox)).toBeNull();
-  expect(runInNewContext("state.busy",sandbox)).toBe(false);
-  expect(calls.filter(action=>action==="submit")).toHaveLength(1);
-  expect(html).toContain('"生成视频"');
-  expect(html).not.toContain("确认描述并生成");
+  expect(calls[1]?.args.prompt).toBe("夸父追日\n\n风格：史诗电影");
+  expect(runInNewContext("state.prompt", sandbox)).toBe("夸父追日");
+  runInNewContext("state.busy=true", sandbox);
+  await expect(runInNewContext("run()", sandbox)).rejects.toThrow("本次未提交新任务");
+  expect(calls).toHaveLength(2);
+  runInNewContext("state.busy=false;state.model=''", sandbox);
+  await expect(runInNewContext("run()", sandbox)).rejects.toThrow("已配置的视频模型");
+  expect(calls).toHaveLength(2);
+  expect(html).not.toContain("accept_expanded_prompt");
 });
 
 test("inspector uploads bind exact frame fields, preserve inputs on failure and reset hidden frames", async () => {
   const { call, root } = await setup();
   const provider = (await call("status")).result;
-  const html = await Bun.file(new URL("../../../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url)).text();
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
   const definitions = html.slice(html.indexOf("const state ="), html.indexOf("function post("));
   const functions = html.slice(html.indexOf("function model()"), html.indexOf("async function refresh("));
   const importer = html.slice(html.indexOf("async function importMedia("), html.indexOf("function openSettings("));
   const dataUrl = "data:image/png;base64,aW1hZ2U=";
   const sandbox: Record<string, unknown> = {
-    provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
-    $: () => ({ setAttribute() {} }), renderEditor() {}, tell() {}, request: async () => ({}),
+    document:{documentElement:{lang:"zh"}}, provider, dataUrl, Uint8Array, atob, INSPECTOR: "ai.ipollo/inspector", disposed: false,
+    $: () => ({ setAttribute() {} }), renderEditor() {}, renderWorkbench() {}, tell() {}, request: async () => ({}),
     call: async (action: string, args: Record<string, unknown>) => {
       expect(action).toBe("import");
       if (args.filename === "fail.png") throw new Error("导入失败");
@@ -450,8 +546,9 @@ test("Ark local reference video requires storage; H3 uploads through documented 
   await expect(videoRequest(config.workspaces[0],ark,"key",config,auth)).rejects.toThrow("OSS/Wasabi");
   Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string,init:RequestInit)=>{
     if(url.endsWith("getJsonApiFormat"))return Response.json(workflowFixture());
-    expect(url).toEndWith("/task/openapi/upload");expect(init.body instanceof FormData).toBe(true);
-    if(init.body instanceof FormData){expect(init.body.get("apiKey")).toBe("key");expect(init.body.get("fileType")).toBe("input");}
+    expect(url).toBe("https://www.runninghub.cn/openapi/v2/media/upload/binary");expect(init.body instanceof FormData).toBe(true);
+    expect(new Headers(init.headers).get("Authorization")).toBe("Bearer key");
+    if(init.body instanceof FormData)expect(init.body.get("file")).toBeInstanceOf(File);
     return Response.json({code:0,data:{fileName:"api/uploaded.png"}});
   });
   await writeFile(join(root,"first.png"),Buffer.from("test-image-bytes"));
@@ -483,4 +580,352 @@ test("Ark local video reuses default storage with a 24-hour signed read URL",asy
   const result=await videoRequest(config.workspaces[0],args,"ark-key",config,storageAuth);
   expect(uploads).toBe(1);expect(JSON.stringify(result.body)).toContain("x-oss-expires=86400");
   expect(JSON.stringify(result.body)).not.toContain("test-secret");expect(await readFile(join(root,"clip.mp4"))).toEqual(mp4);
+});
+
+
+test("video model never defaults to a prior generation", async () => {
+  const html = await Bun.file(new URL("../../../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url)).text();
+  const refresh = html.slice(html.indexOf("async function refresh()"), html.indexOf("function node("));
+  const state = { model: "", jobsLoaded: false, activeJobId: "", host: { launch: { source: { path: "" } } } };
+  const sandbox = { state, document: { activeElement: null }, $: () => ({ contains: () => false }), normalized() {}, render() {}, publish() {}, applyLaunch: async () => {},
+    call: async (action: string) => action === "status" ? { models: [{ id: "seedance-2.5" }, { id: "minimax-h3" }] } : { jobs: [
+      { id: "old", model: "seedance-2.5", createdAt: 1, status: "succeeded", path: "old.mp4" },
+      { id: "latest", model: "minimax-h3", createdAt: 2, status: "succeeded", path: "latest.mp4" },
+    ] },
+  };
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("");
+  state.model = "seedance-2.5";
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("seedance-2.5");
+  state.model = "";
+  state.jobsLoaded = false;
+  state.host.launch.source.path = "old.mp4";
+  await runInNewContext(refresh + "\nrefresh()", sandbox);
+  expect(state.model).toBe("");
+});
+
+function narrationWav(seconds: number) {
+  const samples = Math.round(seconds * 8000), buffer = Buffer.alloc(44 + samples * 2);
+  buffer.write("RIFF", 0); buffer.writeUInt32LE(buffer.length - 8, 4); buffer.write("WAVEfmt ", 8);
+  buffer.writeUInt32LE(16, 16); buffer.writeUInt16LE(1, 20); buffer.writeUInt16LE(1, 22);
+  buffer.writeUInt32LE(8000, 24); buffer.writeUInt32LE(16000, 28); buffer.writeUInt16LE(2, 32); buffer.writeUInt16LE(16, 34);
+  buffer.write("data", 36); buffer.writeUInt32LE(samples * 2, 40);
+  return buffer;
+}
+
+test("avatar context reads actual narration duration, excludes BGM and prepares long narration without billing", async () => {
+  const {root, call} = await setup();
+  const directory = join(root, "video/session-one"); await mkdir(directory, {recursive:true});
+  await writeFile(join(directory, "voice.wav"), narrationWav(8.2));
+  await writeFile(join(directory, "index.html"), '<main><h1>新品故事</h1><audio src="bgm.mp3" data-start="0" data-duration="30"></audio><audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="10"></audio></main>');
+  expect((await call("avatar-context")).result).toMatchObject({content:"新品故事", audioCount:1, audioDuration:8.2, audioIssue:""});
+  await writeFile(join(directory, "voice.wav"), narrationWav(20));
+  await writeFile(join(directory, "index.html"), '<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="20"></audio>');
+  expect((await call("avatar-context")).result).toMatchObject({audioCount:1, audioDuration:20, audioIssue:""});
+  let requests=0; Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async()=>{requests++; throw new Error("must not bill");});
+  await writeFile(join(root,"person.png"), "picture");
+  const result = await call("submit", submission({model:"minimax-h3-avatar", operation:"reference", resolution:"0.589824MP", ratio:"9:16", imageRefs:"person.png", avatarSource:"video-audio"}));
+  expect(result.result).toMatchObject({job:{status:"running",avatarSequence:{duration:20,segments:[{status:"pending"},{status:"pending"}]}}});
+  expect(requests).toBe(0);
+});
+
+test("avatar accepts custom long timelines beyond ten minutes without submitting an oversized provider task", async () => {
+  const { root, call } = await setup();
+  const directory = join(root, "video/session-one");
+  await mkdir(directory, { recursive: true });
+  await writeFile(join(directory, "index.html"), '<h1>自然交流</h1>');
+  await writeFile(join(root, "person.png"), "picture");
+  let requests = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { requests++; throw new Error("must not bill"); });
+  const input = submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", imageRefs: "person.png", duration: "3601", avatarSource: "video-content" });
+  const result = await call("submit", input);
+  expect(result.result).toMatchObject({ job: { status: "running", avatarSequence: { duration: 3601, audioPath: "" } } });
+  const parsed = videoSubmitResultSchema.parse(result.result);
+  expect(parsed.job.avatarSequence?.segments.length).toBeGreaterThan(128);
+  expect(parsed.job.avatarSequence?.segments.every(segment => segment.end - segment.start <= 15)).toBe(true);
+  for (const duration of ["0", "-1", "NaN", "Infinity", "1e20"]) {
+    expect(() => validateVideoSubmission({ ...input, duration })).toThrow();
+  }
+  await writeFile(join(directory, "voice.wav"), narrationWav(8.2));
+  await writeFile(join(directory, "index.html"), '<audio data-ipw-voiceover="true" src="voice.wav" data-start="3601" data-duration="8.2"></audio>');
+  expect((await call("avatar-context")).result).toMatchObject({ audioDuration: 3609.2, audioIssue: "" });
+  expect(requests).toBe(0);
+});
+
+test("avatar context does not use unused files, muted narration or out-of-project audio", async () => {
+  const {root, call} = await setup(); const directory=join(root,"video/session-one"); await mkdir(directory,{recursive:true});
+  await writeFile(join(directory,"index.html"), '<h1>视频内容</h1><audio data-ipw-voiceover="true" src="voice.wav" data-volume="0" data-start="0" data-duration="5"></audio>');
+  expect((await call("avatar-context")).result).toMatchObject({audioCount:0,audioDuration:0});
+  await writeFile(join(directory,"index.html"), '<audio data-ipw-voiceover="true" src="../../other.wav" data-start="0" data-duration="5"></audio>');
+  expect((await call("avatar-context")).result).toMatchObject({audioCount:0,audioIssue:"配音素材必须位于当前视频工程。"});
+});
+
+test("long avatar persists uncertain submissions and resumes the exact segment without another billable POST", async () => {
+  const { root, config, call } = await setup();
+  await mkdir(join(root, "video/session-one"), { recursive: true });
+  await writeFile(join(root, "video/session-one/voice.wav"), narrationWav(26));
+  await writeFile(join(root, "video/session-one/index.html"), '<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio>');
+  await writeFile(join(root, "person.png"), "image");
+  const input = submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"9:16",imageRefs:"person.png",avatarSource:"video-audio"});
+  await call("submit", input);
+  let creates = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => {
+    if (url.endsWith("/media/upload/binary")) return Response.json({code:0,data:{fileName:"input/source.wav"}});
+    if (url.endsWith("getJsonApiFormat")) return Response.json(avatarFixture());
+    if (url.endsWith("/create")) { creates++; throw new Error("response lost"); }
+    if (url.endsWith("/status")) return Response.json({code:0,data:"RUNNING"});
+    throw new Error("unexpected request");
+  });
+  // Use a public image to keep the mocked upload filename audio-specific.
+  let job = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  if (!job.avatarSequence) throw new Error("missing sequence");
+  await updateVideoJob(config, job, {avatarSequence:{...job.avatarSequence,imagePath:"https://example.com/person.png"}});
+  await pollVideoJobs(config, auth);
+  job = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("uncertain");
+  expect(job.avatarSequence?.segments[0].status).toBe("uncertain");
+  await pollVideoJobs({...config}, auth);
+  await call("submit", input);
+  expect(creates).toBe(1);
+  await expect(call("retry-segment", {id:job.id,index:0})).rejects.toThrow("只能重试");
+  await expect(call("recover", {id:job.id})).rejects.toThrow("已有任务 ID");
+  await call("recover", {id:job.id,upstreamId:"existing-task"});
+  await pollVideoJobs(config, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.avatarSequence?.segments[0]).toMatchObject({status:"running",upstreamId:"existing-task"});
+  expect(creates).toBe(1);
+});
+
+test("long avatar retries only a confirmed failed segment and keeps completed outputs", async () => {
+  const {root,config,call}=await setup();
+  await mkdir(join(root,"video/session-one"),{recursive:true});
+  await writeFile(join(root,"video/session-one/voice.wav"),narrationWav(26));
+  await writeFile(join(root,"video/session-one/index.html"),'<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio>');
+  await writeFile(join(root,"person.png"),"image");
+  const input=submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"9:16",imageRefs:"person.png",avatarSource:"video-audio"});
+  await call("submit",input);
+  const job=await getVideoJob(config,input.requestId,"workspace",context.sessionId);
+  if(!job.avatarSequence)throw new Error("missing sequence");
+  job.avatarSequence.segments[0]={...job.avatarSequence.segments[0],status:"succeeded",path:"video/session-one/renders/first.mp4",upstreamId:"first-task"};
+  job.avatarSequence.segments[1]={...job.avatarSequence.segments[1],status:"failed",upstreamId:"failed-task"};
+  await updateVideoJob(config,job,{status:"failed"});
+  await expect(call("retry-segment",{id:job.id,index:1},{...context,sessionId:"another-session"})).rejects.toThrow();
+  await call("retry-segment",{id:job.id,index:1});
+  const retried=await getVideoJob(config,job.id,"workspace",context.sessionId);
+  expect(retried.avatarSequence?.segments[0]).toEqual(job.avatarSequence.segments[0]);
+  expect(retried.avatarSequence?.segments[1]).toMatchObject({status:"pending",upstreamId:"",attempt:1});
+  await expect(call("retry-segment",{id:job.id,index:1})).rejects.toThrow();
+  if (!retried.avatarSequence) throw new Error("missing retry sequence");
+  const failed = retried.avatarSequence.segments[1];
+  failed.status = "failed"; failed.path = "video/session-one/renders/rejected.mp4";
+  await updateVideoJob(config, retried, { status: "failed" });
+  await call("retry-segment", { id: job.id, index: 1 });
+  const split = (await getVideoJob(config, job.id, "workspace", context.sessionId)).avatarSequence;
+  if (!split) throw new Error("missing split sequence");
+  expect(split.segments).toHaveLength(3);
+  expect(split.segments[0]).toEqual(job.avatarSequence.segments[0]);
+  expect(split.segments[1].start).toBe(failed.start);
+  expect(split.segments[2].end).toBe(failed.end);
+  expect(split.segments[1].end - split.segments[2].start).toBeCloseTo(1);
+  expect(split.segments.slice(1).every(item => item.attempt === 2 && item.status === "pending" && item.end - item.start < 9)).toBe(true);
+});
+
+test("local avatar preparation failure resumes without a new attempt and never auto-retries an uncertain submission", async () => {
+  const { root, config, call } = await setup();
+  await mkdir(join(root, "video/session-one"), { recursive: true });
+  await writeFile(join(root, "video/session-one/voice.wav"), narrationWav(26));
+  await writeFile(join(root, "video/session-one/index.html"), '<main data-composition-id="main" data-duration="26"><audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio></main>');
+  await writeFile(join(root, "person.png"), "image");
+  const input = submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", imageRefs: "person.png", duration: "26", avatarSource: "video-audio", prompt: "保留背景" });
+  await call("submit", input);
+  const original = process.env.HYPERFRAMES_FFMPEG_PATH;
+  let creates = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL, init?: RequestInit) => {
+    if (String(url).endsWith("/media/upload/binary")) {
+      const file = init?.body instanceof FormData ? init.body.get("file") : null;
+      return Response.json({ code: 0, data: { fileName: file instanceof File && file.type.startsWith("image/") ? "input/person.png" : "input/audio.wav" } });
+    }
+    if (String(url).endsWith("getJsonApiFormat")) return Response.json(avatarFixture());
+    if (String(url).endsWith("/create")) { creates++; return Response.json({ code: 0, data: { taskId: "first-accepted-task" } }); }
+    throw new Error("unexpected provider request");
+  });
+  try {
+    process.env.HYPERFRAMES_FFMPEG_PATH = join(root, "missing-ffmpeg");
+    await pollVideoJobs(config, auth);
+  } finally {
+    if (original === undefined) delete process.env.HYPERFRAMES_FFMPEG_PATH;
+    else process.env.HYPERFRAMES_FFMPEG_PATH = original;
+  }
+  let job = await getVideoJob(config, input.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("save_failed");
+  expect(job.message).toContain("尚未提交生成任务");
+  expect(job.message).not.toContain("Command failed");
+  expect(creates).toBe(0);
+  if (!job.avatarSequence) throw new Error("missing sequence");
+  const originalSegments = structuredClone(job.avatarSequence.segments);
+  // Old versions used failed for this exact pre-submission failure.
+  job.avatarSequence.segments[0].status = "failed";
+  await updateVideoJob(config, job, { status: "failed" });
+  await expect(call("retry-segment", { id: job.id, index: 0 })).rejects.toThrow("恢复准备");
+  await call("recover", { id: job.id });
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.avatarSequence?.segments[0]).toMatchObject({ status: "pending", attempt: 0, upstreamId: "" });
+  expect(job.avatarSequence?.segments.slice(1)).toEqual(originalSegments.slice(1));
+  await pollVideoJobs(config, auth);
+  job = await getVideoJob(config, job.id, "workspace", context.sessionId);
+  expect(job.status, job.message).toBe("running");
+  expect(creates).toBe(1);
+  expect(job.avatarSequence?.segments[0]).toMatchObject({ status: "running", upstreamId: "first-accepted-task", attempt: 0 });
+  if (!job.avatarSequence) throw new Error("missing sequence");
+  job.avatarSequence.segments[0] = { ...job.avatarSequence.segments[0], status: "uncertain", upstreamId: "" };
+  await updateVideoJob(config, job, { status: "uncertain" });
+  await expect(call("recover", { id: job.id })).rejects.toThrow("已有任务 ID");
+  expect(creates).toBe(1);
+}, 30_000);
+
+test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { drift: false, useAudio: false }, { drift: true, useAudio: false }])("long avatar stitches stable outputs and stops billing after scene drift: %j", async ({ drift, useAudio }) => {
+  const {root,config,call}=await setup();
+  const exec=promisify(execFile),ffmpeg=process.env.HYPERFRAMES_FFMPEG_PATH||"ffmpeg";
+  await mkdir(join(root,"video/session-one"),{recursive:true});
+  await writeFile(join(root,"video/session-one/voice.wav"),narrationWav(26));
+  await writeFile(join(root,"video/session-one/index.html"),`<main data-composition-id="main" data-duration="26"><h1>自然交流</h1>${useAudio ? '<audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="26"></audio>' : ''}</main>`);
+  await writeFile(join(root,"person.png"),"image");
+  const input=submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.258048MP",ratio:"9:16",imageRefs:"person.png",duration:"26",avatarSource:useAudio?"video-audio":"video-content",prompt:"保持白色背景"});
+  await call("submit",input);
+  let job=await getVideoJob(config,input.requestId,"workspace",context.sessionId);
+  if(!job.avatarSequence)throw new Error("missing sequence");
+  expect(job.avatarSequence.duration).toBe(26);
+  expect(Boolean(job.avatarSequence.audioPath)).toBe(useAudio);
+  await exec(ffmpeg,["-v","error","-f","lavfi","-i","color=c=white:size=160x160:rate=24:duration=26",...(drift ? ["-vf", "negate=enable='gte(t,3)'"] : []),"-c:v","libx264","-threads","1",join(root,"continuous.mp4")],{windowsHide:true});
+  const videos:Buffer[]=[];
+  for(const [index,segment] of job.avatarSequence.segments.entries()) {
+    const path=join(root,`provider-${index}.mp4`);
+    await exec(ffmpeg,["-v","error","-ss",String(segment.start),"-i",join(root,"continuous.mp4"),"-t",String(segment.end-segment.start),"-c:v","libx264","-threads","1",path],{windowsHide:true});
+    videos.push(await readFile(path));
+  }
+  let creates=0;
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string|URL,init?:RequestInit)=>{
+    const address=String(url);
+    if(address.endsWith("/media/upload/binary")) {const file=init?.body instanceof FormData?init.body.get("file"):null;return Response.json({code:0,data:{fileName:file instanceof File&&file.type.startsWith("image/")?"input/person.png":"input/audio.wav"}});}
+    if(address.endsWith("getJsonApiFormat"))return Response.json(useAudio ? avatarFixture() : workflowFixture());
+    if(address.endsWith("/create")){
+      const body=JSON.parse(String(init?.body));
+      expect(body).not.toHaveProperty("instanceType");
+      expect(body.workflowId).toBe(useAudio ? "2099368776771919873" : "2097511747551842305");
+      if(!useAudio) expect(body.workflow).not.toContain("LoadAudio");
+      return Response.json({code:0,data:{taskId:`segment-${creates++}`}});
+    }
+    if(address.endsWith("/status"))return Response.json({code:0,data:"SUCCESS"});
+    if(address.endsWith("/outputs")){const task=JSON.parse(String(init?.body)).taskId;return Response.json({code:0,data:[{nodeId:useAudio?"142":"7",fileType:"mp4",fileUrl:`https://rh-images-tos.xiaoyaoyou.com/${task}.mp4`}]});}
+    const match=/segment-(\d+)\.mp4$/.exec(address);if(match)return new Response(new Uint8Array(videos[Number(match[1])]));
+    throw new Error("unexpected provider request");
+  });
+  for(let tick=0;tick<8;tick++) {
+    await updateVideoJob(config,job,{nextPoll:0});await pollVideoJobs(config,auth);
+    job=await getVideoJob(config,input.requestId,"workspace",context.sessionId);
+    if(!["running","saving"].includes(job.status))break;
+  }
+  if (drift) {
+    expect(job.status).toBe("failed"); expect(job.message).toContain("连续性检查未通过");
+    expect(job.avatarSequence?.segments[0].path).not.toBe("");
+    expect(job.avatarSequence?.segments[1].status).toBe("pending");
+    expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items.filter(item=>item.generation?.id===job.id)).toHaveLength(0);
+    await pollVideoJobs(config,auth); expect(creates).toBe(1);
+    return;
+  }
+  expect(job.status).toBe("succeeded");
+  expect(creates).toBe(2);
+  expect(job.avatarSequence?.seams).toHaveLength(1);
+  expect(job.message).toContain("26.0 秒数字人");
+  const probe=await exec(process.env.HYPERFRAMES_FFPROBE_PATH||"ffprobe",["-v","error","-show_streams","-show_format","-of","json",join(root,job.path)],{windowsHide:true});
+  const media=JSON.parse(probe.stdout);
+  expect(Math.abs(Number(media.format.duration)-26)).toBeLessThan(.1);
+  expect(media.streams.filter((stream:{codec_type:string})=>stream.codec_type==="audio")).toHaveLength(useAudio?1:0);
+  expect((await listSessionArtifacts(config,"workspace",context.sessionId)).items.filter(item=>item.generation?.id===job.id)).toHaveLength(1);
+  await pollVideoJobs(config,auth);expect(creates).toBe(2);
+},60_000);
+
+test("avatar content mode uses the supplied image and selected dimensions without audio", async()=>{
+  const {config}=await setup();
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async()=>Response.json(workflowFixture()));
+  const args=validateVideoSubmission(submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"16:9",imageRefs:"https://example.com/person.png",avatarSource:"video-content",audioRefs:""}));
+  const result=await videoRequest(config.workspaces[0],args,"key",config,auth);
+  if (!("workflow" in result.body)) throw new Error("Missing workflow");
+  const graph=JSON.parse(result.body.workflow);
+  expect(result.body.workflowId).toBe("2097511747551842305");
+  expect(result.body).not.toHaveProperty("instanceType");
+  expect(graph["300"]).toMatchObject({class_type:"ImageScale",inputs:{width:1024,height:576}});
+  expect(graph["17"].inputs.first_frame).toEqual(["300",0]);
+  expect(result.body.workflow).not.toContain("LoadAudio");
+});
+
+test("avatar narration preserves fractional duration and style conditioning", async()=>{
+  const {root,config}=await setup(); await writeFile(join(root,"voice.wav"),narrationWav(8.2));
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async(url:string)=>Response.json(url.endsWith("/media/upload/binary")?{code:0,data:{fileName:"voice.wav"}}:avatarFixture()));
+  const args=validateVideoSubmission(submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"9:16",duration:"8.2",imageRefs:"https://example.com/person.png",audioRefs:"voice.wav",avatarSource:"video-audio"}));
+  const result=await videoRequest(config.workspaces[0],args,"key",config,auth);
+  if (!("workflow" in result.body)) throw new Error("Missing workflow");
+  const graph=JSON.parse(result.body.workflow);
+  expect(graph["199"].inputs.duration).toBe(8.2);
+  expect(graph["136"].inputs.prompt).toContain("visual style");
+  expect(graph["142"].inputs.trim_to_audio).toBe(true);
+});
+
+test("avatar submit derives narration server-side and blocks missing keys before generation", async()=>{
+  const {root,config,call}=await setup(); const directory=join(root,"video/session-one"); await mkdir(directory,{recursive:true});
+  await writeFile(join(directory,"voice.wav"),narrationWav(8.2));
+  await writeFile(join(directory,"index.html"),'<h1>智能家居新品</h1><audio data-ipw-voiceover="true" src="voice.wav" data-start="0" data-duration="10"></audio>');
+  let submitted: Record<string, unknown> | null = null;
+  Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string,init?:RequestInit)=>{
+    if(url.endsWith("/media/upload/binary")) return Response.json({code:0,data:{fileName:"prepared.wav"}});
+    if(url.endsWith("getJsonApiFormat")) return Response.json(avatarFixture());
+    if(url.endsWith("/create")) {submitted=JSON.parse(String(init?.body));return Response.json({code:0,data:{taskId:"avatar-proof"}});}
+    throw new Error("Unexpected provider request");
+  });
+  const input=submission({model:"minimax-h3-avatar",operation:"reference",resolution:"0.589824MP",ratio:"9:16",duration:"15",imageRefs:"https://example.com/person.png",avatarSource:"video-audio"});
+  await expect(callVideoGenerationAction(config,{read:async()=>({})},"submit",input,context)).rejects.toThrow();
+  expect(submitted).toBeNull();
+  const result=await call("submit",input);
+  expect(result.result).toMatchObject({job:{status:"running",workflowId:"2099368776771919873"}});
+  if (!submitted) throw new Error("Submission missing");
+  const graph=JSON.parse(String(Reflect.get(submitted,"workflow")));
+  expect(graph["199"].inputs.duration).toBe(8.2);
+  expect(graph["136"].inputs.prompt).toContain("智能家居新品");
+  expect(graph["136"].inputs.prompt).toContain("插画保持插画风格");
+});
+
+
+test("avatar completion automatically saves one project asset across restart and recovery", async () => {
+  const { config, root, call } = await setup();
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => Response.json({ id: "avatar-task" }));
+  const args = submission();
+  await call("submit", args);
+  const submitted = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  await updateVideoJob(config, submitted, { model: "minimax-h3-avatar" });
+  let valid = false, downloads = 0;
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    if (String(url).endsWith("/openapi/v2/query")) return Response.json({ status: "SUCCESS", results: [{ url: "https://rh-images.xiaoyaoyou.com/avatar.mp4" }] });
+    downloads++;
+    return new Response(valid ? mp4 : "invalid output");
+  });
+  await pollVideoJobs({ ...config }, auth);
+  expect((await getVideoJob(config, args.requestId, "workspace", context.sessionId)).status).toBe("save_failed");
+  const assets = join(root, "video", context.sessionId, "assets");
+  expect(await readdir(assets)).toEqual([]);
+  valid = true;
+  await call("recover", { id: args.requestId });
+  await pollVideoJobs({ ...config }, auth);
+  const saved = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  expect(saved.status).toBe("succeeded");
+  expect(saved.path).toBe(`video/${context.sessionId}/assets/${args.requestId}.mp4`);
+  expect(saved.message).toContain("已自动加入当前 Video Studio 素材库");
+  expect(await readFile(join(root, saved.path))).toEqual(mp4);
+  await updateVideoJob(config, saved, { status: "saving", nextPoll: 0 });
+  await pollVideoJobs({ ...config }, auth);
+  await pollVideoJobs(config, auth);
+  expect(downloads).toBe(2);
+  expect(await readdir(assets)).toEqual([`${args.requestId}.mp4`]);
+  expect((await listSessionArtifacts(config, "workspace", context.sessionId)).items).toHaveLength(1);
+  expect((await listSessionArtifacts(config, "workspace", "session-two")).items).toHaveLength(0);
 });

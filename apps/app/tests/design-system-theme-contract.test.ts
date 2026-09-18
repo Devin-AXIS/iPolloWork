@@ -176,3 +176,14 @@ describe("Design system theme contract", () => {
     expect(panel).not.toContain('type: "set-token",\n      name,\n      value');
   });
 });
+
+
+test("reference palette is only the initial managed theme and remains editable after switching", () => {
+  const initial = "/* ipw-theme:start */\n:root { --ipw-color-bg: #123456; --ipw-color-text: #ffffff; }\n/* ipw-theme:end */\n.slide { width: 1280px; height: 720px; color: var(--ipw-color-text); background: var(--ipw-color-bg); }";
+  const switched = mergeTemplateTokenCss(initial, "/* ipw-theme:start */\n:root { --ipw-color-bg: #eeeeee; --ipw-color-text: #111111; }\n/* ipw-theme:end */");
+  expect(switched).not.toContain("#123456");
+  expect(parseDesignTokenValues(switched)["--ipw-color-bg"]).toBe("#eeeeee");
+  const edited = replaceDesignTokenValue(switched, "--ipw-color-bg", "#abcdef");
+  expect(parseDesignTokenValues(edited)["--ipw-color-bg"]).toBe("#abcdef");
+  expect(edited.slice(edited.indexOf(".slide"))).toBe(initial.slice(initial.indexOf(".slide")));
+});

@@ -47,7 +47,11 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain("aiEditing={isStreamingSessionStatus(");
+    expect(sessionPageSource).toContain("aiEditing={selectedSessionStatus");
+    expect(sessionPageSource).toContain('selectedSessionStatus.type === "busy"');
+    expect(sessionPageSource).toContain(
+      "isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])",
+    );
     expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
     expect(panelSource).toContain("active: aiEditing");
     expect(previewSource).toContain('data-testid="studio-ai-editing-status"');
@@ -68,6 +72,8 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
     expect(panelSource).toContain('event.data.panel === "style"');
+    expect(panelSource).toContain('event.data.panel === "avatar"');
+    expect(panelSource).toContain('setStudioHostPanel("avatar")');
     expect(panelSource).toContain('const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)');
     expect(panelSource).toContain('setStudioHostPanel("voice")');
     expect(panelSource).toContain('setStudioHostPanel("style")');
@@ -76,6 +82,8 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).not.toContain("designSystemOpen");
     expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
     expect(panelSource).toContain('data-testid="video-style-tab-content"');
+    expect(panelSource).toContain('testId="video-avatar-tab-content"');
+    expect(panelSource).toContain("<VideoAvatarPanel");
     expect(panelSource).not.toContain("<DesignSystemInspectorShell");
     expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
@@ -397,7 +405,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sidePanelSource).toMatch(/px-2[^"\n]*mac:titlebar-drag/);
+    expect(sidePanelSource).toMatch(/<div className="[^"\n]*\bpx-2\b[^"\n]*\bmac:titlebar-drag\b[^"\n]*"/);
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
     expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
     expect(appStyles).toContain('[data-titlebar-no-drag]');
@@ -434,7 +442,9 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-host-action"');
     expect(studioHeaderSource).toContain('className="hf-studio-header-utilities flex items-center gap-1"');
     expect(studioHeaderSource).toContain('t("header.saveAsTemplate")');
-    expect(studioHeaderSource).toContain('<FloppyDisk className="h-4 w-4" weight="regular" aria-hidden="true" />');
+    expect(studioHeaderSource).toContain(
+      '<Save className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />',
+    );
     expect(studioHeaderSource.indexOf('t("header.saveAsTemplate")')).toBeLessThan(
       studioHeaderSource.indexOf('t("header.inspector")'),
     );
@@ -446,7 +456,7 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(voicePanelSource.match(/<SelectContent align="start">/g)).toHaveLength(2);
+    expect(voicePanelSource.match(/<SelectContent align="start"/g)).toHaveLength(3);
     expect(voicePanelSource).not.toContain("alignItemWithTrigger");
   });
 
@@ -1123,6 +1133,9 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("cumulative shifts");
     expect(contract).toContain("Keep narrated text visible");
     expect(contract).toContain("voiceover_timeline_validate");
+    expect(contract).toContain("Video HTML must load GSAP explicitly before inline animation code");
+    expect(contract).toContain("window.__timelines = window.__timelines || {}");
+    expect(contract).toContain("fix all reported errors before claiming completion");
     expect(contract).toContain("not complete when synthesis returns");
     expect(contract).toContain("Never use cross-session search/read to recover this task");
     expect(contract).toContain("fix all reported issues together");
@@ -1170,6 +1183,11 @@ describe("HyperFrames Video Studio", () => {
     });
     expect(contract).toContain('"targetDurationSeconds":120');
     expect(contract).toContain("preserve them exactly in the validator call");
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).voiceover).toBe(true);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作视频，不要配音" }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "继续修改画面", voiceoverEnabled: false }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频", voiceoverAvailable: false }).voiceover).toBe(false);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "请给视频添加旁白", voiceoverAvailable: false }).voiceover).toBe(false);
   });
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {

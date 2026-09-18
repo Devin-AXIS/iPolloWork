@@ -1,7 +1,7 @@
 import { realpath, stat } from "node:fs/promises";
 import { dirname, relative } from "node:path";
 import { z } from "zod";
-import type { SessionArtifactPage } from "@ipollowork/types/workspace";
+import type { SessionArtifact, SessionArtifactPage } from "@ipollowork/types/workspace";
 import { ApiError } from "./errors.js";
 import { importNodeSqlite } from "./node-sqlite.js";
 import { resolveWithinRoot } from "./paths.js";
@@ -10,11 +10,16 @@ import type { ServerConfig, WorkspaceInfo } from "./types.js";
 import { ensureDir } from "./utils.js";
 
 const PAGE_SIZE = 100;
+const generationSchema = z.object({
+  id: z.string(), kind: z.enum(["image", "video"]), model: z.string(), completedAt: z.number(),
+  width: z.number().optional(), height: z.number().optional(), duration: z.number().optional(),
+});
 const artifactRow = z.object({
   sequence: z.number(),
   path: z.string(),
   size: z.number(),
   updatedAt: z.number(),
+  generation: z.string().nullable(),
 });
 
 export function sessionArtifactOwner(value: unknown): string {
@@ -47,6 +52,12 @@ async function openArtifactDb(config: ServerConfig) {
     `);
     sqlite.exec(`CREATE TABLE IF NOT EXISTS artifact_path_renames (workspace_id TEXT NOT NULL, old_path TEXT NOT NULL, new_path TEXT NOT NULL, PRIMARY KEY(workspace_id, old_path))`);
     sqlite.exec(`CREATE INDEX IF NOT EXISTS artifact_path_renames_target ON artifact_path_renames(workspace_id, new_path)`);
+    const columns = sqlite.prepare("PRAGMA table_info(session_artifacts)");
+    try {
+      if (!z.array(z.object({ name: z.string() })).parse(columns.all()).some(column => column.name === "generation")) {
+        sqlite.exec("ALTER TABLE session_artifacts ADD COLUMN generation TEXT");
+      }
+    } finally { if ("finalize" in columns) columns.finalize(); }
     return sqlite;
   } catch (error) {
     sqlite.close();
@@ -61,6 +72,7 @@ export async function recordSessionArtifact(
   sessionId: string,
   path: string,
   replacedPath?: string,
+  generation?: SessionArtifact["generation"],
 ): Promise<void> {
   const owner = sessionArtifactOwner(sessionId);
   const absolutePath = await resolveWithinRoot(workspace.path, path);
@@ -72,11 +84,11 @@ export async function recordSessionArtifact(
   try {
     db.exec("BEGIN IMMEDIATE");
     transaction = true;
-    const statement = db.prepare(`INSERT INTO session_artifacts(workspace_id, session_id, path, size, updated_at)
-      VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(workspace_id, session_id, path) DO UPDATE SET size = excluded.size, updated_at = excluded.updated_at`);
+    const statement = db.prepare(`INSERT INTO session_artifacts(workspace_id, session_id, path, size, updated_at, generation)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(workspace_id, session_id, path) DO UPDATE SET size = excluded.size, updated_at = excluded.updated_at, generation = COALESCE(session_artifacts.generation, excluded.generation)`);
     try {
-      statement.run(workspace.id, owner, normalizedPath, info.size, info.mtimeMs);
+      statement.run(workspace.id, owner, normalizedPath, info.size, info.mtimeMs, generation ? JSON.stringify(generationSchema.parse(generation)) : null);
     } finally {
       if ("finalize" in statement) statement.finalize();
     }
@@ -107,7 +119,7 @@ export async function listSessionArtifacts(
   const db = await openArtifactDb(config);
   try {
     const statement = db.prepare(`
-      SELECT sequence, path, size, updated_at AS updatedAt FROM session_artifacts
+      SELECT sequence, path, size, updated_at AS updatedAt, generation FROM session_artifacts
       WHERE workspace_id = ? AND session_id = ? AND sequence < ?
       ORDER BY sequence DESC LIMIT ?
     `);
@@ -124,7 +136,7 @@ export async function listSessionArtifacts(
         } finally { if ("finalize" in query) query.finalize(); }
       }
       return {
-        items: page.map(({ path, size, updatedAt }) => ({ path, size, updatedAt, ...(aliases.has(path) ? { previousPaths: aliases.get(path) } : {}) })),
+        items: page.map(({ path, size, updatedAt, generation }) => ({ path, size, updatedAt, ...(generation ? { generation: generationSchema.parse(JSON.parse(generation)) } : {}), ...(aliases.has(path) ? { previousPaths: aliases.get(path) } : {}) })),
         nextCursor: rows.length > PAGE_SIZE ? page[page.length - 1].sequence : null,
       };
     } finally {

@@ -39,11 +39,14 @@ async function withWorkspace(fn: (input: { root: string; config: ServerConfig })
   const root = await mkdtemp(join(tmpdir(), "ipollowork-extensions-export-"));
   const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const config = serverConfig(root);
   try {
     await mkdir(join(root, ".git"), { recursive: true });
-    await fn({ root, config: serverConfig(root) });
+    await fn({ root, config });
   } finally {
-    await disposeRuntimeOpencodeConfigStore(serverConfig(root));
+    await disposeRuntimeOpencodeConfigStore(config);
+    // Bun releases closed SQLite file handles on a later event-loop turn on Windows.
+    if (process.platform === "win32") await new Promise((resolve) => setTimeout(resolve, 100));
     if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
     else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
     // Finalize unreachable Bun/Drizzle statements before removing SQLite files on Windows.

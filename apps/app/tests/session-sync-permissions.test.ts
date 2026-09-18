@@ -142,6 +142,15 @@ function snapshotWithMessages(
 }
 
 const syncInput = { workspaceId: "workspace-a", connectionKey: "test" };
+test("repairs legacy client-only reconnect errors but preserves authoritative and terminal errors", () => {
+  const retry = uiMessage("session-error:retry", "assistant", "Reconnecting... waiting for network");
+  const failure = uiMessage("session-error:failure", "assistant", "Unauthorized");
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry, failure], snapshot: snapshotWithMessages([]) }))
+    .toEqual([failure]);
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry], snapshot: null })).toEqual([retry]);
+  const snapshot = { ...snapshotWithMessages([]), messages: [retry] };
+  expect(deriveRenderedSessionMessages({ transcriptState: [retry], snapshot })).toEqual([retry]);
+});
 const testConnection = {
   subscribe: ({ signal }: { signal: AbortSignal }) => new Promise<void>((resolve) => {
     signal.addEventListener("abort", () => resolve(), { once: true });
@@ -162,6 +171,23 @@ afterEach(() => {
 });
 
 describe("session permission sync", () => {
+  test("other task events cannot starve the selected task's waiting-state reconciliation", async () => {
+    const snapshot: ConversationSnapshot = { session: { id: "session-a", title: "Waiting", codex: { status: "active", activeFlags: ["waitingOnApproval"] } }, messages: [], todos: [], status: { type: "busy" } };
+    const connection: ConversationEngineConnection = { ...testConnection, async subscribe({ signal, onEvent }) {
+      const timer = setInterval(() => onEvent({ type: "session.status", sessionId: "other-task", status: { type: "busy" } }), 50);
+      await new Promise<void>((resolve) => signal.addEventListener("abort", () => { clearInterval(timer); resolve(); }, { once: true }));
+    } };
+    let reads = 0;
+    const input = { ...syncInput, connection, readSnapshot: async () => { reads += 1; return snapshot; } };
+    const release = ensureWorkspaceSessionSync(input);
+    const untrack = trackWorkspaceSessionSync(input, "session-a");
+    seedSessionState("workspace-a", { ...snapshot, session: { id: "session-a", title: "Working" } });
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 10_300));
+      expect(reads).toBeGreaterThan(0);
+      expect(getReactQueryClient().getQueryData<ConversationSnapshot>(snapshotKey("workspace-a", "session-a"))?.session.codex).toEqual(snapshot.session.codex);
+    } finally { untrack(); release(); __disposeWorkspaceSessionSyncForTest(input); }
+  }, 15_000);
   test("keeps always-allow task scoped and refreshes other queued approvals", async () => {
     const source = await Bun.file(new URL("../src/react-app/domains/session/sync/use-session-interactions.ts", import.meta.url)).text();
     expect(source).not.toContain("setAuthorizedFolders");

@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { callOpenAiImageGenerationExtensionAction, openAiImageGenerationStatus } from "../../apps/server/dist/extensions/openai-image-generation.js";
 import { PROVIDER_FETCH_SYMBOL } from "../../apps/server/dist/provider-fetch.js";
 import { listSessionArtifacts, recordSessionArtifact } from "../../apps/server/dist/session-artifacts.js";
-import createService from "../../examples/plugin-packages/image-studio/service/image-studio.mjs";
+import createService from "../../examples/plugin-packages/media-studio/service/media-studio.mjs";
 import { resolveWithinRoot } from "../../apps/server/dist/paths.js";
 import { callVideoGenerationAction } from "../../apps/server/dist/extensions/video-generation.js";
 
@@ -73,8 +73,13 @@ if (designPage) {
   await writeFile(join(root, "design/selection-proof/assets/background.mp4"), await readFile(join(videoProjectPath, "assets/background.mp4")));
   await writeFile(join(root, designPage), `<!doctype html><html><head><title>Media design proof</title><style>body{margin:24px;font:18px Arial;background:#fafafa} section{width:660px;height:300px;border-radius:16px;border:1px solid #ddd;display:grid;place-items:center} img,video{width:300px;height:187px;object-fit:cover} h1{font-size:24px}</style></head><body><h1>Design 媒体编辑验证</h1><section id="fill"><h2>保持布局和文字</h2></section><img id="hero" src="assets/source.png"><img id="other" src="assets/source.png"><video id="clip" src="assets/background.mp4" muted controls></video></body></html>`);
 }
-const videoManifest = mediaMode ? JSON.parse(await readFile(new URL("../../examples/plugin-packages/video-console/ipollowork.plugin.json", import.meta.url), "utf8")) : null;
-const videoHtml = mediaMode ? await readFile(new URL("../../examples/plugin-packages/video-console/ui/video-console.html", import.meta.url), "utf8") : null;
+const videoManifest = mediaMode ? JSON.parse(await readFile(new URL("../../examples/plugin-packages/media-studio/ipollowork.plugin.json", import.meta.url), "utf8")) : null;
+if (videoManifest) {
+  videoManifest.id = "video-console";
+  videoManifest.resources = videoManifest.resources.filter(item => item.type !== "ui" || item.id === "console");
+  videoManifest.contributions = videoManifest.contributions.filter(item => item.type !== "workspace-app" || item.ref === "console");
+}
+const videoHtml = mediaMode ? await readFile(new URL("../../examples/plugin-packages/media-studio/ui/video-console.html", import.meta.url), "utf8") : null;
 const videoJobs = [];
 await recordSessionArtifact(config, config.workspaces[0], context.sessionId, "source.png");
 const generated = await sharp({ create: { width: 800, height: 500, channels: 4, background: "#319cce" } }).png().toBuffer();
@@ -86,9 +91,12 @@ Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (_url, init) => {
   requests.push(init.body instanceof FormData ? { nativeMask: Boolean(init.body.get("mask")), prompt: init.body.get("prompt") } : JSON.parse(init.body));
   return Response.json({ data: [{ b64_json: generated.toString("base64") }] });
 });
-const service = await createService({ workspace: { root }, plugin: { version: "0.1.13" }, host: { callAction: (reference, args) => callOpenAiImageGenerationExtensionAction(config, authorization, reference.split("/")[1], args, context) } });
-const manifest = JSON.parse(await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console" : "image-studio"}/ipollowork.plugin.json`, import.meta.url), "utf8"));
-const html = await readFile(new URL(`../../examples/plugin-packages/${framesMode ? "video-console/ui/video-console" : "image-studio/ui/image-studio"}.html`, import.meta.url), "utf8");
+const service = await createService({ workspace: { root }, storage: { dataDir: root }, plugin: { version: "0.1.13" }, host: { callAction: (reference, args) => callOpenAiImageGenerationExtensionAction(config, authorization, reference.split("/")[1], args, context) } });
+const manifest = JSON.parse(await readFile(new URL(`../../examples/plugin-packages/media-studio/ipollowork.plugin.json`, import.meta.url), "utf8"));
+manifest.id = framesMode ? "video-console" : "image-studio";
+manifest.resources = manifest.resources.filter(item => item.type !== "ui" || item.id === (framesMode ? "console" : "studio"));
+manifest.contributions = manifest.contributions.filter(item => item.type !== "workspace-app" || item.ref === (framesMode ? "console" : "studio"));
+const html = await readFile(new URL(`../../examples/plugin-packages/media-studio/ui/${framesMode ? "video-console" : "image-studio"}.html`, import.meta.url), "utf8");
 const modulePath = fileURLToPath(new URL(videoMode ? "./video-image-fixture-ui.jsx" : "./image-selection-fixture-ui.jsx", import.meta.url)).replaceAll("\\", "/");
 let saved = null;
 const server = createServer(async (req, res) => {
@@ -110,7 +118,7 @@ const server = createServer(async (req, res) => {
     }
     if (req.url === "/setup") {
       res.setHeader("Content-Type", "application/json");
-      res.end(JSON.stringify({ html, manifest, root, framesMode, historyMode, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui"), catalog: await openAiImageGenerationStatus(authorization) }));
+      res.end(JSON.stringify({ html, manifest, root, framesMode, historyMode, designPage, videoManifest, videoHtml, resource: manifest.resources.find(item => item.type === "ui" && item.id === (framesMode ? "console" : "studio")), catalog: await openAiImageGenerationStatus(authorization) }));
       return;
     }
     if (historyMode && req.url.startsWith("/history/")) {
@@ -179,13 +187,16 @@ const server = createServer(async (req, res) => {
         const bytes=await readFile(await resolveWithinRoot(root,args.path)),offset=args.offset||0;
         const part=bytes.subarray(offset,offset+1024*1024);
         result={path:args.path,mime:"video/mp4",size:bytes.length,data:part.toString("base64"),nextOffset:offset+part.length};
+      } else if (action === "inspect" || action === "local-edit") {
+        result = (await callVideoGenerationAction(config, authorization, action, args, context)).result;
+        actions.push({ action, mode: args.mode, path: result.path });
       } else throw new Error("Unexpected mock video action");
       res.setHeader("Content-Type","application/json");res.end(JSON.stringify({ok:true,result}));return;
     }
     actions.push({ action, sourcePath: args.sourcePath, selectionBlend: args.selectionBlend, mode: args.mode });
     const result = direct
       ? (await callOpenAiImageGenerationExtensionAction(config, authorization, action, args, context)).result
-      : await service.actions[action](args);
+      : await service.actions[action === "status" ? "image-status" : action](args);
     if (action === "edit-image" || action === "image_edit" || action === "save-edit") {
       const bytes = await readFile(join(root, result.path));
       const output = await sharp(bytes).ensureAlpha().raw().toBuffer();

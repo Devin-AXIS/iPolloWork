@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { repairVideoTimelineRegistry, validateVideoHtmlScripts, validateVideoScriptAssets } from "./video-html-validation.js";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -447,6 +448,10 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   if (manifest.surface === "video") {
     const entry = await readFile(join(directory, ...manifest.entry.split("/")), "utf8");
     const declared = validateVideoTemplateVariables(manifest, entry);
+    const scriptIssue = validateVideoHtmlScripts(entry)[0];
+    if (scriptIssue) throw new ApiError(400, scriptIssue.code, scriptIssue.message);
+    const assetIssue = (await validateVideoScriptAssets(entry, dirname(join(directory, ...manifest.entry.split("/")))))[0];
+    if (assetIssue) throw new ApiError(400, assetIssue.code, assetIssue.message);
     for (const variable of manifest.designSystem.variables) {
       if (!declared.has(variable.id)) throw new ApiError(400, "invalid_template_manifest", `Manifest variable is missing from the HyperFrames document: ${variable.id}`);
     }
@@ -992,6 +997,16 @@ async function prepareSessionPackage(config: ServerConfig, workspace: WorkspaceI
     await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
     await Promise.all(SESSION_TEMPLATE_EXCLUDED_PATHS.map((name) => rm(join(directory, name), { recursive: true, force: true })));
     const issues = await normalizeStagedCover(directory);
+    if (snapshot.surface === "video") {
+      const entry = await sessionEntryPath(db, workspace.id, sessionId, snapshot.surface);
+      const entryPath = join(directory, ...entry.split("/"));
+      const original = await readFile(entryPath, "utf8");
+      const repaired = repairVideoTimelineRegistry(original);
+      if (repaired !== original) {
+        await writeFile(entryPath, repaired, "utf8");
+        issues.push({ code: "video_timeline_registry_initialized", severity: "warning", path: entry, message: "Initialized the animation timeline registry in the delivery package." });
+      }
+    }
     const manifest = await readManifest(directory);
     if (manifest.surface !== snapshot.surface) throw new ApiError(409, "template_surface_changed", "Template surface cannot be changed while authoring");
     if (snapshot.authoring && manifest.category !== snapshot.manifest.category) throw new ApiError(409, "template_category_changed", "Template category cannot be changed while authoring");

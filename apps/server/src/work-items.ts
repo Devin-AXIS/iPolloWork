@@ -838,6 +838,18 @@ type ClaimedWorkItemAutomation = {
 
 export type WorkItemAutomationDispatcher = (item: WorkItem) => Promise<string>;
 
+export function workItemAutomationPrompt(item: WorkItem): string {
+  return [
+    item.description?.trim() || item.title,
+    "",
+    "[iPolloWork scheduled execution]",
+    `runKey: ${item.workspaceId}:${item.id}:${item.startAt}`,
+    "This is one occurrence of the user's scheduled task. Use the installed workspace plugins requested in the task.",
+    "For plugin operations that accept runKey, use the value above unchanged. Use a stable operationKey for each requested action (for example post-1 or reply-<target-id>). Reuse these keys on retries; never change keys to bypass an existing, failed, or uncertain operation.",
+    "Report verified results or the concrete blocker. A drafted post or a clicked submit button is not proof of publication.",
+  ].join("\n");
+}
+
 async function claimDueWorkItemAutomation(
   config: ServerConfig,
   now: number,

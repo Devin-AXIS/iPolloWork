@@ -470,6 +470,8 @@ export class CodexHarnessRuntime {
   #providers: CodexHarnessProvider[] = [];
   readonly #attachedThreadSelections = new Map<string, AttachedThreadSelection>();
   readonly #eventListeners = new Set<(event: CodexHarnessEvent) => void>();
+  // Approval requests outlive renderer subscriptions; replay until answered or cancelled.
+  readonly #pendingRequests = new Map<string | number, Extract<CodexHarnessEvent, { type: "request" }>>();
   #unsubscribeProcessEvents = () => {};
   readonly #providerGateway = new CodexProviderGateway();
 
@@ -552,8 +554,20 @@ export class CodexHarnessRuntime {
     return codexHarnessProviderDirectory({ records, providers, catalog });
   }
 
+  pendingRequests() {
+    return [...this.#pendingRequests.values()];
+  }
+
   async respond(id: string | number, result: unknown): Promise<void> {
-    (await this.#ensureStarted()).respond(id, result);
+    const process = await this.#ensureStarted();
+    if (!this.#pendingRequests.has(id)) {
+      throw new CodexHarnessUnavailableError("This confirmation is no longer pending. Refresh the conversation before continuing.");
+    }
+    process.respond(id, result);
+    this.#pendingRequests.delete(id);
+    for (const listener of this.#eventListeners) listener({
+      type: "notification", method: "serverRequest/resolved", params: { requestId: id },
+    });
   }
 
   async events(signal: AbortSignal): Promise<Response> {
@@ -575,7 +589,9 @@ export class CodexHarnessRuntime {
         };
         this.#eventListeners.add(listener);
         unsubscribe = () => this.#eventListeners.delete(listener);
+        for (const request of this.#pendingRequests.values()) listener(request);
         signal.addEventListener("abort", stop, { once: true });
+        if (signal.aborted) stop();
       },
       cancel() {
         closed = true;
@@ -601,6 +617,7 @@ export class CodexHarnessRuntime {
     this.#starting = null;
     this.#fingerprint = "";
     this.#attachedThreadSelections.clear();
+    this.#pendingRequests.clear();
     this.#unsubscribeProcessEvents();
     this.#unsubscribeProcessEvents = () => {};
     if (process) await process.close();
@@ -766,7 +783,8 @@ export class CodexHarnessRuntime {
     // *each* RPC made a warm create -> rename -> prompt sequence pay the same
     // preparation cost four times. A live app-server is the authoritative
     // prepared runtime until that explicit reload closes it.
-    if (this.#process) return this.#process;
+    if (this.#process?.running) return this.#process;
+    if (this.#process) await this.#stopProcess();
     if (!this.#starting) {
       this.#starting = this.#prepareRuntime()
         .then((prepared) => this.#process ?? this.#start(prepared))
@@ -880,6 +898,26 @@ export class CodexHarnessRuntime {
       rpc.notify("initialized", {});
       this.#unsubscribeProcessEvents();
       this.#unsubscribeProcessEvents = rpc.subscribe((event) => {
+        if (event.type === "request") this.#pendingRequests.set(event.id, event);
+        if (event.type === "notification" && isRecord(event.params)) {
+          if (event.method === "serverRequest/resolved") {
+            const id = event.params.requestId;
+            if (typeof id === "string" || typeof id === "number") this.#pendingRequests.delete(id);
+          }
+          if (event.method === "turn/completed" || event.method === "thread/closed" || event.method === "thread/archived") {
+            const threadId = event.params.threadId;
+            const turn = isRecord(event.params.turn) ? event.params.turn : null;
+            for (const [id, request] of this.#pendingRequests) {
+              if (!isRecord(request.params) || typeof threadId !== "string") continue;
+              if ((request.params.threadId ?? request.params.conversationId) !== threadId) continue;
+              if (event.method === "turn/completed" && request.params.turnId && request.params.turnId !== turn?.id) continue;
+              this.#pendingRequests.delete(id);
+              for (const listener of this.#eventListeners) listener({
+                type: "notification", method: "serverRequest/resolved", params: { requestId: id },
+              });
+            }
+          }
+        }
         if (event.method === "turn/started" || event.method === "item/started") this.#markThreadUsed(event.params);
         for (const listener of this.#eventListeners) listener(event);
       });

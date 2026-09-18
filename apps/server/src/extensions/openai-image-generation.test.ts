@@ -75,7 +75,7 @@ describe("OpenAI image editing", () => {
       return Response.json({ data: [{ b64_json: generated.toString("base64") }] });
     }, { preconnect: originalFetch.preconnect });
     const result = await callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_edit", {
-      sourcePath, sourceRevision: imageRevision(source), reviewResult: true, prompt: "Turn it red",
+      sourcePath, sourceRevision: imageRevision(source), reviewResult: true, prompt: "Turn it red", model: "openai/gpt-image-2",
     }, context);
     if (!result || !("path" in result) || !result.path || !("editId" in result.result) || typeof result.result.editId !== "string") throw new Error("Expected a reviewable image");
     return { serverConfig, context, sourcePath, source, generated, resultPath: result.path, editId: result.result.editId, calls: () => calls };
@@ -125,7 +125,7 @@ describe("OpenAI image editing", () => {
     const root = await temporaryRoot();
     const edit = await reviewedEdit(root);
     await expect(callOpenAiImageGenerationExtensionAction(edit.serverConfig, authorization, "image_edit", {
-      sourcePath: edit.sourcePath, sourceRevision: "stale", reviewResult: true, prompt: "Again",
+      sourcePath: edit.sourcePath, sourceRevision: "stale", reviewResult: true, prompt: "Again", model: "openai/gpt-image-2",
     }, edit.context)).rejects.toMatchObject({ code: "image_source_changed" });
     expect(edit.calls()).toBe(1);
   });
@@ -204,14 +204,16 @@ describe("OpenAI image editing", () => {
     const serverConfig = config(root);
     globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("generated-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
     const generated = await callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
-      prompt: "A painted sun", filename: "sun",
+      prompt: "A painted sun", filename: "sun", model: "openai/gpt-image-2",
     }, { workspaceId: "workspace", sessionId: "session-original" });
     if (!generated || !("path" in generated) || !generated.path) throw new Error("Expected generation result");
     globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("edited-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
     const edited = await callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_edit", {
-      prompt: "Make it blue", sourcePath: generated.path, filename: "sun",
+      prompt: "Make it blue", sourcePath: generated.path, filename: "sun", model: "openai/gpt-image-2",
     }, { workspaceId: "workspace", sessionId: "session-original" });
     if (!edited || !("path" in edited) || !edited.path) throw new Error("Expected edit result");
+    expect((await listSessionArtifacts(serverConfig, "workspace", "session-original")).items.find(item => item.path === generated.path))
+      .toMatchObject({ generation: { kind: "image", model: expect.any(String), id: expect.any(String) } });
     expect(edited.path).not.toBe(generated.path);
     expect(await readFile(join(root, generated.path), "utf8")).toBe("generated-image");
     expect(await readFile(join(root, edited.path), "utf8")).toBe("edited-image");
@@ -219,11 +221,11 @@ describe("OpenAI image editing", () => {
       .toEqual([edited.path, generated.path]);
     expect((await listSessionArtifacts(serverConfig, "workspace", "session-switched")).items).toEqual([]);
     await expect(callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
-      prompt: "Bad owner",
+      prompt: "Bad owner", model: "openai/gpt-image-2",
     }, { workspaceId: "workspace", sessionId: "../bad" })).rejects.toThrow("sessionId");
     globalThis.fetch = Object.assign(async () => Response.json({ error: { message: "Provider unavailable" } }, { status: 503 }), { preconnect: originalFetch.preconnect });
     await expect(callOpenAiImageGenerationExtensionAction(serverConfig, authorization, "image_generate", {
-      prompt: "Should fail",
+      prompt: "Should fail", model: "openai/gpt-image-2",
     }, { workspaceId: "workspace", sessionId: "session-failed" })).rejects.toThrow();
     expect((await listSessionArtifacts(serverConfig, "workspace", "session-failed")).items).toEqual([]);
   });
@@ -232,7 +234,7 @@ describe("OpenAI image editing", () => {
     const root = await temporaryRoot();
     globalThis.fetch = Object.assign(async () => Response.json({ data: [{ b64_json: Buffer.from("generated-image").toString("base64") }] }), { preconnect: originalFetch.preconnect });
     const responses = await Promise.all([1, 2].map(() => callOpenAiImageGenerationExtensionAction(
-      config(root), authorization, "image_generate", { prompt: "生成图片" }, { workspaceId: "workspace" },
+      config(root), authorization, "image_generate", { prompt: "生成图片", model: "openai/gpt-image-2" }, { workspaceId: "workspace" },
     )));
     const paths = responses.map((response) => response && "path" in response ? response.path : "");
     expect(paths[0]).not.toBe(paths[1]);
@@ -254,16 +256,26 @@ describe("OpenAI image editing", () => {
     expect(JSON.stringify(status)).not.toContain("private-");
   });
 
-  test("generates through a connected model when chat omits model and Image Studio is closed", async () => {
+  test("requires chat to pass the model explicitly selected by the user when Image Studio is closed", async () => {
     const root = await temporaryRoot();
     const calls: string[] = [];
     globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
       calls.push(String(input));
       return Response.json({ data: [{ b64_json: Buffer.from("headless-image").toString("base64") }] });
     }, { preconnect: originalFetch.preconnect });
-    const result = await callOpenAiImageGenerationExtensionAction(config(root), {
+    const connectedAuthorization: AuthorizationAccess = {
       read: async (service): Promise<Readonly<Record<string, string>>> => service === "volcengine-video" ? { ARK_API_KEY: "test-ark-key" } : {},
-    }, "image_generate", { prompt: "A mountain at sunrise" }, { workspaceId: "workspace" });
+    };
+    await expect(callOpenAiImageGenerationExtensionAction(config(root), connectedAuthorization, "image_generate", {
+      prompt: "A mountain at sunrise",
+    }, { workspaceId: "workspace" })).rejects.toMatchObject({
+      code: "image_model_selection_required",
+      details: { models: [{ id: "volcengine/seedream-5" }] },
+    });
+    expect(calls).toHaveLength(0);
+    const result = await callOpenAiImageGenerationExtensionAction(config(root), connectedAuthorization, "image_generate", {
+      prompt: "A mountain at sunrise", model: "volcengine/seedream-5",
+    }, { workspaceId: "workspace" });
     if (!result || !("path" in result) || !result.path) throw new Error("Expected a saved image");
     expect(result.result).toMatchObject({ model: "volcengine/seedream-5", workspaceId: "workspace" });
     expect(calls).toHaveLength(1);
@@ -291,6 +303,7 @@ describe("OpenAI image editing", () => {
       {
         sourcePath: "references/source.jpg",
         prompt: "Replace the selected background with a quiet studio wall",
+        model: "openai/gpt-image-2",
         maskDataUrl: `data:image/png;base64,${mask}`,
         selectionBounds: { left: 0.1, top: 0.2, right: 0.6, bottom: 0.75 },
         filename: "studio-result",
@@ -329,7 +342,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_edit",
-      { sourcePath: "../outside.png", prompt: "Change it" },
+      { sourcePath: "../outside.png", prompt: "Change it", model: "openai/gpt-image-2" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "invalid_path" });
     expect(called).toBe(false);
@@ -352,7 +365,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_edit",
-      { sourcePath: "references/linked/outside.png", prompt: "Change it" },
+      { sourcePath: "references/linked/outside.png", prompt: "Change it", model: "openai/gpt-image-2" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "path_escape" });
     expect(called).toBe(false);
@@ -374,7 +387,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_edit",
-      { sourcePath: "references/too-large.png", prompt: "Change it" },
+      { sourcePath: "references/too-large.png", prompt: "Change it", model: "openai/gpt-image-2" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({ code: "invalid_image", status: 413 });
     expect(called).toBe(false);
@@ -454,10 +467,11 @@ describe("OpenAI image editing", () => {
     expect(models[2]?.parameters).toMatchObject({ quality: null, size: { default: "2K", delivery: "native" } });
     expect(models[2]?.parameters.size?.values).not.toContain("1024x1024");
     for (const action of OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS.filter((action) => action.action === "image_generate" || action.action === "image_edit")) {
+      expect(action.inputSchema.required).toContain("model");
       for (const model of models) {
         for (const key of ["size", "quality"] as const) {
           const schema = Reflect.get(action.inputSchema.properties, key);
-          for (const value of model.parameters[key]?.values ?? []) expect(schema.enum).toContain(value);
+          for (const value of model.parameters[key]?.values ?? []) { if(key === "size") expect(new RegExp(schema.pattern).test(value)).toBe(true); else expect(schema.enum).toContain(value); }
         }
       }
     }
@@ -499,6 +513,8 @@ describe("OpenAI image editing", () => {
         { model: "volcengine/seedream-5", size: "1024x1024" },
         { model: "openai/gpt-image-2", size: "3K" },
         { model: "openai/gpt-image-2", size: 123 },
+        { model: "openai/gpt-image-2", size: "3x2" },
+
         { model: "openai/gpt-image-2", quality: "ultra" },
         { model: "openai/gpt-image-2-codex", quality: "high" },
       ]) {
@@ -527,7 +543,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_generate",
-      { prompt: "A proxy-aware image", filename: "proxy-result" },
+      { prompt: "A proxy-aware image", filename: "proxy-result", model: "openai/gpt-image-2" },
       { workspaceId: "workspace" },
     );
 
@@ -547,7 +563,7 @@ describe("OpenAI image editing", () => {
       config(root),
       authorization,
       "image_generate",
-      { prompt: "A test image" },
+      { prompt: "A test image", model: "openai/gpt-image-2" },
       { workspaceId: "workspace" },
     )).rejects.toMatchObject({
       status: 502,

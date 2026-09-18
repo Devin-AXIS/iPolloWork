@@ -6,13 +6,16 @@ import {
 } from "@ipollowork/types/templates";
 import { t } from "@/i18n";
 
+export const TEMPLATE_REFERENCE_THEME_CONTRACT = "Reference/brief.style sets INITIAL defaults only; later user theme/token edits win. Put palette/font defaults solely in design-tokens.css inside /* ipw-theme:start */ ... /* ipw-theme:end */. Themeable HTML/CSS must consume var(--ipw-*); bridge legacy aliases to these tokens. No hardcoded theme colors, inline/scoped token overrides, !important colors, or JS restoring the reference palette. Keep one data-ipw-design-tokens stylesheet link last in head. Preserve fixed-brand assets, layout and timing. Verify switching themes changes rendered colors without changing geometry.";
+
 export type TemplateBrief = {
   title: string;
   audience: string;
   details: string;
+  style?: string;
 };
 
-export type TemplateBriefFields = TemplateBrief;
+export type TemplateBriefFields = Pick<TemplateBrief, "title" | "audience" | "details">;
 
 type TemplateBriefField = {
   key: keyof TemplateBriefFields;
@@ -39,18 +42,35 @@ export type ConversationTemplateIntent = {
 };
 
 const CREATIVE_DELIVERABLE_ACTION = /(?:生成|制作|创建|设计|开发|搭建|编写|起草|输出|写(?:一份|一个|一套|一篇)?|做(?:一份|一个|一套|一张|一段|个)?|\b(?:create|build|develop|make|generate|design|produce|draft|write)\b)/i;
-const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
+const EXPLANATION_ONLY_REQUEST = /(?:怎么|如何)(?:做|制作|创建|设计|生成)|(?:做|制作|创建|设计|生成).{0,12}(?:需要什么|用什么|有哪些|是什么|怎么|如何)|(?:什么|哪些).{0,8}(?:工具|方法|步骤)|^(?:请|帮我|给我|告诉我|\s)*(?:解释|介绍|教程|方法|步骤).{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|报告|文章)|\bhow\s+(?:do|can|should|would)\b|\bhow\s+to\b|\bwhat\s+(?:tools?|steps?|methods?|software)\b|\bwhy\b/i;
 const PLAN_ONLY_REQUEST = /(?:视频|动画|宣传片|短片)\s*(?:脚本|文案|创意方案)|(?:ppt|幻灯片|演示文稿)\s*(?:大纲|提纲)|(?:网页|网站)\s*(?:需求文档|策划方案)/i;
 const EXISTING_TEMPLATE_EDIT_ACTION = /(?:修改|编辑|调整|优化|更新|完善|修复|改进|改成|改为|换成|换为|替换|重做|重新制作|继续(?:做|改|编辑|调整|优化|完善)|增加|添加|加上|插入|删除|移除|去掉|缩短|延长|放大|缩小|导出|渲染|\b(?:edit|change|update|revise|adjust|optimize|improve|fix|replace|restyle|rewrite|continue|add|insert|remove|delete|shorten|extend|resize|export|render)\b)/i;
 const EXISTING_TEMPLATE_EDIT_QUESTION = /^(?:请)?(?:告诉我)?\s*(?:怎么|如何)|^(?:can you explain\s+)?how\s+(?:do|can|should|would|to)\b/i;
 const CUSTOM_TEMPLATE_REQUEST = /(?:自定义(?:模板|模版|样式|设计)?|空白(?:模板|模版|骨架)?)(?:.{0,12}(?:ppt|幻灯片|演示文稿|视频|网页|网站|海报|卡片|报告|文章))?|(?:不用|不要|不使用|别用)(?:任何)?(?:系统|市场|现有|预设)?\s*(?:模板|模版)|\b(?:custom|blank|from scratch|without (?:a |the )?template|no template)\b/i;
+
+const VIDEO_SUBJECT = /视频|动画|短片|宣传片|片头|片尾|文生视频|图生视频|\b(?:video|animation|motion graphics?|reel|promo film|footage|b-roll)\b/i;
+const VIDEO_ASSET_REQUEST = /视频素材|素材视频|原始视频|纯视频|镜头素材|文生视频|图生视频|首尾帧生成|\b(?:footage|b-roll|raw video|video (?:assets?|clips?)|text-to-video|image-to-video)\b/i;
+const VIDEO_PROVIDER_REQUEST = /(?:用|使用|通过|调用|利用|让)\s*[^，,。;；\n]{0,24}(?:插件|视频模型)|(?:用|使用|通过|调用|利用|让)\s*(?:可灵|海螺|即梦|通义万相|(?:Seedance|Sora|Runway|Kling|Wan|MiniMax|RunningHub)\b)|\b(?:using|use|via|with)\s+(?:(?:a|the)\s+)?(?:[\w.-]+\s+)?(?:plugin|video model)\b|\b(?:using|use|via|with)\s+(?:Seedance|Sora|Runway|Kling|Wan|MiniMax|RunningHub)\b/i;
+const VIDEO_COMPOSITION_REQUEST = /html\s*视频|(?:可编辑|时间线|完整成片).{0,12}视频|(?:剪辑|合成|编排|组装|制作).{0,16}(?:成片|完整视频)|\b(?:editable video|html video|complete video|finished video)\b/i;
+const VIDEO_ASSEMBLY_REQUEST = /(?:用|将|把|基于).{0,40}(?:素材|镜头).{0,20}(?:生成|制作|剪辑|合成|编排).{0,16}(?:视频|短片|宣传片|成片)|(?:素材|镜头).{0,20}(?:再|然后).{0,12}(?:制作|剪辑|合成).{0,16}(?:视频|短片|宣传片|成片)|\b(?:assemble|combine|edit)\b.{0,60}\b(?:footage|clips?|assets?)\b.{0,30}\binto\b.{0,20}\bvideo\b/i;
+const VIDEO_INSERT_ASSET_REQUEST = /(?:给|为|在).{0,20}(?:视频|短片|宣传片).{0,20}(?:添加|加入|插入|加上).{0,20}(?:素材|镜头)|(?:素材|镜头).{0,20}(?:加到|加入|插入|放进).{0,20}(?:视频|短片|宣传片)/i;
+
+/** Classifies the deliverable, not the export format or an incidental model name. */
+export function conversationVideoTarget(prompt: string): "studio" | "media" | null {
+  if (!VIDEO_SUBJECT.test(prompt)) return null;
+  // A rejected option must not select that option. Keep the original prompt for the model.
+  const affirmative = prompt.replace(/(?:不要|不用|不使用|别用|无需|不需要|不是|不做|\bdo not\b|\bdon't\b|\bwithout\b)[^，,。;；\n]*(?:[，,。;；\n]|$)/gi, " ");
+  if (VIDEO_COMPOSITION_REQUEST.test(affirmative) || VIDEO_ASSEMBLY_REQUEST.test(affirmative) || VIDEO_INSERT_ASSET_REQUEST.test(affirmative)) return "studio";
+  if (VIDEO_ASSET_REQUEST.test(affirmative) || VIDEO_PROVIDER_REQUEST.test(affirmative)) return "media";
+  return "studio";
+}
 
 const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
   category: TemplateCategory;
   pattern: RegExp;
 }> = [
   { category: "slides", pattern: /\bpptx?\b|幻灯片|演示文稿|路演稿|演示稿|\b(?:slide deck|slides|presentation|pitch deck|deck)\b/i },
-  { category: "video", pattern: /视频|动画|短片|宣传片|片头|片尾|竖屏短视频|\b(?:video|animation|motion graphics?|reel|promo film)\b/i },
+  { category: "video", pattern: VIDEO_SUBJECT },
   { category: "cards", pattern: /社交卡片|轮播卡片|小红书卡片|信息卡片|\b(?:social cards?|carousel)\b/i },
   { category: "poster", pattern: /海报|横幅|主视觉|\b(?:poster|banner|key visual)\b/i },
   { category: "app", pattern: /应用原型|产品原型|交互原型|管理后台|控制台|仪表盘|\b(?:app|application|prototype|dashboard|admin console)\b/i },
@@ -120,8 +140,14 @@ export function inferConversationTemplateIntents(prompt: string): ConversationTe
   const normalized = prompt.trim();
   if (!normalized || !CREATIVE_DELIVERABLE_ACTION.test(normalized)) return [];
   if (EXPLANATION_ONLY_REQUEST.test(normalized) || PLAN_ONLY_REQUEST.test(normalized)) return [];
+  const videoTarget = conversationVideoTarget(normalized);
   return CATEGORY_INTENT_PATTERNS
-    .filter(({ pattern }) => pattern.test(normalized))
+    .filter(({ category, pattern }) => {
+      if (category === "video" && videoTarget === "media") return false;
+      // HTML describes the video source here; it is not a second website request.
+      const subject = category === "site" && videoTarget ? normalized.replace(/\bhtml\b/gi, "") : normalized;
+      return pattern.test(subject);
+    })
     .map(({ category }) => ({ category, prompt: normalized }));
 }
 
@@ -402,7 +428,7 @@ export function templateBriefUserMessage(input: {
       return value ? `${field.label}: ${value}` : null;
     })
     .filter((line): line is string => Boolean(line));
-  return [t("templates.applied", { title: input.template.title }), ...fields].join("\n");
+  return [t("templates.applied", { title: input.template.title }), ...fields, ...(input.brief.style?.trim() ? [`${t("template_market.style_label")}: ${input.brief.style.trim()}`] : [])].join("\n");
 }
 
 export function templateBriefPrompt(input: {
@@ -417,13 +443,13 @@ export function templateBriefPrompt(input: {
       : input.template.category === "video"
         ? "Build a complete deterministic HyperFrames composition with the duration, scenes, motion, and editable variables required by the brief."
         : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
-    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}.`;
+    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with brief.style when provided, otherwise a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}. ${TEMPLATE_REFERENCE_THEME_CONTRACT}`;
   }
   const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. Checklist items guide quality/export, not sample count, order, subject, copy, or assets.`;
   if (input.template.id === "ipollowork.wechat-article") {
-    return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. Update only article copy, non-fixed middle images, and the CTA href when provided.`;
+    return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. ${TEMPLATE_REFERENCE_THEME_CONTRACT} Apply brief.style only to editable non-fixed styling. Update article copy, non-fixed middle images, and the CTA href when provided.`;
   }
-  const visualSystemInstruction = "Keep design-tokens.css and preserve its current theme as the visual source of truth; do not change the managed theme block, --ipw-* tokens, palette, fonts, radii, shadows, or background treatment. Reuse typography hierarchy, component patterns, artwork language, and motion vocabulary. Preserve editor/export/runtime hooks.";
+  const visualSystemInstruction = `${TEMPLATE_REFERENCE_THEME_CONTRACT} If brief.style is empty, preserve the template theme. Preserve editor/export/runtime hooks.`;
   switch (input.template.category) {
     case "video":
       return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as an editable seed. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while inheriting composition, motion, typography, and transitions. Preserve the root composition contract, editable variables, editor hooks, and deterministic timeline. Decide whether narration materially helps; do not ask a separate narration question.`;

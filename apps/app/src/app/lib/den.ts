@@ -12,6 +12,7 @@ export type { SharedDesktopConfig };
 export { normalizeDesktopConfig };
 
 import { isDesktopDeployment } from "./ipollowork-deployment";
+import { fetchWithTimeout } from "./request-timeout";
 import { resolveDenDesktopAuthScheme } from "./den-auth-scheme";
 import {
   dispatchDenSettingsChanged,
@@ -1568,34 +1569,6 @@ type DenRequestOptions = {
   timeoutMs?: number;
   organizationId?: string | null;
 };
-
-async function fetchWithTimeout(fetchImpl: FetchLike, url: string, init: RequestInit, timeoutMs: number) {
-  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-    return fetchImpl(url, init);
-  }
-
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
-  const signal = controller?.signal;
-  const initWithSignal = signal && !init.signal ? { ...init, signal } : init;
-
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      try {
-        controller?.abort();
-      } catch {
-        // ignore
-      }
-      reject(new Error("Request timed out."));
-    }, timeoutMs);
-  });
-
-  try {
-    return await Promise.race([fetchImpl(url, initWithSignal), timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 async function requestJsonRaw<T>(
   input: string | DenBaseUrls,

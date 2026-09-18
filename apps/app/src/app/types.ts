@@ -98,10 +98,6 @@ export type PlaceholderMessageInfo = {
   };
 };
 
-export type PlaceholderAssistantMessage = PlaceholderMessageInfo & {
-  role: "assistant";
-};
-
 export type MessageInfo = Message | PlaceholderMessageInfo;
 
 export type MessageWithParts = {
@@ -117,12 +113,6 @@ export type SessionErrorTurn = {
 };
 
 export const SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX = "session-error:";
-
-export type StepGroupMode = "exploration" | "standalone";
-
-export type MessageGroup =
-  | { kind: "text"; part: Part; segment: "intent" | "result" }
-  | { kind: "steps"; id: string; parts: Part[]; segment: "execution"; mode: StepGroupMode };
 
 export type PromptMode = "prompt" | "shell";
 
@@ -144,13 +134,19 @@ export type ComposerAttachment = {
   kind: "image" | "file";
   file: File;
   previewUrl?: string;
+  /** Persist as a tool-readable workspace file instead of inlining its contents into model context. */
+  delivery?: "workspace";
 };
 
+export const IMAGE_STUDIO_EDIT_RESULT = "ipollowork:image-studio:edit-result";
+
 export type ImageStudioAiReference = {
+  workbenchRequestId?: string;
   sourcePath: string;
   sourceName: string;
   imageWidth: number;
   imageHeight: number;
+  model?: string;
   kind: "selection" | "point";
   selection?: { left: number; top: number; right: number; bottom: number };
   point?: { x: number; y: number };
@@ -204,19 +200,11 @@ export type ArtifactCompletionTarget = {
  */
 export type PromptDispatchResult = {
   dispatched: boolean;
+  sessionId?: string;
   artifactCompletionTargets?: ArtifactCompletionTarget[];
 };
 
 export type PromptDispatchOutcome = boolean | PromptDispatchResult;
-
-export type ArtifactItem = {
-  id: string;
-  name: string;
-  path?: string;
-  kind: "file" | "text";
-  size?: string;
-  messageId?: string;
-};
 
 export type OpencodeEvent = {
   type: string;

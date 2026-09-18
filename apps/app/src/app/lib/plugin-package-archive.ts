@@ -1,4 +1,3 @@
-import JSZip from "jszip";
 import {
   pluginPackageArchiveExtension,
   type PluginPackageArchiveFormat,
@@ -32,6 +31,7 @@ export async function readPluginPackageArchive(
     throw new Error(invalidExtensionMessage ?? `请选择 ${expectedExtension} 文件。`);
   }
   if (file.size > MAX_ARCHIVE_BYTES) throw new Error("插件压缩包不能超过 12 MB。");
+  const { default: JSZip } = await import("jszip");
   const archive = await JSZip.loadAsync(new Uint8Array(await file.arrayBuffer()));
   const entries = Object.values(archive.files).filter((entry) =>
     !entry.dir && !entry.name.startsWith("__MACOSX/") && !entry.name.endsWith("/.DS_Store") && entry.name !== ".DS_Store"

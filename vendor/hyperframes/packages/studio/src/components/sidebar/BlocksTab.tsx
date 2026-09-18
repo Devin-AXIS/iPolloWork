@@ -9,7 +9,11 @@ import {
   type KeyboardEvent,
   type MouseEvent,
 } from "react";
-import { CaretDown, CaretRight, FunnelSimple } from "@phosphor-icons/react";
+import { createPortal } from "react-dom";
+import { ChevronDown, ChevronRight, ListFilter, Plus, Search, Sparkles, X } from "lucide-react";
+import { FlatDropdown } from "../editor/propertyPanelFlatSelectRow";
+import { Tooltip } from "../ui/Tooltip";
+import { useDialogBehavior } from "../ui/useDialogBehavior";
 import { formatVisualComponentDataForAi } from "@hyperframes/core/registry";
 import {
   useBlockCatalog,
@@ -30,7 +34,6 @@ import {
   type CatalogColumnCount,
 } from "../../utils/studioUiPreferences";
 import { PreviewController } from "./PreviewController";
-import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
 
 interface BlocksTabProps {
   onAddBlock?: (blockName: string) => Promise<boolean>;
@@ -153,56 +156,43 @@ export const BlocksTab = memo(function BlocksTab({ onAddBlock }: BlocksTabProps)
   }, [activeSection, sections]);
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-      <div className="flex-shrink-0 space-y-[10px] border-b border-panel-border px-4 pb-[14px] pt-3">
-        <div className="relative">
-          <img
-            src={searchIconSrc}
-            alt=""
-            className="pointer-events-none absolute left-[11px] top-1/2 h-4 w-4 -translate-y-1/2"
-          />
-          <input
-            type="search"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={locale === "zh" ? "搜索组件…" : "Search components…"}
-            aria-label={locale === "zh" ? "搜索组件" : "Search components"}
-            data-testid="block-catalog-search"
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-[13px] text-panel-text-1 outline-none transition-shadow placeholder:text-[#a2a6af] focus:ring-1 focus:ring-[#1FBAC0]/50"
-          />
-        </div>
-        <label className="grid gap-[5px] text-[10px] font-medium leading-3 text-panel-text-3">
-          {locale === "zh" ? "分类" : "Category"}
-          <select
+      <div className="flex-shrink-0 border-b border-panel-border px-4 pb-[14px]">
+        <div className="flex items-center gap-2" data-testid="component-catalog-toolbar">
+          <div className="relative min-w-0 flex-1">
+            <Search
+              aria-hidden="true"
+              size={16}
+              strokeWidth={1.5}
+              className="pointer-events-none absolute left-[11px] top-1/2 -translate-y-1/2 text-[#a2a6af]"
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder={locale === "zh" ? "搜索组件…" : "Search components…"}
+              aria-label={locale === "zh" ? "搜索组件" : "Search components"}
+              data-testid="block-catalog-search"
+              className="h-[34px] w-full rounded-lg border-0 bg-panel-input pl-9 pr-3 text-xs text-panel-text-1 outline-none transition-shadow placeholder:text-panel-text-4 focus:ring-1 focus:ring-[#1FBAC0]/50"
+            />
+          </div>
+          <FlatDropdown
             value={activeSection}
-            onChange={(event) => {
-              const nextSection = event.target.value;
-              if (nextSection === ALL_SECTIONS_FILTER) {
-                setActiveSection(ALL_SECTIONS_FILTER);
-                return;
+            onChange={nextSection => {
+              if (nextSection === ALL_SECTIONS_FILTER) setActiveSection(ALL_SECTIONS_FILTER);
+              else {
+                const match = sections.find(section => section.id === nextSection);
+                if (match) setActiveSection(match.id);
               }
-              const match = sections.find((section) => section.id === nextSection);
-              if (match) setActiveSection(match.id);
             }}
-            aria-label={locale === "zh" ? "组件分类" : "Component category"}
-            className="h-[34px] w-full rounded-lg border-0 bg-panel-input px-[11px] text-[13px] font-medium text-panel-text-1 outline-none focus:ring-1 focus:ring-[#1FBAC0]/50"
-          >
-            <option value={ALL_SECTIONS_FILTER}>
-              {locale === "zh" ? "全部组件" : "All components"} · {totalCount}
-            </option>
-            {sections.map((section) => (
-              <option key={section.id} value={section.id}>
-                {SECTION_TITLES[section.id][locale]} · {section.items.length}
-              </option>
-            ))}
-          </select>
-        </label>
-        <div
-          className="rounded-lg bg-panel-input px-3 py-2 text-[10px] leading-4 text-panel-text-3"
-          data-testid="components-catalog-help"
-        >
-          {locale === "zh"
-            ? "组件会继承当前主题，插入时间线后可继续调整变量，也可以交给 AI 做受控修改。"
-            : "Components inherit the active theme, expose safe variables after insertion, and remain available to AI for controlled edits."}
+            ariaLabel={locale === "zh" ? "组件分类" : "Component category"}
+            options={[
+              {value: ALL_SECTIONS_FILTER, label: `${locale === "zh" ? "全部组件" : "All components"} · ${totalCount}`},
+              ...sections.map(section => ({value: section.id, label: `${SECTION_TITLES[section.id][locale]} · ${section.items.length}`})),
+            ]}
+            icon={<ListFilter aria-hidden="true" size={16} strokeWidth={1.5} className="mx-auto" />}
+            menuWidth={208}
+            className={`h-[34px] w-[34px] shrink-0 rounded-lg border-0 transition-colors hover:bg-panel-hover ${activeSection === ALL_SECTIONS_FILTER ? "bg-panel-input text-panel-text-2" : "bg-panel-accent/15 text-panel-accent"}`}
+          />
         </div>
       </div>
 
@@ -364,7 +354,7 @@ function CatalogSectionGrid({
           {sections.map((section) => (
             <section
               key={section.id}
-              className={`border-b border-panel-border last:border-b-0 ${collapsedSections.has(section.id) ? "" : "pb-4"}`}
+              className={`-mx-4 border-b border-panel-border ${collapsedSections.has(section.id) ? "" : "pb-4"}`}
               data-testid={`catalog-section-${section.id}`}
             >
               {showSectionHeaders ? (
@@ -377,7 +367,7 @@ function CatalogSectionGrid({
               ) : null}
               {!collapsedSections.has(section.id) ? (
                 <div
-                  className={`grid min-w-0 gap-x-[10px] gap-y-4 overflow-x-hidden ${CATALOG_GRID_COLUMNS[columnCount]}`}
+                  className={`grid min-w-0 gap-x-[10px] gap-y-4 overflow-x-hidden px-4 ${CATALOG_GRID_COLUMNS[columnCount]}`}
                   data-testid={`catalog-grid-${section.id}`}
                 >
                   {section.items.map((block) => (
@@ -418,28 +408,27 @@ function CatalogSectionHeader({
     <button
       type="button"
       aria-expanded={!collapsed}
+      data-testid="component-section-header"
       onClick={onToggle}
-      className={`relative -mx-4 flex h-12 w-[calc(100%+32px)] items-center gap-2 px-4 text-left text-panel-text-1 transition-colors hover:bg-panel-input/50 ${collapsed ? "" : "mb-[14px]"}`}
+      className={`hf-panel-accordion-header w-full ${collapsed ? "" : "mb-[14px]"}`}
     >
-      <span className="absolute inset-y-0 left-0 w-[3px] bg-[#1FBAC0]" aria-hidden="true" />
       {collapsed ? (
-        <CaretRight
+        <ChevronRight
           aria-hidden="true"
-          size={10}
-          weight="regular"
-          className="flex-none text-[#a2a6af]"
+          size={14}
+          strokeWidth={1.5}
+          className="hf-panel-accordion-chevron"
         />
       ) : (
-        <CaretDown
+        <ChevronDown
           aria-hidden="true"
-          size={10}
-          weight="regular"
-          className="flex-none text-[#a2a6af]"
+          size={14}
+          strokeWidth={1.5}
+          className="hf-panel-accordion-chevron"
         />
       )}
-      <span className="min-w-0 flex-1 truncate text-sm font-semibold">{title}</span>
-      <span className="text-xs tabular-nums text-panel-text-3">{count}</span>
-      <FunnelSimple aria-hidden="true" className="h-4 w-4 flex-none text-panel-text-3" />
+      <span className="hf-panel-accordion-label min-w-0 flex-1 truncate">{title}</span>
+      <span className="hf-panel-accordion-count">{count}</span>
     </button>
   );
 }
@@ -548,10 +537,12 @@ const BlockCard = memo(function BlockCard({
   insertingBlockName: string | null;
   locale: "en" | "zh";
 }) {
-  const visualSection = resolveCatalogSection(block);
   const [posterFailed, setPosterFailed] = useState(false);
   const [videoThumbnailFailed, setVideoThumbnailFailed] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const { requestClose } = useDialogBehavior({ open: previewOpen, onClose: () => setPreviewOpen(false), containerRef: dialogRef });
   const [previewReady, setPreviewReady] = useState(false);
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mountedRef = useRef(true);
@@ -559,6 +550,11 @@ const BlockCard = memo(function BlockCard({
   const duration = block.type === "hyperframes:component" ? undefined : block.duration;
   const posterUrl = block.preview?.poster;
   const videoUrl = block.preview?.video;
+  const previewRatio = block.dimensions ? block.dimensions.width / block.dimensions.height : 16 / 9;
+  const thumbnailFrameStyle = {
+    width: `max(100%, ${100 * previewRatio}px)`,
+    height: `max(100px, calc(100cqw / ${previewRatio}))`,
+  };
   const registryPreviewUrl = `/api/registry/blocks/${encodeURIComponent(block.name)}/preview`;
   const compositionPosterUrl = `${registryPreviewUrl}?time=${Math.min((duration ?? 4) / 2, 2).toFixed(2)}`;
   const compositionPlaybackUrl = `${registryPreviewUrl}?autoplay=1`;
@@ -643,9 +639,11 @@ const BlockCard = memo(function BlockCard({
     };
   }, [block.name, clearHoverTimer, previewController, registerCard]);
 
-  const handleAdd = useCallback(() => {
-    if (insertionBusy || !onAddBlock) return;
-    void onAddBlock(block.name);
+  const handleAdd = useCallback(async (): Promise<boolean> => {
+    if (insertionBusy || !onAddBlock) return false;
+    const added = await onAddBlock(block.name);
+    if (added) setPreviewOpen(false);
+    return added;
   }, [block.name, insertionBusy, onAddBlock]);
 
   const handleCardKeyDown = useCallback(
@@ -653,15 +651,16 @@ const BlockCard = memo(function BlockCard({
       if (event.target !== event.currentTarget) return;
       if (event.key !== "Enter" && event.key !== " ") return;
       event.preventDefault();
-      handleAdd();
+      setPreviewOpen(true);
     },
-    [handleAdd],
+    [],
   );
 
   const { activeCompPath, compositionDimensions } = useStudioShellContext();
   const handleShowPrompt = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
       event.stopPropagation();
+      setPreviewOpen(false);
       const state = usePlayerStore.getState();
       const context: CompositionContext = {
         currentTime: state.currentTime,
@@ -699,6 +698,11 @@ const BlockCard = memo(function BlockCard({
     [activeCompPath, block, compositionDimensions, duration, posterUrl, videoUrl],
   );
 
+  const insertLabel = adding ? (locale === "zh" ? "插入中…" : "Inserting…") : (locale === "zh" ? "插入组件" : "Insert component");
+  const askLabel = locale === "zh" ? "问 AI" : "Ask AI";
+  const insertAction = <button type="button" disabled={insertionBusy || !onAddBlock} aria-label={insertLabel} aria-busy={adding || undefined} onClick={event => { event.stopPropagation(); void handleAdd(); }} className="flex h-7 items-center gap-1 rounded-md bg-panel-input px-2 text-xs font-medium text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"><Plus aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-panel-text-2" /><span>{insertLabel}</span></button>;
+  const askAction = <Tooltip label={askLabel}><button type="button" disabled={insertionBusy} aria-label={askLabel} onClick={handleShowPrompt} className="flex size-7 items-center justify-center rounded-md bg-panel-input text-panel-text-1 shadow-sm transition-colors hover:bg-panel-hover disabled:opacity-50"><Sparkles aria-hidden="true" size={16} strokeWidth={1.5} className="shrink-0 text-panel-text-2" /></button></Tooltip>;
+
   return (
     <div
       ref={setCardRef}
@@ -712,7 +716,7 @@ const BlockCard = memo(function BlockCard({
       data-block-name={block.name}
       data-preview-active={previewing ? "true" : "false"}
       draggable={!insertionBusy}
-      onClick={handleAdd}
+      onClick={() => setPreviewOpen(true)}
       onKeyDown={handleCardKeyDown}
       onDragStart={(event) => {
         if (insertionBusy) {
@@ -730,7 +734,7 @@ const BlockCard = memo(function BlockCard({
       onPointerEnter={handleEnter}
       onPointerLeave={handleLeave}
     >
-      <div className="relative aspect-[14/9] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input transition-shadow group-hover/card:shadow-[0_3px_12px_rgba(0,0,0,0.12)]">
+      <div style={{ containerType: "size" }} className="relative h-[100px] w-full overflow-hidden rounded-lg border border-panel-border bg-panel-input ">
         {canShowPoster ? (
           <img
             src={posterUrl}
@@ -756,7 +760,8 @@ const BlockCard = memo(function BlockCard({
             tabIndex={-1}
             loading="lazy"
             sandbox="allow-scripts"
-            className="pointer-events-none absolute inset-0 size-full border-0 bg-black"
+            style={thumbnailFrameStyle}
+            className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 border-0 bg-black"
           />
         ) : (
           <div className={`absolute inset-0 flex items-center justify-center ${colors.bg}`}>
@@ -775,24 +780,14 @@ const BlockCard = memo(function BlockCard({
             tabIndex={-1}
             sandbox="allow-scripts"
             onLoad={() => setPreviewReady(true)}
-            className={`pointer-events-none absolute inset-0 z-[1] size-full border-0 bg-transparent transition-opacity duration-150 ${
+            style={thumbnailFrameStyle}
+            className={`pointer-events-none absolute left-1/2 top-1/2 z-[1] -translate-x-1/2 -translate-y-1/2 border-0 bg-transparent transition-opacity duration-150 ${
               previewReady ? "opacity-100" : "opacity-0"
             }`}
           />
         ) : null}
 
-        <div className="pointer-events-none absolute left-1 top-1 z-[2] flex items-center gap-0.5">
-          {block.engine?.name.toLowerCase() === "gsap" ? (
-            <span className="rounded bg-[#174d42] px-1.5 py-1 text-[7px] font-semibold leading-none text-[#6de0c1]">
-              {block.source?.provider === "gsap-docs"
-                ? "GSAP Official"
-                : block.source?.provider === "gsap-demo-hub"
-                  ? "Demo Hub"
-                  : "GSAP"}
-            </span>
-          ) : null}
-        </div>
-        <div className="pointer-events-none absolute right-1 top-1 z-[2] flex items-center gap-0.5">
+        <div className="pointer-events-none absolute left-2 bottom-2 z-[2] flex items-center gap-0.5">
           {needsWebGL ? (
             <span className="rounded bg-purple-900/80 px-1.5 py-1 text-[7px] font-semibold leading-none text-purple-200">
               WebGL
@@ -804,63 +799,27 @@ const BlockCard = memo(function BlockCard({
             </span>
           ) : null}
         </div>
+        <div className="pointer-events-none absolute inset-0 z-[3] bg-gradient-to-t from-black/65 via-transparent to-transparent opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100 [@media(hover:none)]:opacity-100">
+          <div className="pointer-events-auto absolute right-2 top-2">{askAction}</div>
+          <div className="pointer-events-auto absolute bottom-2 right-2">{insertAction}</div>
+        </div>
+        <span aria-hidden="true" data-testid="component-card-hover-border" className="pointer-events-none absolute inset-0 z-[4] rounded-[inherit] border-2 border-[#1FBAC0] opacity-0 transition-opacity group-hover/card:opacity-100 group-focus-within/card:opacity-100" />
       </div>
 
-      <div className="pt-[7px]">
+      <div className="pt-1">
         <div className="flex min-w-0 items-start justify-between gap-1.5">
-          <div className="min-w-0 flex-1 truncate text-[10px] font-medium leading-4 text-panel-text-1">
+          <div className="min-w-0 flex-1 truncate text-xs font-medium leading-5 text-panel-text-1">
             {block.title}
           </div>
-          <span className="flex-none text-[9px] leading-4 text-panel-text-3">
-            {visualSection
-              ? SECTION_TITLES[visualSection][locale]
-              : getCategoryLabel(block.category, locale)}
-          </span>
-        </div>
-        {block.engine?.plugins?.[0] ? (
-          <div className="mt-0.5 truncate text-[8px] text-[#209b83]">{block.engine.plugins[0]}</div>
-        ) : null}
-        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-          <button
-            type="button"
-            disabled={insertionBusy}
-            aria-busy={adding || undefined}
-            onClick={(event) => {
-              event.stopPropagation();
-              handleAdd();
-            }}
-            title={
-              locale === "zh"
-                ? "在当前播放位置插入组件，并将后续片段顺延"
-                : "Insert component at the playhead and ripple later clips"
-            }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md border border-panel-border bg-panel-bg px-1 text-[9px] font-semibold text-panel-text-1 transition-colors enabled:hover:bg-panel-input disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="truncate">
-              {adding
-                ? locale === "zh"
-                  ? "插入中…"
-                  : "Inserting…"
-                : locale === "zh"
-                  ? "插入组件"
-                  : "Insert component"}
-            </span>
-          </button>
-          <button
-            type="button"
-            disabled={insertionBusy}
-            onClick={handleShowPrompt}
-            title={
-              locale === "zh"
-                ? "让 AI 在组件变量与可编辑槽位内调整"
-                : "Ask AI to adapt this component within its declared slots"
-            }
-            className="flex h-7 min-w-0 items-center justify-center rounded-md bg-panel-input px-1 text-[9px] font-medium text-panel-text-1 transition-colors enabled:hover:bg-[#1FBAC0]/12 enabled:hover:text-[#168e92] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <span className="truncate">{locale === "zh" ? "\u4ea4\u7ed9 AI" : "Ask AI"}</span>
-          </button>
         </div>
       </div>
+      {previewOpen ? createPortal(<div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 p-4" onClick={event => { event.stopPropagation(); if (event.target === event.currentTarget) requestClose(); }}>
+        <div ref={dialogRef} role="dialog" aria-modal="true" aria-label={block.title} tabIndex={-1} className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-panel-border bg-panel-bg text-panel-text-1">
+          <div className="flex items-center justify-between gap-3 p-3"><span className="truncate text-sm font-medium">{block.title}</span><Tooltip label={locale === "zh" ? "关闭" : "Close"}><button type="button" aria-label={locale === "zh" ? "关闭" : "Close"} onClick={requestClose} className="flex size-7 items-center justify-center rounded-md hover:bg-panel-input"><X aria-hidden="true" size={16} strokeWidth={1.5} /></button></Tooltip></div>
+          <iframe src={compositionPlaybackUrl} title={block.title} sandbox="allow-scripts" className="aspect-video min-h-0 w-full border-0 bg-panel-input" />
+          <div className="flex shrink-0 items-center justify-end gap-2 p-3">{askAction}{insertAction}</div>
+        </div>
+      </div>, document.body) : null}
     </div>
   );
 });

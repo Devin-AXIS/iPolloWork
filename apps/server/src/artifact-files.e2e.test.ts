@@ -1,3 +1,6 @@
+import sharp from "sharp";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -6,6 +9,7 @@ import { join } from "node:path";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
 import { listSessionArtifacts, recordSessionArtifact } from "./session-artifacts.js";
+import { createVideoJob, updateVideoJob } from "./extensions/video-jobs.js";
 
 type Served = { port: number; stop: (closeActiveConnections?: boolean) => void | Promise<void> };
 
@@ -61,6 +65,47 @@ function auth(token: string) {
 }
 
 describe("artifact file routes", () => {
+  test("artifact reads expose scoped live video states without prompts or upstream identifiers", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token, config } = await startiPolloWorkServer(root);
+    const now = Date.now();
+    const { job } = await createVideoJob(config, { id: "video-status-proof", workspaceId: "ws_1", sessionId: "media-session",
+      model: "test-model", operation: "text", prompt: "private prompt", fingerprint: "test", upstreamId: "private-id",
+      status: "running", path: "", message: "waiting", createdAt: now, updatedAt: now, nextPoll: now + 3600000,
+    });
+    const read = (session: string) => fetch(`${base}/workspace/ws_1/artifacts?sessionId=${session}`, { headers: auth(token) }).then(r => r.json());
+    const page = await read("media-session");
+    expect(page.videoJobs).toEqual([{ id: job.id, model: job.model, status: "running", updatedAt: now }]);
+    expect(JSON.stringify(page)).not.toContain("private");
+    expect((await read("other-session")).videoJobs).toEqual([]);
+    await updateVideoJob(config, job, { status: "succeeded", path: "video/result.mp4" });
+    expect((await read("media-session")).videoJobs[0].status).toBe("succeeded");
+    expect((await fetch(`${base}/workspace/ws_1/artifacts?sessionId=media-session`)).status).toBe(401);
+  });
+
+  test("serves bounded image, SVG and video thumbnails without exposing outside files", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token } = await startiPolloWorkServer(root);
+    await sharp({ create: { width: 160, height: 90, channels: 3, background: "blue" } }).png().toFile(join(root, "image.png"));
+    await writeFile(join(root, "logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="40"><rect width="160" height="40" fill="red"/></svg>');
+    execFileSync(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "color=c=blue:s=160x90:d=0.2", "-pix_fmt", "yuv420p", join(root, "video.mp4")]);
+    for (const path of ["image.png", "logo.svg", "video.mp4"]) {
+      const response = await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=${path}`, { headers: auth(token) });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toBe("image/webp");
+      expect(response.headers.get("access-control-expose-headers")).toContain("X-Artifact-Detail");
+      expect(decodeURIComponent(response.headers.get("x-artifact-detail") ?? "")).toBe(path === "video.mp4" ? "00:00" : path === "logo.svg" ? "160 × 40" : "160 × 90");
+      const image = await sharp(Buffer.from(await response.arrayBuffer())).metadata();
+      expect([image.width, image.height]).toEqual([80, 80]);
+    }
+    expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=image.png`)).status).toBe(401);
+    expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=reports/artifact-eval.md`, { headers: auth(token) })).status).toBe(415);
+    const outside = await mkdtemp(join(tmpdir(), "thumbnail-outside-")); roots.push(outside);
+    await writeFile(join(outside, "image.png"), await readFile(join(root, "image.png")));
+    await symlink(outside, join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
+    expect((await fetch(`${base}/workspace/ws_1/files/raw?thumbnail=1&path=escape/image.png`, { headers: auth(token) })).status).not.toBe(200);
+  });
+
   test("imports bounded media into its workspace path without overwriting an existing asset", async () => {
     const root = await createWorkspaceRoot();
     const { base, token } = await startiPolloWorkServer(root);
@@ -70,7 +115,9 @@ describe("artifact file routes", () => {
       const body = new FormData();
       body.set("file", new File([content], "background.mp4", { type: "video/mp4" }));
       return fetch(`${base}/workspace/ws_1/files/raw?path=${encodeURIComponent(target)}`, {
-        method: "POST", body, headers: authorized ? { Authorization: `Bearer ${token}` } : {},
+        method: "POST", body,
+        // Isolate early rejections of large uploads from Bun's keep-alive connection reuse.
+        headers: { Connection: "close", ...(authorized ? { Authorization: `Bearer ${token}` } : {}) },
       });
     };
     expect((await upload(path, false)).status).toBe(401);
@@ -101,11 +148,13 @@ describe("artifact file routes", () => {
     const { base, token, config } = await startiPolloWorkServer(root);
     const workspace = config.workspaces[0];
     const path = "reports/artifact-eval.md";
+    const generation = { id: "receipt-1", kind: "image", model: "Test image model", completedAt: 1000 } satisfies NonNullable<import("@ipollowork/types/workspace").SessionArtifact["generation"]>;
+    await recordSessionArtifact(config, workspace, "session-a", path, undefined, generation);
     await Promise.all(Array.from({ length: 5 }, () => recordSessionArtifact(config, workspace, "session-a", path)));
     await recordSessionArtifact(config, workspace, "session-b", "reports/artifact-eval.csv");
     const response = await fetch(`${base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(token) });
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({ items: [{ path }], nextCursor: null });
+    expect(await response.json()).toMatchObject({ items: [{ path, generation }], nextCursor: null });
     expect((await listSessionArtifacts(config, "ws_1", "session-b")).items.map((item) => item.path)).toEqual(["reports/artifact-eval.csv"]);
     expect((await listSessionArtifacts(config, "another-workspace", "session-a")).items).toEqual([]);
     expect((await listSessionArtifacts(config, "ws_1", "empty-session")).items).toEqual([]);
@@ -119,7 +168,7 @@ describe("artifact file routes", () => {
     await stops.pop()?.();
     const restarted = await startiPolloWorkServer(root);
     expect(await (await fetch(`${restarted.base}/workspace/ws_1/artifacts?sessionId=session-a`, { headers: auth(restarted.token) })).json())
-      .toMatchObject({ items: [{ path }], nextCursor: null });
+      .toMatchObject({ items: [{ path, generation }], nextCursor: null });
   });
 
   test("pages saved outputs without duplicates or scanning unrelated workspace files", async () => {
@@ -197,4 +246,32 @@ describe("artifact file routes", () => {
     expect(xlsxDownload.status).toBe(200);
     expect(Array.from(new Uint8Array(await xlsxDownload.arrayBuffer()))).toEqual([80, 75, 9, 9]);
   });
+});
+
+
+test("reference inbox verifies disk bytes and reconstructs parts before publishing", async () => {
+  const root = await createWorkspaceRoot();
+  const { base, token } = await startiPolloWorkServer(root);
+  const digest = (text: string) => createHash("sha256").update(text).digest("hex");
+  const upload = (path: string, body: string, sha256 = digest(body), assembly?: unknown) => {
+    const form = new FormData(); form.set("file", new File([body], "source.json")); form.set("path", path); form.set("sha256", sha256);
+    if (assembly) form.set("referenceAssembly", JSON.stringify(assembly));
+    return fetch(`${base}/workspace/ws_1/inbox`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+  };
+  expect((await upload("test/bad.json", "{}", "0".repeat(64))).status).toBe(422);
+  const text = JSON.stringify({ text: "start 中文😀 end", number: "0.1234567890123456789" });
+  const part = JSON.stringify(text);
+  expect((await upload("test/part.json", part)).status).toBe(200);
+  const assembly = { sha256: digest(text), bytes: Buffer.byteLength(text), parts: [{ path: "test/part.json", bytes: Buffer.byteLength(part) }] };
+  const response = await upload("test/reference-context.json", "{}", digest("{}"), assembly);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({ sha256: digest(text), bytes: Buffer.byteLength(text) });
+  const output = join(root, ".opencode/ipollowork/inbox/test/reference-context.json");
+  expect(await readFile(output, "utf8")).toBe(text);
+  const altered = JSON.stringify(text.replace("start", "wrong"));
+  await upload("test/part.json", altered);
+  expect((await upload("test/reference-context.json", "{}", digest("{}"), assembly)).status).toBe(422);
+  expect(await readFile(output, "utf8")).toBe(text);
+  expect((await upload("other/reference-context.json", "{}", digest("{}"), assembly)).status).toBe(400);
+  expect((await upload("test/reference-context.json", "{}", digest("{}"), { ...assembly, parts: [{ path: "test/missing.json", bytes: 2 }] })).status).toBe(422);
 });

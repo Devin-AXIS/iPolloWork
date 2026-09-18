@@ -126,7 +126,7 @@
                 },
                 "encoding": {
                   "type": "string",
-                  "enum": ["json", "key-value-list", "route-value-list"]
+                  "enum": ["json", "key-value-list", "route-value-list", "label-detail-list"]
                 }
               }
             },

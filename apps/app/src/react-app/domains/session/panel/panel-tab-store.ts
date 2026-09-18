@@ -1,8 +1,13 @@
+import { artifactPathMatchesTarget } from "@/lib/artifacts";
+import { mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
+import type { MediaWorkbenchSource } from "@/react-app/plugin-ui/media-workbench";
+import type { DesignMedia } from "../design/design-media";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 
 import { isCollectibleArtifactTarget, type OpenTarget, type OpenTargetPreview } from "../artifacts/open-target";
 import type { PluginUiSurface } from "@/react-app/plugin-ui/plugin-ui-contributions";
+import { isMediaStudioPlugin, mediaStudioEngine, workspaceAppTabId } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import type { PluginUiHostContextV1 } from "@ipollowork/types/plugins";
 
 export const PERSISTED_PANEL_TAB_STORE_KEY = "ipollowork:panel-tabs:v1";
@@ -36,6 +41,8 @@ export type VideoPanelTab = {
 };
 
 export type WorkspaceAppPanelTab = {
+  mediaEditRequestId?: string;
+  mediaViews?: MediaStudioView[];
   id: string;
   type: "workspace-app";
   label: string;
@@ -43,6 +50,8 @@ export type WorkspaceAppPanelTab = {
   surface: PluginUiSurface;
   launch?: PluginUiHostContextV1["launch"];
 };
+
+export type MediaStudioView = Pick<WorkspaceAppPanelTab, "surface" | "launch" | "mediaEditRequestId">;
 
 export type PluginStudioPanelTab = {
   id: string;
@@ -73,11 +82,39 @@ type PersistedSessionPanelState = {
   activeTabId: string | null;
 };
 
+export type MediaEditBinding = {
+  workspaceId: string; sessionId: string; projectSessionId: string;
+  source: MediaWorkbenchSource;
+  locator: string; original: string; page: string;
+  media: DesignMedia;
+  results: string[]; resultPath?: string; active: boolean; replaced: boolean;
+  relatedResults?: string[];
+};
+function isMediaEditBinding(value: unknown): value is MediaEditBinding {
+  const record = (item: unknown): item is Record<string, unknown> => typeof item === "object" && item !== null;
+  if (!record(value) || !record(value.source) || !record(value.media)) return false;
+  return [value.workspaceId,value.sessionId,value.projectSessionId,value.locator,value.original,value.page,value.source.requestId,value.source.path,value.media.source,value.media.preview].every(item => typeof item === "string")
+    && (value.source.kind === "image" || value.source.kind === "video")
+    && value.media.kind === value.source.kind && typeof value.media.background === "boolean"
+    && typeof value.active === "boolean" && typeof value.replaced === "boolean"
+    && (value.resultPath === undefined || typeof value.resultPath === "string")
+    && (value.relatedResults === undefined || (Array.isArray(value.relatedResults) && value.relatedResults.length <= 20 && value.relatedResults.every(item => typeof item === "string")))
+    && Array.isArray(value.results) && value.results.length <= 20 && value.results.every(item => typeof item === "string");
+}
+
 type PersistedPanelTabStore = {
+  mediaEdits?: unknown;
   sessions: Record<string, PersistedSessionPanelState>;
 };
 
 export type PanelTabStore = {
+  mediaEdits: MediaEditBinding[];
+  rememberMediaEdit: (edit: MediaEditBinding) => void;
+  completeMediaEdit: (workspaceId: string, sessionId: string, requestId: string, path: string) => MediaEditBinding | null;
+  rememberMediaContinuation: (workspaceId: string, sessionId: string, requestId: string, path: string) => void;
+  openMediaEditResult: (workspaceId: string, sessionId: string, path: string, surface: PluginUiSurface) => boolean;
+  resumeMediaEdit: (edit: MediaEditBinding, path: string, surface: PluginUiSurface) => void;
+  closeMediaEdit: (requestId: string, replaced?: boolean) => void;
   sessions: Record<string, SessionPanelState>;
   transcriptArtifactTargets: Record<string, OpenTarget[]>;
   openTab: (sessionId: string, tab: PanelTab) => void;
@@ -201,6 +238,7 @@ function isSameTab(left: PanelTab, right: PanelTab) {
   if (left.type === "workspace-app" && right.type === "workspace-app") {
     return left.label === right.label
       && left.sessionId === right.sessionId
+      && left.mediaEditRequestId === right.mediaEditRequestId
       && left.surface.id === right.surface.id
       && JSON.stringify(left.launch) === JSON.stringify(right.launch);
   }
@@ -311,6 +349,7 @@ function mergePersistedSessions(
 
   return {
     ...currentState,
+    mediaEdits: Array.isArray(persisted.mediaEdits) ? persisted.mediaEdits.filter(isMediaEditBinding).slice(-50) : currentState.mediaEdits,
     sessions,
   };
 }
@@ -319,9 +358,73 @@ export const usePanelTabStore = create<PanelTabStore>()(
   persist(
     (set, get) => ({
       sessions: {},
+      mediaEdits: [],
+      rememberMediaEdit: (edit) => set(state => ({
+        mediaEdits: [
+          ...state.mediaEdits.filter(item => item.source.requestId !== edit.source.requestId)
+            .map(item => item.workspaceId === edit.workspaceId && item.sessionId === edit.sessionId ? {...item, active: false} : item),
+          edit,
+        ].slice(-50),
+      })),
+      completeMediaEdit: (workspaceId, sessionId, requestId, path) => {
+        const edit = get().mediaEdits.find(item => item.workspaceId === workspaceId
+          && item.sessionId === sessionId && item.source.requestId === requestId);
+        if (!edit || !safeVideoMediaPath(path) || mediaKindForPath(path) !== edit.source.kind || path === edit.source.path) return null;
+        const next = {...edit, resultPath: path, results: [...edit.results.filter(value => value !== path), path].slice(-20)};
+        set(state => ({mediaEdits: state.mediaEdits.map(item => item === edit ? next : item)}));
+        return next;
+      },
+      openMediaEditResult: (workspaceId, sessionId, path, surface) => {
+        const edit = [...get().mediaEdits].reverse().find(item => item.workspaceId === workspaceId
+          && item.sessionId === sessionId && [...item.results,...(item.relatedResults ?? [])].some(result => artifactPathMatchesTarget(path, result)));
+        const resultPath = edit && [...edit.results,...(edit.relatedResults ?? [])].find(result => artifactPathMatchesTarget(path, result));
+        if (!edit || !resultPath) return false;
+        if (mediaKindForPath(resultPath) !== edit.source.kind) {
+          get().openTab(sessionId,{id:workspaceAppTabId(surface),type:"workspace-app",label:surface.label,sessionId,surface,
+            launch:{intent:`edit-${mediaKindForPath(resultPath)}`,requestId:crypto.randomUUID(),originRequestId:edit.source.requestId,source:{kind:"workspace-file",path:resultPath,name:resultPath.split("/").pop() || resultPath}}});
+          return true;
+        }
+        get().resumeMediaEdit(edit, resultPath, surface);
+        return true;
+      },
+      rememberMediaContinuation: (workspaceId, sessionId, requestId, path) => {
+        if (!safeVideoMediaPath(path) || !mediaKindForPath(path)) return;
+        set(state=>({mediaEdits:state.mediaEdits.map(item=>item.workspaceId===workspaceId && item.sessionId===sessionId && item.source.requestId===requestId
+          ? {...item,relatedResults:[...(item.relatedResults ?? []).filter(result=>result!==path),path].slice(-20)} : item)}));
+      },
+      resumeMediaEdit: (edit, path, surface) => {
+        set(state => ({mediaEdits: state.mediaEdits.map(item => {
+          if (item.workspaceId !== edit.workspaceId || item.sessionId !== edit.sessionId) return item;
+          return item.source.requestId === edit.source.requestId
+            ? {...item, active: true, resultPath: path}
+            : {...item, active: false};
+        })}));
+        get().openTab(edit.sessionId, {
+          id: workspaceAppTabId(surface), type: "workspace-app", label: surface.label,
+          sessionId: edit.sessionId, surface, mediaEditRequestId: edit.source.requestId,
+        });
+      },
+      closeMediaEdit: (requestId, replaced = false) => set(state => ({
+        mediaEdits: state.mediaEdits.map(item => item.source.requestId === requestId
+          ? {...item, active: false, replaced: item.replaced || replaced} : item),
+      })),
       transcriptArtifactTargets: {},
       openTab: (sessionId, tab) => set((state) => {
         const session = getWritableSession(state, sessionId);
+        if (tab.type === "workspace-app" && isMediaStudioPlugin(tab.surface.pluginId)) {
+          const existing = session.tabs.filter((item): item is WorkspaceAppPanelTab => item.type === "workspace-app" && isMediaStudioPlugin(item.surface.pluginId));
+          const views = existing.flatMap(item => item.mediaViews ?? [{surface:item.surface,launch:item.launch,mediaEditRequestId:item.mediaEditRequestId}]);
+          const previous = views.find(item => mediaStudioEngine(item.surface) === mediaStudioEngine(tab.surface));
+          const resume = previous && !tab.mediaEditRequestId && (!tab.launch || (!tab.launch.source && (previous.mediaEditRequestId || previous.launch?.originRequestId)));
+          const next = resume ? {...previous,surface:tab.surface} : {surface:tab.surface,launch:tab.launch,mediaEditRequestId:tab.mediaEditRequestId};
+          // Moving an iframe node reloads its document, even when React keeps its key.
+          // Replace the engine view in place so switching only changes visibility.
+          const mediaViews = previous ? views.map(item=>mediaStudioEngine(item.surface)===mediaStudioEngine(tab.surface) ? next : item) : [...views,next];
+          const merged: WorkspaceAppPanelTab = {...tab,...next,id:workspaceAppTabId(tab.surface),mediaViews};
+          const first = existing[0];
+          const tabs = session.tabs.flatMap(item => item.type === "workspace-app" && isMediaStudioPlugin(item.surface.pluginId) ? item === first ? [merged] : [] : [item]);
+          return updateSession(state, sessionId, {tabs:first ? tabs : [...tabs,merged],activeTabId:merged.id});
+        }
         const existingIndex = session.tabs.findIndex((entry) => entry.id === tab.id);
 
         if (existingIndex >= 0) {
@@ -495,6 +598,7 @@ export const usePanelTabStore = create<PanelTabStore>()(
       name: PERSISTED_PANEL_TAB_STORE_KEY,
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
+        mediaEdits: state.mediaEdits,
         sessions: Object.fromEntries(
           Object.entries(state.sessions).map(([sessionId, session]) => {
             const tabs = session.tabs.flatMap((tab): PersistedPanelTabRef[] => {

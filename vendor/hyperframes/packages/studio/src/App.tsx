@@ -279,6 +279,8 @@ export function StudioApp() {
     [timelineEditing.handleTimelineGroupMove],
   );
   const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const clearDomSelectionRef = useRef<() => void>(() => {});
+  const clearDomSelection = useCallback(() => clearDomSelectionRef.current(), []);
   const {
     activeBlockParams,
     setActiveBlockParams,
@@ -288,6 +290,8 @@ export function StudioApp() {
     handlePreviewBlockDrop,
   } = useBlockHandlers({
     projectId,
+    compositionLoading,
+    clearDomSelection,
     blockCtxDeps: {
       activeCompPath,
       timelineElements,
@@ -298,12 +302,12 @@ export function StudioApp() {
       refreshFileTree: fileManager.refreshFileTree,
       reloadPreview,
       showToast,
+      dismissToast,
     },
     setCompositionLoading,
     setRightCollapsed: panelLayout.setRightCollapsed,
     setRightPanelTab: panelLayout.setRightPanelTab,
   });
-  const clearDomSelectionRef = useRef<() => void>(() => {});
   const domEditSelectionBridgeRef = useRef<DomEditSelection | null>(null);
   const handleDomEditElementDeleteRef = useRef<(s: DomEditSelection) => Promise<void>>(
     async () => {},
@@ -510,6 +514,7 @@ export function StudioApp() {
     activeCompPath,
     setActiveCompPath,
     showToast,
+    dismissToast,
     previewIframeRef,
     captionEditMode,
     compositionLoading,
@@ -607,7 +612,7 @@ export function StudioApp() {
                             <StudioRightPanel
                               designPanelActive={designPanelActive}
                               activeBlockParams={activeBlockParams}
-                              onCloseBlockParams={() => {
+                              onBackFromBlockParams={() => {
                                 const returnTab = activeBlockParams?.returnTab ?? "design";
                                 setActiveBlockParams(null);
                                 panelLayout.setRightPanelTab(returnTab);

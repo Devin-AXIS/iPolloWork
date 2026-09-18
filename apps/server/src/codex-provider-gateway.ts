@@ -33,6 +33,7 @@ type ResponseTool = {
   type: "function" | "custom";
   name: string;
   originalName: string;
+  namespace?: string;
   description?: string;
   parameters?: Record<string, unknown>;
 };
@@ -105,7 +106,8 @@ function responseTools(value: unknown): ResponseTool[] {
     tools.push({
       type,
       name: uniqueToolName(combinedName, used),
-      originalName: combinedName,
+      originalName,
+      ...(namespace ? { namespace } : {}),
       ...(description ? { description } : {}),
       ...(parameters ? { parameters } : {}),
     });
@@ -277,7 +279,14 @@ function normalizedChatMessages(messages: readonly Record<string, unknown>[]): R
   return normalized;
 }
 
-function chatMessages(provider: GatewayProvider, body: Record<string, unknown>): Record<string, unknown>[] {
+function upstreamToolName(item: Record<string, unknown>, tools: readonly ResponseTool[]): string {
+  const name = nonEmptyString(item.name) ?? "";
+  const namespace = nonEmptyString(item.namespace);
+  return tools.find((tool) => tool.originalName === name && tool.namespace === namespace)?.name
+    ?? safeToolName(namespace ? `${namespace}__${name}` : name);
+}
+
+function chatMessages(provider: GatewayProvider, body: Record<string, unknown>, tools: readonly ResponseTool[]): Record<string, unknown>[] {
   const messages: Record<string, unknown>[] = [];
   const instructions = nonEmptyString(body.instructions);
   if (instructions) messages.push({ role: "system", content: instructions });
@@ -313,7 +322,7 @@ function chatMessages(provider: GatewayProvider, body: Record<string, unknown>):
           id: callId,
           type: "function",
           function: {
-            name: safeToolName(name),
+            name: upstreamToolName(item, tools),
             arguments: type === "custom_tool_call"
               ? JSON.stringify({ input: nonEmptyString(item.input) ?? "" })
               : nonEmptyString(item.arguments) ?? "{}",
@@ -406,7 +415,7 @@ function anthropicContent(value: unknown): Array<Record<string, unknown>> {
   });
 }
 
-function anthropicMessages(body: Record<string, unknown>): Record<string, unknown>[] {
+function anthropicMessages(body: Record<string, unknown>, tools: readonly ResponseTool[]): Record<string, unknown>[] {
   const messages: Record<string, unknown>[] = [];
   for (const item of responseInputItems(body.input)) {
     const type = nonEmptyString(item.type);
@@ -427,7 +436,7 @@ function anthropicMessages(body: Record<string, unknown>): Record<string, unknow
           content: [{
             type: "tool_use",
             id: callId,
-            name: safeToolName(name),
+            name: upstreamToolName(item, tools),
             input: type === "custom_tool_call"
               ? { input: nonEmptyString(item.input) ?? "" }
               : parseJsonObject(item.arguments),
@@ -512,8 +521,8 @@ function upstreamHeaders(
 type GatewayOutput =
   | { type: "reasoning"; text: string }
   | { type: "text"; text: string }
-  | { type: "function"; name: string; callId: string; arguments: string }
-  | { type: "custom"; name: string; callId: string; input: string };
+  | { type: "function"; name: string; namespace?: string; callId: string; arguments: string }
+  | { type: "custom"; name: string; namespace?: string; callId: string; input: string };
 
 function restoreTool(tools: readonly ResponseTool[], name: string): ResponseTool | undefined {
   return tools.find((tool) => tool.name === name);
@@ -529,7 +538,7 @@ async function callOpenAiCompatible(
   const maxOutputTokens = typeof body.max_output_tokens === "number" ? body.max_output_tokens : undefined;
   const payload = await upstreamJson(provider, "chat/completions", {
     model,
-    messages: chatMessages(provider, body),
+    messages: chatMessages(provider, body, tools),
     stream: false,
     ...(tools.length ? { tools: openAiTools(tools), tool_choice: body.tool_choice ?? "auto" } : {}),
     ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
@@ -554,9 +563,9 @@ async function callOpenAiCompatible(
       const argumentsValue = nonEmptyString(rawCall.function.arguments) ?? "{}";
       if (tool?.type === "custom") {
         const parsed = parseJsonObject(argumentsValue);
-        output.push({ type: "custom", name: restoredName, callId, input: nonEmptyString(parsed.input) ?? argumentsValue });
+        output.push({ type: "custom", name: restoredName, namespace: tool.namespace, callId, input: nonEmptyString(parsed.input) ?? argumentsValue });
       } else {
-        output.push({ type: "function", name: restoredName, callId, arguments: argumentsValue });
+        output.push({ type: "function", name: restoredName, namespace: tool?.namespace, callId, arguments: argumentsValue });
       }
     }
   }
@@ -574,7 +583,7 @@ async function callAnthropic(
   const messagesPath = /\/v1\/?$/u.test(provider.baseURL) ? "messages" : "v1/messages";
   const payload = await upstreamJson(provider, messagesPath, {
     model,
-    messages: anthropicMessages(body),
+    messages: anthropicMessages(body, tools),
     max_tokens: typeof body.max_output_tokens === "number" ? body.max_output_tokens : 8_192,
     stream: false,
     ...(instructions ? { system: instructions } : {}),
@@ -598,9 +607,9 @@ async function callAnthropic(
     const restoredName = tool?.originalName ?? name;
     const input = isRecord(part.input) ? part.input : {};
     if (tool?.type === "custom") {
-      output.push({ type: "custom", name: restoredName, callId, input: nonEmptyString(input.input) ?? JSON.stringify(input) });
+      output.push({ type: "custom", name: restoredName, namespace: tool.namespace, callId, input: nonEmptyString(input.input) ?? JSON.stringify(input) });
     } else {
-      output.push({ type: "function", name: restoredName, callId, arguments: JSON.stringify(input) });
+      output.push({ type: "function", name: restoredName, namespace: tool?.namespace, callId, arguments: JSON.stringify(input) });
     }
   }
   return { output, ...(isRecord(payload.usage) ? { usage: payload.usage } : {}) };
@@ -732,6 +741,7 @@ function eventStream(
         type: "custom_tool_call",
         call_id: output.callId,
         name: output.name,
+        ...(output.namespace ? { namespace: output.namespace } : {}),
         input: output.input,
         status: "completed",
       };
@@ -758,6 +768,7 @@ function eventStream(
       type: "function_call",
       call_id: output.callId,
       name: output.name,
+      ...(output.namespace ? { namespace: output.namespace } : {}),
       arguments: output.arguments,
       status: "completed",
     };

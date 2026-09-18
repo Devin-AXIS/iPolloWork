@@ -1,4 +1,26 @@
 import { describe, expect, test } from "bun:test";
+
+test("Codex transport retries are non-terminal and clear when output resumes", () => {
+  const state = createCodexLiveState();
+  mapCodexHarnessEvent({ type: "notification", method: "turn/started", params: {
+    threadId: "thread", turn: { id: "turn" },
+  } }, state);
+  const retry = mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: true,
+    error: { message: "Reconnecting... waiting for network" },
+  } }, state);
+  expect(retry).toEqual([expect.objectContaining({ type: "session.status", status: expect.objectContaining({ type: "retry" }) })]);
+  const recovered = mapCodexHarnessEvent({ type: "notification", method: "item/agentMessage/delta", params: {
+    threadId: "thread", turnId: "turn", itemId: "answer", delta: "Video submitted",
+  } }, state);
+  expect(recovered[0]).toEqual({ type: "session.status", sessionId: "thread", status: { type: "busy" } });
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "old-turn", willRetry: true, error: { message: "retry" },
+  } }, state)).toEqual([]);
+  expect(mapCodexHarnessEvent({ type: "notification", method: "error", params: {
+    threadId: "thread", turnId: "turn", willRetry: false, error: { message: "Unauthorized" },
+  } }, state)).toEqual([expect.objectContaining({ type: "session.error" })]);
+});
 import {
   CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
@@ -8,6 +30,7 @@ import {
 
 import {
   ConversationEngineAdapterRegistry,
+  conversationWaitingFor,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationEvent,
@@ -18,6 +41,28 @@ import {
   openCodeConversationEngineAdapter,
 } from "../src/react-app/domains/session/engine/opencode-conversation-engine";
 import { conversationEngineAdapters } from "../src/react-app/domains/session/engine/conversation-engines";
+
+test("Codex restores missing confirmations from the runtime without an SSE event or automatic approval", async () => {
+  const originalFetch = globalThis.fetch;
+  let requests = [{ type: "request", id: 51, method: "item/commandExecution/requestApproval", params: { threadId: "recover", turnId: "turn", command: "read reference-context.json" } }];
+  const calls: string[] = [];
+  globalThis.fetch = (async (_url, init) => {
+    const body = JSON.parse(String(init?.body));
+    calls.push(body.method);
+    if (body.method !== "ipollowork/pendingRequests") throw new Error("Unexpected mutation");
+    return Response.json({ value: requests });
+  }) as typeof fetch;
+  try {
+    const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({ baseUrl: "http://unused.test", serverBaseUrl: "http://fixture.test", workspaceId: "restore" });
+    const [permissions, questions] = await Promise.all([connection.listPermissions({ sessionId: "recover" }), connection.listQuestions({ sessionId: "recover" })]);
+    expect(permissions).toHaveLength(1);
+    expect(permissions[0]?.resources).toContain("read reference-context.json");
+    expect(questions).toEqual([]);
+    expect(calls).toEqual(["ipollowork/pendingRequests"]);
+    requests = [];
+    expect(await connection.listPermissions({ sessionId: "recover" })).toEqual([]);
+  } finally { globalThis.fetch = originalFetch; }
+});
 import {
   mapDeepSeekHarnessEnvelope,
   mapDeepSeekHarnessSnapshot,
@@ -31,6 +76,7 @@ import {
 import {
   createCodexLiveState,
   mapCodexHarnessEvent,
+  mapCodexHarnessSnapshot,
 } from "../src/react-app/domains/session/engine/codex-harness-conversation-mapper";
 
 function permissionMemoryTestStorage() {
@@ -47,6 +93,24 @@ function permissionMemoryTestStorage() {
     },
   };
 }
+
+test("Codex snapshots and live status expose approval waits without treating idle as waiting", () => {
+  const snapshot = mapCodexHarnessSnapshot({
+    session: { id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnApproval"] } },
+    status: { type: "busy" }, messages: [], todos: [],
+  });
+  expect(conversationWaitingFor(snapshot.session)).toBe("approval");
+  const events = mapCodexHarnessEvent({
+    type: "notification", method: "thread/status/changed",
+    params: { threadId: "waiting", status: { type: "active", activeFlags: ["waitingOnUserInput"] } },
+  }, createCodexLiveState());
+  expect(events).toEqual([{ type: "session.updated", sessionId: "waiting", info: {
+    id: "waiting", codex: { status: "active", activeFlags: ["waitingOnUserInput"] },
+  } }]);
+  expect(conversationWaitingFor({ id: "waiting", title: "Video", codex: { status: "active", activeFlags: ["waitingOnUserInput"] } })).toBe("input");
+  expect(conversationWaitingFor({ ...snapshot.session, codex: { status: "idle", activeFlags: ["waitingOnApproval"] } })).toBeNull();
+  expect(conversationWaitingFor(undefined)).toBeNull();
+});
 
 function permissionMemoryTestAdapter(
   id: string,
@@ -675,6 +739,52 @@ describe("conversation engine adapters", () => {
     expect(requests.filter((request) => request.method === "thread/read").length).toBeGreaterThanOrEqual(3);
   });
 
+  test("steers the active Codex turn without interrupting or starting another turn", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Record<string, unknown>[] = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      requests.push(body);
+      if (request.url.endsWith("/prompt")) {
+        return Response.json({ ok: true, sessionId: "codex-steer", turnId: "turn-active" });
+      }
+      if (body.method === "turn/steer") {
+        return Response.json({ value: { turnId: "turn-active" } });
+      }
+      return Response.json({ value: {} });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+      });
+      await connection.sendPrompt({
+        sessionId: "codex-steer",
+        parts: [{ type: "text", text: "Start the task" }],
+      });
+      await connection.steerPrompt?.({
+        sessionId: "codex-steer",
+        parts: [{ type: "text", text: "Focus on the mobile layout" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toContainEqual({
+      method: "turn/steer",
+      payload: {
+        threadId: "codex-steer",
+        expectedTurnId: "turn-active",
+        input: [{ type: "text", text: "Focus on the mobile layout", text_elements: [] }],
+      },
+    });
+    expect(requests.some((request) => request.method === "turn/interrupt")).toBe(false);
+    expect(requests.filter((request) => request.method === "turn/start")).toHaveLength(0);
+  });
+
   test("routes OpenCode and DeepSeek Harness stop requests through their native engines", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; body: unknown }> = [];
@@ -902,6 +1012,40 @@ describe("conversation engine adapters", () => {
       { rpcId: 52, result: { action: "accept", content: {}, _meta: null } },
       { rpcId: 53, result: { action: "decline", content: null, _meta: null } },
     ]);
+  });
+
+  test("restores replayed MCP approval and clears it when its turn is interrupted", async () => {
+    const originalFetch = globalThis.fetch;
+    const frames: unknown[] = [{
+      type: "request", id: 61, method: "mcpServer/elicitation/request",
+      params: { threadId: "approval-recovery", turnId: "turn-a", message: "Allow image edit?", _meta: { codex_approval_kind: "mcp_tool_call" } },
+    }];
+    const pending = [frames[0]];
+    globalThis.fetch = Object.assign(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      if (init?.body) return Response.json({ value: pending });
+      return new Response(frames.map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""));
+    }, { preconnect: originalFetch.preconnect });
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test", serverBaseUrl: "http://ipollowork.test", workspaceId: "approval-recovery",
+      });
+      const events: ConversationEvent[] = [];
+      const subscribe = () => connection.subscribe({ signal: new AbortController().signal, onEvent: (event) => events.push(event) });
+      await subscribe();
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toHaveLength(1);
+      expect(await connection.listPermissions({ sessionId: "other-thread" })).toEqual([]);
+      frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "previous-turn", status: "completed" } } });
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toHaveLength(1);
+      pending.length = 0;
+      frames.splice(0, 1, { type: "notification", method: "turn/completed", params: { threadId: "approval-recovery", turn: { id: "turn-a", status: "interrupted" } } });
+      await subscribe();
+      expect(await connection.listPermissions({ sessionId: "approval-recovery" })).toEqual([]);
+      expect(events).toContainEqual({ type: "permission.replied", sessionId: "approval-recovery", requestId: "61" });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   test("does not mark a Codex reasoning-only turn as successfully processed", () => {
@@ -1961,6 +2105,39 @@ describe("conversation engine adapters", () => {
       provider: "openai-codex-priority",
       model: "gpt-5.4-fast",
     });
+  });
+
+  test("steers the active DeepSeek Harness turn through its native prompt mode", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(DEEPSEEK_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_dsh",
+        token: "token",
+      });
+      await connection.steerPrompt?.({
+        sessionId: "session-steer",
+        parts: [{ type: "text", text: "Keep the existing structure, but shorten the ending" }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests).toEqual([{
+      payload: {
+        sessionId: "session-steer",
+        mode: "steer",
+        content: [{ type: "text", text: "Keep the existing structure, but shorten the ending" }],
+        clientTimeZone: expect.any(String),
+      },
+    }]);
   });
 
   test("exposes native DeepSeek Harness modes and applies model selection before prompting", async () => {

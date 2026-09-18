@@ -64,7 +64,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { bundledPluginPackageIds, defaultBundledPluginPackageIds, resolveBundledPluginPackageRoot } from "./plugin-package-catalog.js";
+import { bundledPluginPackageIds, catalogPluginPackageIds, defaultBundledPluginPackageIds, isInternalPluginPackage, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
 import { isRequiredBundledPlugin } from "@ipollowork/types/plugins";
 import {
   cancelPluginAuthorizationFlow,
@@ -139,6 +139,7 @@ import {
   resolveProjectExecutionPlan,
   startProjectSessionExecution,
   startWorkItemAutomationScheduler,
+  workItemAutomationPrompt,
 } from "./work-items.js";
 import {
   MAX_TEMPLATE_PACKAGE_BYTES,
@@ -695,7 +696,7 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         || !preview.manifest.source.trusted) continue;
 
       const installed = installedById.get(pluginId);
-      if (!installed && suppressed.has(pluginId) && !isRequiredBundledPlugin(pluginId)) continue;
+      if (!installed && suppressed.has(pluginId) && !isRequiredBundledPlugin(pluginId) && !isInternalPluginPackage(pluginId)) continue;
       if (!installed) {
         await installPluginPackage({
           serverConfig: config,
@@ -714,6 +715,8 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
             await setPluginPackageResourceEnabled({ serverConfig: config, pluginId, resourceId, enabled: true });
           }
         }
+      } else if (installed && !installed.enabled && isInternalPluginPackage(pluginId)) {
+        await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });
       }
     } catch (error) {
       logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
@@ -976,7 +979,7 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
       await startProjectSessionExecution(config, workspace.id, item.title, execution);
       try {
         const promptedSessionId = await sessionRuntime.prompt(workspace, session.id, {
-          text: item.description?.trim() || item.title,
+          text: workItemAutomationPrompt(item),
           ...(execution.runtime.model ? {
             model: {
               providerID: execution.runtime.model.providerId,
@@ -1204,7 +1207,7 @@ function withCors(response: Response, request: Request, config: ServerConfig) {
     "Access-Control-Allow-Headers",
     "Authorization, Content-Type, X-iPolloWork-Host-Token, X-iPolloWork-Client-Id, X-iPolloWork-Filename, X-iPolloWork-Resource-Scope, X-iPolloWork-Template-Category, X-OpenCode-Directory, X-Opencode-Directory, x-opencode-directory",
   );
-  headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256");
+  headers.set("Access-Control-Expose-Headers", "Content-Disposition, X-iPollo-Artifact-SHA256, X-Artifact-Detail");
   headers.set("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
   headers.set("Vary", "Origin");
   return new Response(response.body, { status: response.status, headers });
@@ -1942,7 +1945,7 @@ function createRoutes(
     const workspace = await resolveWorkspace(config, ctx.params.id);
     await prepareDefaultPlugins();
     await reconcilePluginPackagesForWorkspace({ serverConfig: config, workspaceId: workspace.id, workspaceRoot: workspace.path });
-    const items = (await listInstalledPluginPackages({ serverConfig: config })).map((item) => ({
+    const items = (await listInstalledPluginPackages({ serverConfig: config })).filter(item => !isInternalPluginPackage(item.pluginId)).map((item) => ({
       ...item,
       ...pluginPackageEngineState(workspace, item.manifest),
     }));
@@ -1964,8 +1967,7 @@ function createRoutes(
     await prepareDefaultPlugins();
     const installed = await listInstalledPluginPackages({ serverConfig: config });
     const installedById = new Map(installed.map((item) => [item.pluginId, item]));
-    const items = await Promise.all(bundledPluginPackageIds.map(async (pluginId) => {
-      const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
+    const results = await Promise.allSettled(catalogPluginPackageIds.map(pluginId => withPluginPackageCatalogRoot(pluginId, async packageRoot => {
       const preview = await previewPluginPackage({ packageRoot });
       const current = installedById.get(pluginId);
       return {
@@ -1975,11 +1977,14 @@ function createRoutes(
         manifest: preview.manifest,
         integrity: preview.integrity,
         installedVersion: current?.version ?? null,
-        updateAvailable: Boolean(current && current.version !== preview.manifest.package?.version),
+        updateAvailable: Boolean(current && pluginPackageVersionChange(current.version, preview.manifest.package?.version ?? current.version) === "upgrade"),
         ...pluginPackageEngineState(workspace, preview.manifest),
       };
-    }));
-    return jsonResponse({ items });
+    })));
+    return jsonResponse({
+      items: results.flatMap(result => result.status === "fulfilled" ? [result.value] : []),
+      errors: results.flatMap((result, index) => result.status === "rejected" ? [`${catalogPluginPackageIds[index]}: ${result.reason instanceof Error ? result.reason.message.slice(0, 200) : "Plugin catalog unavailable"}`] : []),
+    });
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages/catalog/:pluginId/install", "client", async (ctx) => {
@@ -1987,39 +1992,43 @@ function createRoutes(
     requireClientScope(ctx, "collaborator");
     const workspace = await resolveWorkspace(config, ctx.params.id);
     const pluginId = ctx.params.pluginId ?? "";
-    const packageRoot = await resolveBundledPluginPackageRoot(pluginId);
-    const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
-    await requireApproval(ctx, {
-      workspaceId: workspace.id,
-      action: "plugin_packages.install",
-      summary: `Install bundled plugin package ${preview.manifest.name}`,
-      paths: pluginProjectionRoots(config),
+    return withPluginPackageCatalogRoot(pluginId, async (packageRoot, source) => {
+      const preview = await previewPluginPackage({ packageRoot, engineId: workspace.engineId ?? DEFAULT_ENGINE_ID });
+      const current = (await listInstalledPluginPackages({ serverConfig: config }))
+        .find((item) => item.pluginId === pluginId);
+      if (current && pluginPackageVersionChange(current.version, preview.manifest.package?.version ?? current.version) === "downgrade") {
+        throw new ApiError(409, "plugin_package_downgrade_confirmation_required", "The installed plugin is newer than the published catalog version");
+      }
+      await requireApproval(ctx, {
+        workspaceId: workspace.id,
+        action: "plugin_packages.install",
+        summary: `Install plugin package ${preview.manifest.name} from ${source}`,
+        paths: pluginProjectionRoots(config),
+      });
+      const result = current && current.version !== preview.manifest.package?.version
+        ? await updatePluginPackage({ serverConfig: config, packageRoot })
+        : await installPluginPackage({ serverConfig: config, packageRoot });
+      await disposePluginServicesEverywhere(config, pluginId);
+      await reconcilePluginAuthorization({ config, pluginId });
+      await recordAudit(workspace.path, {
+        id: shortId(),
+        workspaceId: workspace.id,
+        actor: ctx.actor ?? { type: "remote" },
+        action: "plugin_packages.install",
+        target: source,
+        summary: `Installed plugin package ${preview.manifest.name} ${preview.manifest.package?.version ?? ""}`.trim(),
+        timestamp: Date.now(),
+      });
+      emitPluginReloadEvents(ctx.reloadEvents, config, "plugins", {
+        type: "plugin",
+        name: pluginId,
+        action: current ? "updated" : "added",
+      });
+      const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
+        .find((entry) => entry.pluginId === pluginId);
+      const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
+      return jsonResponse({ result, item });
     });
-    const current = (await listInstalledPluginPackages({ serverConfig: config }))
-      .find((item) => item.pluginId === pluginId);
-    const result = current && current.version !== preview.manifest.package?.version
-      ? await updatePluginPackage({ serverConfig: config, packageRoot })
-      : await installPluginPackage({ serverConfig: config, packageRoot });
-    await disposePluginServicesEverywhere(config, pluginId);
-    await reconcilePluginAuthorization({ config, pluginId });
-    await recordAudit(workspace.path, {
-      id: shortId(),
-      workspaceId: workspace.id,
-      actor: ctx.actor ?? { type: "remote" },
-      action: "plugin_packages.install",
-      target: `bundled:${pluginId}`,
-      summary: `Installed bundled plugin package ${preview.manifest.name} ${preview.manifest.package?.version ?? ""}`.trim(),
-      timestamp: Date.now(),
-    });
-    emitPluginReloadEvents(ctx.reloadEvents, config, "plugins", {
-      type: "plugin",
-      name: pluginId,
-      action: current ? "updated" : "added",
-    });
-    const installedItem = (await listInstalledPluginPackages({ serverConfig: config }))
-      .find((entry) => entry.pluginId === pluginId);
-    const item = installedItem ? { ...installedItem, ...pluginPackageEngineState(workspace, installedItem.manifest) } : undefined;
-    return jsonResponse({ result, item });
   });
 
   addRoute(routes, "POST", "/workspace/:id/plugin-packages/import/validate", "client", async (ctx) => {
@@ -3769,21 +3778,13 @@ async function exportWorkspace(
       content: await readFile(skill.path, "utf8"),
     })),
   );
-  const commandContents = await Promise.all(
-    commands.map(async (command) => ({
-      name: command.name,
-      description: command.description,
-      template: command.template,
-    })),
-  );
-
   return {
     workspaceId: workspace.id,
     exportedAt: Date.now(),
     opencode,
     ipollowork,
     skills: skillContents,
-    commands: commandContents,
+    commands: commands.map(({ name, description, template }) => ({ name, description, template })),
     ...(files.length ? { files } : {}),
   };
 }

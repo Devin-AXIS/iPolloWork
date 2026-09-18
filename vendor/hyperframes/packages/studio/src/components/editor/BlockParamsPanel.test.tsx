@@ -57,6 +57,7 @@ describe("BlockParamsPanel", () => {
 
   it("renders component variables with the shared flat Design form controls", () => {
     const onVariableChange = vi.fn(async () => undefined);
+    const onBack = vi.fn();
     flushSync(() =>
       root.render(
         <BlockParamsPanel
@@ -71,7 +72,7 @@ describe("BlockParamsPanel", () => {
             themeMode: "inherit",
           }}
           onVariableChange={onVariableChange}
-          onClose={vi.fn()}
+          onBack={onBack}
         />,
       ),
     );
@@ -85,11 +86,55 @@ describe("BlockParamsPanel", () => {
     expect(container.querySelector('[role="slider"][aria-label="Travel speed"]')).not.toBeNull();
     expect(container.querySelector('button[aria-label="Pick accent color"]')).not.toBeNull();
     expect(container.querySelector("select")).toBeNull();
+    expect(container.textContent).not.toContain("Theme linked");
+    expect(container.textContent).not.toContain("VIDEO");
+    expect(container.querySelector('[data-save-state="saved"]')?.textContent).toContain("Autosaved");
+    expect(container.textContent).not.toContain("AI can edit");
+    const backButton = container.querySelector('button[aria-label="Back to components"]');
+    if (!(backButton instanceof HTMLButtonElement)) throw new Error("Back button missing");
+    expect(container.querySelector('button[aria-label="Close parameters"]')).toBeNull();
+    flushSync(() => backButton.click());
+    expect(onBack).toHaveBeenCalledTimes(1);
 
     const gridToggle = container.querySelector('button[role="switch"][aria-label="Show grid"]');
     if (!(gridToggle instanceof HTMLButtonElement)) throw new Error("Grid toggle missing");
     flushSync(() => gridToggle.click());
     expect(onVariableChange).toHaveBeenCalledWith("grid", false);
+  });
+
+  it("shows one panel-level save state instead of repeated LIVE labels", async () => {
+    let rejectSave: (reason?: unknown) => void = () => undefined;
+    const onVariableChange = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    flushSync(() =>
+      root.render(
+        <BlockParamsPanel
+          blockTitle="Route Map"
+          params={[]}
+          variables={[{ id: "grid", type: "boolean", label: "Show grid", default: true }]}
+          variableValues={{}}
+          onVariableChange={onVariableChange}
+          onBack={vi.fn()}
+        />,
+      ),
+    );
+
+    expect(container.textContent).not.toContain("LIVE");
+    const gridToggle = container.querySelector('button[role="switch"][aria-label="Show grid"]');
+    if (!(gridToggle instanceof HTMLButtonElement)) throw new Error("Grid toggle missing");
+    flushSync(() => gridToggle.click());
+    expect(container.querySelector('[data-save-state="saving"]')?.textContent).toContain("Saving");
+
+    rejectSave(new Error("save failed"));
+    await vi.waitFor(() => {
+      expect(container.querySelector('[data-save-state="error"]')?.textContent).toContain(
+        "Save failed",
+      );
+    });
   });
 
   it("edits compact component data through normalized rows and derives highlight options", () => {
@@ -146,13 +191,16 @@ describe("BlockParamsPanel", () => {
             },
           }}
           onVariableChange={onVariableChange}
-          onClose={vi.fn()}
+          onBack={vi.fn()}
         />,
       ),
     );
 
     expect(container.querySelector('[data-component-data-contract="region-value"]')).not.toBeNull();
     expect(container.querySelectorAll("[data-component-data-row]")).toHaveLength(2);
+    expect(container.textContent).toContain("2 items");
+    expect(container.textContent).toContain("Add item");
+    expect(container.querySelectorAll('button[aria-label^="Drag to reorder"]')).toHaveLength(2);
     expect(container.querySelector('button[aria-label="Highlight"]')).not.toBeNull();
 
     const density = container.querySelector('input[aria-label="Population density 1"]');
@@ -207,7 +255,7 @@ describe("BlockParamsPanel", () => {
             },
           }}
           onVariableChange={onVariableChange}
-          onClose={vi.fn()}
+          onBack={vi.fn()}
         />,
       ),
     );
@@ -258,7 +306,7 @@ describe("BlockParamsPanel", () => {
             themeMode: "inherit",
           }}
           onVariableChange={onVariableChange}
-          onClose={vi.fn()}
+          onBack={vi.fn()}
         />,
       );
 

@@ -1,3 +1,7 @@
+import { withStudioResults } from "../src/react-app/domains/session/sync/message-merge";
+import { groupMessages, isStudioResultMessage } from "../src/components/chat/utils";
+import type { UIMessage } from "ai";
+import type { SessionArtifact } from "@ipollowork/types/workspace";
 import { describe, expect, test } from "bun:test";
 
 import { setLocale } from "../src/i18n";
@@ -53,5 +57,48 @@ describe("assistant response actions", () => {
 
     expect(getFileTitle(part)).toBe("notes.txt");
     expect(getFileMediaType(part)).toBe("");
+  });
+});
+
+describe("studio result receipts", () => {
+  const artifact: SessionArtifact = { path: "video/session/renders/test.mp4", size: 2048, updatedAt: 20,
+    generation: { id: "job-1", kind: "video", model: "MiniMax", completedAt: 20, duration: 5, width: 1280, height: 720 } };
+  const labels = { image: "Image generated", video: "Video generated" };
+  test("restores one stable result between chat turns and leaves engine messages unchanged", () => {
+    const messages: UIMessage[] = [
+      { id: "before", role: "user", parts: [{ type: "text", text: "Create a video" }], metadata: { ipollowork: { created: 10 } } },
+      { id: "after", role: "assistant", parts: [{ type: "text", text: "Hello" }], metadata: { ipollowork: { created: 30 } } },
+    ];
+    const result = withStudioResults(messages, [artifact, artifact], labels);
+    expect(result.map(message => message.id)).toEqual(["before", "studio-result:job-1", "after"]);
+    expect(messages).toHaveLength(2);
+    expect(result[1].parts).toEqual([{ type: "text", text: expect.stringContaining("1280 × 720 · 5 s · MiniMax") }]);
+    expect(withStudioResults(messages, [artifact], labels)).toEqual(result);
+    expect(groupMessages(result)).toHaveLength(3);
+    expect(isStudioResultMessage(result[1])).toBe(true);
+  });
+  test("keeps a delivery receipt even when the transcript mentions or previews the file", () => {
+    const messages: UIMessage[] = [{ id: "answer", role: "assistant", parts: [{ type: "text", text: `[Video](${artifact.path})` }] }];
+    const result = withStudioResults(messages, [artifact], labels);
+    expect(result).toHaveLength(2);
+    expect(withStudioResults(result, [artifact], labels)).toEqual(result);
+    expect(withStudioResults(messages, [{ ...artifact, path: "renamed.mp4", previousPaths: [artifact.path] }], labels).at(-1)?.parts)
+      .toEqual([{ type: "text", text: expect.stringContaining("renamed.mp4") }]);
+  });
+  test("delivers image and video independently, despite inline image previews and tool paths", () => {
+    const image: SessionArtifact = { ...artifact, path: "artifacts/poster.png", generation: {
+      id: "image-1", kind: "image", completedAt: 15, model: "Image model", width: 941, height: 1672,
+    } };
+    const messages: UIMessage[] = [{ id: "preview", role: "assistant", parts: [
+      { type: "text", text: "![Poster](artifacts/poster.png)" },
+    ] }];
+    const result = withStudioResults(messages, [artifact, image, image], labels);
+    expect(result.filter(isStudioResultMessage).map(message => message.id).sort())
+      .toEqual(["studio-result:image-1", "studio-result:job-1"]);
+    expect(withStudioResults(result, [artifact, image], labels)).toEqual(result);
+  });
+  test("shows only successful generation receipts, including an otherwise empty conversation", () => {
+    expect(withStudioResults([], [{ path: "input.png", size: 100, updatedAt: 1 }], labels)).toEqual([]);
+    expect(withStudioResults([], [artifact], labels)).toHaveLength(1);
   });
 });

@@ -109,6 +109,7 @@ import { templateAuthoringKickoff, templateAuthoringSystemContext } from "@/reac
 import {
   conversationTemplateBrief,
   inferConversationTemplateIntents,
+  conversationVideoTarget,
   isConversationTemplateSessionId,
   nextConversationArtifactSessionId,
   selectConversationTemplate,
@@ -137,8 +138,10 @@ import {
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
+  videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
 } from "@/react-app/domains/session/video/video-project";
+import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -949,6 +952,8 @@ export function SessionRoute() {
     questionReplyBusy,
     respondQuestion,
     todos,
+    refreshInteractions,
+    interactionsRefreshing,
   } = useSessionInteractions({
     connection: conversation,
     workspaceId: selectedWorkspaceId,
@@ -1197,6 +1202,24 @@ export function SessionRoute() {
           preferredProviderId: "tokenstar",
         });
       },
+      onSteerDraft: conversation.steerPrompt
+        ? async (draft: ComposerDraft, sessionId: string) => {
+            const targetSessionId = sessionId.trim() || selectedSessionId;
+            if (!targetSessionId) return false;
+            const parts = await draftToParts(
+              draft,
+              selectedWorkspaceRoot,
+              useDesignAiSelectionStore,
+              undefined,
+              { supportsNativeAttachments: selectedModelSupportsAttachments },
+            );
+            await conversation.steerPrompt?.({
+              sessionId: targetSessionId,
+              parts,
+            });
+            return true;
+          }
+        : undefined,
       providerConnectedCount: hasUsableModel
         ? 1
         : sessionProviderAuthSnapshot.connectedProviderIds.length,
@@ -1457,6 +1480,9 @@ export function SessionRoute() {
           useDesignAiSelectionStore,
           designSelectionScope,
         );
+        if (!selectedWorkspaceEndpoint && draft.attachments.some((attachment) => attachment.delivery === "workspace")) {
+          throw new Error("Connect the workspace before sending parsed reference files.");
+        }
         const [parts, persistedAttachments] = await Promise.all([
           draftToParts(
             draft,
@@ -1480,6 +1506,9 @@ export function SessionRoute() {
           parts.push({ type: "text", text: attachmentInstruction, synthetic: true });
         }
         const capabilitySystemContext = draft.capability?.instruction ?? null;
+        // A workbench owns its request; template inference must not add a second task.
+        const workspaceAppRequest = draft.capability?.id.split("+").some((id) => id.startsWith("workspace-app:")) === true;
+        const videoTarget = conversationVideoTarget(text);
         // Template-session metadata is authoritative. The in-memory surface
         // cache is used only for legacy sessions created before that record
         // existed, so an already-open Video Studio still gets its contract.
@@ -1494,7 +1523,9 @@ export function SessionRoute() {
         ]);
         if (await stopDispatchIfRequested()) return false;
         const conversationTemplates = workspaceTemplateSessions.items.filter((template) =>
-          isConversationTemplateSessionId(targetSessionId, template.sessionId),
+          !workspaceAppRequest
+          && !(videoTarget === "media" && template.surface === "video")
+          && isConversationTemplateSessionId(targetSessionId, template.sessionId),
         );
         const activePanelState = usePanelTabStore.getState().sessions[targetSessionId];
         const activePanelTab = activePanelState?.tabs.find((tab) => tab.id === activePanelState.activeTabId);
@@ -1516,7 +1547,7 @@ export function SessionRoute() {
           const authoringTemplate = conversationTemplates.find((template) => template.authoring);
           if (authoringTemplate) {
             promptTemplateSessionIds.add(authoringTemplate.sessionId);
-          } else if (existingTemplateEdit && activeTemplateSessionId) {
+          } else if (existingTemplateEdit && activeTemplateSessionId && conversationTemplates.some((template) => template.sessionId === activeTemplateSessionId)) {
             promptTemplateSessionIds.add(activeTemplateSessionId);
           } else if (existingTemplateEdit && conversationTemplates[0]) {
             promptTemplateSessionIds.add(conversationTemplates[0].sessionId);
@@ -1527,7 +1558,7 @@ export function SessionRoute() {
         );
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
-        const automaticTemplateIntents = inferConversationTemplateIntents(text);
+        const automaticTemplateIntents = workspaceAppRequest ? [] : inferConversationTemplateIntents(text);
         if (
           explicitlyTargetedTemplateSessionIds.size === 0
           && automaticTemplateIntents.length > 0
@@ -1612,6 +1643,8 @@ export function SessionRoute() {
         if (
           sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
+          && !workspaceAppRequest
+          && videoTarget !== "media"
           && selectedWorkspaceEndpoint
           && readSessionType(targetSessionId) === "video"
         ) {
@@ -1624,19 +1657,32 @@ export function SessionRoute() {
         const videoSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "video");
         const isLegacyVideoTask = sessionTemplates.length === 0
           && !automaticTemplateRoutingAttempted
+          && !workspaceAppRequest
+          && videoTarget !== "media"
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
-        const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
-          capabilityId: draft.capability?.id,
-          promptText: videoPromptText,
-        });
         const videoTasks = videoSessionTemplates.length > 0
           ? videoSessionTemplates.map((template) => ({ sessionId: template.sessionId, template }))
           : isLegacyVideoTask
             ? [{ sessionId: targetSessionId, template: null }]
             : [];
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
-          let includeVoiceoverContext = videoDeliveryRequirements.voiceover;
+          const voiceover = selectedWorkspaceEndpoint
+            ? await readVideoVoiceoverAvailability(
+              selectedWorkspaceEndpoint.client,
+              selectedWorkspaceEndpoint.workspaceId,
+              sessionId,
+              selectedWorkspaceRoot,
+            )
+            : { configured: false, enabled: false };
+          const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
+            capabilityId: draft.capability?.id,
+            promptText: videoPromptText,
+            voiceoverAvailable: voiceover.configured,
+            voiceoverEnabled: voiceover.enabled,
+          });
+          let includeVoiceoverContext = videoDeliveryRequirements.voiceover
+            || videoPromptRequestsVoiceoverContext(draft.capability?.id, videoPromptText);
           if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
             const entryPath = template?.state.entry ?? videoProjectEntryPath(sessionId);
             const entry = await selectedWorkspaceEndpoint.client
@@ -1795,6 +1841,12 @@ export function SessionRoute() {
         });
         const effectiveSessionId = promptResult.sessionId.trim() || targetSessionId;
         if (effectiveSessionId !== targetSessionId) {
+          const panelStore = usePanelTabStore.getState();
+          const previousPanel = panelStore.sessions[targetSessionId];
+          for (const tab of previousPanel?.tabs ?? []) {
+            if (tab.type === "workspace-app") panelStore.openTab(effectiveSessionId, { ...tab, sessionId: effectiveSessionId });
+          }
+          if (previousPanel?.activeTabId) panelStore.selectTab(effectiveSessionId, previousPanel.activeTabId);
           let replacementTitle = sessionTitleFromFirstPrompt(text) || t("session.untitled");
           setSessionsByWorkspaceId((current) => {
             const sessions = current[selectedWorkspaceId] ?? [];
@@ -1830,9 +1882,7 @@ export function SessionRoute() {
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
-        return artifactCompletionTargets.length > 0
-          ? { dispatched: true, artifactCompletionTargets }
-          : true;
+        return { dispatched: true, sessionId: effectiveSessionId, ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}) };
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
           throw error;
@@ -2904,6 +2954,8 @@ export function SessionRoute() {
       }}
       todos={todos}
       sessionLoadingById={(sessionId) => effectiveLoading && Boolean(sessionId && sessionId === selectedSessionId)}
+      refreshInteractions={refreshInteractions}
+      interactionsRefreshing={interactionsRefreshing}
       activePermission={activePermission}
       permissionReplyBusy={permissionReplyBusy}
       respondPermission={respondPermission}

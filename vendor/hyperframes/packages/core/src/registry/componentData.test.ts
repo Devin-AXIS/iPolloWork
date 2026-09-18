@@ -63,6 +63,32 @@ describe("visual component data contract", () => {
     expect(serializeVisualComponentData(contract, parsed.document)).toBe("Shanghai>Singapore:100");
   });
 
+  it("normalizes label-detail lists without changing the component storage format", () => {
+    const contract: RegistryVisualComponentDataContract = {
+      version: 1,
+      kind: "category-value",
+      mode: "replace",
+      rowId: "label",
+      binding: { variable: "items", encoding: "label-detail-list" },
+      columns: [
+        { id: "label", label: "Label", type: "string", role: "label", required: true },
+        { id: "detail", label: "Detail", type: "string", role: "value", required: true },
+      ],
+      minRows: 1,
+      maxRows: 4,
+    };
+
+    const value = "01::Context|02::Signal|03::Decision|04::Action";
+    const parsed = parseVisualComponentData(contract, value);
+    expect(parsed.document.rows).toEqual([
+      { label: "01", detail: "Context" },
+      { label: "02", detail: "Signal" },
+      { label: "03", detail: "Decision" },
+      { label: "04", detail: "Action" },
+    ]);
+    expect(serializeVisualComponentData(contract, parsed.document)).toBe(value);
+  });
+
   it("validates JSON documents and reports row-level issues", () => {
     const contract: RegistryVisualComponentDataContract = {
       ...REGION_CONTRACT,

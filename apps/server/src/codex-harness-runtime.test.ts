@@ -88,6 +88,79 @@ afterEach(async () => {
 });
 
 describe("Codex Harness provider projection", () => {
+  test("replays unresolved approvals and questions on reconnect without approving or reviving resolved requests", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-confirmation-fixture.js");
+    await writeFile(fixturePath, String.raw`
+const readline = require("node:readline");
+let replies = 0;
+const emit = value => process.stdout.write(JSON.stringify(value) + "\n");
+readline.createInterface({ input: process.stdin }).on("line", line => {
+  const message = JSON.parse(line);
+  if (!message.method) { replies += 1; return; }
+  if (message.method === "initialized") return;
+  if (message.method === "test/emit") for (const event of message.params.events) emit(event);
+  if (message.method === "test/marker") emit({ method: "test/marker", params: {} });
+  emit({ id: message.id, result: { replies } });
+});
+`, "utf8");
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({ config, env: new EnvService({ path: join(root, "env.json") }), workspace: {
+      id: "confirmation-replay", name: "Confirmation replay", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness",
+    } });
+    const emit = (events: unknown[]) => runtime.call("test/emit", { events });
+    const readWindow = async () => {
+      const controller = new AbortController();
+      const response = await runtime.events(controller.signal);
+      const reader = response.body!.getReader();
+      const events = [];
+      try {
+        await runtime.call("test/marker");
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Stream closed before marker");
+          const event = JSON.parse(new TextDecoder().decode(chunk.value).slice(6).trim());
+          if (event.method === "test/marker") break;
+          events.push(event);
+        }
+        return events;
+      } finally { controller.abort(); reader.releaseLock(); }
+    };
+    const approval = { id: 1, method: "item/commandExecution/requestApproval", params: { threadId: "thread-a", turnId: "turn-a", command: "read brief" } };
+    const question = { id: "question-2", method: "item/tool/requestUserInput", params: { threadId: "thread-b", turnId: "turn-b", questions: [] } };
+    try {
+      await emit([approval, question]);
+      const expected = [{ ...approval, type: "request" as const }, { ...question, type: "request" as const }];
+      expect(await readWindow()).toEqual(expected);
+      expect(runtime.pendingRequests()).toEqual(expected);
+      expect(await readWindow()).toEqual(expected);
+      expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 0 });
+      await runtime.respond(1, { decision: "decline" });
+      expect(await runtime.call<{ replies: number }>("test/replies")).toEqual({ replies: 1 });
+      await expect(runtime.respond(1, { decision: "accept" })).rejects.toThrow("no longer pending");
+      expect(await readWindow()).toEqual([{ ...question, type: "request" }]);
+      expect(runtime.pendingRequests()).toEqual([{ ...question, type: "request" }]);
+      await emit([{ method: "serverRequest/resolved", params: { requestId: "question-2" } }]);
+      expect(await readWindow()).toEqual([]);
+      const later = { ...approval, id: 3, params: { ...approval.params, turnId: "turn-later" } };
+      await emit([approval, later, { method: "turn/completed", params: { threadId: "thread-a", turn: { id: "turn-a", status: "interrupted" } } }]);
+      expect(await readWindow()).toEqual([{ ...later, type: "request" }]);
+      await emit([{ method: "thread/closed", params: { threadId: "thread-a" } }]);
+      expect(await readWindow()).toEqual([]);
+      await emit([approval]);
+      await runtime.close();
+      expect(await readWindow()).toEqual([]);
+      await expect(runtime.respond(1, { decision: "accept" })).rejects.toThrow("no longer pending");
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
+    }
+  }, 20_000);
+
   test("maps access modes to trusted Codex turn policies", () => {
     expect(codexHarnessTurnAccessPolicy("read-only", "C:\\workspace")).toEqual({
       approvalPolicy: "on-request",
@@ -361,7 +434,7 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     }
   });
 
-  test("resumes persisted history without treating a read as an attached thread", async () => {
+  test("resumes a history-only thread before sending and unloads it when changing providers", async () => {
     const config = await testConfig();
     if (!config.configPath) throw new Error("Test config path is required");
     const root = dirname(config.configPath);
@@ -426,11 +499,20 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       await runtime.resumeThread({
         threadId: "thread-1",
         cwd: root,
+        modelProvider: "ipollowork-openai",
+        model: "gpt-5.6",
+      });
+
+      await runtime.resumeThread({
+        threadId: "thread-1",
+        cwd: root,
         modelProvider: "ipollowork-opencode",
         model: "nemotron-3-ultra-free",
       });
 
       expect((await readFile(logPath, "utf8")).trim().split("\n")).toEqual([
+        "initialize",
+        "resume:ipollowork-openai/gpt-5.6",
         "initialize",
         "resume:ipollowork-opencode/nemotron-3-ultra-free",
       ]);
@@ -1350,6 +1432,86 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 
 describe("Codex provider protocol gateway", () => {
+  test.each(["openai", "anthropic"])("preserves namespaced tool identity through %s responses and history", async (api) => {
+    const receivedBodies: unknown[] = [];
+    const namespace = "mcp__ipollowork";
+    const names = ["ipollowork_workspace_app_call_tool", "custom_prompt"];
+    const aliases = names.map((name) => `${namespace}__${name}`);
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      request.on("end", () => {
+        receivedBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
+        response.writeHead(200, { "content-type": "application/json" });
+        const args = [{ name: "accept_expanded_prompt", arguments: { requestId: "pending", prompt: "expanded" } }, { input: "expanded" }];
+        response.end(JSON.stringify(api === "openai" ? {
+          choices: [{ message: { role: "assistant", tool_calls: aliases.map((name, index) => ({
+            id: `call_${index}`, type: "function", function: { name, arguments: JSON.stringify(args[index]) },
+          })) } }],
+        } : {
+          content: aliases.map((name, index) => ({ type: "tool_use", id: `call_${index}`, name, input: args[index] })),
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+    const gateway = new CodexProviderGateway();
+    try {
+      const route = (await gateway.configure([{
+        providerId: api,
+        protocol: api === "openai" ? "openai-completions" : "anthropic-messages",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
+        apiKey: "fixture",
+      }])).get(api);
+      if (!route) throw new Error("Gateway route was not created");
+      const tools = [{ type: "namespace", name: namespace, tools: [
+        { type: "function", name: names[0], parameters: { type: "object", properties: {} } },
+        { type: "custom", name: names[1] },
+      ] }];
+      const send = async (input: unknown[]) => {
+        const response = await fetch(`${route.baseURL}/responses`, {
+          method: "POST",
+          headers: { authorization: `Bearer ${route.apiKey}`, "content-type": "application/json" },
+          body: JSON.stringify({ model: "fixture", tools, input, stream: true }),
+        });
+        expect(response.status).toBe(200);
+        const events = (await response.text()).split("\n").flatMap((line): Record<string, unknown>[] => {
+          if (!line.startsWith("data: {")) return [];
+          const value: unknown = JSON.parse(line.slice(6));
+          return isRecord(value) ? [value] : [];
+        });
+        for (const type of ["response.output_item.added", "response.output_item.done"]) {
+          expect(events.filter((event) => event.type === type).map((event) => event.item)).toMatchObject([
+            { type: "function_call", name: names[0], namespace },
+            { type: "custom_tool_call", name: names[1], namespace },
+          ]);
+        }
+        const completed = events.find((event) => event.type === "response.completed");
+        if (!isRecord(completed?.response) || !Array.isArray(completed.response.output)) throw new Error("Missing response output");
+        return completed.response.output;
+      };
+      const output = await send([{ role: "user", content: "Expand this prompt" }]);
+      expect(output).toMatchObject([
+        { type: "function_call", name: names[0], namespace, call_id: "call_0" },
+        { type: "custom_tool_call", name: names[1], namespace, input: "expanded", call_id: "call_1" },
+      ]);
+      await send([...output,
+        { type: "function_call_output", call_id: "call_0", output: "accepted" },
+        { type: "custom_tool_call_output", call_id: "call_1", output: "accepted" },
+      ]);
+      const followUp = receivedBodies[1];
+      if (!isRecord(followUp) || !Array.isArray(followUp.messages)) throw new Error("Missing upstream history");
+      const assistants = followUp.messages.filter((message) => isRecord(message) && message.role === "assistant");
+      expect(assistants).toMatchObject(api === "openai"
+        ? [{ role: "assistant", tool_calls: aliases.map((name) => ({ function: { name } })) }]
+        : aliases.map((name) => ({ role: "assistant", content: [{ type: "tool_use", name }] })));
+    } finally {
+      await gateway.close();
+    }
+  });
+
   test("translates Responses requests to OpenAI chat completions and back", async () => {
     let receivedPath = "";
     let receivedAuthorization = "";
@@ -1829,6 +1991,85 @@ describe("Codex provider protocol gateway", () => {
       expect(streams.every((stream) => stream.includes("response.completed"))).toBe(true);
     } finally {
       await gateway.close();
+    }
+  });
+});
+
+describe("Codex pending approval recovery", () => {
+  test("replays only unanswered requests across SSE reconnects and clears finished turns", async () => {
+    const config = await testConfig();
+    if (!config.configPath) throw new Error("Test config path is required");
+    const root = dirname(config.configPath);
+    const fixturePath = join(root, "codex-approval-fixture.js");
+    await writeFile(fixturePath, String.raw`
+const send = (event) => process.stdout.write(JSON.stringify(event) + "\n");
+require("node:readline").createInterface({ input: process.stdin }).on("line", (line) => {
+  const message = JSON.parse(line);
+  if (!message.method) return;
+  if (message.method === "test/emit") send(message.params);
+  if (message.method === "test/marker") send({ method: "test/marker", params: {} });
+  send({ id: message.id, result: {} });
+});
+`);
+    const previousCli = process.env.IPOLLOWORK_CODEX_CLI;
+    process.env.IPOLLOWORK_CODEX_CLI = fixturePath;
+    const runtime = new CodexHarnessRuntime({
+      config, env: new EnvService({ path: join(root, "env.json") }),
+      workspace: { id: "approval-test", name: "Approval test", path: root, preset: "starter", workspaceType: "local", engineId: "codex-harness" },
+    });
+    const pendingIds = async () => {
+      const abort = new AbortController();
+      const timeout = setTimeout(() => abort.abort(), 3_000);
+      const stream = await runtime.events(abort.signal);
+      const reader = stream.body?.getReader();
+      if (!reader) throw new Error("Missing events stream");
+      try {
+        await runtime.call("test/marker");
+        let buffer = "";
+        const ids: unknown[] = [];
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) throw new Error("Missing end marker");
+          buffer += new TextDecoder().decode(chunk.value);
+          let end = buffer.indexOf("\n\n");
+          while (end !== -1) {
+            const event = JSON.parse(buffer.slice(0, end).replace(/^data: /, ""));
+            buffer = buffer.slice(end + 2);
+            if (event.method === "test/marker") return ids;
+            if (event.type === "request") ids.push(event.id);
+            end = buffer.indexOf("\n\n");
+          }
+        }
+      } finally {
+        clearTimeout(timeout);
+        abort.abort();
+        await reader.cancel();
+      }
+    };
+    const ask = (id: number, threadId: string, turnId = "turn-a") => runtime.call("test/emit", {
+      id, method: "mcpServer/elicitation/request",
+      params: { threadId, turnId, serverName: "ipollowork", message: "Allow image edit?", _meta: { codex_approval_kind: "mcp_tool_call" } },
+    });
+    try {
+      // No event subscriber exists when Codex asks for permission.
+      await ask(51, "thread-a");
+      await ask(52, "thread-b");
+      expect(await pendingIds()).toEqual([51, 52]);
+      expect(await pendingIds()).toEqual([51, 52]);
+      await runtime.respond(51, { action: "decline", content: null });
+      expect(await pendingIds()).toEqual([52]);
+      await ask(53, "thread-a");
+      await runtime.call("test/emit", { method: "turn/completed", params: { threadId: "thread-a", turn: { id: "turn-a", status: "interrupted" } } });
+      expect(await pendingIds()).toEqual([52]);
+      await runtime.call("test/emit", { method: "serverRequest/resolved", params: { requestId: 52 } });
+      expect(await pendingIds()).toEqual([]);
+      await ask(54, "thread-a");
+      await runtime.close();
+      expect(await pendingIds()).toEqual([]);
+    } finally {
+      await runtime.close();
+      if (previousCli === undefined) delete process.env.IPOLLOWORK_CODEX_CLI;
+      else process.env.IPOLLOWORK_CODEX_CLI = previousCli;
     }
   });
 });

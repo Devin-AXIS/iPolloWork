@@ -1,5 +1,11 @@
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import { ReferenceAssemblySchema, Sha256Schema } from "@ipollowork/types/reference-context";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import sharp from "sharp";
 import { createReadStream } from "node:fs";
-import { readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { open, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable } from "node:stream";
 import { MAX_VIDEO_IMAGE_BYTES, MAX_VIDEO_MEDIA_BYTES, mediaKindForPath, safeVideoMediaPath } from "@ipollowork/types/video-image-workbench";
@@ -9,10 +15,14 @@ import { recordAudit } from "../audit.js";
 import { ApiError } from "../errors.js";
 import { FileSessionStore } from "../file-sessions.js";
 import { listSessionArtifacts } from "../session-artifacts.js";
+import { listVideoJobs } from "../extensions/video-jobs.js";
 import { renameArtifact } from "../artifact-rename.js";
 import type { ApprovalRequest, ServerConfig, TokenScope, WorkspaceInfo } from "../types.js";
 import { ensureDir, exists, shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
+
+const thumbnailJobs = new Map<string, Promise<{ bytes: Buffer; detail: string }>>();
+const executeThumbnail = promisify(execFile);
 
 const FILE_SESSION_DEFAULT_TTL_MS = 15 * 60 * 1000;
 const FILE_SESSION_MIN_TTL_MS = 30 * 1000;
@@ -753,7 +763,8 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     if (!contentType.toLowerCase().includes("multipart/form-data")) {
       throw new ApiError(400, "invalid_payload", "Expected multipart/form-data");
     }
-    const form = await ctx.request.formData();
+    const bounded = await readLimitedRequestBody(ctx.request, resolveInboxMaxBytes() + 1_000_000, { code: "file_too_large", message: "Attachment exceeds the configured upload limit" });
+    const form = await new Response(Buffer.from(bounded), { headers: { "content-type": contentType } }).formData();
     const file = form.get("file");
     if (!(file instanceof File)) {
       throw new ApiError(400, "file_required", "Form field 'file' is required");
@@ -767,6 +778,9 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const inboxRoot = resolveInboxDir(workspace.path);
     const dest = resolveSafeChildPath(inboxRoot, relativePath);
     const maxBytes = resolveInboxMaxBytes();
+    const expectedSha = form.has("sha256") ? Sha256Schema.parse(form.get("sha256")) : undefined;
+    const assembly = form.has("referenceAssembly") ? ReferenceAssemblySchema.parse(JSON.parse(String(form.get("referenceAssembly")))) : undefined;
+    if (assembly && (!expectedSha || !relativePath.endsWith("reference-context.json"))) throw new ApiError(400, "invalid_reference_assembly", "Reference assembly requires a verified context JSON upload");
     if (file.size > maxBytes) {
       throw new ApiError(413, "file_too_large", "File exceeds upload limit", { maxBytes, size: file.size });
     }
@@ -781,8 +795,42 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     await ensureDir(dirname(dest));
     const bytes = Buffer.from(await file.arrayBuffer());
     const tmp = `${dest}.tmp-${shortId()}`;
-    await writeFile(tmp, bytes);
-    await rename(tmp, dest);
+    if (expectedSha && createHash("sha256").update(bytes).digest("hex") !== expectedSha) throw new ApiError(422, "upload_integrity", "Uploaded bytes do not match the source hash");
+    let savedBytes = bytes.byteLength;
+    const expectedResult = assembly?.sha256 ?? expectedSha;
+    try {
+      if (assembly) {
+        const output = await open(tmp, "wx");
+        savedBytes = 0;
+        try {
+          const seen = new Set<string>();
+          for (const part of assembly.parts) {
+            const path = normalizeWorkspaceRelativePath(part.path, { allowSubdirs: true });
+            if (dirname(path) !== dirname(relativePath) || seen.has(path) || path === relativePath) throw new ApiError(400, "invalid_reference_part", "Reference parts must be unique files in the same upload session");
+            seen.add(path);
+            const source = await resolveWithinRoot(inboxRoot, path);
+            const info = await stat(source).catch(() => null);
+            if (!info?.isFile() || info.size !== part.bytes) throw new ApiError(422, "reference_part_missing", "Reference part is missing or has changed");
+            const fragment = z.string().parse(JSON.parse(await readFile(source, "utf8")));
+            const chunk = Buffer.from(fragment, "utf8");
+            savedBytes += chunk.length;
+            if (savedBytes > assembly.bytes) throw new ApiError(422, "reference_size_mismatch", "Reference result exceeds its declared size");
+            await output.writeFile(chunk);
+          }
+          await output.sync();
+        } finally { await output.close(); }
+        if (savedBytes !== assembly.bytes) throw new ApiError(422, "reference_size_mismatch", "Reference result is incomplete");
+      } else await writeFile(tmp, bytes);
+      // Read back the completed file before publishing its name. Never acknowledge an unverified result.
+      let sha256: string | undefined;
+      if (expectedResult) {
+        const hash = createHash("sha256");
+        for await (const chunk of createReadStream(tmp)) hash.update(chunk);
+        sha256 = hash.digest("hex");
+        if (sha256 !== expectedResult) throw new ApiError(422, "reference_integrity", "Saved reference differs from the original context");
+      }
+      await rename(tmp, dest);
+    } finally { await rm(tmp, { force: true }); }
 
     await recordAudit(workspace.path, {
       id: shortId(),
@@ -794,7 +842,7 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
       timestamp: Date.now(),
     });
 
-    return jsonResponse({ ok: true, path: relativePath, bytes: file.size });
+    return jsonResponse({ ok: true, path: relativePath, bytes: savedBytes, ...(expectedResult ? { sha256: expectedResult } : {}) });
   });
 
   addRoute(routes, "GET", "/workspace/:id/artifacts", "client", async (ctx) => {
@@ -802,7 +850,14 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const sessionId = ctx.url.searchParams.get("sessionId");
     if (sessionId !== null) {
       const cursor = ctx.url.searchParams.get("cursor");
-      return jsonResponse(await listSessionArtifacts(config, workspace.id, sessionId, cursor === null ? null : Number(cursor)));
+      const page = await listSessionArtifacts(config, workspace.id, sessionId, cursor === null ? null : Number(cursor));
+      // Only the first artifact page carries live jobs. Never expose prompts or
+      // upstream credentials through the presentation read model.
+      if (cursor === null) {
+        page.videoJobs = (await listVideoJobs(config, workspace.id, sessionId))
+          .map(({ id, model, status, updatedAt }) => ({ id, model, status, updatedAt }));
+      }
+      return jsonResponse(page);
     }
     if (!resolveOutboxEnabled()) {
       return jsonResponse({ items: [] });
@@ -1261,6 +1316,52 @@ export function registerFileRoutes(options: RegisterFileRoutesOptions): void {
     const info = await stat(absPath);
     if (!info.isFile()) {
       throw new ApiError(404, "file_not_found", "File not found");
+    }
+
+    if (ctx.url.searchParams.get("thumbnail") === "1") {
+      const safePath = await resolveWithinRoot(workspace.path, relativePath);
+      const image = /\.(png|jpe?g|webp|gif|avif|svg)$/i.test(relativePath);
+      const video = /\.(mp4|mov|webm)$/i.test(relativePath);
+      if ((!image && !video) || info.size > (image ? MAX_VIDEO_IMAGE_BYTES : MAX_VIDEO_MEDIA_BYTES)) {
+        throw new ApiError(415, "thumbnail_unavailable", "Thumbnail unavailable");
+      }
+      const key = `${safePath}:${info.size}:${info.mtimeMs}`;
+      let pending = thumbnailJobs.get(key);
+      if (!pending) {
+        if (thumbnailJobs.size >= 4) throw new ApiError(429, "thumbnail_busy", "Thumbnail service is busy");
+        pending = (async () => {
+          const source = image ? safePath : (await executeThumbnail(
+            process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg",
+            ["-v", "error", "-nostdin", "-threads", "1", "-protocol_whitelist", "file,pipe", "-f", /\.webm$/i.test(relativePath) ? "matroska" : "mov", "-i", safePath, "-frames:v", "1", "-vf", "scale=160:160:force_original_aspect_ratio=decrease", "-f", "image2pipe", "-vcodec", "png", "pipe:1"],
+            { timeout: 8000, maxBuffer: 1024 * 1024, encoding: "buffer" },
+          )).stdout;
+          const thumbnail = sharp(source, { limitInputPixels: 40_000_000 });
+          let detail = "";
+          if (image) {
+            const metadata = await thumbnail.metadata();
+            if (metadata.width && metadata.height) detail = `${metadata.width} × ${metadata.height}`;
+          } else {
+            const probe = await executeThumbnail(process.env.HYPERFRAMES_FFPROBE_PATH?.trim() || "ffprobe",
+              ["-v", "error", "-protocol_whitelist", "file,pipe", "-f", /\.webm$/i.test(relativePath) ? "matroska" : "mov", "-select_streams", "v:0", "-show_entries", "stream=width,height:format=duration", "-of", "json", safePath],
+              { timeout: 8000, maxBuffer: 64 * 1024, encoding: "utf8" }).catch(() => null);
+            if (probe) {
+              const parsed = z.object({ format: z.object({ duration: z.coerce.number().finite().nonnegative().optional() }).optional() }).safeParse(JSON.parse(probe.stdout));
+              const duration = parsed.success ? parsed.data.format?.duration : undefined;
+              if (duration !== undefined) detail = `${Math.floor(duration / 60).toString().padStart(2, "0")}:${Math.floor(duration % 60).toString().padStart(2, "0")}`;
+            }
+          }
+          const bytes = await thumbnail.rotate().resize(80, 80, { fit: /\.svg$/i.test(relativePath) ? "contain" : "cover", background: { r: 0, g: 0, b: 0, alpha: 0 } }).webp().toBuffer();
+          return { bytes, detail };
+        })();
+        thumbnailJobs.set(key, pending);
+        void pending.finally(() => thumbnailJobs.delete(key)).catch(() => undefined);
+      }
+      try {
+        const { bytes, detail } = await pending;
+        return new Response(new Uint8Array(bytes), { headers: { "Content-Type": "image/webp", "Cache-Control": "private, max-age=60", "X-Artifact-Detail": encodeURIComponent(detail) } });
+      } catch {
+        throw new ApiError(422, "thumbnail_unavailable", "Thumbnail unavailable");
+      }
     }
 
     const headers = new Headers();

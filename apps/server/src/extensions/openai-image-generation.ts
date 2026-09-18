@@ -1,4 +1,5 @@
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
+import sharp from "sharp";
 import { randomUUID } from "node:crypto";
 import { basename, extname, resolve, sep } from "node:path";
 
@@ -7,7 +8,7 @@ import type { AuthorizationAccess, AuthorizationServiceId } from "../authorizati
 import { resolveWithinRoot } from "../paths.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
-import { generateCodexImage } from "./codex-image-generation.js";
+import { generateCodexImage, optimizeCodexImagePrompt } from "./codex-image-generation.js";
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 import { prepareImageSelection, saveImageSelection, loadImageSelection } from "./image-selection.js";
 import { rememberImageEditResult, saveImageEditResult, validateImageEditSource } from "./image-edit-results.js";
@@ -23,6 +24,7 @@ type ImageParameter = {
   default: string;
   delivery: "native" | "prompt";
   experimentalValues?: readonly string[];
+  customRatio?: boolean;
 };
 
 type ImageModelDefinition = {
@@ -84,7 +86,7 @@ const IMAGE_MODELS: readonly ImageModelDefinition[] = [
     available: true,
     // The app-server adapter accepts a prompt, not native image size/quality settings.
     parameters: {
-      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536"], default: "auto", delivery: "prompt" },
+      size: { values: ["auto", "1024x1024", "1536x1024", "1024x1536", "16x9", "9x16", "4x3", "3x4", "21x9"], default: "auto", delivery: "prompt", customRatio:true },
       quality: null,
     },
     capabilities: { generate: true, edit: true, mask: false, region: true },
@@ -128,7 +130,7 @@ const DEFAULT_IMAGE_MODEL_ID = IMAGE_MODELS[0].id;
 const imageParameterSchemas = Object.fromEntries(["size", "quality"].map((key) => [key, {
   type: "string",
   description: `Use values from status.models[].parameters.${key} for the selected model. Omit unsupported parameters; auto uses the model default. Prompt-delivered settings are intent, not exact controls.`,
-  enum: [...new Set(["auto", ...IMAGE_MODELS.flatMap((model) => model.parameters[key === "size" ? "size" : "quality"]?.values ?? [])])],
+  ...(key === "size" ? { pattern: "^(auto|2K|3K|[1-9][0-9]{0,3}x[1-9][0-9]{0,3})$" } : { enum: [...new Set(["auto", ...IMAGE_MODELS.flatMap(model => model.parameters.quality?.values ?? [])])] }),
 }]));
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
@@ -163,6 +165,13 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
   },
   {
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
+    action: "prompt_optimize",
+    title: "Optimize image prompt",
+    description: "Optimize an image description in the background using ChatGPT login without creating a conversation or an image.",
+    inputSchema: { type: "object", properties: { prompt: { type: "string", minLength: 1, maxLength: 8000 }, referencePath: { type: "string" }, mediaKind: { type: "string", enum: ["image", "video"] }, settings: { type: "object", additionalProperties: { type: "string" } } }, required: ["prompt"], additionalProperties: false },
+  },
+  {
+    extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "status",
     title: "Image model status",
     description: "List the image models, capabilities, and authorization state available to iPolloWork extension actions.",
@@ -172,7 +181,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_generate",
     title: "Generate image artifact",
-    description: "Generate and save a PNG workspace artifact without opening Image Studio. If model is omitted, use the first available connected image model.",
+    description: "Generate and save a PNG workspace artifact without opening Image Studio. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
     inputSchema: {
       type: "object",
       properties: {
@@ -181,7 +190,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
         filename: { type: "string", description: "Optional output filename without extension." },
         ...imageParameterSchemas,
       },
-      required: ["prompt"],
+      required: ["prompt", "model"],
       additionalProperties: false,
     },
   },
@@ -189,7 +198,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit",
     title: "Edit image artifact",
-    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. Works without opening Image Studio; omit model to use an available connected image model.",
+    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
     effect: "write" as const,
     inputSchema: {
       type: "object",
@@ -217,7 +226,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
         filename: { type: "string", description: "Optional output filename without extension." },
         ...imageParameterSchemas,
       },
-      required: ["sourcePath", "prompt"],
+      required: ["sourcePath", "prompt", "model"],
       additionalProperties: false,
     },
   },
@@ -274,7 +283,21 @@ function slugifyImageArtifactName(value: string) {
 }
 
 async function modelForId(value: string, authorization: AuthorizationAccess): Promise<ImageModelDefinition> {
-  const requested = value || (await openAiImageGenerationStatus(authorization)).defaultModel;
+  if (!value) {
+    const status = await openAiImageGenerationStatus(authorization);
+    const models = status.models
+      .filter((model) => model.available && model.configured)
+      .map((model) => ({ id: model.id, label: model.label }));
+    throw new ApiError(
+      400,
+      "image_model_selection_required",
+      models.length
+        ? "请先让用户从已配置的图片模型中选择一个，再提交生成或编辑。"
+        : "当前没有已配置的图片模型，请先在授权中心完成连接。",
+      { models },
+    );
+  }
+  const requested = value;
   const model = IMAGE_MODELS.find((entry) => entry.id === requested);
   if (!model) throw new ApiError(400, "image_model_unknown", `Unknown image model: ${requested}`);
   if (!model.available) {
@@ -487,7 +510,7 @@ function imageOption(model: ImageModelDefinition, args: Record<string, unknown>,
   const parameter = model.parameters[key];
   // Existing callers send auto for omitted controls; resolve it to this model's default.
   if (value === undefined || value === "auto") return parameter?.default ?? "auto";
-  if (typeof value !== "string" || !parameter?.values.includes(value)) {
+  if (typeof value !== "string" || !(parameter?.values.includes(value) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(value)))) {
     throw new ApiError(400, "image_parameter_unsupported", `${model.label} does not support ${key}=${String(value)}. Allowed: ${parameter?.values.join(", ") || "auto (provider managed)"}.`);
   }
   return value;
@@ -706,11 +729,15 @@ async function generateImageArtifact(config: ServerConfig, authorization: Author
   const payload = await generateWithModel(model, apiKey, args, prompt, authorization);
   const bytes = await imageDataFromPayload(payload, model.providerLabel);
   const relativePath = await saveImageArtifact(workspace, fileName, bytes);
+  const dimensions = await sharp(bytes).metadata().catch(() => null);
 
   return {
     path: relativePath,
     bytes: bytes.byteLength,
+    width: dimensions?.width,
+    height: dimensions?.height,
     model: model.id,
+    modelLabel: model.label,
     provider: model.provider,
     workspaceId: workspace.id,
   };
@@ -765,11 +792,32 @@ async function editImageArtifact(config: ServerConfig, authorization: Authorizat
   const generated = await imageDataFromPayload(payload, model.providerLabel);
   const bytes = selection ? await selection.composite(generated) : generated;
   const relativePath = await saveImageArtifact(workspace, fileName, bytes);
+  const dimensions = await sharp(bytes).metadata().catch(() => null);
   const reviewInfo = sourceHash ? await rememberImageEditResult(config, workspace, context.sessionId, sourcePath, sourceHash, relativePath, bytes) : {};
-  return { path: relativePath, bytes: bytes.byteLength, model: model.id, provider: model.provider, workspaceId: workspace.id, ...reviewInfo };
+  return { path: relativePath, bytes: bytes.byteLength, width: dimensions?.width, height: dimensions?.height, model: model.id, modelLabel: model.label, provider: model.provider, workspaceId: workspace.id, ...reviewInfo };
 }
 
 export async function callOpenAiImageGenerationExtensionAction(config: ServerConfig, authorization: AuthorizationAccess, action: string, args: Record<string, unknown>, context: Record<string, unknown>) {
+  if (action === "prompt_optimize") {
+    const prompt = readStringField(args, "prompt").trim();
+    if (!prompt || prompt.length > 8000) throw new ApiError(400, "invalid_prompt", "请输入不超过 8000 字的图片描述。");
+    const mediaKind = args.mediaKind === "video" ? "video" : "image";
+    const settings: Record<string, string> = {};
+    if (args.settings && typeof args.settings === "object" && !Array.isArray(args.settings)) {
+      for (const [key, value] of Object.entries(args.settings)) {
+        if (["model", "operation", "size", "quality", "style", "camera", "lighting", "pace", "resolution", "duration", "ratio", "generateAudio", "watermark"].includes(key) && typeof value === "string" && value.length <= 200) settings[key] = value;
+      }
+    }
+    const referencePath = readStringField(args, "referencePath");
+    let image: { bytes: Buffer; mimeType: string } | undefined;
+    if (referencePath) {
+      const path = await resolveWithinRoot(workspaceForContext(config, context).path, referencePath);
+      const info = await stat(path);
+      if (!info.isFile() || info.size > MAX_IMAGE_INPUT_BYTES) throw new ApiError(400, "invalid_image", "参考图过大或不可用。");
+      image = { bytes: await readFile(path), mimeType: imageMimeType(path) };
+    }
+    return { ok: true, extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID, action, result: { prompt: await optimizeCodexImagePrompt(authorization, { prompt, image, mediaKind, settings }) } };
+  }
   if (action === "image_edit_save") {
     if (config.readOnly) throw new ApiError(403, "read_only", "Workspace is read-only");
     const result = await saveImageEditResult(config, workspaceForContext(config, context), context.sessionId, args.editId, args.mode);
@@ -801,7 +849,9 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_generate") {
     const result = await generateImageArtifact(config, authorization, args, context);
-    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path, undefined, {
+      id: randomUUID(), kind: "image", model: result.modelLabel, completedAt: Date.now(), width: result.width, height: result.height,
+    });
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
@@ -813,7 +863,9 @@ export async function callOpenAiImageGenerationExtensionAction(config: ServerCon
   }
   if (action === "image_edit") {
     const result = await editImageArtifact(config, authorization, args, context);
-    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path);
+    if (sessionId) await recordSessionArtifact(config, workspaceForContext(config, context), sessionId, result.path, undefined, {
+      id: randomUUID(), kind: "image", model: result.modelLabel, completedAt: Date.now(), width: result.width, height: result.height,
+    });
     return {
       ok: true,
       extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,

@@ -56,6 +56,7 @@ export type BrowserPanelTab = {
   type: "browser";
   label: string;
   url: string;
+  profileId?: string | null;
   favicon: string | null;
   status: "loading" | "ready";
   canGoBack: boolean;

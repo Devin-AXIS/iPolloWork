@@ -22,12 +22,6 @@ export type SidebarLayoutState = SidebarLayoutSnapshot & {
   }) => void;
 };
 
-const EMPTY_LAYOUT: SidebarLayoutSnapshot = {
-  projectOrderByContext: {},
-  sessionOrderByProject: {},
-  sessionProjectByKey: {},
-};
-
 function cleanIds(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const ids: string[] = [];
@@ -86,17 +80,6 @@ export function sessionLayoutKey(sourceWorkspaceId: string, sessionId: string): 
   return `${sourceWorkspaceId.trim()}\u0000${sessionId.trim()}`;
 }
 
-function reorderIds(ids: string[], sourceId: string, targetId: string): string[] {
-  const source = sourceId.trim();
-  const target = targetId.trim();
-  if (!source || !target || source === target) return ids;
-  const next = ids.filter((id) => id !== source);
-  const targetIndex = next.indexOf(target);
-  if (targetIndex < 0) return [...next, source];
-  next.splice(targetIndex, 0, source);
-  return next;
-}
-
 function upsertOrder(
   map: Record<string, string[]>,
   key: string,
@@ -108,33 +91,42 @@ function upsertOrder(
   const existing = cleanIds(map[normalizedKey]);
   const source = sourceId.trim();
   const target = targetId.trim();
+  if (!source || !target || source === target) return map;
   const seeded = existing.length === 0
     ? [source, target]
     : [...existing, ...[source, target].filter((id) => id && !existing.includes(id))];
-  const next = reorderIds(seeded, sourceId, targetId);
+  const next = seeded.filter((id) => id !== source);
+  // Seeding guarantees a target distinct from the source exists in this list.
+  next.splice(next.indexOf(target), 0, source);
   if (existing.length === next.length && existing.every((id, index) => id === next[index])) return map;
   return { ...map, [normalizedKey]: next };
 }
 
 export const useSidebarLayoutStore = create<SidebarLayoutState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...createSidebarLayoutSnapshot(),
-      reorderProjects: (contextId, sourceId, targetId) => set((state) => ({
-        projectOrderByContext: upsertOrder(state.projectOrderByContext, contextId, sourceId, targetId),
-      })),
-      moveSession: (sessionKey, targetProjectId) => set((state) => {
+      reorderProjects: (contextId, sourceId, targetId) => {
+        const state = get();
+        const projectOrderByContext = upsertOrder(state.projectOrderByContext, contextId, sourceId, targetId);
+        if (projectOrderByContext !== state.projectOrderByContext) set({ projectOrderByContext });
+      },
+      moveSession: (sessionKey, targetProjectId) => {
+        const state = get();
         const key = sessionKey.trim();
         const target = targetProjectId.trim();
-        if (!key || !target || state.sessionProjectByKey[key] === target) return state;
-        return {
+        if (!key || !target || state.sessionProjectByKey[key] === target) return;
+        set({
           sessionProjectByKey: { ...state.sessionProjectByKey, [key]: target },
-        };
-      }),
-      reorderSessions: (projectId, sourceKey, targetKey) => set((state) => ({
-        sessionOrderByProject: upsertOrder(state.sessionOrderByProject, projectId, sourceKey, targetKey),
-      })),
-      prune: ({ contextId, projectIds, sessionKeys, sourceProjectBySessionKey }) => set((state) => {
+        });
+      },
+      reorderSessions: (projectId, sourceKey, targetKey) => {
+        const state = get();
+        const sessionOrderByProject = upsertOrder(state.sessionOrderByProject, projectId, sourceKey, targetKey);
+        if (sessionOrderByProject !== state.sessionOrderByProject) set({ sessionOrderByProject });
+      },
+      prune: ({ contextId, projectIds, sessionKeys, sourceProjectBySessionKey }) => {
+        const state = get();
         const knownProjects = new Set(cleanIds(projectIds));
         const knownSessions = new Set(cleanIds(sessionKeys));
         const context = contextId.trim();
@@ -170,8 +162,8 @@ export const useSidebarLayoutStore = create<SidebarLayoutState>()(
             sessionOrderByProject: state.sessionOrderByProject,
             sessionProjectByKey: state.sessionProjectByKey,
           });
-        return unchanged ? state : { projectOrderByContext, sessionOrderByProject, sessionProjectByKey };
-      }),
+        if (!unchanged) set({ projectOrderByContext, sessionOrderByProject, sessionProjectByKey });
+      },
     }),
     {
       name: SIDEBAR_LAYOUT_STORAGE_KEY,

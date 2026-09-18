@@ -8,6 +8,7 @@ import {
 } from "./ipollowork-extensions-preview-connect-steering.js";
 import {
   ENGINE_BROWSER_INSTRUCTION,
+  ENGINE_VIDEO_GENERATION_INSTRUCTION,
   ENGINE_HOST_TOOL_NAMES,
   engineHostTool,
   type EngineHostToolName,
@@ -76,6 +77,7 @@ const uiExecuteArgsSchema = z.object({
 
 const browserOpenUrlArgsSchema = z.object({
   url: z.string().describe("The website URL to open in the iPolloWork built-in browser."),
+  profileId: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional().describe("Persistent browser profile returned by the account plugin."),
 });
 
 const browserSnapshotArgsSchema = z.object({
@@ -712,6 +714,7 @@ export const iPolloWorkExtensionsPreview = async () => {
     output.system.push(await resolveiPolloWorkExtensionDiscoveryInstruction());
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
     output.system.push(ENGINE_BROWSER_INSTRUCTION);
+    output.system.push(ENGINE_VIDEO_GENERATION_INSTRUCTION);
     output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
     output.system.push(engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview));
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);

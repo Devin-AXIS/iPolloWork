@@ -161,6 +161,7 @@ const pluginUiInspectorFieldSchema = z.object({
   value: z.string(),
   live: z.boolean().optional(),
   advanced: z.boolean().optional(),
+  customRatio: z.boolean().optional(),
   placeholder: z.string().optional(),
   media: z.object({
     kind: z.enum(["image", "video", "audio"]),
@@ -201,6 +202,13 @@ export function parsePluginUiInspectorContext(value: unknown): PluginUiInspector
   return result.success ? result.data : null;
 }
 
+const browserLoginUiSchema = z.object({
+  path: z.string().startsWith('/'),
+  whenText: z.string().min(1).max(100),
+  selector: z.string().min(1).max(300),
+}).strict();
+export type BrowserLoginUi = z.infer<typeof browserLoginUiSchema>;
+
 const resourceSchema = z.object({
   type: resourceTypeSchema,
   id: z.string().min(1),
@@ -215,6 +223,13 @@ const resourceSchema = z.object({
   oauth: z.boolean().optional(),
   localCommandRef: z.enum(["ipollowork.computerUseMcp", "ipollowork.uiMcp"]).optional(),
   actions: z.array(serviceActionSchema).optional(),
+  browserSession: z.object({
+    origin: secureUrlSchema.refine(value => new URL(value).origin === value, "must be an exact origin"),
+    paths: z.array(z.string().startsWith('/')).min(1).max(10),
+    observeAction: z.string().regex(SIMPLE_ID_RE),
+    loginUi: browserLoginUiSchema.optional(),
+    avatarSelector: z.string().trim().min(1).max(200).optional(),
+  }).strict().optional(),
   environment: z.array(z.string().regex(ENV_KEY_RE)).optional(),
   requires: z.array(relationSchema).optional(),
   provides: z.array(relationSchema).optional(),
@@ -681,10 +696,20 @@ export type PluginUiHostContextV1 = {
   workspaceId: string;
   workspaceRoot: string;
   sessionId: string | null;
+  /** The host presents image and video engines in one Media Studio. */
+  mediaStudio?: boolean;
   /** Optional, non-secret context supplied when the host opens this surface. */
   launch?: {
     intent: string;
     requestId?: string;
+    /** Source binding retained while making a different kind of media. */
+    originRequestId?: string;
+    /** The host owns saving and replacing a selected project asset. */
+    returnToSource?: boolean;
+    returnLabel?: string;
+    workbenchMessage?: string;
+    workbenchError?: boolean;
+    workbenchBusy?: boolean;
     source?: {
       kind: "workspace-file";
       path: string;

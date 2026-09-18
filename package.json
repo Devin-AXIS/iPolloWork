@@ -53,7 +53,7 @@
     "gsap:check": "bun vendor/hyperframes/scripts/gsap-catalog.ts check",
     "gsap:check-updates": "bun vendor/hyperframes/scripts/gsap-catalog.ts upstream",
     "gsap:sync": "bun vendor/hyperframes/scripts/gsap-catalog.ts sync",
-    "test:orchestrator": "pnpm --filter ipollowork-orchestrator test:router",
+    "test:orchestrator": "pnpm --filter ipollowork-orchestrator test:files",
     "bump:patch": "pnpm --filter @ipollowork/app bump:patch",
     "bump:minor": "pnpm --filter @ipollowork/app bump:minor",
     "bump:major": "pnpm --filter @ipollowork/app bump:major",

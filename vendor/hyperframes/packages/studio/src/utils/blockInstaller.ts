@@ -296,6 +296,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
   hostCompositionPath: string;
   insertedStart: number;
   insertedElementId: string;
+  insertedElement: TimelineElement;
 } | null> {
   const startedAt = performance.now();
   let registryInstallMs = 0;
@@ -367,6 +368,9 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
 
     let insertedStart = opts.currentTime ?? 0;
     let insertedElementId = block.name;
+    let insertedDuration = 0;
+    let insertedTrack = 1;
+    let insertedHfId = "";
     {
       const hostPatchStartedAt = performance.now();
       const targetPath = activeCompPath || "index.html";
@@ -396,6 +400,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           (max, te) => Math.max(max, (te.start ?? 0) + (te.duration ?? 0)),
           10,
         );
+      insertedDuration = duration;
       const rootDuration = readRootCompositionDuration(originalContent) ?? 0;
       const start = Number(
         formatTimelineAttributeNumber(placement?.start ?? Math.max(0, currentTime)),
@@ -408,6 +413,7 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           : relevantElements.length > 0
             ? Math.max(...relevantElements.map((te) => te.track)) + 1
             : 1);
+      insertedTrack = track;
       const rippleChanges =
         insertionMode === "ripple"
           ? resolveBlockRippleChanges(relevantElements, start, duration)
@@ -433,13 +439,14 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
           ? `; ${INHERITED_COMPONENT_THEME_STYLE}`
           : "";
 
+      insertedHfId = `hf-${generateId()}`;
       const subCompHtml = [
         `<div`,
         // A stable id (+ hf-id) is what authored sub-comps carry; without it the
         // timeline can't dedup the host and renders duplicate clips that multiply
         // on every interaction. Matches the authored-comp shape.
         `  id="${compId}"`,
-        `  data-hf-id="hf-${generateId()}"`,
+        `  data-hf-id="${insertedHfId}"`,
         `  data-composition-id="${compId}"`,
         `  data-composition-src="${compositionFile}"`,
         block.visualComponent
@@ -526,6 +533,22 @@ export async function addBlockToProject(opts: AddBlockOptions): Promise<{
       hostCompositionPath: activeCompPath || "index.html",
       insertedStart,
       insertedElementId,
+      insertedElement: {
+        id: insertedElementId,
+        key: `${activeCompPath || "index.html"}#${insertedElementId}`,
+        label: block.title,
+        clipLabel: block.title,
+        tag: "div",
+        start: insertedStart,
+        duration: insertedDuration,
+        track: insertedTrack,
+        authoredTrack: insertedTrack,
+        domId: insertedElementId,
+        hfId: insertedHfId,
+        sourceFile: activeCompPath || "index.html",
+        compositionSrc: compositionFile,
+        timingSource: "authored",
+      },
     };
   } catch (error) {
     trackStudioEvent("block_install_failed", {
