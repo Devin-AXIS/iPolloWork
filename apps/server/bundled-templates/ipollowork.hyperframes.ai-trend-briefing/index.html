@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-ipw-template="ai-trend-briefing" data-composition-variables='[{"id":"headline","type":"string","label":"热点标题","default":"AI Agent 正在接管浏览器"},{"id":"deck","type":"string","label":"一句话摘要","default":"从“回答问题”到“替你执行”，一次能力跃迁正在重写软件入口。"},{"id":"eventDate","type":"string","label":"事件日期或期号","default":"2026.09 / SIGNAL 014"},{"id":"context","type":"string","label":"事件背景","default":"模型不再只生成建议，而是开始理解界面、调用工具并连续完成任务。"},{"id":"signalA","type":"string","label":"事件信号一","default":"模型开始直接理解并操作网页界面"},{"id":"signalB","type":"string","label":"事件信号二","default":"工具调用从单步指令走向连续任务"},{"id":"signalC","type":"string","label":"事件信号三","default":"权限、可追溯与失败恢复成为新焦点"},{"id":"trigger","type":"string","label":"关键变化","default":"从生成答案，跨越到执行动作"},{"id":"cause","type":"string","label":"核心成因","default":"推理能力 × 工具协议 × 浏览器控制同时成熟"},{"id":"beforeState","type":"string","label":"变化前","default":"用户寻找入口、理解规则、逐步点击"},{"id":"afterState","type":"string","label":"变化后","default":"用户描述目标，Agent 规划并执行流程"},{"id":"impact","type":"string","label":"主要影响","default":"软件入口从“点按钮”转向“说目标”"},{"id":"opportunity","type":"string","label":"关键机会","default":"围绕目标重组产品入口、工作流与服务方式"},{"id":"risk","type":"string","label":"关键风险","default":"误操作、权限边界与责任归属仍未解决"},{"id":"watchpoint","type":"string","label":"后续观察点","default":"可靠性是否能跨过真实生产门槛"},{"id":"verdict","type":"string","label":"最终判断","default":"这不是更聪明的聊天框，而是新的操作层。"},{"id":"source","type":"string","label":"资料来源","default":"资料来源：官方发布 / 产品文档 / 行业观察"},{"id":"brandName","type":"string","label":"品牌名称","default":"iPolloWork Briefing"},{"id":"logoUrl","type":"string","label":"品牌标识","default":"assets/ipollowork-logo.svg?v=20260729"}]'>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1920, height=1080">
+    <title>AI 热点拆解</title>
+    <script src="assets/gsap.min.js"></script>
+    <style>
+      @font-face { font-family: "IPW Syne"; src: url("assets/Syne-Variable.ttf") format("truetype"); font-weight: 400 800; font-display: swap; }
+      @font-face { font-family: "IPW Poppins"; src: url("assets/Poppins-Regular.ttf") format("truetype"); font-weight: 400; font-display: swap; }
+      @font-face { font-family: "IPW Poppins"; src: url("assets/Poppins-SemiBold.ttf") format("truetype"); font-weight: 600; font-display: swap; }
+      @font-face { font-family: "IPW Poppins"; src: url("assets/Poppins-Bold.ttf") format("truetype"); font-weight: 700; font-display: swap; }
+      * { box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; margin: 0; overflow: hidden; background: var(--ipw-color-bg); color: var(--ipw-color-text); font-family: var(--ipw-font-body); }
+      body { position: relative; }
+      h1, h2, h3, p { margin: 0; }
+      h1, h2, h3, strong { overflow-wrap: anywhere; text-wrap: pretty; }
+      #root { position: relative; isolation: isolate; width: 1920px; height: 1080px; overflow: hidden; background: var(--ipw-color-bg); }
+      .clip, .scene { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+      .paper-layer { z-index: -4; background: var(--ipw-color-bg); }
+      .ipollo-glyph { display: block; color: var(--ipw-color-text); background: currentColor; -webkit-mask: url("assets/ipollowork-logo.svg?v=20260729") center / contain no-repeat; mask: url("assets/ipollowork-logo.svg?v=20260729") center / contain no-repeat; }
+      .masthead { position: absolute; z-index: 40; left: 72px; right: 72px; top: 38px; display: grid; grid-template-columns: 1fr auto; align-items: center; min-height: 54px; padding-bottom: 20px; border-bottom: 2px solid var(--ipw-color-text); }
+      .brand { display: flex; align-items: center; gap: 13px; font-size: 20px; font-weight: 600; letter-spacing: -.025em; }
+      .brand img { display: block; width: 32px; height: 34px; object-fit: contain; }
+      .issue { color: var(--ipw-color-muted); font-size: 15px; font-weight: 600; letter-spacing: .1em; }
+      .footer { position: absolute; z-index: 40; left: 72px; right: 72px; bottom: 30px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 26px; color: var(--ipw-color-muted); font-size: 12px; font-weight: 600; letter-spacing: .14em; }
+      .progress-track { position: relative; height: 3px; overflow: hidden; background: var(--ipw-color-border); }
+      .progress-fill { display: block; width: 100%; height: 100%; transform-origin: left center; background: var(--ipw-color-primary); will-change: transform; }
+      .page-count { color: var(--ipw-color-text); font-variant-numeric: tabular-nums; }
+      .scene-shell { position: absolute; inset: 132px 72px 78px; }
+      .scene-shell > *, .scene-heading > *, .trigger-stage > *, .compare-grid > *, .watch-grid > * { min-width: 0; }
+      .section-label { display: inline-flex; align-items: center; gap: 12px; color: var(--ipw-color-primary-text); font-size: 16px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+      .section-label::before { content: ""; display: block; flex: 0 0 auto; width: 64px; height: 3px; background: currentColor; }
+      .display-title { font-family: var(--ipw-font-display); font-size: calc(72px * var(--ipw-type-scale, 1)); font-weight: 700; line-height: 1.06; letter-spacing: -.035em; }
+      .body-copy { color: var(--ipw-color-muted); font-size: calc(26px * var(--ipw-type-scale, 1)); line-height: 1.5; }
+      .meta-pill { display: inline-flex; align-items: center; min-height: 40px; width: fit-content; padding: 0 16px; border: 1.5px solid currentColor; border-radius: 999px; background: transparent; color: inherit; font-size: 13px; font-weight: 700; letter-spacing: .08em; }
+      .oversized-index { color: var(--ipw-color-primary); font-family: var(--ipw-font-display); font-size: 224px; font-weight: 700; line-height: .8; letter-spacing: -.08em; }
+      .hook-shell { display: grid; grid-template-columns: minmax(0, 1fr) 520px; align-items: center; gap: 70px; }
+      .hook-copy h1 { max-width: 1160px; margin-top: 30px; font-family: var(--ipw-font-display); font-size: calc(96px * var(--ipw-type-scale, 1)); font-weight: 700; line-height: 1.04; letter-spacing: -.03em; }
+      .hook-copy p { max-width: 970px; margin-top: 36px; }
+      .hook-card { position: relative; height: 700px; overflow: hidden; border-radius: 34px; background: var(--ipw-color-accent); will-change: transform, opacity; }
+      .hook-card::before { content: ""; position: absolute; right: -76px; top: -82px; width: 248px; height: 248px; border-radius: 50%; background: var(--ipw-color-secondary); }
+      .hook-card::after { content: ""; position: absolute; left: -86px; bottom: -156px; width: 470px; height: 470px; border-radius: 50%; background: color-mix(in srgb, var(--ipw-color-secondary) 78%, transparent); }
+      .hook-card .ipollo-glyph { position: absolute; right: 0; bottom: 0; z-index: 2; width: 350px; height: 371px; opacity: .95; }
+      .hook-card strong { position: absolute; z-index: 3; left: 38px; top: 128px; display: block; max-width: 380px; font-family: var(--ipw-font-display); font-size: 46px; line-height: 1.06; letter-spacing: -.03em; }
+      .hook-chips { position: absolute; z-index: 4; left: 38px; top: 36px; display: flex; gap: 9px; }
+      .hook-chip { padding: 9px 13px; border: 1.5px solid var(--ipw-color-text); border-radius: 999px; background: color-mix(in srgb, var(--ipw-color-surface) 72%, transparent); font-size: 12px; font-weight: 700; }
+      .summary-shell { display: grid; grid-template-columns: 352px minmax(0, 1fr); align-items: center; gap: 88px; }
+      .summary-number { position: relative; display: grid; place-items: center; height: 650px; overflow: hidden; border: 2px solid var(--ipw-color-text); border-radius: 30px; background: var(--ipw-color-text); }
+      .summary-number::after { content: ""; position: absolute; right: -88px; top: -88px; width: 254px; height: 254px; border-radius: 50%; background: var(--ipw-color-primary); }
+      .summary-number span { position: relative; z-index: 2; }
+      .summary-copy h2 { max-width: 1120px; margin-top: 28px; font-family: var(--ipw-font-display); font-size: calc(88px * var(--ipw-type-scale, 1)); line-height: 1.04; letter-spacing: -.035em; }
+      .summary-copy p { max-width: 1040px; margin-top: 38px; }
+      .summary-rule { display: block; width: 420px; height: 7px; margin-top: 48px; transform-origin: left center; background: var(--ipw-color-primary); }
+      .signals-shell { display: grid; grid-template-rows: auto 1fr; gap: 38px; }
+      .scene-heading { display: grid; grid-template-columns: minmax(0, 1fr) 410px; align-items: end; gap: 54px; }
+      .scene-heading .display-title { max-width: 1120px; margin-top: 20px; }
+      .scene-heading p { padding-bottom: 4px; text-align: right; font-size: 23px; }
+      .signals-layout { display: grid; grid-template-columns: 1.08fr .92fr; gap: 20px; min-height: 0; }
+      .signal-card { position: relative; overflow: hidden; padding: 30px 32px; border: 2px solid var(--ipw-color-text); border-radius: 24px; background: var(--ipw-color-surface); }
+      .signal-card.primary { display: flex; min-height: 490px; flex-direction: column; justify-content: space-between; background: var(--ipw-color-text); color: var(--ipw-color-surface); }
+      .signal-card.primary::after { content: "01"; position: absolute; right: 26px; bottom: -38px; color: color-mix(in srgb, var(--ipw-color-primary) 44%, transparent); font-family: var(--ipw-font-display); font-size: 218px; font-weight: 700; }
+      .signal-stack { display: grid; grid-template-rows: 1fr 1fr; gap: 20px; }
+      .signal-stack .signal-card:first-child { background: var(--ipw-color-secondary); }
+      .signal-stack .signal-card:last-child { background: var(--ipw-color-accent); }
+      .signal-no { display: inline-flex; align-items: center; justify-content: center; width: 48px; height: 48px; border: 1.5px solid currentColor; border-radius: 50%; font-size: 13px; font-weight: 700; }
+      .signal-card h2 { position: relative; z-index: 2; max-width: 700px; margin-top: 24px; font-size: calc(36px * var(--ipw-type-scale, 1)); line-height: 1.24; letter-spacing: -.018em; }
+      .signal-card.primary h2 { max-width: 680px; font-size: calc(48px * var(--ipw-type-scale, 1)); line-height: 1.14; }
+      .signal-line { display: block; position: relative; z-index: 2; width: 100%; height: 6px; transform-origin: left center; background: var(--ipw-color-primary); }
+      .trigger-shell { display: grid; grid-template-rows: auto 1fr; gap: 42px; }
+      .trigger-copy { display: grid; grid-template-columns: minmax(0, 1fr) 430px; align-items: end; gap: 54px; }
+      .trigger-copy .section-label { grid-column: 1 / -1; }
+      .trigger-copy h2 { max-width: 1120px; margin-top: 4px; }
+      .trigger-copy p { padding-bottom: 6px; font-size: 23px; text-align: right; }
+      .trigger-stage { position: relative; display: grid; grid-template-columns: 1fr 90px 1fr; align-items: stretch; min-height: 0; }
+      .trigger-panel { display: flex; flex-direction: column; justify-content: space-between; min-height: 480px; padding: 34px 36px; border: 2px solid var(--ipw-color-text); border-radius: 26px; background: var(--ipw-color-surface); }
+      .trigger-panel.after { background: var(--ipw-color-accent); }
+      .trigger-panel small { color: var(--ipw-color-muted); font-size: 15px; font-weight: 700; letter-spacing: .12em; }
+      .trigger-panel strong { font-family: var(--ipw-font-display); font-size: 56px; line-height: 1.08; letter-spacing: -.025em; }
+      .trigger-arrow { display: grid; place-items: center; color: var(--ipw-color-primary); font-family: var(--ipw-font-display); font-size: 54px; font-weight: 700; }
+      .cause-shell { display: grid; grid-template-columns: 530px minmax(0, 1fr); align-items: center; gap: 68px; }
+      .cause-copy h2 { max-width: 520px; margin-top: 28px; font-size: calc(68px * var(--ipw-type-scale, 1)); }
+      .cause-copy p { max-width: 500px; margin-top: 34px; }
+      .cause-board { position: relative; height: 650px; padding: 40px 42px 132px; border: 2px solid var(--ipw-color-text); border-radius: 30px; background: var(--ipw-color-surface); }
+      .cause-board svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: hidden; }
+      .cause-path { fill: none; stroke: var(--ipw-color-primary); stroke-width: 5; stroke-linecap: round; }
+      .cause-nodes { position: relative; z-index: 2; display: grid; height: 430px; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: center; gap: 20px; }
+      .cause-node { display: grid; place-items: center; aspect-ratio: 1; padding: 22px; border: 2px solid var(--ipw-color-text); border-radius: 50%; background: var(--ipw-color-bg); text-align: center; }
+      .cause-node small { color: var(--ipw-color-primary-text); font-size: 13px; font-weight: 700; letter-spacing: .1em; }
+      .cause-node strong { display: block; margin-top: 16px; font-size: 28px; line-height: 1.16; }
+      .cause-statement { position: absolute; z-index: 4; left: 42px; right: 42px; bottom: 34px; min-height: 74px; padding: 20px 24px; border-radius: 18px; background: var(--ipw-color-text); color: var(--ipw-color-surface); font-size: 23px; font-weight: 600; line-height: 1.35; }
+      .compare-shell { display: grid; grid-template-rows: auto 1fr; gap: 40px; }
+      .compare-grid { display: grid; grid-template-columns: 1fr 112px 1fr; align-items: stretch; }
+      .compare-card { display: flex; flex-direction: column; justify-content: space-between; min-height: 490px; padding: 38px; border: 2px solid var(--ipw-color-text); border-radius: 26px; background: var(--ipw-color-surface); }
+      .compare-card.after { background: var(--ipw-color-accent); }
+      .compare-card small { color: var(--ipw-color-muted); font-size: 15px; font-weight: 700; letter-spacing: .12em; }
+      .compare-card strong { max-width: 650px; font-family: var(--ipw-font-display); font-size: 48px; line-height: 1.12; letter-spacing: -.025em; }
+      .compare-card span { color: var(--ipw-color-muted); font-size: 17px; letter-spacing: .04em; }
+      .compare-swap { display: grid; place-items: center; color: var(--ipw-color-primary); font-family: var(--ipw-font-display); font-size: 56px; font-weight: 700; }
+      .impact-shell { display: grid; grid-template-columns: 1.04fr .96fr; gap: 24px; }
+      .impact-lead { display: flex; flex-direction: column; justify-content: space-between; padding: 42px; border-radius: 28px; background: var(--ipw-color-text); color: var(--ipw-color-surface); }
+      .impact-lead .section-label { color: var(--ipw-color-primary); }
+      .impact-lead h2 { max-width: 850px; margin-top: 38px; font-family: var(--ipw-font-display); font-size: calc(64px * var(--ipw-type-scale, 1)); line-height: 1.06; letter-spacing: -.03em; }
+      .impact-lead .impact-count { display: flex; align-items: end; justify-content: space-between; gap: 30px; }
+      .impact-lead .impact-count strong { color: var(--ipw-color-primary); font-family: var(--ipw-font-display); font-size: 154px; line-height: .78; letter-spacing: -.06em; }
+      .impact-lead .impact-count span { max-width: 230px; color: color-mix(in srgb, var(--ipw-color-surface) 74%, transparent); font-size: 17px; font-weight: 600; line-height: 1.5; }
+      .impact-list { display: grid; grid-template-rows: repeat(3, 1fr); gap: 16px; }
+      .impact-item { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; align-items: center; gap: 22px; padding: 26px 30px; border: 2px solid var(--ipw-color-text); border-radius: 22px; background: var(--ipw-color-surface); }
+      .impact-item > span { display: grid; place-items: center; width: 56px; height: 56px; border-radius: 50%; background: var(--ipw-color-accent); font-size: 13px; font-weight: 700; }
+      .impact-item strong { font-size: 30px; }
+      .impact-item small { color: var(--ipw-color-muted); font-size: 15px; font-weight: 600; }
+      .opportunity-shell { display: grid; grid-template-columns: 1.16fr .84fr; gap: 24px; }
+      .opportunity-card { display: flex; flex-direction: column; justify-content: space-between; padding: 46px; border-radius: 28px; background: var(--ipw-color-text); color: var(--ipw-color-surface); }
+      .opportunity-card .section-label { color: var(--ipw-color-primary); }
+      .opportunity-card h2 { max-width: 1040px; margin-top: 44px; font-family: var(--ipw-font-display); font-size: calc(70px * var(--ipw-type-scale, 1)); line-height: 1.08; letter-spacing: -.032em; }
+      .opportunity-tags { display: flex; gap: 12px; }
+      .opportunity-tags span { padding: 11px 17px; border: 1.5px solid color-mix(in srgb, var(--ipw-color-surface) 54%, transparent); border-radius: 999px; font-size: 14px; font-weight: 600; }
+      .opportunity-mark { position: relative; display: grid; place-items: center; overflow: hidden; border-radius: 28px; background: var(--ipw-color-accent); }
+      .opportunity-mark::before { content: ""; position: absolute; left: -72px; top: -82px; width: 250px; height: 250px; border-radius: 50%; background: var(--ipw-color-secondary); }
+      .opportunity-mark .ipollo-glyph { position: relative; z-index: 2; width: 380px; height: 404px; opacity: .96; }
+      .opportunity-mark span { position: absolute; z-index: 3; left: 32px; bottom: 28px; font-size: 13px; font-weight: 700; letter-spacing: .12em; }
+      .watch-shell { display: grid; grid-template-rows: auto 1fr; gap: 38px; }
+      .watch-grid { display: grid; grid-template-columns: 1.04fr .96fr; gap: 20px; }
+      .risk-card { display: flex; flex-direction: column; justify-content: space-between; padding: 38px; border: 2px solid var(--ipw-color-text); border-radius: 26px; background: var(--ipw-color-secondary); }
+      .risk-card small { color: var(--ipw-color-danger); font-size: 14px; font-weight: 700; letter-spacing: .12em; }
+      .risk-card h2 { max-width: 770px; margin-top: 36px; font-family: var(--ipw-font-display); font-size: calc(52px * var(--ipw-type-scale, 1)); line-height: 1.12; letter-spacing: -.025em; }
+      .risk-card p { max-width: 720px; margin-top: 28px; padding-top: 22px; border-top: 2px solid color-mix(in srgb, var(--ipw-color-text) 26%, transparent); color: var(--ipw-color-muted); font-size: 18px; line-height: 1.45; }
+      .watch-list { display: grid; grid-template-rows: repeat(3, 1fr); gap: 16px; }
+      .watch-item { display: grid; grid-template-columns: 54px minmax(0, 1fr); align-items: center; gap: 20px; padding: 24px 28px; border: 2px solid var(--ipw-color-text); border-radius: 22px; background: var(--ipw-color-surface); }
+      .watch-item > span { color: var(--ipw-color-primary-text); font-family: var(--ipw-font-display); font-size: 24px; font-weight: 700; }
+      .watch-item strong { font-size: 27px; }
+      .watch-item em { display: block; margin-top: 7px; color: var(--ipw-color-muted); font-size: 15px; font-style: normal; line-height: 1.4; }
+      .verdict-shell { display: grid; grid-template-columns: minmax(0, 1.2fr) 520px; align-items: center; gap: 72px; }
+      .verdict-copy h2 { max-width: 1120px; margin-top: 34px; font-family: var(--ipw-font-display); font-size: calc(88px * var(--ipw-type-scale, 1)); line-height: 1.04; letter-spacing: -.035em; }
+      .verdict-line { display: block; width: 500px; height: 7px; margin-top: 42px; transform-origin: left center; background: var(--ipw-color-primary); }
+      .verdict-source { margin-top: 28px; color: var(--ipw-color-muted); font-size: 16px; font-weight: 600; }
+      .verdict-mark { position: relative; display: grid; place-items: center; height: 650px; overflow: hidden; border-radius: 30px; background: var(--ipw-color-accent); }
+      .verdict-mark::before { content: ""; position: absolute; right: -112px; top: -116px; width: 350px; height: 350px; border-radius: 50%; background: var(--ipw-color-secondary); }
+      .verdict-mark .ipollo-glyph { position: relative; z-index: 2; width: 370px; height: 392px; }
+      .verdict-mark span { position: absolute; z-index: 3; left: 32px; bottom: 28px; color: var(--ipw-color-text); font-size: 13px; font-weight: 700; letter-spacing: .12em; }
+      .hook-copy > *, .hook-card, .summary-number, .summary-copy > *, .signal-card, .scene-heading > *, .trigger-copy > *, .trigger-panel, .trigger-arrow, .cause-copy > *, .cause-node, .cause-statement, .compare-card, .compare-swap, .impact-lead, .impact-item, .opportunity-card, .opportunity-mark, .risk-card, .watch-item, .verdict-copy > *, .verdict-mark { will-change: transform, opacity; }
+    </style>
+    <link rel="stylesheet" href="design-tokens.css" data-ipw-design-tokens="">
+  </head>
+  <body>
+    <main data-hf-id="hf-1x2o" id="root" data-composition-id="ai-trend-briefing" data-start="0" data-width="1920" data-height="1080" data-duration="60">
+      <div data-hf-id="hf-gc40" class="clip paper-layer" id="ambient-layer" data-start="0" data-duration="60" data-track-index="0"></div>
+      <header data-hf-id="hf-vcxt" class="masthead"><div data-hf-id="hf-oojr" class="brand"><img data-hf-id="hf-ykci" data-var-src="logoUrl" src="assets/ipollowork-logo.svg?v=20260729" alt="Brand logo"><span data-hf-id="hf-j551" data-var-text="brandName">iPolloWork Briefing</span></div><div data-hf-id="hf-pl59" class="issue" data-var-text="eventDate">2026.09 / SIGNAL 014</div></header>
+      <footer data-hf-id="hf-vadb" class="footer"><span data-hf-id="hf-k0mk">AI TREND BRIEFING · VERIFIED SIGNALS ONLY</span><div data-hf-id="hf-lxwj" class="progress-track"><i data-hf-id="hf-3x69" class="progress-fill"></i></div><span data-hf-id="hf-c38k" class="page-count">10 SCENES / 60 SEC</span></footer>
+      <section data-hf-id="hf-17qe" class="scene clip" id="scene-hook" data-ipw-scene="" data-start="0" data-duration="6" data-track-index="1"><div data-hf-id="hf-jcsv" class="scene-shell hook-shell"><div data-hf-id="hf-xc1l" class="hook-copy"><div data-hf-id="hf-b1sl" class="section-label">AI WATCH · 热点拆解</div><h1 data-hf-id="hf-rkyf" data-var-text="headline">AI Agent 正在接管浏览器</h1><p data-hf-id="hf-sk7k" class="body-copy" data-var-text="deck">从“回答问题”到“替你执行”，一次能力跃迁正在重写软件入口。</p></div><div data-hf-id="hf-gd30" class="hook-card"><div data-hf-id="hf-2txj" class="hook-chips"><span data-hf-id="hf-hf2l" class="hook-chip">WHAT</span><span data-hf-id="hf-jxa3" class="hook-chip">WHY NOW</span><span data-hf-id="hf-dvfa" class="hook-chip">WHAT NEXT</span></div><strong data-hf-id="hf-na0l">60 秒看懂一个 AI 热点</strong><i data-hf-id="hf-f49t" class="ipollo-glyph" aria-hidden="true"></i></div></div></section>
+      <section data-hf-id="hf-2l5n" class="scene clip" id="scene-summary" data-ipw-scene="" data-start="6" data-duration="5" data-track-index="2"><div data-hf-id="hf-1la0" class="scene-shell summary-shell"><div data-hf-id="hf-vbma" class="summary-number"><span data-hf-id="hf-sz0s" class="oversized-index">01</span></div><div data-hf-id="hf-1xqy" class="summary-copy"><div data-hf-id="hf-7r94" class="section-label">先看结论</div><h2 data-hf-id="hf-xspc">这次变化，核心不在“更会说”。</h2><p data-hf-id="hf-sgkw" class="body-copy" data-var-text="context">模型不再只生成建议，而是开始理解界面、调用工具并连续完成任务。</p><span data-hf-id="hf-pvm6" class="summary-rule"></span></div></div></section>
+      <section data-hf-id="hf-0c8w" class="scene clip" id="scene-signals" data-ipw-scene="" data-start="11" data-duration="6" data-track-index="3"><div data-hf-id="hf-pw03" class="scene-shell signals-shell"><div data-hf-id="hf-czbd" class="scene-heading"><div data-hf-id="hf-yeow"><div data-hf-id="hf-9m15" class="section-label">02 · 发生了什么</div><h2 data-hf-id="hf-29t7" class="display-title">三个信号，快速建立事实底座</h2></div><p data-hf-id="hf-if8z" class="body-copy">先事实，后判断。每一屏只保留一个能被核验的重点。</p></div><div data-hf-id="hf-3o1e" class="signals-layout"><article data-hf-id="hf-2xty" class="signal-card primary"><span data-hf-id="hf-sr24" class="signal-no">01</span><h2 data-hf-id="hf-nxvk" data-var-text="signalA">模型开始直接理解并操作网页界面</h2><i data-hf-id="hf-fzef" class="signal-line"></i></article><div data-hf-id="hf-qsef" class="signal-stack"><article data-hf-id="hf-w8p0" class="signal-card"><span data-hf-id="hf-rk51" class="signal-no">02</span><h2 data-hf-id="hf-offd" data-var-text="signalB">工具调用从单步指令走向连续任务</h2></article><article data-hf-id="hf-2hj0" class="signal-card"><span data-hf-id="hf-ryg2" class="signal-no">03</span><h2 data-hf-id="hf-2qlp" data-var-text="signalC">权限、可追溯与失败恢复成为新焦点</h2></article></div></div></div></section>
+      <section data-hf-id="hf-99ar" class="scene clip" id="scene-trigger" data-ipw-scene="" data-start="17" data-duration="5" data-track-index="4"><div data-hf-id="hf-jfew" class="scene-shell trigger-shell"><div data-hf-id="hf-yapq" class="trigger-copy"><div data-hf-id="hf-j6hn" class="section-label">03 · 关键变化</div><h2 data-hf-id="hf-6z3v" class="display-title" data-var-text="trigger">从生成答案，跨越到执行动作</h2><p data-hf-id="hf-dm6y" class="body-copy">能力边界改变，产品入口才会跟着改变。</p></div><div data-hf-id="hf-yx71" class="trigger-stage"><div data-hf-id="hf-bb3y" class="trigger-panel before"><small data-hf-id="hf-0xgw">BEFORE / 回答</small><strong data-hf-id="hf-jno7">给你建议</strong><span data-hf-id="hf-exu4" class="meta-pill">Text response</span></div><div data-hf-id="hf-uv4e" class="trigger-arrow">→</div><div data-hf-id="hf-8e2v" class="trigger-panel after"><small data-hf-id="hf-9fkm">AFTER / 执行</small><strong data-hf-id="hf-tund">替你完成</strong><span data-hf-id="hf-194a" class="meta-pill">Action loop</span></div></div></div></section>
+      <section data-hf-id="hf-kwue" class="scene clip" id="scene-cause" data-ipw-scene="" data-start="22" data-duration="6" data-track-index="5"><div data-hf-id="hf-aej1" class="scene-shell cause-shell"><div data-hf-id="hf-gul1" class="cause-copy"><div data-hf-id="hf-qftk" class="section-label">04 · 为什么是现在</div><h2 data-hf-id="hf-giy8" class="display-title">不是单点突破，是三条曲线同时越线</h2><p data-hf-id="hf-upjb" class="body-copy">把热点放回技术与产品演进的上下文。</p></div><div data-hf-id="hf-is5y" class="cause-board"><svg data-hf-id="hf-tk71" viewBox="0 0 1000 650" aria-hidden="true" data-layout-ignore=""><path data-hf-id="hf-qn95" class="cause-path" d="M185 280 C 330 116, 400 116, 500 280" /><path data-hf-id="hf-jsja" class="cause-path" d="M500 280 C 600 116, 670 116, 815 280" /></svg><div data-hf-id="hf-ohrh" class="cause-nodes"><div data-hf-id="hf-b2ii" class="cause-node"><div data-hf-id="hf-y7yw"><small data-hf-id="hf-vdht">MODEL</small><strong data-hf-id="hf-hoic">推理能力</strong></div></div><div data-hf-id="hf-bdb2" class="cause-node"><div data-hf-id="hf-x11t"><small data-hf-id="hf-56j4">PROTOCOL</small><strong data-hf-id="hf-iepj">工具协议</strong></div></div><div data-hf-id="hf-brm3" class="cause-node"><div data-hf-id="hf-xfcu"><small data-hf-id="hf-1l09">CONTROL</small><strong data-hf-id="hf-bc02">浏览器控制</strong></div></div></div><div data-hf-id="hf-ir67" class="cause-statement" data-var-text="cause">推理能力 × 工具协议 × 浏览器控制同时成熟</div></div></div></section>
+      <section data-hf-id="hf-6cbl" class="scene clip" id="scene-compare" data-ipw-scene="" data-start="28" data-duration="6" data-track-index="6"><div data-hf-id="hf-egn5" class="scene-shell compare-shell"><div data-hf-id="hf-glh9" class="scene-heading"><div data-hf-id="hf-w8fr"><div data-hf-id="hf-3flo" class="section-label">05 · 交互迁移</div><h2 data-hf-id="hf-bwms" class="display-title">同一件事，两种完全不同的路径</h2></div><p data-hf-id="hf-piox" class="body-copy" data-var-text="impact">软件入口从“点按钮”转向“说目标”</p></div><div data-hf-id="hf-axci" class="compare-grid"><article data-hf-id="hf-xkzq" class="compare-card before"><small data-hf-id="hf-2jx1">01 / BEFORE</small><strong data-hf-id="hf-ao37" data-var-text="beforeState">用户寻找入口、理解规则、逐步点击</strong><span data-hf-id="hf-54pi">BUTTON → FORM → RESULT</span></article><div data-hf-id="hf-w38b" class="compare-swap">→</div><article data-hf-id="hf-i1vz" class="compare-card after"><small data-hf-id="hf-2k31">02 / AFTER</small><strong data-hf-id="hf-7izc" data-var-text="afterState">用户描述目标，Agent 规划并执行流程</strong><span data-hf-id="hf-whj1">GOAL → PLAN → ACTION</span></article></div></div></section>
+      <section data-hf-id="hf-992q" class="scene clip" id="scene-impact" data-ipw-scene="" data-start="34" data-duration="6" data-track-index="7"><div data-hf-id="hf-3l4s" class="scene-shell impact-shell"><div data-hf-id="hf-2csl" class="impact-lead"><div data-hf-id="hf-wmqs"><div data-hf-id="hf-ehcu" class="section-label">06 · 影响谁</div><h2 data-hf-id="hf-sx2w" data-var-text="impact">软件入口从“点按钮”转向“说目标”</h2></div><div data-hf-id="hf-ki90" class="impact-count"><strong data-hf-id="hf-fem3">3</strong><span data-hf-id="hf-hnhv">类角色需要重新理解“软件入口”</span></div></div><div data-hf-id="hf-d3nv" class="impact-list"><div data-hf-id="hf-4d0a" class="impact-item"><span data-hf-id="hf-p81i">01</span><strong data-hf-id="hf-7z2j">普通用户</strong><small data-hf-id="hf-8alc">操作方式改变</small></div><div data-hf-id="hf-fnjy" class="impact-item"><span data-hf-id="hf-pmcj">02</span><strong data-hf-id="hf-v0d8">软件团队</strong><small data-hf-id="hf-y4dy">入口价值重估</small></div><div data-hf-id="hf-g1uz" class="impact-item"><span data-hf-id="hf-q0nk">03</span><strong data-hf-id="hf-fhg8">企业组织</strong><small data-hf-id="hf-purs">治理边界前移</small></div></div></div></section>
+      <section data-hf-id="hf-b1iz" class="scene clip" id="scene-opportunity" data-ipw-scene="" data-start="40" data-duration="6" data-track-index="8"><div data-hf-id="hf-6lb3" class="scene-shell opportunity-shell"><div data-hf-id="hf-8tfu" class="opportunity-card"><div data-hf-id="hf-vftp"><div data-hf-id="hf-2i54" class="section-label">07 · 机会</div><h2 data-hf-id="hf-gxmi" data-var-text="opportunity">围绕目标重组产品入口、工作流与服务方式</h2></div><div data-hf-id="hf-vhx7" class="opportunity-tags"><span data-hf-id="hf-bbjx">入口</span><span data-hf-id="hf-vv37">工作流</span><span data-hf-id="hf-ga8n">新产品</span></div></div><div data-hf-id="hf-yl7v" class="opportunity-mark"><i data-hf-id="hf-f59x" class="ipollo-glyph" aria-hidden="true"></i><span data-hf-id="hf-e7zb">OPPORTUNITY / 机会窗口</span></div></div></section>
+      <section data-hf-id="hf-oka9" class="scene clip" id="scene-watch" data-ipw-scene="" data-start="46" data-duration="7" data-track-index="9"><div data-hf-id="hf-2ht1" class="scene-shell watch-shell"><div data-hf-id="hf-hsec" class="scene-heading"><div data-hf-id="hf-vu4q"><div data-hf-id="hf-ivun" class="section-label">08 · 风险与观察</div><h2 data-hf-id="hf-6og1" class="display-title">热度之外，更值得看的三条线</h2></div><p data-hf-id="hf-5i6t" class="body-copy">不只问“能不能”，还要问“能不能稳定地做对”。</p></div><div data-hf-id="hf-l7me" class="watch-grid"><article data-hf-id="hf-5nkj" class="risk-card"><div data-hf-id="hf-1043"><small data-hf-id="hf-7172">RISK / 关键风险</small><h2 data-hf-id="hf-feew" data-var-text="risk">误操作、权限边界与责任归属仍未解决</h2></div><p data-hf-id="hf-ovkl" data-var-text="watchpoint">可靠性是否能跨过真实生产门槛</p></article><div data-hf-id="hf-1wii" class="watch-list"><div data-hf-id="hf-5fcb" class="watch-item"><span data-hf-id="hf-ivdm">01</span><div data-hf-id="hf-1ef4"><strong data-hf-id="hf-rcda">可靠性</strong><em data-hf-id="hf-132w">复杂任务的成功率是否持续提升</em></div></div><div data-hf-id="hf-ctl7" class="watch-item"><span data-hf-id="hf-v3ab">02</span><div data-hf-id="hf-c4s8"><strong data-hf-id="hf-x0td">权限</strong><em data-hf-id="hf-74c8">每一步动作是否可控、可追溯</em></div></div><div data-hf-id="hf-cfa6" class="watch-item"><span data-hf-id="hf-82i0">03</span><div data-hf-id="hf-bqh7"><strong data-hf-id="hf-dq4l">责任边界</strong><em data-hf-id="hf-zcab">失败时谁判断、谁确认、谁负责</em></div></div></div></div></div></section>
+      <section data-hf-id="hf-jnff" class="scene clip" id="scene-verdict" data-ipw-scene="" data-start="53" data-duration="7" data-track-index="10"><div data-hf-id="hf-yfu3" class="scene-shell verdict-shell"><div data-hf-id="hf-xsvn" class="verdict-copy"><div data-hf-id="hf-zhfz" class="section-label">09 · 一句话判断</div><h2 data-hf-id="hf-czzy" data-var-text="verdict">这不是更聪明的聊天框，而是新的操作层。</h2><span data-hf-id="hf-83z3" class="verdict-line"></span><p data-hf-id="hf-e7ic" class="verdict-source" data-var-text="source">资料来源：官方发布 / 产品文档 / 行业观察</p></div><div data-hf-id="hf-drmv" class="verdict-mark"><i data-hf-id="hf-gc70" class="ipollo-glyph" aria-hidden="true"></i><span data-hf-id="hf-a1xu">iPolloWork · MAKE WORK MOVE</span></div></div></section>
+    </main>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo('.progress-fill', { scaleX: 0 }, { scaleX: 1, duration: 59.7, ease: 'none' }, 0.15);
+      tl.fromTo('#scene-hook .section-label', { opacity: 0, x: -50 }, { opacity: 1, x: 0, duration: .42, ease: 'power3.out' }, .14);
+      tl.fromTo('#scene-hook h1', { opacity: 0, x: -96 }, { opacity: 1, x: 0, duration: .68, ease: 'expo.out' }, .24);
+      tl.fromTo('#scene-hook .body-copy', { opacity: 0, y: 42 }, { opacity: 1, y: 0, duration: .54, ease: 'power2.out' }, .5);
+      tl.fromTo('#scene-hook .hook-card', { opacity: 0, scale: .86, rotation: 4 }, { opacity: 1, scale: 1, rotation: 0, duration: .72, ease: 'back.out(1.35)' }, .28);
+      tl.fromTo('#scene-hook .hook-chip', { opacity: 0, y: -18 }, { opacity: 1, y: 0, duration: .34, stagger: .1, ease: 'power2.out' }, .7);
+      tl.fromTo('#scene-summary .summary-number', { opacity: 0, scale: .78 }, { opacity: 1, scale: 1, duration: .58, ease: 'back.out(1.25)' }, 6.14);
+      tl.fromTo('#scene-summary .section-label', { opacity: 0, x: 46 }, { opacity: 1, x: 0, duration: .38, ease: 'power2.out' }, 6.24);
+      tl.fromTo('#scene-summary h2', { opacity: 0, y: 76 }, { opacity: 1, y: 0, duration: .66, ease: 'expo.out' }, 6.32);
+      tl.fromTo('#scene-summary .body-copy', { opacity: 0, x: 58 }, { opacity: 1, x: 0, duration: .5, ease: 'power3.out' }, 6.7);
+      tl.fromTo('#scene-summary .summary-rule', { scaleX: 0 }, { scaleX: 1, duration: .64, ease: 'power2.out' }, 7.02);
+      tl.fromTo('#scene-signals .scene-heading > div', { opacity: 0, y: 46 }, { opacity: 1, y: 0, duration: .54, ease: 'power3.out' }, 11.12);
+      tl.fromTo('#scene-signals .scene-heading > p', { opacity: 0, x: 54 }, { opacity: 1, x: 0, duration: .46, ease: 'power2.out' }, 11.26);
+      tl.fromTo('#scene-signals .signal-card.primary', { opacity: 0, x: -72 }, { opacity: 1, x: 0, duration: .62, ease: 'expo.out' }, 11.36);
+      tl.fromTo('#scene-signals .signal-stack .signal-card', { opacity: 0, x: 72 }, { opacity: 1, x: 0, duration: .5, stagger: .14, ease: 'power3.out' }, 11.5);
+      tl.fromTo('#scene-signals .signal-line', { scaleX: 0 }, { scaleX: 1, duration: .74, ease: 'power2.out' }, 12.02);
+      tl.fromTo('#scene-trigger .section-label', { opacity: 0, x: -42 }, { opacity: 1, x: 0, duration: .38, ease: 'power2.out' }, 17.12);
+      tl.fromTo('#scene-trigger h2', { opacity: 0, y: 58 }, { opacity: 1, y: 0, duration: .6, ease: 'expo.out' }, 17.22);
+      tl.fromTo('#scene-trigger .body-copy', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .42, ease: 'power3.out' }, 17.54);
+      tl.fromTo('#scene-trigger .trigger-panel.before', { opacity: 0, x: -86 }, { opacity: 1, x: 0, duration: .58, ease: 'power3.out' }, 17.3);
+      tl.fromTo('#scene-trigger .trigger-panel.after', { opacity: 0, x: 86 }, { opacity: 1, x: 0, duration: .64, ease: 'back.out(1.2)' }, 17.48);
+      tl.fromTo('#scene-trigger .trigger-arrow', { opacity: 0, scale: .45 }, { opacity: 1, scale: 1, duration: .42, ease: 'back.out(1.8)' }, 17.82);
+      document.querySelectorAll('.cause-path').forEach((path) => { const length = path.getTotalLength(); path.style.strokeDasharray = String(length); path.style.strokeDashoffset = String(length); });
+      tl.fromTo('#scene-cause .cause-copy', { opacity: 0, x: -62 }, { opacity: 1, x: 0, duration: .58, ease: 'expo.out' }, 22.12);
+      tl.fromTo('#scene-cause .cause-board', { opacity: 0, scale: .94 }, { opacity: 1, scale: 1, duration: .52, ease: 'power3.out' }, 22.22);
+      tl.fromTo('#scene-cause .cause-node', { opacity: 0, scale: .2 }, { opacity: 1, scale: 1, duration: .54, stagger: .1, ease: 'back.out(1.5)' }, 22.42);
+      tl.to('#scene-cause .cause-path', { strokeDashoffset: 0, duration: .92, stagger: .12, ease: 'power2.out' }, 22.48);
+      tl.fromTo('#scene-cause .cause-statement', { opacity: 0, y: 32 }, { opacity: 1, y: 0, duration: .46, ease: 'power3.out' }, 23.08);
+      tl.fromTo('#scene-compare .scene-heading > div', { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: .52, ease: 'power3.out' }, 28.12);
+      tl.fromTo('#scene-compare .scene-heading > p', { opacity: 0, x: 54 }, { opacity: 1, x: 0, duration: .42, ease: 'power2.out' }, 28.26);
+      tl.fromTo('#scene-compare .compare-card.before', { opacity: 0, x: -90 }, { opacity: 1, x: 0, duration: .58, ease: 'expo.out' }, 28.4);
+      tl.fromTo('#scene-compare .compare-card.after', { opacity: 0, x: 90 }, { opacity: 1, x: 0, duration: .66, ease: 'back.out(1.18)' }, 28.58);
+      tl.fromTo('#scene-compare .compare-swap', { opacity: 0, scale: .35 }, { opacity: 1, scale: 1, duration: .42, ease: 'back.out(1.7)' }, 28.9);
+      tl.fromTo('#scene-impact .impact-lead', { opacity: 0, x: -78 }, { opacity: 1, x: 0, duration: .64, ease: 'expo.out' }, 34.12);
+      tl.fromTo('#scene-impact .impact-count strong', { opacity: 0, scale: .58 }, { opacity: 1, scale: 1, duration: .48, ease: 'back.out(1.45)' }, 34.6);
+      tl.fromTo('#scene-impact .impact-item', { opacity: 0, x: 88 }, { opacity: 1, x: 0, duration: .52, stagger: .14, ease: 'power3.out' }, 34.3);
+      tl.fromTo('#scene-opportunity .opportunity-card', { opacity: 0, scale: .92 }, { opacity: 1, scale: 1, duration: .62, ease: 'expo.out' }, 40.12);
+      tl.fromTo('#scene-opportunity .section-label', { opacity: 0, x: -44 }, { opacity: 1, x: 0, duration: .38, ease: 'power2.out' }, 40.28);
+      tl.fromTo('#scene-opportunity h2', { opacity: 0, y: 64 }, { opacity: 1, y: 0, duration: .62, ease: 'power3.out' }, 40.4);
+      tl.fromTo('#scene-opportunity .opportunity-tags span', { opacity: 0, scale: .65 }, { opacity: 1, scale: 1, duration: .38, stagger: .1, ease: 'back.out(1.5)' }, 40.84);
+      tl.fromTo('#scene-opportunity .opportunity-mark', { opacity: 0, x: 92, rotation: 3 }, { opacity: 1, x: 0, rotation: 0, duration: .68, ease: 'back.out(1.18)' }, 40.26);
+      tl.fromTo('#scene-watch .scene-heading > div', { opacity: 0, y: 44 }, { opacity: 1, y: 0, duration: .52, ease: 'power3.out' }, 46.12);
+      tl.fromTo('#scene-watch .scene-heading > p', { opacity: 0, x: 54 }, { opacity: 1, x: 0, duration: .42, ease: 'power2.out' }, 46.26);
+      tl.fromTo('#scene-watch .risk-card', { opacity: 0, x: -72 }, { opacity: 1, x: 0, duration: .62, ease: 'expo.out' }, 46.38);
+      tl.fromTo('#scene-watch .watch-item', { opacity: 0, x: 78 }, { opacity: 1, x: 0, duration: .48, stagger: .13, ease: 'power3.out' }, 46.52);
+      tl.fromTo('#scene-verdict .section-label', { opacity: 0, x: -48 }, { opacity: 1, x: 0, duration: .42, ease: 'power2.out' }, 53.14);
+      tl.fromTo('#scene-verdict h2', { opacity: 0, y: 74 }, { opacity: 1, y: 0, duration: .72, ease: 'expo.out' }, 53.24);
+      tl.fromTo('#scene-verdict .verdict-line', { scaleX: 0 }, { scaleX: 1, duration: .62, ease: 'power2.out' }, 53.82);
+      tl.fromTo('#scene-verdict .verdict-source', { opacity: 0, x: 44 }, { opacity: 1, x: 0, duration: .44, ease: 'power3.out' }, 54.08);
+      tl.fromTo('#scene-verdict .verdict-mark', { opacity: 0, scale: .82, rotation: 3 }, { opacity: 1, scale: 1, rotation: 0, duration: .72, ease: 'back.out(1.25)' }, 53.34);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["ai-trend-briefing"] = tl;
+    </script>
+  </body>
+</html>

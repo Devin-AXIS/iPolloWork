@@ -1,5 +1,6 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
+import { settingsStandardContentClass } from "@/react-app/domains/settings/shell/panel";
 
 export interface LayoutStackProps {
   children: React.ReactNode;
@@ -7,7 +8,7 @@ export interface LayoutStackProps {
 }
 
 export function LayoutStack({ children, className }: LayoutStackProps) {
-  return <div className={cn("@container/settings flex w-full max-w-3xl flex-col gap-y-6", className)}>{children}</div>;
+  return <div className={cn(settingsStandardContentClass, "@container/settings flex flex-col gap-y-6", className)}>{children}</div>;
 }
 
 interface LayoutSectionProps {
@@ -41,7 +42,7 @@ interface LayoutSectionTitleProps {
 
 export function LayoutSectionTitle({ children, className }: LayoutSectionTitleProps) {
   return (
-    <h3 className={cn("flex items-center gap-2 text-base font-medium text-foreground", className)}>
+    <h3 className={cn("flex items-center gap-2 text-ui-body font-semibold text-foreground", className)}>
       {children}
     </h3>
   );
@@ -54,7 +55,7 @@ interface LayoutSectionDescriptionProps {
 
 export function LayoutSectionDescription({ children, className }: LayoutSectionDescriptionProps) {
   return (
-    <p className={cn("text-sm text-muted-foreground", className)}>
+    <p className={cn("settings-description text-ui-control leading-5 text-muted-foreground", className)}>
       {children}
     </p>
   );
@@ -106,7 +107,7 @@ interface LayoutSectionItemTitleProps {
 
 export function LayoutSectionItemTitle({ children, className }: LayoutSectionItemTitleProps) {
   return (
-    <h4 data-slot="item-title" className={cn("flex items-center gap-2 text-base font-medium text-foreground group-data-section/section:text-sm", className)}>
+    <h4 data-slot="item-title" className={cn("flex items-center gap-2 text-ui-body font-semibold text-foreground", className)}>
       {children}
     </h4>
   );
@@ -119,7 +120,7 @@ interface LayoutSectionItemDescriptionProps {
 
 export function LayoutSectionItemDescription({ children, className }: LayoutSectionItemDescriptionProps) {
   return (
-    <p data-slot="item-description" className={cn("text-sm text-muted-foreground", className)}>
+    <p data-slot="item-description" className={cn("settings-description text-ui-control leading-5 text-muted-foreground", className)}>
       {children}
     </p>
   );
@@ -158,7 +159,7 @@ interface LayoutSectionItemFootnoteProps {
 
 export function LayoutSectionItemFootnote({ children, className }: LayoutSectionItemFootnoteProps) {
   return (
-    <p className={cn("text-xs text-muted-foreground", className)}>
+    <p className={cn("text-ui-compact text-muted-foreground", className)}>
       {children}
     </p>
   );

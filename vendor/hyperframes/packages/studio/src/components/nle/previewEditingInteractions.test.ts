@@ -111,6 +111,10 @@ describe("preview editing interactions", () => {
     expect(emptyStateSource).toContain(
       "const showMultiSelect = STUDIO_MULTI_SELECTION_ENABLED && multiSelectCount > 1",
     );
+    expect(emptyStateSource).not.toContain('tx("Record a gesture")');
+    expect(emptyStateSource).not.toContain('text-panel-danger">●');
+    expect(emptyStateSource).not.toContain('tx("Describe a change to the agent")');
+    expect(emptyStateSource).not.toContain("⌘K");
     expect(previewOverlaysSource).toContain(
       "STUDIO_MULTI_SELECTION_ENABLED ? applyMarqueeSelection : undefined",
     );
@@ -223,18 +227,18 @@ describe("preview editing interactions", () => {
   it("uses a visible proof frame when a timeline selection lands on a clip boundary", () => {
     expect(
       resolveTimelineSelectionSeekTime(0, {
-        id: "effect-ending-bilibili-triple",
+        id: "route-map",
         start: 0,
         duration: 3.4,
-        compositionSrc: "compositions/effects/effect-ending-bilibili-triple.html",
+        compositionSrc: "compositions/components/route-map.html",
       }),
     ).toBe(1.7);
     expect(
       resolveTimelineSelectionSeekTime(8, {
-        id: "effect-transition-iris-pulse",
+        id: "timeline-overlay",
         start: 3,
         duration: 1.1,
-        timelineKind: "effect",
+        timelineKind: "html",
       }),
     ).toBeCloseTo(3.55);
     expect(resolveTimelineSelectionSeekTime(0, { start: 0, duration: 3.4 })).toBe(1.7);
@@ -312,8 +316,9 @@ describe("preview editing interactions", () => {
     expect(editorShellSource).toContain("onPreviewAssetDrop={handlePreviewAssetDrop}");
     expect(editorShellSource).toContain("onPreviewBlockDrop={onPreviewBlockDrop}");
     expect(assetCardSource).toContain("setData(TIMELINE_ASSET_MIME");
-    expect(assetCardSource).toContain("HtmlIllustrationPreview");
-    expect(catalogSource).toContain("setData(TIMELINE_BLOCK_MIME");
+    expect(catalogSource).toContain("event.dataTransfer.setData(");
+    expect(catalogSource).toContain("TIMELINE_BLOCK_MIME,");
+    expect(catalogSource).toContain("dimensions: block.dimensions");
     expect(catalogSource).toContain("src={compositionPlaybackUrl}");
     expect(catalogSource).toContain("setPreviewing(true)");
     expect(previewOverlaySource).not.toContain("blockPreview");
@@ -394,28 +399,22 @@ describe("preview editing interactions", () => {
     expect(source).toContain("width: ${geometry.width}px");
     expect(source).toContain("height: ${geometry.height}px");
     expect(source).toContain('id="${input.id}" data-hf-id="${input.hfId}"');
-    expect(source).toContain('input.kind === "html"');
-    expect(source).toContain("pointer-events: none; position: absolute");
-    expect(getTimelineAssetKind("assets/video-illustrations/idea.html")).toBe("html");
-    const htmlAsset = buildTimelineAssetInsertHtml({
-      id: "idea",
-      hfId: "hf-idea",
-      assetPath: "assets/video-illustrations/idea.html",
-      kind: "html",
+    expect(source).not.toContain('input.kind === "html"');
+    expect(getTimelineAssetKind("assets/embed.html")).toBeNull();
+    const imageAsset = buildTimelineAssetInsertHtml({
+      id: "cover",
+      hfId: "hf-cover",
+      assetPath: "assets/cover.png",
+      kind: "image",
       start: 0,
       duration: 5,
       track: 0,
       zIndex: 2,
       geometry: { left: 120, top: 80, width: 480, height: 270 },
     });
-    expect(htmlAsset).toContain("<iframe");
-    expect(htmlAsset).toContain("left: 120px");
-    expect(htmlAsset).toContain("width: 480px");
-    expect(htmlAsset).toContain('data-hf-lock-aspect-ratio="16:9"');
-    expect(htmlAsset).toContain('data-hf-asset-kind="html"');
-    expect(htmlAsset).toContain('width="1600" height="900"');
-    expect(htmlAsset).toContain("new ResizeObserver(r)");
-    expect(htmlAsset).toContain("p.clientWidth/1600");
+    expect(imageAsset).toContain("<img");
+    expect(imageAsset).toContain("left: 120px");
+    expect(imageAsset).toContain("width: 480px");
   });
 
   it("uploads OS files dropped anywhere in the right-side assets area", () => {
@@ -424,9 +423,9 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain('e.dataTransfer.types.includes("Files")');
     expect(assetsSource).toContain("onImport?.(e.dataTransfer.files)");
     expect(assetsSource).toContain("Drop files to upload");
-    expect(assetsSource).toContain('title={tx("Source selection is not available yet")}');
-    expect(assetsSource).toContain("disabled");
-    expect(assetsSource).toContain("Project 01");
+    expect(assetsSource).not.toContain("Source selection is not available yet");
+    expect(assetsSource).not.toContain("Project 01");
+    expect(assetsSource).toContain('type="search"');
     expect(assetsSource).toContain("bg-[#171816] text-[#ffffff]");
     expect(assetsSource).not.toContain("bg-[#2c2d2a] text-white");
     expect(assetsSource).toContain("flex h-full min-h-0 flex-1 flex-col overflow-hidden");
@@ -436,7 +435,7 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("window.setInterval(refreshVisibleAssets, 2500)");
     expect(assetsSource).toContain("figmaAssetsImport.svg?url");
     expect(assetsSource).toContain("figmaAssetsSearch.svg?url");
-    expect(assetsSource).toContain("<select");
+    expect(assetsSource).not.toContain("<select");
     expect(assetsSource).toContain('className="flex h-[34px] w-auto flex-none');
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
@@ -446,7 +445,7 @@ describe("preview editing interactions", () => {
     );
     expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
     expect(assetsSource).not.toContain("const categoryLabels:");
-    expect(assetsSource).toContain("CaretDown");
+    expect(assetsSource).toContain("ChevronDown");
     expect(assetsSource).not.toContain("timelineChevronDown.svg?url");
     expect(assetsSource).toContain("e.stopPropagation()");
     expect(assetsSource).not.toContain("grid-cols-[minmax(0,194px)_104px]");
@@ -483,6 +482,21 @@ describe("preview editing interactions", () => {
     expect(source).not.toContain("beginDragSelection");
     expect(source).not.toContain("TextSelectionDrag");
     expect(styleSource).toMatch(/\.hf-preview-text-toolbar__input\s*\{[\s\S]*?color:\s*#18181b;/);
+  });
+
+  it("uses Lucide icons throughout the selected-element toolbar", () => {
+    const source = readFileSync(
+      new URL("./PreviewTextSelectionToolbar.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('from "lucide-react"');
+    expect(source).not.toContain('@phosphor-icons/react');
+    expect(source).toContain('<SlidersHorizontal size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Sparkles size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Video size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Image size={18} strokeWidth={1.75}');
+    expect(source).toContain('<Trash2 size={18} strokeWidth={1.75}');
   });
 
   it("hides inline rich-text actions from the selected-element toolbar", () => {

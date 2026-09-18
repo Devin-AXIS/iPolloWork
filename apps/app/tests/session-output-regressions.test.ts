@@ -1,12 +1,345 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import { formatProcessDuration } from "../src/components/chat/utils";
+import { runInNewContext } from "node:vm";
+import {
+  artifactRequestNamingContext,
+  buildWorkspaceFileTree,
+  filterWorkspaceFileTree,
+} from "../src/components/chat/artifact";
+import {
+  artifactCardDescription,
+  artifactCardTitle,
+  formatProcessDuration,
+  getAssistantProcessState,
+  stripArtifactPathLines,
+} from "../src/components/chat/utils";
+import type { ArtifactItem } from "../src/lib/artifacts";
 
 describe("session output issue regressions", () => {
+  test("new conversations can open, close and reopen the launcher without a session", () => {
+    const source = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
+    const callback = source.slice(source.indexOf("const toggleRightPanel = useCallback(() => {") + "const toggleRightPanel = useCallback(() => {".length, source.indexOf("  const openDesignRailPane =", source.indexOf("const toggleRightPanel =")));
+    const body = callback.slice(0, callback.lastIndexOf("}, ["));
+    const opened: string[] = [];
+    const props: { selectedSessionId: string | null } = { selectedSessionId: null };
+    const state = {
+      props, sidePanelOpen: false,
+      effectiveSidePanelView: "",
+      lastRightPanelViewRef: { current: "panel" },
+      userOpenedSidebarWhileNarrowRef: { current: false },
+      userOpenedSidePanelWhileNarrowRef: { current: false },
+      autoCollapsedSidePanelRef: { current: null },
+      setSessionPanelView: (view: string) => { opened.push(view); state.sidePanelOpen = true; state.effectiveSidePanelView = view; },
+      setCurrentSidePanel: (view: string) => opened.push(view),
+      closeRightPane: () => { state.sidePanelOpen = false; state.effectiveSidePanelView = ""; },
+    };
+    const toggle = () => runInNewContext(`(() => {${body}})()`, state);
+    toggle();
+    expect(opened).toEqual(["launcher"]);
+    toggle();
+    expect(state.sidePanelOpen).toBe(false);
+    toggle();
+    expect(opened).toEqual(["launcher", "launcher"]);
+    expect(state.props.selectedSessionId).toBeNull();
+    state.sidePanelOpen = false;
+    state.props.selectedSessionId = "existing-session";
+    state.lastRightPanelViewRef.current = "panel";
+    toggle();
+    expect(opened.at(-1)).toBe("panel");
+    expect(source).not.toContain('disabled={!props.selectedSessionId && !sidePanelOpen}');
+    expect(source).toContain('!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher"');
+  });
+  test("keeps one HTML delivery card while retaining images and contextual links", () => {
+    const path = "video/session-1/index.html";
+    const href = "/Users/test/Library/Application%20Support/project/" + path;
+    expect(stripArtifactPathLines(`已完成。\n\n- [视频项目](${href})\n- [主视觉](artifacts/hero.png)`, [path])).toBe("已完成。\n\n- [主视觉](artifacts/hero.png)");
+    expect(stripArtifactPathLines(`[视频项目](<${href}>)`, [path])).toBe("");
+    expect(stripArtifactPathLines(`[另一项目](video/session-2/index.html)`, [path])).toBe("[另一项目](video/session-2/index.html)");
+    expect(stripArtifactPathLines(`请打开[视频项目](${path})查看动画。`, [path])).toBe("请打开视频项目查看动画。");
+    expect(stripArtifactPathLines(`[视频项目](${path})`, [])).toBe(`[视频项目](${path})`);
+  });
+  test("keeps inline delivery wording without rendering a second card for the same file", () => {
+    for (const path of ["design/session/entry.html", "exports/slides.pptx", "exports/report.pdf", "artifacts/hero.png"]) {
+      expect(stripArtifactPathLines(`演示已完成：[预览时机验证](${path})。`, [path])).toBe("演示已完成：预览时机验证。");
+      expect(stripArtifactPathLines(`[结果](${path})`, [path])).toBe("");
+      expect(stripArtifactPathLines(`![图片](${path})`, [path])).toBe(`![图片](${path})`);
+      expect(stripArtifactPathLines(`结果：[预览](${path})`, [])).toBe(`结果：[预览](${path})`);
+    }
+    expect(stripArtifactPathLines("已完成：[演示](design/session/entry.html)，参考[数据](design/session/data.csv)。", ["design/session/entry.html"])).toBe("已完成：演示，参考[数据](design/session/data.csv)。");
+    expect(stripArtifactPathLines("已完成：[演示](design/session/brand%20deck.html#slide-1)。", ["design/session/brand deck.html"])).toBe("已完成：演示。");
+    expect(stripArtifactPathLines("已完成：[演示](<design/session/brand deck.html>)。", ["design/session/brand deck.html"])).toBe("已完成：演示。");
+    expect(stripArtifactPathLines("请查看[帮助](https://example.com/help)与[其他文件](other.pdf)。", ["result.pdf"])).toBe("请查看[帮助](https://example.com/help)与[其他文件](other.pdf)。");
+  });
+
+  test("output bundles expand and media files route separately from HTML studios", () => {
+    const artifactSource = readFileSync(new URL("../src/components/chat/artifact.tsx", import.meta.url), "utf8");
+    const sessionPageSource = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
+    expect(artifactSource).toContain("count: outputGroups.length");
+    expect(artifactSource).toContain("<details");
+    expect(artifactSource).toContain("group.artifacts.slice(1).map");
+    expect(artifactSource).toContain('artifact.type === "video") && canOpenArtifact(artifact)');
+    expect(sessionPageSource).toContain('mediaKindForPath(target.value) === "video"');
+    expect(sessionPageSource).toContain('openWorkspaceAppForPlugin("video-console", {');
+    expect(sessionPageSource).toContain('intent: "edit-video"');
+    expect(sessionPageSource).toContain("await openImageStudio(target, sourceId ?? undefined)");
+    expect(sessionPageSource).toContain("openMediaEditResult(props.runtimeWorkspaceId, sessionId, target.value, surface)");
+    expect(sessionPageSource).toContain('options?.viewer === "video" && videoArtifactSessionId');
+  });
+  test("empty projects hide task controls and render the no-task state", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const chineseLocaleSource = readFileSync(
+      new URL("../src/i18n/locales/zh.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const showProjectNoTasksState = Boolean(");
+    expect(sessionPageSource).toContain("const hasSelectedTask = Boolean(props.selectedSessionId && props.selectedSessionKnown);");
+    expect(sessionPageSource).toContain("&& !props.selectedSessionId");
+    expect(sessionPageSource).toContain('selectedWorkspaceProject?.status === "ready"');
+    expect(sessionPageSource).toContain("selectedWorkspaceProject.sessions.length === 0");
+    expect(sessionPageSource).not.toContain("{mainHeaderHidden && !showProjectNoTasksState ? (");
+    expect(sessionPageSource).toContain(") : hasSelectedTask ? (");
+    expect(sessionPageSource).toContain('{t("workspace.no_tasks")}');
+    expect(sessionPageSource).not.toContain("[border-bottom-width:0.5px] dark:border-white/[0.06] dark:bg-background/72");
+    expect(sessionPageSource).not.toContain("shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]");
+    expect(chineseLocaleSource).toContain('"workspace.no_tasks": "没有任务"');
+
+    const sessionRouteSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(sessionRouteSource).toContain("selectedSessionKnown={selectedSessionKnown}");
+  });
+
+  test("moves engine metadata to project actions and shows context health in the composer", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionRouteSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const conversationEngineSource = readFileSync(
+      new URL("../src/react-app/domains/session/engine/conversation-engine.ts", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).not.toContain("function ProjectEngineBadge");
+    expect(sessionPageSource).not.toContain("composerEndAccessory={(");
+    expect(sessionPageSource).not.toContain('testId="session-composer-engine-badge"');
+    expect(sidebarSource).toContain("function workspaceEngineLabel");
+    expect(sidebarSource).toContain('data-testid="project-engine-menu-info"');
+    expect(sidebarSource).toContain('<span className="truncate">{workspaceEngineLabel(workspace.engineId)}</span>');
+    expect(sessionPageSource).not.toContain("SessionEngineBadge");
+    expect(composerSource).toContain('data-testid="composer-context-health"');
+    expect(conversationEngineSource).toContain("CONTEXT_COMPRESSION_WARNING_PERCENT = 80");
+    expect(composerSource).toContain('t("composer.context_compression_warning")');
+    expect(sessionPageSource).not.toContain('className="pointer-events-none hidden md:flex md:justify-self-center"');
+    expect(sessionRouteSource).toContain("modelContextWindow: selectedModelContextWindow");
+  });
+
+  test("switches task files between the full workspace tree and key outputs", () => {
+    const artifactSource = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const designPanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const tree = buildWorkspaceFileTree([
+      { path: "design/session-1/entry.html", kind: "file", size: 120, mtimeMs: 1, revision: "a" },
+      { path: "design/session-1/export/deck.pptx", kind: "file", size: 220, mtimeMs: 2, revision: "b" },
+      { path: "src/main.tsx", kind: "file", size: 320, mtimeMs: 3, revision: "c" },
+    ]);
+
+    expect(tree.map((node) => node.name)).toEqual(["design", "src"]);
+    expect(filterWorkspaceFileTree(tree, "deck")).toEqual([
+      expect.objectContaining({
+        name: "design",
+        children: [expect.objectContaining({ name: "session-1" })],
+      }),
+    ]);
+    expect(artifactSource).toContain('data-testid="conversation-files-mode-directory"');
+    expect(artifactSource).toContain('data-testid="conversation-files-mode-outputs"');
+    expect(artifactSource).toContain('<TooltipContent>{t("session.files.open")}</TooltipContent>');
+    expect(artifactSource).toContain('<FileOutput className="!size-[15px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(artifactSource).toContain('data-testid="conversation-files-popover"');
+    expect(artifactSource).toContain('data-testid="conversation-files-panel"');
+    expect(artifactSource).not.toContain("rounded-3xl border border-border/80 bg-card shadow-sm");
+    expect(artifactSource).toContain("onOpenChange(false);");
+    expect(artifactSource).not.toContain('active && "bg-muted text-foreground"');
+    expect(artifactSource).not.toContain('<ListTree className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).not.toContain('<Sparkles className="size-4 text-current" strokeWidth={1.75} />');
+    expect(artifactSource).toContain('className="h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"');
+    expect(artifactSource).toContain('grid-cols-[1fr_auto_1fr]');
+    expect(artifactSource).toContain('w-[min(440px,calc(100vw-2rem))] max-h-[min(70vh,560px)]');
+    expect(artifactSource).toContain('onClose={() => onOpenChange(false)}');
+    expect(artifactSource).not.toContain("tile?: boolean");
+    expect(artifactSource).not.toContain("tile={!popover}");
+    expect(artifactSource).not.toContain("hover:-translate-y-px");
+    expect(artifactSource).not.toContain("hover:shadow-sm");
+    expect(artifactSource).toContain('data-testid="artifact-file-card"');
+    expect(artifactSource).toContain('group-hover/output:pointer-events-auto');
+    expect(artifactSource).toContain('t("session.outputs.copy_path")');
+    expect(artifactSource).toContain("client.downloadWorkspaceFile(workspaceId, artifact.path)");
+    expect(sessionPageSource).toContain('<SidebarRightToggleIcon panelOpen={sidePanelOpen} />');
+    expect(sessionPageSource).toContain('<ChevronDown className="size-3.5 text-muted-foreground" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />');
+    expect(sessionPageSource).toContain('<Ellipsis className="!size-[18px]" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sessionPageSource).toContain('sidePanelOpen && activeSidePanel !== "outputs"');
+    expect(sessionPageSource).toContain('<ConversationOutputPopover');
+    expect(artifactSource).toContain("client.listWorkspaceFiles(workspaceId)");
+    expect(artifactSource).toContain("htmlArtifactDisplayFilename(");
+    expect(artifactSource).toContain("artifactRequestNamingContext(messages, artifact.messageIndex, sessionTitle)");
+    expect(artifactSource).toContain("minmax(220px,1fr)");
+    expect(artifactSource).toContain('"chat-output-card pr-20"');
+    expect(sessionPageSource).toContain("workspaceRoot={props.selectedWorkspaceRoot}");
+    expect(sessionPageSource).toContain("sessionTitle={selectedSessionTitle}");
+    expect(messageListSource).toContain("sessionTitle={sessionTitle}");
+    expect(artifactSource).toContain("onOpenVideoStudio?.(presentedName)");
+    expect(sessionPageSource).toContain("openDesignTab(target.value, target.name)");
+    expect(sidePanelSource).toContain("displayName={tab.label}");
+    expect(sidePanelSource).toContain('layoutId="right-panel-toggle"');
+    expect(sidePanelSource).toContain('aria-label={t("session.right_panel_close")}');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<Plus className="size-5" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<Maximize2 className="size-4" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} />');
+    expect(sidePanelSource).toContain('<SidebarRightToggleIcon panelOpen />');
+    expect(sidePanelSource).toContain('className={cn("flex h-10 items-center gap-1 pl-2 pr-3 mac:titlebar-drag"');
+    expect(sidePanelSource.match(/className="size-8 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground"/g)?.length).toBe(3);
+    expect(sidePanelSource).not.toContain('aria-label="Close panel"');
+    expect(designPanelSource).toContain("const activePageDisplayName = activePagePath === lockedPath");
+  });
+
+  test("makes the file card the primary delivery entry", () => {
+    const request = "已应用模板：AI 热点拆解 视频主题：AI Agent 发展科普 面向谁：学生 总时长：60 秒";
+    const artifact: ArtifactItem = {
+      id: "video-entry",
+      name: "index.html",
+      path: "video/session-1/index.html",
+      type: "html",
+      messageId: "assistant-1",
+      messageIndex: 1,
+      target: {
+        id: "file:video/session-1/index.html",
+        kind: "file",
+        value: "video/session-1/index.html",
+        name: "index.html",
+        preview: "html",
+        confidence: 100,
+        reason: "test",
+      },
+    };
+
+    expect(artifactCardTitle(request, "fallback-video.html")).toBe("AI Agent 发展科普");
+    const description = artifactCardDescription(artifact, `${request} 共 10 个场景`);
+    expect(description).toContain("60");
+    expect(description).toContain("10");
+    expect(description.split(" · ")).toHaveLength(3);
+    expect(stripArtifactPathLines(
+      "视频已经完成。\n\n更新文件：`video/session-1/index.html`\n\n音频位于：video/session-1/assets/voiceover-*.mp3\n\n最终校验通过。",
+      [artifact.path],
+    )).toBe("视频已经完成。\n\n最终校验通过。");
+
+    const imageArtifact: ArtifactItem = {
+      ...artifact,
+      id: "generated-image",
+      name: "result.png",
+      path: "artifacts/image-studio/result.png",
+      type: "image",
+      target: {
+        ...artifact.target,
+        id: "file:artifacts/image-studio/result.png",
+        value: "artifacts/image-studio/result.png",
+        name: "result.png",
+        preview: "image",
+        size: 2_621_440,
+      },
+    };
+    expect(artifactCardDescription(imageArtifact, "图片已生成")).toBe("PNG · 2.5 MB");
+  });
+
+  test("keeps generated image previews readable and localized", () => {
+    const markdownSource = readFileSync(new URL("../src/components/markdown/markdown.tsx", import.meta.url), "utf8");
+    const imageSource = readFileSync(new URL("../src/components/ui/image.tsx", import.meta.url), "utf8");
+    const chineseLocaleSource = readFileSync(new URL("../src/i18n/locales/zh.ts", import.meta.url), "utf8");
+
+    expect(markdownSource).toContain("const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;");
+    expect(imageSource).toContain("const DEFAULT_PREVIEW_MAX_HEIGHT = 360");
+    expect(markdownSource).toContain('t("image.preview.show_full")');
+    expect(imageSource).toContain('t("image.preview.show_less")');
+    expect(chineseLocaleSource).toContain('"image.preview.show_full": "查看完整图片"');
+  });
+
+  test("keeps scroll recovery compact and limits chat weight tuning to macOS", () => {
+    const scrollOverlaySource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/scroll-overlay.tsx", import.meta.url),
+      "utf8",
+    );
+    const appStyles = readFileSync(
+      new URL("../src/app/index.css", import.meta.url),
+      "utf8",
+    );
+
+    expect(scrollOverlaySource).toContain('data-testid="jump-to-latest"');
+    expect(scrollOverlaySource).toContain('t("session.scroll.jump_to_latest")');
+    expect(scrollOverlaySource).toContain("absolute bottom-3 right-3");
+    expect(scrollOverlaySource).not.toContain("shadow-(--dls-card-shadow)");
+    expect(appStyles).toContain('html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"]');
+    expect(appStyles).toContain("font-size: 15px");
+    expect(appStyles).toContain("font-weight: 500");
+    expect(appStyles).toContain("line-height: 24px");
+    expect(appStyles).toContain("font-weight: 600");
+    expect(appStyles).not.toContain("font-weight: 450");
+    expect(appStyles).not.toContain('ipollowork-platform-windows [data-chat-readable-text="true"]');
+  });
+
+  test("numbers repeated artifact requests by their user turn", () => {
+    const messages = [
+      { id: "u1", role: "user", parts: [{ type: "text", text: "做一个季度复盘网页" }] },
+      { id: "a1", role: "assistant", parts: [{ type: "text", text: "design/one/entry.html" }] },
+      { id: "u2", role: "user", parts: [{ type: "text", text: "做一个季度复盘网页" }] },
+      { id: "a2", role: "assistant", parts: [{ type: "text", text: "design/two/entry.html" }] },
+    ];
+
+    expect(artifactRequestNamingContext(messages, 1)).toEqual({ title: "做一个季度复盘网页", occurrence: 1 });
+    expect(artifactRequestNamingContext(messages, 3)).toEqual({ title: "做一个季度复盘网页", occurrence: 2 });
+  });
+
   test("process duration uses a compact clock format", () => {
     expect(formatProcessDuration(8_400)).toBe("00:08");
     expect(formatProcessDuration(83_000)).toBe("01:23");
     expect(formatProcessDuration(3_723_000)).toBe("1:02:03");
+  });
+
+  test("assistant process state does not report failed turns as completed", () => {
+    expect(getAssistantProcessState(true, true)).toBe("streaming");
+    expect(getAssistantProcessState(false, true)).toBe("failed");
+    expect(getAssistantProcessState(false, false)).toBe("completed");
   });
 
   test("session header offers full-session Markdown export", () => {
@@ -22,6 +355,133 @@ describe("session output issue regressions", () => {
     expect(source).toContain("sessionId={props.selectedSessionId ?? undefined}");
   });
 
+  test("DeepSeek Harness sessions expose archive instead of permanent delete", () => {
+    const routeSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidebarSource = readFileSync(
+      new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
+      "utf8",
+    );
+    const deleteBinding = routeSource.slice(
+      routeSource.indexOf("onDeleteSession={"),
+      routeSource.indexOf("onArchiveSession={"),
+    );
+
+    expect(deleteBinding).toContain("activeEngineId !== DEEPSEEK_HARNESS_ENGINE_ID");
+    expect(routeSource).toContain("onArchiveSession={conversation ? handleArchiveSession : undefined}");
+    expect(sidebarSource).toContain('t("session_management.archive_session")');
+  });
+
+  test("template application uses one shared dialog with supplemental references", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("function TemplateApplyDialog(");
+    expect(source).toContain('data-testid="template-apply-dialog"');
+    expect(source).not.toContain('t("templates.brief.required_information")');
+    expect(source).not.toContain('t("templates.brief.required_progress")');
+    expect(source).not.toContain(">{config.label}</p>");
+    expect(source).not.toContain('t("common.optional_parens")');
+    expect(source).toContain('!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null');
+    expect(source).toContain("required={!field.optional}");
+    expect(source).toContain("showCloseButton={false}");
+    expect(source).toContain("max-w-[800px]");
+    expect(source).toContain('className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground"');
+    expect(source).toContain('t("templates.brief.destination_description")');
+    expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
+    expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
+    expect(source).toContain('t("templates.brief.reference_question")');
+    expect(source).toContain("REFERENCE_FILE_ACCEPT");
+    expect(source).toContain('t("templates.brief.upload_file")');
+    expect(source).toContain('t("templates.brief.reference_supported_formats")');
+    expect(source).not.toContain('t("templates.brief.reference_description")');
+    expect(source).toContain('mode === "market" && projects && selectedProjectId && onProjectChange');
+    expect(source).toContain("nextConversationArtifactSessionId(");
+    expect(source).toContain("sessionId: templateSessionId");
+    expect(source).toContain('data-testid="template-conflict-dialog"');
+    expect(source).not.toContain('t("templates.brief.choose_project_file")');
+    expect(source).not.toContain('t("templates.brief.add_link")');
+    expect(source).not.toContain('t("templates.brief.use_current_conversation")');
+    expect(source).not.toContain("TEMPLATE_REFERENCE_UPLOAD_VISIBLE");
+    expect(source).not.toContain("function TemplateBriefDialog(");
+    expect(source).not.toContain("import { ReferenceUploadPanel }");
+    expect(source).not.toContain("<ReferenceUploadPanel");
+    expect(source).not.toContain('t("templates.brief.reference_label")');
+  });
+
+  test("design and video composers keep the existing attachment entry", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+    const initialProjectSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const composerSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/composer/composer.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionPromptSource = readFileSync(
+      new URL("../src/react-app/shell/session-prompt.ts", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+    const sessionSurfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("onAttachFiles={handleAttachFiles}");
+    expect(source).toContain("onUseTemplate={props.onMaterializeTemplate");
+    expect(source).toContain(": props.onCreateSession");
+    expect(initialProjectSource).toContain("onAttachFiles={attachFiles}");
+    expect(initialProjectSource).not.toContain("function TemplateReferenceAgentPanel");
+    expect(initialProjectSource).not.toContain("<TemplateReferenceAgentPanel");
+    expect(initialProjectSource).toContain("templateAssistantWait");
+    expect(initialProjectSource).toContain("assistantWaitLabel=");
+    expect(initialProjectSource).toContain('t("templates.brief.reference_agent_processing_label"');
+    expect(messageListSource).toContain("assistantWaitLabel?: string");
+    expect(messageListSource).toContain("liveActionLabel ?? assistantWaitLabel");
+    expect(sessionSurfaceSource).toContain("assistantWaitLabel?: string");
+    expect(initialProjectSource).not.toContain("attachmentRequiresNativeModelSupport");
+    expect(initialProjectSource).not.toContain("modelSafeAttachments");
+    expect(initialProjectSource).toContain("ingestReferenceFile(item.file,");
+    expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
+    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
+    expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
+    expect(sessionPromptSource).toContain("Use these workspace-relative paths");
+    expect(initialProjectSource).toContain("referenceFiles: references.map");
+    expect(composerSource).toContain('import { flushSync } from "react-dom";');
+    expect(composerSource).toContain("maxAttachmentBytes?: number;");
+    expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");
+    expect(composerSource).toContain('t("composer.plus_attach_files")');
+    expect(composerSource).toContain("props.onAttachFiles(accepted)");
+    expect(composerSource).toContain("flushSync(() => {");
+    expect(composerSource).toMatch(/setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+    expect(composerSource).toContain("input?.click();");
+    expect(composerSource).toContain('window.addEventListener("pointermove", handlePointerMove);');
+    expect(composerSource).toMatch(/setPlusMenuSection\(null\);\r?\n\s+setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+  });
+
+  test("starter template strip is clipped to the workspace column", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/new-conversation-starter.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('data-testid="new-conversation-template-strip"');
+    expect(source).toContain("min-w-0 overflow-hidden rounded-xl");
+    expect(source).toContain("flex min-w-0 snap-x snap-mandatory");
+  });
+
   test("output files can seed a follow-up revision prompt", () => {
     const source = readFileSync(
       new URL("../src/components/chat/artifact.tsx", import.meta.url),
@@ -34,18 +494,81 @@ describe("session output issue regressions", () => {
     expect(source).toContain('new Event("ipollowork:focusPrompt")');
   });
 
+  test("generated file cards use an equal-size responsive grid", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('className="chat-output-grid pb-2"');
+    const styles = readFileSync(new URL("../src/app/index.css", import.meta.url), "utf8");
+    expect(styles).toContain("grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px");
+    expect(styles).toContain(".chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }");
+    expect(source).not.toContain("overflow-x-auto overscroll-x-contain");
+    expect(source).not.toContain("snap-proximity");
+  });
+
+  test("generated file cards keep only openable files while the output panel retains all outputs", () => {
+    const source = readFileSync(
+      new URL("../src/components/chat/artifact.tsx", import.meta.url),
+      "utf8",
+    );
+    const artifactListSource = source.slice(
+      source.indexOf("export function ArtifactList"),
+      source.indexOf("interface ConversationOutputPanelProps"),
+    );
+    const outputPanelSource = source.slice(
+      source.indexOf("function ConversationOutputPanelContent"),
+      source.indexOf("export function ConversationOutputTrigger"),
+    );
+
+    expect(artifactListSource).toContain("selectConversationArtifactCards(");
+    expect(outputPanelSource).toContain("const outputs = artifacts.filter(isConversationOutputArtifact);");
+    expect(outputPanelSource).not.toContain("selectConversationArtifactCards(");
+  });
+
   test("generated file links open in the internal right panel by default", () => {
     const source = readFileSync(
       new URL("../src/components/markdown/markdown.tsx", import.meta.url),
       "utf8",
     );
     const clickHandler = source.slice(
-      source.indexOf('const link = event.target.closest("a[data-ipollowork-link-href]")'),
+      source.indexOf('const link = event.target.closest("[data-ipollowork-link-href]")'),
       source.indexOf('const button = event.target.closest("[data-ipollowork-image-toggle]")'),
+    );
+    const fileLinkRenderer = source.slice(
+      source.indexOf("if (isFilePath)"),
+      source.indexOf('return `<a href="${safe}"', source.indexOf("if (isFilePath)")),
     );
 
     expect(clickHandler).toContain("onOpenTarget(target);");
+    expect(clickHandler).toContain("event.preventDefault();");
     expect(clickHandler).not.toContain("external: true");
+    expect(fileLinkRenderer).toContain('<button type="button" data-ipollowork-link-href=');
+    expect(fileLinkRenderer).not.toContain('target="_blank"');
+  });
+
+  test("HTML files use persisted surface metadata and still offer explicit viewer overrides", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const menuSource = readFileSync(
+      new URL("../src/components/markdown/link-action-menu.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("resolveOpenTargetTemplateSurface(target, sourceId)");
+    expect(sessionPageSource).toContain('if (templateSurface === "design")');
+    expect(sessionPageSource).toContain("openCurrentVideoStudio();");
+    expect(sessionPageSource).toContain('options?.viewer === "design"');
+    expect(sessionPageSource).toContain('options?.viewer === "preview"');
+    expect(sessionPageSource).toContain('options?.viewer === "video"');
+    expect(sessionPageSource).toContain("openArtifactTargetInPanel(target, sourceId, options?.auto)");
+    expect(menuSource).toContain('handleOpenWithViewer("design")');
+    expect(menuSource).toContain('handleOpenWithViewer("preview")');
+    expect(menuSource).toContain('handleOpenWithViewer("video")');
+    expect(menuSource).toContain('"link_action.open_recommended"');
   });
 
   test("generated video files open the session Video Studio from the message list", () => {
@@ -66,10 +589,10 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(messageListProviderSource).toContain("onOpenVideoStudio?: () => void");
+    expect(messageListProviderSource).toContain("onOpenVideoStudio?: (displayName?: string) => void");
     expect(messageListSource).toContain("onOpenVideoStudio={onOpenVideoStudio}");
     expect(sessionSurfaceSource).toContain("onOpenVideoStudio={props.onOpenVideoStudio}");
-    expect(sessionPageSource).toContain("onOpenVideoStudio={openCurrentVideoStudio}");
+    expect(sessionPageSource).toContain("onOpenVideoStudio={openCurrentVideoArtifactStudio}");
     expect(sessionPageSource).toContain("const prioritizeRightPanel = useCallback(() => {");
     expect(sessionPageSource).toContain("if (!options?.auto) prioritizeRightPanel();");
     expect(sessionPageSource).toContain("openCurrentVideoStudio({ auto: true });");
@@ -91,6 +614,49 @@ describe("session output issue regressions", () => {
     expect(sidePanelSource).toContain('titlebarInset && "mac:pl-20"');
   });
 
+  test("uses the shared menu hierarchy and semantic icon color in the panel launcher", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const sidePanelSource = readFileSync(
+      new URL("../src/react-app/domains/session/panel/side-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sidePanelSource).toContain('className="w-56"');
+    expect(sidePanelSource).toContain("launcherItems[index - 1]?.group !== item.group");
+    expect(sidePanelSource).toContain("<DropdownMenuSeparator");
+    expect(sidePanelSource).toContain('className="grid size-5 shrink-0 place-items-center text-muted-foreground [&_svg]:shrink-0"');
+    expect(sidePanelSource).toContain("strokeWidth: NAVIGATION_ICON_STROKE_WIDTH");
+    expect(sidePanelSource).toContain('<FileText className="size-[17px]" />');
+    expect(sidePanelSource).toContain('<SquarePlay className="size-[18px]" />');
+    expect(sidePanelSource).toContain('if (tab.type === "video") return <SquarePlay');
+    expect(sidePanelSource).toContain('mediaStudioEngine(tab.surface) === "image-studio"');
+    expect(sidePanelSource).toContain('<ToolCase className="size-[18px]" />');
+    expect(sidePanelSource).toContain('<Images className="size-[18px]" />');
+    expect(sidePanelSource).not.toContain("WebkitMaskImage");
+    expect(sidePanelSource).toContain('text-sm font-normal tracking-normal text-foreground focus:text-foreground! data-highlighted:text-foreground!');
+    expect(sidePanelSource).toContain('truncate font-normal text-foreground!');
+    expect(sidePanelSource).not.toContain("item.active");
+    expect(sidePanelSource).not.toContain("aria-current={item.active");
+    expect(sidePanelSource).toContain('data-testid={`side-panel-launcher-${item.id}`}');
+    expect(sessionPageSource).not.toContain("active: panelRailActive && activePanelTab");
+    expect(sessionPageSource).not.toContain("active: videoRailActive");
+    expect(sessionPageSource).not.toContain("item.active");
+    expect(sessionPageSource).toContain("designOpen");
+    expect(sessionPageSource).toContain("filesOpen");
+    expect(sessionPageSource).toContain("videoOpen");
+    expect(sessionPageSource).toContain('tab.id === workspaceAppTabId(surface)');
+    expect(sidePanelSource).not.toContain("w-[296px] rounded-[18px]");
+    expect(sidePanelSource).not.toContain('className="h-11 rounded-xl');
+    expect(sidePanelSource).not.toContain('text-[#666666]');
+    expect(sessionPageSource).toContain('group: "content"');
+    expect(sessionPageSource).toContain('group: "studio"');
+    expect(sessionPageSource).toContain('label: t("session.side_panel.design")');
+    expect(sessionPageSource).not.toContain('label: "Design"');
+  });
+
   test("latest-turn output label only renders for the latest artifact assistant message", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
@@ -99,10 +665,21 @@ describe("session output issue regressions", () => {
 
     expect(source).toContain("showLatestArtifactsTitle={item.message.id === latestAssistantMessageId}");
     expect(source).toContain("const isLatestAssistantGroup = items.some");
-    expect(source).toContain("artifactFiles={isLatestAssistantGroup ? artifactFiles : undefined}");
+    expect(source).toContain("selectSupplementalArtifactsForRequest(");
+    expect(source).toContain("artifactFiles={requestArtifactFiles}");
     expect(source).toContain('title={showLatestArtifactsTitle ? t("session.outputs.latest_turn") : undefined}');
     expect(source).toContain('status === "submitted" || status === "streaming" || status === "retrying"');
     expect(source).toContain("{!isStreaming ? (");
+  });
+
+  test("keeps the assistant process in progress while shared session activity is still active", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
+    expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
   });
 
   test("video and presentation sessions show only scoped openable outputs", () => {
@@ -120,7 +697,7 @@ describe("session output issue regressions", () => {
     );
 
     expect(artifactSource).toContain("canOpenArtifactInContext(artifact, artifactContext)");
-    expect(artifactSource).toContain("selectArtifactContextOutputs(artifacts, artifactContext)");
+    expect(artifactSource).toContain("selectConversationArtifactCards(");
     expect(messageListSource).toContain("artifactFiles={artifactFiles}");
     expect(sessionPageSource).toContain(".listWorkspaceFiles(workspaceId, artifactDirectory)");
     expect(sessionPageSource).toContain('selectedTemplate?.category === "slides"');
@@ -128,6 +705,25 @@ describe("session output issue regressions", () => {
     expect(sessionPageSource).toContain("artifactPathMatchesTarget(target.value, currentVideoEntryPath)");
     expect(sessionPageSource).toContain('target.preview === "slides"');
     expect(sessionPageSource).toContain("openCurrentVideoStudio();");
+  });
+
+  test("multi-artifact conversations do not let one Studio hide or capture another result", () => {
+    const sessionPageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const routeSource = readFileSync(
+      new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(sessionPageSource).toContain("const hasRootTemplateFocus = currentTemplateSessionData?.sessionId === props.selectedSessionId");
+    expect(sessionPageSource).toContain("if (!hasRootTemplateFocus) return undefined;");
+    expect(sessionPageSource).toContain("const templateEntryPathForArtifacts = !hasRootTemplateFocus || isPresentationSession");
+    expect(sessionPageSource).toContain("result.sessionId === sessionId && materializedType !== selectedSessionType");
+    expect(routeSource).toContain("occupiedTemplateSessionIds.push(artifactSessionId)");
+    expect(routeSource).toContain("sessionTemplates.length = 0;");
+    expect(routeSource).toContain("!automaticTemplateRoutingAttempted");
   });
 
   test("artifact catalog refresh is scoped to the output directory rather than message streaming", () => {
@@ -166,7 +762,7 @@ describe("session output issue regressions", () => {
     }
   });
 
-  test("template market exposes category counts, import details, and installed enterprise actions", () => {
+  test("template market exposes compact discovery controls, import details, and installed Cloud actions", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url),
       "utf8",
@@ -176,18 +772,26 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(source).toContain("const categoryCounts = React.useMemo");
-    expect(source).toContain("const allCount = React.useMemo");
-    expect(source).toContain("categoryCounts.get(id) ?? 0");
+    expect(source).toContain("const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4)");
+    expect(source).toContain("const MORE_CATEGORIES = CATEGORIES.slice(4)");
+    expect(source).toContain('type MyTemplateCollection = "all" | "favorites" | "mine"');
+    expect(source).toContain('font-[\'PingFang_SC\',sans-serif] text-xs font-medium text-foreground');
     expect(source).toContain("{pendingImport.name} - {(pendingImport.size / 1024).toFixed(1)} KB");
-    expect(source).toContain("enterpriseMode ? (visibleEnterpriseResources.length");
-    expect(source).not.toContain("enterpriseMode ? (visible.length || visibleEnterpriseResources.length");
+    expect(source).toContain('remoteCatalogMode && view === "explore"');
+    expect(source).toContain('view === "explore" && (props.cloudAvailable || props.enterpriseAvailable)');
+    expect(source).toContain('t("template_market.source_builtin")');
+    expect(source).not.toContain("<WorkResourceScopeSwitch");
     expect(sessionSource).toContain('listTemplates(props.runtimeWorkspaceId, "personal")');
-    expect(sessionSource).toContain('listEnterpriseResources(activeEnterprise, "template")');
+    expect(sessionSource).toContain('listEnterpriseResources("template", resourceOptions)');
+    expect(sessionSource).toContain('templateCatalogSource === "enterprise"');
+    expect(sessionSource).toContain("cloudAvailable={denAuth.isSignedIn}");
+    expect(sessionSource).toContain("enterpriseAvailable={Boolean(activeEnterprise)}");
+    expect(sessionSource).toContain("onSelectSource={selectTemplateCatalogSource}");
+    expect(sessionSource).toContain("importTemplate(props.runtimeWorkspaceId, file, category, resourceScope)");
     expect(sessionSource).toContain("item.sourceType === \"local\" && item.installed");
     expect(sessionSource).toContain("requestId !== templateCatalogRequestIdRef.current");
-    expect(source).toContain("enterpriseTemplateInstallations");
-    expect(source).toContain("resource.sourceTemplateId");
+    expect(source).toContain("remoteTemplateInstallations");
+    expect(source).toContain("resource.manifestId");
     expect(source).toContain("return <TemplateCard template={installedTemplate}");
     expect(source).toContain("primaryAction={action} primaryLabel={label} sourceLabel={sourceLabel}");
   });
@@ -199,7 +803,9 @@ describe("session output issue regressions", () => {
     );
 
     expect(source).toContain("listPluginPackages(props.workspaceId)");
-    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.slug)");
+    expect(source).toContain('listEnterpriseResources("extension", { connection: activeEnterprise })');
+    expect(source).toContain("downloadEnterpriseResource(resource, { connection: activeEnterprise })");
+    expect(source).toContain("installedEnterpriseExtensionVersions.get(resource.manifestId ?? resource.slug)");
     expect(source).toContain('t("plugin_platform.status.installed")');
     expect(source).toContain("currentVersionInstalled || !resource.latestVersion");
   });

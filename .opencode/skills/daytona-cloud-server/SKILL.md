@@ -82,5 +82,5 @@ Pair this with the `daytona-recording-artifacts` skill. Server proof should
 include health-check output, relevant logs, CDP assertions from Electron, and a
 recording or screenshot artifact for human review.
 
-Use `daytona-flow-validator` for pass/fail. Server health alone does not prove
+Use `fraimz` for pass/fail. Server health alone does not prove
 Electron cloud behavior works.

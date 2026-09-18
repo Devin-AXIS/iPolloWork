@@ -17,9 +17,12 @@ import {
 } from "@shikijs/transformers";
 import { bundledLanguages, codeToHtml } from "shiki";
 
+import { createMarkdownImageLoader, useArtifactThumbnails } from "@/components/chat/artifact-thumbnail";
+export { createMarkdownImageLoader } from "@/components/chat/artifact-thumbnail";
 import { cn } from "@/lib/utils";
-import { useOpenTargets } from "@/lib/target-provider";
-import type { OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
+import { t } from "@/i18n";
+import { useOpenTargets, type WorkspaceImageLoader } from "@/lib/target-provider";
+import { localFilePathFromHref, type OpenTarget } from "@/react-app/domains/session/artifacts/open-target";
 
 import { applyTextHighlights } from "./text-highlights";
 import { LinkActionMenu } from "./link-action-menu";
@@ -74,32 +77,11 @@ function safeImageHref(href: string) {
   return safeHref(trimmed);
 }
 
-function localPathFromHref(href: string) {
-  const trimmed = href.trim();
-
-  if (!trimmed || trimmed.startsWith("#") || /^(?:https?|mailto):/i.test(trimmed)) {
-    return "";
-  }
-
-  if (/^file:/i.test(trimmed)) {
-    try {
-      const parsed = new URL(trimmed);
-      const host = decodeURIComponent(parsed.hostname);
-      const pathname = decodeURIComponent(parsed.pathname);
-      const localPath = /^\/[A-Za-z]:\//.test(pathname) ? pathname.slice(1) : pathname;
-
-      if (host && host !== "localhost") {
-        return `//${host}${localPath.startsWith("/") ? localPath : `/${localPath}`}`;
-      }
-
-      return localPath;
-    } catch {
-      return "";
-    }
-  }
-
-  return trimmed.split(/[?#]/)[0] ?? trimmed;
+export function markdownWorkspaceImagePath(href: string) {
+  // Protocol-relative URLs are web images, not UNC workspace paths.
+  return href.trim().startsWith("//") ? "" : localFilePathFromHref(href);
 }
+
 
 function normalizeFilePathForMatch(path: string) {
   return path
@@ -120,7 +102,7 @@ function filePathMatchesTarget(path: string, targetValue: string) {
 }
 
 function openTargetForHref(href: string, openTargets: OpenTarget[]) {
-  const path = localPathFromHref(href);
+  const path = localFilePathFromHref(href);
 
   if (!path) {
     return null;
@@ -154,7 +136,7 @@ function createEmojiAliases() {
 }
 
 const emojiAliases = createEmojiAliases();
-const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 100;
+const MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT = 360;
 
 function parseShikiLanguage(lang: string) {
   const normalized = lang.trim().split(/\s+/)[0]?.toLowerCase() ?? "";
@@ -196,17 +178,20 @@ function syncMarkdownImagePreviews(root: HTMLElement) {
     preview.style.maxHeight = expanded ? "" : `${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px`;
 
     const label = button.querySelector("[data-ipollowork-image-toggle-label]");
-    if (label) label.textContent = expanded ? "Show less" : "Show full image";
+    if (label) label.textContent = expanded ? t("image.preview.show_less") : t("image.preview.show_full");
   }
 }
 
 export function sanitizeMarkdownHtml(value: string) {
   return DOMPurify.sanitize(value, {
     ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$)|data:image\/(?:avif|bmp|gif|jpeg|jpg|png|svg\+xml|webp|x-icon);base64,)/i,
+    ADD_URI_SAFE_ATTR: ["d"],
     ADD_ATTR: [
       "checked",
       "class",
+      "data-artifact-thumbnail",
       "data-ipollowork-image-preview",
+      "data-ipollowork-image-path",
       "data-ipollowork-image-toggle",
       "data-ipollowork-image-toggle-label",
       "data-ipollowork-link-href",
@@ -235,7 +220,33 @@ const baseMarkedOptions = {
       return text;
     },
     paragraph({ tokens }) {
-      return `<p class="my-3 leading-relaxed">${this.parser.parseInline(tokens)}</p>`;
+      const blocks: string[] = [];
+      let prose = "";
+      let cards: string[] = [];
+      const flushProse = () => {
+        if (prose.trim()) blocks.push(`<p class="my-3 leading-relaxed">${prose}</p>`);
+        prose = "";
+      };
+      const flushCards = () => {
+        if (cards.length) blocks.push(`<div class="chat-output-grid my-3">${cards.join("")}</div>`);
+        cards = [];
+      };
+      for (const [index, token] of tokens.entries()) {
+        if (token.type === "link" && localFilePathFromHref(token.href)) {
+          flushProse();
+          cards.push(this.parser.parseInline([token]));
+          continue;
+        }
+        const next = tokens[index + 1];
+        // Markdown commonly separates a run of output links with dots or commas.
+        if (cards.length && token.type === "text" && /^[\s·•、，,；;。.]+$/.test(token.raw)
+          && (!next || (next.type === "link" && localFilePathFromHref(next.href)))) continue;
+        flushCards();
+        prose += this.parser.parseInline([token]);
+      }
+      flushProse();
+      flushCards();
+      return blocks.join("");
     },
     heading({ tokens, depth }) {
       const className = cn(
@@ -285,22 +296,26 @@ const baseMarkedOptions = {
       const safe = escapeAttribute(safeHref(href));
       const originalHref = escapeAttribute(href);
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
-      const isFilePath = !/^(https?|wss?|ftp|mailto|tel|file):/i.test(href);
+      const filePath = localFilePathFromHref(href);
+      const isFilePath = Boolean(filePath);
 
       if (isFilePath) {
-        const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
-        const chevron = `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><path d="m6 9 6 6 6-6"/></svg>`;
-
-        return `<span class="inline-flex items-stretch overflow-hidden rounded-md border border-border/60 bg-muted/40 text-xs font-medium text-foreground align-middle"><a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="inline-flex items-center gap-1 px-1.5 py-0.5 no-underline transition-colors hover:bg-muted">${fileIcon}${this.parser.parseInline(tokens)}</a><button type="button" data-ipollowork-link-chevron="${originalHref}" class="inline-flex items-center border-l border-border/60 px-1 transition-colors hover:bg-muted" aria-label="Open with">${chevron}</button></span>`;
+        const fileIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v5h5"/></svg>`;
+        const more = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>`;
+        const extension = filePath?.match(/\.([a-z0-9]{1,10})(?::\d+)?$/i)?.[1]?.toUpperCase() ?? "FILE";
+        return `<span class="chat-output-card align-middle"><button type="button" data-ipollowork-link-href="${originalHref}"${titleAttr} class="chat-output-open"><span class="chat-output-icon"${/\.(png|jpe?g|webp|gif|avif|svg|mp4|mov|webm)$/i.test(filePath || "") ? ` data-artifact-thumbnail="${escapeAttribute(filePath || "")}"` : ""}>${fileIcon}</span><span class="chat-output-content"><span class="chat-output-title">${this.parser.parseInline(tokens)}</span><span class="chat-output-description">${escapeHtml(extension)}</span></span></button><button type="button" data-ipollowork-link-chevron="${originalHref}" class="chat-output-more" aria-label="${escapeAttribute(t("session.outputs.more_actions"))}">${more}</button></span>`;
       }
 
       return `<a href="${safe}" data-ipollowork-link-href="${originalHref}"${titleAttr} target="_blank" rel="noreferrer noopener" class="text-indigo-10 underline underline-offset-2 transition-colors hover:text-indigo-8">${this.parser.parseInline(tokens)}</a>`;
     },
     image({ href, title, text }) {
-      const safe = escapeAttribute(safeImageHref(href));
+      const path = markdownWorkspaceImagePath(href);
+      const source = path
+        ? `data-ipollowork-image-path="${escapeAttribute(path)}"`
+        : `src="${escapeAttribute(safeImageHref(href))}"`;
       const titleAttr = title ? ` title="${escapeAttribute(title)}"` : "";
 
-      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img src="${safe}" alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">Show full image</span></button></span>`;
+      return `<span data-ipollowork-image-preview="collapsed" class="relative my-4 inline-block max-w-full overflow-hidden rounded-lg border border-border/70 align-top" style="max-height: ${MARKDOWN_IMAGE_PREVIEW_MAX_HEIGHT}px"><img ${source} alt="${escapeAttribute(text)}"${titleAttr} loading="lazy" decoding="async" class="block h-auto max-w-full"><button type="button" data-ipollowork-image-toggle="" hidden class="absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-background via-background/90 to-transparent pb-2 pt-8"><span data-ipollowork-image-toggle-label="" class="rounded-full border border-border bg-background/95 px-3 py-1 text-xs font-medium text-foreground shadow-sm">${escapeHtml(t("image.preview.show_full"))}</span></button></span>`;
     },
     table(token) {
       const header = token.header.map((cell) => this.tablecell({ ...cell, header: true })).join("");
@@ -377,6 +392,56 @@ type MarkdownBlockInnerProps = {
   "ref" | "className" | "children" | "dangerouslySetInnerHTML"
 >;
 
+const STREAMING_MARKDOWN_RENDER_INTERVAL_MS = 50;
+
+function useStreamingMarkdownText(text: string, streaming: boolean | undefined) {
+  const [renderedText, setRenderedText] = useState(text);
+  const latestTextRef = useRef(text);
+  const lastRenderAtRef = useRef(0);
+  const renderTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  latestTextRef.current = text;
+
+  useEffect(() => {
+    if (!streaming) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      setRenderedText(text);
+      return;
+    }
+
+    const now = Date.now();
+    const elapsed = now - lastRenderAtRef.current;
+    if (elapsed >= STREAMING_MARKDOWN_RENDER_INTERVAL_MS) {
+      if (renderTimerRef.current !== undefined) {
+        clearTimeout(renderTimerRef.current);
+        renderTimerRef.current = undefined;
+      }
+      lastRenderAtRef.current = now;
+      setRenderedText(text);
+      return;
+    }
+
+    if (renderTimerRef.current !== undefined) return;
+
+    renderTimerRef.current = setTimeout(() => {
+      renderTimerRef.current = undefined;
+      lastRenderAtRef.current = Date.now();
+      setRenderedText(latestTextRef.current);
+    }, STREAMING_MARKDOWN_RENDER_INTERVAL_MS - elapsed);
+  }, [streaming, text]);
+
+  useEffect(() => () => {
+    if (renderTimerRef.current !== undefined) {
+      clearTimeout(renderTimerRef.current);
+    }
+  }, []);
+
+  return streaming ? renderedText : text;
+}
+
 function MarkdownBlockInner({
   className,
   text,
@@ -385,28 +450,31 @@ function MarkdownBlockInner({
   ...props
 }: MarkdownBlockInnerProps) {
   const rootRef = useRef<HTMLDivElement>(null);
-  const { openTargets, onOpenTarget } = useOpenTargets();
+  const { openTargets, onOpenTarget, loadWorkspaceImage, loadWorkspaceThumbnail } = useOpenTargets();
+  useArtifactThumbnails(rootRef, loadWorkspaceThumbnail);
+  const imageLoaderRef = useRef<ReturnType<typeof createMarkdownImageLoader> | null>(null);
   const [linkMenu, setLinkMenu] = useState<{ target: OpenTarget; rect: DOMRect } | null>(null);
+  const renderedText = useStreamingMarkdownText(text, streaming);
   const syncHtml = useMemo(() => {
-    if (!text.trim()) {
+    if (!renderedText.trim()) {
       return "";
     }
-    return sanitizeMarkdownHtml(markdownParser.parse(text, { async: false }));
-  }, [text]);
+    return sanitizeMarkdownHtml(markdownParser.parse(renderedText, { async: false }));
+  }, [renderedText]);
   const [highlightedHtml, setHighlightedHtml] = useState<{ text: string; html: string } | null>(null);
 
   useEffect(() => {
-    if (streaming || !hasFencedCodeBlock(text)) {
+    if (streaming || !hasFencedCodeBlock(renderedText)) {
       setHighlightedHtml(null);
       return;
     }
 
     let cancelled = false;
-    void highlightedMarkdownParser.parse(text, { async: true }).then((html) => {
+    void highlightedMarkdownParser.parse(renderedText, { async: true }).then((html) => {
       const sanitizedHtml = sanitizeMarkdownHtml(html);
 
       if (!cancelled && sanitizedHtml.trim()) {
-        setHighlightedHtml({ text, html: sanitizedHtml });
+        setHighlightedHtml({ text: renderedText, html: sanitizedHtml });
       }
     }).catch(() => {
       if (!cancelled) {
@@ -416,9 +484,39 @@ function MarkdownBlockInner({
     return () => {
       cancelled = true;
     };
-  }, [streaming, text]);
+  }, [renderedText, streaming]);
 
-  const html = !streaming && highlightedHtml?.text === text ? highlightedHtml.html : syncHtml;
+  const html = !streaming && highlightedHtml?.text === renderedText ? highlightedHtml.html : syncHtml;
+  const innerHtml = useMemo(() => ({ __html: html }), [html]);
+
+  useEffect(() => {
+    const loader = loadWorkspaceImage ? createMarkdownImageLoader(loadWorkspaceImage) : null;
+    imageLoaderRef.current = loader;
+    return () => {
+      imageLoaderRef.current = null;
+      loader?.dispose();
+    };
+  }, [loadWorkspaceImage]);
+
+  // Also restore previews if motion replaces the HTML on a context re-render.
+  useEffect(() => {
+    const root = rootRef.current;
+    const loader = imageLoaderRef.current;
+    if (!root || !loader) return;
+    for (const image of root.querySelectorAll<HTMLImageElement>("img[data-ipollowork-image-path]")) {
+      const path = image.dataset.ipolloworkImagePath;
+      if (!path) continue;
+      void loader.load(path).then((url) => {
+        if (imageLoaderRef.current !== loader || !root.contains(image)) return;
+        if (image.getAttribute("src") !== url) image.src = url;
+        syncMarkdownImagePreviews(root);
+      }).catch(() => {
+        if (imageLoaderRef.current !== loader || !root.contains(image)) return;
+        // Keep the description readable; the artifact card remains available.
+        image.replaceWith(document.createTextNode(image.alt || path));
+      });
+    }
+  });
 
   // Re-apply search highlights after EVERY render (no dependency array on
   // purpose): motion.div re-sets dangerouslySetInnerHTML on unrelated
@@ -468,13 +566,16 @@ function MarkdownBlockInner({
         return;
       }
 
-      const link = event.target.closest("a[data-ipollowork-link-href]");
-      if (link instanceof HTMLAnchorElement) {
+      const link = event.target.closest("[data-ipollowork-link-href]");
+      if (link instanceof HTMLElement) {
         const href = link.dataset.ipolloworkLinkHref ?? link.getAttribute("href") ?? "";
         const target = openTargetForHref(href, openTargets);
 
-        if (target && onOpenTarget) {
+        if (localFilePathFromHref(href)) {
           event.preventDefault();
+          event.stopPropagation();
+        }
+        if (target && onOpenTarget) {
           onOpenTarget(target);
           return;
         }
@@ -521,7 +622,7 @@ function MarkdownBlockInner({
       <motion.div
         ref={rootRef}
         className={cn("markdown-content max-w-none text-foreground", className)}
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={innerHtml}
         {...props}
       />
       {linkMenu && onOpenTarget ? (

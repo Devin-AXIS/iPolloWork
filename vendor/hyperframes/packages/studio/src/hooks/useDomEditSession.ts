@@ -20,6 +20,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
+import { useImageWorkbench } from "./useImageWorkbench";
 
 // ── Types ──
 
@@ -114,6 +115,8 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
+  const openImageWorkbench = useImageWorkbench({ projectId, showToast, queueDomEditSave, readProjectFile,
+    writeProjectFile, updateEditingFileContent, domEditSaveTimestampRef, editHistory, reloadPreview, forceReloadSdkSession });
   // ── Selection ──
 
   const {
@@ -355,7 +358,7 @@ export function useDomEditSession({
     const single = domEditSelectionRef.current;
     const members = group.length > 0 ? group : single ? [single] : [];
     if (members.length < 2) {
-      showToast("Select at least 2 elements to group", "info");
+      showToast("Select at least 2 elements to group", "error");
       return;
     }
     trackStudioEvent("group", { action: "create", count: members.length });
@@ -365,7 +368,7 @@ export function useDomEditSession({
   const handleUngroupSelection = useCallback(() => {
     const sel = domEditSelectionRef.current;
     if (!sel?.element.hasAttribute("data-hf-group")) {
-      showToast("Select a group to ungroup", "info");
+      showToast("Select a group to ungroup", "error");
       return;
     }
     // Dissolving the group exits any drill-in (the wrapper is about to vanish).
@@ -533,6 +536,7 @@ export function useDomEditSession({
   );
 
   return {
+    openImageWorkbench,
     // State
     domEditSelection,
     domEditGroupSelections,

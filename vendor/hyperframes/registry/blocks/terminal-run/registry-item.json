@@ -1,0 +1,87 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "terminal-run",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Terminal Run",
+  "description": "A polished terminal result card for commands, build output and a final status.",
+  "tags": [
+    "component",
+    "developer",
+    "terminal",
+    "command",
+    "build",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "developer",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "command",
+        "output",
+        "status",
+        "elapsed"
+      ],
+      "instructions": "Use one safe command, keep output to four short lines, and state a truthful final status and elapsed time."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "terminal-run.html",
+      "target": "compositions/terminal-run.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "command",
+      "label": "Command",
+      "type": "string",
+      "default": "pnpm test -- component-library",
+      "maxLength": 120,
+      "update": "live"
+    },
+    {
+      "id": "output",
+      "label": "Output",
+      "type": "string",
+      "default": "20 components discovered\\n20 manifests valid\\n20 timelines seekable",
+      "maxLength": 500,
+      "update": "live"
+    },
+    {
+      "id": "status",
+      "label": "Status",
+      "type": "string",
+      "default": "PASS",
+      "maxLength": 24,
+      "update": "live"
+    },
+    {
+      "id": "elapsed",
+      "label": "Elapsed",
+      "type": "string",
+      "default": "4.8s",
+      "maxLength": 24,
+      "update": "live"
+    }
+  ]
+}
+

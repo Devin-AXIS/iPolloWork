@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "douyin-live-room",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Douyin Live Room",
+  "description": "A Douyin live-room promo panel with host, topic, viewer count and a featured offer.",
+  "tags": [
+    "component",
+    "social",
+    "douyin",
+    "live",
+    "stream",
+    "promo",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "host",
+        "topic",
+        "viewers",
+        "offer"
+      ],
+      "instructions": "写清直播主题、主播、观看人数和单一福利；观看人数与福利要克制且可替换。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "douyin-live-room.html",
+      "target": "compositions/douyin-live-room.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "host",
+      "label": "主播",
+      "type": "string",
+      "default": "小满的创意间",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "topic",
+      "label": "直播主题",
+      "type": "string",
+      "default": "桌面拍摄布光实战：三步做出高级质感",
+      "maxLength": 96,
+      "update": "live"
+    },
+    {
+      "id": "viewers",
+      "label": "观看人数",
+      "type": "string",
+      "default": "8,426 人正在观看",
+      "maxLength": 42,
+      "update": "live"
+    },
+    {
+      "id": "offer",
+      "label": "直播福利",
+      "type": "string",
+      "default": "今晚 20:00 · 直播间专属素材包",
+      "maxLength": 62,
+      "update": "live"
+    }
+  ]
+}
+

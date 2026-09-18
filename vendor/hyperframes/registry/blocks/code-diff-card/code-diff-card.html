@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"filename","label":"File name","type":"string","default":"player.ts","maxLength":64},{"id":"before","label":"Removed code","type":"string","default":"- pauseOnUpdate();","maxLength":240},{"id":"after","label":"Added code","type":"string","default":"+ preservePlaybackState();","maxLength":240},{"id":"summary","label":"Summary","type":"string","default":"Keep preview playback stable while edits arrive.","maxLength":100}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Code Diff Card</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.diff-shell{width:1500px;margin:auto}.diff-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:26px}.diff-file{font:750 25px/1 var(--ipw-font-mono,ui-monospace,monospace)}.diff-summary{max-width:760px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.diff-pane{min-height:430px;padding:42px;border-radius:30px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.diff-label{font-size:15px;font-weight:800;letter-spacing:.16em}.diff-code{display:block;margin-top:92px;padding:26px;border-radius:16px;white-space:pre-wrap;font:26px/1.5 var(--ipw-font-mono,ui-monospace,monospace)}.diff-before .diff-code{background:#fff0f0;color:#a93636}.diff-after .diff-code{background:#eafaf3;color:#14704d}</style></head>
+<body><main id="root" data-composition-id="code-diff-card" data-width="1920" data-height="1080" data-start="0" data-duration="9" data-defaults='{"filename":"player.ts","before":"- pauseOnUpdate();","after":"+ preservePlaybackState();","summary":"Keep preview playback stable while edits arrive."}'><section class="diff-shell"><header class="diff-head vc-animate"><div class="diff-file" data-ipw-variable="filename" data-ipw-ai-slot="filename"></div><div class="diff-summary" data-ipw-variable="summary" data-ipw-ai-slot="summary"></div></header><div class="diff-grid"><article class="diff-pane diff-before vc-animate"><div class="diff-label">BEFORE</div><code class="diff-code" data-ipw-variable="before" data-ipw-ai-slot="before"></code></article><article class="diff-pane diff-after vc-animate"><div class="diff-label">AFTER</div><code class="diff-code" data-ipw-variable="after" data-ipw-ai-slot="after"></code></article></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="code-diff-card";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+const initial={};const motion="slide-right";
+if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
+else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
+else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
+else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
+else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:54,opacity:0});
+const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
+  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
+  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

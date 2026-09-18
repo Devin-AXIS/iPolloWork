@@ -30,7 +30,7 @@ describe("Design deck navigation", () => {
     const source = await Bun.file(panelUrl).text();
 
     expect(source).toContain('setEditing(isPresentationTemplate);');
-    expect(source).toContain("Edit");
+    expect(source).toContain('t("design.toolbar.edit")');
   });
 
   test("keeps the website toolbar compact and ordered", async () => {
@@ -38,7 +38,7 @@ describe("Design deck navigation", () => {
 
     expect(source).not.toContain('>Current design</p>');
     expect(source).not.toContain("Edit page");
-    expect(source).toContain('className="order-3 shrink-0 rounded-lg"');
+    expect(source).toContain('className="order-3 flex h-8 shrink-0 items-center gap-0.5 rounded-[9px] bg-muted p-[3px]"');
     expect(source).toContain("panelWidth < 360");
     expect(source).toContain('className="w-14 shrink-0 rounded-lg border-0 bg-transparent');
     expect(source).toContain("const currentVersionLabel = `V${versionTargets.length + 1}`");
@@ -68,21 +68,55 @@ describe("Design deck navigation", () => {
     expect(source).toContain("panelWidth < 480");
     expect(source).toContain("compact={compactToolbar}");
     expect(source).toContain("showExports={Boolean(deck)}");
-    expect(source).toContain("onPublish={() => publishMutation.mutate()}");
+    expect(source).toContain("onPublish={features.publish ? () => publishMutation.mutate() : undefined}");
   });
 
   test("orders editing actions before sharing and export", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source.indexOf('aria-label="Fit canvas to view"')).toBeLessThan(source.indexOf('aria-label="Save design"'));
-    expect(source.indexOf('aria-label="Save design"')).toBeLessThan(source.indexOf('aria-label="Publish to object storage"'));
-    expect(source.indexOf('aria-label="Publish to object storage"')).toBeLessThan(source.indexOf("<DesignExportMenu"));
+    expect(source).toContain("<DesignSaveMenu");
+    expect(source).not.toContain('dirty ? <Save /> : <Check />');
+    expect(source.indexOf('data-testid="design-mode-controls"')).toBeLessThan(source.indexOf('data-testid="design-history-controls"'));
+    expect(source.indexOf('data-testid="design-history-controls"')).toBeLessThan(source.indexOf('data-testid="design-sharing-controls"'));
+    expect(source.indexOf('aria-label="Fit canvas to view"')).toBeLessThan(source.indexOf('aria-label={t("design.toolbar.save")}'));
+    expect(source.indexOf('aria-label={t("design.toolbar.publish")}')).toBeLessThan(source.indexOf("<DesignExportMenu"));
+  });
+
+  test("centers a localized browse-edit segment and disables properties while browsing", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain('size-8 rounded-lg border-0 bg-transparent text-foreground shadow-none transition-colors hover:bg-muted hover:text-foreground');
+    expect(source).toContain('[&_svg]:!size-[18px] [&_svg]:stroke-[1.5]');
+    expect(source).not.toContain("<Switch");
+    expect(source).toContain('data-testid="design-mode-toggle"');
+    expect(source).toContain('className="absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2"');
+    expect(source).toContain('value={[editing ? "edit" : "preview"]}');
+    expect(source).toContain('t("design.toolbar.preview")');
+    expect(source).toContain('t("design.toolbar.edit")');
+    expect(source).toContain('aria-pressed:bg-white');
+    expect(source).toContain('aria-pressed:shadow-none');
+    expect(source).toContain('value="desktop" className="h-[26px] min-w-0 w-[30px] rounded-md');
+    expect(source).toContain('value="mobile" className="h-[26px] min-w-0 w-[30px] rounded-md');
+    expect(source).toContain("disabled={!editing}");
+    expect(source).toContain("aria-pressed={editing && elementPropertiesOpen}");
+    expect(source).not.toContain("{editing ? <Button");
+    expect(source.indexOf('data-testid="design-mode-toggle"')).toBeLessThan(source.indexOf('data-testid="design-properties-button"'));
+  });
+
+  test("groups save-as-template with the existing save action", async () => {
+    const source = await Bun.file(panelUrl).text();
+
+    expect(source).toContain("{onSaveAsTemplate ? (");
+    expect(source).toContain("<DesignSaveMenu");
+    expect(source).toContain("onSave={() => saveMutation.mutate()}");
+    expect(source).toContain("onSaveAsTemplate={onSaveAsTemplate}");
+    expect(source).toContain("{deck || compactToolbar ? (");
   });
 
   test("offers selected-element deletion only from the floating toolbar", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}');
+    expect(source).toContain('label={t(isMultiSelection ? "design.toolbar.delete_many" : "design.toolbar.delete")}');
     expect(source).toContain('type: "delete"');
     expect(source).toContain("disabled={!selectionSummary.selections.some((member) => member.canDelete)}");
     expect(source).toContain("onClick={() => setDeleteConfirmationOpen(true)}");
@@ -91,10 +125,10 @@ describe("Design deck navigation", () => {
     expect(source).not.toContain("text-destructive hover:bg-destructive/10");
   });
 
-  test("places AI after every floating toolbar action", async () => {
+  test("places AI after properties in the quick editing group", async () => {
     const source = await Bun.file(panelUrl).text();
-    expect(source).toContain('aria-label="Ask AI about selected element"');
-    expect(source.lastIndexOf('aria-label="Ask AI about selected element"')).toBeGreaterThan(source.lastIndexOf('aria-label="Toggle advanced design settings"'));
+    expect(source).toContain('label={t("design.toolbar.ask_ai")}');
+    expect(source.lastIndexOf('label={t("design.toolbar.ask_ai")}')).toBeGreaterThan(source.lastIndexOf('label={t("design.toolbar.settings")}'));
   });
 
   test("keeps the floating toolbar spacing compact and consistent", async () => {
@@ -108,9 +142,9 @@ describe("Design deck navigation", () => {
 
   test("keeps protected runtime controls unavailable to AI", async () => {
     const source = await Bun.file(panelUrl).text();
-    const labelIndex = source.lastIndexOf('aria-label="Ask AI about selected element"');
-    const actionStart = source.lastIndexOf("<button", labelIndex);
-    expect(source.slice(actionStart, labelIndex)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
+    const labelIndex = source.lastIndexOf('label={t("design.toolbar.ask_ai")}');
+    const actionEnd = source.indexOf("</button>", labelIndex);
+    expect(source.slice(labelIndex, actionEnd)).toContain("disabled={!selection.canDelete || saveMutation.isPending || viewedVersionPath !== \"current\"}");
   });
 
   test("pans the overflowed presentation canvas without moving the slide", async () => {
@@ -131,7 +165,7 @@ describe("Design deck navigation", () => {
     expect(source).toContain('type: "restore-view"');
     expect(source).toContain('event.data.type === "view-restored"');
     expect(source).toContain('type: "select-locator", locator');
-    expect(source).toContain("const selectionLocator = selection?.locator ?? null");
+    expect(source).toContain("selectionLocator: selection?.locator ?? null,");
     expect(source).toContain("presentationPanRef.current?.scrollTo");
     expect(source).toContain("if (activePageHash && !pending)");
     expect(source).not.toContain('postMessage({ channel: DESIGN_MESSAGE_CHANNEL, type: "scroll-to", hash: activePageHash }, "*");\n                        iframeRef');
@@ -200,7 +234,7 @@ describe("Design deck navigation", () => {
   test("explains why Undo is disabled before the first change", async () => {
     const source = await Bun.file(panelUrl).text();
 
-    expect(source).toContain('title={history.length === 0 && !aiUndoCheckpoint ? "Make a change first to undo it" : "Undo last design change"}');
+    expect(source).toContain('title={history.length === 0 && !aiUndoCheckpoint ? t("design.toolbar.undo_empty") : t("design.toolbar.undo")}');
   });
 
   test("dismisses the floating selection toolbar when the editor deselects", async () => {
@@ -232,15 +266,15 @@ describe("Design deck navigation", () => {
   test("hides single-element toolbar actions in a multi-selection", async () => {
     const source = await Bun.file(panelUrl).text();
     expect(source).toContain("{!isMultiSelection && selection.canEditText ?");
-    expect(source).toContain("{!isMultiSelection ? <button");
-    expect(source).toContain('aria-label={isMultiSelection ? "Delete selected elements" : "Delete selected element"}');
+    expect(source).toContain("{!isMultiSelection ? <FloatingToolbarTooltip");
+    expect(source).toContain('label={t(isMultiSelection ? "design.toolbar.delete_many" : "design.toolbar.delete")}');
   });
 
-  test("uses the Figma toolbar assets and constrains free dragging to the preview", async () => {
+  test("uses consistent toolbar icons and constrains free dragging to the preview", async () => {
     const source = await Bun.file(panelUrl).text();
-    expect(source).toContain('import floatingToolbarGrip from "./assets/floating-toolbar-grip.svg"');
+    expect(source).toContain('<GripVertical className="size-4" strokeWidth={1.5} />');
     expect(source).toContain('import floatingToolbarEditText from "./assets/floating-toolbar-edit-text.svg"');
-    expect(source).toContain('aria-label="Move floating toolbar"');
+    expect(source).toContain('label={t("design.toolbar.drag")}');
     expect(source).toContain("onPointerMove={moveFloatingToolbar}");
     expect(source).toContain("viewport.clientWidth - toolbar.offsetWidth - padding");
     expect(source).toContain("viewport.clientHeight - toolbar.offsetHeight - padding");

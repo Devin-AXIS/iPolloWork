@@ -13,9 +13,27 @@ export const bundledPluginPackageIds = [
   "context7",
   "github",
   "wechat-official",
+  "xiaohongshu-ops",
+  "douyin-ops",
   "design-agent",
   "video-agent",
+  "reference-context",
+  "media-studio",
+  "deepseek-harness",
 ] as const;
+
+export const defaultBundledPluginPackageIds = ["design-agent", "video-agent", "reference-context", "media-studio"] as const;
+
+// Core Skills use the package projection machinery, but are not user extensions.
+export function isInternalPluginPackage(pluginId: string): boolean {
+  return pluginId === "reference-context";
+}
+
+export const catalogPluginPackageIds = bundledPluginPackageIds.filter(id => !isInternalPluginPackage(id));
+
+export async function withPluginPackageCatalogRoot<T>(pluginId: string, operation: (root: string, source: string) => Promise<T>): Promise<T> {
+  return operation(await resolveBundledPluginPackageRoot(pluginId), `bundled:${pluginId}`);
+}
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 

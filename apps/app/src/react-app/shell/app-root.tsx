@@ -15,6 +15,7 @@ import { exchangeHandoffAndSignIn } from "../../app/lib/den-handoff";
 import {
   denSettingsChangedEvent,
 } from "../../app/lib/den-session-events";
+import { isElectronRuntime } from "../../app/utils";
 import { evalRelaunchDesktopApp } from "../../app/lib/desktop";
 import { Button } from "../../components/ui/button";
 import { localeChangedEvent, t } from "../../i18n";
@@ -37,6 +38,104 @@ import { SessionRoute } from "./session-route";
 import { SettingsRoute } from "./settings-route";
 import { ShellConfigProvider } from "./shell-config";
 
+
+function BrowserControlActions() {
+  function controlObjectArg(args: unknown) { return args && typeof args === "object" && !Array.isArray(args) ? args : null; }
+  function controlStringArg(args: unknown, key: string) { const object = controlObjectArg(args); const value = object ? Reflect.get(object, key) : null; return typeof value === "string" ? value.trim() : ""; }
+  const openBrowserUrlControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.open_url",
+    label: "Open URL in built-in browser",
+    description: "Open a website in a new iPolloWork built-in browser tab and return its host-owned tab ID.",
+    sideEffect: "navigation",
+    requiresArgs: true,
+    args: [
+      { name: "url", type: "string", required: true, description: "The website URL to open." },
+      { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
+    ],
+    previewArgs: { url: "https://example.com" },
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const url = controlStringArg(args, "url");
+      if (!url) return { ok: false, error: "Missing URL." };
+      const profileId = controlStringArg(args, "profileId");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId ? { profileId } : undefined);
+      return result;
+    },
+  }), []);
+  useControlAction(openBrowserUrlControlAction);
+  const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.snapshot",
+    label: "Read built-in browser page",
+    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
+      if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      return snapshot({ tabId });
+    },
+  }), []);
+  useControlAction(snapshotBrowserControlAction);
+  const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.act",
+    label: "Act in built-in browser",
+    description: "Execute a bounded ref-based browser action batch through real keyboard and pointer input.",
+    sideEffect: "mutation",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
+      { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
+      { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      const snapshotId = controlStringArg(args, "snapshotId");
+      const actions = object ? Reflect.get(object, "actions") : null;
+      if (!tabId || !snapshotId || !Array.isArray(actions)) {
+        return { ok: false, error: "tabId, snapshotId, and actions are required." };
+      }
+      const act = window.__IPOLLOWORK_ELECTRON__?.browser?.act;
+      if (!act) return { ok: false, error: "Built-in browser runtime is not available." };
+      return act({
+        tabId,
+        snapshotId,
+        workspaceRoot: controlStringArg(args, "workspaceRoot") || undefined,
+        actions: actions.filter((action): action is Record<string, unknown> => (
+          Boolean(action) && typeof action === "object" && !Array.isArray(action)
+        )),
+      });
+    },
+  }), []);
+  useControlAction(actInBrowserControlAction);
+  const setBrowserProxyControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.set_proxy",
+    label: "Set built-in browser proxy",
+    description: "Route all built-in browser traffic through an HTTP/SOCKS proxy (e.g. to browse from another location). Applies to every built-in browser tab until cleared. Pass an empty proxy to restore system network settings.",
+    sideEffect: "mutation",
+    args: [
+      { name: "proxy", type: "string", description: "Proxy URL like http://user:pass@host:8080 or socks5://host:1080, env:NAME to use the IPOLLOWORK_BROWSER_PROXY_NAME environment variable, or empty to clear." },
+    ],
+    previewArgs: { proxy: "env:DE" },
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const proxy = controlStringArg(args, "proxy") || "";
+      const setProxy = window.__IPOLLOWORK_ELECTRON__?.browser?.setProxy;
+      if (!setProxy) return { ok: false, error: "Built-in browser is not available." };
+      return setProxy(proxy);
+    },
+  }), []);
+  useControlAction(setBrowserProxyControlAction);
+  return null;
+}
 
 type DenSigninGateProps = {
   children: ReactNode;
@@ -312,6 +411,7 @@ export function AppRoot() {
         <AppMenuProvider>
         <IPolloWorkControlProvider>
           <IPolloWorkRouteControlActions />
+          <BrowserControlActions />
           <DenAuthControlActions />
           <BrandThemeControlActions />
           <DenSigninGate>
@@ -338,7 +438,7 @@ export function AppRoot() {
               />
 
               <Route
-                path="/session"
+                path="/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />
@@ -346,23 +446,7 @@ export function AppRoot() {
                 }
               />
               <Route
-                path="/session/:sessionId"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session"
-                element={
-                  <DevProfiler id="SessionRoute">
-                    <SessionRoute />
-                  </DevProfiler>
-                }
-              />
-              <Route
-                path="/workspace/:workspaceId/session/:sessionId"
+                path="/workspace/:workspaceId/session/:sessionId?"
                 element={
                   <DevProfiler id="SessionRoute">
                     <SessionRoute />

@@ -1,9 +1,8 @@
-import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT, isHtmlIllustrationAsset } from "../../utils/mediaTypes";
+import { AUDIO_EXT, IMAGE_EXT, VIDEO_EXT, FONT_EXT } from "../../utils/mediaTypes";
 
-export type MediaCategory = "audio" | "illustrations" | "images" | "video" | "fonts";
+export type MediaCategory = "audio" | "images" | "video" | "fonts";
 
 export function getCategory(path: string): MediaCategory | null {
-  if (isHtmlIllustrationAsset(path)) return "illustrations";
   if (AUDIO_EXT.test(path)) return "audio";
   if (IMAGE_EXT.test(path)) return "images";
   if (VIDEO_EXT.test(path)) return "video";
@@ -62,10 +61,9 @@ export function formatDuration(seconds: number): string {
 
 export const CATEGORY_LABELS: Record<MediaCategory, string> = {
   audio: "Audio",
-  illustrations: "Illustrations",
   images: "Images",
   video: "Video",
   fonts: "Fonts",
 };
 
-export const FILTER_ORDER: MediaCategory[] = ["illustrations", "images", "video", "audio", "fonts"];
+export const FILTER_ORDER: MediaCategory[] = ["images", "video", "audio", "fonts"];

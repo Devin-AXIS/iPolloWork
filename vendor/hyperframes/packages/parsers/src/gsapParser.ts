@@ -1371,9 +1371,16 @@ function findStatementPath(path: AstPath): AstPath | null {
 
 function insertAfterAnchor(parsed: ParsedGsapAst, newStatement: AstNode): void {
   const lastCall = parsed.located[parsed.located.length - 1]?.call;
-  const anchorPath = lastCall
-    ? findStatementPath(lastCall.path)
-    : findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+  const declaration = findTimelineDeclarationPath(parsed.ast, parsed.timelineVar);
+  const statementList = declaration?.parentPath?.value ?? parsed.ast.program.body;
+  // A template may build tweens inside forEach callbacks or a bare if branch.
+  // Insert in the timeline's declaring scope: inserting into the nested branch
+  // either throws (not an array path), repeats the new tween, or never runs it.
+  let anchorPath: AstPath | null = lastCall?.path ?? declaration;
+  while (anchorPath && anchorPath.parentPath?.value !== statementList) {
+    anchorPath = anchorPath.parentPath;
+  }
+  anchorPath ??= declaration;
   if (anchorPath) {
     anchorPath.insertAfter(newStatement);
   } else {

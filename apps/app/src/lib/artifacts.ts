@@ -1,13 +1,8 @@
 import type { UIMessage } from "ai";
 import * as React from "react";
 
-import {
-  isApplyPatchToolPart,
-  isEditToolPart,
-  isWriteToolPart,
-} from "@/lib/build-in-tools";
-import { useOpenTargets } from "@/lib/target-provider";
-import { isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
+import { useOpenTargets, type OpenTargetOptions } from "@/lib/target-provider";
+import { createWorkspaceFileOpenTarget, getAssistantFileMentionPaths, getWrittenFilePaths, isCollectibleArtifactTarget, isOpenableFileTarget, type OpenTarget, type OpenTargetPreview } from "@/react-app/domains/session/artifacts/open-target";
 
 export type ArtifactType = "website" | "markdown" | "sheet" | "slides" | "document" | "image" | "video" | "audio" | "pdf" | "html" | "text" | "unknown";
 
@@ -19,7 +14,7 @@ export type ArtifactItem = {
   messageId: string
   messageIndex: number
   updatedAt?: number
-  legacy_target: OpenTarget
+  target: OpenTarget
 }
 
 export type ConversationOutputGroup = {
@@ -33,6 +28,16 @@ export type ArtifactInteractionContext =
   | { kind: "video"; entryPath: string }
   | { kind: "presentation"; entryPath: string }
 
+export type ArtifactRequestOwnership = {
+  requestOrdinal: number
+  paths: readonly string[]
+}
+
+export type ArtifactStudioTarget = {
+  surface: "design" | "video"
+  sessionId: string
+}
+
 type ArtifactEntry = ArtifactItem & {
   sequence: number
 }
@@ -45,6 +50,7 @@ type ArtifactPathCandidate = {
 type GetArtifactsOptions = {
   includeTargetFallbacks?: boolean
   supplementalFiles?: readonly string[]
+  registeredFiles?: readonly import("@ipollowork/types/workspace").SessionArtifact[]
 }
 
 const WORKSPACES_PREFIX_PATTERN = /^workspaces\/[^/]+\//i;
@@ -152,11 +158,11 @@ export function getArtifactTypeLabel(type: ArtifactType) {
 }
 
 export function canPreviewArtifact(artifact: ArtifactItem) {
-  return isCollectibleArtifactTarget(artifact.legacy_target);
+  return isCollectibleArtifactTarget(artifact.target);
 }
 
 export function canOpenArtifact(artifact: ArtifactItem) {
-  return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.legacy_target);
+  return canPreviewArtifact(artifact) || isOpenableFileTarget(artifact.target);
 }
 
 export function canOpenArtifactInContext(
@@ -184,13 +190,35 @@ export function selectArtifactContextOutputs(
   return outputs.filter((artifact) => canOpenArtifactInContext(artifact, context));
 }
 
-/** A template-backed chat turn exposes one final entry, never duplicate discovery records or implementation assets. */
+/** Inline cards highlight deliverables; editable support files stay in the output panel. */
+export function selectConversationArtifactCards(
+  artifacts: ArtifactItem[],
+  context?: ArtifactInteractionContext,
+) {
+  return selectArtifactContextOutputs(artifacts, context).filter((artifact) => {
+    if (context) return canOpenArtifactInContext(artifact, context);
+    // Studio entries remain actionable even while their workspace-catalog
+    // existence check is catching up with the assistant's final response.
+    if (getArtifactStudioTarget(artifact)) return true;
+    return artifact.type !== "text" && canPreviewArtifact(artifact);
+  });
+}
+
+/** A template-backed turn keeps its canonical editor entry plus verified exported deliverables. */
 export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], templateEntryPath: string) {
+  const templateDirectory = artifactDirectoryPath(templateEntryPath);
+  const exportedDeliverables = artifacts.filter((artifact) => (
+    artifact.type !== "html"
+    && artifact.type !== "text"
+    && isConversationOutputArtifact(artifact)
+    && canOpenArtifact(artifact)
+    && artifactPathIsWithinDirectory(artifact.path, templateDirectory)
+  ));
   const exactEntries = artifacts.filter((artifact) => (
     artifact.type === "html" && artifactPathMatchesTarget(artifact.path, templateEntryPath)
   ));
   const exactEntry = exactEntries.sort(compareArtifactsForPrimary)[0];
-  if (exactEntry) return [exactEntry];
+  if (exactEntry) return [exactEntry, ...exportedDeliverables];
 
   const entryName = getArtifactName(normalizeArtifactPath(templateEntryPath)).toLowerCase();
   const candidates = artifacts.filter((artifact) => (
@@ -200,7 +228,7 @@ export function selectTemplateEntryArtifacts(artifacts: ArtifactItem[], template
     ?? candidates.find((artifact) => normalizeArtifactPath(artifact.path).toLowerCase() === normalizeArtifactPath(templateEntryPath).toLowerCase())
     ?? candidates[0];
 
-  return selected ? [selected] : [];
+  return selected ? [selected, ...exportedDeliverables] : exportedDeliverables;
 }
 
 function getArtifactName(path: string) {
@@ -220,9 +248,13 @@ export function isConversationOutputArtifact(artifact: ArtifactItem) {
   return true;
 }
 
-/** HTML compositions under the video workspace open the session's Video Studio. */
-export function isVideoHtmlArtifact(artifact: ArtifactItem) {
-  return artifact.type === "html" && /(?:^|\/)video(?:\/|$)/i.test(artifact.path);
+export function getArtifactStudioTarget(artifact: ArtifactItem): ArtifactStudioTarget | null {
+  if (artifact.type !== "html") return null;
+  const path = normalizeArtifactPath(artifact.path);
+  const video = /^video\/([^/]+)\/index\.html$/i.exec(path);
+  if (video?.[1]) return { surface: "video", sessionId: video[1] };
+  const design = /^design\/([^/]+)\/(?:entry|index)\.html$/i.exec(path);
+  return design?.[1] ? { surface: "design", sessionId: design[1] } : null;
 }
 
 const BUNDLE_PRIMARY_TYPES = new Set<ArtifactType>(["website", "html", "video", "slides", "document", "pdf"]);
@@ -282,7 +314,7 @@ export function groupConversationOutputArtifacts(artifacts: ArtifactItem[]): Con
 
   for (const artifact of artifacts) {
     const directory = getArtifactBundleDirectory(artifact.path);
-    if (!directory) {
+    if (!directory || artifact.type === "image" || artifact.type === "video") {
       standalone.push({ id: artifact.id, primary: artifact, artifacts: [artifact], bundled: false });
       continue;
     }
@@ -362,6 +394,65 @@ export function artifactPathMatchesTarget(path: string, targetValue: string) {
   return normalized === target || normalized.endsWith(`/${target}`);
 }
 
+export function artifactRequestOwner(
+  path: string,
+  ownership: readonly ArtifactRequestOwnership[],
+) {
+  return ownership.findLast((entry) =>
+    entry.paths.some((ownedPath) => artifactPathMatchesTarget(path, ownedPath)),
+  )?.requestOrdinal ?? null;
+}
+
+export function assignArtifactRequestOwnership(
+  ownership: readonly ArtifactRequestOwnership[],
+  requestOrdinal: number,
+  paths: readonly string[],
+): ArtifactRequestOwnership[] {
+  const assignedPaths = [...new Set(paths.map(normalizeArtifactPath).filter(Boolean))];
+  if (assignedPaths.length === 0) return [...ownership];
+
+  const retained = ownership.flatMap((entry) => {
+    const remainingPaths = entry.paths.filter((path) =>
+      !assignedPaths.some((assignedPath) => artifactPathMatchesTarget(path, assignedPath)),
+    );
+    return remainingPaths.length > 0 ? [{ ...entry, paths: remainingPaths }] : [];
+  });
+  const existing = retained.find((entry) => entry.requestOrdinal === requestOrdinal);
+  const nextPaths = existing
+    ? [...new Set([...existing.paths, ...assignedPaths])]
+    : assignedPaths;
+
+  return [
+    ...retained.filter((entry) => entry.requestOrdinal !== requestOrdinal),
+    { requestOrdinal, paths: nextPaths },
+  ];
+}
+
+export function selectArtifactsForRequest(
+  artifacts: readonly ArtifactItem[],
+  requestOrdinal: number | null,
+  ownership: readonly ArtifactRequestOwnership[],
+) {
+  if (requestOrdinal === null || ownership.length === 0) return [...artifacts];
+  return artifacts.filter((artifact) => {
+    const owner = artifactRequestOwner(artifact.path, ownership);
+    return owner === null || owner === requestOrdinal;
+  });
+}
+
+export function selectSupplementalArtifactsForRequest(
+  paths: readonly string[],
+  requestOrdinal: number | null,
+  ownership: readonly ArtifactRequestOwnership[],
+  includeUnowned: boolean,
+) {
+  if (requestOrdinal === null) return includeUnowned ? [...paths] : [];
+  return paths.filter((path) => {
+    const owner = artifactRequestOwner(path, ownership);
+    return owner === requestOrdinal || (owner === null && includeUnowned);
+  });
+}
+
 function openTargetFromArtifactPath(
   path: string,
   name: string,
@@ -373,8 +464,18 @@ function openTargetFromArtifactPath(
   const verified = verifiedTargets.find(
     (target) => target.id === id || artifactPathMatchesTarget(normalized, target.value),
   );
+  if (verified) return verified;
 
-  return verified ?? {
+  if (!normalized.includes("/")) {
+    const basenameMatches = verifiedTargets.filter((target) => (
+      target.kind === "file"
+      && target.exists === true
+      && getArtifactName(target.value).toLowerCase() === normalized.toLowerCase()
+    ));
+    if (basenameMatches.length === 1) return basenameMatches[0];
+  }
+
+  return {
     id,
     kind: "file",
     value: normalized,
@@ -385,48 +486,15 @@ function openTargetFromArtifactPath(
   };
 }
 
-function parseApplyPatchPaths(patchText: string) {
-  const paths: string[] = [];
-
-  for (const line of patchText.split("\n")) {
-    if (line.startsWith("*** Add File:")) {
-      paths.push(line.slice("*** Add File:".length).trim());
-      continue;
-    }
-
-    if (line.startsWith("*** Update File:")) {
-      paths.push(line.slice("*** Update File:".length).trim());
-      continue;
-    }
-
-    if (line.startsWith("*** Move to:")) {
-      paths.push(line.slice("*** Move to:".length).trim());
-    }
-  }
-
-  return paths;
-}
-
-function artifactPathCandidate(path: string, verifiedFromWrite = false): ArtifactPathCandidate | null {
-  const normalized = path.trim().toLowerCase();
+function artifactPathCandidate(path: unknown, verifiedFromWrite = false): ArtifactPathCandidate | null {
+  if (typeof path !== "string") return null;
+  const normalized = path.trim();
   return normalized ? { path: normalized, verifiedFromWrite } : null;
 }
 
-const FILE_PATTERN = /(?:^|[\s"'`([{])((?:\.{1,2}[/\\]|~[/\\]|[/\\])?[\w.\-]+(?:[/\\][\w.\-]+)+\.[a-z][a-z0-9]{0,9}|[\w.\-]+\.[a-z][a-z0-9]{0,9})/gi;
-const ASSISTANT_ARTIFACT_MENTION_PATTERN = /\b(?:artifact|created|deck|deliverable|exported|file|generated|opened|presentation|saved|slides?|updated|wrote)\b/i;
-
-function getArtifactPathsFromText(text: string) {
-  if (!ASSISTANT_ARTIFACT_MENTION_PATTERN.test(text)) return [];
-  const paths: string[] = [];
-
-  FILE_PATTERN.lastIndex = 0;
-  for (const match of text.matchAll(FILE_PATTERN)) {
-    if (match[1] && getArtifactType(match[1]) !== "unknown") {
-      paths.push(match[1]);
-    }
-  }
-
-  return paths;
+function getArtifactPathsFromText(text: unknown) {
+  if (typeof text !== "string") return [];
+  return getAssistantFileMentionPaths(text).filter((path) => getArtifactType(path) !== "unknown");
 }
 
 function getArtifactPathsFromMessage(message: UIMessage) {
@@ -442,20 +510,8 @@ function getArtifactPathsFromMessage(message: UIMessage) {
       continue;
     }
 
-    if (isWriteToolPart(part)) {
-      const candidate = artifactPathCandidate(part.input.filePath, true);
-      if (candidate) paths.push(candidate);
-      continue;
-    }
-
-    if (isEditToolPart(part)) {
-      const candidate = artifactPathCandidate(part.input.filePath, true);
-      if (candidate) paths.push(candidate);
-      continue;
-    }
-    if (isApplyPatchToolPart(part)) {
-      paths.push(...parseApplyPatchPaths(part.input.patchText).flatMap((path) => artifactPathCandidate(path, true) ?? []));
-    }
+    paths.push(...getWrittenFilePaths(part.toolName, part.input, part.output)
+      .flatMap((path) => artifactPathCandidate(path, true) ?? []));
   }
 
   return paths;
@@ -470,11 +526,15 @@ function addArtifact(
   verifiedTargets: OpenTarget[],
   verifiedTarget?: OpenTarget,
 ) {
-  const normalized = normalizeArtifactPath(path);
+  const requestedPath = normalizeArtifactPath(path);
+  const requestedType = getArtifactType(requestedPath);
+  const target = verifiedTarget ?? openTargetFromArtifactPath(requestedPath, getArtifactName(requestedPath), requestedType, verifiedTargets);
+  const normalized = target.kind === "file" && target.exists === true
+    ? normalizeArtifactPath(target.value)
+    : requestedPath;
   const key = normalized.toLowerCase();
   const type = getArtifactType(normalized);
-  const legacyTarget = verifiedTarget ?? openTargetFromArtifactPath(normalized, getArtifactName(normalized), type, verifiedTargets);
-  const name = legacyTarget.name;
+  const name = target.name;
 
   artifacts.set(key, {
     id: key,
@@ -484,8 +544,8 @@ function addArtifact(
     messageId,
     messageIndex,
     sequence,
-    updatedAt: legacyTarget.updatedAt,
-    legacy_target: legacyTarget,
+    updatedAt: target.updatedAt,
+    target,
   });
 }
 
@@ -534,6 +594,15 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
     }
   }
 
+  for (const file of options.registeredFiles ?? []) {
+    for (const previous of file.previousPaths ?? []) {
+      for (const [key, item] of artifacts) if (artifactPathMatchesTarget(item.path, previous)) artifacts.delete(key);
+    }
+    const target = createWorkspaceFileOpenTarget({ path: file.path, size: file.size, mtimeMs: file.updatedAt });
+    // A Studio result has no chat message. Keep it out of per-turn artifact lists.
+    addArtifact(artifacts, file.path, "session-output", messages.length, sequence++, openTargets, target);
+  }
+
   return [...artifacts.values()].sort((left, right) => {
     const updatedAtDelta = (right.updatedAt ?? 0) - (left.updatedAt ?? 0);
     if (updatedAtDelta !== 0) return updatedAtDelta;
@@ -545,25 +614,61 @@ export function getArtifactsFromMessages(messages: UIMessage[], openTargets: Ope
   });
 }
 
+export function inferArtifactRequestOwnership(
+  messages: UIMessage[],
+  supplementalFiles: readonly string[],
+) {
+  let requestOrdinal = -1;
+  let ownership: ArtifactRequestOwnership[] = [];
+
+  for (const message of messages) {
+    if (message.role === "user" && message.parts.length > 0) {
+      requestOrdinal += 1;
+      continue;
+    }
+    if (message.role !== "assistant" || requestOrdinal < 0) continue;
+
+    const messageArtifacts = getArtifactsFromMessages([message], [], {
+      includeTargetFallbacks: false,
+    });
+    const ownedPaths = new Set<string>();
+    for (const artifact of messageArtifacts) {
+      ownedPaths.add(artifact.path);
+      if (!getArtifactStudioTarget(artifact)) continue;
+      const directory = artifactDirectoryPath(artifact.path);
+      for (const path of supplementalFiles) {
+        if (artifactPathMatchesTarget(path, artifact.path)
+          || artifactPathIsWithinDirectory(path, directory)) {
+          ownedPaths.add(path);
+        }
+      }
+    }
+    ownership = assignArtifactRequestOwnership(
+      ownership,
+      requestOrdinal,
+      [...ownedPaths],
+    );
+  }
+
+  return ownership;
+}
+
 export function useArtifacts(messages: UIMessage[], options: GetArtifactsOptions = {}) {
   const { openTargets } = useOpenTargets();
   const includeTargetFallbacks = options.includeTargetFallbacks ?? false;
   const supplementalFiles = options.supplementalFiles;
+  const registeredFiles = options.registeredFiles;
 
   return React.useMemo(
-    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles }),
-    [includeTargetFallbacks, messages, openTargets, supplementalFiles],
+    () => getArtifactsFromMessages(messages, openTargets, { includeTargetFallbacks, supplementalFiles, registeredFiles }),
+    [includeTargetFallbacks, messages, openTargets, supplementalFiles, registeredFiles],
   );
 }
 
 export function usePreviewArtifact() {
   const { onOpenTarget } = useOpenTargets();
 
-  return React.useCallback((artifact: ArtifactItem) => {
-    async function previewArtifact() {
-      onOpenTarget?.(artifact.legacy_target);
-    }
-
-    void previewArtifact();
+  return React.useCallback((artifact: ArtifactItem, options?: OpenTargetOptions) => {
+    onOpenTarget?.(artifact.target, options);
   }, [onOpenTarget]);
 }

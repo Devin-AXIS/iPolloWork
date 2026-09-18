@@ -1,5 +1,4 @@
 import {
-  GUTTER,
   TRACK_H,
   RULER_H,
   CLIP_Y,
@@ -76,11 +75,12 @@ export function getTimelineClipRect(
   clip: Pick<MarqueeClipInput, "start" | "duration" | "track">,
   trackOrder: number[],
   pps: number,
+  gutterWidth: number,
 ): Rect | null {
   const row = trackOrder.indexOf(clip.track);
   if (row < 0 || !Number.isFinite(pps) || pps <= 0) return null;
   return {
-    left: GUTTER + TRACKS_LEFT_PAD + clip.start * pps,
+    left: gutterWidth + TRACKS_LEFT_PAD + clip.start * pps,
     top: getTimelineRowTop(row) + CLIP_Y,
     width: Math.max(clip.duration * pps, MIN_CLIP_W),
     height: TRACK_H - CLIP_Y * 2,
@@ -104,12 +104,13 @@ export function computeMarqueeSelection(input: {
   trackOrder: number[];
   pps: number;
   marquee: Rect;
+  gutterWidth: number;
   baseSelection?: Iterable<string>;
 }): MarqueeSelectionResult {
   const ids = new Set<string>(input.baseSelection ?? []);
   let primaryId: string | null = null;
   for (const clip of input.clips) {
-    const rect = getTimelineClipRect(clip, input.trackOrder, input.pps);
+    const rect = getTimelineClipRect(clip, input.trackOrder, input.pps, input.gutterWidth);
     if (rect && rectsOverlap(rect, input.marquee)) {
       ids.add(clip.id);
       primaryId = clip.id;

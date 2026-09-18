@@ -20,7 +20,7 @@ export const GestureTrailOverlay = memo(function GestureTrailOverlay({
   canvasRect,
   compositionSize,
   mode,
-  accentColor = "#3CE6AC",
+  accentColor = "#1FBAC0",
 }: GestureTrailOverlayProps) {
   const trailPoints = useMemo(() => {
     if (!canvasRect) return "";

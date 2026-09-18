@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "instagram-post",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Instagram Post",
+  "description": "A polished Instagram-style feed post with profile context, visual media and engagement.",
+  "tags": [
+    "component",
+    "social",
+    "instagram",
+    "post",
+    "feed",
+    "square",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "author",
+        "location",
+        "caption",
+        "engagement"
+      ],
+      "instructions": "Write a concise creator caption and compact engagement summary. Do not claim verified reach."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "instagram-post.html",
+      "target": "compositions/instagram-post.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "author",
+      "label": "Creator",
+      "type": "string",
+      "default": "Mira Studio",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "location",
+      "label": "Location",
+      "type": "string",
+      "default": "Shanghai · Creative District",
+      "maxLength": 56,
+      "update": "live"
+    },
+    {
+      "id": "caption",
+      "label": "Caption",
+      "type": "string",
+      "default": "Quiet details make the loudest product moments.",
+      "maxLength": 180,
+      "update": "live"
+    },
+    {
+      "id": "engagement",
+      "label": "Engagement",
+      "type": "string",
+      "default": "12.8K likes · 684 comments",
+      "maxLength": 72,
+      "update": "live"
+    }
+  ]
+}
+

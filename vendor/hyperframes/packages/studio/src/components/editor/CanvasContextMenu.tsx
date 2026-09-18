@@ -32,6 +32,7 @@ import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
   resolveZOrderChange,
+  resolveAvatarLowLayer,
   type ZOrderAction,
   type ZOrderPatch,
 } from "./canvasContextMenuZOrder";
@@ -185,7 +186,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   const menuWidth = 200;
   const menuHeight =
     8 +
-    (hasZActions ? Z_ACTIONS.length * 28 : 0) +
+    (hasZActions ? (Z_ACTIONS.length + (selection?.tagName === "video" ? 2 : 0)) * 28 : 0) +
     (hasDivider ? 1 : 0) +
     (hasRename ? (renaming ? 42 : 28) : 0) +
     (hasDelete ? 28 : 0) +
@@ -275,6 +276,18 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         e.stopPropagation();
       }}
     >
+      {hasZActions && el && selection?.tagName === "video" && (["low", "high"] as const).map(level => (
+        <button key={level} type="button" className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800"
+          onPointerDown={event => {
+            if (event.button !== 0) return;
+            event.preventDefault(); event.stopPropagation();
+            const patches = level === "low" ? resolveAvatarLowLayer(el) : resolveZOrderChange(el, "bring-to-front");
+            if (patches?.length) onApplyZIndex?.(patches, level === "low" ? "send-to-back" : "bring-to-front", null);
+            onClose();
+          }}>
+          {tx(level === "low" ? "Low layer · above background" : "High layer · above content")}
+        </button>
+      ))}
       {hasZActions &&
         Z_ACTIONS.map(({ action, label }) => {
           const enabled = el ? isZOrderActionEnabled(el, action) : false;

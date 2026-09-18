@@ -1,0 +1,46 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "podium-ranking",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Podium Ranking",
+  "description": "A top-three ranking that grows into a podium with synchronized score counters and a highlighted winner.",
+  "tags": ["component", "data", "ranking", "podium", "top-three", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": ["video"],
+    "themeMode": "inherit",
+    "data": {
+      "version": 1,
+      "kind": "category-value",
+      "mode": "replace",
+      "rowId": "item",
+      "binding": { "variable": "rankingData", "encoding": "key-value-list" },
+      "columns": [
+        { "id": "item", "label": "Entry", "labelZh": "排行项", "type": "string", "role": "id", "required": true },
+        { "id": "value", "label": "Score", "labelZh": "分数", "type": "number", "role": "value", "required": true }
+      ],
+      "minRows": 3,
+      "maxRows": 3,
+      "highlightVariable": "highlight",
+      "valueFormat": { "precision": 0, "notation": "standard" }
+    },
+    "ai": {
+      "slots": ["title", "rankingData", "highlight", "source"],
+      "instructions": "Provide exactly three numeric entries. Keep the highest score visually central and use a highlight that matches one entry label."
+    }
+  },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 7,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "podium-ranking.html", "target": "compositions/podium-ranking.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Top performers this quarter", "maxLength": 72, "update": "live" },
+    { "id": "rankingData", "label": "Ranking data", "description": "Exactly three entries and scores.", "type": "string", "default": "North:98,West:91,South:86", "maxLength": 600, "update": "live" },
+    { "id": "highlight", "label": "Highlight", "type": "string", "default": "North", "maxLength": 40, "update": "live" },
+    { "id": "source", "label": "Source", "type": "string", "default": "Q3 performance index", "maxLength": 72, "update": "live" }
+  ]
+}

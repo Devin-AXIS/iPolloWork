@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, ExternalLink, FolderOpen, Loader2, X } from "lucide-react";
+import { Download, ExternalLink, FolderOpen, Loader2, Sparkles, X } from "lucide-react";
 
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { getDesktopFileIcon, openDesktopPath, readDesktopTextFile, revealDesktopItemInDir } from "@/app/lib/desktop";
@@ -38,6 +38,7 @@ type ArtifactPanelProps = {
   workspaceId: string | null;
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
+  onEditImage?: (target: OpenTarget) => void;
   onClose: () => void;
 };
 
@@ -47,6 +48,7 @@ type ArtifactPanelViewProps = {
   workspaceRoot: string;
   isRemoteWorkspace?: boolean;
   target: OpenTarget;
+  onEditImage?: (target: OpenTarget) => void;
   onClose: () => void;
 };
 
@@ -339,7 +341,7 @@ async function createMarkdownPdf(source: HTMLElement) {
   }
 }
 
-export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRoot, isRemoteWorkspace = false, onClose }: ArtifactPanelProps) {
+export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRoot, isRemoteWorkspace = false, onEditImage, onClose }: ArtifactPanelProps) {
   const transcriptTargets = usePanelTabStore((state) => state.transcriptArtifactTargets[sessionId] ?? EMPTY_TRANSCRIPT_TARGETS);
   const artifactTargets = useMemo(() => transcriptTargets.filter(isCollectibleArtifactTarget), [transcriptTargets]);
   const target = artifactTargets.find((item) => item.id === tab.id) ?? tab.target ?? null;
@@ -355,12 +357,13 @@ export function ArtifactPanel({ sessionId, tab, client, workspaceId, workspaceRo
       workspaceRoot={workspaceRoot}
       isRemoteWorkspace={isRemoteWorkspace}
       target={target}
+      onEditImage={onEditImage}
       onClose={onClose}
     />
   );
 }
 
-function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspace = false, target, onClose }: ArtifactPanelViewProps) {
+function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspace = false, target, onEditImage, onClose }: ArtifactPanelViewProps) {
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -644,6 +647,12 @@ function ArtifactPanelView({ client, workspaceId, workspaceRoot, isRemoteWorkspa
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            {target.kind === "file" && target.preview === "image" && onEditImage ? (
+              <Button variant="ghost" size="sm" onClick={() => onEditImage(target)}>
+                <Sparkles className="size-3.5" />
+                {t("artifact.edit_image")}
+              </Button>
+            ) : null}
           {isTextContent(target) && data?.kind === "text" ? (
             isDirectTextEdit ? (
               <button

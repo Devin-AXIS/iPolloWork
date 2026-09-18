@@ -1,0 +1,23 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "animated-bar-chart",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Animated Bar Chart",
+  "description": "A theme-linked bar and trend card for a compact numeric series.",
+  "tags": ["component", "data", "chart", "statistics", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Animated Bar Chart", "url": "https://www.hyperframes.dev/catalog/components/animated-bar-chart" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "series", "labels", "annotation"], "instructions": "AI may replace the short series, labels, or takeaway while retaining a readable seven-bar chart and the seekable timeline." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "animated-bar-chart.html", "target": "compositions/animated-bar-chart.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Growth becomes visible", "maxLength": 64, "update": "live" },
+    { "id": "series", "label": "Data", "description": "Up to seven comma-separated values.", "type": "string", "default": "42,72,56,88,64,95,78", "maxLength": 80, "update": "live" },
+    { "id": "labels", "label": "Labels", "description": "Comma-separated labels matching the data.", "type": "string", "default": "M1,M2,M3,M4,M5,M6,M7", "maxLength": 80, "update": "live" },
+    { "id": "annotation", "label": "Takeaway", "type": "string", "default": "+42% over the measured period", "maxLength": 72, "update": "live" }
+  ]
+}

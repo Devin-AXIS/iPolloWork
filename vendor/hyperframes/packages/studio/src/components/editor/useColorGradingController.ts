@@ -22,6 +22,17 @@ import {
 const COLOR_GRADING_DATA_KEY = HF_COLOR_GRADING_ATTR.replace(/^data-/, "");
 const RUNTIME_STATUS_REFRESH_DELAYS = [50, 250, 1000, 2500] as const;
 const MEDIA_METADATA_CACHE = new Map<string, MediaMetadata | null>();
+const MAX_MEDIA_METADATA_CACHE_ENTRIES = 256;
+
+function cacheMediaMetadata(key: string, metadata: MediaMetadata | null): void {
+  MEDIA_METADATA_CACHE.delete(key);
+  MEDIA_METADATA_CACHE.set(key, metadata);
+  while (MEDIA_METADATA_CACHE.size > MAX_MEDIA_METADATA_CACHE_ENTRIES) {
+    const oldest = MEDIA_METADATA_CACHE.keys().next().value;
+    if (oldest === undefined) break;
+    MEDIA_METADATA_CACHE.delete(oldest);
+  }
+}
 
 export interface RuntimeColorGradingStatus {
   state: "missing" | "inactive" | "pending" | "active" | "unavailable";
@@ -299,7 +310,9 @@ export function useColorGradingController({
     if (!selectedAssetPath) return;
     const cacheKey = `${projectId}:${selectedAssetPath}`;
     if (MEDIA_METADATA_CACHE.has(cacheKey)) {
-      setMediaMetadata(MEDIA_METADATA_CACHE.get(cacheKey) ?? null);
+      const cached = MEDIA_METADATA_CACHE.get(cacheKey) ?? null;
+      cacheMediaMetadata(cacheKey, cached);
+      setMediaMetadata(cached);
       return;
     }
     const controller = new AbortController();
@@ -325,7 +338,7 @@ export function useColorGradingController({
           setMediaMetadata(null);
           return;
         }
-        MEDIA_METADATA_CACHE.set(cacheKey, result.metadata);
+        cacheMediaMetadata(cacheKey, result.metadata);
         setMediaMetadata(result.metadata);
       })
       .catch(() => {

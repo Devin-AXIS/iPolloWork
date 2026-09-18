@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { ChevronDown, ChevronRight, Loader2, Mic2, MicOff, Radio, SendHorizontal, Sparkles, Square, X } from "lucide-react";
 import { PaperGrainGradient } from "@ipollowork/ui/react";
 
@@ -520,7 +521,7 @@ export function VoicePanel(props: VoicePanelProps) {
     if (type === "error") {
       voiceRealtime.responseInProgress = false;
       const error = readRecord(event, "error");
-      const message = typeof error.message === "string" ? error.message : "Realtime returned an error.";
+      const message = serviceErrorMessage(error, "语音服务连接失败，请稍后重试。");
       addEntry("system", message, { error: true });
       setRuntimeStatus("error", message);
     }
@@ -580,13 +581,14 @@ export function VoicePanel(props: VoicePanelProps) {
 
     setRuntimeStatus("connecting", "Opening voice channel...");
     const sdpResponse = await desktopFetch("https://api.openai.com/v1/realtime/calls", {
+      signal: AbortSignal.timeout(30_000),
       method: "POST",
       headers: { Authorization: `Bearer ${realtimeSession.clientSecret}`, "Content-Type": "application/sdp" },
       body: offer.sdp,
     });
     if (!sdpResponse.ok) {
       const detail = await sdpResponse.text().catch(() => "");
-      throw new Error(`OpenAI Realtime SDP failed: ${sdpResponse.status} ${detail}`.trim());
+      throw new Error(serviceErrorMessage({ status: sdpResponse.status, message: detail }, "语音服务连接失败，请稍后重试。"));
     }
     await peer.setRemoteDescription({ type: "answer", sdp: await sdpResponse.text() });
     await waitForDataChannelOpen(channel);
@@ -602,7 +604,7 @@ export function VoicePanel(props: VoicePanelProps) {
       return true;
     } catch (error) {
       disconnectRealtime(true);
-      const message = error instanceof Error ? error.message : String(error);
+      const message = serviceErrorMessage(error);
       setRealtimeDiagnostics(message);
       setRuntimeStatus("error", message);
       addEntry("system", message, { error: true });
@@ -633,7 +635,7 @@ export function VoicePanel(props: VoicePanelProps) {
       try {
         await connectRealtime(false);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
+        const message = serviceErrorMessage(error);
         setRuntimeStatus("error", message);
         addEntry("system", message, { error: true });
         return { ok: false, error: message };

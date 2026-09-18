@@ -27,22 +27,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@hono/node-server": "^1.8.0",
+    "@hono/node-server": "^2.1.1",
     "@puppeteer/browsers": "^3.0.6",
-    "adm-zip": "^0.5.16",
+    "adm-zip": "^0.6.0",
     "citty": "^0.2.1",
     "compare-versions": "^6.1.1",
     "debug": "^4.4.0",
-    "esbuild": "^0.25.12",
+    "esbuild": "^0.28.2",
     "fontkit": "^2.0.4",
     "giget": "^3.2.0",
-    "hono": "^4.0.0",
-    "onnxruntime-node": "1.23.2",
-    "open": "^10.0.0",
-    "postcss": "^8.5.8",
-    "prettier": "^3.8.1",
+    "hono": "^4.13.2",
+    "onnxruntime-node": "1.27.0",
+    "open": "^11.0.1",
+    "postcss": "^8.5.26",
+    "prettier": "^3.9.6",
     "puppeteer-core": "^25.2.1",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@clack/prompts": "^1.1.0",
@@ -56,16 +56,16 @@
     "@types/adm-zip": "^0.5.7",
     "@types/fontkit": "^2.0.9",
     "@types/mime-types": "^3.0.1",
-    "@types/node": "^25.0.10",
+    "@types/node": "^26.2.0",
     "linkedom": "^0.18.12",
     "picocolors": "^1.1.1",
     "tsup": "^8.0.0",
     "tsx": "^4.0.0",
-    "typescript": "^5.0.0",
-    "vitest": "^3.2.4"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   },
   "optionalDependencies": {
-    "@google/genai": "^1.50.1"
+    "@google/genai": "^2.17.1"
   },
   "engines": {
     "node": ">=22"

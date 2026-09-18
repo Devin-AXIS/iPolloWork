@@ -1,0 +1,86 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "product-spotlight",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Product Spotlight",
+  "description": "A commercial product hero with a bold value proposition, benefit list and offer badge.",
+  "tags": [
+    "component",
+    "commerce",
+    "product",
+    "spotlight",
+    "sales",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "product",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "product",
+        "headline",
+        "features",
+        "badge"
+      ],
+      "instructions": "Use one product name, a benefit-led headline, up to three short features separated by bars, and one honest badge."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "product-spotlight.html",
+      "target": "compositions/product-spotlight.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "product",
+      "label": "Product",
+      "type": "string",
+      "default": "Studio Pro",
+      "maxLength": 40,
+      "update": "live"
+    },
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "Build the story while the idea is fresh.",
+      "maxLength": 84,
+      "update": "live"
+    },
+    {
+      "id": "features",
+      "label": "Benefits",
+      "type": "string",
+      "default": "Theme-ready scenes|Frame-accurate editing|Reusable components",
+      "maxLength": 240,
+      "update": "live"
+    },
+    {
+      "id": "badge",
+      "label": "Badge",
+      "type": "string",
+      "default": "NEW RELEASE",
+      "maxLength": 32,
+      "update": "live"
+    }
+  ]
+}

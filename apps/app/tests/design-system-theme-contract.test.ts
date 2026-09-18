@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import {
   ensureHtmlDesignSystemContract,
   readAppliedDesignSystemId,
@@ -22,8 +23,27 @@ const panelPath = new URL(
   "../src/react-app/domains/session/design/design-panel.tsx",
   import.meta.url,
 );
+const designSystemsRoot = fileURLToPath(new URL(
+  "../src/react-app/domains/session/design/design-systems/design-systems/",
+  import.meta.url,
+));
 
 describe("Design system theme contract", () => {
+  test("does not ship unused system or preview HTML", async () => {
+    const htmlFiles: string[] = [];
+    for await (const path of new Bun.Glob("**/*.html").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      htmlFiles.push(path.replaceAll("\\", "/"));
+    }
+    expect(htmlFiles.filter((path) => !path.endsWith("/components.html"))).toEqual([]);
+
+    const manifestsWithPreview: string[] = [];
+    for await (const path of new Bun.Glob("*/manifest.json").scan({ cwd: designSystemsRoot, onlyFiles: true })) {
+      const manifest = await Bun.file(`${designSystemsRoot}/${path}`).json();
+      if (Object.hasOwn(manifest, "preview")) manifestsWithPreview.push(path);
+    }
+    expect(manifestsWithPreview).toEqual([]);
+  });
+
   test("emits persistent theme metadata and a high-priority compatibility layer", async () => {
     const source = await Bun.file(registryPath).text();
 
@@ -45,7 +65,14 @@ describe("Design system theme contract", () => {
     expect(source).toContain("object-fit: contain !important");
     expect(source).toContain('import.meta.glob("./design-systems/design-systems/*/design-tokens.json"');
     expect(source).not.toContain('as: "raw"');
-    expect(source.match(/query: "\?raw"/g)).toHaveLength(6);
+    expect(source.match(/query: "\?raw"/g)).toHaveLength(3);
+    expect(source).not.toContain("system/kit.html");
+    expect(source).not.toContain("system/index.html");
+    expect(source).not.toContain("preview/colors.html");
+    expect(source).not.toContain("previewHtml");
+    expect(source).not.toContain("buildDesignSystemPreviewDoc");
+    expect(source).not.toContain("buildThemeTokenHints");
+    expect(source).toContain("if (!tokensCss) return []");
     expect(source).toContain("buildDesignSystemPresetValues");
     expect(source).toContain('"--ipw-type-scale": themeTypeScale(tokens)');
   });
@@ -148,4 +175,15 @@ describe("Design system theme contract", () => {
     expect(panel).toContain("currentThemeId={appliedDesignSystemId}");
     expect(panel).not.toContain('type: "set-token",\n      name,\n      value');
   });
+});
+
+
+test("reference palette is only the initial managed theme and remains editable after switching", () => {
+  const initial = "/* ipw-theme:start */\n:root { --ipw-color-bg: #123456; --ipw-color-text: #ffffff; }\n/* ipw-theme:end */\n.slide { width: 1280px; height: 720px; color: var(--ipw-color-text); background: var(--ipw-color-bg); }";
+  const switched = mergeTemplateTokenCss(initial, "/* ipw-theme:start */\n:root { --ipw-color-bg: #eeeeee; --ipw-color-text: #111111; }\n/* ipw-theme:end */");
+  expect(switched).not.toContain("#123456");
+  expect(parseDesignTokenValues(switched)["--ipw-color-bg"]).toBe("#eeeeee");
+  const edited = replaceDesignTokenValue(switched, "--ipw-color-bg", "#abcdef");
+  expect(parseDesignTokenValues(edited)["--ipw-color-bg"]).toBe("#abcdef");
+  expect(edited.slice(edited.indexOf(".slide"))).toBe(initial.slice(initial.indexOf(".slide")));
 });

@@ -535,7 +535,7 @@ export const DomEditOverlay = memo(function DomEditOverlay({
         <div
           aria-hidden="true"
           data-dom-edit-hover-box="true"
-          className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(60,230,172,0.25)]"
+          className="pointer-events-none absolute rounded-md border border-studio-accent/80 shadow-[0_0_0_1px_rgba(31,186,192,0.25)]"
           style={{
             ...hugRectForElement(hoverRect, hoverSelection.element),
             transform: hoverRect.angle ? `rotate(${hoverRect.angle}deg)` : undefined,

@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(desktopRoot, "../..");
 const outputDir = path.join(desktopRoot, "dist-electron");
+const embeddedEnginePacksDir = path.join(desktopRoot, "dist-engine-packs");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
 if (process.platform !== "darwin") {
@@ -95,6 +96,7 @@ const tempDir = mkdtempSync(path.join(os.tmpdir(), "ipollowork-mac-release-"));
 try {
   const env = {
     ...process.env,
+    TARGET: "aarch64-apple-darwin",
     MACOS_NOTARIZE: "true",
     APPLE_API_KEY: process.env.APPLE_API_KEY?.trim() || process.env.APPLE_NOTARY_API_KEY_ID?.trim() || "",
     APPLE_API_ISSUER: process.env.APPLE_API_ISSUER?.trim() || process.env.APPLE_NOTARY_API_ISSUER_ID?.trim() || "",
@@ -104,6 +106,13 @@ try {
   if (!env.APPLE_API_ISSUER) throw new Error("APPLE_API_ISSUER or APPLE_NOTARY_API_ISSUER_ID is required for notarization.");
 
   rmSync(outputDir, { recursive: true, force: true });
+  run(process.execPath, [
+    path.join(desktopRoot, "scripts/package-engine-runtime.mjs"),
+    "--all",
+    "--clean",
+    "--outdir",
+    embeddedEnginePacksDir,
+  ], desktopRoot, env);
   run(process.execPath, [path.join(desktopRoot, "scripts/electron-build.mjs")], repoRoot, env);
   run(pnpm, ["exec", "electron-builder", "--config", "electron-builder.yml", "--mac", "--arm64", "--publish", "never"], desktopRoot, env);
 

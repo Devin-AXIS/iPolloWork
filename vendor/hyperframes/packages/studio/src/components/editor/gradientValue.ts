@@ -148,7 +148,7 @@ function parseColorStop(raw: string): { color: string; position: number | null }
 function normalizeStops(stops: Array<{ color: string; position: number | null }>): GradientStop[] {
   if (stops.length === 0) {
     return [
-      { color: "rgba(60, 230, 172, 0.18)", position: 0 },
+      { color: "rgba(31, 186, 192, 0.18)", position: 0 },
       { color: "rgba(255, 255, 255, 0.04)", position: 100 },
     ];
   }
@@ -300,7 +300,7 @@ export function buildDefaultGradientModel(fallbackColor?: string): GradientModel
         color:
           fallbackColor && fallbackColor !== "transparent"
             ? fallbackColor
-            : "rgba(60, 230, 172, 0.18)",
+            : "rgba(31, 186, 192, 0.18)",
         position: 0,
       },
       { color: "rgba(255, 255, 255, 0.04)", position: 100 },

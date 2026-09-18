@@ -1,15 +1,55 @@
 /** @jsxImportSource react */
 import { create } from "zustand";
 
+import { readSessionRunStatus } from "../../../../app/utils";
 import { t } from "../../../../i18n";
 
 export type SessionActivityStatus = "idle" | "thinking" | "responding" | "error" | "compacting" | "waiting";
+export type SessionRunOutcome = "running" | "completed" | "failed" | "stopped" | null;
+export type SessionRunTiming = { startedAt: number; endedAt: number };
+
+const RUN_TIMINGS_STORAGE_KEY = "ipollowork.session-run-timings";
+
+export function readStoredRunTimings(workspaceId: string, sessionId: string): Record<string, SessionRunTiming> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(`${RUN_TIMINGS_STORAGE_KEY}.${workspaceId}.${sessionId}`);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, SessionRunTiming] => {
+      const value: unknown = entry[1];
+      return Boolean(value && typeof value === "object" && "startedAt" in value && "endedAt" in value
+        && typeof value.startedAt === "number" && typeof value.endedAt === "number"
+        && value.endedAt >= value.startedAt);
+    }));
+  } catch {
+    return {};
+  }
+}
+
+function saveRunTiming(workspaceId: string, sessionId: string, turnId: string | undefined, timing: SessionRunTiming) {
+  if (typeof window === "undefined" || !turnId) return;
+  try {
+    const entries = Object.entries(readStoredRunTimings(workspaceId, sessionId));
+    const recent = entries.filter(([id]) => id !== turnId).slice(-99);
+    window.localStorage.setItem(`${RUN_TIMINGS_STORAGE_KEY}.${workspaceId}.${sessionId}`, JSON.stringify(Object.fromEntries([
+      ...recent,
+      [turnId, timing],
+    ])));
+  } catch {
+    // Storage can be unavailable; transcript timestamps remain the fallback.
+  }
+}
 
 type SessionMessageRole = "assistant" | "system" | "user";
 
 type SessionActivityRecord = {
   status: SessionActivityStatus;
   runActive: boolean;
+  runOutcome: SessionRunOutcome;
+  runStartedAt: number | null;
+  runEndedAt: number | null;
   assistantOutput: boolean;
   errorActive: boolean;
   errorMessage: string | null;
@@ -25,6 +65,8 @@ type SessionLike = {
   status?: unknown;
   state?: unknown;
   runStatus?: unknown;
+  dsh?: unknown;
+  codex?: unknown;
 };
 
 type SessionActivityStore = {
@@ -32,14 +74,16 @@ type SessionActivityStore = {
   statusesByWorkspaceId: Record<string, Record<string, SessionActivityStatus>>;
   getStatus: (workspaceId: string, sessionId: string) => SessionActivityStatus;
   getSessionError: (workspaceId: string, sessionId: string) => string | null;
+  getRunOutcome: (workspaceId: string, sessionId: string) => SessionRunOutcome;
   seedWorkspaceSessions: (workspaceId: string, sessions: SessionLike[]) => void;
   seedSessionRun: (workspaceId: string, sessionId: string, status: unknown, assistantOutput: boolean) => void;
   setRunStatus: (workspaceId: string, sessionId: string, status: unknown) => void;
+  finishRun: (workspaceId: string, sessionId: string, outcome: "completed" | "stopped", turnId?: string) => void;
   markMessageRole: (workspaceId: string, sessionId: string, messageId: string, role: SessionMessageRole) => void;
   markAssistantOutput: (workspaceId: string, sessionId: string, messageId?: string, options?: { allowUnknownMessageRole?: boolean }) => void;
   setWaitingRequest: (workspaceId: string, sessionId: string, kind: "permission" | "question", requestId: string, waiting: boolean) => void;
   replaceWaitingRequests: (workspaceId: string, sessionId: string, kind: "permission" | "question", requestIds: string[]) => void;
-  setError: (workspaceId: string, sessionId: string, message?: string) => void;
+  setError: (workspaceId: string, sessionId: string, message?: string, turnId?: string) => void;
   clearError: (workspaceId: string, sessionId: string) => void;
   setCompacting: (workspaceId: string, sessionId: string, compacting: boolean) => void;
   removeSession: (workspaceId: string, sessionId: string) => void;
@@ -48,6 +92,9 @@ type SessionActivityStore = {
 const createRecord = (): SessionActivityRecord => ({
   status: "idle",
   runActive: false,
+  runOutcome: null,
+  runStartedAt: null,
+  runEndedAt: null,
   assistantOutput: false,
   errorActive: false,
   errorMessage: null,
@@ -73,7 +120,7 @@ function normalizeRunStatus(status: unknown): "idle" | "running" | "retry" {
 }
 
 function sessionRunStatus(session: SessionLike) {
-  return session.status ?? session.state ?? session.runStatus;
+  return readSessionRunStatus(session);
 }
 
 function statusForRecord(record: SessionActivityRecord): SessionActivityStatus {
@@ -137,6 +184,17 @@ function resetRecordToIdle(record: SessionActivityRecord): SessionActivityRecord
   };
 }
 
+function settleErroredRecord(record: SessionActivityRecord): SessionActivityRecord {
+  return {
+    ...record,
+    runActive: false,
+    assistantOutput: false,
+    compacting: false,
+    waitingPermissionIds: [],
+    waitingQuestionIds: [],
+  };
+}
+
 function removeValue(values: string[], value: string) {
   return values.filter((item) => item !== value);
 }
@@ -167,6 +225,9 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
 
     return record.errorMessage;
   },
+  getRunOutcome: (workspaceId, sessionId) => (
+    get().recordsByWorkspaceId[workspaceId]?.[sessionId]?.runOutcome ?? null
+  ),
   seedWorkspaceSessions: (workspaceId, sessions) => {
     const id = workspaceId.trim();
     if (!id) return;
@@ -176,22 +237,26 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
         const sessionId = session.id.trim();
         if (!sessionId) continue;
         const status = sessionRunStatus(session);
-        if (status === undefined || status === null) continue;
+        if (status === null) continue;
+        const normalized = normalizeRunStatus(status);
+        const runActive = normalized === "running" || normalized === "retry";
+        // Session directory responses are eventually consistent. They can
+        // confirm that a background run is active, but an idle row must not
+        // settle a newer live run while the user switches engines. Terminal
+        // state comes from the event stream or the selected-session snapshot.
+        if (!runActive) continue;
         nextState = {
           ...nextState,
           ...updateRecord(nextState, id, sessionId, (record) => {
-            const normalized = normalizeRunStatus(status);
-            const runActive = normalized === "running" || normalized === "retry";
-            if (!runActive && record.status !== "idle") return resetRecordToIdle(record);
             return {
               ...record,
               runActive,
-              assistantOutput: runActive && record.runActive ? record.assistantOutput : false,
-              errorActive: runActive ? false : record.errorActive,
-              errorMessage: runActive ? null : record.errorMessage,
-              compacting: runActive ? record.compacting : false,
-              waitingPermissionIds: runActive ? record.waitingPermissionIds : [],
-              waitingQuestionIds: runActive ? record.waitingQuestionIds : [],
+              runOutcome: "running",
+              runStartedAt: record.runOutcome === "running" ? record.runStartedAt ?? Date.now() : Date.now(),
+              runEndedAt: null,
+              assistantOutput: record.runActive ? record.assistantOutput : false,
+              errorActive: false,
+              errorMessage: null,
             };
           }),
         };
@@ -210,6 +275,9 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
       return {
         ...record,
         runActive,
+        runOutcome: runActive ? "running" : record.runOutcome,
+        runStartedAt: runActive ? (record.runOutcome === "running" ? record.runStartedAt ?? Date.now() : Date.now()) : record.runStartedAt,
+        runEndedAt: runActive ? null : record.runEndedAt,
         assistantOutput: runActive && assistantOutput,
         errorActive: runActive ? false : record.errorActive,
         errorMessage: runActive ? null : record.errorMessage,
@@ -226,10 +294,18 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
     set((state) => updateRecord(state, workspace, session, (record) => {
       const normalized = normalizeRunStatus(status);
       const runActive = normalized === "running" || normalized === "retry";
-      if (!runActive) return resetRecordToIdle(record);
+      // Harnesses commonly publish idle immediately after their terminal
+      // error. Preserve that error as the turn outcome until the next run (or
+      // an explicit dismiss) while still releasing every active-run latch.
+      if (!runActive) return record.errorActive
+        ? settleErroredRecord(record)
+        : resetRecordToIdle(record);
       return {
         ...record,
         runActive,
+        runOutcome: "running",
+        runStartedAt: record.runOutcome === "running" ? record.runStartedAt ?? Date.now() : Date.now(),
+        runEndedAt: null,
         assistantOutput: runActive && record.runActive ? record.assistantOutput : false,
         errorActive: runActive ? false : record.errorActive,
         errorMessage: runActive ? null : record.errorMessage,
@@ -238,6 +314,27 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
         waitingQuestionIds: runActive ? record.waitingQuestionIds : [],
       };
     }));
+  },
+  finishRun: (workspaceId, sessionId, outcome, turnId) => {
+    const workspace = workspaceId.trim();
+    const session = sessionId.trim();
+    if (!workspace || !session) return;
+    const previous = get().recordsByWorkspaceId[workspace]?.[session];
+    const endedAt = previous && previous.runOutcome !== "running" && previous.runEndedAt !== null
+      ? previous.runEndedAt : Date.now();
+    if (previous?.runStartedAt !== null && previous?.runStartedAt !== undefined && endedAt >= previous.runStartedAt) {
+      saveRunTiming(workspace, session, turnId, { startedAt: previous.runStartedAt, endedAt });
+    }
+    set((state) => updateRecord(state, workspace, session, (record) => ({
+      ...record,
+      runActive: false,
+      runOutcome: record.errorActive ? "failed" : outcome,
+      runEndedAt: endedAt,
+      assistantOutput: false,
+      compacting: false,
+      waitingPermissionIds: [],
+      waitingQuestionIds: [],
+    })));
   },
   markMessageRole: (workspaceId, sessionId, messageId, role) => {
     const workspace = workspaceId.trim();
@@ -287,17 +384,28 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
       [kind === "permission" ? "waitingPermissionIds" : "waitingQuestionIds"]: ids,
     })));
   },
-  setError: (workspaceId, sessionId, message) => {
+  setError: (workspaceId, sessionId, message, turnId) => {
     const workspace = workspaceId.trim();
     const session = sessionId.trim();
     if (!workspace || !session) return;
+    const previous = get().recordsByWorkspaceId[workspace]?.[session];
+    const startedAt = previous?.runStartedAt;
+    const endedAt = previous?.runOutcome === "failed" && previous.runEndedAt !== null
+      ? previous.runEndedAt : Date.now();
+    if (startedAt !== null && startedAt !== undefined && endedAt >= startedAt) {
+      saveRunTiming(workspace, session, turnId, { startedAt, endedAt });
+    }
     set((state) => updateRecord(state, workspace, session, (record) => ({
       ...record,
       errorActive: true,
+      runOutcome: "failed",
+      runEndedAt: endedAt,
       errorMessage: message ? message : "Session failed",
       runActive: false,
       assistantOutput: false,
       compacting: false,
+      waitingPermissionIds: [],
+      waitingQuestionIds: [],
     })));
   },
   clearError: (workspaceId, sessionId) => {
@@ -325,6 +433,11 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
     const workspace = workspaceId.trim();
     const session = sessionId.trim();
     if (!workspace || !session) return;
+    try {
+      if (typeof window !== "undefined") window.localStorage.removeItem(`${RUN_TIMINGS_STORAGE_KEY}.${workspace}.${session}`);
+    } catch {
+      // Storage can be unavailable.
+    }
     set((state) => {
       const workspaceRecords = state.recordsByWorkspaceId[workspace];
       const workspaceStatuses = state.statusesByWorkspaceId[workspace];

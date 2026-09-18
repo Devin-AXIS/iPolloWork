@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import type { PendingPermission } from "../src/app/types";
+import type { ConversationPermission } from "../src/react-app/domains/session/engine/conversation-engine";
 
 import {
   PermissionApprovalPanel,
+  PendingConfirmationNotice,
   permissionDetailRows,
 } from "../src/react-app/domains/session/chat/permission-approval-modal";
 
@@ -13,24 +14,31 @@ const permissionPanelUrl = new URL(
   import.meta.url,
 );
 
-function pendingPermission(overrides: Partial<PendingPermission> = {}): PendingPermission {
+function pendingPermission(overrides: Partial<ConversationPermission> = {}): ConversationPermission {
   return {
     id: "permission-1",
-    sessionID: "session-1",
-    permission: "bash",
-    patterns: ["rm -rf dist"],
+    sessionId: "session-1",
+    kind: "bash",
+    resources: ["rm -rf dist"],
+    remember: [],
     metadata: {},
-    always: {
-      session: false,
-      project: false,
-    },
     receivedAt: 1,
-    protocol: "legacy",
+    native: null,
     ...overrides,
   };
 }
 
 describe("permission approval modal helpers", () => {
+  test("a missing approval has an explicit waiting notice and a stop action, never an allow action", () => {
+    let stops = 0;
+    const html = renderToStaticMarkup(React.createElement(PendingConfirmationNotice, { waitingFor: "approval", onStop: () => { stops += 1; } }));
+    expect(html).toContain('role="status"');
+    expect(html).toContain('data-testid="pending-confirmation-notice"');
+    expect(html).toContain("Confirmation details unavailable");
+    expect(html).toContain("Stop this run");
+    expect(html).not.toContain("Allow once");
+    expect(stops).toBe(0);
+  });
   test("surfaces risk-bearing metadata as review rows", () => {
     expect(
       permissionDetailRows({
@@ -90,12 +98,14 @@ describe("permission approval modal helpers", () => {
     const source = await Bun.file(permissionPanelUrl).text();
     expect(source).toContain('props.respondPermission?.(props.permissionId, "always")');
     expect(source).toContain('t("session.allow_for_session")');
+    expect(source).toContain('t("session.permission_decision_hint")');
+    expect(source).toContain("<DropdownMenuGroup>");
   });
 
   test("uses readable labels for generic permission titles", () => {
     const html = renderToStaticMarkup(
       React.createElement(PermissionApprovalPanel, {
-        permission: pendingPermission({ permission: "todowrite" }),
+        permission: pendingPermission({ kind: "todowrite" }),
         respondPermission: () => {},
       }),
     );

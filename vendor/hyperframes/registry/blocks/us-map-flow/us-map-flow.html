@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Interstate Flow Connections","maxLength":72},{"id":"routes","type":"string","label":"Routes","default":"San Francisco>New York:100,Los Angeles>Chicago:85,Seattle>Austin:70","maxLength":2000},{"id":"highlight","type":"string","label":"Highlight","default":"San Francisco>New York","maxLength":64},{"id":"source","type":"string","label":"Source","default":"Source: Illustrative data","maxLength":64}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -40,11 +40,11 @@
       data-duration="12"
     >
       <div class="flow-header">
-        <h1 class="flow-headline">Interstate Flow Connections</h1>
+        <h1 class="flow-headline" data-ipw-ai-slot="title">Interstate Flow Connections</h1>
         <p class="flow-subtitle">Relative volume of major city-to-city corridors</p>
       </div>
 
-      <svg class="flow-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet">
+      <svg class="flow-svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" data-layout-allow-overflow>
         <defs>
           <filter id="arc-glow">
             <feGaussianBlur stdDeviation="3" result="blur" />
@@ -68,7 +68,7 @@
         <g class="city-labels-group"></g>
       </svg>
 
-      <div class="flow-source">Source: Illustrative data</div>
+      <div class="flow-source" data-ipw-ai-slot="source">Source: Illustrative data</div>
 
       <style>
         #us-map-flow {
@@ -154,12 +154,30 @@
           color: #475569;
           opacity: 0;
         }
+        #us-map-flow { background: var(--ipw-color-bg, #0f172a); color: var(--ipw-color-text, #fff); font-family: var(--ipw-font-body, Inter, sans-serif); }
+        #us-map-flow .flow-headline { color: var(--ipw-color-text, #f8fafc); font-family: var(--ipw-font-display, Inter, sans-serif); }
+        #us-map-flow .flow-subtitle, #us-map-flow .flow-source { color: var(--ipw-color-muted, #94a3b8); }
+        #us-map-flow .state-path { fill: var(--ipw-color-surface, #1e293b); stroke: var(--ipw-color-border, #334155); }
+        #us-map-flow .arc-path { stroke: var(--ipw-color-primary, #3b82f6); }
       </style>
 
       <script>
         (function () {
           var NS = "http://www.w3.org/2000/svg";
           var root = document.getElementById("us-map-flow");
+          var values = Object.assign(
+            {
+              title: "Interstate Flow Connections",
+              routes: "San Francisco>New York:100,Los Angeles>Chicago:85,Seattle>Austin:70",
+              highlight: "San Francisco>New York",
+              source: "Source: Illustrative data",
+            },
+            window.__hyperframes && window.__hyperframes.getVariables
+              ? window.__hyperframes.getVariables()
+              : {},
+          );
+          root.querySelector(".flow-headline").textContent = String(values.title);
+          root.querySelector(".flow-source").textContent = String(values.source);
           var svg = root.querySelector(".flow-svg");
           var statesGroup = svg.querySelector(".states-group");
           var arcsGroup = svg.querySelector(".arcs-group");
@@ -200,6 +218,16 @@
             { from: "Austin", to: "Seattle", volume: 45 },
             { from: "Dallas", to: "Chicago", volume: 40 },
           ];
+          var parsedFlows = String(values.routes)
+            .split(",")
+            .map(function (entry) {
+              var separator = entry.lastIndexOf(":");
+              var route = entry.slice(0, separator).split(">");
+              var volume = Number(entry.slice(separator + 1));
+              return { from: (route[0] || "").trim(), to: (route[1] || "").trim(), volume: volume };
+            })
+            .filter(function (flow) { return cities[flow.from] && cities[flow.to] && Number.isFinite(flow.volume); });
+          if (parsedFlows.length) flows = parsedFlows;
 
           var maxVolume = 100;
           var minWidth = 1.5;
@@ -262,7 +290,11 @@
               var path = document.createElementNS(NS, "path");
               path.setAttribute("d", d);
               path.setAttribute("class", "arc-path");
+              path.setAttribute("data-route", flow.from + ">" + flow.to);
               path.setAttribute("stroke-width", strokeW);
+              if (flow.from + ">" + flow.to === String(values.highlight).trim()) {
+                path.setAttribute("stroke-width", Math.max(strokeW, 6));
+              }
               path.style.opacity = arcOpacity;
               arcsGroup.appendChild(path);
 

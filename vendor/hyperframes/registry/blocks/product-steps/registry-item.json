@@ -1,0 +1,89 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "product-steps",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Product Steps",
+  "description": "A numbered three-step product flow with one active stage and a clear outcome.",
+  "tags": [
+    "component",
+    "product",
+    "steps",
+    "workflow",
+    "demo",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "product",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "steps",
+        "outcome",
+        "activeStep"
+      ],
+      "instructions": "Separate three or four steps with bars, set active step to a one-based number, and state one outcome."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "product-steps.html",
+      "target": "compositions/product-steps.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "From prompt to polished sequence",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "steps",
+      "label": "Steps",
+      "type": "string",
+      "default": "Frame the idea|Choose a component|Tune the properties|Review the motion",
+      "maxLength": 280,
+      "update": "live"
+    },
+    {
+      "id": "outcome",
+      "label": "Outcome",
+      "type": "string",
+      "default": "A reusable scene, ready to insert.",
+      "maxLength": 80,
+      "update": "live"
+    },
+    {
+      "id": "activeStep",
+      "label": "Active step",
+      "type": "number",
+      "default": 3,
+      "min": 1,
+      "max": 4,
+      "step": 1,
+      "update": "live"
+    }
+  ]
+}
+

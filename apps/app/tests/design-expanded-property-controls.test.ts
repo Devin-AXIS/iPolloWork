@@ -8,6 +8,7 @@ const popover = readFileSync(new URL("../src/components/ui/popover.tsx", import.
 test("Design property menus escape the expanded panel overflow and stacking context", () => {
   expect(panelSelect).toContain("createPortal");
   expect(panelSelect).toContain('className={cn("fixed z-[70]');
-  expect(select).toContain('className="isolate z-[70]"');
+  expect(select).toContain('> & { positionerClassName?: string })');
+  expect(select).toContain('className={cn("isolate z-[70]", positionerClassName)}');
   expect(popover).toContain('className="isolate z-[70] outline-none"');
 });

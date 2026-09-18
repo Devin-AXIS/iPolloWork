@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { UIMessage } from "ai";
 
-import type { iPolloWorkSessionSnapshot } from "../src/app/lib/ipollowork-server";
+import type { ConversationSnapshot } from "../src/react-app/domains/session/engine/conversation-engine";
 import {
   deriveRenderedSessionMessages,
   resolveRenderedSessionSnapshot,
@@ -9,55 +9,38 @@ import {
 import {
   applyRevertCursor,
   reconcileTranscriptMessages,
-  resolveForkBoundaryId,
 } from "../src/react-app/domains/session/sync/transcript-reconcile";
-import { describeOpencodeSessionError } from "../src/react-app/domains/session/sync/usechat-adapter";
+import { resolveOpenCodeForkBoundaryId } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
+import { describeOpencodeSessionError } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 
 function snapshotWithMessages(
   messages: Array<{ id: string; role: "user" | "assistant"; text: string; created?: number }>,
   sessionId = "ses_test",
-): iPolloWorkSessionSnapshot {
+): ConversationSnapshot {
   return {
     session: {
       id: sessionId,
-      parentID: undefined,
       title: "Test session",
       time: { created: 1, updated: 2 },
-      share: undefined,
-      version: "0",
     },
-    messages: messages.map((message, index) => ({
-      info: {
-        id: message.id,
-        role: message.role,
-        sessionID: sessionId,
-        time: { created: message.created ?? index + 1 },
-      },
-      parts: [
-        {
-          id: `part_${message.id}`,
-          type: "text",
-          text: message.text,
-          sessionID: sessionId,
-          messageID: message.id,
-        },
-      ],
-    })),
+    messages: messages.map((message, index) =>
+      uiMessage(message.id, message.role, message.text, message.created ?? index + 1),
+    ),
     todos: [],
     status: { type: "idle" },
-  } as unknown as iPolloWorkSessionSnapshot;
+  };
 }
 
 function uiMessage(id: string, role: "user" | "assistant", text: string, created?: number): UIMessage {
   return {
     id,
     role,
-    ...(typeof created === "number" ? { metadata: { opencode: { created } } } : {}),
+    ...(typeof created === "number" ? { metadata: { ipollowork: { created } } } : {}),
     parts: [{ type: "text", text, state: "done" }],
   };
 }
 
-function snapshotWithText(text: string, sessionId = "ses_test"): iPolloWorkSessionSnapshot {
+function snapshotWithText(text: string, sessionId = "ses_test"): ConversationSnapshot {
   return snapshotWithMessages([{ id: "msg_user", role: "user", text }], sessionId);
 }
 
@@ -378,7 +361,7 @@ describe("deriveRenderedSessionMessages with revert", () => {
       { id: "msg_3", role: "user", text: "turn two" },
       { id: "msg_4", role: "assistant", text: "answer two" },
     ]);
-    (snapshot.session as { revert?: { messageID: string } }).revert = { messageID: "msg_3" };
+    snapshot.session.revertMessageId = "msg_3";
 
     const rendered = deriveRenderedSessionMessages({
       transcriptState: [],
@@ -389,7 +372,7 @@ describe("deriveRenderedSessionMessages with revert", () => {
   });
 });
 
-describe("resolveForkBoundaryId", () => {
+describe("resolveOpenCodeForkBoundaryId", () => {
   const transcript = [
     uiMessage("msg_1", "user", "turn one"),
     uiMessage("msg_2", "assistant", "answer one"),
@@ -398,16 +381,16 @@ describe("resolveForkBoundaryId", () => {
   ];
 
   it("returns the next message so the fork includes the branch point", () => {
-    expect(resolveForkBoundaryId(transcript, "msg_2")).toBe("msg_3");
-    expect(resolveForkBoundaryId(transcript, "msg_3")).toBe("msg_4");
+    expect(resolveOpenCodeForkBoundaryId(transcript, "msg_2")).toBe("msg_3");
+    expect(resolveOpenCodeForkBoundaryId(transcript, "msg_3")).toBe("msg_4");
   });
 
   it("returns null when branching at the last message (fork everything)", () => {
-    expect(resolveForkBoundaryId(transcript, "msg_4")).toBeNull();
+    expect(resolveOpenCodeForkBoundaryId(transcript, "msg_4")).toBeNull();
   });
 
   it("returns null for unknown ids instead of corrupting the boundary", () => {
-    expect(resolveForkBoundaryId(transcript, "msg_missing")).toBeNull();
+    expect(resolveOpenCodeForkBoundaryId(transcript, "msg_missing")).toBeNull();
   });
 
   it("skips synthetic session-error messages when picking the boundary", () => {
@@ -416,8 +399,8 @@ describe("resolveForkBoundaryId", () => {
       uiMessage("session-error:msg_2", "assistant", "boom"),
       ...transcript.slice(2),
     ];
-    expect(resolveForkBoundaryId(withSynthetic, "msg_2")).toBe("msg_3");
+    expect(resolveOpenCodeForkBoundaryId(withSynthetic, "msg_2")).toBe("msg_3");
     // Branching at the synthetic message itself falls through to the next real message.
-    expect(resolveForkBoundaryId(withSynthetic, "session-error:msg_2")).toBe("msg_3");
+    expect(resolveOpenCodeForkBoundaryId(withSynthetic, "session-error:msg_2")).toBe("msg_3");
   });
 });

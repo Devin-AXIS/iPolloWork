@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "feature-grid",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Feature Grid",
+  "description": "A product showcase that stages three focused benefits as a theme-aware card system.",
+  "tags": ["component", "product", "feature", "cards", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "product", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "featureOne", "featureTwo", "featureThree"], "instructions": "AI may improve benefit wording, reorder the three cards, or add a compact visual cue while preserving the card grid and its timeline." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 10,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "feature-grid.html", "target": "compositions/feature-grid.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Make every product moment clear.", "maxLength": 72, "update": "live" },
+    { "id": "featureOne", "label": "Feature one", "type": "string", "default": "Plan with context", "maxLength": 44, "update": "live" },
+    { "id": "featureTwo", "label": "Feature two", "type": "string", "default": "Create with speed", "maxLength": 44, "update": "live" },
+    { "id": "featureThree", "label": "Feature three", "type": "string", "default": "Review with confidence", "maxLength": 44, "update": "live" }
+  ]
+}

@@ -17,6 +17,7 @@
  */
 
 const SELF_WRITE_TTL_MS = 2000;
+const MAX_SELF_WRITE_PATHS = 512;
 
 interface SelfWriteEntry {
   hash: string;
@@ -27,6 +28,19 @@ interface SelfWriteEntry {
 // and persists are funnelled through one persistSdkSerialize. Keyed by file path
 // so a self-write to one file can't mask a real external change to another.
 const registry = new Map<string, SelfWriteEntry[]>();
+
+function pruneRegistry(now: number): void {
+  for (const [path, entries] of registry) {
+    const active = prune(entries, now);
+    if (active.length > 0) registry.set(path, active);
+    else registry.delete(path);
+  }
+  while (registry.size > MAX_SELF_WRITE_PATHS) {
+    const oldest = registry.keys().next().value;
+    if (oldest === undefined) break;
+    registry.delete(oldest);
+  }
+}
 
 /**
  * Stable 32-bit FNV-1a hash of content. Collisions only risk SUPPRESSING a real
@@ -48,9 +62,12 @@ function prune(entries: SelfWriteEntry[], now: number): SelfWriteEntry[] {
 
 /** Record that WE wrote `content` to `path` (an SDK cutover self-write). */
 export function markSelfWrite(path: string, content: string, now: number = Date.now()): void {
+  pruneRegistry(now);
   const next = prune(registry.get(path) ?? [], now);
   next.push({ hash: hashContent(content), at: now });
+  registry.delete(path);
   registry.set(path, next);
+  pruneRegistry(now);
 }
 
 /**
@@ -59,15 +76,18 @@ export function markSelfWrite(path: string, content: string, now: number = Date.
  * bytes isn't suppressed forever.
  */
 export function isSelfWriteEcho(path: string, content: string, now: number = Date.now()): boolean {
+  pruneRegistry(now);
   const entries = prune(registry.get(path) ?? [], now);
   const hash = hashContent(content);
   const idx = entries.findIndex((e) => e.hash === hash);
   if (idx === -1) {
-    registry.set(path, entries);
+    if (entries.length > 0) registry.set(path, entries);
+    else registry.delete(path);
     return false;
   }
   entries.splice(idx, 1);
-  registry.set(path, entries);
+  if (entries.length > 0) registry.set(path, entries);
+  else registry.delete(path);
   return true;
 }
 

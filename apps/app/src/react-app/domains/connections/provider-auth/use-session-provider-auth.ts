@@ -4,7 +4,9 @@
 // provider auto-sync. Extracted verbatim from session-route.tsx.
 import { useEffect, useMemo, useRef } from "react";
 
-import type { Client, ProviderListItem, WorkspaceDisplay } from "@/app/types";
+import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+
+import type { ProviderListItem, WorkspaceDisplay } from "@/app/types";
 import type { ResolvedWorkspaceEndpoint } from "@/app/lib/workspace-endpoint";
 import { useCheckDesktopRestriction } from "@/react-app/domains/cloud/desktop-config-provider";
 import { useCloudProviderAutoSync } from "@/react-app/domains/cloud/use-cloud-provider-auto-sync";
@@ -21,13 +23,14 @@ const emptyWorkspaceDisplay: WorkspaceDisplay = {
 };
 
 export type UseSessionProviderAuthInput = {
-  opencodeClient: Client | null;
+  engineClient: unknown | null;
   providers: ProviderListItem[];
   providerDefaults: Record<string, string>;
   providerConnectedIds: string[];
   disabledProviderIds: string[];
   selectedWorkspace: RouteWorkspace | null | undefined;
   selectedWorkspaceEndpoint: ResolvedWorkspaceEndpoint | null;
+  providerBaseUrl: string;
   selectedWorkspaceRoot: string;
   selectedWorkspaceId: string;
   setProviders: (value: ProviderListItem[]) => void;
@@ -38,13 +41,14 @@ export type UseSessionProviderAuthInput = {
 
 export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
   const {
-    opencodeClient,
+    engineClient,
     providers,
     providerDefaults,
     providerConnectedIds,
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
     selectedWorkspaceId,
     setProviders,
@@ -58,23 +62,25 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
   const onboardingProviderAuthPendingRef = useRef(false);
 
   const stateRef = useRef({
-    opencodeClient,
+    engineClient,
     providers,
     providerDefaults,
     providerConnectedIds,
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
   });
   stateRef.current = {
-    opencodeClient,
+    engineClient,
     providers,
     providerDefaults,
     providerConnectedIds,
     disabledProviderIds,
     selectedWorkspace,
     selectedWorkspaceEndpoint,
+    providerBaseUrl,
     selectedWorkspaceRoot,
   };
 
@@ -85,7 +91,7 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
   const store = useMemo(
     () =>
       createProviderAuthStore({
-        client: () => stateRef.current.opencodeClient,
+        client: () => stateRef.current.engineClient,
         providers: () => stateRef.current.providers,
         providerDefaults: () => stateRef.current.providerDefaults,
         providerConnectedIds: () => stateRef.current.providerConnectedIds,
@@ -98,7 +104,10 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
                 name: workspaceLabel(stateRef.current.selectedWorkspace),
               } as WorkspaceDisplay)
             : emptyWorkspaceDisplay,
+        providerBaseUrl: () => stateRef.current.providerBaseUrl,
         selectedWorkspaceRoot: () => stateRef.current.selectedWorkspaceRoot,
+        allowCloudImports: () => (stateRef.current.selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID,
+        deferSharedProviderImport: () => true,
         runtimeWorkspaceId: () => stateRef.current.selectedWorkspaceEndpoint?.workspaceId ?? null,
         ipolloworkServer: {
           getSnapshot: () => ({
@@ -115,10 +124,10 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
         setProviderDefaults,
         setProviderConnectedIds,
         setDisabledProviders: setDisabledProviderIds,
-        markOpencodeConfigReloadRequired: () => {
+        markEngineConfigReloadRequired: (configFileName) => {
           markReloadRequired("config", {
             type: "config",
-            name: "opencode.json",
+            name: configFileName,
             action: "updated",
           });
         },
@@ -134,7 +143,8 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
   }, [store]);
 
   useEffect(() => {
-    if (!opencodeClient || !selectedWorkspaceId) return;
+    if (!engineClient || !selectedWorkspaceId) return;
+    if ((selectedWorkspace?.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) return;
 
     void store
       .ensureProjectProviderDisabledState(
@@ -144,12 +154,12 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
       .catch((error) => {
         console.warn("[desktop-app-restrictions] failed to sync Zen restriction", error);
       });
-  }, [checkDesktopRestriction, disabledProviderIds, opencodeClient, selectedWorkspaceId, selectedWorkspaceRoot, store]);
+  }, [checkDesktopRestriction, disabledProviderIds, engineClient, selectedWorkspace?.engineId, selectedWorkspaceId, selectedWorkspaceRoot, store]);
 
   useEffect(() => {
     store.syncFromOptions();
   }, [
-    opencodeClient,
+    engineClient,
     selectedWorkspace?.id,
     selectedWorkspace?.workspaceType,
     selectedWorkspaceEndpoint?.workspaceId,
@@ -157,7 +167,8 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     store,
   ]);
 
-  // After onboarding, auto-open the provider modal if no providers are connected.
+  // After onboarding, only require provider setup when org policy disables
+  // the built-in model capability.
   // The welcome route appends ?onboarding=1 to the session URL after workspace creation.
   useEffect(() => {
     const hash = window.location.hash;
@@ -171,11 +182,15 @@ export function useSessionProviderAuth(input: UseSessionProviderAuthInput) {
     if (!onboardingProviderAuthPendingRef.current) return;
     if (!selectedWorkspaceEndpoint) return;
     onboardingProviderAuthPendingRef.current = false;
+    // The built-in OpenCode models are the default account capability. Do not
+    // force a provider/key prompt merely because the new project's agent
+    // engine is DSH; users can connect another provider when they choose one.
+    if (!checkDesktopRestriction({ restriction: "allowZenModel" })) return;
     store.openProviderAuthModal({ returnFocusTarget: "composer" });
-  }, [selectedWorkspaceEndpoint, store]);
+  }, [checkDesktopRestriction, selectedWorkspaceEndpoint, store]);
 
   // Session is where forced sign-in lands. Keep org-managed cloud providers in
-  // sync here so sign-in applies opencode.json changes before Settings opens.
+  // sync here so sign-in applies engine-provider changes before Settings opens.
   useCloudProviderAutoSync(store.runCloudProviderSync);
   const snapshot = useProviderAuthStoreSnapshot(store);
 

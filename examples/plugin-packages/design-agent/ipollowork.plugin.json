@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "design-agent",
-  "name": "iPolloWork Design Agent",
-  "description": "管理 iPolloWork Design Studio 与演示文稿的官方 Agent Skills，不改变内置设计工作台、模板或项目文件。",
-  "category": "创作与设计",
+  "name": "iPollo Design",
+  "description": "为内建 iPollo Design 与演示文稿工作台提供配套 Agent Skills。",
+  "category": "AI Agent 与自动化",
+  "defaultEnabled": true,
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -14,15 +15,15 @@
     "src": "ipollowork-mark.svg"
   },
   "composer": {
-    "prompt": "使用 iPolloWork Design Agent 在当前会话的设计项目中创建或编辑内容。"
+    "prompt": "使用 iPollo Design 在当前会话的设计项目中创建或编辑内容。"
   },
   "localization": {
     "defaultLocale": "zh",
     "translations": {
       "en": {
-        "description": "Official Agent Skills for iPolloWork Design Studio and presentations, without replacing the built-in design workspace, templates, or project files.",
-        "category": "Creative & Design",
-        "composer": { "prompt": "Use iPolloWork Design Agent to create or edit content in the current session's design project." },
+        "description": "Official Agent Skills for the built-in iPollo Design and presentation workspaces.",
+        "category": "AI Agents & Automation",
+        "composer": { "prompt": "Use iPollo Design to create or edit content in the current session's design project." },
         "resources": {
           "ipollowork-design-studio": { "description": "Safely create and edit HTML designs in the current iPolloWork Design session." },
           "ipollowork-presentations": {
@@ -38,17 +39,15 @@
     }
   },
   "package": {
-    "version": "0.1.1",
+    "version": "0.3.2",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
     },
     "compatibility": {
-      "ipollowork": ">=0.18.0",
-      "opencode": ">=1.18.0"
+      "ipollowork": ">=0.18.0"
     },
-    "updateId": "ipollowork/design-agent",
-    "entrypoints": {}
+    "updateId": "ipollowork/design-agent"
   },
   "permissions": [
     {
@@ -66,7 +65,7 @@
       "id": "ipollowork-design-studio",
       "label": "Design Studio",
       "description": "在当前 iPolloWork Design 会话中安全创建和编辑 HTML 设计。",
-      "path": ".opencode/skills/ipollowork-design-studio/SKILL.md",
+      "path": "skills/ipollowork-design-studio/SKILL.md",
       "provides": [
         "workflow:ipollowork-design-studio"
       ],
@@ -77,7 +76,7 @@
       "id": "ipollowork-presentations",
       "label": "演示文稿",
       "description": "在当前 Design 会话中制作、修改和检查演示文稿。",
-      "path": ".opencode/skills/ipollowork-presentations/SKILL.md",
+      "path": "skills/ipollowork-presentations/SKILL.md",
       "provides": [
         "workflow:ipollowork-presentations"
       ],

@@ -518,10 +518,16 @@ async function mountCompositionContent(params: {
     const heightRaw = innerRoot.getAttribute("data-height");
     const widthPx = params.parseDimensionPx(widthRaw);
     const heightPx = params.parseDimensionPx(heightRaw);
-    if (widthRaw) params.host.setAttribute("data-width", widthRaw);
-    if (heightRaw) params.host.setAttribute("data-height", heightRaw);
-    if (widthPx && params.host instanceof HTMLElement) params.host.style.width = widthPx;
-    if (heightPx && params.host instanceof HTMLElement) params.host.style.height = heightPx;
+    const hostHasWidth = params.host.hasAttribute("data-width");
+    const hostHasHeight = params.host.hasAttribute("data-height");
+    if (widthRaw && !hostHasWidth) params.host.setAttribute("data-width", widthRaw);
+    if (heightRaw && !hostHasHeight) params.host.setAttribute("data-height", heightRaw);
+    if (widthPx && !hostHasWidth && params.host instanceof HTMLElement) {
+      params.host.style.width = widthPx;
+    }
+    if (heightPx && !hostHasHeight && params.host instanceof HTMLElement) {
+      params.host.style.height = heightPx;
+    }
     if (innerRoot.hasAttribute("data-timeline-locked")) {
       params.host.setAttribute("data-timeline-locked", "");
     }

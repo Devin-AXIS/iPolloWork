@@ -1,0 +1,14 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json", "name": "oscilloscope-trace", "version": "1.0.0", "type": "hyperframes:block", "title": "Oscilloscope Trace",
+  "description": "A seekable oscilloscope trace driven by a small signal parameter set.", "tags": ["component", "data", "instrument", "signal", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
+  "source": { "provider": "HyperFrames", "label": "Oscilloscope Trace", "url": "https://www.hyperframes.dev/catalog/blocks/oscilloscope-trace" },
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "amplitude", "frequency", "signal"], "instructions": "AI may reinterpret the signal or annotate it, but must preserve a single readable trace and a deterministic sweep." } },
+  "dimensions": { "width": 1920, "height": 1080 }, "duration": 8, "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "oscilloscope-trace.html", "target": "compositions/oscilloscope-trace.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "Signal trace", "maxLength": 56, "update": "live" },
+    { "id": "amplitude", "label": "Amplitude", "type": "number", "default": 0.72, "min": 0.1, "max": 1, "step": 0.01, "update": "live" },
+    { "id": "frequency", "label": "Frequency", "type": "number", "default": 3, "min": 1, "max": 8, "step": 0.5, "update": "live" },
+    { "id": "signal", "label": "Signal", "type": "string", "default": "LIVE · CHANNEL A", "maxLength": 48, "update": "live" }
+  ]
+}

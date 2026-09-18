@@ -22,10 +22,7 @@ import {
   loadRegistryPreviewAssetFromRoot,
   loadRegistryPreviewFromRoot,
 } from "@hyperframes/studio-server";
-import {
-  resolveGsapRegistryItemEngine,
-  type RegistryItem,
-} from "@hyperframes/core/registry";
+import { resolveGsapRegistryItemEngine, type RegistryItem } from "@hyperframes/core/registry";
 import { createRetryingModuleLoader, ensureProducerDist } from "./vite.producer";
 import { createStudioDevRenderBodyScripts } from "./vite.studioMotion";
 import { generateThumbnail, findSystemChrome } from "./vite.browser";
@@ -218,6 +215,10 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
       return signature;
     },
 
+    invalidateProjectSignature(projectDir: string): void {
+      projectSignatureCache.delete(resolve(projectDir));
+    },
+
     async lint(html: string, opts?: { filePath?: string }) {
       const mod = await server.ssrLoadModule("@hyperframes/core/lint");
       return await mod.lintHyperframeHtml(html, opts);
@@ -363,7 +364,10 @@ export function createViteAdapter(dataDir: string, server: ViteDevServer): Studi
           if (!existsSync(manifestPath)) continue;
           try {
             const manifest = JSON.parse(readFileSync(manifestPath, "utf-8")) as RegistryItem;
-            if (manifest.type === "hyperframes:block" || manifest.type === "hyperframes:component") {
+            if (
+              manifest.type === "hyperframes:block" ||
+              manifest.type === "hyperframes:component"
+            ) {
               const itemRoot = join(dir, entry.name);
               const runtimeSources = manifest.files.flatMap((file) => {
                 if (!/\.(?:html|js|mjs|ts|tsx)$/i.test(file.path)) return [];

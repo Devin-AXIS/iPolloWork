@@ -11,6 +11,15 @@
 
 @import "@fontsource-variable/ibm-plex-sans";
 
+/* Compensate for the transparent padding inside the supplied studio logos. */
+img:is([src$="/ext-design.png"], [src$="/ext-video.png"], [src$="/ext-image-studio.png"]) {
+  scale: 1.4;
+}
+
+img[src$="/ext-video-console.png"] {
+  scale: 1.2;
+}
+
 @custom-variant dark (&:is(.dark, .dark *, [data-theme="dark"], [data-theme="dark"] *));
 @custom-variant electron {
   html.ipollowork-electron & {
@@ -153,12 +162,23 @@
     BlinkMacSystemFont,
     "Segoe UI",
     "PingFang SC",
+    "Hiragino Sans GB",
     "Microsoft YaHei",
+    "Noto Sans SC",
     "Noto Sans",
     Arial,
     sans-serif,
     "Apple Color Emoji",
     "Segoe UI Emoji";
+  --ipollowork-font-mono:
+    ui-monospace,
+    "SFMono-Regular",
+    "Cascadia Code",
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
   --dls-surface: var(--slate-1);
   --dls-sidebar: #fcfcfc;
   --dls-app-bg: var(--slate-1);
@@ -174,11 +194,19 @@
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
-  --dls-active: var(--slate-5);
+  --dls-active: var(--slate-4);
+  --new-conversation-placeholder: #cccccc;
+  --new-conversation-tab-surface: #efefef;
+  --new-conversation-tab-selected: #ffffff;
+  --new-conversation-tab-text: #161e24;
+  --new-conversation-tab-muted: #8b8d98;
   --dls-radius: 16px;
   --dls-radius-lg: 24px;
   --dls-shell-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
   --dls-card-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+  --project-dialog-accent: #1fbac0;
+  --project-dialog-notice: #f4f4ee;
+  --project-dialog-option-border: #e7e7e8;
   --background: var(--slate-1);
   --foreground: var(--slate-12);
   --card: var(--slate-1);
@@ -232,21 +260,18 @@
   --dls-text-primary: var(--slate-12);
   --dls-text-secondary: var(--slate-11);
   --dls-hover: var(--slate-3);
-  --dls-active: var(--slate-5);
+  --dls-active: var(--slate-4);
+  --new-conversation-placeholder: #333333;
+  --new-conversation-tab-surface: #2a2a2d;
+  --new-conversation-tab-selected: #3a3a3d;
+  --new-conversation-tab-text: #f5f5f5;
+  --new-conversation-tab-muted: #b0b4ba;
   --dls-shell-shadow: 0 18px 48px rgba(0, 0, 0, 0.32);
   --dls-card-shadow: 0 14px 36px rgba(0, 0, 0, 0.24);
 }
 
 [data-theme="dark"] .new-conversation-composer {
   --new-conversation-composer-surface: #343434;
-}
-
-html[lang="zh"][data-theme="dark"] [data-settings-content] {
-  font-weight: 450;
-}
-
-html[lang="zh"][data-theme="dark"] [data-settings-content] .font-normal {
-  font-weight: 450;
 }
 
 html,
@@ -272,6 +297,101 @@ body {
   color: var(--dls-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+.dark body,
+[data-theme="dark"] body {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+[data-chat-readable-text="true"] {
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+[data-chat-readable-text="true"] :is(p, li) {
+  line-height: 1.5;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {
+  font-weight: 500;
+}
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] :is(strong, b) {
+  font-weight: 600;
+}
+
+html:lang(zh) .chat-process-heading {
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", var(--ipollowork-font-sans);
+}
+
+/* Match the existing macOS Chinese readability correction in settings/chat.
+   PingFang's 400 fallback can render as ExtraLight in Electron; keep captions
+   readable and express inspector hierarchy through size and semantic color. */
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography,
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .video-settings-typography :where(p, span, label, button, input, textarea, legend, [role="option"]):not(.font-semibold) {
+  font-weight: 500;
+}
+
+html:lang(zh) .settings-description {
+  font-weight: 500;
+}
+
+html:lang(zh) .new-conversation-quick-action,
+html:lang(zh) .new-conversation-capability-chip,
+html:lang(zh) .composer-design-selection {
+  font-weight: 500;
+}
+
+html:lang(zh) [data-testid="project-overview"] :where(
+  .text-dls-secondary,
+  [class~="text-dls-text/45"]
+) {
+  font-weight: 500;
+}
+
+html:lang(zh) [data-testid="work-center"] :where(
+  .text-dls-secondary,
+  .text-dls-tertiary,
+  [class~="text-dls-text/45"]
+) {
+  font-weight: 500;
+}
+
+[data-settings-shell] :where(
+  button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
+  [role="button"]:not([role="switch"]):not([role="checkbox"]):not([role="radio"]),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select,
+  [role="combobox"],
+  [data-slot="table-container"]
+) {
+  border-radius: 8px !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close] {
+  appearance: none !important;
+  border: 0 !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  outline: none !important;
+  padding: 0 !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]:hover {
+  background: color-mix(in oklab, var(--foreground) 6%, transparent) !important;
+  box-shadow: none !important;
+}
+
+[data-settings-shell][data-settings-compact] [data-settings-close]::before,
+[data-settings-shell][data-settings-compact] [data-settings-close]::after {
+  display: none !important;
+  content: none !important;
+  box-shadow: none !important;
 }
 
 *::-webkit-scrollbar {
@@ -426,10 +546,9 @@ body {
 .ow-input {
   appearance: none;
   width: 100%;
-  border: 0;
+  border: 1px solid var(--slate-6);
   border-radius: 0.9rem;
   background: var(--slate-1);
-  box-shadow: inset 0 0 0 1px var(--slate-6);
   color: var(--dls-text-primary);
 }
 
@@ -438,8 +557,8 @@ body {
 }
 
 .ow-input:focus {
-  outline: none;
-  box-shadow: inset 0 0 0 1px rgba(var(--dls-accent-rgb), 0.28), 0 0 0 3px rgba(var(--dls-accent-rgb), 0.08);
+  border-color: rgba(var(--dls-accent-rgb), 0.28);
+  outline: 3px solid rgba(var(--dls-accent-rgb), 0.08);
 }
 
 /* Global clickable elements pointer */
@@ -548,6 +667,9 @@ select:disabled {
 
 .dark,
 [data-theme="dark"] {
+  --project-dialog-accent: #1fbac0;
+  --project-dialog-notice: var(--slate-3);
+  --project-dialog-option-border: var(--slate-6);
   --background: var(--slate-1);
   --foreground: var(--slate-12);
   --card: var(--slate-2);
@@ -560,7 +682,7 @@ select:disabled {
   --secondary: var(--slate-3);
   --secondary-foreground: var(--slate-12);
   --muted: var(--slate-3);
-  --muted-foreground: var(--slate-10);
+  --muted-foreground: var(--slate-11);
   --accent: var(--slate-3);
   --accent-foreground: var(--slate-12);
   --destructive: var(--red-9);
@@ -586,6 +708,23 @@ select:disabled {
 @theme inline {
   --font-sans: var(--ipollowork-font-sans);
   --font-heading: var(--ipollowork-font-sans);
+  --font-mono: var(--ipollowork-font-mono);
+  --text-ui-micro: 0.625rem;
+  --text-ui-micro--line-height: 0.875rem;
+  --text-ui-caption: 0.6875rem;
+  --text-ui-caption--line-height: 1rem;
+  --text-ui-compact: 0.75rem;
+  --text-ui-compact--line-height: 1.125rem;
+  --text-ui-control: 0.8125rem;
+  --text-ui-control--line-height: 1.125rem;
+  --text-ui-body: 0.875rem;
+  --text-ui-body--line-height: 1.25rem;
+  --text-ui-title-sm: 1rem;
+  --text-ui-title-sm--line-height: 1.5rem;
+  --text-ui-title: 1.25rem;
+  --text-ui-title--line-height: 1.75rem;
+  --text-ui-page-title: 1.5rem;
+  --text-ui-page-title--line-height: 2rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -639,3 +778,68 @@ select:disabled {
     @apply font-sans;
   }
 }
+
+html:lang(zh).ipollowork-electron.ipollowork-platform-mac .media-composer-controls :is(button, input, textarea, legend, [role="option"]) {
+  font-weight: 500;
+}
+
+/* Keep chat and media composer cards aligned at every viewport size. */
+.composer-card {
+  /* Original chat card: 60px editor + 20px padding + 8px gap + 32px actions + 2px border. */
+  height: 122px;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+
+@container media-reference-row (max-height: 50px) {
+  .media-reference-label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .media-reference-card svg { width: 18px; height: 18px; }
+}
+
+.media-control-short, .media-output-compact { display: none; }
+@container media-composer (max-width: 620px) {
+  .media-composer-footer .media-control-full,
+  .media-composer-footer .media-action-label { display: none; }
+  .media-composer-footer .media-control-short { display: inline; }
+  .media-composer-footer .media-icon-action { width: 28px; min-width: 28px; padding: 0; }
+  .media-composer-footer .media-generate-action { min-width: 0; }
+}
+@container media-composer (max-width: 480px) {
+  .media-composer-footer .media-output-value { display: none; }
+  .media-composer-footer .media-output-compact { display: inline; }
+}
+
+/* Chat file links and response outputs share one visual specification. */
+.chat-output-card { position:relative; display:inline-flex; align-items:center; gap:10px; width:320px; max-width:100%; height:56px; padding:10px; border:1px solid var(--border); border-radius:12px; background:var(--background); color:var(--foreground); box-shadow:none; vertical-align:middle; text-align:left; }
+.chat-output-card:hover { background:var(--muted); }
+.chat-output-open { display:flex; align-items:center; gap:10px; flex:1; min-width:0; height:100%; padding:0; text-align:left; }
+.chat-output-icon { display:grid; place-items:center; width:32px; height:32px; flex-shrink:0; border-radius:8px; background:var(--muted); color:var(--muted-foreground); }
+.chat-output-content { display:flex; flex:1; min-width:0; flex-direction:column; gap:2px; }
+.chat-output-title { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; line-height:16px; }
+.chat-output-description { display:block; font-size:10px; font-weight:400; line-height:14px; color:var(--muted-foreground); }
+.chat-output-more { display:grid; place-items:center; width:28px; height:28px; flex-shrink:0; border-radius:8px; color:var(--muted-foreground); }
+.chat-output-more:hover { background:var(--background); color:var(--foreground); }
+
+[data-testid="artifact-file-shell"] > .chat-output-card { padding-right:76px; }
+.chat-output-title code { font:inherit; background:transparent; padding:0; }
+
+/* File list actions stay inside the same card at every panel width. */
+[data-testid="artifact-file-shell"] > .chat-output-card { width:100%; }
+.chat-output-icon svg { color:var(--muted-foreground); stroke-width:1.8; }
+[data-testid="artifact-file-actions"] { right:10px; }
+
+/* File cards use the same responsive rows in Markdown and output lists. */
+.chat-output-grid { display:grid; min-width:0; grid-template-columns:repeat(auto-fill,minmax(min(100%,16rem),1fr)); gap:12px; }
+.chat-output-grid .chat-output-card { display:flex; width:100%; min-width:0; }
+
+.chat-output-card { padding-top:7px; padding-bottom:7px; }
+.chat-output-icon { position:relative; width:40px; height:40px; overflow:hidden; }
+.chat-output-icon .artifact-thumbnail { position:absolute; inset:0; display:block; width:40px; height:40px; max-width:none; margin:0; object-fit:cover; border-radius:8px; }
+.chat-output-icon .artifact-thumbnail-play { position:absolute; right:2px; bottom:2px; width:14px; height:14px; padding:2px; border-radius:4px; background:rgba(0,0,0,.55); color:white; fill:currentColor; stroke:none; }

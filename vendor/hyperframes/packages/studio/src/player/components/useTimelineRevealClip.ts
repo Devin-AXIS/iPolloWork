@@ -13,7 +13,6 @@ import { useEffect } from "react";
 import { usePlayerStore, type TimelineElement } from "../store/playerStore";
 import {
   CLIP_Y,
-  GUTTER,
   RULER_H,
   TRACK_H,
   TRACKS_LEFT_PAD,
@@ -25,6 +24,7 @@ interface TimelineRevealGeometry {
   elements: TimelineElement[];
   displayTrackOrder: number[];
   pps: number;
+  gutterWidth: number;
 }
 
 export function useTimelineRevealClip(
@@ -51,7 +51,7 @@ export function useTimelineRevealClip(
     const rowIndex = geometry.displayTrackOrder.indexOf(element.track);
     if (rowIndex < 0) return;
 
-    const clipLeft = GUTTER + TRACKS_LEFT_PAD + element.start * geometry.pps;
+    const clipLeft = geometry.gutterWidth + TRACKS_LEFT_PAD + element.start * geometry.pps;
     const clipTop = getTimelineRowTop(rowIndex) + CLIP_Y;
     const clipWidth = Math.max(element.duration * geometry.pps, 4);
 
@@ -64,7 +64,7 @@ export function useTimelineRevealClip(
       clipRight: clipLeft + clipWidth,
       clipTop,
       clipBottom: clipTop + TRACK_H - CLIP_Y * 2,
-      stickyLeft: GUTTER,
+      stickyLeft: geometry.gutterWidth,
       stickyTop: RULER_H,
       allowHorizontal: usePlayerStore.getState().zoomMode === "manual",
     });
@@ -74,5 +74,12 @@ export function useTimelineRevealClip(
       top: target.top ?? container.scrollTop,
       behavior: "smooth",
     });
-  }, [geometry.displayTrackOrder, geometry.elements, geometry.pps, revealRequest, scrollRef]);
+  }, [
+    geometry.displayTrackOrder,
+    geometry.elements,
+    geometry.gutterWidth,
+    geometry.pps,
+    revealRequest,
+    scrollRef,
+  ]);
 }

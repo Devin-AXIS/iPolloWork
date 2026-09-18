@@ -1,5 +1,5 @@
 import type { TimelineTheme } from "./timelineTheme";
-import { GUTTER } from "./timelineLayout";
+import { DEFAULT_TIMELINE_GUTTER_WIDTH } from "./timelineLayout";
 import type { StackingTimelineLayer, TimelineLayerId } from "./timelineTrackOrder";
 
 export const TIMELINE_LAYER_GROUP_HEADER_H = 18;
@@ -33,6 +33,7 @@ interface TimelineLayerGroupHeaderProps {
   trackContentWidth: number;
   theme: TimelineTheme;
   accentColor: string;
+  gutterWidth?: number;
 }
 
 export function TimelineLayerGroupHeader({
@@ -40,6 +41,7 @@ export function TimelineLayerGroupHeader({
   trackContentWidth,
   theme,
   accentColor,
+  gutterWidth = DEFAULT_TIMELINE_GUTTER_WIDTH,
 }: TimelineLayerGroupHeaderProps) {
   return (
     <div
@@ -50,7 +52,7 @@ export function TimelineLayerGroupHeader({
         // header spans the timeline at any zoom; minWidth preserves the intrinsic
         // composition width when zoomed in and scrolling.
         width: "100%",
-        minWidth: GUTTER + trackContentWidth,
+        minWidth: gutterWidth + trackContentWidth,
         background: theme.gutterBackground,
         borderBottom: `1px solid ${theme.rowBorder}`,
       }}
@@ -58,14 +60,14 @@ export function TimelineLayerGroupHeader({
       <div
         className="sticky left-0 z-[13] flex h-full items-center"
         style={{
-          width: Math.min(GUTTER + 220, GUTTER + trackContentWidth),
+          width: Math.min(gutterWidth + 220, gutterWidth + trackContentWidth),
           background: theme.gutterBackground,
         }}
       >
         <div
           className="relative h-full flex-shrink-0"
           style={{
-            width: GUTTER,
+            width: gutterWidth,
             borderRight: `1px solid ${theme.gutterBorder}`,
           }}
         >

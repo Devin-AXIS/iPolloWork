@@ -2,7 +2,6 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("enterprise-personal-template");
 
-let enterpriseName = "";
 let enterpriseScope = "";
 let createdSessionId = "";
 
@@ -27,7 +26,6 @@ async function ensureEnterprise(ctx) {
     } catch { return null; }
   })()`);
   ctx.assert(Boolean(connection?.id), "Expected an existing Enterprise connection.");
-  enterpriseName = connection.shortName;
   enterpriseScope = `enterprise:${connection.id}`;
 
   if (await ctx.eval(`localStorage.getItem("ipollowork.work-context.v1") !== ${JSON.stringify(enterpriseScope)}`)) {
@@ -102,8 +100,8 @@ export default {
               timeoutMs: 30_000,
               label: "Templates dialog",
             });
-            const personalClicked = await ctx.eval(clickButton("/^(?:个人|Personal)$/u", "document.querySelector('[role=\\\"dialog\\\"]')"));
-            ctx.assert(personalClicked === true, "Expected the Personal resource source button.");
+            const builtInClicked = await ctx.eval(clickButton("/^(?:内置|Built-in)$/u", "document.querySelector('[role=\\\"dialog\\\"]')"));
+            ctx.assert(builtInClicked === true, "Expected the Built-in template source button.");
             await ctx.waitFor(
               `document.querySelector('[role="dialog"]')?.innerText.includes("Calm Mobile")`,
               { timeoutMs: 30_000, label: "Personal templates loaded" },
@@ -169,9 +167,9 @@ export default {
       },
     },
     {
-      name: "Enterprise source remains isolated",
+      name: "Cloud source remains isolated",
       run: async (ctx) => {
-        await ctx.prove("Switching the resource source back to Enterprise hides Personal templates", {
+        await ctx.prove("Switching Explore from Built-in to Cloud hides bundled templates", {
           voiceover: vo[1],
           action: async () => {
             const templatesClicked = await ctx.eval(clickButton("/^(?:模版|Templates)$/u"));
@@ -180,32 +178,29 @@ export default {
               timeoutMs: 30_000,
               label: "Templates dialog",
             });
-            const enterpriseClicked = await ctx.eval(clickButton(
-              `/${enterpriseName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/u`,
-              "document.querySelector('[role=\\\"dialog\\\"]')",
-            ));
-            ctx.assert(enterpriseClicked === true, "Expected the Enterprise resource source button.");
+            const cloudClicked = await ctx.eval(clickButton("/^Cloud$/u", "document.querySelector('[role=\\\"dialog\\\"]')"));
+            ctx.assert(cloudClicked === true, "Expected the Cloud template source button.");
             await ctx.waitFor(
               `(() => {
                 const dialog = document.querySelector('[role="dialog"]');
                 return Boolean(dialog) && !dialog.innerText.includes("Calm Mobile") && !dialog.querySelector('[data-testid="template-catalog-loading"]');
               })()`,
-              { timeoutMs: 30_000, label: "Enterprise-only template source" },
+              { timeoutMs: 30_000, label: "Cloud-only template source" },
             );
           },
           assert: async () => {
             const dialogText = await ctx.eval(`document.querySelector('[role="dialog"]')?.innerText || ""`);
-            ctx.assert(!dialogText.includes("Calm Mobile"), "Personal templates must not leak into the Enterprise source.");
+            ctx.assert(!dialogText.includes("Calm Mobile"), "Built-in templates must not leak into the Cloud source.");
             ctx.assert(
-              dialogText.includes("当前账号暂无可用的企业模板") || dialogText.includes("No enterprise templates are available") || dialogText.includes("安装"),
-              `Expected Enterprise resources or an explicit empty state: ${JSON.stringify(dialogText.slice(0, 500))}.`,
+              dialogText.includes("你的 Cloud 账号中暂无可用模板") || dialogText.includes("No templates are available in your Cloud account") || dialogText.includes("安装"),
+              `Expected Cloud resources or an explicit empty state: ${JSON.stringify(dialogText.slice(0, 500))}.`,
             );
             await ctx.expectNoText("OpenCode unavailable");
             await ctx.expectNoText("Install this template before using it");
           },
           screenshot: {
-            name: "enterprise-template-source-isolated",
-            requireText: ["资源来源", enterpriseName],
+            name: "cloud-template-source-isolated",
+            requireText: ["模板来源", "Cloud"],
             rejectText: ["OpenCode unavailable", "Install this template before using it"],
           },
         });

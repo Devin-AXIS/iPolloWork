@@ -99,7 +99,7 @@ export function useClipboard({
       }
 
       if (!html) {
-        showToast("Unable to copy this element.", "info");
+        showToast("Unable to copy this element.", "error");
         return false;
       }
 
@@ -114,7 +114,7 @@ export function useClipboard({
     if (domSelection) {
       const html = getElementOuterHtml(previewIframeRef, domSelection, activeCompPath);
       if (!html) {
-        showToast("Unable to copy this element.", "info");
+        showToast("Unable to copy this element.", "error");
         return false;
       }
       const targetPath = domSelection.sourceFile || activeCompPath || "index.html";
@@ -136,7 +136,7 @@ export function useClipboard({
   const handlePaste = useCallback(async () => {
     const payload = clipboardRef.current;
     if (!payload) {
-      showToast("Nothing to paste.", "info");
+      showToast("Nothing to paste.", "error");
       return;
     }
     const pid = projectIdRef.current;

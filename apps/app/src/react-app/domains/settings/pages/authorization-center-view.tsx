@@ -4,20 +4,18 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AudioLines,
   CheckCircle2,
-  Clapperboard,
   Cloud,
   FolderCog,
+  Globe,
   Image,
   KeyRound,
   Loader2,
   PlugZap,
-  RefreshCw,
   XCircle,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 
-import { Alert, AlertAction, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,26 +32,15 @@ import type {
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
 import { t } from "@/i18n";
-import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 import { LayoutSection, LayoutSectionDescription, LayoutSectionHeader, LayoutSectionTitle, LayoutStack } from "@/react-app/domains/settings/settings-layout";
 import { SettingsNotice, SettingsStatusBadge, Spinner } from "@/react-app/domains/settings/settings-section";
-import { AuthorizationFormDialog } from "@/react-app/domains/settings/authorization-form-dialog";
-import {
-  EnvironmentVariableProvider,
-  environmentUserEnvQueryKey,
-  type ApplyEnvironmentChangesResult,
-  useEnvironmentVariableApplyChanges,
-  useEnvironmentVariableMarkChangesPending,
-  useIsEnvironmentVariableChangesPending,
-} from "./environment-variable-provider";
-
+import { AuthorizationFormDialog } from "@/components/authorization-form-dialog";
 type AuthorizationCenterViewProps = {
   client: iPolloWorkServerClient | null;
   isRemoteWorkspace: boolean;
-  onApplyChanges?: () => Promise<ApplyEnvironmentChangesResult>;
-  applyBlocked?: boolean;
-  applyBlockedReason?: string | null;
   runtimeKey?: string | null;
+  onOpenOpenAiLogin: () => void;
+  providerAuthOpen: boolean;
 };
 
 type ServicePresentation = {
@@ -82,13 +69,22 @@ const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = 
     icon: AudioLines,
     titleKey: "settings.authorization.service.aliyun_bailian.title",
     descriptionKey: "settings.authorization.service.aliyun_bailian.description",
-    fields: [{ key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." }],
+    fields: [
+      { key: "DASHSCOPE_API_KEY", label: "DashScope API key", placeholder: "sk-..." },
+      { key: "DASHSCOPE_BASE_URL", label: "API base URL", placeholder: "https://dashscope.aliyuncs.com", secret: false, required: false },
+    ],
   },
   "volcengine-video": {
-    icon: Clapperboard,
+    icon: Image,
     titleKey: "settings.authorization.service.volcengine_video.title",
     descriptionKey: "settings.authorization.service.volcengine_video.description",
     fields: [{ key: "ARK_API_KEY", label: "Ark API key", placeholder: "your Ark API key" }],
+  },
+  "runninghub-video": {
+    icon: AudioLines,
+    titleKey: "settings.authorization.service.runninghub_video.title",
+    descriptionKey: "settings.authorization.service.runninghub_video.description",
+    fields: [{ key: "RUNNINGHUB_API_KEY", label: "RunningHub API key", placeholder: "Enterprise-Shared API key", hintKey: "settings.authorization.runninghub_key_hint" }],
   },
   "aliyun-oss": {
     icon: Cloud,
@@ -144,25 +140,13 @@ function authorizationQueryKey(runtimeKey?: string | null) {
 }
 
 export function AuthorizationCenterView(props: AuthorizationCenterViewProps) {
-  return (
-    <EnvironmentVariableProvider
-      client={props.client}
-      runtimeKey={props.runtimeKey}
-      onApplyChanges={props.onApplyChanges}
-    >
-      <AuthorizationCenterContent {...props} />
-    </EnvironmentVariableProvider>
-  );
+  return <AuthorizationCenterContent {...props} />;
 }
 
 function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
   const canEdit = props.client !== null && !props.isRemoteWorkspace;
   const queryClient = useQueryClient();
-  const markChangesPending = useEnvironmentVariableMarkChangesPending();
-  const isPendingChanges = useIsEnvironmentVariableChangesPending();
-  const { applyAsync, isApplying, error: applyError } = useEnvironmentVariableApplyChanges();
   const [editor, setEditor] = useState<EditorState | null>(null);
-  const [applyOpen, setApplyOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, iPolloWorkAuthorizationServiceTestResult>>({});
 
   const servicesQuery = useQuery({
@@ -179,6 +163,12 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
     if (!canEdit) setEditor(null);
   }, [canEdit]);
 
+  useEffect(() => {
+    if (!props.providerAuthOpen && canEdit) {
+      void queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
+    }
+  }, [props.providerAuthOpen, props.runtimeKey, canEdit, queryClient]);
+
   const saveMutation = useMutation({
     mutationFn: async (draft: EditorState) => {
       if (!props.client) throw new Error(t("app.unknown_error"));
@@ -188,20 +178,16 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
       if (missing) {
         throw new Error(t("settings.authorization.validation_required", { field: missing.label }));
       }
-      const entries = fields
-        .map((field) => ({ key: field.key, value: draft.values[field.key]?.trim() ?? "" }))
-        .filter((entry) => entry.value.length > 0);
-      if (entries.length === 0) return;
-      await props.client.upsertUserEnv(entries);
+      const values = Object.fromEntries(fields
+        .map((field) => [field.key, draft.values[field.key]?.trim() ?? ""] as const)
+        .filter(([, value]) => value.length > 0));
+      if (Object.keys(values).length === 0) return;
+      await props.client.saveAuthorizationService(draft.service.id, values);
     },
     onSuccess: async () => {
-      markChangesPending();
       setEditor(null);
       toast.success(t("settings.authorization.saved"));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) }),
-        queryClient.invalidateQueries({ queryKey: environmentUserEnvQueryKey(props.runtimeKey) }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: authorizationQueryKey(props.runtimeKey) });
     },
   });
 
@@ -253,45 +239,6 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
         ) : null}
         {servicesQuery.error ? <SettingsNotice tone="error">{servicesQuery.error.message}</SettingsNotice> : null}
 
-        {isPendingChanges && !props.isRemoteWorkspace ? (
-          <>
-            <Alert variant="warning">
-              <RefreshCw />
-              <AlertTitle>{t("settings.authorization.apply_pending_title")}</AlertTitle>
-              <AlertDescription>{t("settings.authorization.apply_pending_body")}</AlertDescription>
-              {props.applyBlocked ? <AlertDescription>{props.applyBlockedReason}</AlertDescription> : null}
-              {applyError ? <AlertDescription>{applyError.message}</AlertDescription> : null}
-              {props.onApplyChanges ? (
-                <AlertAction>
-                  <Button
-                    size="sm"
-                    disabled={isApplying || props.applyBlocked}
-                    onClick={() => setApplyOpen(true)}
-                    title={props.applyBlockedReason ?? undefined}
-                  >
-                    <Spinner spinning={isApplying} />
-                    {isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-                  </Button>
-                </AlertAction>
-              ) : null}
-            </Alert>
-            <ConfirmModal
-              open={applyOpen}
-              title={t("settings.authorization.apply_title")}
-              message={t("settings.authorization.apply_confirm")}
-              confirmLabel={isApplying ? t("settings.authorization.applying") : t("settings.authorization.apply")}
-              cancelLabel={t("settings.authorization.cancel")}
-              variant="warning"
-              onConfirm={() => {
-                void applyAsync(undefined, { onSuccess: () => setApplyOpen(false) });
-              }}
-              onCancel={() => {
-                if (!isApplying) setApplyOpen(false);
-              }}
-            />
-          </>
-        ) : null}
-
         {servicesQuery.isLoading ? (
           <div className="flex min-h-40 items-center justify-center rounded-2xl border border-dls-border bg-dls-hover/40">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
@@ -307,6 +254,7 @@ function AuthorizationCenterContent(props: AuthorizationCenterViewProps) {
                 testing={testMutation.isPending && testMutation.variables === service.id}
                 onConfigure={() => openEditor(service)}
                 onTest={() => testMutation.mutate(service.id)}
+                onOpenBrowserLogin={service.id === "openai-images" ? props.onOpenOpenAiLogin : undefined}
               />
             ))}
           </div>
@@ -334,6 +282,7 @@ function AuthorizationServiceCard(props: {
   testResult?: iPolloWorkAuthorizationServiceTestResult;
   onConfigure: () => void;
   onTest: () => void;
+  onOpenBrowserLogin?: () => void;
 }) {
   const presentation = SERVICES[props.service.id];
   const Icon = presentation.icon;
@@ -350,8 +299,8 @@ function AuthorizationServiceCard(props: {
             <Icon className="size-4" />
           </span>
           <SettingsStatusBadge
-            tone={props.service.configured ? "ready" : "neutral"}
-            label={props.service.configured ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
+            tone={props.service.configured || props.service.browserLogin?.connected ? "ready" : "neutral"}
+            label={props.service.configured || props.service.browserLogin?.connected ? t("settings.authorization.connected") : t("settings.authorization.not_configured")}
             className="min-h-7 px-0 text-[11px]"
           />
         </div>
@@ -363,7 +312,23 @@ function AuthorizationServiceCard(props: {
         </div>
       </CardHeader>
       <CardContent className="flex-1">
+        {props.onOpenBrowserLogin ? (
+          <div className="mb-3 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <SettingsStatusBadge
+                tone={props.service.browserLogin?.connected ? "ready" : "neutral"}
+                label={t(props.service.browserLogin?.connected ? "settings.authorization.browser_connected" : "settings.authorization.browser_disconnected")}
+              />
+              <Button variant="outline" size="sm" onClick={props.onOpenBrowserLogin} disabled={!props.canEdit}>
+                <Globe className="size-3.5" />
+                {t("settings.authorization.browser_login")}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">{t("settings.authorization.browser_hint")}</p>
+          </div>
+        ) : null}
         <p className="text-xs text-muted-foreground">
+          {props.onOpenBrowserLogin ? "API Key · " : null}
           {t("settings.authorization.fields_configured", {
             configured: configuredFields,
             total: requiredFields,
@@ -379,7 +344,7 @@ function AuthorizationServiceCard(props: {
       <CardFooter className="justify-between gap-2 border-t border-border">
         <Button variant="ghost" size="sm" onClick={props.onConfigure} disabled={!props.canEdit}>
           <KeyRound className="size-3.5" />
-          {props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
+          {props.onOpenBrowserLogin ? t("settings.authorization.api_key") : props.service.configured ? t("settings.authorization.edit") : t("settings.authorization.configure")}
         </Button>
         <Button
           variant="outline"
@@ -388,7 +353,7 @@ function AuthorizationServiceCard(props: {
           disabled={!props.canEdit || !props.service.configured || props.testing}
         >
           {props.testing ? <Loader2 className="size-3.5 animate-spin" /> : <PlugZap className="size-3.5" />}
-          {props.testing ? t("settings.authorization.testing") : t("settings.authorization.test")}
+          {props.testing ? t("settings.authorization.testing") : props.onOpenBrowserLogin ? t("settings.authorization.test_api") : t("settings.authorization.test")}
         </Button>
       </CardFooter>
     </Card>

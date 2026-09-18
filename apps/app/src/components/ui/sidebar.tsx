@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
+import { publicAssetUrl } from "@/app/lib/public-asset"
 import {
   Sheet,
   SheetContent,
@@ -23,7 +24,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
-import { PanelLeftIcon } from "lucide-react"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -266,16 +266,58 @@ function SidebarTrigger({
       data-slot="sidebar-trigger"
       variant="ghost"
       size="icon-sm"
-      className={cn("border-none", className)}
+      className={cn("group border-none", className)}
       onClick={(event) => {
         onClick?.(event)
         toggleSidebar()
       }}
       {...props}
     >
-      {icon ?? <PanelLeftIcon className="rtl:rotate-180 size-3.5" />}
+      {icon ?? <SidebarToggleIcon />}
       <span className="sr-only">Toggle Sidebar</span>
     </Button>
+  )
+}
+
+function SidebarToggleIcon({ className }: { className?: string }) {
+  const src = publicAssetUrl("sidebar-left-expand.svg")
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("h-3 w-4 shrink-0 bg-current text-muted-foreground transition-colors group-hover:text-foreground", className)}
+      style={{
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      }}
+    />
+  )
+}
+
+function SidebarRightToggleIcon({ panelOpen, className }: { panelOpen: boolean; className?: string }) {
+  const src = publicAssetUrl(panelOpen ? "sidebar-right-open.svg" : "sidebar-right-closed.svg")
+
+  return (
+    <span
+      aria-hidden="true"
+      className={cn("h-3 w-4 shrink-0 bg-current", className)}
+      style={{
+        WebkitMaskImage: `url(${src})`,
+        maskImage: `url(${src})`,
+        WebkitMaskPosition: "center",
+        maskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        maskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskSize: "contain",
+      }}
+    />
   )
 }
 
@@ -721,6 +763,8 @@ export {
   SidebarProvider,
   SidebarRail,
   SidebarSeparator,
+  SidebarRightToggleIcon,
+  SidebarToggleIcon,
   SidebarTrigger,
   useSidebar,
 }

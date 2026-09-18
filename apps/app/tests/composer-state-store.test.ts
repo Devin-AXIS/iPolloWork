@@ -2,12 +2,14 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import type { ComposerDraft } from "../src/app/types";
 import {
+  getComposerDraft,
   getComposerQueuedDrafts,
   useComposerStateStore,
 } from "../src/react-app/domains/session/surface/composer-state-store";
+import { deriveComposerInputHistory } from "../src/react-app/domains/session/surface/session-render-state";
 
 function reset() {
-  useComposerStateStore.setState({ sessions: {}, queuedDrafts: {}, history: {} });
+  useComposerStateStore.setState({ sessions: {}, queuedDrafts: {} });
 }
 
 function draft(text: string): ComposerDraft {
@@ -59,5 +61,31 @@ describe("composer state store", () => {
     expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-b").map((item) => item.text)).toEqual([
       "only B",
     ]);
+  });
+
+  test("restores a failed submitted draft only while the composer is still empty", () => {
+    const { clearSession, restoreSessionIfEmpty, setDraft } = useComposerStateStore.getState();
+    const submitted = { draft: "original prompt", attachments: [], mentions: {}, pasteParts: [] };
+
+    setDraft("session-a", submitted.draft);
+    clearSession("session-a");
+    restoreSessionIfEmpty("session-a", submitted);
+    expect(getComposerDraft(useComposerStateStore.getState(), "session-a")).toBe("original prompt");
+
+    clearSession("session-a");
+    setDraft("session-a", "next prompt");
+    restoreSessionIfEmpty("session-a", submitted);
+    expect(getComposerDraft(useComposerStateStore.getState(), "session-a")).toBe("next prompt");
+  });
+
+  test("derives input recall history from persisted user messages", () => {
+    const messages = [
+      { id: "user-1", role: "user" as const, parts: [{ type: "text" as const, text: "first prompt" }] },
+      { id: "assistant-1", role: "assistant" as const, parts: [{ type: "text" as const, text: "answer" }] },
+      { id: "user-2", role: "user" as const, parts: [{ type: "text" as const, text: "second prompt" }] },
+      { id: "user-3", role: "user" as const, parts: [{ type: "text" as const, text: "second prompt" }] },
+    ];
+
+    expect(deriveComposerInputHistory(messages)).toEqual(["first prompt", "second prompt"]);
   });
 });

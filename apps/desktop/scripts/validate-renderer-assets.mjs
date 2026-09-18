@@ -17,7 +17,7 @@ const requiredAssets = [
   "sidebar-icon/search.svg",
   "sidebar-icon/figma-square-pen.svg",
   "sidebar-icon/figma-layout-panel-top.svg",
-  "sidebar-icon/figma-plug.svg",
+  "sidebar-icon/toy-brick.svg",
   "sidebar-left-expand.svg",
   "sidebar-right-open.svg",
   "sidebar-right-closed.svg",

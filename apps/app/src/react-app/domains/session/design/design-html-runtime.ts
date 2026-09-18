@@ -1,3 +1,5 @@
+import { designMediaTools, type DesignMedia } from "./design-media";
+
 export const DESIGN_MESSAGE_CHANNEL = "ipollowork-design-html-v1";
 
 export const DESIGN_STYLE_FIELDS = [
@@ -61,6 +63,7 @@ export type DesignSelection = {
   rangeText: string;
   rect: DesignRect;
   styles: Record<DesignStyleField, string>;
+  media?: DesignMedia | null;
 };
 
 export type DesignSelectionChange = {
@@ -140,7 +143,7 @@ export function buildDesignPreviewDocument(
     ? `<script id="ipollowork-design-fixed-slide-runtime">(${designFixedSlideRuntime.toString()})();<\/script>`
     : "";
   const editingRuntime = includeEditor
-    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)},${JSON.stringify(frameRevision)});<\/script>`
+    ? `<script id="ipollowork-design-runtime">/* const elementLocator = (element: HTMLElement); const primaryAttribute = "data-ipollowork-design-primary"; let selectedElements: HTMLElement[] = []; let primaryElement: HTMLElement | null = null; const effectiveMode = selectedElements.length > 1 ? "move" : mode; const selectedTargets = (ids: unknown) => */(${designRuntime.toString()})(${JSON.stringify(DESIGN_MESSAGE_CHANNEL)},${JSON.stringify(DESIGN_STYLE_FIELDS)},${editing ? "true" : "false"},${fixedSlideStage ? "true" : "false"},${isPresentationTemplate ? "true" : "false"},${JSON.stringify(DESIGN_MULTI_SELECTION_STYLE_FIELDS)},${JSON.stringify(frameRevision)},(${designMediaTools.toString()})());<\/script>`
     : "";
   const runtime = `${tokenStyle}${navigationRuntime}${deckRuntime}${fixedSlideRuntime}${editingRuntime}`;
   const bodyEnd = source.toLowerCase().lastIndexOf("</body>");
@@ -423,7 +426,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   report();
 }
 
-function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = [], frameRevision = "") {
+function designRuntime(channel: string, styleFields: readonly string[], initialEditing: boolean, strictPptx = false, presentationCanvas = strictPptx, multiSelectionStyleFields: readonly string[] = [], frameRevision = "", mediaTools: ReturnType<typeof designMediaTools> = designMediaTools()) {
   const runtimeId = "ipollowork-design-runtime";
   const styleId = "ipollowork-design-runtime-style";
   const selectedAttribute = "data-ipollowork-design-selected";
@@ -438,7 +441,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
   const modeAttribute = "data-ipollowork-design-mode";
   const panningAttribute = "data-ipollowork-design-panning";
   const lockedAttribute = "data-ipw-locked";
-  const editableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,img,div,section,article,header,footer,nav,main";
+  const editableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote,img,video:not([data-ipw-media-background]),div,section,article,header,footer,nav,main";
   const textEditableSelector = "h1,h2,h3,h4,h5,h6,p,span,a,button,label,li,blockquote";
   const textColorSelector = "h1,h2,h3,h4,h5,h6,p,span,label,li,blockquote";
   const slideRootSelector = "[data-ipw-slide],section.slide,.slide,.slide-frame";
@@ -582,11 +585,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelectorAll(`[${idAttribute}]`).forEach((element) => element.removeAttribute(idAttribute));
     clone.querySelectorAll(`[${selectedAttribute}]`).forEach((element) => element.removeAttribute(selectedAttribute));
     clone.querySelectorAll(`[${primaryAttribute}]`).forEach((element) => element.removeAttribute(primaryAttribute));
-    clone.querySelectorAll<HTMLImageElement>("img[data-ipw-preview-src]").forEach((element) => {
-      const original = element.getAttribute("data-ipw-preview-src") ?? "";
-      if (original) element.setAttribute("src", original);
-      element.removeAttribute("data-ipw-preview-src");
-    });
+    clone.querySelectorAll<HTMLElement>("[data-ipw-preview-src],[data-ipw-preview-background]").forEach(mediaTools.restore);
     clone.querySelectorAll(`[${editingAttribute}]`).forEach((element) => {
       element.removeAttribute(editingAttribute);
       element.removeAttribute("contenteditable");
@@ -611,11 +610,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       target.removeAttribute(primaryAttribute);
       target.removeAttribute(editingAttribute);
       target.removeAttribute("contenteditable");
-      if (target instanceof HTMLImageElement && target.hasAttribute("data-ipw-preview-src")) {
-        const original = target.getAttribute("data-ipw-preview-src") || "";
-        if (original) target.setAttribute("src", original);
-        target.removeAttribute("data-ipw-preview-src");
-      }
+      mediaTools.restore(target);
     };
     clean(clone);
     clone.querySelectorAll<HTMLElement>("*").forEach(clean);
@@ -653,6 +648,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       rangeText: textRange && element.contains(textRange.commonAncestorContainer) ? textRange.toString() : "",
       rect: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
       styles,
+      media: mediaTools.read(element),
     };
   };
 
@@ -813,7 +809,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     pendingSelectionClick = null;
   };
 
-  const replaceSelection = (element: HTMLElement, type: "selected" | "editing" = "selected", preservePending = false) => {
+  const replaceSelection = (element: HTMLElement, type: "selected" | "editing" | "draft" = "selected", preservePending = false) => {
     if (!preservePending) cancelPendingSelection();
     selectedElements = [element];
     primaryElement = element;
@@ -1281,6 +1277,13 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
       window.parent.postMessage({ channel, frameRevision, type: "document-draft", html: serialize() }, "*");
       return;
     }
+    if (data.type === "media-fill" && (data.kind === "image" || data.kind === "video") && typeof data.src === "string") {
+      const targets = selectedTargets(data.ids);
+      if (targets.length !== 1 || isLockedElement(targets[0])) return;
+      const layer = mediaTools.set(targets[0], data.kind, data.src, typeof data.preview === "string" ? data.preview : undefined);
+      replaceSelection(layer, "draft");
+      return;
+    }
     if (data.type === "delete") {
       const targets = selectedTargets(data.ids).filter(canDeleteElement);
       if (!targets.length) return;
@@ -1354,7 +1357,15 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
         rangeSelection?.removeAllRanges();
         rangeSelection?.addRange(textRange);
       } else if (data.scope === "range") return;
-      else targets.forEach((target) => target.style.setProperty(property, data.value));
+      else targets.forEach((target) => {
+        if (data.field === "backgroundImage") {
+          const layer = mediaTools.clearFill(target);
+          selectedElements = selectedElements.map((selected) => selected === target ? layer : selected);
+          if (primaryElement === target) primaryElement = layer;
+          target = layer;
+        }
+        target.style.setProperty(property, data.value);
+      });
     } else {
       return;
     }

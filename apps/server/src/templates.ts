@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { repairVideoTimelineRegistry, validateVideoHtmlScripts, validateVideoScriptAssets } from "./video-html-validation.js";
 import { existsSync } from "node:fs";
 import { cp, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
@@ -15,6 +16,7 @@ import {
   templateSourceTypeSchema,
   templateStyleSchema,
   sortTemplatesForCatalog,
+  isCustomerVisibleBundledTemplate,
   isTemplateAuthoringManifest,
   TEMPLATE_AUTHORING_ID_PREFIX,
   type PptxCompatibility,
@@ -40,34 +42,9 @@ export { MAX_TEMPLATE_PACKAGE_BYTES };
 const WITHDRAWN_BUNDLED_TEMPLATE_IDS = new Set([
   "ipollowork.html-anything.deck-xhs-post",
   "ipollowork.html-anything.social-x-post-card",
+  "ipollowork.pptx-custom",
 ]);
-const CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS = new Set([
-  "ipollowork.html-anything.prototype-web",
-  "ipollowork.site-afterglow-festival",
-  "ipollowork.html-anything.web-proto-soft",
-  "ipollowork.site-signal-workspace",
-  "ipollowork.site-orbit-data",
-  "ipollowork.html-anything.wireframe-sketch",
-  "ipollowork.site-atelier-architecture",
-  "ipollowork.hyperframes.agent-command-center",
-  "ipollowork.hyperframes.multi-agent-relay",
-  "ipollowork.hyperframes.course-journey",
-  "ipollowork.html-anything.motion-frames",
-  "ipollowork.hyperframes.permission-vault",
-  "ipollowork.hyperframes.code-explainer",
-  "ipollowork.pptx-brand-narrative",
-  "ipollowork.html-anything.deck-blueprint",
-  "ipollowork.html-anything.deck-xhs-pastel",
-  "ipollowork.html-anything.deck-hermes-cyber",
-  "ipollowork.html-anything.deck-presenter-mode",
-]);
-const CUSTOMER_CURATED_TEMPLATE_CATEGORIES = new Set<TemplateCategory>(["site", "video", "slides"]);
-
-export function isCustomerVisibleBundledTemplate(manifest: TemplateManifestV1): boolean {
-  return CUSTOMER_CURATED_TEMPLATE_CATEGORIES.has(manifest.category)
-    ? CUSTOMER_VISIBLE_CURATED_CATEGORY_TEMPLATE_IDS.has(manifest.id)
-    : true;
-}
+export { isCustomerVisibleBundledTemplate };
 // The market is opened from the account menu, so local templates belong to
 // the signed-in desktop profile rather than an individual workstation. The
 // workspace route remains the authorization and materialization boundary.
@@ -146,6 +123,7 @@ type TemplateDb = {
   getSession(workspaceId: string, sessionId: string): TemplateSessionRow | undefined;
   listSessions(workspaceId: string): TemplateSessionRow[];
   upsertSession(row: TemplateSessionRow): void;
+  close(): void;
 };
 
 type ZipEntry = { name: string; data: Buffer };
@@ -231,6 +209,7 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
       getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as TemplateSessionRow | undefined,
       listSessions: (workspaceId) => listSessions.all(workspaceId) as TemplateSessionRow[],
       upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+      close: () => sqlite.close(),
     };
   }
   const { DatabaseSync } = await importNodeSqlite();
@@ -251,7 +230,17 @@ async function openTemplateDb(path: string): Promise<TemplateDb> {
     getSession: (workspaceId, sessionId) => getSession.get(workspaceId, sessionId) as unknown as TemplateSessionRow | undefined,
     listSessions: (workspaceId) => listSessions.all(workspaceId) as unknown as TemplateSessionRow[],
     upsertSession: (row) => { upsertSession.run(row.workspaceId, row.sessionId, row.surface, row.templateId, row.version, row.sourceType, row.entry, row.briefPath, row.manifestJson, row.createdAt); },
+    close: () => sqlite.close(),
   };
+}
+
+export async function disposeTemplateStore(config: ServerConfig): Promise<void> {
+  const path = runtimeDbPath(config);
+  const pending = dbByPath.get(path);
+  if (!pending) return;
+  dbByPath.delete(path);
+  const db = await pending;
+  db.close();
 }
 
 async function templateDb(config: ServerConfig) {
@@ -459,6 +448,10 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   if (manifest.surface === "video") {
     const entry = await readFile(join(directory, ...manifest.entry.split("/")), "utf8");
     const declared = validateVideoTemplateVariables(manifest, entry);
+    const scriptIssue = validateVideoHtmlScripts(entry)[0];
+    if (scriptIssue) throw new ApiError(400, scriptIssue.code, scriptIssue.message);
+    const assetIssue = (await validateVideoScriptAssets(entry, dirname(join(directory, ...manifest.entry.split("/")))))[0];
+    if (assetIssue) throw new ApiError(400, assetIssue.code, assetIssue.message);
     for (const variable of manifest.designSystem.variables) {
       if (!declared.has(variable.id)) throw new ApiError(400, "invalid_template_manifest", `Manifest variable is missing from the HyperFrames document: ${variable.id}`);
     }
@@ -615,7 +608,10 @@ export async function listTemplates(config: ServerConfig, workspaceId: string, s
   const bundled = await bundledTemplates();
   if (!config.readOnly) await purgeWithdrawnBundledTemplates(config, libraryId, bundled);
   for (const item of bundled) {
-    if (!config.readOnly && !db.get(libraryId, item.manifest.id)) await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    const current = db.get(libraryId, item.manifest.id);
+    if (!config.readOnly && !current) {
+      await installDirectory({ config, workspaceId: libraryId, sourceType: "bundled", sourceDirectory: item.directory, manifest: item.manifest, hash: item.hash });
+    }
   }
   const rows = db.list(libraryId);
   const byId = new Map(rows.map((row) => [row.templateId, row]));
@@ -732,25 +728,34 @@ function authoringLabel(category: TemplateCategory, pptxCompatibility?: PptxComp
   } satisfies Record<TemplateCategory, string>)[category];
 }
 
-function authoringManifest(category: TemplateCategory, pptxCompatibility?: PptxCompatibility): TemplateManifestV1 {
+function sessionScaffoldManifest(
+  category: TemplateCategory,
+  pptxCompatibility?: PptxCompatibility,
+  purpose: NonNullable<TemplateAuthoringInput["purpose"]> = "template-authoring",
+): TemplateManifestV1 {
   const surface: TemplateSurface = category === "video" ? "video" : "design";
   const label = authoringLabel(category, pptxCompatibility);
+  const authoring = purpose === "template-authoring";
   return templateManifestV1Schema.parse({
     schemaVersion: 1,
-    id: `${TEMPLATE_AUTHORING_ID_PREFIX}${pptxCompatibility ? "pptx" : category}`,
+    id: authoring
+      ? `${TEMPLATE_AUTHORING_ID_PREFIX}${pptxCompatibility ? "pptx" : category}`
+      : `ipollowork.delivery.${pptxCompatibility ? "pptx" : category}`,
     version: "1.0.0",
     kind: "design",
     category,
-    subcategory: pptxCompatibility ? "native-pptx" : "authoring",
+    subcategory: pptxCompatibility ? "native-pptx" : authoring ? "authoring" : "delivery",
     style: category === "video" ? "cinematic" : "minimal",
-    tags: ["authoring", category, ...(pptxCompatibility ? ["pptx-compatible"] : [])],
+    tags: [authoring ? "authoring" : "delivery", category, ...(pptxCompatibility ? ["pptx-compatible"] : [])],
     pptxCompatibility,
     surface,
-    title: `${label} template draft`,
-    description: `A guided ${label.toLowerCase()} template draft created in iPolloWork.`,
+    title: authoring ? `${label} template draft` : `${label} deliverable`,
+    description: authoring
+      ? `A guided ${label.toLowerCase()} template draft created in iPolloWork.`
+      : `A ${label.toLowerCase()} deliverable created in iPolloWork.`,
     cover: "cover.svg",
     entry: surface === "video" ? "index.html" : "entry.html",
-    source: { name: "iPolloWork template authoring", license: "Private" },
+    source: { name: authoring ? "iPolloWork template authoring" : "iPolloWork artifact delivery", license: "Private" },
     designSystem: {
       tokenVersion: 1,
       tokens: "design-tokens.css",
@@ -771,14 +776,19 @@ function authoringManifest(category: TemplateCategory, pptxCompatibility?: PptxC
   });
 }
 
-function authoringEntry(manifest: TemplateManifestV1) {
+function sessionScaffoldEntry(
+  manifest: TemplateManifestV1,
+  purpose: NonNullable<TemplateAuthoringInput["purpose"]>,
+) {
+  const authoring = purpose === "template-authoring";
+  const videoTitle = authoring ? "Untitled video template" : "Untitled video";
   if (manifest.surface === "video") {
     return `<!doctype html>
-<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"Untitled video template"},{"id":"accent","type":"color","label":"Accent","default":"#2563eb"}]'>
+<html lang="en" data-composition-variables='[{"id":"title","type":"string","label":"Title","default":"${videoTitle}"},{"id":"accent","type":"color","label":"Accent","default":"#2563eb"}]'>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Video template draft</title>
+  <title>${authoring ? "Video template draft" : "Video deliverable"}</title>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; }
@@ -791,7 +801,7 @@ function authoringEntry(manifest: TemplateManifestV1) {
 <body>
   <main data-composition-id="main" data-start="0" data-duration="8" data-width="1920" data-height="1080">
     <section class="scene" data-track="visual" data-clip="intro" data-start="0" data-duration="8">
-      <h1 data-var-text="title">Untitled video template</h1>
+      <h1 data-var-text="title">${videoTitle}</h1>
     </section>
   </main>
 </body>
@@ -799,15 +809,18 @@ function authoringEntry(manifest: TemplateManifestV1) {
 `;
   }
   if (manifest.category === "slides") {
+    const slideDescription = authoring
+      ? "Describe the purpose, audience, and reusable story structure."
+      : "The presentation deliverable is ready for AI generation.";
     const editable = manifest.pptxCompatibility
-      ? `<p data-pptx-text>Describe the purpose, audience, and reusable story structure.</p><div class="shape" data-pptx-shape="rect" aria-hidden="true"></div><img data-pptx-image src="cover.svg" alt="Template placeholder">`
-      : `<p>Describe the purpose, audience, and reusable story structure.</p>`;
+      ? `<p data-pptx-text>${slideDescription}</p><div class="shape" data-pptx-shape="rect" aria-hidden="true"></div><img data-pptx-image src="cover.svg" alt="${authoring ? "Template" : "Presentation"} placeholder">`
+      : `<p>${slideDescription}</p>`;
     return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Presentation template draft</title>
+  <title>${authoring ? "Presentation template draft" : "Presentation deliverable"}</title>
   <style>
     * { box-sizing: border-box; }
     html, body { width: 100%; height: 100%; margin: 0; }
@@ -824,7 +837,7 @@ function authoringEntry(manifest: TemplateManifestV1) {
 <body>
   <main class="stage" data-ipw-template-kind="slides">
     <section class="slide" data-ipw-slide="1" data-title="Cover">
-      <h1${manifest.pptxCompatibility ? " data-pptx-text" : ""}>Untitled presentation template</h1>
+      <h1${manifest.pptxCompatibility ? " data-pptx-text" : ""}>${authoring ? "Untitled presentation template" : "Untitled presentation"}</h1>
       ${editable}
     </section>
   </main>
@@ -851,8 +864,8 @@ function authoringEntry(manifest: TemplateManifestV1) {
 <body>
   <main data-ipw-template-kind="${manifest.category}">
     <section>
-      <h1>Untitled ${authoringLabel(manifest.category).toLowerCase()} template</h1>
-      <p>Describe the purpose, audience, reusable content structure, variables, and visual direction with AI.</p>
+      <h1>Untitled ${authoringLabel(manifest.category).toLowerCase()}${authoring ? " template" : ""}</h1>
+      <p>${authoring ? "Describe the purpose, audience, reusable content structure, variables, and visual direction with AI." : "The deliverable is ready for AI generation."}</p>
     </section>
   </main>
 </body>
@@ -860,14 +873,19 @@ function authoringEntry(manifest: TemplateManifestV1) {
 `;
 }
 
-async function writeAuthoringPackage(directory: string, manifest: TemplateManifestV1) {
+async function writeSessionScaffoldPackage(
+  directory: string,
+  manifest: TemplateManifestV1,
+  purpose: NonNullable<TemplateAuthoringInput["purpose"]>,
+  brief: unknown,
+) {
   await mkdir(directory, { recursive: true });
   await Promise.all([
     writeFile(join(directory, "manifest.json"), `${JSON.stringify(manifest, null, 2)}\n`, "utf8"),
-    writeFile(join(directory, manifest.entry), authoringEntry(manifest), "utf8"),
+    writeFile(join(directory, manifest.entry), sessionScaffoldEntry(manifest, purpose), "utf8"),
     writeFile(join(directory, "design-tokens.css"), AUTHORING_DESIGN_TOKENS, "utf8"),
     writeFile(join(directory, "cover.svg"), personalTemplateCover(manifest.title, manifest.category, manifest.style), "utf8"),
-    writeFile(join(directory, "brief.json"), `${JSON.stringify({ mode: "template-authoring", category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
+    writeFile(join(directory, "brief.json"), `${JSON.stringify(brief ?? { mode: purpose, category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
   ]);
 }
 
@@ -882,7 +900,9 @@ export async function createTemplateAuthoringSession(
   const compatibility = input.pptxCompatibility === undefined ? undefined : pptxCompatibilitySchema.safeParse(input.pptxCompatibility);
   if (compatibility && !compatibility.success) throw new ApiError(400, "invalid_pptx_compatibility", "Unsupported PPT compatibility mode");
   if (compatibility?.data && category.data !== "slides") throw new ApiError(400, "invalid_pptx_compatibility", "PPT compatibility is only available for presentations");
-  const manifest = authoringManifest(category.data, compatibility?.data);
+  const purpose = input.purpose ?? "template-authoring";
+  if (purpose !== "template-authoring" && purpose !== "artifact-delivery") throw new ApiError(400, "invalid_template_session_purpose", "Unsupported template session purpose");
+  const manifest = sessionScaffoldManifest(category.data, compatibility?.data, purpose);
   const root = sessionRoot(workspace, input.sessionId, manifest.surface);
   return withTemplateLock(`${runtimeDbPath(config)}:${workspace.id}:authoring:${input.sessionId}`, async () => {
     const db = await templateDb(config);
@@ -890,7 +910,7 @@ export async function createTemplateAuthoringSession(
     const staged = `${root}.tmp-${randomUUID()}`;
     let moved = false;
     try {
-      await writeAuthoringPackage(staged, manifest);
+      await writeSessionScaffoldPackage(staged, manifest, purpose, input.brief);
       await readManifest(staged);
       const now = Date.now();
       const folder = manifest.surface === "video" ? "video" : "design";
@@ -977,6 +997,16 @@ async function prepareSessionPackage(config: ServerConfig, workspace: WorkspaceI
     await cp(sourceRoot, directory, { recursive: true, errorOnExist: true });
     await Promise.all(SESSION_TEMPLATE_EXCLUDED_PATHS.map((name) => rm(join(directory, name), { recursive: true, force: true })));
     const issues = await normalizeStagedCover(directory);
+    if (snapshot.surface === "video") {
+      const entry = await sessionEntryPath(db, workspace.id, sessionId, snapshot.surface);
+      const entryPath = join(directory, ...entry.split("/"));
+      const original = await readFile(entryPath, "utf8");
+      const repaired = repairVideoTimelineRegistry(original);
+      if (repaired !== original) {
+        await writeFile(entryPath, repaired, "utf8");
+        issues.push({ code: "video_timeline_registry_initialized", severity: "warning", path: entry, message: "Initialized the animation timeline registry in the delivery package." });
+      }
+    }
     const manifest = await readManifest(directory);
     if (manifest.surface !== snapshot.surface) throw new ApiError(409, "template_surface_changed", "Template surface cannot be changed while authoring");
     if (snapshot.authoring && manifest.category !== snapshot.manifest.category) throw new ApiError(409, "template_category_changed", "Template category cannot be changed while authoring");
@@ -1467,6 +1497,17 @@ export async function readTemplateSession(config: ServerConfig, workspace: Works
 
 export async function listTemplateSessions(config: ServerConfig, workspace: WorkspaceInfo): Promise<TemplateSessionSnapshot[]> {
   return (await templateDb(config)).listSessions(workspace.id).map(snapshotFromRow);
+}
+
+export async function renameTemplateEntry(config: ServerConfig, workspace: WorkspaceInfo, from: string, to: string) {
+  const db = await templateDb(config);
+  for (const row of db.listSessions(workspace.id)) {
+    if (row.entry !== from) continue;
+    const manifest = templateManifestV1Schema.parse(JSON.parse(row.manifestJson));
+    const root = `${row.surface === "video" ? "video" : "design"}/${row.sessionId}/`;
+    if (!to.startsWith(root)) throw new ApiError(400, "invalid_rename", "工程入口必须保留在原工程目录。");
+    db.upsertSession({ ...row, entry: to, manifestJson: JSON.stringify({ ...manifest, entry: to.slice(root.length) }) });
+  }
 }
 
 function parseLegacyTemplateSessionState(

@@ -1,10 +1,11 @@
+import { disposeiPolloWorkWorkspaceConfigStore } from "../ipollowork-workspace-config-store.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { EnvService } from "../env-file.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import type { ServerConfig } from "../types.js";
 import {
   MEDIA_EXTENSION_ACTIONS,
@@ -24,10 +25,8 @@ const config = {
   workspaces: [],
 } as unknown as ServerConfig;
 
-function env(values: Record<string, string>): EnvService {
-  return {
-    list: async () => Object.entries(values).map(([key, value]) => ({ key, value, updatedAt: 0 })),
-  } as unknown as EnvService;
+function env(values: Record<string, string>): AuthorizationAccess {
+  return { read: async () => values };
 }
 
 afterEach(async () => {
@@ -413,6 +412,22 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("blocks missing GSAP and persists safe timeline initialization at the final gate", async () => {
+    const workspace = await workspaceConfig();
+    const path = join(workspace.root, "video.html");
+    await writeFile(path, '<main data-composition-id="main" data-duration="54"></main><script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script>');
+    const result = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_gsap" }] } } });
+    const repaired = await readFile(path, "utf8");
+    expect(repaired).toContain("window.__timelines = window.__timelines || {};");
+    await writeFile(path, '<script src="gsap.min.js"></script>' + repaired);
+    const missingAsset = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(missingAsset).toMatchObject({ ok: true, result: { output: { valid: false, issues: [{ code: "missing_video_script_asset" }] } } });
+    await writeFile(join(workspace.root, "gsap.min.js"), "/* dependency fixture, not executed by the validator */");
+    const valid = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    expect(valid).toMatchObject({ ok: true, result: { output: { valid: true } } });
+  });
+
   test("rejects completion when explicitly requested media deliverables are absent", () => {
     const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5">
       <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
@@ -551,6 +566,10 @@ describe("Media Center extension", () => {
     const audioElementHtml = (result as any).result.output.audioElementHtml;
     expect(audioElementHtml).toContain('src="./assets/voiceover-scene-1.mp3"');
     expect(audioElementHtml).toContain('data-ipw-voiceover="true"');
+    expect(audioElementHtml).toContain('data-ipw-voice="longyingmu_v3"');
+    expect(audioElementHtml).toContain('data-ipw-voice-model="cosyvoice-v3-flash"');
+    expect(audioElementHtml).toContain('data-ipw-voice-rate="1"');
+    expect(audioElementHtml).toContain('data-ipw-voice-volume="50"');
     expect(audioElementHtml).toContain('data-ipw-scene-id="scene-hook"');
     expect(audioElementHtml).toContain('data-ipw-scene-text=');
     expect(audioElementHtml).toContain('data-ipw-narration-text=');
@@ -568,6 +587,7 @@ describe("Media Center extension", () => {
     const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let activeSynthesisRequests = 0;
     let maximumSynthesisRequests = 0;
+    const synthesisInputs: Array<Record<string, unknown>> = [];
     globalThis.fetch = (async (input, init) => {
       const url = String(input);
       if (!url.includes("SpeechSynthesizer")) {
@@ -578,6 +598,7 @@ describe("Media Center extension", () => {
       await new Promise((resolve) => setTimeout(resolve, 5));
       activeSynthesisRequests -= 1;
       const body = JSON.parse(String(init?.body));
+      synthesisInputs.push(body.input);
       const sceneName = body.input.text === "Intro" ? "intro" : "details";
       return new Response(JSON.stringify({ output: { audio: { url: `https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/${sceneName}.mp3` } } }), {
         status: 200,
@@ -592,7 +613,7 @@ describe("Media Center extension", () => {
       {
         scenes: [
           { text: "Intro", sceneId: "intro", sceneText: "Intro", sceneStart: 0, sceneDuration: 1, outputPath: "assets/voiceover-batch-intro.mp3" },
-          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "assets/voiceover-batch-details.mp3" },
+          { text: "Details", sceneId: "details", sceneText: "Details", sceneStart: 1, sceneDuration: 1, outputPath: "assets/voiceover-batch-details.mp3", voice: "longanyang", rate: 1.2, volume: 64, instruction: "请用沉稳严肃的表达方式说。" },
         ],
         compositionPath: "video/session/index.html",
         voice: "longyingmu_v3",
@@ -601,6 +622,8 @@ describe("Media Center extension", () => {
     );
 
     expect(maximumSynthesisRequests).toBe(2);
+    expect(synthesisInputs.find((input) => input.text === "Intro")).toMatchObject({ voice: "longyingmu_v3", rate: 1, pitch: 1, volume: 50 });
+    expect(synthesisInputs.find((input) => input.text === "Details")).toMatchObject({ voice: "longanyang", rate: 1.2, pitch: 1, volume: 64, instruction: "请用沉稳严肃的表达方式说。" });
     expect(result).toMatchObject({
       result: {
         output: {
@@ -759,6 +782,11 @@ describe("Media Center extension", () => {
       expect(init?.headers).toMatchObject({ Authorization: "Bearer sk-bailian-secret" });
       expect(String(init?.body)).toContain("cosyvoice-v3-flash");
       expect(String(init?.body)).toContain("hello");
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "cosyvoice-v3-flash",
+        input: { voice: "longanyang", rate: 1, pitch: 1, volume: 50 },
+      });
+      expect(JSON.parse(String(init?.body)).input).not.toHaveProperty("instruction");
       return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/a.wav" } } }), {
         status: 200,
         headers: { "content-type": "application/json" },
@@ -782,6 +810,37 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
   });
 
+  test("passes CosyVoice delivery controls through the public synthesis contract", async () => {
+    globalThis.fetch = ((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toEqual({
+        model: "cosyvoice-v3-flash",
+        input: {
+          text: "A warm launch narration",
+          voice: "longanyang",
+          format: "mp3",
+          rate: 1.15,
+          pitch: 0.95,
+          volume: 62,
+          instruction: "请用温暖亲切的表达方式说。",
+        },
+      });
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: { url: "https://audio.example.test/controlled.mp3" } } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }));
+    }) as typeof fetch;
+
+    await callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "A warm launch narration",
+      voice: "longanyang",
+      format: "mp3",
+      rate: 1.15,
+      pitch: 0.95,
+      volume: 62,
+      instruction: "请用温暖亲切的表达方式说。",
+    }, {});
+  });
+
   test("explains CosyVoice 418 responses without exposing provider internals", async () => {
     globalThis.fetch = ((_input, init) => {
       expect(JSON.parse(String(init?.body))).toMatchObject({
@@ -801,6 +860,27 @@ describe("Media Center extension", () => {
       status: 422,
       code: "bailian_voice_incompatible",
       message: expect.stringContaining("compatible v3 voice"),
+    });
+  });
+
+  test("explains CosyVoice 428 instruction responses without exposing provider internals", async () => {
+    globalThis.fetch = ((_input, init) => {
+      expect(JSON.parse(String(init?.body))).toMatchObject({
+        model: "cosyvoice-v3-flash",
+        input: { voice: "longanyang", instruction: "请用不支持的方式说。" },
+      });
+      return Promise.resolve(new Response(JSON.stringify({
+        message: "[tts:]Engine return error code: 428",
+      }), { status: 428, headers: { "content-type": "application/json" } }));
+    }) as typeof fetch;
+
+    await expect(callMediaExtensionAction(config, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "speech_synthesize", {
+      text: "hello",
+      instruction: "请用不支持的方式说。",
+    }, {})).rejects.toMatchObject({
+      status: 422,
+      code: "bailian_instruction_incompatible",
+      message: expect.stringContaining("style instruction is not supported"),
     });
   });
 
@@ -864,6 +944,7 @@ describe("Media Center extension", () => {
 
   test("clones a workspace sample through a private temporary OSS object and always removes it", async () => {
     const { root, config: workspace } = await workspaceConfig();
+    workspace.configPath = join(root, "server.json");
     const requests: Array<{ url: string; method: string; body: string }> = [];
     globalThis.fetch = ((input, init) => {
       const url = String(input);
@@ -888,7 +969,7 @@ describe("Media Center extension", () => {
       ALIYUN_OSS_ACCESS_KEY_SECRET: "oss-secret",
       ALIYUN_OSS_BUCKET: "private-assets",
       ALIYUN_OSS_REGION: "cn-hangzhou",
-    }), "voice_clone_workspace_file", { sourcePath: "sample.wav" }, { directory: root });
+    }), "voice_clone_workspace_file", { sourcePath: "sample.wav", name: "产品旁白" }, { directory: root });
 
     expect(result).toMatchObject({ ok: true, result: { output: { voiceId: "ipw-new-voice", model: "cosyvoice-v3-flash" } } });
     expect(requests.map((request) => request.method)).toEqual(["PUT", "POST", "DELETE"]);
@@ -897,6 +978,11 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).not.toContain("sk-bailian-secret");
     expect(JSON.stringify(result)).not.toContain("oss-secret");
     expect(JSON.stringify(result)).not.toContain("x-oss-signature=");
+    await disposeiPolloWorkWorkspaceConfigStore(workspace);
+    globalThis.fetch = Object.assign(async () => Response.json({ output: { voice_list: [{ voice_id: "ipw-new-voice", target_model: "cosyvoice-v3-flash", status: "OK" }] } }), { preconnect: nativeFetch.preconnect });
+    const inventory = await callMediaExtensionAction(workspace, env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }), "voice_list", {}, { directory: root });
+    expect(inventory).toMatchObject({ ok: true, result: { output: { items: [{ id: "ipw-new-voice", name: "产品旁白" }] } } });
+    await disposeiPolloWorkWorkspaceConfigStore(workspace);
   });
 
   test("uses Electron's injected provider fetch without replacing local server fetch", async () => {

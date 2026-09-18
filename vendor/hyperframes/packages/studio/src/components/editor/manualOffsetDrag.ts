@@ -230,34 +230,29 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
   initialOffset: { x: number; y: number },
   options: { probeSize?: number; scaleX?: number; scaleY?: number } = {},
 ): { ok: true; matrix: ManualOffsetDragMatrix } | { ok: false; reason: string } {
-  if (
-    !element.hasAttribute("data-hf-studio-path-offset") &&
-    initialOffset.x === 0 &&
-    initialOffset.y === 0
-  ) {
-    const sx = options.scaleX || 1;
-    const sy = options.scaleY || 1;
-    // Fold in the perspective foreshortening: a depth element (z≠0) moves
-    // 1/m44× faster on screen than its flat scale implies, so the screen→offset
-    // matrix must scale by m44 or the element outruns the pointer/overlay.
-    const w = readTransformWDivisor(element);
-    return { ok: true, matrix: { a: w / sx, b: 0, c: 0, d: w / sy } };
-  }
-
   const probeSize = options.probeSize ?? DEFAULT_OFFSET_PROBE_PX;
   if (!Number.isFinite(probeSize) || probeSize <= 0) {
     return { ok: false, reason: "Invalid movement probe size." };
   }
 
-  const snapshot = captureStudioPathOffset(element);
+  // Measure the browser's real screen response even on the FIRST drag. The old
+  // zero-offset fast path only divided by the canvas zoom and therefore missed
+  // scaled/rotated ancestors and nested composition fitting. That made the
+  // overlay follow the pointer while the persisted element landed elsewhere.
+  // Probe the CSS translate longhand directly so GSAP's live x/y is never
+  // mutated as a side effect of measurement.
+  const originalInlineTranslate = element.style.getPropertyValue("translate");
+  const applyProbeOffset = (offset: { x: number; y: number }) => {
+    element.style.setProperty("translate", `${offset.x}px ${offset.y}px`);
+  };
   try {
-    applyStudioPathOffsetDraft(element, initialOffset);
+    applyProbeOffset(initialOffset);
     const origin = getRectCenter(element);
     if (!origin) {
       return { ok: false, reason: "Element has no measurable box." };
     }
 
-    applyStudioPathOffsetDraft(element, {
+    applyProbeOffset({
       x: initialOffset.x + probeSize,
       y: initialOffset.y,
     });
@@ -266,7 +261,7 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
       return { ok: false, reason: "Element X movement could not be measured." };
     }
 
-    applyStudioPathOffsetDraft(element, {
+    applyProbeOffset({
       x: initialOffset.x,
       y: initialOffset.y + probeSize,
     });
@@ -305,7 +300,8 @@ export function measureManualOffsetDragScreenToOffsetMatrix(
 
     return { ok: true, matrix: screenToOffset };
   } finally {
-    restoreStudioPathOffset(element, snapshot);
+    if (originalInlineTranslate) element.style.setProperty("translate", originalInlineTranslate);
+    else element.style.removeProperty("translate");
   }
 }
 
