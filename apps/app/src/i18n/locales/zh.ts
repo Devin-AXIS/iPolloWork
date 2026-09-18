@@ -591,6 +591,7 @@ export default {
   "template_market.title": "模板",
   "plugin_workshop.title": "插件工坊",
   "data_annotation.title": "数据标注",
+  "data_annotation.opening": "正在打开数据标注，首次打开可能需要一些时间…",
   "data_annotation.unavailable": "数据标注暂时无法打开，请重试或重启应用。",
   "plugin_platform.required_bundle": "此插件随应用内置，始终启用，不可卸载。",
   "plugin_workshop.create_session_failed": "无法为插件工坊新建对话。",

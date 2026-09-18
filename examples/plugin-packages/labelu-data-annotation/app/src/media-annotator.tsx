@@ -1,101 +1,96 @@
-import { forwardRef, lazy, Suspense, useEffect, useRef, useState } from "react";
-import type { PointerEvent } from "react";
-import { MediaAnnotatorWrapper } from "@labelu/audio-annotator-react";
+import { forwardRef, lazy, Suspense, useCallback, useEffect, useMemo, useRef } from "react";
+import { MediaAnnotatorWrapper, useAnnotationCtx, useTool } from "@labelu/audio-annotator-react";
 import type { AnnotatorProps, AudioAndVideoAnnotatorRef, MediaPlayerProps } from "@labelu/audio-annotator-react";
+import { AnnotationPanels } from "./annotation-panels";
+import type { AnnotationPanelProps } from "./annotation-panels";
 import "@labelu/video-react/dist/style.css";
 
 const AudioPlayer = lazy(() => import("@labelu/audio-react"));
 const VideoPlayer = lazy(() => import("@labelu/video-react"));
+type MediaExtensions = AnnotationPanelProps & { modality: "audio" | "video"; onDirty: () => void };
 
-// Keep the library's annotation/history owner; this adds only a pointer input surface.
-function DragSelectionPlayer({ modality, ...props }: MediaPlayerProps & { modality: "audio" | "video" }) {
-  const [duration, setDuration] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  const [selection, setSelection] = useState<{ start: number; end: number } | null>(null);
-  const [notice, setNotice] = useState("");
-  const gesture = useRef<{ pointerId: number; start: number; clientX: number } | null>(null);
-  const enabled = duration > 0 && !props.disabled && props.editingType === "segment"
-    && props.toolConfig?.segment?.some((label) => label.value === props.editingLabel);
-  const timeAt = (event: PointerEvent<HTMLDivElement>) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    return Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * duration;
-  };
-  const cancel = () => { gesture.current = null; setSelection(null); };
+function MediaPanels({ modality, onDirty, ...panelProps }: MediaExtensions) {
+  const { attributeModalOpen, labels, player, config, selectedLabel, requestEdit, onAttributeChange } = useTool();
+  const { annotationsWithGlobal, selectedAnnotation, sortedMediaAnnotations, disabled, onAnnotationChange, onAnnotationSelect } = useAnnotationCtx();
+  // Observe actual data, including native delete/undo/redo. View controls and label drafts are not edits.
+  const annotationSnapshot = useMemo(() => JSON.stringify(
+    Object.values(annotationsWithGlobal).map(annotation => {
+      if (!("visible" in annotation)) return annotation;
+      const { visible: _visible, ...data } = annotation;
+      return data;
+    }),
+  ), [annotationsWithGlobal]);
+  const previousSnapshot = useRef(annotationSnapshot);
   useEffect(() => {
-    if (!loaded) return;
-    const player: unknown = props.playerRef.current;
-    if (player && typeof player === "object") {
-      const method = Reflect.get(player, modality === "audio" ? "getDuration" : "duration");
-      const value: unknown = typeof method === "function" ? method.call(player) : 0;
-      setDuration(typeof value === "number" && Number.isFinite(value) ? value : 0);
-    }
-  }, [loaded, modality, props.playerRef]);
-  const onLoad = () => { setLoaded(true); props.onLoad?.(); };
+    if (previousSnapshot.current !== annotationSnapshot && !disabled) onDirty();
+    previousSnapshot.current = annotationSnapshot;
+  }, [annotationSnapshot, disabled, onDirty]);
+  const selected = selectedAnnotation;
+  useEffect(() => {
+    if (!selected) return;
+    const time = selected.type === "frame" ? selected.time : selected.start;
+    const video = document.querySelector<HTMLVideoElement>(".labelu-video-wrapper video");
+    if (video) { video.pause(); video.currentTime = time; }
+    else { player.pause(); player.setCurrentTime(time); }
+  }, [selected?.id, player]);
+  const name = selected?.attributes?.标记名称;
+  const description = selected?.attributes?.描述;
+  const update = (field: "标记名称" | "描述", value: string) => {
+    if (!selected || disabled || (requestEdit && !requestEdit("update", { toolName: selected.type, label: selected.label }))) return;
+    const attributes = { ...selected.attributes };
+    if (value) attributes[field] = value; else delete attributes[field];
+    // LabelU’s runtime accepts AttributeForm payloads; its published type incorrectly describes a flat record.
+    Reflect.apply(onAttributeChange, undefined, [{ attributes }]);
+  };
+  return <>
+    {modality === "video" ? <button className="secondary-button compact" type="button" disabled={disabled}
+      onClick={event => {
+        const label = config?.frame?.find(item => item.value === selectedLabel?.value) ?? config?.frame?.[0];
+        if (!label || disabled || (requestEdit && !requestEdit("create", { toolName: "frame", label: label.value }))) return;
+        const video = document.querySelector<HTMLVideoElement>(".labelu-video-wrapper video");
+        if (!video || video.readyState < 2) return;
+        video.pause();
+        const time = video.currentTime;
+        const existing = sortedMediaAnnotations.find(item => item.type === "frame" && Math.abs(item.time - time) < 0.001 && item.label === label.value);
+        const frame = existing ?? { id: crypto.randomUUID(), type: "frame" as const, time, label: label.value,
+          order: Math.max(0, ...sortedMediaAnnotations.map(item => item.order)) + 1 };
+        if (!existing) onAnnotationChange(frame);
+        onAnnotationSelect(frame, event);
+      }}>标记当前关键帧</button> : null}
+    <AnnotationPanels {...panelProps} rootSelector=".labelu-audio-editor" annotations={sortedMediaAnnotations} attributeModalOpen={attributeModalOpen}>
+      {selected ? <>
+        <strong>{selected.type === "frame" ? `关键帧 · ${selected.time.toFixed(2)} 秒` : `片段 · ${selected.start.toFixed(2)}–${selected.end.toFixed(2)} 秒`}</strong>
+        <label>标记名称<input aria-label="标记名称" maxLength={80} disabled={disabled} placeholder="为这条标记命名"
+          value={typeof name === "string" ? name : ""} onChange={event => update("标记名称", event.currentTarget.value)} /></label>
+        <label>描述<textarea aria-label="标注描述" rows={4} maxLength={2000} disabled={disabled} placeholder="描述此片段或关键帧的内容…"
+          value={typeof description === "string" ? description : ""} onChange={event => update("描述", event.currentTarget.value)} /></label>
+        <label>标签类别<select aria-label="标记标签类别" disabled={disabled} value={selected.label} onChange={event => {
+          if (disabled || (requestEdit && !requestEdit("update", { toolName: selected.type, label: selected.label }))) return;
+          Reflect.apply(onAttributeChange, undefined, [{ label: event.currentTarget.value, attributes: selected.attributes ?? {} }]);
+        }}>{labels.map(label => <option key={label.value} value={label.value}>{label.key}</option>)}</select></label>
+        <p className="muted">名称与描述随项目保存。</p>
+      </> : null}
+    </AnnotationPanels>
+  </>;
+}
+
+// Use the player's existing lower timeline for drag selection, resizing and history.
+function MediaPlayer({ modality, ...props }: MediaPlayerProps & Pick<MediaExtensions, "modality">) {
   const Player = modality === "audio" ? AudioPlayer : VideoPlayer;
-  return <div className="media-selection-player" onDurationChangeCapture={(event) => {
-    const media = event.target;
-    if (media instanceof HTMLMediaElement && Number.isFinite(media.duration)) setDuration(media.duration);
-  }}>
+  // LabelU reloads audio when this callback changes.
+  const onLoad = useCallback(() => props.onLoad?.(), [props.onLoad]);
+  return <div className="media-selection-player">
     <Suspense fallback={<div className="engine-loading">正在加载标注器…</div>}>
-      <Player {...props} onLoad={onLoad} className={`labelu-${modality}-wrapper`} />
+      <Player {...props} onLoad={onLoad} onAnnotateEnd={() => { /* Edit from the right-hand list after creation. */ }} className={`labelu-${modality}-wrapper`} />
     </Suspense>
-    <div className="media-drag-panel">
-      <div className="media-drag-heading">
-        <strong>拖拽选区标注</strong>
-        <span>{enabled ? "按住鼠标左键拖出时间区间，松开创建；Esc 取消。" : duration ? "请先选择片段工具和标签。" : "正在读取媒体时长…"}</span>
-      </div>
-      <div className="media-drag-track" role="group" aria-label="拖拽选区时间轴" aria-disabled={!enabled}
-        tabIndex={0}
-        onKeyDown={(event) => { if (event.key === "Escape") cancel(); }}
-        onPointerDown={(event) => {
-          if (!enabled || event.button !== 0 || !event.isPrimary || gesture.current) return;
-          if (props.requestEdit && !props.requestEdit("create", { toolName: "segment", label: props.editingLabel })) return;
-          event.preventDefault();
-          event.currentTarget.focus();
-          event.currentTarget.setPointerCapture(event.pointerId);
-          const start = timeAt(event);
-          gesture.current = { pointerId: event.pointerId, start, clientX: event.clientX };
-          setSelection({ start, end: start });
-          setNotice("");
-        }}
-        onPointerMove={(event) => {
-          const active = gesture.current;
-          if (active?.pointerId === event.pointerId) setSelection({ start: active.start, end: timeAt(event) });
-        }}
-        onPointerCancel={cancel}
-        onLostPointerCapture={cancel}
-        onPointerUp={(event) => {
-          const active = gesture.current;
-          if (!active || active.pointerId !== event.pointerId) return;
-          const end = timeAt(event);
-          cancel();
-          event.currentTarget.releasePointerCapture(event.pointerId);
-          if (!enabled || Math.abs(event.clientX - active.clientX) < 4 || Math.abs(end - active.start) < 0.05) return;
-          const annotation = {
-            id: crypto.randomUUID(), type: "segment" as const,
-            start: Math.min(active.start, end), end: Math.max(active.start, end),
-            label: props.editingLabel ?? "", order: Math.max(0, ...props.annotations.map((item) => item.order)) + 1,
-          };
-          props.onAdd?.(annotation);
-          props.onAnnotateEnd?.(annotation);
-          props.annotatorRef?.current?.scrollToAnnotation(annotation);
-          setNotice(`已新增 ${annotation.start.toFixed(2)}–${annotation.end.toFixed(2)} 秒片段`);
-        }}>
-        {[0, 25, 50, 75, 100].map((percent) => <span key={percent} className="media-drag-tick" style={{ left: `${percent}%` }}>{(duration * percent / 100).toFixed(1)}s</span>)}
-        {selection && duration > 0 ? <div className="media-drag-preview" style={{
-          left: `${Math.min(selection.start, selection.end) / duration * 100}%`,
-          width: `${Math.abs(selection.end - selection.start) / duration * 100}%`,
-        }} /> : null}
-      </div>
-      <div className="media-drag-notice" aria-live="polite">{selection ? `${Math.min(selection.start, selection.end).toFixed(2)}–${Math.max(selection.start, selection.end).toFixed(2)} 秒` : notice || "也可使用原标注轨道、快捷键和片段边缘调整。"}</div>
-    </div>
   </div>;
 }
 
-export default forwardRef<AudioAndVideoAnnotatorRef, AnnotatorProps & { modality: "audio" | "video" }>(
-  function MediaAnnotator({ modality, ...props }, ref) {
-    return <MediaAnnotatorWrapper {...props} ref={ref} selectedLabel={props.selectedLabel ?? props.config?.segment?.[0]?.value}>
-      {(playerProps) => <DragSelectionPlayer key={playerProps.src} {...playerProps} modality={modality} />}
+export default forwardRef<AudioAndVideoAnnotatorRef, AnnotatorProps & MediaExtensions>(
+  function MediaAnnotator({ modality, onDirty, labelsPanel, panelTab, onPanelTabChange, labelsBusy, ...props }, ref) {
+    return <MediaAnnotatorWrapper {...props} ref={ref} selectedLabel={props.selectedLabel ?? props.config?.segment?.[0]?.value}
+      toolbarRight={<MediaPanels modality={modality} onDirty={onDirty} labelsPanel={labelsPanel} panelTab={panelTab} onPanelTabChange={onPanelTabChange} labelsBusy={labelsBusy} />}>
+      {playerProps => <MediaPlayer key={playerProps.src} {...playerProps} modality={modality} />}
     </MediaAnnotatorWrapper>;
   },
 );

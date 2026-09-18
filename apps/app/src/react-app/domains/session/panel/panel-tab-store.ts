@@ -46,7 +46,7 @@ export type WorkspaceAppPanelTab = {
   id: string;
   type: "workspace-app";
   label: string;
-  sessionId: string;
+  sessionId: string | null;
   surface: PluginUiSurface;
   launch?: PluginUiHostContextV1["launch"];
 };

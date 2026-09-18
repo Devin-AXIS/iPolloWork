@@ -6,7 +6,7 @@ import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 
-type ToasterStyle = React.CSSProperties & {
+type ToasterStyle = NonNullable<ToasterProps["style"]> & {
   "--normal-bg": string
   "--normal-text": string
   "--normal-border": string

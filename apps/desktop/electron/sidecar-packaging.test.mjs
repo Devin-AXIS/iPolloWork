@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { it } from "node:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { createPackage } from "@electron/asar";
 import { parse as parseYaml } from "yaml";
 import { minimatch } from "minimatch";
+import { REQUIRED_BUNDLED_PLUGIN_IDS } from "@ipollowork/types/plugins";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
 import afterSignModule from "../scripts/electron-after-sign.cjs";
@@ -18,6 +19,74 @@ import {
 
 const afterPack = afterPackModule.default ?? afterPackModule;
 const { assertMacEngineTrustFiles } = afterSignModule;
+
+it("runs annotation actions and serves offline assets from the packaged application", {
+  skip: !process.env.IPOLLOWORK_PACKAGED_RESOURCES,
+}, async () => {
+  const root = path.join(process.env.IPOLLOWORK_PACKAGED_RESOURCES, "plugin-packages/labelu-data-annotation");
+  const source = fileURLToPath(new URL("../../../examples/plugin-packages/labelu-data-annotation/", import.meta.url));
+  for (const directory of ["app/dist", "service/dist", "ui"]) {
+    for (const file of await readdir(path.join(source, directory), { recursive: true, withFileTypes: true })) {
+      if (!file.isFile()) continue;
+      const relative = path.relative(source, path.join(file.parentPath, file.name));
+      assert.deepEqual(await readFile(path.join(root, relative)), await readFile(path.join(source, relative)), relative);
+    }
+  }
+  const manifest = JSON.parse(await readFile(path.join(root, "ipollowork.plugin.json"), "utf8"));
+  const expected = JSON.parse(await readFile(path.join(source, "ipollowork.plugin.json"), "utf8"));
+  assert.deepEqual(manifest, expected);
+  const { default: createService } = await import(pathToFileURL(path.join(root, "service/dist/data-annotation.mjs")));
+  const service = await createService({ plugin: { id: manifest.id, version: manifest.package.version } });
+  const directory = await mkdtemp(path.join(os.tmpdir(), "ipollowork-packaged-annotation-"));
+  const call = (action, args = {}) => service.actions[action](args, { directory });
+  try {
+    const launch = new URL((await call("open-workbench")).url);
+    assert.equal((await fetch(launch)).status, 200);
+    const templates = await call("list-training-templates");
+    for (const modality of ["image", "audio", "video", "text"]) {
+      const template = templates.find(item => item.modality === modality);
+      assert.ok(template, modality);
+      const project = await call("create-training-project", { templateId: template.id });
+      assert.equal(project.modality, modality);
+      if (modality !== "text") {
+        const media = new URL("/api/project-media", launch);
+        media.search = launch.search;
+        media.searchParams.set("projectId", project.id);
+        const response = await fetch(media);
+        assert.equal(response.status, 200);
+        assert.ok((await response.arrayBuffer()).byteLength > 0);
+      }
+    }
+    let project = await call("create-text-project", { title: "Packaged smoke", textContent: "上海" });
+    project = await call("update-project", { projectId: project.id, expectedRevision: project.revision,
+      annotations: { spans: [{ id: "place", start: 0, end: 2, text: "上海", label: "实体" }] } });
+    project = await call("review-project", { projectId: project.id, expectedRevision: project.revision, status: "approved" });
+    const exported = await call("export-project", { projectId: project.id });
+    assert.equal(exported.project.annotations.spans[0].text, "上海");
+    assert.equal(exported.project.review.status, "approved");
+  } finally {
+    await service.dispose();
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+it("packages every plugin advertised by the bundled catalog", async () => {
+  const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
+  const catalog = await readFile(new URL("../../server/src/plugin-package-catalog.ts", import.meta.url), "utf8");
+  const declaration = catalog.match(/export const bundledPluginPackageIds = \[([\s\S]*?)\] as const/);
+  assert.ok(declaration, "The server catalog must expose its bundled plugin IDs");
+  const ids = [...declaration[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+  for (const id of new Set([...ids, ...REQUIRED_BUNDLED_PLUGIN_IDS])) {
+    const resource = config.extraResources.find((entry) => entry.to === `plugin-packages/${id}`);
+    assert.ok(resource, `Desktop packaging omits catalog plugin: ${id}`);
+    const root = new URL(`../${resource.from}/`, import.meta.url);
+    const manifest = JSON.parse(await readFile(new URL("ipollowork.plugin.json", root), "utf8"));
+    assert.equal(manifest.id, id);
+    for (const entry of manifest.resources ?? []) {
+      if (entry.path) await access(new URL(entry.path, root));
+    }
+  }
+});
 
 it("ships the complete offline annotation runtime in desktop extraResources", async () => {
   const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));

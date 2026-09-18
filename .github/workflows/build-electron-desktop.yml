@@ -2,6 +2,11 @@ name: Build Electron Desktop
 
 on:
   workflow_dispatch:
+    inputs:
+      installers:
+        description: Build Windows EXE and macOS DMG/ZIP installers without publishing
+        type: boolean
+        default: false
   push:
     branches:
       - electron-notary-test
@@ -56,8 +61,38 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check bundled annotation plugin
+        working-directory: examples/plugin-packages/labelu-data-annotation
+        run: |
+          pnpm install --frozen-lockfile --ignore-workspace
+          pnpm check
+
+      - name: Check desktop resource packaging
+        run: |
+          pnpm --filter @ipollowork/types build
+          node --test apps/desktop/electron/sidecar-packaging.test.mjs
+
       - name: Package Electron desktop (unpacked)
         run: pnpm --filter @ipollowork/desktop package:electron:dir
+
+      - name: Verify annotation runtime inside packaged application
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest=$(find apps/desktop/dist-electron -path '*/plugin-packages/labelu-data-annotation/ipollowork.plugin.json' -print -quit)
+          test -n "$manifest"
+          export IPOLLOWORK_PACKAGED_RESOURCES="${manifest%/plugin-packages/labelu-data-annotation/ipollowork.plugin.json}"
+          node --test apps/desktop/electron/sidecar-packaging.test.mjs
+
+      - name: Build Windows installer
+        if: inputs.installers && runner.os == 'Windows'
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --config electron-builder.windows.yml --win --publish never
+
+      - name: Build macOS installers
+        if: inputs.installers && runner.os == 'macOS'
+        working-directory: apps/desktop
+        run: pnpm exec electron-builder --config electron-builder.yml --mac dmg zip --publish never
 
       - name: Upload Electron artifacts
         uses: actions/upload-artifact@v7

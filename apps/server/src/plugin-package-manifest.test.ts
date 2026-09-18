@@ -96,6 +96,39 @@ const minimalManifest = {
 };
 
 describe("plugin package manifest", () => {
+  test("preserves browser session metadata used by installed service plugins", async () => {
+    const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
+    const browserSession = {
+      origin: "https://creator.xiaohongshu.com",
+      paths: ["/login", "/new/home"],
+      observeAction: "observe-browser-session",
+      loginUi: { path: "/login", whenText: "短信登录", selector: "div:has(button.beer-login-btn) > img" },
+      avatarSelector: "img.user_avatar",
+    };
+    const manifest = {
+      ...minimalManifest,
+      resources: [{ type: "local-service", id: "workbench", browserSession }],
+    };
+    const result = validatePluginPackageManifest(manifest);
+    expect(result.success).toBe(true);
+    if (!result.success) throw new Error(JSON.stringify(result.issues));
+    expect(result.manifest.resources[0]?.browserSession).toEqual(browserSession);
+    for (const invalid of [
+      { origin: "https://creator.xiaohongshu.com/login" },
+      { origin: "http://example.com" },
+      { origin: "not-a-url" },
+      { paths: [] },
+      { paths: ["login"] },
+      { observeAction: "../observe" },
+      { loginUi: { ...browserSession.loginUi, selector: "" } },
+    ]) {
+      expect(validatePluginPackageManifest({
+        ...manifest,
+        resources: [{ ...manifest.resources[0], browserSession: { ...browserSession, ...invalid } }],
+      }).success).toBe(false);
+    }
+  });
+
   test("allows dynamic loopback iframe ports without allowing arbitrary HTTP hosts", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const manifest = await Bun.file(new URL("../../../examples/plugin-packages/labelu-data-annotation/ipollowork.plugin.json", import.meta.url)).json();

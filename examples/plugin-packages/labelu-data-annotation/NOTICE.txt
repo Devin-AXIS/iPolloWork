@@ -12,3 +12,61 @@ This plugin is independently developed and is not an official OpenDataLab or
 Mozilla product.
 
 This product includes word-extractor (MIT): https://github.com/morungos/node-word-extractor
+
+Training media bundled in app/dist/training-assets (source: app/public/training-assets)
+The media licenses below apply to these assets separately from the plugin code.
+No creator listed here endorses this plugin. Retrieved 2026-09-18.
+
+construction-worker.jpg
+  Title: Construction worker CT
+  Creator: HelenOnline / Helen Riding
+  Source: https://commons.wikimedia.org/wiki/File:Construction_worker_CT.jpg
+  License: CC BY-SA 3.0, https://creativecommons.org/licenses/by-sa/3.0/
+  Changes: Wikimedia's 1280px thumbnail, uncropped. Distributed under CC BY-SA 3.0.
+
+recycling-bins.jpg
+  Title: Barcelona recycling bins
+  Creator: William Avery
+  Source: https://commons.wikimedia.org/wiki/File:Barcelona_recycling_bins.jpg
+  License selected: CC BY-SA 3.0, https://creativecommons.org/licenses/by-sa/3.0/
+  Changes: Wikimedia's 1280px thumbnail, uncropped. Distributed under CC BY-SA 3.0.
+
+plant-leaf.jpg
+  Title: The top of a leaf
+  Creator: Ranjithkanth Tamilselvan J
+  Source: https://commons.wikimedia.org/wiki/File:The_top_of_a_leaf.jpg
+  License: CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/
+  Changes: Wikimedia's 1280px thumbnail, uncropped.
+
+flower.mp4
+  Title: Flower
+  Creator/source: MDN contributors, interactive-examples CC0 video collection
+  Source: https://github.com/mdn/interactive-examples/tree/main/live-examples/media/cc0-videos
+  Download: https://raw.githubusercontent.com/mdn/interactive-examples/main/live-examples/media/cc0-videos/flower.mp4
+  License: CC0 1.0, https://creativecommons.org/publicdomain/zero/1.0/
+  Repository license: https://github.com/mdn/interactive-examples/blob/main/LICENSE
+  Changes: none; original MP4.
+
+road-traffic.mp4, pedestrians.mp4
+  Creator/source: Samplelib, https://samplelib.com/sample-mp4.html
+  Downloads: https://samplelib.com/mp4/sample-5s-720p.mp4
+             https://samplelib.com/mp4/sample-30s-720p.mp4
+  License: Samplelib free-use terms, https://samplelib.com/license.html
+  The publisher permits use and modification of its original sample files.
+  Changes: H.264 re-encoding, soundtrack removed; original framing and duration retained.
+
+mandarin-reading.m4a, poem-pauses.m4a, two-readers.m4a
+  Collection: Three Hundred Tang Poems, Volume 1 / 唐诗三百首 卷一
+  Source: https://librivox.org/three-hundred-tang-poems-volume-1-by-various/
+  Readers: Jin Yilin (track 014), Graham (008), David Barnes (002)
+  Poetry: Wang Wei (014), Du Fu (008), Zhang Jiuling (002)
+  Downloads: https://archive.org/download/300_tang_poems_vol_1_librivox/300tangpoems_vol_1_014.mp3
+             https://archive.org/download/300_tang_poems_vol_1_librivox/300tangpoems_vol_1_008.mp3
+             https://archive.org/download/300_tang_poems_vol_1_librivox/300tangpoems_vol_1_002.mp3
+  Recording release: LibriVox public domain, https://librivox.org/pages/public-domain/
+  Changes: AAC re-encoding. mandarin-reading: track 014, 15-60s;
+           poem-pauses: track 008, 15-50s;
+           two-readers: track 014, 20-35s followed by track 002, 20-35s.
+  two-readers is an edited training exercise, not a recording of an actual conversation.
+
+The three Chinese text exercises are original fictional teaching examples.

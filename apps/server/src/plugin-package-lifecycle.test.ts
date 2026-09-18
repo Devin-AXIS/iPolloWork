@@ -1703,7 +1703,7 @@ describe("plugin package lifecycle", () => {
       const list = await fetch(base + path, { headers });
       expect(list.status).toBe(200);
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.2" }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.16" }),
       ]) });
       const ui = await fetch(`${base}${path}/labelu-data-annotation/ui/workbench`, { headers });
       expect(ui.status).toBe(200);
@@ -1757,7 +1757,7 @@ describe("plugin package lifecycle", () => {
     try {
       const list = await fetch(`http://127.0.0.1:${restarted.port}${path}`, { headers });
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.3.2", disabledResourceIds: [] }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.16", disabledResourceIds: [] }),
       ]) });
       const project = await fetch(`http://127.0.0.1:${restarted.port}/experimental/extensions/call`, {
         method: "POST", headers,
@@ -1770,7 +1770,7 @@ describe("plugin package lifecycle", () => {
     }
   }, 60_000);
 
-  test("upgrades an older bundled annotation package through startup", async () => {
+  test("upgrades annotation with an installed browser-session service plugin", async () => {
     const workspaceRoot = await createRoot("ipollowork-annotation-upgrade-");
     const packageRoot = await createRoot("ipollowork-annotation-previous-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -1785,14 +1785,34 @@ describe("plugin package lifecycle", () => {
     }));
     const config = serverConfig(workspaceRoot);
     await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
+    const serviceRoot = await createRoot("ipollowork-browser-session-");
+    await writeSignedExecutablePackage(serviceRoot);
+    const serviceManifestPath = join(serviceRoot, "ipollowork.plugin.json");
+    const serviceManifest = JSON.parse(await readFile(serviceManifestPath, "utf8"));
+    delete serviceManifest.package.checksum;
+    delete serviceManifest.package.signature;
+    await writeFile(serviceManifestPath, JSON.stringify(serviceManifest));
+    await lifecycle.installPluginPackage({ serverConfig: config, packageRoot: serviceRoot });
+    // Existing installations can contain metadata written by a newer app branch.
+    const stateFile = join(workspaceRoot, "plugin-packages", "state.json");
+    const state = JSON.parse(await readFile(stateFile, "utf8"));
+    const service = state.packages["signed-research"];
+    service.versions[service.currentVersion].manifest.resources[0].browserSession = {
+      origin: "https://www.douyin.com", paths: ["/"], observeAction: "observe-browser-session",
+    };
+    await writeFile(stateFile, JSON.stringify(state));
     const server = await startServer(config);
     try {
       const response = await fetch(`http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`, {
         headers: { authorization: "Bearer token" },
       });
-      expect(response.status).toBe(200);
-      expect((await response.json()).items.find((item: { pluginId: string }) => item.pluginId === "labelu-data-annotation"))
-        .toMatchObject({ version: "0.3.2", previousVersion: "0.3.1", enabled: true });
+      const body = await response.json();
+      expect(response.status, JSON.stringify(body)).toBe(200);
+      const { items } = body;
+      expect(items.find((item: { pluginId: string }) => item.pluginId === "labelu-data-annotation"))
+        .toMatchObject({ version: "0.4.16", previousVersion: "0.3.1", enabled: true });
+      expect(items.find((item: { pluginId: string }) => item.pluginId === "signed-research"))
+        .toMatchObject({ version: "1.0.0", enabled: true });
     } finally {
       await server.stop();
     }
@@ -1825,12 +1845,12 @@ describe("plugin package lifecycle", () => {
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: "0.2.9", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.0", installedVersion: "1.0.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "labelu-data-annotation", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
+          { pluginId: "labelu-data-annotation", version: "0.4.16", installedVersion: "0.4.16", updateAvailable: false },
         ],
       });
 
@@ -1976,7 +1996,7 @@ describe("plugin package lifecycle", () => {
 
       const socialServices = [
         { id: "xiaohongshu-ops", version: "0.4.17", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
-        { id: "douyin-ops", version: "0.1.11", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+        { id: "douyin-ops", version: "0.2.9", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
       ];
       for (const service of socialServices) {
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {

@@ -1635,7 +1635,8 @@ export function createiPolloWorkServerClient(options: { baseUrl: string; token?:
       requestJson<{ items: iPolloWorkPluginPackageItem[] }>(baseUrl, `/workspace/${encodeURIComponent(workspaceId)}/plugin-packages`, {
         token,
         hostToken,
-        timeoutMs: timeouts.config,
+        // First access also upgrades bundled packages and projects them into existing workspaces.
+        timeoutMs: timeouts.binary,
       }),
     listPluginWorkshopProjects: (workspaceId: string) =>
       requestJson<{ items: PluginWorkshopProjectSummary[] }>(

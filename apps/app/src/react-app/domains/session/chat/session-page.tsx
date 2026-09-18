@@ -1730,8 +1730,10 @@ export function SessionPage(props: SessionPageProps) {
   const activeEnterprise = props.activeEnterprise;
   const sidebarOpen = useUiStateStore((state) => state.sidebarOpen);
   const setSidebarOpen = useUiStateStore((state) => state.setSidebarOpen);
+  // Workspace tools can open before an engine has created any conversations.
+  const panelScopeId = props.selectedSessionId ?? `workspace:${props.selectedWorkspaceId}`;
   const sessionSidePanel = useUiStateStore((state) => (
-    props.selectedSessionId ? state.sidePanelState[props.selectedSessionId] ?? null : null
+    state.sidePanelState[panelScopeId] ?? null
   ));
   const voiceSidePanelOpen = useUiStateStore((state) => state.sidePanelState[GLOBAL_VOICE_SIDE_PANEL_KEY] === "voice");
   const setSidePanelState = useUiStateStore((state) => state.setSidePanelState);
@@ -1742,8 +1744,8 @@ export function SessionPage(props: SessionPageProps) {
   const transcriptTargets = usePanelTabStore((state) => (
     props.selectedSessionId ? state.transcriptArtifactTargets[props.selectedSessionId] ?? EMPTY_TRANSCRIPT_TARGETS : EMPTY_TRANSCRIPT_TARGETS
   ));
-  const sessionPanelState = useSessionPanelState(props.selectedSessionId ?? "");
-  const activePanelTab = useActivePanelTab(props.selectedSessionId ?? "");
+  const sessionPanelState = useSessionPanelState(panelScopeId);
+  const activePanelTab = useActivePanelTab(panelScopeId);
   const { workspaceApps } = useInstalledPluginContributions(
     props.ipolloworkServerClient,
     props.runtimeWorkspaceId,
@@ -2896,8 +2898,8 @@ export function SessionPage(props: SessionPageProps) {
     setSessionPanelView(null);
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, panel === "voice" ? "voice" : null);
     if (panel === "voice") return;
-    setSidePanelState(props.selectedSessionId, panel);
-  }, [designTemplateEntryPath, openTab, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
+    setSidePanelState(panelScopeId, panel);
+  }, [designTemplateEntryPath, openTab, panelScopeId, props.selectedSessionId, selectTab, sessionPanelState.tabs, setSidePanelState]);
 
   const openDesignTab = useCallback((path?: string, displayName?: string) => {
     if (!props.selectedSessionId) return;
@@ -2940,8 +2942,8 @@ export function SessionPage(props: SessionPageProps) {
     userOpenedSidePanelWhileNarrowRef.current = true;
     autoCollapsedSidePanelRef.current = null;
     setSidePanelState(GLOBAL_VOICE_SIDE_PANEL_KEY, null);
-    toggleSidePanelState(props.selectedSessionId, panel);
-  }, [props.selectedSessionId, setSidePanelState, toggleSidePanelState]);
+    toggleSidePanelState(panelScopeId, panel);
+  }, [panelScopeId, setSidePanelState, toggleSidePanelState]);
 
   // When the agent calls a built-in browser tool, the main process opens
   // the WebContentsView and sends panel-opened; when hide_browser is called
@@ -3297,8 +3299,8 @@ export function SessionPage(props: SessionPageProps) {
   }, [activePanelTab?.id, openTab, prioritizeRightPanel, setCurrentSidePanel]);
   const openWorkspaceApp = useCallback((surface: (typeof workspaceApps)[number], launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
     const sessionId = sourceSessionId ?? props.selectedSessionId;
-    if (!sessionId) return;
-    openTab(sessionId, {
+    if (!sessionId && surface.pluginId !== "labelu-data-annotation") return;
+    openTab(sourceSessionId ?? panelScopeId, {
       id: workspaceAppTabId(surface),
       type: "workspace-app",
       label: surface.label,
@@ -3307,7 +3309,7 @@ export function SessionPage(props: SessionPageProps) {
       launch,
     });
     setCurrentSidePanel("panel");
-  }, [openTab, props.selectedSessionId, setCurrentSidePanel]);
+  }, [openTab, panelScopeId, props.selectedSessionId, setCurrentSidePanel]);
   const openWorkspaceAppForPlugin = useCallback((pluginId: string, launch?: PluginUiHostContextV1["launch"], sourceSessionId?: string) => {
     const surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === pluginId);
     if (surface) {
@@ -3325,25 +3327,27 @@ export function SessionPage(props: SessionPageProps) {
     const workspaceId = props.runtimeWorkspaceId;
     if (!client || !workspaceId || dataAnnotationOpening.current) return;
     dataAnnotationOpening.current = true;
+    let openingNotice: string | number | undefined;
     void (async () => {
-      const { items } = await client.listPluginPackages(workspaceId);
-      const surface = resolveInstalledPluginContributions(items).workspaceApps
-        .find((entry) => entry.pluginId === "labelu-data-annotation");
+      let surface = workspaceApps.find((entry) => entry.pluginId === "labelu-data-annotation");
+      if (!surface) {
+        openingNotice = toast.info(t("data_annotation.opening"), { id: `data-annotation-opening:${workspaceId}`, duration: Infinity });
+        const { items } = await client.listPluginPackages(workspaceId);
+        surface = resolveInstalledPluginContributions(items).workspaceApps
+          .find((entry) => entry.pluginId === "labelu-data-annotation");
+      }
       if (!surface) throw new Error(t("data_annotation.unavailable"));
-      const sessionId = (props.selectedSessionKnown ? props.selectedSessionId : null)
-        ?? selectedWorkspaceProject?.sessions[0]?.id
-        ?? await props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work");
-      if (!sessionId) throw new Error(t("plugin_workshop.create_session_failed"));
-      if (sessionId !== props.selectedSessionId) props.sidebar.onOpenSession(props.selectedWorkspaceId, sessionId);
-      openWorkspaceApp(surface, undefined, sessionId);
+      openWorkspaceApp(surface);
       setTemplateMarketOpen(false);
       setMainWorkspaceView(null);
-      setSidePanelState(sessionId, "panel");
       prioritizeRightPanel();
     })().catch((error: unknown) => {
       toast.error(error instanceof Error ? error.message : t("data_annotation.unavailable"));
-    }).finally(() => { dataAnnotationOpening.current = false; });
-  }, [openWorkspaceApp, prioritizeRightPanel, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedSessionKnown, props.selectedWorkspaceId, props.sidebar, selectedWorkspaceProject, setSidePanelState]);
+    }).finally(() => {
+      if (openingNotice !== undefined) toast.dismiss(openingNotice);
+      dataAnnotationOpening.current = false;
+    });
+  }, [openWorkspaceApp, prioritizeRightPanel, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
     let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
@@ -4351,9 +4355,9 @@ export function SessionPage(props: SessionPageProps) {
   }, [props.selectedSessionId]);
 
   useEffect(() => {
-    if (!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher") return;
+    if (!showProjectNoTasksState || !sidePanelOpen || effectiveSidePanelView === "launcher" || activePanelTab?.type === "workspace-app") return;
     closeRightPane();
-  }, [closeRightPane, effectiveSidePanelView, showProjectNoTasksState, sidePanelOpen]);
+  }, [activePanelTab?.type, closeRightPane, effectiveSidePanelView, showProjectNoTasksState, sidePanelOpen]);
 
   const openRenameModal = (sessionId: string) => {
     if (!props.onRenameSession) return;
@@ -5133,7 +5137,7 @@ export function SessionPage(props: SessionPageProps) {
                       onOpenTarget={openTarget}
                       onOpenVideoStudio={openCurrentVideoArtifactStudio}
                     />
-                  ) : sidePanelOpen && activeSidePanel === "panel" && props.selectedSessionId ? (
+                  ) : sidePanelOpen && activeSidePanel === "panel" ? (
                     <div
                       className={cn(
                         "h-full min-h-0",
@@ -5144,13 +5148,13 @@ export function SessionPage(props: SessionPageProps) {
                       } : undefined}
                     >
                       <SidePanel
-                        sessionId={props.selectedSessionId}
+                        sessionId={panelScopeId}
                         client={props.ipolloworkServerClient}
                         workspaceId={props.runtimeWorkspaceId}
                         workspaceRoot={props.selectedWorkspaceRoot}
                         isRemoteWorkspace={props.surface?.isRemoteWorkspace ?? false}
                         launcherItems={sidePanelLauncherItems}
-                        aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])}
+                        aiEditing={selectedSessionStatus ? selectedSessionStatus.type === "busy" || selectedSessionStatus.type === "retry" : isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId ?? ""])}
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}

@@ -50,7 +50,7 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("aiEditing={selectedSessionStatus");
     expect(sessionPageSource).toContain('selectedSessionStatus.type === "busy"');
     expect(sessionPageSource).toContain(
-      "isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId])",
+      'isStreamingSessionStatus(props.sidebar.sessionStatusById[props.selectedSessionId ?? ""])',
     );
     expect(panelSource).toContain('type: "ipollowork:studio-ai-editing"');
     expect(panelSource).toContain("active: aiEditing");
@@ -867,7 +867,7 @@ describe("HyperFrames Video Studio", () => {
     expect(workspaceAppSource).toContain('data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}');
     expect(workspaceAppSource).toContain("sameWorkspaceAppRuntimeResource");
     expect(workspaceAppSource).toContain("developmentPreviewRef.current");
-    expect(workspaceAppSource).toContain('sandbox="allow-scripts allow-same-origin"');
+    expect(workspaceAppSource).toMatch(/sandbox=\{props.surface.pluginId === "labelu-data-annotation"\s*\? "allow-scripts allow-same-origin allow-downloads"\s*: "allow-scripts allow-same-origin"\}/);
     expect(workspaceAppSource).not.toContain('key={props.developmentPreview?.revision}');
     expect(workshopSource).toContain("aiEditingRef.current ? 800 : 3_000");
     expect(workshopSource).not.toContain("[props.aiEditing, props.tab.pluginId, refreshSnapshot]");

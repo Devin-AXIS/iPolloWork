@@ -901,7 +901,7 @@ export function SidePanel({
               resultPath={edit.resultPath} replaced={edit.replaced} visible={visible}
               onSwitchMedia={onSwitchMedia}
               onOpenMedia={onOpenMedia}
-              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onGenerateVideo={path=>{ if (tab.sessionId) onGenerateVideo?.(path,tab.sessionId); }}
               onEditImage={path=>onEditImage?.({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:"image",confidence:1,reason:"media-gallery"})}
               returnLabel={t("media.workbench.back_design")}
               onActivate={() => usePanelTabStore.getState().openTab(sessionId, tab)}
@@ -929,7 +929,7 @@ export function SidePanel({
               placement="workspace"
               displayMode={expanded ? "fullscreen" : "inline"}
               onDisplayModeChange={(mode) => onExpandedChange?.(mode === "fullscreen")}
-              onGenerateVideo={path=>onGenerateVideo?.(path,tab.sessionId)}
+              onGenerateVideo={path=>{ if (tab.sessionId) onGenerateVideo?.(path,tab.sessionId); }}
               onSwitchMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onSwitchMedia : undefined}
               onOpenMedia={isMediaStudioPlugin(tab.surface.pluginId) ? onOpenMedia : undefined}
               onEditGalleryImage={path => onEditImage?.({id:path,kind:"file",value:path,name:path.split(/[\\/]/).pop() || path,preview:"image",confidence:1,reason:"video-gallery"})}

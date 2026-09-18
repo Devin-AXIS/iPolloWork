@@ -15,21 +15,24 @@ async function showSidebar(ctx) {
   await ctx.waitFor(`document.querySelector(${JSON.stringify(SIDEBAR)})?.getBoundingClientRect().x >= 0`);
 }
 
-async function assertWorkbench(ctx) {
+export async function assertWorkbench(ctx, { timeoutMs = 30000 } = {}) {
   await ctx.waitFor(`(() => {
     const host = document.querySelector(${JSON.stringify(FRAME)});
     const frame = host?.contentDocument?.querySelector('#workbench');
     return frame && !frame.hidden && frame.getAttribute('src')?.startsWith('http://127.0.0.1:');
-  })()`, { timeoutMs: 30000, label: 'embedded annotation workbench' });
+  })()`, { timeoutMs, label: 'embedded annotation workbench' });
   const frameUrl = await ctx.eval(`document.querySelector(${JSON.stringify(FRAME)}).contentDocument.querySelector('#workbench').src`);
   const target = (await listTargets(ctx.cdpBaseUrl)).find((entry) => entry.type === 'iframe' && entry.url === frameUrl);
   ctx.assert(Boolean(target), 'The platform must load in a child iframe target, never a browser page');
   const child = await connect(debuggerUrlFor(ctx.cdpBaseUrl, target));
   let view;
   try {
-    view = await evaluate(child, '({text:document.body.innerText, width:innerWidth, scrollWidth:document.documentElement.scrollWidth})');
+    const childContext = new EvalContext({ client: child, outDir: ctx.outDir, flowId: ctx.flowId });
+    await childContext.waitFor("(document.body.innerText.includes('实训') && document.body.innerText.includes('标注')) || Boolean(document.querySelector('textarea[aria-label=\"待标注正文\"]'))", { label: 'annotation application rendered' });
+    view = await evaluate(child, '({text:document.body.innerText, editor:Boolean(document.querySelector(\'textarea[aria-label="待标注正文"]\')), width:innerWidth, scrollWidth:document.documentElement.scrollWidth})');
   } finally { child.close(); }
-  ctx.assert(view?.text.includes('实训') && view.text.includes('标注'), 'The real annotation application must render');
+  ctx.assert((view?.text.includes('实训') && view.text.includes('标注')) || view?.editor, 'The real annotation application must render');
+  await ctx.waitFor("![...document.querySelectorAll('[data-sonner-toast]')].some(node => node.textContent.includes('正在打开数据标注'))", { label: 'opening notice dismissed' });
   ctx.assert(view.scrollWidth <= view.width + 1, 'The embedded app must fit the panel width');
   await ctx.waitFor("!document.body.innerText.includes('Workspace or session not found')", { label: 'available selected task' });
   ctx.assert(await ctx.eval(`document.querySelectorAll(${JSON.stringify(TAB)}).length === 1`), 'Opening must reuse one annotation tab');
@@ -47,11 +50,13 @@ export default {
     name: 'Open the bundled platform from the sidebar',
     async run(ctx) {
       await ctx.waitFor('Boolean(window.__ipolloworkControl)');
+      await ctx.waitFor(`Boolean(document.querySelector('${SIDEBAR}:not(:disabled)'))`, { timeoutMs: 45000, label: 'annotation sidebar ready' });
       await ctx.prove('The sidebar opens the ready-to-use annotation platform in the right iframe', {
         voiceover: '点击左侧的数据标注，右侧直接打开标注平台，无需下载插件。',
         action: async () => { await showSidebar(ctx); await ctx.trustedClick(SIDEBAR); },
-        assert: () => assertWorkbench(ctx),
-        screenshot: { name: 'sidebar-annotation-iframe', requireText: ['数据标注'], rejectText: ['暂时无法打开', 'could not be displayed'] },
+        // First use may upgrade packages across existing workspaces before loading the UI.
+        assert: () => assertWorkbench(ctx, { timeoutMs: 75000 }),
+        screenshot: { name: 'sidebar-annotation-iframe', requireText: ['数据标注'], rejectText: ['暂时无法打开', '操作未完成', '请求超时', 'could not be displayed'] },
       });
       // Reopening is intentionally visually unchanged, so keep this assertion
       // with the original frame instead of recording a duplicate screenshot.
@@ -94,7 +99,7 @@ export default {
           await ctx.eval('document.querySelector(\'[data-testid="required-plugin-notice"]\').scrollIntoView({block:"center"})');
         },
         assert: async () => {
-          await ctx.expectText('v0.3.2');
+          await ctx.expectText('v0.4.1');
           ctx.assert(await ctx.eval('document.querySelector(\'[data-testid="required-plugin-notice"]\').innerText.includes("不可卸载")'), 'A built-in notice explains the policy');
           ctx.assert(!await ctx.eval('[...document.querySelectorAll("button")].some(b=>b.textContent.trim()==="卸载")'), 'There must be no uninstall control');
           ctx.assert(await ctx.eval('[...document.querySelectorAll(\'[role="switch"]\')].every(b=>b.disabled || b.getAttribute("aria-disabled")==="true")'), 'Required plugin controls cannot be disabled');
@@ -112,12 +117,15 @@ export default {
       const target = (await listTargets(ctx.cdpBaseUrl)).find(entry => entry.type === 'iframe' && entry.url === frameUrl);
       const client = await connect(debuggerUrlFor(ctx.cdpBaseUrl, target));
       const child = new EvalContext({ client, outDir: ctx.outDir, flowId: ctx.flowId });
-      const title = `0.3.2 文字导入验证 ${Date.now()}`;
+      const title = `0.4.1 文字导入验证 ${Date.now()}`;
       const content = '数字标注升级验证。\n第二段中文正文。';
       try {
-        await ctx.prove('The bundled 0.3.2 workbench imports Chinese TXT into a text project', {
+        await ctx.prove('The bundled 0.4.1 workbench imports Chinese TXT into a text project', {
           voiceover: '导入中文 TXT 文件，确认正文后创建文字标注项目。',
           action: async () => {
+            if (!await child.eval("Boolean(document.querySelector('.modality-option'))")) {
+              await child.clickText('我的标注', { selector: 'button' });
+            }
             await child.clickText('文字标注', { selector: '.modality-option' });
             const fixture = join(ctx.outDir, 'annotation-import.txt');
             await writeFile(fixture, content);

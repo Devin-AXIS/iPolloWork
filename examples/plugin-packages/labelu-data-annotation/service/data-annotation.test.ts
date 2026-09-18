@@ -5,11 +5,133 @@ import { join } from "node:path";
 import test from "node:test";
 
 import createDataAnnotationService from "./data-annotation";
+import type { MediaSource, ProjectReview } from "../types";
 
 const ONE_PIXEL_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZQmcAAAAASUVORK5CYII=",
   "base64",
 );
+
+test("review roles, version-bound decisions, JSON exports and local legacy records survive relaunch", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-review-"));
+  let service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+  try {
+    let launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
+    const call = async (path: string, method = "GET", body?: unknown, projectId?: string, session = launch) => {
+      const url = new URL(path, session);
+      url.search = session.search;
+      if (projectId) url.searchParams.set("projectId", projectId);
+      return fetch(url, { method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) });
+    };
+    const role = async (value: "annotator" | "reviewer") => {
+      const response = await call("/api/role", "POST", { role: value });
+      assert.equal(response.status, 200);
+      assert.deepEqual(await response.json(), { role: value });
+    };
+    const record = async (response: Response) => {
+      assert.ok(response.ok, await response.clone().text());
+      return (await response.json() as CreatedProject).project;
+    };
+    assert.deepEqual(await (await call("/api/role")).json(), { role: "annotator" });
+    let project = await record(await call("/api/project-text", "POST", { title: "审核流程", textContent: "上海开展数据标注实训。" }));
+    assert.equal(project.review.status, "pending");
+    assert.equal((await call("/api/project-export", "GET", undefined, project.id)).status, 409);
+    assert.equal((await call("/api/project-review", "POST", { status: "approved", expectedRevision: 0 }, project.id)).status, 403);
+    await role("reviewer");
+    assert.equal((await call("/api/project-review", "POST", { status: "approved", expectedRevision: 0 }, project.id)).status, 409, "empty records cannot pass");
+    for (const [path, method, body] of [
+      ["/api/project", "PUT", { annotations: {}, expectedRevision: 0 }],
+      ["/api/project", "DELETE", undefined],
+      ["/api/project-labels", "PATCH", { labels: [] }],
+      ["/api/project-text", "POST", { textContent: "forbidden" }],
+      ["/api/training-project", "POST", { templateId: "text-news-entities" }],
+      ["/api/project-file", "POST", {}],
+    ] as const) assert.equal((await call(path, method, body, project.id)).status, 403, path);
+    await role("annotator");
+    const annotations = { spans: [{ id: "place", start: 0, end: 2, text: "上海", label: "实体" }], classification: "新闻" };
+    project = await record(await call("/api/project", "PUT", { annotations, expectedRevision: project.revision }, project.id));
+    await role("reviewer");
+    assert.equal((await call("/api/project-review", "POST", { status: "rejected", expectedRevision: project.revision }, project.id)).status, 400);
+    project = await record(await call("/api/project-review", "POST", { status: "rejected", comment: "补充正文", expectedRevision: project.revision }, project.id));
+    assert.equal(project.review.comment, "补充正文");
+    assert.equal((await call("/api/project-export", "GET", undefined, project.id)).status, 409);
+    await role("annotator");
+    project = await record(await call("/api/project", "PUT", { annotations, textContent: "上海开展数据标注实训。新增正文。", expectedRevision: project.revision }, project.id));
+    assert.equal(project.review.status, "pending");
+    await role("reviewer");
+    project = await record(await call("/api/project-review", "POST", { status: "approved", comment: "通过", expectedRevision: project.revision }, project.id));
+    assert.equal(project.review.revision, project.revision);
+    for (const mode of ["reviewer", "annotator"] as const) {
+      await role(mode);
+      const response = await call("/api/project-export", "GET", undefined, project.id);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("content-disposition") ?? "", /^attachment;/);
+      const exported = await response.json() as { format: string; project: CreatedProject["project"] };
+      assert.equal(exported.format, "ipollowork.annotation");
+      assert.deepEqual(exported.project.annotations, annotations);
+      assert.equal(exported.project.review.status, "approved");
+      assert.equal("mediaUrl" in exported.project, false, "export must not contain authenticated media URLs");
+      assert.equal(JSON.stringify(exported).includes(launch.searchParams.get("token") ?? "token"), false);
+    }
+    const noChange = await record(await call("/api/project", "PUT", { annotations, expectedRevision: project.revision }, project.id));
+    assert.equal(noChange.revision, project.revision, "playback/no-op saves preserve approval");
+    project = await record(await call("/api/project-labels", "PATCH", { expectedRevision: project.revision, labels: [{ name: "实体", color: "#123456" }], replacements: {} }, project.id));
+    assert.equal(project.review.status, "pending", "label changes require another review");
+    assert.equal((await call("/api/project-export", "GET", undefined, project.id)).status, 409);
+
+    // Two independent workbench sessions racing on the same record must not overwrite each other.
+    const otherLaunch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
+    await role("reviewer");
+    const raced = await Promise.all([
+      call("/api/project-review", "POST", { status: "approved", expectedRevision: project.revision }, project.id),
+      call("/api/project", "PUT", { annotations: { ...annotations, classification: "通知" }, expectedRevision: project.revision }, project.id, otherLaunch),
+    ]);
+    assert.deepEqual(raced.map((response) => response.status).sort(), [200, 409]);
+    project = await record(await call("/api/project", "GET", undefined, project.id));
+    if (project.review.status !== "approved") project = await record(await call("/api/project-review", "POST", { status: "approved", expectedRevision: project.revision }, project.id));
+    await role("annotator");
+    project = await record(await call("/api/project", "PUT", { annotations: { ...annotations, classification: "最新分类" }, expectedRevision: project.revision }, project.id));
+    assert.equal(project.review.status, "pending", "annotation edits revoke approval");
+    await role("reviewer");
+    project = await record(await call("/api/project-review", "POST", { status: "approved", expectedRevision: project.revision }, project.id));
+    await role("annotator");
+    let video = await record(await call("/api/training-project", "POST", { templateId: "video-traffic-event" }));
+    const mediaAnnotations = {
+      segment: [{ id: "clip", type: "segment", start: 1, end: 4, label: video.labels[0], order: 1, attributes: { 描述: "车辆通过路口" } }],
+      frame: [{ id: "keyframe", type: "frame", time: 2.125, label: video.labels[0], order: 2, attributes: { 描述: "车辆进入画面" } }],
+    };
+    video = await record(await call("/api/project", "PUT", { annotations: mediaAnnotations, expectedRevision: video.revision }, video.id));
+    await role("reviewer");
+    video = await record(await call("/api/project-review", "POST", { status: "approved", expectedRevision: video.revision }, video.id));
+    for (const mode of ["reviewer", "annotator"] as const) {
+      await role(mode);
+      const exported = await (await call("/api/project-export", "GET", undefined, video.id)).json() as CreatedProject;
+      assert.deepEqual(exported.project.annotations, mediaAnnotations, "keyframe timestamps and descriptions export unchanged");
+    }
+    mediaAnnotations.segment[0].attributes.描述 = "车辆缓慢通过路口";
+    video = await record(await call("/api/project", "PUT", { annotations: mediaAnnotations, expectedRevision: video.revision }, video.id));
+    assert.equal(video.review.status, "pending", "a description-only change revokes review approval");
+    assert.equal((await call("/api/project-export", "GET", undefined, video.id)).status, 409);
+    await service.dispose();
+    service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+    launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
+    assert.deepEqual(await (await call("/api/role")).json(), { role: "annotator" });
+    assert.equal((await record(await call("/api/project", "GET", undefined, project.id))).review.status, "approved");
+    assert.equal((await call("/api/project-export", "GET", undefined, project.id)).status, 200);
+    assert.deepEqual((await record(await call("/api/project", "GET", undefined, video.id))).annotations, mediaAnnotations);
+    const path = join(root, ".ipollowork/plugins/labelu-data-annotation/projects", `${project.id}.json`);
+    const legacy = JSON.parse(await readFile(path, "utf8"));
+    delete legacy.review;
+    await writeFile(path, JSON.stringify(legacy));
+    assert.equal((await record(await call("/api/project", "GET", undefined, project.id))).review.status, "pending");
+    assert.equal((await call("/api/project-export", "GET", undefined, project.id)).status, 409);
+    const secondRoot = await mkdtemp(join(tmpdir(), "ipollowork-labelu-other-"));
+    try {
+      const other = new URL((await service.actions["open-workbench"]({}, { directory: secondRoot })).url);
+      assert.equal((await call("/api/project", "GET", undefined, project.id, other)).status, 404);
+    } finally { await rm(secondRoot, { recursive: true, force: true }); }
+  } finally { await service.dispose(); await rm(root, { recursive: true, force: true }); }
+});
 
 // Minimal DOCX containing two Chinese paragraphs, created independently of the parser.
 const TEXT_DOCX = Buffer.from("UEsDBBQAAAAIAPZVMF3UV5DVpAAAANMAAAARAAAAd29yZC9kb2N1bWVudC54bWyyKbdKyU8uzU3NK1GoyM3JK7Yqt1XKKCkpsNLXL07OSM1NLNbLL0jNq8jNScsvyk0sKdbLL0rXL88vSikoyk9OLS7OzEvPzdE3MjAw089NzMxTsrMpt0rKT6kE0QUgoghElNiF5xelKDxdv+dp69JnW7tfrJ9qow8SBpFFYBKsGFnH8zVrnuzqebZu67O1i59Na8eiXh9mlT7CG3YAAAAA//8DAFBLAwQUAAAACAD2VTBdrG4SWqQAAADcAAAAEwAAAFtDb250ZW50X1R5cGVzXS54bWxcjzEOwjAMRa9SZUXUiIEBtV3YgYELWKnbRsR2lBgot0cFqQPz13tPv7m9E5Vq5iildZNZOgIUPxFjqTWRzBwHzYxWas0jJPR3HAn2u90BvIqR2NYWh+uay5NyDj1VV8x2RqbWwUtzD736B5NYPXN01emHLeXWYUoxeLSgAk/p/5pbHYbgaeUXW8rqqZQgI8d6XRiDbBY9dA18T3UfAAAA//8DAFBLAQIUABQAAAAIAPZVMF3UV5DVpAAAANMAAAARAAAAAAAAAAAAAAAAAAAAAAB3b3JkL2RvY3VtZW50LnhtbFBLAQIUABQAAAAIAPZVMF2sbhJapAAAANwAAAATAAAAAAAAAAAAAAAAANMAAABbQ29udGVudF9UeXBlc10ueG1sUEsFBgAAAAACAAIAgAAAAKgBAAAAAA==", "base64");
@@ -92,6 +214,8 @@ type CreatedProject = {
     labels: string[];
     labelColors: Record<string, string>;
     annotations: Record<string, unknown>;
+    review: ProjectReview;
+    mediaSource?: MediaSource;
   };
 };
 
@@ -116,7 +240,7 @@ test("extracts text-layer PDFs without creating a project and rejects unusable P
     });
 
     const projectsResponse = await fetch(`${launchUrl.origin}/api/projects?${launchUrl.searchParams.toString()}`);
-    assert.deepEqual(await projectsResponse.json(), { projects: [] });
+    assert.deepEqual(await projectsResponse.json(), { projects: [], role: "annotator" });
 
     const scannedResponse = await fetch(endpoint, {
       method: "POST",
@@ -165,12 +289,12 @@ test("ships a runnable PDF worker and text assets with the built service", async
   }
 });
 
-test("opens a multimodal workbench and keeps conversational actions read-only", async () => {
+test("opens a multimodal workbench and reads shared saved records", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-plugin-"));
   const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.2.0" } });
 
   try {
-    assert.deepEqual(Object.keys(service.actions), ["open-workbench", "list-projects", "get-project"]);
+
     const opened = await service.actions["open-workbench"]({}, { directory: root }) as OpenedWorkbench;
     assert.match(opened.url, /^http:\/\/127\.0\.0\.1:\d+\//);
 
@@ -181,7 +305,7 @@ test("opens a multimodal workbench and keeps conversational actions read-only", 
     const launchUrl = new URL(opened.url);
     const apiQuery = launchUrl.searchParams.toString();
     const emptyProjects = await fetch(`${launchUrl.origin}/api/projects?${apiQuery}`);
-    assert.deepEqual(await emptyProjects.json(), { projects: [] });
+    assert.deepEqual(await emptyProjects.json(), { projects: [], role: "annotator" });
 
     const imageQuery = new URLSearchParams(launchUrl.searchParams);
     imageQuery.set("name", "sample.png");
@@ -422,6 +546,7 @@ test("lists legacy image tasks as resumable projects without modifying them", as
       annotationCount: 0,
       annotationCounts: { point: 0 },
       status: "not_started",
+      review: { status: "pending", comment: "", reviewedAt: null, revision: null },
     }]);
   } finally {
     await service.dispose();
@@ -466,16 +591,16 @@ test("lists categorized training templates and creates ready-to-use projects wit
     });
     assert.equal(imageResponse.status, 201);
     const imageProject = await imageResponse.json() as CreatedProject;
-    assert.equal(imageProject.project.title, "校园安全帽检测");
+    assert.equal(imageProject.project.title, "施工现场安全帽检测");
     assert.equal(imageProject.project.modality, "image");
     assert.equal(imageProject.project.revision, 0);
     assert.deepEqual(imageProject.project.labels, ["人物", "安全帽"]);
     assert.deepEqual(imageProject.project.labelColors, { "人物": "#2563eb", "安全帽": "#f59e0b" });
-    assert.match(imageProject.project.sourcePath ?? "", /^\.ipollowork\/plugins\/labelu-data-annotation\/uploads\/[a-f0-9-]+\.svg$/);
+    assert.match(imageProject.project.sourcePath ?? "", /^\.ipollowork\/plugins\/labelu-data-annotation\/uploads\/[a-f0-9-]+\.jpg$/);
     const mediaResponse = await fetch(`${launchUrl.origin}${imageProject.project.mediaUrl}`);
     assert.equal(mediaResponse.status, 200);
-    assert.equal(mediaResponse.headers.get("content-type"), "image/svg+xml");
-    assert.match(await mediaResponse.text(), /<svg/);
+    assert.equal(mediaResponse.headers.get("content-type"), "image/jpeg");
+    assert.deepEqual(Buffer.from(await mediaResponse.arrayBuffer()).subarray(0, 3), Buffer.from([0xff, 0xd8, 0xff]));
 
     const textResponse = await fetch(`${launchUrl.origin}/api/training-project?${apiQuery}`, {
       method: "POST",
@@ -489,29 +614,101 @@ test("lists categorized training templates and creates ready-to-use projects wit
     assert.match(textProject.project.textContent ?? "", /智慧未来学校/);
     assert.deepEqual(textProject.project.labels, ["人物", "组织", "地点", "时间"]);
 
-    for (const [templateId, modality, contentType] of [
-      ["video-sports-motion", "video", "video/mp4"],
-      ["audio-speaker-turns", "audio", "audio/mp4"],
-    ] as const) {
+    for (const template of templatesPayload.templates.filter((item) => !["image-campus-safety", "text-news-entities"].includes(item.id))) {
       const projectResponse = await fetch(`${launchUrl.origin}/api/training-project?${apiQuery}`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ templateId }),
+        body: JSON.stringify({ templateId: template.id }),
       });
       assert.equal(projectResponse.status, 201);
       const created = await projectResponse.json() as CreatedProject;
-      assert.equal(created.project.modality, modality);
+      assert.equal(created.project.modality, template.modality);
+      assert.equal(created.project.review.status, "pending");
+      if (template.modality === "text") {
+        assert.ok((created.project.textContent?.length ?? 0) > 650, template.id);
+        continue;
+      }
+      assert.ok(created.project.mediaSource?.author && created.project.mediaSource?.license, template.id);
+      assert.ok(created.project.mediaSource?.url.startsWith("https://"));
       const assetResponse = await fetch(`${launchUrl.origin}${created.project.mediaUrl}`);
       assert.equal(assetResponse.status, 200);
-      assert.equal(assetResponse.headers.get("content-type"), contentType);
-      assert.ok((await assetResponse.arrayBuffer()).byteLength > 1_000);
+      assert.equal(assetResponse.headers.get("content-type"), template.modality === "image" ? "image/jpeg" : `${template.modality}/mp4`);
+      const bytes = Buffer.from(await assetResponse.arrayBuffer());
+      assert.ok(bytes.byteLength > 1_000);
+      if (template.modality === "image") assert.deepEqual(bytes.subarray(0, 3), Buffer.from([0xff, 0xd8, 0xff]));
+      else assert.equal(bytes.subarray(4, 8).toString(), "ftyp");
     }
 
-    const listed = await service.actions["list-projects"]({ limit: 10 }, { directory: root }) as Array<{ modality: string }>;
-    assert.equal(listed.length, 4);
+    const listed = await service.actions["list-projects"]({ limit: 20 }, { directory: root }) as Array<{ modality: string }>;
+    assert.equal(listed.length, 12);
     assert.deepEqual(new Set(listed.map((project) => project.modality)), new Set(["image", "video", "audio", "text"]));
   } finally {
     await service.dispose();
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("host actions share UI persistence, revision checks, review and export without changing workbench role", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-actions-"));
+  const other = await mkdtemp(join(tmpdir(), "ipollowork-labelu-isolation-"));
+  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+  const ctx = { directory: root };
+  try {
+    const manifest = JSON.parse(await readFile(new URL("../ipollowork.plugin.json", import.meta.url), "utf8"));
+    const declared = manifest.resources.find((r: {type: string}) => r.type === "local-service").actions;
+    assert.deepEqual(declared.map((a: {id: string}) => a.id).sort(), Object.keys(service.actions).sort());
+    assert.equal(declared.find((a: {id: string}) => a.id === "delete-project").effect, "destructive");
+    const templates = await service.actions["list-training-templates"]({}, ctx);
+    assert.equal(templates.length, 12);
+    const imageTemplate = templates.find(t => t.modality === "image")!;
+    const media = await service.actions["create-training-project"]({templateId: imageTemplate.id}, ctx);
+    assert.equal(media.updateSource, "ai");
+    await access(join(root, media.sourcePath!));
+    await assert.rejects(service.actions["create-training-project"]({templateId: "missing"}, ctx));
+    await assert.rejects(service.actions["create-text-project"]({textContent: " "}, ctx));
+    let project = await service.actions["create-text-project"]({title: "MCP 验收", textContent: "李明来到上海。"}, ctx);
+    assert.equal(project.updateSource, "ai");
+    const id = project.id;
+    await assert.rejects(service.actions["get-project"]({projectId: id}, {directory: other}), {statusCode: 404});
+    await assert.rejects(service.actions["get-project"]({projectId: "../outside"}, ctx));
+    await assert.rejects(service.actions["export-project"]({projectId: id}, ctx), {statusCode: 409});
+    await assert.rejects(service.actions["review-project"]({projectId: id, expectedRevision: 0, status: "approved"}, ctx), {statusCode: 409});
+    const annotations = {spans: [{id: "person", start: 0, end: 2, text: "李明", label: "实体"}]};
+    project = await service.actions["update-project"]({projectId: id, expectedRevision: 0, annotations}, ctx);
+    assert.equal(project.revision, 1);
+    assert.equal(project.review.status, "pending");
+    await assert.rejects(service.actions["update-project"]({projectId: id, expectedRevision: 0, annotations: {}}, ctx), {statusCode: 409});
+    await assert.rejects(service.actions["update-project"]({projectId: id, annotations}, ctx), {statusCode: 409});
+    await assert.rejects(service.actions["update-project-labels"]({projectId: id, expectedRevision: 1, labels: [{name: "人物", color: "#2563eb"}]}, ctx), {statusCode: 409});
+    project = await service.actions["update-project-labels"]({projectId: id, expectedRevision: 1, labels: [{name: "人物", color: "#2563eb"}], replacements: {实体: "人物"}}, ctx);
+    assert.equal((project.annotations.spans as {label: string}[])[0].label, "人物");
+    await assert.rejects(service.actions["review-project"]({projectId: id, expectedRevision: project.revision, status: "rejected"}, ctx), {statusCode: 400});
+    project = await service.actions["review-project"]({projectId: id, expectedRevision: project.revision, status: "rejected", comment: "核对边界"}, ctx);
+    project = await service.actions["review-project"]({projectId: id, expectedRevision: project.revision, status: "approved", comment: "已核对"}, ctx);
+    const exported = await service.actions["export-project"]({projectId: id}, ctx);
+    assert.equal(exported.project.review.status, "approved");
+    assert.equal(exported.project.updateSource, "ai");
+    assert.equal("mediaUrl" in exported.project, false);
+    const launch = new URL((await service.actions["open-workbench"]({}, ctx)).url);
+    const browser = await fetch(launch.origin + "/api/project?" + launch.searchParams + "&projectId=" + id);
+    assert.equal((await browser.json() as {project: {revision: number}}).project.revision, project.revision);
+    assert.deepEqual(await (await fetch(launch.origin + "/api/role?" + launch.searchParams)).json(), {role: "annotator"});
+    const unchanged = await service.actions["update-project"]({projectId: id, expectedRevision: project.revision, annotations: project.annotations}, ctx);
+    assert.equal(unchanged.review.status, "approved");
+    project = await service.actions["update-project"]({projectId: id, expectedRevision: project.revision, annotations: {spans: []}}, ctx);
+    assert.equal(project.review.status, "pending");
+    await assert.rejects(service.actions["export-project"]({projectId: id}, ctx), {statusCode: 409});
+    await assert.rejects(service.actions["delete-project"]({projectId: id}, ctx), {statusCode: 400});
+    await assert.rejects(service.actions["delete-project"]({projectId: id, expectedRevision: 0}, ctx), {statusCode: 409});
+    await service.actions["delete-project"]({projectId: id, expectedRevision: project.revision}, ctx);
+    await assert.rejects(service.actions["get-project"]({projectId: id}, ctx), {statusCode: 404});
+    await service.actions["delete-project"]({projectId: media.id, expectedRevision: media.revision}, ctx);
+    await access(join(root, media.sourcePath!));
+    assert.deepEqual(await service.actions["list-projects"]({}, ctx), []);
+  } finally {
+    await service.dispose();
+    await rm(root, {recursive: true, force: true});
+    await rm(other, {recursive: true, force: true});
   }
 });

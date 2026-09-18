@@ -589,6 +589,7 @@ export default {
   "template_market.title": "Templates",
   "plugin_workshop.title": "Plugin Workshop",
   "data_annotation.title": "Data Annotation",
+  "data_annotation.opening": "Opening Data Annotation. The first launch may take a little longer…",
   "data_annotation.unavailable": "Data Annotation could not be opened. Try again or restart the app.",
   "plugin_platform.required_bundle": "This plugin is included with the app, always enabled, and cannot be uninstalled.",
   "plugin_workshop.create_session_failed": "Could not create a conversation for Plugin Workshop.",

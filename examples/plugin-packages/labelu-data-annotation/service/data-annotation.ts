@@ -10,6 +10,7 @@ import { fileURLToPath } from "node:url";
 import { getDocument, VerbosityLevel } from "pdfjs-dist/legacy/build/pdf.mjs";
 import WordExtractor from "word-extractor";
 import type { TextItem } from "pdfjs-dist/types/src/display/api.js";
+import type { ProjectReview, WorkbenchRole, MediaSource } from "../types";
 
 type PluginRuntime = {
   plugin: Readonly<{ id: string; version: string }>;
@@ -34,11 +35,14 @@ type ProjectRecord = {
   createdAt: string;
   updatedAt: string;
   updateSource: UpdateSource;
+  review: ProjectReview;
+  mediaSource?: MediaSource;
 };
 
 type Launch = {
   workspaceRoot: string;
   expiresAt: number;
+  role: WorkbenchRole;
 };
 
 type TrainingTemplate = {
@@ -52,6 +56,7 @@ type TrainingTemplate = {
   labelColors: Record<string, string>;
   assetFile?: string;
   textContent?: string;
+  mediaSource?: MediaSource;
 };
 
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -72,135 +77,197 @@ const pdfAssetRoot = moduleRoot.endsWith(`${sep}dist`)
 const trainingTemplates: readonly TrainingTemplate[] = [
   {
     id: "image-campus-safety",
-    title: "校园安全帽检测",
+    title: "施工现场安全帽检测",
     modality: "image",
-    description: "识别校园施工实训图中的人物和安全帽。",
-    instruction: "分别框选人物与安全帽，检查目标是否完整落在框内。",
+    description: "在真实施工现场照片中识别人物与安全帽，练习遮挡目标的边界判断。",
+    instruction: "分别框选两位人物的可见部分与黄色安全帽；不推测被墙面遮挡的身体范围。",
     difficulty: "入门",
     labels: ["人物", "安全帽"],
     labelColors: { "人物": "#2563eb", "安全帽": "#f59e0b" },
-    assetFile: "campus-safety-helmets.svg",
+    assetFile: "construction-worker.jpg",
+    mediaSource: { title: "Construction worker CT", author: "HelenOnline (Helen Riding)", url: "https://commons.wikimedia.org/wiki/File:Construction_worker_CT.jpg", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/", changes: "使用 Wikimedia 提供的 1280px 缩略图，未裁切；同许可分发" },
   },
   {
     id: "image-recycling",
     title: "垃圾分类识别",
     modality: "image",
     description: "对不同颜色的垃圾分类容器进行目标框选。",
-    instruction: "框选每个垃圾桶，并按可回收物、厨余、有害或其他垃圾选择标签。",
+    instruction: "按照片从左到右标记纸类（蓝）、玻璃（绿）、塑料包装（黄）容器；以可见轮廓为边界。",
     difficulty: "入门",
-    labels: ["可回收物", "厨余垃圾", "有害垃圾", "其他垃圾"],
-    labelColors: { "可回收物": "#2563eb", "厨余垃圾": "#16a34a", "有害垃圾": "#dc2626", "其他垃圾": "#64748b" },
-    assetFile: "recycling-bins.svg",
+    labels: ["纸类", "玻璃", "塑料包装"],
+    labelColors: { "纸类": "#2563eb", "玻璃": "#16a34a", "塑料包装": "#f59e0b" },
+    assetFile: "recycling-bins.jpg",
+    mediaSource: { title: "Barcelona recycling bins", author: "William Avery", url: "https://commons.wikimedia.org/wiki/File:Barcelona_recycling_bins.jpg", license: "CC BY-SA 3.0", licenseUrl: "https://creativecommons.org/licenses/by-sa/3.0/", changes: "使用 Wikimedia 提供的 1280px 缩略图，未裁切；同许可分发" },
   },
   {
     id: "image-plant-leaves",
     title: "植物叶片框选",
     modality: "image",
-    description: "在植物实训图中区分叶片与病斑。",
-    instruction: "使用矩形或多边形标记叶片，并单独标记黄色病斑。",
+    description: "在自然环境照片中标记前景叶片，练习多边形轮廓和遮挡处理。",
+    instruction: "框选或沿轮廓标记前景中清晰可辨的叶片；用线工具标记可见叶脉，不把远处树木纳入目标。",
     difficulty: "进阶",
-    labels: ["叶片", "病斑"],
-    labelColors: { "叶片": "#16a34a", "病斑": "#f59e0b" },
-    assetFile: "plant-leaves.svg",
+    labels: ["叶片", "叶脉"],
+    labelColors: { "叶片": "#16a34a", "叶脉": "#f59e0b" },
+    assetFile: "plant-leaf.jpg",
+    mediaSource: { title: "The top of a leaf", author: "Ranjithkanth Tamilselvan J", url: "https://commons.wikimedia.org/wiki/File:The_top_of_a_leaf.jpg", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/", changes: "使用 Wikimedia 提供的 1280px 缩略图，未裁切" },
   },
   {
     id: "video-classroom-behavior",
-    title: "课堂行为片段",
+    title: "行人与道路活动片段",
     modality: "video",
-    description: "标记课堂画面中的活动片段。",
-    instruction: "沿时间轴标记移动、停留和互动片段，可添加关键帧。",
+    description: "观察公园旁道路与过街行人的实拍视频，标记活动时间段。",
+    instruction: "先完整播放，按实际画面标记行人出现、车辆通行和静态场景；不同事件可重叠。",
     difficulty: "入门",
-    labels: ["移动", "停留", "互动"],
-    labelColors: { "移动": "#2563eb", "停留": "#64748b", "互动": "#ea580c" },
-    assetFile: "classroom-behavior.mp4",
+    labels: ["行人出现", "车辆通行", "静态场景"],
+    labelColors: { "行人出现": "#2563eb", "车辆通行": "#ea580c", "静态场景": "#64748b" },
+    assetFile: "pedestrians.mp4",
+    mediaSource: { title: "Park, roads and pedestrian crossing (30s, 720p)", author: "Samplelib", url: "https://samplelib.com/sample-mp4.html", license: "Samplelib 自由使用许可", licenseUrl: "https://samplelib.com/license.html", changes: "H.264 转码并移除配乐，保留完整画面与时长" },
   },
   {
-    id: "video-sports-motion",
-    title: "体育动作关键帧",
+    id: "video-flower-bloom",
+    title: "花朵开放关键帧",
     modality: "video",
-    description: "跟踪运动目标并标出动作阶段。",
-    instruction: "标记准备、运动和完成三个时间片段，并选取关键帧。",
+    description: "观察真实花朵开放的延时摄影，标出不同阶段和代表性关键帧。",
+    instruction: "按画面标记花苞、展开和盛开阶段；用关键帧工具记录花瓣状态明显变化的时刻。",
     difficulty: "进阶",
-    labels: ["准备", "运动", "完成"],
-    labelColors: { "准备": "#0891b2", "运动": "#f59e0b", "完成": "#16a34a" },
-    assetFile: "sports-motion.mp4",
+    labels: ["花苞", "展开", "盛开"],
+    labelColors: { "花苞": "#0891b2", "展开": "#f59e0b", "盛开": "#16a34a" },
+    assetFile: "flower.mp4",
+    mediaSource: { title: "Flower (MDN interactive examples)", author: "MDN contributors", url: "https://github.com/mdn/interactive-examples/tree/main/live-examples/media/cc0-videos", license: "CC0 1.0", licenseUrl: "https://creativecommons.org/publicdomain/zero/1.0/", changes: "原始视频，未修改" },
   },
   {
     id: "video-traffic-event",
     title: "交通事件切片",
     modality: "video",
-    description: "对模拟道路视频中的交通事件分段。",
+    description: "对真实城市道路视频中的车辆活动分段，练习短事件的起止边界。",
     instruction: "标记车辆进入、交汇和驶离画面的时间范围。",
     difficulty: "进阶",
     labels: ["车辆进入", "车辆交汇", "车辆驶离"],
     labelColors: { "车辆进入": "#2563eb", "车辆交汇": "#dc2626", "车辆驶离": "#16a34a" },
-    assetFile: "traffic-event.mp4",
+    assetFile: "road-traffic.mp4",
+    mediaSource: { title: "Road in a city (5s, 720p)", author: "Samplelib", url: "https://samplelib.com/sample-mp4.html", license: "Samplelib 自由使用许可", licenseUrl: "https://samplelib.com/license.html", changes: "H.264 转码并移除配乐，保留完整画面与时长" },
   },
   {
     id: "audio-mandarin-segmentation",
     title: "普通话语音分段",
     modality: "audio",
-    description: "从普通话录音中划分语音与静音区间。",
+    description: "使用真人朗读王维唐诗的录音，划分语音与停顿区间。",
     instruction: "在波形上分别标记有效语音和停顿，边界尽量贴近声音起止点。",
     difficulty: "入门",
     labels: ["有效语音", "静音"],
     labelColors: { "有效语音": "#2563eb", "静音": "#94a3b8" },
-    assetFile: "mandarin-segmentation.m4a",
+    assetFile: "mandarin-reading.m4a",
+    mediaSource: { title: "唐诗三百首卷一 · 送綦毋潜落第还乡（普通话）", author: "Jin Yilin / LibriVox；诗作：王维", url: "https://librivox.org/three-hundred-tang-poems-volume-1-by-various/", license: "LibriVox 公有领域录音", licenseUrl: "https://librivox.org/pages/public-domain/", changes: "第 014 轨截取 15–60 秒，AAC 转码" },
   },
   {
     id: "audio-campus-sounds",
-    title: "校园声音分类",
+    title: "诗歌朗读停顿",
     modality: "audio",
-    description: "识别校园录音中的不同声音事件。",
-    instruction: "标记上课铃、脚步或跑步声、校园广播对应的区间。",
+    description: "聆听真人朗读《望岳》，区分朗读、停顿和呼吸声。",
+    instruction: "听辨后再划定区间；呼吸声与底噪不能当作词语。可在句末添加时间点标记。",
     difficulty: "入门",
-    labels: ["上课铃", "运动声", "校园广播"],
-    labelColors: { "上课铃": "#f59e0b", "运动声": "#16a34a", "校园广播": "#2563eb" },
-    assetFile: "campus-sounds.m4a",
+    labels: ["朗读", "停顿", "呼吸声"],
+    labelColors: { "朗读": "#2563eb", "停顿": "#64748b", "呼吸声": "#16a34a" },
+    assetFile: "poem-pauses.m4a",
+    mediaSource: { title: "唐诗三百首卷一 · 望岳（普通话）", author: "Graham / LibriVox；诗作：杜甫", url: "https://librivox.org/three-hundred-tang-poems-volume-1-by-various/", license: "LibriVox 公有领域录音", licenseUrl: "https://librivox.org/pages/public-domain/", changes: "第 008 轨截取 15–50 秒，AAC 转码" },
   },
   {
     id: "audio-speaker-turns",
     title: "说话人片段",
     modality: "audio",
-    description: "划分对话中不同角色的发言区间。",
-    instruction: "按照老师和学生两个角色标记每段发言，不包含段间静音。",
+    description: "两位真人朗读者的片段拼接练习，区分不同声音，不是原始对话。",
+    instruction: "第一位出现的声音记为说话人 A，另一位记为说话人 B；按每段实际发声范围标记，排除停顿。",
     difficulty: "进阶",
-    labels: ["老师", "学生"],
-    labelColors: { "老师": "#4f46e5", "学生": "#16a34a" },
-    assetFile: "speaker-turns.m4a",
+    labels: ["说话人 A", "说话人 B"],
+    labelColors: { "说话人 A": "#4f46e5", "说话人 B": "#16a34a" },
+    assetFile: "two-readers.m4a",
+    mediaSource: { title: "唐诗三百首卷一 · 两位朗读者选段", author: "Jin Yilin、David Barnes / LibriVox；诗作：王维、张九龄", url: "https://librivox.org/three-hundred-tang-poems-volume-1-by-various/", license: "LibriVox 公有领域录音", licenseUrl: "https://librivox.org/pages/public-domain/", changes: "第 014、002 轨各截取 20–35 秒并依次拼接，AAC 转码" },
   },
   {
     id: "text-news-entities",
     title: "新闻实体抽取",
     modality: "text",
-    description: "从校园新闻中抽取人物、组织、地点和时间。",
-    instruction: "选中正文中的实体文字并添加对应标签，最后填写文档分类。",
+    description: "多段原创校园新闻，包含采访、活动安排、组织全称和相对时间。",
+    instruction: "抽取人物、组织、地点和时间，重复出现也要标注；职务不并入人名，完整日期作为一个实体。文末为教学说明。",
     difficulty: "入门",
     labels: ["人物", "组织", "地点", "时间"],
     labelColors: { "人物": "#2563eb", "组织": "#9333ea", "地点": "#16a34a", "时间": "#ea580c" },
-    textContent: "8月5日下午，智慧未来学校人工智能社团在学校报告厅举办数据标注公开课。指导教师李老师带领三十名学生完成了图片与文字标注实训。",
+    textContent: `【教学示例｜以下人物、组织与事件为虚构，用于实体抽取练习】
+
+智慧未来学校开展多模态数据标注实践周
+
+2026年9月14日上午，智慧未来学校人工智能社团在创新楼三层实验室举行实践周启动活动。指导教师李明介绍，本次活动由学校信息技术中心与青禾社区服务站联合组织，三十六名学生将分组完成图片、视频、语音和文字四类标注任务。
+
+启动环节中，社团负责人陈晓展示了上学期制作的校园植物观察手册。她表示：“同一张照片，如果有人只框住叶片的一半，有人把背景也算进去，最后得到的数据就很难统一。开始操作前，大家要先讨论目标边界和标签含义。”来自信息技术中心的周宁补充说，标注人员应根据素材本身做判断，遇到看不清的内容时不要猜测。
+
+当天下午，第一小组前往青禾社区的东门广场采集垃圾分类设施照片；第二小组在学校图书馆整理已经获得使用许可的阅读材料。负责协调的王悦提醒大家，涉及个人联系方式的原始文档必须先完成脱敏，整理后的材料统一存放在指定项目中，不通过个人聊天群传递。
+
+9月16日，李明在创新楼组织了一次交叉检查。审核组发现，部分记录遗漏了重复出现的机构名称，还有同学把“下周三”改写成自己推算的日期。老师要求保留原文中的表达，只对原文已有的字符区间添加标签，不补写没有出现的信息。随后，陈晓带领小组逐条核对问题，并把修改意见写入审核记录。
+
+根据计划，实践周成果交流会将于9月18日15:00在学校报告厅举行。青禾社区服务站的工作人员将旁听学生展示，信息技术中心负责收集规范建议。通过审核的标注结果将导出为 JSON，供下一阶段的检索实验使用；尚未通过的记录留在本地，按照意见修订后再次提交。
+
+练习提示：人物姓名、机构全称和地点可能反复出现，不能只标记第一次。“当天下午”“上学期”“下一阶段”均需按团队约定判断是否属于时间实体。数量“三十六名”不属于本项目的四类标签。`,
   },
   {
     id: "text-sentiment",
     title: "评论情感分类",
     modality: "text",
-    description: "判断多条课程评价中的情感倾向。",
-    instruction: "选取具有情感含义的短语并标记正向、负向或中性，再填写文档分类。",
+    description: "八条原创实训反馈，覆盖褒贬混合、转折、建议和客观事实。",
+    instruction: "以能独立表达态度的短语为区间，分别标记正向、负向或中性；转折前后分开，不把建议自动判为负向。",
     difficulty: "入门",
     labels: ["正向", "负向", "中性"],
     labelColors: { "正向": "#16a34a", "负向": "#dc2626", "中性": "#64748b" },
-    textContent: "这次实训步骤清楚，示例也很容易理解。视频加载稍微有点慢，但标注工具整体很顺手。我希望下一次能增加更多音频案例。",
+    textContent: `【教学示例｜以下八条评价为原创虚构文本，不代表真实用户反馈】
+
+评价一：第一次做图片标注时，我以为需要记很多快捷键，实际跟着示例就能完成。标签颜色区分得很清楚，保存后还能继续打开，这一点很方便。不过，我在较小的屏幕上查看项目设置时，觉得需要来回切换面板，希望以后能让说明更容易找到。
+
+评价二：今天的课程安排是先看演示，再分组操作，最后交换作品检查。我们组用了三张图片和一段视频，一共花了四十五分钟。老师要求每个人记录遇到的问题。这些是课堂安排，我暂时没有特别的好坏评价。
+
+评价三：音频里的停顿比较明显，适合刚开始练习的人。我最喜欢可以反复播放同一个片段，不必从头再听。但是，背景里出现轻微呼吸声时，我还是分不清应该归入哪一类，这让我有点困惑。补充一个边界案例的讲解可能会更有帮助。
+
+评价四：看到记录被退回时，我一开始很失落。打开意见后才发现，是我漏标了两处重复出现的组织名称。意见写得具体，修改起来并不麻烦。重新通过审核后，我对这一套检查方式的印象明显变好了。
+
+评价五：不能否认示例很丰富，但有两份文字的段落太长，找实体时容易漏行。我不讨厌长文本，只是希望长短案例搭配出现。要是每次练习都只有一句话，也很难接近实际工作。这条建议不意味着我对整门课程不满意。
+
+评价六：我们昨天导入了一份通知，正文包含活动时间、地点和参与对象。今天又增加了两段补充说明，原来的审核结果因此需要重新确认。我理解这种安排，因为修改后的内容应该再看一遍，直接沿用旧结果反而会让我不放心。
+
+评价七：最后的 JSON 导出很实用，字段名称容易理解，拿去做后续统计省了不少整理时间。可惜小组开始时没有统一标签，同一个概念用了两个名字，合并数据时遇到了麻烦。下次我会先和同学商量规则，再开始操作。
+
+评价八：这次没有出现文件丢失，但我在操作中仍然习惯随时保存。视频案例的时间不长，足够观察几个关键动作。我期待增加更多真实的工作场景，也愿意再做一轮类似练习。整体体验符合我的预期。
+
+练习提示：同一条评价可以同时包含正向、负向和中性区间。注意“不是不满意”“不讨厌”等否定表达，不要只按单个词语判断。请分别标记表达情绪的文字区间，不要用某一条评价的情绪代表整篇。`,
   },
   {
     id: "text-notice-elements",
     title: "通知要素标注",
     modality: "text",
-    description: "抽取校园通知中的关键执行要素。",
-    instruction: "标记时间、地点、参与人和事项，注意不要把标点包含在区间内。",
+    description: "一份含报名、培训、提交、审核及变更条款的完整活动通知。",
+    instruction: "分别标记时间、地点、参与人和事项；把截止时间与活动时间分开，区分原安排、变更安排和条件说明。",
     difficulty: "进阶",
     labels: ["时间", "地点", "参与人", "事项"],
     labelColors: { "时间": "#ea580c", "地点": "#16a34a", "参与人": "#2563eb", "事项": "#9333ea" },
-    textContent: "请全体人工智能实训班学生于本周五14:00前往第二实训楼302室，参加多模态数据标注阶段测评，并携带学生证。",
+    textContent: `【教学示例｜原创虚构通知，用于要素抽取练习】
+
+关于开展多模态数据标注阶段实训的通知
+
+人工智能实训班全体学生、各组负责人及审核志愿者：
+
+为检查前一阶段的学习情况，课程组拟于2026年10月12日至10月16日组织综合实训。此次实训包含素材整理、标注、交叉审核和成果导出四个环节。请各组先确认标签规范，再分配工作；同一项目中的标签名称、边界规则和保存要求应保持一致。
+
+一、报名与材料准备。各组负责人须于10月9日17:00前，将成员名单和选择的实训主题提交至课程平台。每组四至六人，至少安排一人负责交叉检查。请使用经过授权或自行拍摄的素材，图片不少于三张，音视频各一段，文字材料应包含完整段落。不得上传带有真实证件号码、私人电话号码等未经处理的信息。
+
+二、集中培训。全体参与学生于10月12日14:00在第二实训楼302室集合，携带学生证和可使用的笔记本电脑。培训内容包括目标框选、音视频区间切分、文本实体边界及审核意见填写。无法到场的同学应提前向指导教师说明情况，并于当日晚间查看课程平台中的录播说明。
+
+三、提交与审核。标注员应在10月14日18:00前保存本组记录，审核志愿者于次日9:00起逐条打开详情进行检查。发现漏标、错标或边界不一致时，应退回并写明具体位置和修改要求。标注员修改后需重新保存，原来的通过状态不继续沿用。通过审核的记录由组负责人导出 JSON，文件名中注明项目名称。
+
+四、成果交流。原定10月16日15:00在学校报告厅举行的交流活动，因场地维护调整到创新楼一层多功能室，开始时间不变。每组展示不超过八分钟，重点说明标签规范、一个分歧案例和最终处理办法。审核志愿者需提前二十分钟到场核对展示顺序。
+
+五、补充安排。如因设备故障影响提交，请在截止前联系课程助教登记问题，获确认后可延长至10月15日12:00。该安排仅适用于已登记的组，其他组仍按原时间完成。实训结束后，本地项目保留到学期末，便于复查；对外展示的材料须另行核对来源和使用范围。
+
+课程组
+2026年10月7日
+
+练习提示：“原定”与“调整到”后的地点都在正文中出现，应分别标注，不能删除旧安排。参与对象既包括全体学生，也包括负责人和审核志愿者；根据具体句子的指向确定区间。`,
   },
 ] as const;
 
@@ -292,6 +359,38 @@ function fileErrorCode(error: unknown): string | null {
   return typeof code === "string" ? code : null;
 }
 
+function pendingReview(): ProjectReview {
+  return { status: "pending", comment: "", reviewedAt: null, revision: null };
+}
+
+function savedReview(value: unknown, revision: number): ProjectReview {
+  const review = object(value);
+  if (!review || (review.status !== "approved" && review.status !== "rejected")
+    || review.revision !== revision || typeof review.reviewedAt !== "string"
+    || typeof review.comment !== "string") return pendingReview();
+  return { status: review.status, comment: review.comment, reviewedAt: review.reviewedAt, revision };
+}
+
+function savedMediaSource(value: unknown): MediaSource | undefined {
+  const source = object(value);
+  if (!source || typeof source.title !== "string" || typeof source.author !== "string"
+    || typeof source.url !== "string" || typeof source.license !== "string"
+    || typeof source.licenseUrl !== "string" || typeof source.changes !== "string") return undefined;
+  return { title: source.title, author: source.author, url: source.url, license: source.license,
+    licenseUrl: source.licenseUrl, changes: source.changes };
+}
+
+// Serialize read/check/write for a record across all workbench sessions in this service.
+const projectWrites = new Map<string, Promise<unknown>>();
+async function withProjectWrite<T>(root: string, id: string, action: () => Promise<T>): Promise<T> {
+  const key = projectPath(root, id).toLowerCase();
+  const previous = projectWrites.get(key) ?? Promise.resolve();
+  const operation = previous.catch(() => {}).then(action);
+  projectWrites.set(key, operation);
+  try { return await operation; }
+  finally { if (projectWrites.get(key) === operation) projectWrites.delete(key); }
+}
+
 function projectFromPayload(payload: unknown): ProjectRecord {
   const record = object(payload);
   if (!record || typeof record.id !== "string" || typeof record.title !== "string") {
@@ -322,6 +421,8 @@ function projectFromPayload(payload: unknown): ProjectRecord {
       createdAt,
       updatedAt,
       updateSource,
+      review: savedReview(record.review, revision),
+      mediaSource: savedMediaSource(record.mediaSource),
     };
   }
 
@@ -341,6 +442,7 @@ function projectFromPayload(payload: unknown): ProjectRecord {
       createdAt,
       updatedAt,
       updateSource,
+      review: pendingReview(),
     };
   }
 
@@ -405,6 +507,7 @@ function projectSummary(project: ProjectRecord) {
     revision: project.revision,
     updatedAt: project.updatedAt,
     updateSource: project.updateSource,
+    review: project.review,
     annotationCount,
     annotationCounts: counts,
     status: annotationCount > 0 ? "in_progress" : "not_started",
@@ -526,28 +629,33 @@ async function updateProject(
   annotations: unknown,
   expectedRevision: unknown,
   textContent: unknown,
+  updateSource: UpdateSource = "user",
 ): Promise<ProjectRecord> {
-  const project = await readProject(root, validateProjectId(projectId));
-  if (!Number.isInteger(expectedRevision) || expectedRevision !== project.revision) {
-    throw Object.assign(
-      new Error(`annotation revision conflict: expected ${String(expectedRevision)}, current ${project.revision}`),
-      { statusCode: 409 },
-    );
-  }
-  const nextText = typeof textContent === "string" ? textContent : project.textContent;
-  if (nextText && Buffer.byteLength(nextText) > MAX_TEXT_BYTES) {
-    throw Object.assign(new Error("text content is larger than 5 MB"), { statusCode: 413 });
-  }
-  const next: ProjectRecord = {
-    ...project,
-    annotations: annotationObject(annotations),
-    textContent: project.modality === "text" ? nextText ?? "" : null,
-    revision: project.revision + 1,
-    updatedAt: new Date().toISOString(),
-    updateSource: "user",
-  };
-  await writeProject(root, next);
-  return next;
+  return withProjectWrite(root, projectId, async () => {
+    const project = await readProject(root, validateProjectId(projectId));
+    if (!Number.isInteger(expectedRevision) || expectedRevision !== project.revision) {
+      throw Object.assign(
+        new Error(`annotation revision conflict: expected ${String(expectedRevision)}, current ${project.revision}`),
+        { statusCode: 409 },
+      );
+    }
+    const nextText = typeof textContent === "string" ? textContent : project.textContent;
+    if (nextText && Buffer.byteLength(nextText) > MAX_TEXT_BYTES) {
+      throw Object.assign(new Error("text content is larger than 5 MB"), { statusCode: 413 });
+    }
+    const next: ProjectRecord = {
+      ...project,
+      annotations: annotationObject(annotations),
+      textContent: project.modality === "text" ? nextText ?? "" : null,
+      revision: project.revision + 1,
+      updatedAt: new Date().toISOString(),
+      updateSource,
+      review: pendingReview(),
+    };
+    if (JSON.stringify(project.annotations) === JSON.stringify(next.annotations) && project.textContent === next.textContent) return project;
+    await writeProject(root, next);
+    return next;
+  });
 }
 
 async function updateProjectLabels(
@@ -556,38 +664,120 @@ async function updateProjectLabels(
   labels: unknown,
   replacements: unknown,
   expectedRevision: unknown,
+  updateSource: UpdateSource = "user",
 ): Promise<ProjectRecord> {
-  const project = await readProject(root, validateProjectId(projectId));
-  if (!Number.isInteger(expectedRevision) || expectedRevision !== project.revision) {
-    throw Object.assign(
-      new Error(`标签版本冲突：预期 ${String(expectedRevision)}，当前 ${project.revision}。请重新打开项目。`),
-      { statusCode: 409 },
-    );
-  }
-  const definitions = labelDefinitions(labels);
-  const names = definitions.map((definition) => definition.name);
-  const nextNames = new Set(names);
-  const replacementMap = labelReplacementMap(replacements, project.labels, names);
-  const usage = labelUsageCounts(project.annotations);
-  for (const label of project.labels) {
-    if (!nextNames.has(label) && (usage.get(label) ?? 0) > 0 && !replacementMap.has(label)) {
+  return withProjectWrite(root, projectId, async () => {
+    const project = await readProject(root, validateProjectId(projectId));
+    if (!Number.isInteger(expectedRevision) || expectedRevision !== project.revision) {
       throw Object.assign(
-        new Error(`标签“${label}”仍被 ${String(usage.get(label))} 条标注使用，请先选择替换标签。`),
+        new Error(`标签版本冲突：预期 ${String(expectedRevision)}，当前 ${project.revision}。请重新打开项目。`),
         { statusCode: 409 },
       );
     }
+    const definitions = labelDefinitions(labels);
+    const names = definitions.map((definition) => definition.name);
+    const nextNames = new Set(names);
+    const replacementMap = labelReplacementMap(replacements, project.labels, names);
+    const usage = labelUsageCounts(project.annotations);
+    for (const label of project.labels) {
+      if (!nextNames.has(label) && (usage.get(label) ?? 0) > 0 && !replacementMap.has(label)) {
+        throw Object.assign(
+          new Error(`标签“${label}”仍被 ${String(usage.get(label))} 条标注使用，请先选择替换标签。`),
+          { statusCode: 409 },
+        );
+      }
+    }
+    const next: ProjectRecord = {
+      ...project,
+      labels: names,
+      labelColors: Object.fromEntries(definitions.map((definition) => [definition.name, definition.color])),
+      annotations: replaceAnnotationLabels(project.annotations, replacementMap),
+      revision: project.revision + 1,
+      updatedAt: new Date().toISOString(),
+      updateSource,
+      review: pendingReview(),
+    };
+    if (JSON.stringify(project.labels) === JSON.stringify(next.labels)
+      && JSON.stringify(project.labelColors) === JSON.stringify(next.labelColors)
+      && JSON.stringify(project.annotations) === JSON.stringify(next.annotations)) return project;
+    await writeProject(root, next);
+    return next;
+  });
+}
+
+async function reviewProject(root: string, projectId: string, body: Record<string, unknown>, updateSource: UpdateSource = "user"): Promise<ProjectRecord> {
+  return withProjectWrite(root, projectId, async () => {
+    const project = await readProject(root, projectId);
+    if (!Number.isInteger(body.expectedRevision) || body.expectedRevision !== project.revision) {
+      throw Object.assign(new Error("记录已更新，请重新打开详情后审核。"), { statusCode: 409 });
+    }
+    if (body.status !== "approved" && body.status !== "rejected") {
+      throw Object.assign(new Error("请选择通过或退回。"), { statusCode: 400 });
+    }
+    const comment = typeof body.comment === "string" ? body.comment.trim() : "";
+    if (comment.length > 2000 || (body.status === "rejected" && !comment)) {
+      throw Object.assign(new Error("退回时请填写意见，审核意见最多 2000 字。"), { statusCode: 400 });
+    }
+    if (body.status === "approved" && projectSummary(project).annotationCount === 0) {
+      throw Object.assign(new Error("该记录还没有已保存的标注，暂不能通过。"), { statusCode: 409 });
+    }
+    const now = new Date().toISOString();
+    const revision = project.revision + 1;
+    const next: ProjectRecord = { ...project, revision, updatedAt: now, updateSource,
+      review: { status: body.status, comment, reviewedAt: now, revision } };
+    await writeProject(root, next);
+    return next;
+  });
+}
+
+async function createTextProject(root: string, body: Record<string, unknown>, updateSource: UpdateSource = "user"): Promise<ProjectRecord> {
+  const textContent = requiredString(body, "textContent", MAX_TEXT_BYTES);
+  if (Buffer.byteLength(textContent) > MAX_TEXT_BYTES) {
+    throw Object.assign(new Error("text content is larger than 5 MB"), { statusCode: 413 });
   }
-  const next: ProjectRecord = {
-    ...project,
-    labels: names,
-    labelColors: Object.fromEntries(definitions.map((definition) => [definition.name, definition.color])),
-    annotations: replaceAnnotationLabels(project.annotations, replacementMap),
-    revision: project.revision + 1,
-    updatedAt: new Date().toISOString(),
-    updateSource: "user",
+  const now = new Date().toISOString();
+  const project: ProjectRecord = {
+    schemaVersion: 2,
+    id: randomUUID(),
+    title: typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 200) : "文字标注",
+    modality: "text",
+    sourcePath: null,
+    mimeType: "text/plain; charset=utf-8",
+    textContent,
+    labels: defaultLabels("text"),
+    labelColors: {},
+    annotations: defaultAnnotations("text"),
+    review: pendingReview(),
+    revision: 0,
+    createdAt: now,
+    updatedAt: now,
+    updateSource,
   };
-  await writeProject(root, next);
-  return next;
+  await writeProject(root, project);
+  return project;
+}
+
+async function exportProject(root: string, projectId: string) {
+  const project = await readProject(root, projectId);
+  if (project.review.status !== "approved" || project.review.revision !== project.revision) {
+    throw Object.assign(new Error("只有当前版本审核通过的记录才能导出 JSON。"), { statusCode: 409 });
+  }
+  return { format: "ipollowork.annotation", schemaVersion: 1, exportedAt: new Date().toISOString(), project };
+}
+
+async function deleteProject(root: string, projectId: string, expectedRevision?: unknown) {
+  return withProjectWrite(root, projectId, async () => {
+    if (expectedRevision !== undefined) {
+      const project = await readProject(root, projectId);
+      if (!Number.isInteger(expectedRevision) || expectedRevision !== project.revision) {
+        throw Object.assign(new Error("记录已更新，请重新读取后删除。"), { statusCode: 409 });
+      }
+    }
+    // Remove records only; never remove source media, which may belong to the user.
+    await rm(legacyTaskPath(root, projectId), { force: true });
+    await rm(projectPath(root, projectId), { force: true });
+    return { ok: true, projectId };
+  });
 }
 
 function safeWorkspaceFile(root: string, sourcePath: string): string {
@@ -614,7 +804,7 @@ async function projectMedia(root: string, project: ProjectRecord): Promise<strin
 function defaultAnnotations(modality: Modality): AnnotationMap {
   if (modality === "image") return { point: [], line: [], rect: [], polygon: [], cuboid: [], text: [], tag: [] };
   if (modality === "video" || modality === "audio") return { segment: [], frame: [], text: [], tag: [] };
-  return { spans: [], classification: "" };
+  return { spans: [] };
 }
 
 function defaultLabels(modality: Modality): string[] {
@@ -641,7 +831,7 @@ function trainingTemplateAssetPath(assetFile: string): string {
   return source;
 }
 
-async function createTrainingProject(root: string, templateId: unknown): Promise<ProjectRecord> {
+async function createTrainingProject(root: string, templateId: unknown, updateSource: UpdateSource = "user"): Promise<ProjectRecord> {
   const idValue = typeof templateId === "string" ? templateId.trim() : "";
   const template = trainingTemplates.find((candidate) => candidate.id === idValue);
   if (!template) throw Object.assign(new Error("没有找到这个实训项目。"), { statusCode: 404 });
@@ -681,10 +871,12 @@ async function createTrainingProject(root: string, templateId: unknown): Promise
     labels: [...template.labels],
     labelColors: { ...template.labelColors },
     annotations: defaultAnnotations(template.modality),
+    mediaSource: template.mediaSource,
+    review: pendingReview(),
     revision: 0,
     createdAt: now,
     updatedAt: now,
-    updateSource: "user",
+    updateSource,
   };
   await writeProject(root, project);
   return project;
@@ -932,9 +1124,43 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
           json(response, 200, { ok: true, pluginId: runtime.plugin.id, version: runtime.plugin.version });
           return;
         }
+        if (url.pathname.startsWith("/api/") && ["POST", "PUT", "PATCH", "DELETE"].includes(request.method ?? "")
+          && url.pathname !== "/api/role") {
+          const launch = launchFrom(url);
+          const requiredRole = url.pathname === "/api/project-review" ? "reviewer" : "annotator";
+          if (launch.role !== requiredRole) {
+            throw Object.assign(new Error(requiredRole === "reviewer" ? "请先切换为审核员。" : "审核员只能查看和审核，请切换为标注员后修改。"), { statusCode: 403 });
+          }
+        }
+        if (url.pathname === "/api/role" && (request.method === "GET" || request.method === "POST")) {
+          const launch = launchFrom(url);
+          if (request.method === "POST") {
+            const body = await requestBody(request);
+            if (body.role !== "annotator" && body.role !== "reviewer") {
+              throw Object.assign(new Error("角色无效。"), { statusCode: 400 });
+            }
+            launch.role = body.role;
+          }
+          json(response, 200, { role: launch.role });
+          return;
+        }
+        if (url.pathname === "/api/project-review" && request.method === "POST") {
+          const launch = launchFrom(url);
+          const project = await reviewProject(launch.workspaceRoot, projectIdFrom(url), await requestBody(request));
+          json(response, 200, { project: projectForBrowser(project, url.searchParams.toString()) });
+          return;
+        }
+        if (url.pathname === "/api/project-export" && request.method === "GET") {
+          const launch = launchFrom(url);
+          const exported = await exportProject(launch.workspaceRoot, projectIdFrom(url));
+          const { project } = exported;
+          response.setHeader("content-disposition", `attachment; filename="annotation-${project.id}.json"; filename*=UTF-8''${encodeURIComponent(`${project.title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").slice(0, 100)}.json`)}`);
+          json(response, 200, exported);
+          return;
+        }
         if (url.pathname === "/api/projects" && request.method === "GET") {
           const launch = launchFrom(url);
-          json(response, 200, { projects: await listProjects(launch.workspaceRoot, 100) });
+          json(response, 200, { projects: await listProjects(launch.workspaceRoot, 100), role: launch.role });
           return;
         }
         if (url.pathname === "/api/training-templates" && request.method === "GET") {
@@ -952,10 +1178,7 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
         if (url.pathname === "/api/project" && request.method === "DELETE") {
           const launch = launchFrom(url);
           const projectId = projectIdFrom(url);
-          // Remove only owned record paths, never sourcePath (legacy records may refer to user files).
-          // Delete the legacy copy first so a migrated record cannot reappear through the read fallback.
-          await rm(legacyTaskPath(launch.workspaceRoot, projectId), { force: true });
-          await rm(projectPath(launch.workspaceRoot, projectId), { force: true });
+          await deleteProject(launch.workspaceRoot, projectId);
           json(response, 200, { ok: true });
           return;
         }
@@ -992,6 +1215,7 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
             labels: defaultLabels(upload.modality),
             labelColors: {},
             annotations: defaultAnnotations(upload.modality),
+            review: pendingReview(),
             revision: 0,
             createdAt: now,
             updatedAt: now,
@@ -1045,28 +1269,7 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
         if (url.pathname === "/api/project-text" && request.method === "POST") {
           const launch = launchFrom(url);
           const body = await requestBody(request);
-          const textContent = requiredString(body, "textContent", MAX_TEXT_BYTES);
-          if (Buffer.byteLength(textContent) > MAX_TEXT_BYTES) {
-            throw Object.assign(new Error("text content is larger than 5 MB"), { statusCode: 413 });
-          }
-          const now = new Date().toISOString();
-          const project: ProjectRecord = {
-            schemaVersion: 2,
-            id: randomUUID(),
-            title: typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 200) : "文字标注",
-            modality: "text",
-            sourcePath: null,
-            mimeType: "text/plain; charset=utf-8",
-            textContent,
-            labels: defaultLabels("text"),
-            labelColors: {},
-            annotations: defaultAnnotations("text"),
-            revision: 0,
-            createdAt: now,
-            updatedAt: now,
-            updateSource: "user",
-          };
-          await writeProject(launch.workspaceRoot, project);
+          const project = await createTextProject(launch.workspaceRoot, body);
           json(response, 201, { project: projectForBrowser(project, url.searchParams.toString()) });
           return;
         }
@@ -1158,7 +1361,7 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
         const root = await workspaceRoot(context);
         const serviceOrigin = await ensureServer();
         const session = randomBytes(18).toString("base64url");
-        launches.set(session, { workspaceRoot: root, expiresAt: Date.now() + 24 * 60 * 60 * 1_000 });
+        launches.set(session, { workspaceRoot: root, expiresAt: Date.now() + 24 * 60 * 60 * 1_000, role: "annotator" });
         const url = new URL(serviceOrigin);
         url.searchParams.set("session", session);
         url.searchParams.set("token", accessToken);
@@ -1174,6 +1377,29 @@ export default async function createDataAnnotationService(runtime: PluginRuntime
       "get-project": async (input: Record<string, unknown>, context: Record<string, unknown>) => {
         const root = await workspaceRoot(context);
         return readProject(root, validateProjectId(requiredString(input, "projectId", 128)));
+      },
+
+      "list-training-templates": async (_input: Record<string, unknown>, context: Record<string, unknown>) => {
+        await workspaceRoot(context);
+        return trainingTemplateSummaries();
+      },
+      "create-training-project": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        createTrainingProject(await workspaceRoot(context), input.templateId, "ai"),
+      "create-text-project": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        createTextProject(await workspaceRoot(context), input, "ai"),
+      "update-project": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        updateProject(await workspaceRoot(context), validateProjectId(requiredString(input, "projectId", 128)),
+          input.annotations, input.expectedRevision, input.textContent, "ai"),
+      "update-project-labels": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        updateProjectLabels(await workspaceRoot(context), validateProjectId(requiredString(input, "projectId", 128)),
+          input.labels, input.replacements, input.expectedRevision, "ai"),
+      "review-project": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        reviewProject(await workspaceRoot(context), validateProjectId(requiredString(input, "projectId", 128)), input, "ai"),
+      "export-project": async (input: Record<string, unknown>, context: Record<string, unknown>) =>
+        exportProject(await workspaceRoot(context), validateProjectId(requiredString(input, "projectId", 128))),
+      "delete-project": async (input: Record<string, unknown>, context: Record<string, unknown>) => {
+        if (!Number.isInteger(input.expectedRevision)) throw Object.assign(new Error("expectedRevision is required"), { statusCode: 400 });
+        return deleteProject(await workspaceRoot(context), validateProjectId(requiredString(input, "projectId", 128)), input.expectedRevision);
       },
     },
 

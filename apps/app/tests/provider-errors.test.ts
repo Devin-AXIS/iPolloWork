@@ -5,6 +5,14 @@ const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 const client = createiPolloWorkServerClient({ baseUrl: "http://localhost:8787", token: "test-token" });
 
+test("plugin listing waits for first-use preparation beyond the ordinary config timeout", async () => {
+  globalThis.fetch = Object.assign(async () => {
+    await new Promise(resolve => setTimeout(resolve, 11_000));
+    return Response.json({ items: [] });
+  }, { preconnect: originalFetch.preconnect });
+  await expect(client.listPluginPackages("ws_existing")).resolves.toEqual({ items: [] });
+}, 15_000);
+
 test("API client replaces non-JSON gateway pages and empty errors with actionable text", async () => {
   for (const body of ["<html>private gateway diagnostics</html>", ""]) {
     globalThis.fetch = Object.assign(async () => new Response(body, { status: 503 }), { preconnect: originalFetch.preconnect });

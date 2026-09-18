@@ -2,7 +2,7 @@
   "schemaVersion": 2,
   "id": "labelu-data-annotation",
   "name": "数据标注实训云",
-  "description": "面向教学实训的多模态数据标注工作台，支持自有素材、PDF、Word 和 TXT 文字导入、预设实训项目和已保存项目续标。",
+  "description": "多模态数据标注工作台：真实素材实训、文档导入、标注员/审核员切换、本地记录审核及通过后导出 JSON。",
   "category": "数据与分析",
   "source": {
     "format": "ipollowork-extension-manifest",
@@ -11,10 +11,10 @@
     "reference": "https://github.com/opendatalab/labelU-Kit"
   },
   "composer": {
-    "prompt": "数据标注通过右侧数据标注工作台使用。用户点击左侧“数据标注”或右侧控制台中的数据标注入口后，工作台会自动在 iframe 中打开，无需调用浏览器工具或展示本地带令牌地址。不要查找素材、索要路径或从对话创建标注任务。用户在工作台上传素材、输入文字、导入 PDF、Word 或 TXT 或选择内置实训项目。仅在用户明确要求时调用 list-projects 和 get-project，只读查看已保存标注。"
+    "prompt": "通过数据标注工作台或主软件 MCP 扩展通道操作当前工作区的标注项目。先用 ipollowork_extension_list_actions 查看接口，再用 ipollowork_extension_call（extensionId: labelu-data-annotation）调用。打开工作台优先用左侧数据标注入口，不向用户展示带令牌地址。读取使用 list-projects/get-project；用户要求创建、修改、审核、导出或删除时使用对应动作，参数与边界见插件 Skill。修改前读取最新 revision，冲突时重新读取，不盲目覆盖。仅在用户明确要求时审核或删除。工作台首页切换本机角色，详情页沿用所选角色；接口调用不更改界面角色。"
   },
   "package": {
-    "version": "0.3.2",
+    "version": "0.4.16",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -47,10 +47,10 @@
     "translations": {
       "en": {
         "name": "Data Annotation Training Cloud",
-        "description": "A multimodal data annotation workbench for teaching and training, with user-owned media, PDF, Word, and TXT text import, prepared exercises, and resumable saved projects.",
+        "description": "A multimodal annotation workbench with real training media, document import, local annotator/reviewer modes, saved-record review, and approved JSON exports.",
         "category": "Data & Analytics",
         "composer": {
-          "prompt": "Use Data Annotation in the right-side workspace app. The sidebar Data Annotation entry and the console launcher open the workbench automatically in an iframe. Do not use browser tools or expose token-bearing local URLs. Do not search for media, request paths, or create annotation tasks from chat. Users upload media, enter text, import PDF, Word, or TXT files, or select bundled exercises in the workbench. Only call list-projects or get-project when explicitly asked to inspect saved annotations; chat operations are read-only."
+          "prompt": "Use the annotation workbench or host MCP extension tools in the active workspace. Discover actions with ipollowork_extension_list_actions and call ipollowork_extension_call with extensionId labelu-data-annotation. Support listing, reading, creating text or training projects, saving annotations, managing labels, reviewing, exporting and deleting on user request. Read the current revision before writes; reread and reconcile conflicts instead of blindly overwriting. Review and deletion require an explicit user request. Workbench role switching is available only on the home page; action calls do not change UI roles. Open the workbench through the sidebar and never expose token-bearing URLs. See the plugin Skill for schemas and boundaries."
         },
         "resources": {
           "labelu-react-app": {
@@ -67,11 +67,11 @@
           },
           "labelu-data-annotation-service": {
             "label": "Data Annotation Training Service",
-            "description": "Starts the independent multimodal workbench, extracts text from imported PDF, Word, and TXT files, and saves projects and annotations created in the workbench."
+            "description": "Multimodal workbench and host actions for project creation, annotations, labels, review, export and deletion."
           },
           "labelu-data-annotation-workflow": {
             "label": "Data Annotation Training Workflow",
-            "description": "Guides the Agent to open the multimodal workbench directly and inspect saved projects only when explicitly requested."
+            "description": "Guide host MCP actions for annotation projects, labels, reviews and exports."
           },
           "workbench": {
             "label": "Data Annotation",
@@ -139,7 +139,7 @@
       "type": "local-service",
       "id": "labelu-data-annotation-service",
       "label": "数据标注实训服务",
-      "description": "启动独立多模态工作台，提取用户导入的 PDF、Word 和 TXT 文字，并保存页面中创建的项目与标注结果。",
+      "description": "提供多模态标注工作台，以及项目创建、标注保存、标签管理、审核、导出和删除的主软件调用接口。",
       "path": "service/dist/data-annotation.mjs",
       "requires": [
         "resource:labelu-react-app",
@@ -149,7 +149,15 @@
       "provides": [
         "action:open-workbench",
         "action:list-projects",
-        "action:get-project"
+        "action:get-project",
+        "action:list-training-templates",
+        "action:create-training-project",
+        "action:create-text-project",
+        "action:update-project",
+        "action:update-project-labels",
+        "action:review-project",
+        "action:export-project",
+        "action:delete-project"
       ],
       "required": true,
       "actions": [
@@ -173,7 +181,7 @@
             "type": "object",
             "properties": {
               "limit": {
-                "type": "number",
+                "type": "integer",
                 "minimum": 1,
                 "maximum": 100
               }
@@ -190,11 +198,250 @@
             "type": "object",
             "properties": {
               "projectId": {
-                "type": "string"
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
               }
             },
             "required": [
               "projectId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-training-templates",
+          "title": "列出实训模板",
+          "description": "列出可创建的四类内置实训项目及素材来源。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "create-training-project",
+          "title": "创建实训项目",
+          "description": "按 templateId 创建独立项目并复制内置素材；非幂等，调用成功后保留返回的 id。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "templateId": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "templateId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "create-text-project",
+          "title": "创建文字标注项目",
+          "description": "用用户提供的正文创建待审核项目；非幂等，返回完整项目。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 200
+              },
+              "textContent": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 5242880
+              }
+            },
+            "required": [
+              "textContent"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "update-project",
+          "title": "保存项目标注",
+          "description": "完整替换 annotations（非增量），沿用 LabelU 原生结构。先读取项目，保留不修改的标记。正文或标注改变后恢复待审核。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "先 get-project 读取当前 revision；冲突时重新读取，禁止盲目重试覆盖。"
+              },
+              "annotations": {
+                "type": "object",
+                "description": "文字用 spans；图片用 rect/polygon/point 等；音视频用 segment/frame。必须保留原生标记字段。",
+                "additionalProperties": true
+              },
+              "textContent": {
+                "type": "string",
+                "maxLength": 5242880
+              }
+            },
+            "required": [
+              "projectId",
+              "expectedRevision",
+              "annotations"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "update-project-labels",
+          "title": "管理项目标签集",
+          "description": "完整替换标签集；改名或删除已用标签时通过 replacements 指定旧名称到新名称，已有标记同步更新并恢复待审核。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "先 get-project 读取当前 revision；冲突时重新读取，禁止盲目重试覆盖。"
+              },
+              "labels": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 50,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 48
+                    },
+                    "color": {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "color"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "replacements": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "projectId",
+              "expectedRevision",
+              "labels"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "review-project",
+          "title": "审核标注记录",
+          "description": "仅在用户要求审核时使用，针对读取过的当前版本通过或退回。退回必须填写意见，空标注不能通过。不改变工作台的角色。",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "先 get-project 读取当前 revision；冲突时重新读取，禁止盲目重试覆盖。"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "approved",
+                  "rejected"
+                ]
+              },
+              "comment": {
+                "type": "string",
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "projectId",
+              "expectedRevision",
+              "status"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "export-project",
+          "title": "导出审核通过的 JSON",
+          "description": "返回当前版本已通过审核的 JSON 对象，不写文件，不包含素材二进制或工作台访问令牌。",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              }
+            },
+            "required": [
+              "projectId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "delete-project",
+          "title": "删除标注记录",
+          "description": "用户明确要求删除时使用。核对版本后只删除所选记录，保留原始素材；不存在的记录返回 404。",
+          "effect": "destructive",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "projectId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 128,
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+              },
+              "expectedRevision": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "先 get-project 读取当前 revision；冲突时重新读取，禁止盲目重试覆盖。"
+              }
+            },
+            "required": [
+              "projectId",
+              "expectedRevision"
             ],
             "additionalProperties": false
           }
@@ -205,7 +452,7 @@
       "type": "skill",
       "id": "labelu-data-annotation-workflow",
       "label": "数据标注实训云工作流",
-      "description": "指导 Agent 直接打开多模态工作台，并在用户明确要求时只读查看已保存项目。",
+      "description": "指导主软件通过 MCP 扩展动作操作标注项目、标签、审核和导出。",
       "path": "skills/labelu-data-annotation/SKILL.md",
       "requires": [
         "service:labelu-data-annotation-service"

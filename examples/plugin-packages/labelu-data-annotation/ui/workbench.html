@@ -68,6 +68,15 @@
     frame.addEventListener('error', failed);
     retry.addEventListener('click', open);
     addEventListener('message', (event) => {
+      if (event.source === frame.contentWindow && frame.src && event.origin === new URL(frame.src).origin && event.data?.type === 'labelu:open-source') {
+        try {
+          const url = new URL(event.data.url);
+          if (url.protocol === 'https:' && !url.username && !url.password) {
+            void request('ui/open-link', { url: url.href }).catch(() => {});
+          }
+        } catch {}
+        return;
+      }
       if (event.source !== parent || event.data?.jsonrpc !== '2.0') return;
       const data = event.data;
       if (data.id !== undefined && !data.method) {
@@ -88,7 +97,7 @@
       }
     });
     request('ui/initialize', {
-      protocolVersion: '2025-11-21', appInfo: { name: 'Data Annotation', version: '0.3.2' },
+      protocolVersion: '2025-11-21', appInfo: { name: 'Data Annotation', version: '0.4.1' },
       appCapabilities: { availableDisplayModes: ['inline', 'fullscreen'] },
     }).then((host) => {
       if (disposed) return;

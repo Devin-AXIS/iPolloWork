@@ -224,7 +224,7 @@ const resourceSchema = z.object({
   localCommandRef: z.enum(["ipollowork.computerUseMcp", "ipollowork.uiMcp"]).optional(),
   actions: z.array(serviceActionSchema).optional(),
   browserSession: z.object({
-    origin: secureUrlSchema.refine(value => new URL(value).origin === value, "must be an exact origin"),
+    origin: secureUrlSchema.refine(value => URL.canParse(value) && new URL(value).origin === value, "must be an exact origin"),
     paths: z.array(z.string().startsWith('/')).min(1).max(10),
     observeAction: z.string().regex(SIMPLE_ID_RE),
     loginUi: browserLoginUiSchema.optional(),
