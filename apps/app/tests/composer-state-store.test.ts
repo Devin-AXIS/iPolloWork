@@ -9,7 +9,7 @@ import {
 import { deriveComposerInputHistory } from "../src/react-app/domains/session/surface/session-render-state";
 
 function reset() {
-  useComposerStateStore.setState({ sessions: {}, queuedDrafts: {} });
+  useComposerStateStore.setState({ sessions: {}, queuedDrafts: {}, pausedQueues: {} });
 }
 
 function draft(text: string): ComposerDraft {
@@ -61,6 +61,38 @@ describe("composer state store", () => {
     expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-b").map((item) => item.text)).toEqual([
       "only B",
     ]);
+  });
+
+  test("stopping pauses only the current session queue and preserves its order", () => {
+    const store = useComposerStateStore.getState();
+    store.appendQueuedDraft("session-a", draft("first"));
+    store.appendQueuedDraft("session-a", draft("second"));
+    store.appendQueuedDraft("session-b", draft("other"));
+    store.setQueuePaused("session-a", true);
+
+    const paused = useComposerStateStore.getState();
+    expect(paused.pausedQueues).toEqual({ "session-a": true });
+    expect(getComposerQueuedDrafts(paused, "session-a").map((item) => item.text)).toEqual(["first", "second"]);
+    expect(getComposerQueuedDrafts(paused, "session-b").map((item) => item.text)).toEqual(["other"]);
+
+    store.setQueuePaused("session-a", false);
+    expect(useComposerStateStore.getState().pausedQueues).toEqual({});
+  });
+
+  test("editing a queued prompt moves it to an empty composer without touching the rest", () => {
+    const store = useComposerStateStore.getState();
+    store.appendQueuedDraft("session-a", draft("edit me"));
+    store.appendQueuedDraft("session-a", draft("keep me"));
+    store.setQueuePaused("session-a", true);
+    store.setDraft("session-a", "current text");
+    expect(store.moveQueuedDraftToComposer("session-a", 0)).toBe(false);
+    expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-a")).toHaveLength(2);
+
+    store.setDraft("session-a", "");
+    expect(store.moveQueuedDraftToComposer("session-a", 0)).toBe(true);
+    expect(getComposerDraft(useComposerStateStore.getState(), "session-a")).toBe("edit me");
+    expect(getComposerQueuedDrafts(useComposerStateStore.getState(), "session-a").map((item) => item.text)).toEqual(["keep me"]);
+    expect(useComposerStateStore.getState().pausedQueues["session-a"]).toBe(true);
   });
 
   test("restores a failed submitted draft only while the composer is still empty", () => {

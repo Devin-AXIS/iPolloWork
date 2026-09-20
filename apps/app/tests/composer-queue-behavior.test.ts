@@ -139,9 +139,9 @@ describe("composer queue behavior", () => {
   test("keeps follow-ups queued until the active turn passes artifact validation", () => {
     const idleCompletion = sessionSurfaceSource.slice(
       sessionSurfaceSource.indexOf("const timeout = window.setTimeout(() => {", sessionSurfaceSource.indexOf("const handleDismissError")),
-      sessionSurfaceSource.indexOf("// Drain one queued follow-up"),
+      sessionSurfaceSource.indexOf("const dispatchNextQueuedDraft = useCallback"),
     );
-    const queueDrainStart = sessionSurfaceSource.indexOf("// Drain one queued follow-up");
+    const queueDrainStart = sessionSurfaceSource.indexOf("const dispatchNextQueuedDraft = useCallback");
     const queueDrain = sessionSurfaceSource.slice(
       queueDrainStart,
       sessionSurfaceSource.indexOf("const handleAttachFiles", queueDrainStart),

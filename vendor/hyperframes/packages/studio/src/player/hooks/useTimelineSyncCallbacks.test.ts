@@ -1,3 +1,4 @@
+import { durationToFrameCount, frameAlignedDurationSeconds, lastVideoFrameTime } from "@hyperframes/core/runtime/protocol";
 // @vitest-environment happy-dom
 import { createElement } from "react";
 import { flushSync } from "react-dom";
@@ -7,7 +8,40 @@ import type { PlaybackAdapter } from "../lib/playbackTypes";
 import { usePlayerStore } from "../store/playerStore";
 import { resolveForwardPlaybackWindow, useTimelinePlayerLoop } from "./useTimelinePlayerLoop";
 import { useTimelinePlayer } from "./useTimelinePlayer";
-import { useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+import { resolveTimelineTotalDuration, useTimelineSyncCallbacks } from "./useTimelineSyncCallbacks";
+
+describe("shared video frame boundaries", () => {
+  it("preserves audio seconds while padding video to 2895 frames", () => {
+    expect(durationToFrameCount(96.472, 30)).toBe(2895);
+    expect(frameAlignedDurationSeconds(96.472, 30)).toBe(96.5);
+    expect(lastVideoFrameTime(96.5, 96.5, 30)).toBe(2894 / 30);
+  });
+  it("does not add a frame for floating point noise at exact boundaries", () => {
+    expect(durationToFrameCount(0.1 + 0.2, 30)).toBe(9);
+    expect(durationToFrameCount(0.30001, 30)).toBe(10);
+  });
+  it("uses the exact rational rate for NTSC", () => {
+    const fps = { num: 30000, den: 1001 };
+    expect(durationToFrameCount(1001 / 30, fps)).toBe(1000);
+    expect(frameAlignedDurationSeconds(1001 / 30, fps)).toBe(1001 / 30);
+  });
+});
+
+describe("manifest duration precision", () => {
+  it.each([24, 30, 60])("aligns authored seconds to a complete frame at %i fps", (fps) => {
+    expect(resolveTimelineTotalDuration({
+      manifestDurationSeconds: Math.ceil(96.472 * fps) / fps,
+      authoredRootDurationSeconds: 96.472,
+      manifestFps: fps,
+    })).toBe(Math.ceil(96.472 * fps) / fps);
+  });
+
+  it("retains real longer timelines and the authored duration floor", () => {
+    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 97, authoredRootDurationSeconds: 96.472, manifestFps: 30 })).toBe(97);
+    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 95, authoredRootDurationSeconds: 96.472, manifestFps: 30 })).toBe(96.5);
+    expect(resolveTimelineTotalDuration({ manifestDurationSeconds: 96.5, authoredRootDurationSeconds: 0, manifestFps: 30 })).toBe(96.5);
+  });
+});
 
 function mountInitializationHarness(input: {
   adapter: PlaybackAdapter;
