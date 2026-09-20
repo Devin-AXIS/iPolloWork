@@ -15,8 +15,10 @@ async function mountFixture() {
       "完成后再统一深色模式的按钮颜色",
     ]);
     const [guidanceEnabled, setGuidanceEnabled] = React.useState(true);
+    const [paused, setPaused] = React.useState(false);
     React.useEffect(() => {
       window.__midturnSteerProof.setGuidanceEnabled = setGuidanceEnabled;
+      window.__midturnSteerProof.setPaused = setPaused;
     }, []);
     const steer = async (index) => {
       await new Promise((resolve) => setTimeout(resolve, 180));
@@ -30,6 +32,11 @@ async function mountFixture() {
       React.createElement("div", { className: "overflow-hidden rounded-[28px] border border-gray-7 bg-dls-surface" },
         React.createElement(QueuedMessagesPanel, {
           messages,
+          paused,
+          canContinue: true,
+          onContinue: () => { window.__midturnSteerProof.resumed = true; setPaused(false); },
+          editable: messages.map(() => true),
+          onEdit: (index) => { window.__midturnSteerProof.edited = messages[index]; },
           steerable: messages.map(() => true),
           onSteer: guidanceEnabled ? steer : undefined,
           onRemove: (index) => setMessages((current) => current.filter((_, itemIndex) => itemIndex !== index)),
@@ -105,6 +112,31 @@ export default {
             name: "composer-opencode-queue-only",
             requireText: ["深色模式"],
           },
+        });
+        await ctx.prove("A stopped OpenCode queue stays visible until Continue is chosen", {
+          voiceover: "停止当前任务后，排队消息保留并标记为已暂停。用户可以编辑或删除，点击继续队列才会发送下一条。",
+          action: () => ctx.eval("window.__midturnSteerProof.setPaused(true)", { awaitPromise: true }),
+          assert: async () => {
+            await ctx.waitFor("Boolean(document.querySelector('#composer-midturn-steer-proof [data-testid=queued-messages-continue]'))");
+            const state = await ctx.eval(`(() => { const host=document.querySelector('#composer-midturn-steer-proof'); return {
+              queued:host.querySelectorAll('[data-queued-message-index]').length,
+              guide:host.querySelectorAll('[data-testid=queued-message-steer]').length,
+              edit:host.querySelectorAll('button[title="移到输入框编辑"]').length,
+              label:host.textContent.includes('队列已暂停 · 还有 1 条'),
+              resumed:window.__midturnSteerProof.resumed,
+            }})()`);
+            ctx.assert(state.queued === 1 && state.guide === 0 && state.edit === 1 && state.label && !state.resumed, JSON.stringify(state));
+          },
+          screenshot: { name: "composer-opencode-queue-paused", requireText: ["队列已暂停", "继续队列", "深色模式"] },
+        });
+        await ctx.prove("Continue releases the paused queue explicitly", {
+          voiceover: "点击继续队列后，暂停提示消失，排队消息按原顺序继续处理。",
+          action: () => ctx.eval("document.querySelector('#composer-midturn-steer-proof [data-testid=queued-messages-continue]')?.click()"),
+          assert: async () => {
+            await ctx.waitFor("window.__midturnSteerProof.resumed === true");
+            ctx.assert(await ctx.eval("!document.querySelector('#composer-midturn-steer-proof [data-testid=queued-messages-continue]')"), "Pause control did not close after Continue.");
+          },
+          screenshot: { name: "composer-opencode-queue-resumed", requireText: ["深色模式"], rejectText: ["队列已暂停"] },
         });
       } finally {
         await ctx.eval("window.__midturnSteerProof?.cleanup()", { awaitPromise: true });

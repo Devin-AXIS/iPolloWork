@@ -64,7 +64,6 @@ import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shel
 import { ReactSessionComposer, type ComposerPlusMenuData } from "./composer/composer";
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
-  failedDraftRetrySurface,
   parseComposerParts,
   shouldPreserveComposerDraftAfterSendFailure,
 } from "./composer/composer-draft";
@@ -132,6 +131,7 @@ import {
   getComposerMentions,
   getComposerPasteParts,
   getComposerQueuedDrafts,
+  isComposerQueuePaused,
   useComposerStateStore,
 } from "./composer-state-store";
 import { MessageList, RunIssueNotice, VideoJobStatus } from "@/components/chat/message-list";
@@ -745,6 +745,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const appendQueuedDraft = useComposerStateStore((state) => state.appendQueuedDraft);
   const removeQueuedDraftFromStore = useComposerStateStore((state) => state.removeQueuedDraft);
   const prependQueuedDrafts = useComposerStateStore((state) => state.prependQueuedDrafts);
+  const queuePaused = useComposerStateStore((state) => isComposerQueuePaused(state, props.sessionId));
+  const setQueuePaused = useComposerStateStore((state) => state.setQueuePaused);
+  const moveQueuedDraftToComposer = useComposerStateStore((state) => state.moveQueuedDraftToComposer);
   const [error, setError] = useState<SessionError | null>(null);
   const [sending, setSending] = useState(false);
   const [stopAcknowledged, setStopAcknowledged] = useState(false);
@@ -1820,6 +1823,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
 
   const handleAbort = useCallback(async () => {
     if (!chatStreaming) return;
+    setQueuePaused(props.sessionId, true);
     setError(null);
     const lastUserIndex = displayMessages.findLastIndex((message) => message.role === "user");
     const imageMessageIds = displayMessages.slice(lastUserIndex + 1)
@@ -1838,8 +1842,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     // presses Stop before the engine has created a native run/turn; the route
     // observes this signal and must not dispatch the model request later.
     promptDispatchAbortRef.current?.abort();
-    // Abort only the active run. Queued follow-ups stay intact and the drain
-    // effect below starts the next one after the session reports idle.
+    // Abort only the active run. Queued follow-ups stay paused until resumed.
     // The prompt was sent through a directory-scoped client (session-route
     // passes the workspace root), so the abort must target the same scope —
     // without it the server resolves the default project, finds no live run,
@@ -1896,7 +1899,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     );
     if (aborted) captureAnalyticsEvent("task_run_stopped", {});
     void snapshotQuery.refetch();
-  }, [chatStreaming, displayMessages, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, snapshotQuery.refetch]);
+  }, [chatStreaming, displayMessages, props.conversation, props.sessionId, props.workspaceId, props.workspaceRoot, setQueuePaused, snapshotQuery.refetch]);
 
   const handleDismissError = useCallback(() => {
     setError(null);
@@ -1964,37 +1967,46 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return () => window.clearTimeout(timeout);
   }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery]);
 
-  // Drain one queued follow-up each time the session goes idle. The ref guards
-  // against re-entrancy while the send is in flight.
-  const drainingQueueRef = useRef(false);
+  // Stop and failure keep the queue available for an explicit resume.
   useEffect(() => {
-    if (drainingQueueRef.current) return;
-    if (queuedDrafts.length === 0) return;
+    if (runOutcome === "failed" || runOutcome === "stopped") setQueuePaused(props.sessionId, true);
+  }, [props.sessionId, runOutcome, setQueuePaused]);
+
+  const drainingQueueRef = useRef(false);
+  const dispatchNextQueuedDraft = useCallback(() => {
+    if (drainingQueueRef.current || queuedDrafts.length === 0) return;
     if (chatStreaming || liveStatus.type !== "idle") return;
-    // A queued user request belongs after the current turn's deliverables,
-    // including any automatic recovery pass. Keep it queued until the gate
-    // succeeds; on terminal validation failure the error and queue stay
-    // visible instead of the next send clearing or replacing them.
     if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
     const next = queuedDrafts[0];
-    if (!next) return;
     drainingQueueRef.current = true;
     removeQueuedDraftFromStore(props.sessionId, 0);
     void (async () => {
       try {
-        await sendDraft(next, next.attachments);
+        const dispatched = await sendDraft(next, next.attachments);
+        if (!dispatched) throw new Error("Queued draft was not sent");
       } catch {
-        if (failedDraftRetrySurface(next) === "composer") {
-          setComposerDraft(props.sessionId, next.text);
-        } else {
-          // Restore ordinary queued drafts so the user can retry / edit them.
-          prependQueuedDrafts(props.sessionId, [next]);
-        }
+        prependQueuedDrafts(props.sessionId, [next]);
+        setQueuePaused(props.sessionId, true);
       } finally {
         drainingQueueRef.current = false;
       }
     })();
-  }, [chatStreaming, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft]);
+  }, [chatStreaming, liveStatus.type, prependQueuedDrafts, props.sessionId, queuedDrafts, removeQueuedDraftFromStore, sendDraft, setQueuePaused]);
+
+  useEffect(() => {
+    if (queuePaused || runOutcome !== "completed") return;
+    dispatchNextQueuedDraft();
+  }, [dispatchNextQueuedDraft, queuePaused, runOutcome]);
+
+  const continueQueuedDrafts = useCallback(() => {
+    if (chatStreaming || liveStatus.type !== "idle") return;
+    if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;
+    setQueuePaused(props.sessionId, false);
+    dispatchNextQueuedDraft();
+  }, [chatStreaming, dispatchNextQueuedDraft, liveStatus.type, props.sessionId, setQueuePaused]);
+  const editQueuedDraft = useCallback((index: number) => {
+    moveQueuedDraftToComposer(props.sessionId, index);
+  }, [moveQueuedDraftToComposer, props.sessionId]);
 
   useEffect(() => {
     props.onDraftChange(buildDraft(draft, attachments));
@@ -2545,6 +2557,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
                 {queuedMessages.length > 0 ? (
                   <QueuedMessagesPanel
                     messages={queuedMessages}
+                    paused={queuePaused}
+                    canContinue={!chatStreaming && liveStatus.type === "idle" && !pendingArtifactCompletionRef.current && !pendingVideoDeliveryRef.current}
+                    onContinue={continueQueuedDrafts}
+                    editable={queuedDrafts.map((item) => !draft && attachments.length === 0 && Object.keys(mentions).length === 0 && pasteParts.length === 0 && !selectedAnimations.length && !selectedVoiceReference && !selectedImageReference && !item.command && !item.capability && item.parts.every((part) => part.type === "text"))}
+                    onEdit={editQueuedDraft}
                     steerable={steerableQueuedDrafts}
                     onSteer={props.onSteerDraft ? steerQueuedDraft : undefined}
                     onRemove={removeQueuedDraft}

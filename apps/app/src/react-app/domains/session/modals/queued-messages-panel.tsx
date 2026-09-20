@@ -1,11 +1,16 @@
 /** @jsxImportSource react */
 import { useState } from "react";
-import { CornerDownRight, LoaderCircle, Send, Trash2 } from "lucide-react";
+import { CornerDownRight, LoaderCircle, Pencil, Play, Send, Trash2 } from "lucide-react";
 
 import { t } from "@/i18n";
 
 export type QueuedMessagesPanelProps = {
   messages: string[];
+  paused?: boolean;
+  canContinue?: boolean;
+  onContinue?: () => void;
+  editable?: boolean[];
+  onEdit?: (index: number) => void;
   steerable: boolean[];
   onSteer?: (index: number) => Promise<void>;
   onRemove: (index: number) => void;
@@ -29,6 +34,14 @@ export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
 
   return (
     <div data-testid="queued-messages-panel" className="max-h-52 overflow-auto border-b border-dls-border/70 bg-transparent">
+      {props.paused ? (
+        <div className="flex items-center justify-between gap-3 border-b border-dls-border/50 px-4 py-2">
+          <span className="text-sm text-gray-11">{t("composer.queue_paused", { count: props.messages.length })}</span>
+          <button type="button" data-testid="queued-messages-continue" disabled={!props.canContinue} onClick={props.onContinue} className="inline-flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:opacity-50">
+            <Play size={14} strokeWidth={1.75} aria-hidden="true" />{t("composer.continue_queue")}
+          </button>
+        </div>
+      ) : null}
       {props.messages.map((message, index) => {
         const steering = steeringIndex === index;
         const canSteer = Boolean(props.onSteer && props.steerable[index]);
@@ -43,6 +56,11 @@ export function QueuedMessagesPanel(props: QueuedMessagesPanelProps) {
               {message}
             </div>
             <div className="flex shrink-0 items-center gap-1">
+              {props.onEdit && props.editable?.[index] ? (
+                <button type="button" onClick={() => props.onEdit?.(index)} className="inline-flex h-8 items-center gap-1 rounded-lg px-2 text-sm text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12" title={t("composer.edit_queued")}>
+                  <Pencil size={14} strokeWidth={1.75} aria-hidden="true" />{t("common.edit")}
+                </button>
+              ) : null}
               {canSteer ? (
                 <button
                   type="button"
