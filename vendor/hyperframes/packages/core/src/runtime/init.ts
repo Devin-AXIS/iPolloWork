@@ -49,6 +49,7 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
+import { frameAlignedDurationSeconds, lastVideoFrameTime } from "./protocol";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 
@@ -815,7 +816,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       safeDuration = fallbackDuration;
     }
-    return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
+    return safeDuration > 0 ? frameAlignedDurationSeconds(safeDuration, state.canonicalFps) : 0;
   };
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
@@ -1783,6 +1784,9 @@ export function initSandboxRuntimeModular(): void {
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
 
   const syncTimedElementVisibility = (currentTime: number) => {
+    if (clock.getDuration() > 0) {
+      currentTime = lastVideoFrameTime(currentTime, clock.getDuration(), state.canonicalFps);
+    }
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
@@ -2028,7 +2032,7 @@ export function initSandboxRuntimeModular(): void {
 
     liveRootDurationOverrideSeconds = nextDuration;
     rootEl?.setAttribute("data-duration", String(nextDuration));
-    clock.setDuration(nextDuration);
+    clock.setDuration(frameAlignedDurationSeconds(nextDuration, state.canonicalFps));
     postTimeline();
     postState(true);
   };
@@ -2209,7 +2213,9 @@ export function initSandboxRuntimeModular(): void {
       } else {
         const rootEl = resolveRootCompositionElement();
         const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
-        if (declaredDur > 0) clock.setDuration(declaredDur);
+        if (declaredDur > 0) {
+          clock.setDuration(frameAlignedDurationSeconds(declaredDur, state.canonicalFps));
+        }
       }
       pauseTimelineIfPossible(tl);
       if (!clock.play()) return;
@@ -2756,6 +2762,9 @@ export function initSandboxRuntimeModular(): void {
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
   ) => {
+    if (clock.getDuration() > 0) {
+      t = lastVideoFrameTime(t, clock.getDuration(), state.canonicalFps);
+    }
     const tl = state.capturedTimeline;
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {

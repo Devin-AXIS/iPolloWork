@@ -1,3 +1,4 @@
+import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
 /**
  * React callbacks for synchronising the player store from iframe runtime data.
  *
@@ -93,27 +94,15 @@ function sanitizeDurationSeconds(value: number): number {
   return Number.isFinite(value) && value > 0 && value < 7200 ? value : 0;
 }
 
-/**
- * The transport TOTAL a clip-manifest message should write to the store.
- *
- * The manifest's `durationInFrames` measures the runtime timeline; some runtimes
- * report only the furthest clip end and ignore the root composition's authored
- * `data-duration`. When that manifest total is SHORTER than the authored root
- * duration, writing it makes the readout stale (playback still runs the full
- * authored window — the user saw "0:44/0:40" on a root authored at 44.5s whose
- * last clip ends at 40s). The authored root duration is the floor for the total,
- * so the readout can never sit below what the file declares. A manifest total
- * that is LONGER (clips extend past the root) still wins — content can only grow
- * the timeline, never shrink it below the authored window.
- */
+/** Manifest and authored durations share the same whole-frame transport boundary. */
 export function resolveTimelineTotalDuration(input: {
   manifestDurationSeconds: number;
   authoredRootDurationSeconds: number;
+  manifestFps: number;
 }): number {
-  return Math.max(
-    sanitizeDurationSeconds(input.manifestDurationSeconds),
-    sanitizeDurationSeconds(input.authoredRootDurationSeconds),
-  );
+  const manifest = sanitizeDurationSeconds(input.manifestDurationSeconds);
+  const authored = sanitizeDurationSeconds(input.authoredRootDurationSeconds);
+  return frameAlignedDurationSeconds(Math.max(manifest, authored), input.manifestFps);
 }
 
 export function useTimelineSyncCallbacks({
@@ -219,6 +208,7 @@ export function useTimelineSyncCallbacks({
       const newDuration = resolveTimelineTotalDuration({
         manifestDurationSeconds: rawDuration,
         authoredRootDurationSeconds: readTimelineDurationFromDocument(iframeDoc),
+        manifestFps: acceptedRuntimeMessageFps(data),
       });
       const effectiveDuration = newDuration > 0 ? newDuration : usePlayerStore.getState().duration;
       const clampedEls =

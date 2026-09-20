@@ -26,12 +26,14 @@ const PROJECT_SOURCE = `<!doctype html>
     </style>
   </head>
   <body data-no-timeline>
-    <main id="root" data-composition-id="main" data-start="0" data-duration="6" data-width="1920" data-height="1080" data-fps="30">
-      <section id="card" class="clip" data-hf-id="handoff-proof" data-start="0" data-duration="6" data-track-index="1">
+    <main id="root" data-composition-id="main" data-start="0" data-duration="96.472" data-width="1920" data-height="1080" data-fps="30">
+      <section id="card" class="clip" data-hf-id="handoff-proof" data-start="0" data-duration="96.472" data-track-index="1">
         <h1 id="title">Runtime handoff</h1>
         <div id="track"><div id="probe"></div></div>
         <div id="caption">Continuous playback proof</div>
       </section>
+      <div class="clip" data-start="69.078" data-duration="27.394" data-track-index="2"></div>
+      <audio id="audio-proof" src="tone.wav" data-start="0" data-duration="6" data-track-index="3" data-volume="0.2"></audio>
     </main>
   </body>
 </html>`;
@@ -152,6 +154,17 @@ export default {
         try {
           await writeFile(join(projectDir, "index.html"), PROJECT_SOURCE);
           await writeFile(join(projectDir, "hyperframes.json"), PROJECT_CONFIG);
+          // A real PCM asset makes silent seek-only playback observable.
+          const samples = 24000 * 6;
+          const wav = Buffer.alloc(44 + samples * 2);
+          wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4);
+          wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+          wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+          wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28);
+          wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+          wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+          for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 440 / 24000) * 3000), 44 + i * 2);
+          await writeFile(join(projectDir, 'tone.wav'), wav);
           preview = await startPreview(projectDir);
           const studioUrl = `http://127.0.0.1:${preview.port}/#project/${encodeURIComponent(basename(projectDir))}?v=1&t=0&locale=zh&ipolloworkTheme=light`;
           await ctx.eval(`location.assign(${JSON.stringify(studioUrl)})`);
@@ -174,16 +187,17 @@ export default {
           });
 
           await ctx.prove("The generated video advances while the button shows Pause", {
-            claim: "A freshly initialized no-timeline composition advances beyond 1.5 seconds, and its transport simultaneously exposes the active Pause state.",
-            voiceover: "初始化完成后，画面和时间轴持续向前，左下角按钮也正确显示正在播放。",
+            claim: "Decimal clip boundaries do not downgrade playback: the runtime and audio both advance while the transport shows Pause.",
+            voiceover: "初始化完成后，画面、时间轴和音轨一起播放，不会因微小的时长误差变成无声预览。",
             action: async () => clickPlay(ctx),
             assert: async () => {
               await ctx.waitFor(`(() => {
                 const player = ${previewFrameExpression}?.contentWindow?.__player;
+                const audio = ${previewFrameExpression}?.contentDocument?.querySelector('#audio-proof');
                 const pauseButton = document.querySelector(
                   '[data-testid="figma-player-controls"] button[aria-label="暂停"], [data-testid="figma-player-controls"] button[aria-label="Pause"]'
                 );
-                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton);
+                return Boolean(player && player.getTime() > 1.5 && player.isPlaying() && pauseButton && audio && !audio.paused && audio.currentTime > 0.5 && !audio.error);
               })()`, { timeoutMs: 10_000, label: "active playback beyond initialization" });
             },
             screenshot: {
@@ -206,6 +220,31 @@ export default {
               name: "playback-keeps-advancing",
               rejectText: ["Something went wrong", "Console errors in preview"],
             },
+          });
+          await ctx.prove("Final frame stays visible at the aligned video boundary", {
+            claim: "The 96.472-second source uses a 96.5-second / 2895-frame transport and keeps the final scene visible at the end.",
+            voiceover: "视频时长对齐为完整帧，末尾保留最后画面，音频仍保持原始长度。",
+            action: async () => {
+              await ctx.eval(`(() => {
+                const player = ${previewFrameExpression}.contentWindow.__player;
+                player.pause();
+                player.seek(96.5);
+              })()`);
+            },
+            assert: async () => {
+              await ctx.waitFor(`(() => {
+                const frame = ${previewFrameExpression};
+                const player = frame?.contentWindow?.__player;
+                const card = frame?.contentDocument?.querySelector('#card');
+                const audio = frame?.contentDocument?.querySelector('#audio-proof');
+                return Boolean(player && Math.abs(player.getDuration() - 96.5) < 1e-6
+                  && player.getTime() > 96.46 && card
+                  && frame.contentWindow.getComputedStyle(card).visibility !== 'hidden'
+                  && frame.contentWindow.getComputedStyle(card).display !== 'none'
+                  && audio && Math.abs(audio.duration - 6) < 0.001);
+              })()`, { timeoutMs: 5_000, label: "frame-aligned ending with intact audio duration" });
+            },
+            screenshot: { name: "aligned-final-frame", rejectText: ["Something went wrong"] },
           });
         } finally {
           await stopPreview(preview?.child);

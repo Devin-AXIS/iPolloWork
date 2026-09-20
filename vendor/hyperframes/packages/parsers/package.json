@@ -22,6 +22,12 @@
       "types": "./src/index.ts"
     },
     "./package.json": "./package.json",
+    "./slideshow/scene-id": {
+      "bun": "./src/slideshow/sceneId.ts",
+      "node": "./dist/slideshow/sceneId.js",
+      "import": "./src/slideshow/sceneId.ts",
+      "types": "./src/slideshow/sceneId.ts"
+    },
     "./gsap-parser": {
       "bun": "./src/gsapParserExports.ts",
       "node": "./dist/gsapParserExports.js",
@@ -115,6 +121,10 @@
         "types": "./dist/index.d.ts"
       },
       "./package.json": "./package.json",
+      "./slideshow/scene-id": {
+        "import": "./dist/slideshow/sceneId.js",
+        "types": "./dist/slideshow/sceneId.d.ts"
+      },
       "./gsap-parser": {
         "import": "./dist/gsapParserExports.js",
         "types": "./dist/gsapParserExports.d.ts"

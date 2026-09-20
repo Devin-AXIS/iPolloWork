@@ -325,3 +325,5 @@ export {
   isBlockItem,
   isComponentItem,
 } from "./registry/index.js";
+
+export { durationToFrameCount, frameAlignedDurationSeconds, lastVideoFrameTime } from "./runtime/protocol";
