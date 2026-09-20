@@ -1153,7 +1153,8 @@ describe("HyperFrames Video Studio", () => {
   test("loads the expensive voiceover contract only when the prompt or composition needs it", () => {
     const visualContract = videoTaskSystemContext("ses_video_a", "/workspace/current");
     const voiceContract = videoTaskSystemContext("ses_video_a", "/workspace/current", null, { includeVoiceover: true });
-    expect(visualContract).toContain("Narration is opt-in for performance");
+    expect(visualContract).toContain("No new voiceover is required for this turn");
+    expect(visualContract).toContain("Video Studio's voice panel");
     expect(visualContract).not.toContain("speech_synthesize_workspace_batch");
     expect(voiceContract).toContain("speech_synthesize_workspace_batch");
     expect(visualContract.length).toBeLessThan(voiceContract.length);

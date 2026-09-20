@@ -1426,7 +1426,7 @@ export default {
   "video.voice.close_settings": "关闭配音设置",
   "video.voice.loading_config": "正在读取百炼配置…",
   "video.voice.configure_title": "连接声音服务，开启配音",
-  "video.voice.configure_description": "在授权中心连接阿里百炼 API Key，即可选择音色、试听和生成配音。",
+  "video.voice.configure_description": "未连接声音服务时，不会自动生成旁白。在授权中心连接阿里百炼后，将默认开启配音，并可选择音色与试听。",
   "video.voice.applied_label": "已应用：{label}",
   "video.voice.voice_label": "音色",
   "video.voice.multiple_applied": "多个音色",

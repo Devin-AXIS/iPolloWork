@@ -5,7 +5,7 @@ description: Add or revise scene-bound narration in an active iPolloWork Video S
 
 # iPolloWork Video Voiceover
 
-Use this Skill only when narration helps the confirmed brief or the user explicitly requests it. The Video Studio and its media services remain core iPolloWork capabilities and do not depend on this Skill being installed.
+Use this Skill for scene-bound narration in an active Video Studio project when the voice service is available and automatic voiceover is enabled, or when the user explicitly requests narration. The Video Studio and its media services remain core iPolloWork capabilities and do not depend on this Skill being installed.
 
 ## Workflow
 
@@ -16,7 +16,7 @@ Use this Skill only when narration helps the confirmed brief or the user explici
 5. Keep one immutable narration asset and one timeline audio node per narrated scene; remove only obsolete narration references, never music or sound effects.
 6. Run both the HyperFrames project check and the active session's voiceover timeline validation before finishing.
 
-If no valid voice selection exists, continue without narration instead of inventing a voice or blocking visual video work.
+With an authorized voice service, use the saved voice selection; if it is missing or invalid, use iPolloWork's default `cosyvoice-v3-flash` / `longanyang` profile rather than omitting narration. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and direct the user to the Video Studio voice panel to connect the service in Authorization Center. Never request an API key in chat or fabricate narration assets.
 
 ## Content scope
 

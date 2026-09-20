@@ -138,7 +138,7 @@ describe("video voiceover settings", () => {
   test("localizes the embedded voice authorization prompt", () => {
     expect(t("video.voice.configure_title", { lng: "en" })).toBe("Connect a voice service to enable voiceover");
     expect(t("video.voice.configure_description", { lng: "en" })).toBe(
-      "Save your Alibaba Model Studio API key in Authorization Center to select and preview voices.",
+      "Without a connected voice service, new narration is not generated automatically. Connect Alibaba Model Studio in Authorization Center to enable voiceover by default, then choose and preview voices.",
     );
     expect(t("video.voice.configure_title", { lng: "zh" })).toBe("连接声音服务，开启配音");
 

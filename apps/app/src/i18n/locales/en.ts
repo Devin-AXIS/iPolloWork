@@ -1422,7 +1422,7 @@ export default {
   "video.voice.close_settings": "Close voice settings",
   "video.voice.loading_config": "Loading Alibaba Model Studio settings…",
   "video.voice.configure_title": "Connect a voice service to enable voiceover",
-  "video.voice.configure_description": "Save your Alibaba Model Studio API key in Authorization Center to select and preview voices.",
+  "video.voice.configure_description": "Without a connected voice service, new narration is not generated automatically. Connect Alibaba Model Studio in Authorization Center to enable voiceover by default, then choose and preview voices.",
   "video.voice.applied_label": "Applied: {label}",
   "video.voice.voice_label": "Voice",
   "video.voice.multiple_applied": "Multiple voices",

@@ -266,7 +266,7 @@ export function videoTaskSystemContext(
     `- If execution is interrupted or continued, resume only from the current transcript and \`${projectDirectory}/index.html\`. Never use cross-session search/read to recover this task, enumerate the workspace's video directory, inspect sibling session projects, or switch to a different index.html.`,
     "- Check the bundled media status before generating voiceover. Without a configured Alibaba Model Studio key, do not synthesize narration by default; keep existing audio and direct explicit voiceover requests to Authorization Center. Never ask the user to paste a key in chat. With authorization, absent or invalid voice settings use the fixed default `cosyvoice-v3-flash` + `longanyang` profile with rate 1, pitch 1, volume 50, and an empty `instruction`; voiceover is enabled. Do not invent a style instruction on the default path. Preserve an explicit saved enabled=false preference. The final local validation gate above is mandatory.",
   ] : [
-    "- Narration is opt-in for performance: do not synthesize speech unless the user selected a voice, explicitly requested narration, or the existing composition already contains voiceover nodes.",
+    "- No new voiceover is required for this turn. Preserve existing audio and continue visual video work without synthesizing narration. Respect a saved choice to disable automatic voiceover. If narration was explicitly requested but the voice service is unavailable, direct the user to Video Studio's voice panel to connect it in Authorization Center; never request an API key in chat.",
   ];
   return [...baseContract, ...voiceoverContract].join("\n");
 }
