@@ -1,10 +1,10 @@
 # Conversation streaming: stable final answer
 
-1. Send a request that makes the assistant explain what it is doing, run a tool, and then answer. The compact process row shows elapsed time, and the user can open it to inspect the explanation and tool activity without losing that choice between commands.
+1. Send a request that makes the assistant explain what it is doing, run a command, and then answer. The live explanation and running command appear in order beneath the process heading; the raw command remains optional, alongside a subtle animated thinking ellipsis. The process folds when the answer is complete.
 
 2. When the assistant starts its final answer, the answer appears below the progress area and grows in place as text streams in. Once the text is done but the run is still ending, the process row says it is finishing and keeps counting time.
 
-3. After the run completes, the elapsed time freezes above the answer. The user's choice to expand the process remains, and a follow-up entered while the run is busy stays queued for the next run.
+3. After the run completes, the elapsed time freezes beside the processed command count and the process details fold away. The final answer remains visible, and a follow-up entered while the run is busy stays queued for the next run.
 
 4. When the assistant says a document is ready, the text streams first. The file card appears only after the run finishes. The card names the document clearly and opens the saved file when selected.
 
@@ -38,4 +38,10 @@
 
 19. If the selected model is unsupported by this account, the notice says that the model is unavailable and asks the user to choose another model. The provider's raw error remains in collapsed details.
 
-20. Returning to the conversation input, two typed lines and the placeholder use 13-pixel text with the same one-and-a-half line spacing as ordinary conversation text.
+20. Expanding a completed run shows icon-labeled action groups for file inspection and command execution. Each group starts closed, opens to reveal its original steps, and can be folded again without hiding the final answer.
+
+21. OpenCode keeps only one thinking label while continuing after an earlier answer, then shows the same gently animated letters and dots before its first assistant part, while reasoning, and alongside a running command.
+
+22. OpenCode text and command summaries append in arrival order without moving earlier text or creating a premature result area. When the run completes, its process folds and the final answer remains visible.
+
+23. Returning to the conversation input, two typed lines and the placeholder use 14-pixel text with the same one-and-a-half line spacing as ordinary conversation text.

@@ -37,7 +37,7 @@ function plusMenuOutsideClickHandlerSource() {
 }
 
 describe("composer plus entry menu", () => {
-  test("routes files, templates, tools, and external delegation from one plus menu", () => {
+  test("routes files, templates, plugins, MCP settings, and agents from one list", () => {
     const templateLabelIndex = composerSource.indexOf('t("composer.plus_use_template")');
     const templateButtonStart = composerSource.lastIndexOf("<button", templateLabelIndex);
     const templateButtonEnd = composerSource.indexOf("</button>", templateButtonStart);
@@ -46,24 +46,23 @@ describe("composer plus entry menu", () => {
     const templateButton = composerSource.slice(templateButtonStart, templateButtonEnd);
 
     expect(composerSource).toContain("plusMenuOpen");
-    expect(composerSource).toContain("plusMenuSection");
+    expect(composerSource).not.toContain("plusMenuSection");
     expect(composerSource).toContain('title={t("composer.plus_menu_label")}');
     expect(composerSource).toContain('t("composer.plus_attach_files")');
     expect(composerSource).toContain('t("composer.plus_use_template")');
-    expect(templateButton).toContain('text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12');
-    expect(templateButton).toContain('<TemplateIcon className="size-3.5 opacity-60" />');
-    expect(templateButton).toContain("setPlusMenuSection(null)");
-    expect(templateButton).toContain("setToolMenuOpen(false)");
-    expect(templateButton).toContain("setDelegationMenuOpen(false)");
-    expect(composerSource).toContain('t("composer.plus_tools")');
-    expect(composerSource).toContain('t("composer.delegate_external_agents")');
+    expect(templateButton).toContain('min-h-8 w-full');
+    expect(templateButton).toContain('text-[12px]');
+    expect(templateButton).toContain('font-medium text-gray-12 transition-colors hover:bg-gray-3');
+    expect(templateButton).toContain('<TemplateIcon className="size-3 opacity-60" />');
+    expect(templateButton).toContain("setPlusMenuOpen(false)");
+    expect(composerSource).toContain('t("composer.extensions_label")');
+    expect(composerSource).toContain('t("composer.mcps_label")');
+    expect(composerSource).toContain('t("composer.external_agents_label")');
     expect(composerSource).toContain("input?.click()");
     expect(composerSource).toContain("props.onOpenTemplateMarket?.()");
-    expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("tools")}');
-    expect(composerSource).toContain('onMouseEnter={() => setPlusMenuSection("delegation")}');
-    expect(composerSource).toContain('plusMenuSection === "tools"');
-    expect(composerSource).toContain('plusMenuSection === "delegation"');
-    expect(composerSource).toContain('<ChevronRight size={14}');
+    expect(composerSource).toContain('onClick={() => applyExtensionSelection(entry)}');
+    expect(composerSource).toContain('onClick={() => applyExternalAgentSelection(agent)}');
+    expect(composerSource).not.toContain('data-testid="composer-extensions-menu"');
   });
 
   test("keeps the plus icon as the unified menu entry", () => {
@@ -71,7 +70,7 @@ describe("composer plus entry menu", () => {
 
     expect(actionRow).toContain('<Plus size={16} strokeWidth={1.75} />');
     expect(actionRow.match(/<Plus size=\{16\}/g)).toHaveLength(1);
-    expect(actionRow).toContain('<Paperclip className="size-4 shrink-0 text-gray-9"');
+    expect(actionRow).toContain('<Paperclip className="size-3.5 text-gray-9"');
     expect(actionRow).toContain('className="flex min-w-0 flex-1 flex-nowrap items-center gap-0 overflow-visible"');
     expect(actionRow).not.toContain("flex-wrap");
     expect(actionRow).toContain('className="relative me-2 shrink-0"');
@@ -82,24 +81,32 @@ describe("composer plus entry menu", () => {
     expect(composerSource).not.toContain('["agents", t("composer.agents_label")]');
   });
 
-  test("orders plus menu entries as files, templates, tools, then delegation", () => {
+  test("orders the flat list by section and bounds its height", () => {
     const actionRow = actionRowSource();
+    const addHeadingIndex = actionRow.indexOf('t("composer.plus_section_add")');
     const filesIndex = actionRow.indexOf('t("composer.plus_attach_files")');
     const templatesIndex = actionRow.indexOf('t("composer.plus_use_template")');
-    const toolsIndex = actionRow.indexOf('t("composer.plus_tools")');
-    const delegationIndex = actionRow.indexOf('t("composer.delegate_external_agents")');
+    const pluginsIndex = actionRow.indexOf('t("composer.extensions_label")');
+    const mcpIndex = actionRow.indexOf('t("composer.mcps_label")');
+    const agentsIndex = actionRow.indexOf('t("composer.external_agents_label")');
 
-    expect(filesIndex).toBeGreaterThan(-1);
+    expect(filesIndex).toBeGreaterThan(addHeadingIndex);
     expect(templatesIndex).toBeGreaterThan(filesIndex);
-    expect(toolsIndex).toBeGreaterThan(templatesIndex);
-    expect(delegationIndex).toBeGreaterThan(toolsIndex);
+    expect(pluginsIndex).toBeGreaterThan(templatesIndex);
+    expect(agentsIndex).toBeGreaterThan(pluginsIndex);
+    expect(mcpIndex).toBeGreaterThan(agentsIndex);
+    expect(actionRow).toContain('data-testid="composer-plus-menu"');
+    expect(actionRow).toContain('max-h-[min(56dvh,26rem)] w-[min(24rem,calc(100cqw-2rem))]');
+    expect(actionRow).not.toContain('shadow-[var(--dls-shell-shadow)]');
+    expect(actionRow).toContain('min-h-8 w-full items-center gap-2');
   });
 
-  test("keeps the plus menu open while interacting with tool and delegation submenus", () => {
+  test("keeps the list open for internal clicks and closes on outside clicks", () => {
     const outsideClickHandler = plusMenuOutsideClickHandlerSource();
 
-    expect(outsideClickHandler).toContain("toolMenuRef.current?.contains(target)");
-    expect(outsideClickHandler).toContain("delegationMenuRef.current?.contains(target)");
+    expect(outsideClickHandler).toContain("plusMenuRef.current?.contains(target)");
+    expect(outsideClickHandler).not.toContain("toolMenuRef");
+    expect(outsideClickHandler).not.toContain("delegationMenuRef");
   });
 
   test("discovers enabled external subagents from plugin package capabilities", () => {
@@ -109,15 +116,15 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain("applyExternalAgentSelection(agent)");
   });
 
-  test("limits the compact extensions submenu to plugins and MCP while keeping slash loading", () => {
+  test("shows plugin and MCP items in the same list while keeping slash loading", () => {
     const menu = actionRowSource();
     expect(menu).toContain('data-testid="composer-plus-menu"');
-    expect(menu).toContain('data-testid="composer-extensions-menu"');
-    expect(menu).toContain('["extensions", t("composer.extensions_label")]');
-    expect(menu).toContain('["mcps", t("composer.mcps_label")]');
+    expect(menu).toContain('composerExtensions.map((entry)');
+    expect(menu).toContain('activeMcpItems.map(({ entry, status })');
+    expect(menu).toContain('externalAgents.map((agent)');
     expect(menu).not.toContain('["commands",');
     expect(menu).not.toContain('["skills",');
-    expect(composerSource).toContain('useState<ToolMenuSection>("extensions")');
+    expect(composerSource).not.toContain("ToolMenuSection");
     expect(composerSource).toContain('if (!slashOpen) return;');
     expect(composerSource).toContain('[slashOpen, loadCommands]');
     expect(composerSource).toContain('applySkillSelection(command.name, options)');
@@ -126,11 +133,29 @@ describe("composer plus entry menu", () => {
   });
 
   test("loads the extension menu from installed and ready plugin packages", () => {
-    expect(sessionSurfaceSource).toContain("listInstalledExtensions");
+    expect(sessionSurfaceSource).toContain("listPlusMenuData");
     expect(sessionSurfaceSource).toContain("isPluginPackageReady");
-    expect(composerSource).toContain("props.listInstalledExtensions");
-    expect(composerSource).toContain("installedExtensions");
+    expect(composerSource).toContain("props.listPlusMenuData");
+    expect(composerSource).toContain("plusMenuData?.extensions");
     expect(composerSource).not.toContain("IPOLLOWORK_EXTENSION_CATALOG");
+  });
+
+  test("uses each plugin's displayed icon and matches the template and attachment icon sizes", () => {
+    expect(composerSource).toContain("pluginId: entry.pluginId");
+    expect(composerSource).toContain("extensionIcon(entry, 16)");
+    expect(composerSource).not.toContain("disabled:opacity-60\" onClick={() => applyExtensionSelection(entry)}");
+    expect(composerSource).toContain('<Paperclip className="size-3.5 text-gray-9"');
+    expect(composerSource).toContain('<TemplateIcon className="size-3 opacity-60" />');
+  });
+
+  test("refreshes one scoped menu snapshot and marks previous or unavailable status", () => {
+    expect(sessionSurfaceSource).toContain("const [response, packageResponse] = await Promise.all([");
+    expect(sessionPageSource).toContain("const [response, packageResponse] = await Promise.all([");
+    expect(composerSource).toContain("if (!cancelled) setPlusMenuLoadState(\"error\")");
+    expect(composerSource).toContain("plusMenuSnapshot?.scope === props.plusMenuScope");
+    expect(composerSource).toContain("disabled={!menuDataReady}");
+    expect(composerSource).toContain('"composer.plus_previous_failed"');
+    expect(composerSource).toContain('t("composer.plus_status_unavailable")');
   });
 
   test("scopes an extension workbench without forcing an unrelated tool path", () => {
@@ -139,7 +164,7 @@ describe("composer plus entry menu", () => {
     expect(sessionPageSource).toContain("openWorkspaceAppForPlugin");
     expect(sessionPageSource).toContain("mediaStudioEngine(entry) === pluginId");
     expect(sessionPageSource).toContain("onOpenWorkspaceApp={openWorkspaceAppForPlugin}");
-    expect(sessionPageSource).toContain('activePanelTab.type === "workspace-app"');
+    expect(sessionPageSource).toContain('source?.type !== "workspace-app"');
     expect(sessionPageSource).toContain("workspaceAppCapabilityInstruction");
     expect(sessionPageSource).toContain("only when this workbench exposes a relevant tool");
     expect(sessionPageSource).toContain("follow that instruction instead");

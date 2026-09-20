@@ -74,7 +74,7 @@ const host=document.createElement('div');host.id='todo-layout-check';host.style.
       for (const width of [320,480,760]) {
         await ctx.prove(`Progress layout at ${width}px`, {
           action: async () => {
-            await ctx.eval(`(() => {const {host,root,React,Panel}=window.__todoLayout;host.style.width='${width}px';root.render(React.createElement(Panel,{todos:Array.from({length:12},(_,i)=>({id:String(i),status:['completed','in_progress','pending','cancelled'][i%4],content:i%2 ? 'https://example.com/'+'long_filename_'.repeat(20) : '读取模板、简报与参考证据，确定叙事结构。'.repeat(3)}))}));})()`);
+            await ctx.eval(`(() => {const {host,root,React,Panel}=window.__todoLayout;host.style.width='${width}px';root.render(React.createElement(Panel,{visible:true,todos:Array.from({length:12},(_,i)=>({id:String(i),status:['completed','in_progress','pending','cancelled'][i%4],content:i%2 ? 'https://example.com/'+'long_filename_'.repeat(20) : '读取模板、简报与参考证据，确定叙事结构。'.repeat(3)}))}));})()`);
             await ctx.waitFor("Boolean(document.querySelector('#todo-layout-check button'))");
             if (!await ctx.eval("Boolean(document.querySelector('#todo-layout-check .max-h-60'))")) await ctx.eval("document.querySelector('#todo-layout-check button').click()");
             await ctx.waitFor("document.querySelectorAll('#todo-layout-check .max-h-60 > div').length===12");
@@ -87,6 +87,14 @@ const host=document.createElement('div');host.id='todo-layout-check';host.style.
         await ctx.eval("document.querySelector('#todo-layout-check button').click()");
         await ctx.waitFor("!document.querySelector('#todo-layout-check .max-h-60')");
       }
+      await ctx.prove('Completed task removes stale progress above the composer', {
+        action: async () => {
+          await ctx.eval("(() => {const {root,React,Panel}=window.__todoLayout;root.render(React.createElement(Panel,{visible:false,todos:Array.from({length:3},(_,i)=>({id:String(i),status:'completed',content:'已完成的任务 '+i}))}));})()");
+          await ctx.waitFor("!document.querySelector('#todo-layout-check button')");
+        },
+        assert: async () => { ctx.assert(await ctx.eval("!document.querySelector('#todo-layout-check').textContent.trim()"), 'Completed todos still occupy the composer accessory area'); },
+        screenshot: {name:'todo-progress-settled',rejectText:['进度 · 3/3']},
+      });
     } finally {await ctx.eval("window.__todoLayout?.root.unmount();window.__todoLayout?.host.remove();delete window.__todoLayout;");}
   }}];
 }

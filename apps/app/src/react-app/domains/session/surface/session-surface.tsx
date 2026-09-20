@@ -61,7 +61,7 @@ import {
   recordInspectorEvent,
 } from "@/app/lib/app-inspector";
 import { useControlAction, type iPolloWorkControlAction } from "@/react-app/shell/control/control-provider";
-import { ReactSessionComposer } from "./composer/composer";
+import { ReactSessionComposer, type ComposerPlusMenuData } from "./composer/composer";
 import { encodeComposerMentionValue, type ComposerMentionKind } from "./composer/mention-encoding";
 import {
   failedDraftRetrySurface,
@@ -442,14 +442,14 @@ function finalAssistantTextCompleted(messages: UIMessage[]) {
     && latest.parts.some((part) => part.type === "text" && part.text.trim().length > 0);
 }
 
-function TodoPanel(props: { todos: TodoItem[] }) {
+function TodoPanel(props: { todos: TodoItem[]; visible: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const todos = props.todos.filter((todo) => todo.content.trim());
   const completedTodos = todos.filter((todo) => todo.status === "completed").length;
   const progressLabel = t("session.todo_progress_label");
   const label = expanded ? progressLabel : `${progressLabel} · ${completedTodos}/${todos.length}`;
 
-  if (todos.length === 0) return null;
+  if (!props.visible || todos.length === 0) return null;
 
   return (
     <div className="overflow-hidden border-b border-dls-border bg-transparent">
@@ -754,9 +754,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [awaitingAssistantBaseline, setAwaitingAssistantBaseline] = useState<number | null>(null);
   const [rendered, setRendered] = useState<{ sessionId: string; snapshot: ConversationSnapshot } | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
-  const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
-  const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
-  const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
   const [verifiedOpenTargets, setVerifiedOpenTargets] = useState<OpenTarget[]>([]);
   const loadWorkspaceThumbnail = useCallback((path: string) => loadArtifactThumbnail(props.client, props.workspaceId, path), [props.client, props.workspaceId]);
   const loadWorkspaceImage = useCallback(async (path: string) => {
@@ -1804,7 +1801,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
     )),
     [queuedDrafts],
   );
-  const hasOpenTodos = (props.todos ?? []).some((todo) => todo.content.trim());
+  const hasOpenTodos = !runSettled
+    && !(liveStatus.type === "idle" && !sending && latestAssistantCompleted)
+    && (props.todos ?? []).some((todo) => todo.content.trim());
   const composerHasPromptContext = selectedAnimations.length > 0
     || Boolean(selectedVoiceReference)
     || Boolean(selectedImageReference);
@@ -2235,35 +2234,26 @@ export function SessionSurface(props: SessionSurfaceProps) {
     return next;
   };
 
-  const listMcp = async (): Promise<{ servers: McpServerEntry[]; statuses: McpStatusMap; status: string | null }> => {
-    const response = await props.client.listMcp(props.workspaceId);
+  const listPlusMenuData = async (): Promise<ComposerPlusMenuData> => {
+    const [response, packageResponse] = await Promise.all([
+      props.client.listMcp(props.workspaceId),
+      props.client.listPluginPackages(props.workspaceId),
+    ]);
     const servers = (response.items ?? []).map((entry) => ({
       name: entry.name,
       config: entry.config as McpServerEntry["config"],
     } satisfies McpServerEntry));
 
-    let statuses: McpStatusMap = {};
+    let statuses: McpStatusMap | null = null;
     try {
       if (props.workspaceRoot.trim()) {
-        statuses = unwrap(await opencodeClient.mcp.status({ directory: props.workspaceRoot.trim() })) as McpStatusMap;
+        statuses = unwrap<McpStatusMap>(await opencodeClient.mcp.status({ directory: props.workspaceRoot.trim() }));
       }
     } catch {
-      statuses = {};
+      statuses = null;
     }
 
     const status = servers.length ? null : "No MCP servers loaded.";
-    setToolMcpServers(servers);
-    setToolMcpStatuses(statuses);
-    setToolMcpStatus(status);
-
-    return { servers, statuses, status };
-  };
-
-  const listInstalledExtensions = async (): Promise<iPolloWorkPluginPackageItem[]> => {
-    const [packageResponse, mcpState] = await Promise.all([
-      props.client.listPluginPackages(props.workspaceId),
-      listMcp(),
-    ]);
     const enabledItems = packageResponse.items.filter((item) => item.enabled);
     const authorizationEntries = await Promise.all(enabledItems.map(async (item) => {
       if (!(item.manifest.authorization?.methods?.length ?? 0)) {
@@ -2278,15 +2268,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
     }));
     const authorizations = new Map(authorizationEntries);
 
-    return enabledItems
-      .filter((item) => isPluginPackageReady(item, authorizations.get(item.pluginId), mcpState.statuses))
-      .sort((left, right) => left.name.localeCompare(right.name));
-  };
-  const listExternalAgents = async (): Promise<iPolloWorkPluginPackageItem[]> => {
-    const response = await props.client.listPluginPackages(props.workspaceId);
-    return response.items
-      .filter(isDelegatableExternalAgent)
-      .sort((left, right) => left.name.localeCompare(right.name));
+    return {
+      extensions: enabledItems
+        .filter((item) => isPluginPackageReady(item, authorizations.get(item.pluginId), statuses ?? {}))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      externalAgents: packageResponse.items
+        .filter(isDelegatableExternalAgent)
+        .sort((left, right) => left.name.localeCompare(right.name)),
+      mcpServers: servers,
+      mcpStatuses: statuses,
+      mcpStatus: status,
+    };
   };
 
   const handleUploadInboxFiles = async (files: File[]) => {
@@ -2514,14 +2506,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
           listCommands={props.listCommands}
           listSkills={listSkills}
           skills={toolSkills}
-          listMcp={listMcp}
-          mcpServers={toolMcpServers}
-          mcpStatus={toolMcpStatus}
-          mcpStatuses={toolMcpStatuses}
-          listInstalledExtensions={listInstalledExtensions}
+          plusMenuScope={props.workspaceId}
+          listPlusMenuData={listPlusMenuData}
           onOpenWorkspaceApp={props.onOpenWorkspaceApp}
           onOpenTemplateMarket={props.onOpenTemplateMarket}
-          listExternalAgents={listExternalAgents}
           onOpenSettingsSection={props.onOpenSettingsSection}
           recentFiles={props.recentFiles}
           searchFiles={props.searchFiles}
@@ -2570,9 +2558,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
                       if (props.activeQuestion) props.respondQuestion?.(props.activeQuestion.id, answers);
                     }}
                   />
-                ) : hasOpenTodos ? (
-                  <TodoPanel todos={props.todos ?? []} />
-                ) : null}
+                ) : <TodoPanel todos={props.todos ?? []} visible={hasOpenTodos} />}
                 {props.activePermission ? (
                   <PermissionApprovalPanel
                     permission={props.activePermission}

@@ -62,7 +62,7 @@ export default {
                 forcedAnchorCalls: 0,
                 scrollEvents: 0,
                 gestureSteps: 0,
-                assistantCharsAtStart: message?.innerText.length || 0,
+                assistantCharsAtStart: [...document.querySelectorAll('[data-message-role="assistant"]')].reduce((total, node) => total + node.innerText.length, 0),
                 assistantCharsAtEnd: 0,
                 startTop: 0,
                 endTop: 0,
@@ -97,7 +97,7 @@ export default {
               return true;
             })()`);
             ctx.assert(installed, "Could not install the transcript scroll witness.");
-            await new Promise((resolve) => setTimeout(resolve, 2_500));
+            await ctx.waitFor("window.__streamingScrollProof?.gestureSteps >= 65", { timeoutMs: 10_000, label: "continuous scroll samples" });
           },
           assert: async () => {
             const metrics = await ctx.eval(`(() => {
@@ -107,7 +107,7 @@ export default {
               proof.scroller.removeEventListener('scroll', proof.listener);
               Element.prototype.scrollIntoView = proof.originalScrollIntoView;
               proof.endTop = proof.scroller.scrollTop;
-              proof.assistantCharsAtEnd = document.querySelector('[data-message-role="assistant"]')?.innerText.length || 0;
+              proof.assistantCharsAtEnd = [...document.querySelectorAll('[data-message-role="assistant"]')].reduce((total, node) => total + node.innerText.length, 0);
               const result = {
                 forcedAnchorCalls: proof.forcedAnchorCalls,
                 scrollEvents: proof.scrollEvents,

@@ -6,9 +6,11 @@ import {
   getMessageCompleted,
   getMessageCreated,
   getAssistantRenderGroups,
+  hasActiveAssistantVisibleResult,
   getScheduleApplyResult,
   groupMessages,
   isAssistantCommentaryMessage,
+  isAssistantFinalAnswerMessage,
   isMessageGroup,
   splitAssistantRenderGroups,
 } from "../src/components/chat/utils";
@@ -38,6 +40,9 @@ describe("assistant process collapse sections", () => {
 
     expect(isAssistantCommentaryMessage(commentary)).toBe(true);
     expect(isAssistantCommentaryMessage(answer)).toBe(false);
+    expect(isAssistantFinalAnswerMessage(commentary)).toBe(false);
+    expect(isAssistantFinalAnswerMessage(answer)).toBe(true);
+    expect(isAssistantFinalAnswerMessage({ ...answer, metadata: undefined })).toBe(false);
     expect(getAssistantRenderGroups(answer.parts, true)).toEqual([{ kind: "text", text: "The fix is" }]);
   });
 
@@ -90,24 +95,28 @@ describe("assistant process collapse sections", () => {
     })
   })
 
-  test("starts compact and preserves the user's disclosure choice throughout the run", () => {
+  test("shows live process steps and folds them on completion", () => {
     const source = readFileSync(
       new URL("../src/components/chat/message-list.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain("const [isOpen, setIsOpen] = React.useState(false)");
+    expect(source).toContain("const isOpen = manualOpen ?? (isStreaming && !completed)");
     expect(source).toContain("getAssistantProcessState(isStreaming, hasError)");
     expect(source).toContain("getToolActivityLabel(activeTool.part)");
     expect(source).toContain('runOutcome === "running"');
     expect(source).toContain("getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))");
     expect(source).toContain("message.id === latestTurnAssistantMessageId");
     expect(source).toContain("aria-expanded={isOpen}");
-    expect(source).toContain("onClick={() => setIsOpen((open) => !open)}");
+    expect(source).toContain("onClick={() => setManualOpen(!isOpen)}");
+    expect(source).toContain("if (completed) setManualOpen(null)");
+    expect(source).toContain('item.message.id !== liveProgressData?.item.message.id');
+    expect(source).toContain('!resultTexts.has(group.text.trim())');
+    expect(source).toContain('message.process_handled_tool_count');
     expect(source).toContain("<AssistantProcessDisclosure");
-    expect(source).toContain("isStreaming={isLiveGroup}");
+    expect(source).toContain("isStreaming={liveProcess}");
     expect(source).toContain("const isLiveGroup = isStreaming && items.some");
-    expect(source).toContain("itemRenderData.map(renderProcessItem)");
+    expect(source).toContain("processRows.map(renderProcessRow)");
     expect(source).toContain("hideProcess");
     expect(source).toContain("isStreaming={group.isStreaming}");
 
@@ -141,6 +150,7 @@ describe("assistant process collapse sections", () => {
     ] satisfies Parameters<typeof getActiveAssistantMessageId>[0];
     expect(getActiveAssistantMessageId(respondingToFollowUp, followUpBaseline)).toBe("assistant-2");
     expect(getActiveAssistantMessageId(respondingToFollowUp)).toBe("assistant-2");
+    expect(hasActiveAssistantVisibleResult(respondingToFollowUp, followUpBaseline)).toBe(false);
   });
 
   test("keeps the waiting placeholder when OpenCode has only emitted an empty assistant shell", () => {
@@ -196,8 +206,8 @@ describe("assistant process collapse sections", () => {
 
     const sections = splitAssistantRenderGroups(groups);
 
-    expect(sections.processGroups).toEqual([]);
-    expect(sections.resultGroups).toEqual(groups);
+    expect(sections.processGroups).toEqual(groups);
+    expect(sections.resultGroups).toEqual([]);
   });
 
   test("keeps automatic compaction continuations inside one assistant turn", () => {

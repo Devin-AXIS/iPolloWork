@@ -3,6 +3,8 @@ import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 const vo = await loadVoiceoverParagraphs("conversation-streaming-result");
 
 async function mountFixture() {
+  window.__streamingAnswerProof?.cleanup?.();
+  document.querySelectorAll("#streaming-answer-proof").forEach((node) => node.remove());
   const resources = performance.getEntriesByType("resource").map((entry) => entry.name);
   const moduleUrl = (name) => resources.find((url) => url.includes(name));
   const { default: React } = await import(moduleUrl("/react.js?"));
@@ -25,6 +27,7 @@ async function mountFixture() {
   const previousLocale = currentLocale();
   setLocale("zh");
   const { useSessionActivityStore } = await import(activityStoreUrl);
+  useSessionActivityStore.getState().clearError("proof", "proof");
   const { useSessionScrollStore } = await import("/src/react-app/domains/session/surface/scroll-store.ts");
   const { SessionScrollOverlay } = await import("/src/react-app/domains/session/surface/scroll-overlay.tsx");
   const host = document.createElement("section");
@@ -51,8 +54,9 @@ async function mountFixture() {
   };
   const tool = {
     id: "proof-tool", role: "assistant",
-    parts: [{ type: "dynamic-tool", toolName: "inspect_files", toolCallId: "proof-tool-call", input: {}, state: "input-available" }],
+    parts: [{ type: "dynamic-tool", toolName: "bash", toolCallId: "proof-tool-call", input: { command: "rg --files", description: "检查项目文件" }, state: "input-available" }],
   };
+  const completedTool = { ...tool, parts: [{ ...tool.parts[0], state: "output-available", output: "ok" }] };
   const answer = (text, state) => ({
     id: "proof-answer", role: "assistant",
     metadata: { ipollowork: { codexPhase: "final_answer", created: Date.now(), ...(state === "done" ? { completed: Date.now() } : {}) } },
@@ -63,6 +67,7 @@ async function mountFixture() {
     const [messages, setMessages] = React.useState([initialUser, commentary, tool]);
     const [status, setStatus] = React.useState("streaming");
     const [runOutcome, setRunOutcome] = React.useState("running");
+    const [activeMessageBaseline, setActiveMessageBaseline] = React.useState(null);
     const [runEndedAt, setRunEndedAt] = React.useState(null);
     const [finalizing, setFinalizing] = React.useState(false);
     const [queued, setQueued] = React.useState([]);
@@ -74,18 +79,69 @@ async function mountFixture() {
       window.__streamingAnswerProof.pauseProcess = () => setStatus("ready");
       window.__streamingAnswerProof.resumeProcess = () => setStatus("streaming");
       window.__streamingAnswerProof.advance = () => {
-        setMessages([initialUser, commentary, tool, answer("检查完成，正在整理", "streaming")]);
+        setMessages([initialUser, commentary, completedTool, answer("检查完成，正在整理", "streaming")]);
         setQueued(["完成后再检查测试结果"]);
       };
       window.__streamingAnswerProof.append = () => {
-        setMessages([initialUser, commentary, tool, answer("检查完成，正在整理最终建议。", "streaming")]);
+        setMessages([initialUser, commentary, completedTool, answer("检查完成，正在整理最终建议。", "streaming")]);
         setFinalizing(true);
       };
       window.__streamingAnswerProof.finish = () => {
         setFinalizing(false);
-        setMessages([initialUser, commentary, tool, answer("检查完成，正在整理最终建议。", "done")]);
+        setMessages([initialUser, commentary, completedTool, answer("检查完成，正在整理最终建议。", "done")]);
         setStatus("ready");
         setRunOutcome("completed");
+      };
+      window.__streamingAnswerProof.showGroupedCommands = () => {
+        useSessionActivityStore.getState().clearError("proof", "proof");
+        setStopAcknowledged(false);
+        setFinalizing(false);
+        setStatus("ready");
+        setRunOutcome("completed");
+        setMessages([
+          { id: "proof-group-request", role: "user", metadata: { ipollowork: { created: Date.now() - 15_000 } }, parts: [{ type: "text", text: "检查并修改文件" }] },
+          { id: "proof-group-inspect", role: "assistant", parts: [{ type: "dynamic-tool", toolName: "read", toolCallId: "proof-read", state: "output-available", input: { filePath: "entry.html" }, output: "content" }] },
+          { id: "proof-group-commands", role: "assistant", parts: [
+            { type: "dynamic-tool", toolName: "bash", toolCallId: "proof-command-1", state: "output-available", input: { command: "sed -n '1,40p' entry.html", description: "Inspect entry" }, output: "ok" },
+            { type: "dynamic-tool", toolName: "bash", toolCallId: "proof-command-2", state: "output-available", input: { command: "rg 'theme' entry.html", description: "Check theme" }, output: "ok" },
+          ] },
+          { id: "proof-group-answer", role: "assistant", metadata: { ipollowork: { codexPhase: "final_answer", completed: Date.now() } }, parts: [{ type: "text", text: "文件已检查。\n\n已更新：\n\n- [palette.json](design/proof/palette.json)\n- [design-tokens.css](design/proof/design-tokens.css)\n\n风格调整完成。", state: "done" }] },
+        ]);
+      };
+      window.__streamingAnswerProof.showOpenCodePhase = (phase) => {
+        useSessionActivityStore.getState().clearError("proof", "proof");
+        setActiveMessageBaseline(null);
+        setStopAcknowledged(false);
+        setFinalizing(false);
+        setRunOutcome("running");
+        setStatus(phase === "waiting" ? "submitted" : "streaming");
+        const parts = phase === "waiting" ? []
+          : phase === "reasoning" ? [{ type: "reasoning", text: "正在检查上下文", state: "streaming" }]
+          : phase === "tool" ? [{ type: "dynamic-tool", toolName: "bash", toolCallId: "opencode-proof-command", state: "input-available", input: { command: "rg --files", description: "检查项目文件" } }]
+          : [{ type: "text", text: "已找到相关文件。", state: "streaming" }];
+        setMessages([
+          { id: "opencode-proof-user", role: "user", parts: [{ type: "text", text: "检查项目" }] },
+          { id: "opencode-proof-assistant", role: "assistant", parts },
+        ]);
+      };
+      window.__streamingAnswerProof.appendOpenCodeStep = () => {
+        setMessages((messages) => [...messages,
+          { id: "opencode-proof-tool", role: "assistant", parts: [{ type: "dynamic-tool", toolName: "bash", toolCallId: "ordered-command", state: "output-available", input: { command: "pwd", description: "确认工作目录" }, output: "workspace" }] },
+          { id: "opencode-proof-final", role: "assistant", parts: [{ type: "text", text: "目录确认完成。", state: "streaming" }] },
+        ]);
+      };
+      window.__streamingAnswerProof.finishOpenCode = () => {
+        setStatus("ready");
+        setRunOutcome("completed");
+      };
+      window.__streamingAnswerProof.showOpenCodeContinuation = () => {
+        setActiveMessageBaseline(2);
+        setRunOutcome("running");
+        setStatus("streaming");
+        setMessages([
+          { id: "opencode-continuation-user", role: "user", parts: [{ type: "text", text: "请检查项目" }] },
+          { id: "opencode-previous-answer", role: "assistant", parts: [{ type: "text", text: "目录已经找到。", state: "done" }] },
+        ]);
       };
       window.__streamingAnswerProof.showFile = () => {
         setRunOutcome("running");
@@ -242,7 +298,7 @@ async function mountFixture() {
         dispatchAction() {}, setPrompt() {},
       }, React.createElement("main", { className: "mx-auto max-w-[850px]" },
         React.createElement("h1", { className: "mb-8 text-xl font-semibold" }, "对话流式输出"),
-        React.createElement(MessageList, { messages, status, runOutcome, runEndedAt, finalizing, retryStatus, artifactFiles, stoppedImageMessageIds, stopAcknowledged }),
+        React.createElement(MessageList, { messages, status, runOutcome, activeMessageBaseline, runEndedAt, finalizing, retryStatus, artifactFiles, stoppedImageMessageIds, stopAcknowledged }),
         queued.length ? React.createElement("div", { className: "mt-8" },
           React.createElement(QueuedMessagesPanel, { messages: queued, onRemove: () => setQueued([]) })) : null),
         React.createElement(SessionScrollOverlay, { sessionId: "proof", isStreaming: status === "streaming",
@@ -262,8 +318,8 @@ export default {
   kind: "user-facing",
   steps: [
     {
-      name: "Compact process preserves manual disclosure across transient idle",
-      run: (ctx) => ctx.prove("Progress starts compact and a manual expansion survives a transient idle status", {
+      name: "Live process preserves manual disclosure across transient idle",
+      run: (ctx) => ctx.prove("Progress shows chronological steps while running and a manual expansion survives a transient idle status", {
         voiceover: vo[0],
         action: () => ctx.eval(`(${mountFixture.toString()})()`, { awaitPromise: true }),
         assert: async () => {
@@ -273,27 +329,38 @@ export default {
             const process = host.querySelector('[data-testid=assistant-process-column]');
             return { open: process.querySelector('button')?.getAttribute('aria-expanded'),
               commentary: process.textContent.includes('我先检查相关文件'),
+              commentaryBeforeCommand: process.textContent.indexOf('我先检查相关文件') < process.textContent.indexOf('运行命令'),
+              liveAction: process.querySelector('[data-tool-action=command] summary')?.textContent,
+              commandDetailsClosed: !process.querySelector('[data-tool-action=command]')?.open,
+              duplicateProgress: Boolean(host.querySelector('[data-testid=assistant-streaming-progress]')),
               pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              thinkingDots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
+              thinkingAnimation: getComputedStyle(host.querySelector('[data-testid=assistant-result-pending] .chat-thinking-dots span')).animationName,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
-          ctx.assert(state.open === "false" && !state.commentary && !state.result
-            && state.pending?.includes("正在准备结果"), JSON.stringify(state));
+          ctx.assert(state.open === "true" && state.commentary && state.commentaryBeforeCommand && !state.duplicateProgress && !state.result
+            && state.liveAction?.includes("运行命令") && state.liveAction?.includes("检查项目文件") && state.commandDetailsClosed
+            && state.pending === "正在思考..."
+            && state.thinkingDots === 3 && state.thinkingAnimation === "chat-thinking-dot", JSON.stringify(state));
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'false'");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'true'");
+          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column]').textContent.includes('我先检查相关文件')"), "Expanded process lost the chronological commentary.");
           await ctx.eval("window.__streamingAnswerProof.pauseProcess()");
           await ctx.eval("new Promise(resolve => setTimeout(resolve, 300))", { awaitPromise: true });
           const paused = await ctx.eval(`(() => {
             const process = document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column]');
             return { open: process.querySelector('button')?.getAttribute('aria-expanded'), label: process.querySelector('button')?.textContent };
           })()`);
-          ctx.assert(paused.open === "true" && paused.label.includes("处理中"), JSON.stringify(paused));
+          ctx.assert(paused.open === "true", JSON.stringify(paused));
           await ctx.eval("window.__streamingAnswerProof.resumeProcess()");
           const beforeTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           await ctx.eval("new Promise(resolve => setTimeout(resolve, 1_200))", { awaitPromise: true });
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "正在准备结果"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "正在思考"] },
       }),
     },
     {
@@ -324,16 +391,19 @@ export default {
       }),
     },
     {
-      name: "Completion preserves disclosure choice without remounting the answer",
-      run: (ctx) => ctx.prove("Completion keeps manual progress expansion, flat answer text, compact actions, and the queued follow-up", {
+      name: "Completion folds process details without remounting the answer",
+      run: (ctx) => ctx.prove("Completion folds progress, freezes elapsed time, and keeps the final answer and queued follow-up", {
         voiceover: vo[2],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.finish()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('用时')");
-          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'true'"), "Manual expansion was lost at completion.");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'false'");
           const frozen = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
+          ctx.assert(frozen.includes("已处理 1 个命令"), `Command count missing from elapsed heading: ${frozen}`);
           await ctx.eval("new Promise(resolve => setTimeout(resolve, 1_200))", { awaitPromise: true });
           ctx.assert(frozen === await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent"), "Completed elapsed time continued ticking.");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
+          ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column]').textContent.includes('检查完成，正在整理最终建议')"), "Expanded process repeated the final answer.");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
         },
         assert: async () => {
@@ -348,13 +418,15 @@ export default {
               actionSize: action?.getBoundingClientRect().width,
               iconSize: action?.querySelector('svg')?.getBoundingClientRect().width,
               answerBackground: answerText && getComputedStyle(answerText).backgroundColor,
-              answerBorder: answerText && getComputedStyle(answerText).borderTopWidth };
+              answerBorder: answerText && getComputedStyle(answerText).borderTopWidth,
+              answerSize: answerText && getComputedStyle(answerText).fontSize,
+              processBorder: getComputedStyle(host.querySelector('.chat-process-heading')).borderBottomWidth };
           })()`);
           ctx.assert(state.sameNode && state.answer && state.queue && state.actionSize === 28
             && state.iconSize === 14 && state.answerBackground === 'rgba(0, 0, 0, 0)'
-            && state.answerBorder === '0px', JSON.stringify(state));
+            && state.answerBorder === '0px' && state.answerSize === '14px' && state.processBorder === '0px', JSON.stringify(state));
         },
-        screenshot: { name: "completed-result", requireText: ["用时", "最终建议", "完成后再检查测试结果"] },
+        screenshot: { name: "completed-result", requireText: ["用时", "已处理 1 个命令", "最终建议", "完成后再检查测试结果"] },
       }),
     },
     {
@@ -586,14 +658,14 @@ export default {
         voiceover: vo[13],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showToolFailure()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在准备结果')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考')");
         },
         assert: async () => {
           const text = await ctx.eval("document.querySelector('#streaming-answer-proof')?.textContent");
-          ctx.assert(text.includes("正在准备结果") && !text.includes("有一步未成功")
+          ctx.assert(text.includes("正在思考") && !text.includes("有一步未成功")
             && !text.includes("ENOENT /secret/path"), text);
         },
-        screenshot: { name: "recoverable-tool-failure", requireText: ["正在准备结果"] },
+        screenshot: { name: "recoverable-tool-failure", requireText: ["正在思考"] },
       }),
     },
     {
@@ -686,16 +758,123 @@ export default {
       }),
     },
     {
+      name: "Expanded process groups related commands by action",
+      run: (ctx) => ctx.prove("Tool actions have matching icons and start collapsed, with commands available on expansion", {
+        voiceover: vo[19],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showGroupedCommands()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('已处理 3 个命令')");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
+          await ctx.waitFor("document.querySelectorAll('#streaming-answer-proof [data-testid=assistant-tool-action]').length === 2");
+          const initiallyClosed = await ctx.eval("[...document.querySelectorAll('#streaming-answer-proof [data-testid=assistant-tool-action]')].every(node => !node.open && node.querySelector('summary svg'))");
+          ctx.assert(initiallyClosed, "Tool action groups did not start closed with icons.");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command]')?.open === true");
+          await ctx.eval("new Promise(resolve => setTimeout(resolve, 180))", { awaitPromise: true });
+        },
+        assert: async () => {
+          const state = await ctx.eval(`(() => {
+            const host = document.querySelector('#streaming-answer-proof');
+            const actions = [...host.querySelectorAll('[data-testid=assistant-tool-action]')];
+            return { categories: actions.map(node => node.dataset.toolAction),
+              labels: actions.map(node => node.firstElementChild?.textContent),
+              onlyCommandOpen: !actions[0]?.open && actions[1]?.open,
+              icons: actions.map(node => node.querySelector('summary svg')?.getAttribute('class')),
+              arrowTransform: getComputedStyle(actions[1]?.querySelector('summary svg:last-child')).transform,
+              commands: actions[1]?.textContent.includes("sed -n") && actions[1]?.textContent.includes("rg 'theme'"),
+              resultOutside: !host.querySelector('[data-testid=assistant-process-column]')?.textContent.includes('文件已检查。') && host.querySelector('[data-assistant-result]')?.textContent.includes('文件已检查。'),
+              fileCards: host.querySelectorAll('[data-assistant-result] .markdown-content > .chat-output-grid > .chat-output-card').length,
+              fileBullets: host.querySelectorAll('[data-assistant-result] li .chat-output-card').length,
+              resultGaps: (() => { const blocks = [...host.querySelectorAll('[data-assistant-result] .markdown-content > *')];
+                return blocks.slice(1).map((block, index) => Math.round(block.getBoundingClientRect().top - blocks[index].getBoundingClientRect().bottom)); })() };
+          })()`);
+          ctx.assert(state.categories.join(',') === 'inspect,command' && state.labels.join(',') === '查看文件,运行命令'
+            && state.onlyCommandOpen && state.icons[0]?.includes('lucide-file-search')
+            && state.icons[1]?.includes('lucide-square-terminal') && state.arrowTransform !== 'none'
+            && state.commands && state.resultOutside && state.fileCards === 2 && state.fileBullets === 0
+            && state.resultGaps.every((gap) => Math.abs(gap - 12) <= 1), JSON.stringify(state));
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
+          ctx.assert(await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command]').open === false"), "Command group did not collapse again.");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-tool-action=command] summary').click()");
+          await ctx.eval("new Promise(resolve => setTimeout(resolve, 180))", { awaitPromise: true });
+        },
+        screenshot: { name: "grouped-command-actions", requireText: ["查看文件", "运行命令", "palette.json", "design-tokens.css"] },
+      }),
+    },
+    {
+      name: "OpenCode waiting and tool work show the same thinking state",
+      run: (ctx) => ctx.prove("OpenCode shows animated thinking before an assistant part and while reasoning or tools are active", {
+        voiceover: vo[20],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showOpenCodeContinuation()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-loading]')?.textContent.includes('正在思考...')");
+          const continuation = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof'); return {
+            loading: host.querySelectorAll('[data-testid=assistant-loading]').length,
+            pending: host.querySelectorAll('[data-testid=assistant-result-pending]').length,
+            labels: host.textContent.match(/正在思考/g)?.length ?? 0,
+            letterAnimation: getComputedStyle(host.querySelector('.chat-thinking-label span')).animationName,
+          }; })()`);
+          ctx.assert(continuation.loading === 1 && continuation.pending === 0 && continuation.labels === 1
+            && continuation.letterAnimation === 'chat-thinking-letter', JSON.stringify(continuation));
+          await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('waiting')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-loading]')?.textContent.includes('正在思考...')");
+          ctx.assert(await ctx.eval("document.querySelectorAll('#streaming-answer-proof [data-testid=assistant-loading] .chat-thinking-dots span').length === 3"), "OpenCode waiting state lacks animated thinking dots.");
+          await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('reasoning')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending]')?.textContent.includes('正在思考...')");
+          await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('tool')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-tool-action=command]')?.textContent.includes('检查项目文件')");
+        },
+        assert: async () => {
+          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
+            return { pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              dots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
+              command: host.querySelector('[data-tool-action=command]')?.textContent,
+              result: Boolean(host.querySelector('[data-assistant-result]')) }; })()`);
+          ctx.assert(state.pending === '正在思考...' && state.dots === 3 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
+        },
+        screenshot: { name: "opencode-thinking-and-tool", requireText: ["正在思考", "运行命令"] },
+      }),
+    },
+    {
+      name: "Unphased output stays chronological until the final result",
+      run: (ctx) => ctx.prove("Unphased text stays in arrival order without a premature result area; completion folds the process", {
+        voiceover: vo[21],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showOpenCodePhase('answer')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]')?.textContent.includes('已找到相关文件。')");
+          await ctx.eval("void (window.__orderedFirstText = document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-assistant]'))");
+          ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-assistant-result]')"), "Intermediate text created a result area.");
+          await ctx.eval("window.__streamingAnswerProof.appendOpenCodeStep()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-message-id=opencode-proof-final]')?.textContent.includes('目录确认完成。')");
+          const ordered = await ctx.eval(`(() => {
+            const host = document.querySelector('#streaming-answer-proof');
+            const rows = [...host.querySelectorAll('[data-message-role=assistant]')];
+            return { ids: rows.map(n => n.dataset.messageId), retained: rows[0] === window.__orderedFirstText,
+              result: Boolean(host.querySelector('[data-assistant-result]')) };
+          })()`);
+          ctx.assert(ordered.retained && !ordered.result && JSON.stringify(ordered.ids) === JSON.stringify(['opencode-proof-assistant', 'opencode-proof-tool', 'opencode-proof-final']), JSON.stringify(ordered));
+          await ctx.eval("window.__streamingAnswerProof.finishOpenCode()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent.includes('目录确认完成。')");
+        },
+        assert: async () => {
+          ctx.assert(await ctx.eval("!document.querySelector('#streaming-answer-proof [data-testid=assistant-result-pending], #streaming-answer-proof [data-testid=assistant-loading]')"), "Thinking remained visible after the answer began.");
+        },
+        screenshot: { name: "opencode-streaming-answer", requireText: ["目录确认完成。"] },
+      }),
+    },
+    {
       name: "Composer text matches conversation typography",
       run: async (ctx) => {
         let placeholderStyle;
-        await ctx.prove("The composer uses the same 13px text and 1.5 line height for typed and placeholder text", {
-          voiceover: vo[19],
+        await ctx.prove("The composer uses the same 14px text and 1.5 line height for typed and placeholder text", {
+          voiceover: vo[22],
           action: async () => {
             await ctx.eval("window.__streamingAnswerProof.cleanup()");
-            await ctx.waitFor("Boolean(document.querySelector('[contenteditable=true][data-lexical-editor=true]'))");
+            await ctx.waitFor("Boolean(document.querySelector('[contenteditable=true][data-lexical-editor=true]')) && window.__ipolloworkControl.listActions().some(action => action.id === 'composer.set_text' && !action.disabled)");
             placeholderStyle = await ctx.eval(`(() => {
-              const style = getComputedStyle(document.querySelector('[data-testid=composer-placeholder]'));
+              const placeholder = document.querySelector('[data-testid=composer-placeholder]');
+              if (!placeholder) return null;
+              const style = getComputedStyle(placeholder);
               return [style.fontSize, style.lineHeight];
             })()`);
             await ctx.control("composer.set_text", { text: "第一行\n第二行" });
@@ -705,9 +884,9 @@ export default {
             const styles = await ctx.eval(`(() => {
               const editor = document.querySelector('[contenteditable=true][data-lexical-editor=true]');
               const read = (element) => { const style = getComputedStyle(element); return [style.fontSize, style.lineHeight]; };
-              return { editor: read(editor), paragraph: read(editor.querySelector('p')) };
+              return { editor: read(editor), paragraph: editor.querySelector('p') ? read(editor.querySelector('p')) : null };
             })()`);
-            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).every(([size, height]) => size === "13px" && height === "19.5px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
+            ctx.assert(Object.values({ ...styles, placeholder: placeholderStyle }).filter(Boolean).every(([size, height]) => size === "14px" && height === "21px"), JSON.stringify({ ...styles, placeholder: placeholderStyle }));
           },
           screenshot: { name: "composer-multiline-typography", requireText: ["第一行", "第二行"] },
         });

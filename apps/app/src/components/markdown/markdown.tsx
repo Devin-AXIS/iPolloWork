@@ -259,6 +259,14 @@ const baseMarkedOptions = {
       return `<h${depth} class="${className}">${this.parser.parseInline(tokens)}</h${depth}>`;
     },
     list(token) {
+      const fileLinks = token.items.map((item) => {
+        const text = item.tokens.length === 1 ? item.tokens[0] : null;
+        const link = (text?.type === "text" || text?.type === "paragraph") && text.tokens?.length === 1 ? text.tokens[0] : null;
+        return !item.task && link?.type === "link" && localFilePathFromHref(link.href) ? link : null;
+      });
+      if (!token.ordered && fileLinks.length > 0 && fileLinks.every((link): link is Tokens.Link => link !== null)) {
+        return `<div class="chat-output-grid my-3">${fileLinks.map((link) => this.parser.parseInline([link])).join("")}</div>`;
+      }
       const tag = token.ordered ? "ol" : "ul";
       const className = cn(
         "my-3 pl-6",

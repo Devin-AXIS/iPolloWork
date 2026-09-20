@@ -245,6 +245,9 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
         // settle a newer live run while the user switches engines. Terminal
         // state comes from the event stream or the selected-session snapshot.
         if (!runActive) continue;
+        // A cached directory row cannot restart a turn that already ended.
+        // A new turn is established by its live event or selected-session snapshot.
+        if (nextState.recordsByWorkspaceId[id]?.[sessionId]?.runEndedAt != null) continue;
         nextState = {
           ...nextState,
           ...updateRecord(nextState, id, sessionId, (record) => {

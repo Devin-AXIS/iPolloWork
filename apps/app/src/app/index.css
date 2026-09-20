@@ -11,9 +11,17 @@
 
 @import "@fontsource-variable/ibm-plex-sans";
 
-/* Compensate for the transparent padding inside the supplied studio logos. */
+/* Match the visible bounds of the transparent studio marks to adjacent brands. */
 img:is([src$="/ext-design.png"], [src$="/ext-video.png"], [src$="/ext-image-studio.png"]) {
-  scale: 1.4;
+  scale: 1.18;
+}
+
+img[src$="/ext-video.png"] {
+  scale: 1.22;
+}
+
+img[src$="/ext-image-studio.png"] {
+  scale: 1.26;
 }
 
 img[src$="/ext-video-console.png"] {
@@ -306,12 +314,62 @@ body {
 }
 
 [data-chat-readable-text="true"] {
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
 }
 
 [data-chat-readable-text="true"] :is(p, li) {
   line-height: 1.5;
+}
+
+[data-assistant-result] .markdown-content > * {
+  margin-block: 0;
+}
+
+[data-assistant-result] .markdown-content > * + * {
+  margin-top: 12px;
+}
+
+.chat-thinking-dots {
+  display: inline-flex;
+  width: 1.2em;
+  margin-left: 0.1em;
+}
+
+.chat-thinking-label span {
+  animation: chat-thinking-letter 1.6s ease-in-out infinite;
+}
+
+@keyframes chat-thinking-letter {
+  0%, 60%, 100% { opacity: 0.7; }
+  30% { opacity: 1; }
+}
+
+.chat-thinking-dots span {
+  opacity: 0.3;
+  animation: chat-thinking-dot 1.4s ease-in-out infinite;
+}
+
+.chat-thinking-dots span:nth-child(2) { animation-delay: 0.2s; }
+.chat-thinking-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes chat-thinking-dot {
+  0%, 60%, 100% { opacity: 0.3; }
+  30% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-thinking-label span { animation: none; }
+  .chat-thinking-dots span { animation: none; opacity: 0.75; }
+}
+
+/* Keep small labels, tool details, code blocks, and file titles in the conversation readable. */
+[data-chat-transcript] :is(.text-xs, .chat-output-title) {
+  font-size: 14px;
+}
+
+.chat-tool-action[open] > summary .chat-tool-action-chevron {
+  transform: rotate(90deg);
 }
 
 html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"] {

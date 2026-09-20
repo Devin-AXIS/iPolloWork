@@ -24,3 +24,7 @@ Use this Skill only for a design project already owned by the active iPolloWork 
 6. Save the requested change to the exact session file and verify the resulting HTML remains readable and structurally complete before finishing.
 
 If the active session provides stricter instructions, those instructions take precedence.
+
+## Content scope
+
+Let content determine page count, scene count, and duration. Template sample quantities and timings are not limits, even when an inherited checklist calls them fixed. Apply counts or duration constraints only when explicitly requested by the user. Approximate targets allow reasonable variation; explicit maximums remain strict. Do not omit important content or add filler to fit a template. For narration, pass `targetDurationSeconds` only for a user duration request and synchronize scenes to actual audio duration.

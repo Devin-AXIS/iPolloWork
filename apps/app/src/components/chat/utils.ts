@@ -22,6 +22,12 @@ export function isAssistantCommentaryMessage(message: UIMessage): boolean {
   return ipollowork?.codexPhase === "commentary"
 }
 
+export function isAssistantFinalAnswerMessage(message: UIMessage): boolean {
+  const metadata = isRecord(message.metadata) ? message.metadata : null
+  const ipollowork = isRecord(metadata?.ipollowork) ? metadata.ipollowork : null
+  return ipollowork?.codexPhase === "final_answer"
+}
+
 export type ScheduleApplyResult = {
   itemCount: number
   focusAt: number
@@ -339,6 +345,27 @@ function assistantMessageHasRenderableContent(message: UIMessage) {
   })
 }
 
+export function assistantMessageHasVisibleResult(message: UIMessage) {
+  if (message.role !== "assistant") return false
+  return message.parts.some((part) => {
+    if (part.type === "text") return part.text.trim().length > 0
+    return part.type === "file"
+  })
+}
+
+// Loading should end when this turn has content a user can actually consume.
+// Reasoning and tool parts stay in the compact process status instead.
+export function hasActiveAssistantVisibleResult(
+  messages: UIMessage[],
+  activeMessageBaseline?: number | null,
+) {
+  const latestVisibleUserIndex = messages.findLastIndex(
+    (message) => message.role === "user" && !isInternalContinuationMessage(message),
+  )
+  const turnStart = activeMessageBaseline ?? Math.max(0, latestVisibleUserIndex)
+  return messages.slice(turnStart).some(assistantMessageHasVisibleResult)
+}
+
 export function getActiveAssistantMessageId(
   messages: UIMessage[],
   activeMessageBaseline?: number | null,
@@ -482,18 +509,22 @@ export function getAssistantRenderGroups(
 }
 
 export function splitAssistantRenderGroups(groups: AssistantRenderGroup[]): AssistantRenderSections {
-  const lastTextIndex = groups.findLastIndex((group) => group.kind === "text" && Boolean(group.text.trim()))
-  if (lastTextIndex <= 0) {
-    return { processGroups: [], resultGroups: groups }
+  const lastResultIndex = groups.findLastIndex((group) =>
+    (group.kind === "text" && Boolean(group.text.trim())) || group.kind === "file",
+  )
+  if (lastResultIndex < 0) {
+    return {
+      processGroups: groups.filter((group): group is AssistantProcessRenderGroup => group.kind === "reasoning" || group.kind === "tool"),
+      resultGroups: [],
+    }
   }
 
-  const leadingGroups = groups.slice(0, lastTextIndex)
-  if (!leadingGroups.every((group): group is AssistantProcessRenderGroup => group.kind !== "text")) {
-    return { processGroups: [], resultGroups: groups }
-  }
+  const processGroups = groups.filter(
+    (group): group is AssistantProcessRenderGroup => group.kind === "reasoning" || group.kind === "tool",
+  )
 
   return {
-    processGroups: leadingGroups,
-    resultGroups: groups.slice(lastTextIndex),
+    processGroups,
+    resultGroups: groups.filter((group) => !processGroups.some((processGroup) => processGroup === group)),
   }
 }

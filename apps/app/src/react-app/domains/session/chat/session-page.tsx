@@ -88,7 +88,7 @@ import { AppSidebar } from "../sidebar/app-sidebar";
 import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "../sidebar/app-sidebar-provider";
 import { readSessionType, sessionTypeForTemplate, setSessionType, subscribeToSessionType } from "../sidebar/session-type";
 import { SessionSurface, StarterCapabilityChip, type SessionSurfaceProps } from "../surface/session-surface";
-import { ReactSessionComposer, type ComposerProps } from "../surface/composer/composer";
+import { ReactSessionComposer, type ComposerPlusMenuData, type ComposerProps } from "../surface/composer/composer";
 import {
   NewConversationStarter,
   newConversationPlaceholder,
@@ -703,13 +703,8 @@ type InitialProjectComposerTooling = Pick<
   ComposerProps,
   | "listSkills"
   | "skills"
-  | "listMcp"
-  | "mcpServers"
-  | "mcpStatus"
-  | "mcpStatuses"
-  | "listImportedPlugins"
-  | "importedPlugins"
-  | "listExternalAgents"
+  | "plusMenuScope"
+  | "listPlusMenuData"
   | "onUploadInboxFiles"
 >;
 
@@ -756,12 +751,6 @@ function buildWorkspaceRepairScript(input: {
   );
   return lines.join("\r\n");
 }
-type InitialProjectMcpResult = {
-  servers: McpServerEntry[];
-  statuses: McpStatusMap;
-  status: string | null;
-};
-
 function isMcpServerConfig(value: Record<string, unknown>): value is McpServerEntry["config"] {
   return value.type === "local" || value.type === "remote";
 }
@@ -883,10 +872,6 @@ function InitialProjectTaskStarter({
   const [sending, setSending] = useState(false);
   const [submittedDraft, setSubmittedDraft] = useState<ComposerDraft | null>(null);
   const [toolSkills, setToolSkills] = useState<SkillCard[]>([]);
-  const [toolMcpServers, setToolMcpServers] = useState<McpServerEntry[]>([]);
-  const [toolMcpStatus, setToolMcpStatus] = useState<string | null>(null);
-  const [toolMcpStatuses, setToolMcpStatuses] = useState<McpStatusMap>({});
-  const [toolImportedPlugins, setToolImportedPlugins] = useState<iPolloWorkPluginPackageItem[]>([]);
   const [pastedText, setPastedText] = useState<Array<{ id: string; label: string; text: string; lines: number }>>([]);
 
   // Keep the unsent starter input available when a workbench creates a session.
@@ -918,43 +903,31 @@ function InitialProjectTaskStarter({
     return next;
   }, [workspaceClient, workspaceId]);
 
-  const listMcp = useCallback(async (): Promise<InitialProjectMcpResult> => {
-    if (!workspaceClient || !workspaceId) return { servers: [], statuses: {}, status: null };
-    const response = await workspaceClient.listMcp(workspaceId);
+  const listPlusMenuData = useCallback(async (): Promise<ComposerPlusMenuData> => {
+    if (!workspaceClient || !workspaceId) throw new Error("Workspace unavailable");
+    const [response, packageResponse] = await Promise.all([
+      workspaceClient.listMcp(workspaceId),
+      workspaceClient.listPluginPackages(workspaceId),
+    ]);
     const servers = (response.items ?? []).flatMap((entry) => {
       if (!isMcpServerConfig(entry.config)) return [];
       return [{ name: entry.name, config: entry.config } satisfies McpServerEntry];
     });
-    let statuses: McpStatusMap = {};
+    let statuses: McpStatusMap | null = null;
     try {
       if (opencodeClient && surface.workspaceRoot.trim()) {
         statuses = unwrap<McpStatusMap>(await opencodeClient.mcp.status({ directory: surface.workspaceRoot.trim() }));
       }
     } catch {
-      statuses = {};
+      statuses = null;
     }
     const status = servers.length ? null : "No MCP servers loaded.";
-    setToolMcpServers(servers);
-    setToolMcpStatuses(statuses);
-    setToolMcpStatus(status);
-    return { servers, statuses, status };
-  }, [opencodeClient, surface.workspaceRoot, workspaceClient, workspaceId]);
-
-  const listImportedPlugins = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
-    if (!workspaceClient || !workspaceId) return [];
-    const response = await workspaceClient.listPluginPackages(workspaceId);
-    const plugins = response.items
+    const plugins = packageResponse.items
       .filter((item) => item.enabled)
       .sort((left, right) => left.name.localeCompare(right.name));
-    setToolImportedPlugins(plugins);
-    return plugins;
-  }, [workspaceClient, workspaceId]);
-
-  const listExternalAgents = useCallback(async (): Promise<iPolloWorkPluginPackageItem[]> => {
-    if (!workspaceClient || !workspaceId) return [];
-    const response = await workspaceClient.listPluginPackages(workspaceId);
-    return response.items
-      .filter((item) =>
+    return {
+      extensions: plugins,
+      externalAgents: packageResponse.items.filter((item) =>
         item.enabled
         && Boolean(item.manifest.composer?.prompt.trim())
         && item.manifest.resources.some((resource) =>
@@ -962,8 +935,12 @@ function InitialProjectTaskStarter({
           && !item.disabledResourceIds.includes(resource.id)
         )
       )
-      .sort((left, right) => left.name.localeCompare(right.name));
-  }, [workspaceClient, workspaceId]);
+      .sort((left, right) => left.name.localeCompare(right.name)),
+      mcpServers: servers,
+      mcpStatuses: statuses,
+      mcpStatus: status,
+    };
+  }, [opencodeClient, surface.workspaceRoot, workspaceClient, workspaceId]);
 
   const listStarterAccessModes = useCallback(async () => {
     const modes = await surface.conversation.listAccessModes?.({
@@ -1012,13 +989,8 @@ function InitialProjectTaskStarter({
   const composerTooling: InitialProjectComposerTooling = {
     listSkills,
     skills: toolSkills,
-    listMcp,
-    mcpServers: toolMcpServers,
-    mcpStatus: toolMcpStatus,
-    mcpStatuses: toolMcpStatuses,
-    listImportedPlugins,
-    importedPlugins: toolImportedPlugins,
-    listExternalAgents,
+    plusMenuScope: workspaceId ?? "new-project",
+    listPlusMenuData,
     onUploadInboxFiles: uploadInboxFiles,
   };
 
@@ -1229,13 +1201,8 @@ function InitialProjectTaskStarter({
             listCommands={surface.listCommands}
             listSkills={composerTooling.listSkills}
             skills={composerTooling.skills}
-            listMcp={composerTooling.listMcp}
-            mcpServers={composerTooling.mcpServers}
-            mcpStatus={composerTooling.mcpStatus}
-            mcpStatuses={composerTooling.mcpStatuses}
-            listImportedPlugins={composerTooling.listImportedPlugins}
-            importedPlugins={composerTooling.importedPlugins}
-            listExternalAgents={composerTooling.listExternalAgents}
+            plusMenuScope={composerTooling.plusMenuScope}
+            listPlusMenuData={composerTooling.listPlusMenuData}
             onOpenSettingsSection={surface.onOpenSettingsSection}
             recentFiles={surface.recentFiles}
             searchFiles={surface.searchFiles}
