@@ -1022,7 +1022,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
         <PlainTextPlugin
           contentEditable={
             <ContentEditable
-              className="h-full min-h-0 w-full resize-none overflow-y-auto bg-transparent text-[13px] leading-[1.5] text-dls-text outline-none placeholder:text-dls-secondary [&_p]:min-h-[1.5em] [&_p]:m-0"
+              className="h-full min-h-0 w-full resize-none overflow-y-auto bg-transparent text-[14px] leading-[1.5] text-dls-text outline-none placeholder:text-dls-secondary [&_p]:min-h-[1.5em] [&_p]:m-0"
               aria-placeholder={props.placeholder}
               placeholder={<span />}
               onPaste={props.onPaste}
@@ -1032,7 +1032,7 @@ export const LexicalPromptEditor = forwardRef<LexicalPromptEditorHandle, EditorP
             />
           }
           placeholder={
-            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[13px] leading-[1.5] text-[color:var(--new-conversation-placeholder)]">
+            <div data-testid="composer-placeholder" className="pointer-events-none absolute left-0 top-0 text-[14px] leading-[1.5] text-[color:var(--new-conversation-placeholder)]">
               {props.placeholder}
             </div>
           }

@@ -17,3 +17,7 @@ Use this Skill only when narration helps the confirmed brief or the user explici
 6. Run both the HyperFrames project check and the active session's voiceover timeline validation before finishing.
 
 If no valid voice selection exists, continue without narration instead of inventing a voice or blocking visual video work.
+
+## Content scope
+
+Let content determine page count, scene count, and duration. Template sample quantities and timings are not limits, even when an inherited checklist calls them fixed. Apply counts or duration constraints only when explicitly requested by the user. Approximate targets allow reasonable variation; explicit maximums remain strict. Do not omit important content or add filler to fit a template. For narration, pass `targetDurationSeconds` only for a user duration request and synchronize scenes to actual audio duration.

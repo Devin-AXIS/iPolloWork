@@ -211,6 +211,7 @@ export function videoTaskSystemContext(
     ]),
     `- Write only \`${projectPath}/index.html\` and assets below \`${projectPath}\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
     `- Keep \`${projectPath}/design-tokens.css\` as the final stylesheet when present and use its \`--ipw-*\` tokens without breaking layout, motion, or timing.`,
+    "- Content determines scene count and duration. Template page counts and timings are examples, never limits, even if a checklist describes them as fixed. Pass targetDurationSeconds only for an explicit user duration request, never from template metadata, sample HTML, or an inherited checklist. Approximate targets allow reasonable variation; explicit maximums remain strict. Do not omit important content or add filler to fit a template. Without a user duration request, extend scenes and the composition to fit actual narration.",
     "Adaptive execution contract:",
     "- Interpret each request independently. Choose only the needed operations from update-element, add/remove/reorder-scene, apply-animation, add-voiceover, add-asset, restyle, or freeform-patch; this is an extensible planning vocabulary, not a fixed workflow.",
     "- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit, first form one complete internal operation plan from the current composition, then execute it without narrating the plan or creating a plan file.",

@@ -407,11 +407,11 @@ describe("template brief", () => {
       briefPath: "design/ses_xhs/brief.json",
     });
 
-    expect(prompt).toContain("reusable layout system rather than a finished deck");
-    expect(prompt).toContain("plan a coherent narrative and page count from the brief");
-    expect(prompt).toContain("select, repeat, recombine, adapt, remove, or reorder");
-    expect(prompt).toContain("Do not inherit the sample slide count");
-    expect(prompt).toContain("distinctive typography hierarchy, colored blocks, artwork");
+    expect(prompt).toContain("reorder template layouts");
+    expect(prompt).toContain("Plan the narrative from the brief");
+    expect(prompt).toContain("reuse, repeat, adapt, remove, or reorder");
+    expect(prompt).toContain("template/checklist quantities are examples");
+    expect(prompt).toContain("distinctive typography, colored blocks, artwork");
     expect(prompt).not.toContain("Do not add or remove slides");
   });
 
@@ -447,4 +447,18 @@ test.each(["ipollowork.wechat-article", `${ARTIFACT_DELIVERY_ID_PREFIX}slides`])
   const prompt = templateBriefPrompt({ template: { id, category: "slides", title: "Example", applyChecklist: [] }, entryPath: "index.html", briefPath: "brief.json" });
   expect(prompt).toContain("Reference/brief.style sets INITIAL defaults only");
   expect(prompt).toContain("No hardcoded theme colors");
+});
+
+test("template quantities remain examples for design and video, including blank scaffolds", () => {
+  for (const category of ["slides", "video", "site"] satisfies TemplateCategory[]) {
+    for (const id of ["example-template", `${ARTIFACT_DELIVERY_ID_PREFIX}${category}`]) {
+      const prompt = templateBriefPrompt({
+        template: { id, category, title: "Example", applyChecklist: ["Keep 10 pages and a fixed 60 seconds."] },
+        entryPath: "index.html", briefPath: "brief.json",
+      });
+      expect(prompt).toContain("template/checklist quantities are examples");
+      expect(prompt).toContain("only when explicitly requested by the user");
+      expect(prompt).toContain("Never omit important content or add filler");
+    }
+  }
 });

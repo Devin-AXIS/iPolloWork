@@ -68,4 +68,16 @@ describe("session activity store", () => {
     expect(useSessionActivityStore.getState().getStatus("ws_dsh", "ses_dsh")).toBe("idle");
     expect(useSessionActivityStore.getState().getStatus("ws_codex", "ses_codex")).toBe("idle");
   });
+
+  test("a stale busy directory row cannot reopen a completed turn", () => {
+    const store = useSessionActivityStore.getState();
+    store.setRunStatus("ws", "session", { type: "busy" });
+    store.finishRun("ws", "session", "completed");
+    const timing = useSessionActivityStore.getState().recordsByWorkspaceId.ws.session;
+    store.seedWorkspaceSessions("ws", [{ id: "session", dsh: { running: true } }]);
+    expect(store.getRunOutcome("ws", "session")).toBe("completed");
+    expect(useSessionActivityStore.getState().recordsByWorkspaceId.ws.session.runEndedAt).toBe(timing.runEndedAt);
+    store.setRunStatus("ws", "session", { type: "busy" });
+    expect(store.getRunOutcome("ws", "session")).toBe("running");
+  });
 });

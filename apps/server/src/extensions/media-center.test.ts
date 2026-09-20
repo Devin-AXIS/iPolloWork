@@ -721,33 +721,36 @@ describe("Media Center extension", () => {
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-cache-second.mp3"))).toEqual(mp3);
   });
 
-  test("rejects narration that cannot fit a requested duration before provider synthesis", async () => {
+  test("synthesizes narration above a duration target and reports the estimate without blocking", async () => {
     const workspace = await workspaceConfig();
     const narration = "这是需要保留页面事实但明显无法塞进五秒镜头的详细旁白。".repeat(12);
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
     let requested = false;
-    Reflect.set(globalThis, mediaProviderFetchKey, () => {
+    Reflect.set(globalThis, mediaProviderFetchKey, (input: string | URL | Request) => {
+      if (!String(input).includes("SpeechSynthesizer")) return Promise.resolve(new Response(mp3));
       requested = true;
-      throw new Error("provider must not be called");
+      return Promise.resolve(new Response(JSON.stringify({ output: { audio: {
+        url: "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/duration-target.mp3",
+      } } }), { status: 200, headers: { "content-type": "application/json" } }));
     });
-
-    await expect(callMediaExtensionAction(
+    const result = await callMediaExtensionAction(
       workspace.config,
-      env({ DASHSCOPE_API_KEY: "sk-bailian-secret" }),
+      env({ DASHSCOPE_API_KEY: "sk-duration-target-test" }),
       "speech_synthesize_workspace_batch",
       {
-        scenes: [{
-          text: narration,
-          sceneId: "details",
-          sceneText: narration,
-          sceneStart: 0,
-          sceneDuration: 5,
-          outputPath: "video/session/assets/voiceover-too-long.mp3",
-        }],
+        scenes: [{ text: narration, sceneId: "details", sceneText: narration,
+          sceneStart: 0, sceneDuration: 5, outputPath: "video/session/assets/voiceover-too-long.mp3" }],
         targetDurationSeconds: 5,
       },
       { directory: workspace.root },
-    )).rejects.toMatchObject({ code: "voiceover_target_duration_exceeded" });
-    expect(requested).toBe(false);
+    );
+    expect(requested).toBe(true);
+    expect(result).toMatchObject({ result: { output: {
+      sceneCount: 1, targetDurationSeconds: 5, estimatedTargetExceeded: true,
+    } } });
+    expect(await readFile(join(workspace.root, "video/session/assets/voiceover-too-long.mp3"))).toEqual(mp3);
   });
 
   test("rejects synthesized audio URLs outside Model Studio result storage", async () => {

@@ -809,7 +809,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
           },
         },
         compositionPath: { type: "string", description: "Optional current index.html path relative to the active workspace. Bare assets/<file>.mp3 scene outputs are scoped to this HTML file's directory." },
-        targetDurationSeconds: { type: "number", description: "Optional user-requested final duration. Narration is rejected before synthesis when its estimated timeline cannot fit." },
+        targetDurationSeconds: { type: "number", description: "Optional explicitly user-requested final duration, never a template default. Used for advisory estimates, not a synthesis rejection; validate actual final timing separately." },
         voice: { type: "string", description: "Model Studio voice name or cloned voice id." },
         model: { type: "string", description: "Speech model. Defaults to cosyvoice-v3-flash." },
         sampleRate: { type: "number", description: "Optional output sample rate in Hz." },
@@ -1911,13 +1911,6 @@ export async function callMediaExtensionAction(
       if (targetDurationSeconds !== undefined && targetDurationSeconds <= 0) {
         throw new ApiError(400, "invalid_voiceover_target_duration", "targetDurationSeconds must be greater than zero.");
       }
-      if (targetDurationSeconds !== undefined && estimatedTimelineEndSeconds > targetDurationSeconds + 1) {
-        throw new ApiError(
-          400,
-          "voiceover_target_duration_exceeded",
-          `Narration is estimated to require ${estimatedTimelineEndSeconds} seconds, exceeding the requested ${targetDurationSeconds} seconds. Preserve the important page facts, but compact the narration before synthesis.`,
-        );
-      }
       const model = readStringField(args, "model") || COSYVOICE_V3_FLASH;
       const requestedVoice = readStringField(args, "voice");
       const voice = requestedVoice ? compatibleCosyVoiceVoice(model, requestedVoice) : defaultCosyVoiceVoice(model);
@@ -1963,6 +1956,10 @@ export async function callMediaExtensionAction(
         items,
         sceneCount: items.length,
         estimatedTimelineDurationSeconds: estimatedTimelineEndSeconds,
+        ...(targetDurationSeconds !== undefined ? {
+          targetDurationSeconds,
+          estimatedTargetExceeded: estimatedTimelineEndSeconds > targetDurationSeconds,
+        } : {}),
         totalShiftSeconds: cumulativeShiftSeconds,
         rootDurationMustBeAtLeastSeconds: roundVoiceoverTime(items.reduce(
           (maximum, item) => Math.max(maximum, item.timelinePatch.rootDurationMustBeAtLeastSeconds),

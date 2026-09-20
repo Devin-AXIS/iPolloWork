@@ -1,8 +1,7 @@
 /** @jsxImportSource react */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { flushSync } from "react-dom";
-import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, ChevronRight, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Settings, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, ToyBrick, X, Zap } from "lucide-react";
-import { NAVIGATION_ICON_STROKE_WIDTH } from "@/components/navigation-icons";
+import { AppWindowMac, ArrowUp, Bot, Check, ChevronDown, Code2, FileText, ListTodo, Paperclip, Plus, Plug, Shield, ShieldAlert, ShieldCheck, ShieldQuestion, Sparkles, Square, Terminal, X, Zap } from "lucide-react";
 import fuzzysort from "fuzzysort";
 import { toast } from "@/components/ui/sonner";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -46,8 +45,14 @@ type PastedTextChip = {
 };
 
 type ToolMenuSettingsSection = "commands" | "skills" | "mcps" | "plugins";
-type ToolMenuSection = "extensions" | "mcps";
-type PlusMenuSection = "tools" | "delegation";
+
+export type ComposerPlusMenuData = {
+  extensions: iPolloWorkPluginPackageItem[];
+  externalAgents: iPolloWorkPluginPackageItem[];
+  mcpServers: McpServerEntry[];
+  mcpStatuses: McpStatusMap | null;
+  mcpStatus: string | null;
+};
 
 export type ComposerProps = {
   draft: string;
@@ -89,16 +94,9 @@ export type ComposerProps = {
   listCommands: () => Promise<SlashCommandOption[]>;
   listSkills?: () => Promise<SkillCard[]>;
   skills?: SkillCard[];
-  listMcp?: () => Promise<{ servers: McpServerEntry[]; statuses: McpStatusMap; status: string | null }>;
-  mcpServers?: McpServerEntry[];
-  mcpStatus?: string | null;
-  mcpStatuses?: McpStatusMap;
-  listInstalledExtensions?: () => Promise<iPolloWorkPluginPackageItem[]>;
-  /** Compatibility alias used by the project-first starter while plugin packages migrate to extensions. */
-  listImportedPlugins?: () => Promise<iPolloWorkPluginPackageItem[]>;
-  importedPlugins?: iPolloWorkPluginPackageItem[];
+  plusMenuScope: string;
+  listPlusMenuData: () => Promise<ComposerPlusMenuData>;
   onOpenWorkspaceApp?: (pluginId: string) => void;
-  listExternalAgents: () => Promise<iPolloWorkPluginPackageItem[]>;
   onOpenSettingsSection?: (section: ToolMenuSettingsSection) => void;
   recentFiles: string[];
   searchFiles: (query: string) => Promise<string[]>;
@@ -392,6 +390,7 @@ function mcpStatusBadgeClass(status: McpServerStatus) {
 
 function extensionIcon(entry: iPolloWorkPluginPackageItem, size = 16) {
   const iconUrl = resolveExtensionIconUrl({
+    pluginId: entry.pluginId,
     iconSrc: entry.manifest.icon?.src,
     iconSlug: entry.manifest.icon?.simpleIconSlug,
   });
@@ -403,21 +402,13 @@ function extensionIcon(entry: iPolloWorkPluginPackageItem, size = 16) {
 
 export function ReactSessionComposer(props: ComposerProps) {
   let fileInput: HTMLInputElement | undefined;
-  const [externalAgents, setExternalAgents] = useState<iPolloWorkPluginPackageItem[]>([]);
-  const [externalAgentsLoading, setExternalAgentsLoading] = useState(false);
-  const [delegationMenuOpen, setDelegationMenuOpen] = useState(false);
+  const [plusMenuSnapshot, setPlusMenuSnapshot] = useState<{ scope: string; data: ComposerPlusMenuData } | null>(null);
+  const [plusMenuLoadState, setPlusMenuLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [plusMenuRefresh, setPlusMenuRefresh] = useState(0);
   const [commands, setCommands] = useState<SlashCommandOption[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
-  const [mcpLoading, setMcpLoading] = useState(false);
-  const [mcpServers, setMcpServers] = useState<McpServerEntry[]>(props.mcpServers ?? []);
-  const [mcpStatus, setMcpStatus] = useState<string | null>(props.mcpStatus ?? null);
-  const [mcpStatuses, setMcpStatuses] = useState<McpStatusMap>(props.mcpStatuses ?? {});
-  const [installedExtensions, setInstalledExtensions] = useState<iPolloWorkPluginPackageItem[]>(props.importedPlugins ?? []);
-  const [extensionsLoading, setExtensionsLoading] = useState(false);
   const [slashOpen, setSlashOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
-  const [plusMenuSection, setPlusMenuSection] = useState<PlusMenuSection | null>(null);
-  const [toolMenuOpen, setToolMenuOpen] = useState(false);
   const [workModeOpen, setWorkModeOpen] = useState(false);
   const [accessModeOpen, setAccessModeOpen] = useState(false);
   const [accessModeBusy, setAccessModeBusy] = useState(false);
@@ -428,7 +419,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;
   const [workModes, setWorkModes] = useState<ConversationMode[]>([]);
   const [accessModes, setAccessModes] = useState<ConversationAccessMode[]>([]);
-  const [toolMenuSection, setToolMenuSection] = useState<ToolMenuSection>("extensions");
   const [mentionItems, setMentionItems] = useState<MentionItem[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [menuIndex, setMenuIndex] = useState(0);
@@ -437,24 +427,11 @@ export function ReactSessionComposer(props: ComposerProps) {
   const commandsRequestRef = useRef<Promise<SlashCommandOption[]> | null>(null);
   const commandsLoadVersionRef = useRef(0);
   const listCommandsRef = useRef(props.listCommands);
-  const listMcpRef = useRef(props.listMcp);
-  const listInstalledExtensionsRef = useRef(props.listInstalledExtensions ?? props.listImportedPlugins);
-  const listExternalAgentsRef = useRef(props.listExternalAgents);
-  const toolMenuLoadRef = useRef({
-    openId: 0,
-    mcps: false,
-    extensions: false,
-  });
+  const listPlusMenuDataRef = useRef(props.listPlusMenuData);
   const [commandsLoaded, setCommandsLoaded] = useState(false);
-  const [mcpLoaded, setMcpLoaded] = useState(Boolean(props.mcpServers));
-  const [extensionsLoaded, setExtensionsLoaded] = useState(false);
-  const [delegationMenuIndex, setDelegationMenuIndex] = useState(0);
-  const delegationItemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [dropzoneActive, setDropzoneActive] = useState(false);
   const plusMenuRef = useRef<HTMLDivElement | null>(null);
-  const toolMenuRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<LexicalPromptEditorHandle | null>(null);
-  const delegationMenuRef = useRef<HTMLDivElement | null>(null);
   // IME composition guard: while an IME composition is active, we must not
   // treat Enter as a submit. Three signals keep this reliable across WebKit,
   // Chrome, and Safari: event.isComposing, event.keyCode === 229, and the
@@ -574,18 +551,12 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [mentionOpenNext, mentionQuery]);
 
   useEffect(() => {
-    setMcpServers(props.mcpServers ?? []);
-    setMcpStatus(props.mcpStatus ?? null);
-    setMcpStatuses(props.mcpStatuses ?? {});
-  }, [props.mcpServers, props.mcpStatus, props.mcpStatuses]);
-
-  useEffect(() => {
     listCommandsRef.current = props.listCommands;
   }, [props.listCommands]);
 
   useEffect(() => {
-    listMcpRef.current = props.listMcp;
-  }, [props.listMcp]);
+    listPlusMenuDataRef.current = props.listPlusMenuData;
+  }, [props.listPlusMenuData]);
 
   useEffect(() => {
     let cancelled = false;
@@ -630,42 +601,6 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [props.accessModeSelectionDisabled, props.busy]);
 
   useEffect(() => {
-    listInstalledExtensionsRef.current = props.listInstalledExtensions ?? props.listImportedPlugins;
-  }, [props.listInstalledExtensions, props.listImportedPlugins]);
-
-  useEffect(() => {
-    listExternalAgentsRef.current = props.listExternalAgents;
-  }, [props.listExternalAgents]);
-
-  useEffect(() => {
-    if (!delegationMenuOpen) return;
-    let cancelled = false;
-    setExternalAgentsLoading(true);
-    void listExternalAgentsRef.current()
-      .then((next) => {
-        if (!cancelled) setExternalAgents(next);
-      })
-      .catch(() => {
-        if (!cancelled) setExternalAgents([]);
-      })
-      .finally(() => {
-        if (!cancelled) setExternalAgentsLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [delegationMenuOpen]);
-
-  useEffect(() => {
-    setDelegationMenuIndex(0);
-  }, [delegationMenuOpen]);
-
-  useEffect(() => {
-    const target = delegationItemRefs.current[delegationMenuIndex];
-    target?.scrollIntoView({ block: "nearest" });
-  }, [delegationMenuIndex, delegationMenuOpen]);
-
-  useEffect(() => {
     commandsLoadVersionRef.current += 1;
     commandsCacheRef.current = null;
     commandsRequestRef.current = null;
@@ -698,54 +633,12 @@ export function ReactSessionComposer(props: ComposerProps) {
     const handlePointerDown = (event: MouseEvent) => {
       const target = event.target;
       if (!(target instanceof Node)) return;
-      if (
-        plusMenuRef.current?.contains(target)
-        || toolMenuRef.current?.contains(target)
-        || delegationMenuRef.current?.contains(target)
-      ) return;
+      if (plusMenuRef.current?.contains(target)) return;
       setPlusMenuOpen(false);
-      setPlusMenuSection(null);
-      setToolMenuOpen(false);
-      setDelegationMenuOpen(false);
     };
     window.addEventListener("mousedown", handlePointerDown);
     return () => window.removeEventListener("mousedown", handlePointerDown);
   }, [plusMenuOpen]);
-
-  useEffect(() => {
-    if (!plusMenuOpen) return;
-    const handlePointerMove = (event: PointerEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (
-        plusMenuRef.current?.contains(target)
-        || toolMenuRef.current?.contains(target)
-        || delegationMenuRef.current?.contains(target)
-      ) return;
-      setPlusMenuSection(null);
-      setToolMenuOpen(false);
-      setDelegationMenuOpen(false);
-    };
-    window.addEventListener("pointermove", handlePointerMove);
-    return () => window.removeEventListener("pointermove", handlePointerMove);
-  }, [plusMenuOpen]);
-
-  useEffect(() => {
-    if (!plusMenuOpen) return;
-    setToolMenuOpen(plusMenuSection === "tools");
-    setDelegationMenuOpen(plusMenuSection === "delegation");
-  }, [plusMenuOpen, plusMenuSection]);
-
-  useEffect(() => {
-    if (!toolMenuOpen) return;
-    toolMenuLoadRef.current = {
-      openId: toolMenuLoadRef.current.openId + 1,
-      mcps: false,
-      extensions: false,
-    };
-    setMcpLoaded(Boolean(props.mcpServers));
-    setExtensionsLoaded(Boolean(props.importedPlugins));
-  }, [toolMenuOpen]);
 
   useEffect(() => {
     if (!slashOpen) return;
@@ -806,87 +699,31 @@ export function ReactSessionComposer(props: ComposerProps) {
   }, [mentionOpen, mentionQuery, props.listAgents, props.recentFiles, props.searchFiles]);
 
   useEffect(() => {
-    if (!toolMenuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (plusMenuRef.current?.contains(target) || toolMenuRef.current?.contains(target)) return;
-      setToolMenuOpen(false);
-    };
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [toolMenuOpen]);
+    if (!plusMenuOpen) return;
+    let cancelled = false;
+    setPlusMenuLoadState("loading");
+    void listPlusMenuDataRef.current()
+      .then((data) => {
+        if (!cancelled) {
+          setPlusMenuSnapshot({ scope: props.plusMenuScope, data });
+          setPlusMenuLoadState("ready");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setPlusMenuLoadState("error");
+      });
+    return () => { cancelled = true; };
+  }, [plusMenuOpen, plusMenuRefresh, props.plusMenuScope]);
 
   useEffect(() => {
-    if (!delegationMenuOpen) return;
-    const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (plusMenuRef.current?.contains(target) || delegationMenuRef.current?.contains(target)) return;
-      setDelegationMenuOpen(false);
+    if (!plusMenuOpen) return;
+    const refreshOnFocus = () => {
+      setPlusMenuLoadState("loading");
+      setPlusMenuRefresh((version) => version + 1);
     };
-    window.addEventListener("mousedown", handlePointerDown);
-    return () => {
-      window.removeEventListener("mousedown", handlePointerDown);
-    };
-  }, [delegationMenuOpen]);
-
-  useEffect(() => {
-    if (!toolMenuOpen) return;
-    const openId = toolMenuLoadRef.current.openId;
-    const listMcp = listMcpRef.current;
-    const listInstalledExtensions = listInstalledExtensionsRef.current;
-    if (toolMenuSection === "mcps" && listMcp && !toolMenuLoadRef.current.mcps) {
-      let cancelled = false;
-      toolMenuLoadRef.current.mcps = true;
-      setMcpLoading(true);
-      void listMcp()
-        .then((next) => {
-          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
-          setMcpServers(next.servers);
-          setMcpStatuses(next.statuses);
-          setMcpStatus(next.status);
-          setMcpLoaded(true);
-        })
-        .catch(() => {
-          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
-          setMcpServers([]);
-          setMcpStatuses({});
-          setMcpLoaded(true);
-        })
-        .finally(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) setMcpLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-    if (toolMenuSection === "extensions" && listInstalledExtensions && !toolMenuLoadRef.current.extensions) {
-      let cancelled = false;
-      toolMenuLoadRef.current.extensions = true;
-      setExtensionsLoading(true);
-      void listInstalledExtensions()
-        .then((next) => {
-          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
-          setInstalledExtensions(next);
-          setExtensionsLoaded(true);
-        })
-        .catch(() => {
-          if (cancelled || toolMenuLoadRef.current.openId !== openId) return;
-          setInstalledExtensions([]);
-          setExtensionsLoaded(true);
-        })
-        .finally(() => {
-          if (!cancelled && toolMenuLoadRef.current.openId === openId) setExtensionsLoading(false);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }
-    return undefined;
-  }, [toolMenuOpen, toolMenuSection]);
+    window.addEventListener("focus", refreshOnFocus);
+    return () => window.removeEventListener("focus", refreshOnFocus);
+  }, [plusMenuOpen]);
 
   const slashFiltered = useMemo(() => {
     if (!slashOpen) return [];
@@ -911,7 +748,9 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   const activeMenu = slashOpen ? "slash" : mentionOpen ? "mention" : null;
   const activeItems = activeMenu === "slash" ? slashFiltered : activeMenu === "mention" ? mentionFiltered : [];
-  const composerExtensions = installedExtensions.filter((item) => (
+  const plusMenuData = plusMenuSnapshot?.scope === props.plusMenuScope ? plusMenuSnapshot.data : null;
+  const menuDataReady = plusMenuLoadState === "ready" && plusMenuData !== null;
+  const composerExtensions = (plusMenuData?.extensions ?? []).filter((item) => (
     activePluginEngineCompatibility(item)?.status !== "unsupported"
   ));
   useEffect(() => {
@@ -935,7 +774,6 @@ export function ReactSessionComposer(props: ComposerProps) {
     }
     props.onDraftChange(`/${command.name} `);
     setSlashOpen(false);
-    setToolMenuOpen(false);
   };
 
   const applySkillSelection = (name: string, options?: { replaceSkillDraft?: boolean }) => {
@@ -951,16 +789,13 @@ export function ReactSessionComposer(props: ComposerProps) {
       }
     }
     setSlashOpen(false);
-    setToolMenuOpen(false);
   };
 
   const applyExternalAgentSelection = (item: iPolloWorkPluginPackageItem) => {
     const prompt = item.manifest.composer?.prompt;
     if (!prompt) return;
     props.onDraftChange(props.draft.trim() ? `${prompt}\n\n${props.draft}` : `${prompt} `);
-    setDelegationMenuOpen(false);
     setPlusMenuOpen(false);
-    setPlusMenuSection(null);
     window.requestAnimationFrame(() => window.dispatchEvent(new Event(FOCUS_PROMPT_EVENT)));
   };
 
@@ -1016,14 +851,7 @@ export function ReactSessionComposer(props: ComposerProps) {
   const applyExtensionSelection = (entry: iPolloWorkPluginPackageItem) => {
     props.onOpenWorkspaceApp?.(entry.pluginId);
     props.onDraftChange(entry.manifest.composer?.prompt.trim() || `Use ${entry.name} to `);
-    setToolMenuOpen(false);
-  };
-
-  const openToolMenuSettings = () => {
-    const section: ToolMenuSettingsSection = toolMenuSection === "mcps"
-      ? toolMenuSection
-      : "plugins";
-    props.onOpenSettingsSection?.(section);
+    setPlusMenuOpen(false);
   };
 
   const acceptActiveItem = () => {
@@ -1085,7 +913,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     // Escape-to-stop while the agent is busy. Only when no menu is open so
     // Escape can still close menus. First press arms a confirmation prompt
     // for 3s; a second Escape within that window stops the agent.
-    const anyMenuOpen = plusMenuOpen || delegationMenuOpen || toolMenuOpen || Boolean(activeMenu);
+    const anyMenuOpen = plusMenuOpen || Boolean(activeMenu);
     if (event.key === "Escape" && props.busy && !anyMenuOpen) {
       event.preventDefault();
       if (escapeArmed) {
@@ -1101,42 +929,9 @@ export function ReactSessionComposer(props: ComposerProps) {
       }
       return;
     }
-    if (delegationMenuOpen) {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        setDelegationMenuOpen(false);
-        setPlusMenuOpen(false);
-        setPlusMenuSection(null);
-        return;
-      }
-      const total = externalAgents.length;
-      if (total > 0 && event.key === "ArrowDown") {
-        event.preventDefault();
-        setDelegationMenuIndex((current) => (current + 1) % total);
-        return;
-      }
-      if (total > 0 && event.key === "ArrowUp") {
-        event.preventDefault();
-        setDelegationMenuIndex((current) => (current - 1 + total) % total);
-        return;
-      }
-      if (total > 0 && (event.key === "Enter" || event.key === "Tab")) {
-        event.preventDefault();
-        const selected = externalAgents[delegationMenuIndex];
-        if (selected) applyExternalAgentSelection(selected);
-        return;
-      }
-    }
-
     if (plusMenuOpen && event.key === "Escape") {
       event.preventDefault();
       setPlusMenuOpen(false);
-      return;
-    }
-
-    if (toolMenuOpen && event.key === "Escape") {
-      event.preventDefault();
-      setToolMenuOpen(false);
       return;
     }
 
@@ -1145,8 +940,7 @@ export function ReactSessionComposer(props: ComposerProps) {
     if (
       (event.key === "ArrowUp" || event.key === "ArrowDown") &&
       !imeActive &&
-      !delegationMenuOpen &&
-      !toolMenuOpen &&
+      !plusMenuOpen &&
       (!activeMenu || !activeItems.length)
     ) {
       const history = props.inputHistory ?? [];
@@ -1232,9 +1026,9 @@ export function ReactSessionComposer(props: ComposerProps) {
 
   };
 
-  const activeMcpItems = mcpServers.map((entry) => ({
+  const activeMcpItems = (plusMenuData?.mcpServers ?? []).map((entry) => ({
     entry,
-    status: toReactMcpStatus(entry.name, entry, mcpStatuses),
+    status: plusMenuData?.mcpStatuses ? toReactMcpStatus(entry.name, entry, plusMenuData.mcpStatuses) : null,
   }));
 
   const panelRoundedClass =
@@ -1353,8 +1147,8 @@ export function ReactSessionComposer(props: ComposerProps) {
     <div
       ref={rootRef}
       className={props.layout === "inline"
-        ? `relative ${toolMenuOpen ? "z-50" : "z-20"} w-full bg-transparent p-0`
-        : `sticky bottom-0 ${toolMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
+        ? `relative ${plusMenuOpen ? "z-50" : "z-20"} w-full bg-transparent p-0`
+        : `sticky bottom-0 ${plusMenuOpen ? "z-50" : "z-20"} bg-gradient-to-t from-dls-surface via-dls-surface/95 to-transparent px-4 pb-2 md:px-8 ${props.compactTopSpacing ? "pt-0" : "pt-1"}`}
       style={{ contain: "layout style" }}
       onKeyDownCapture={handleKeyDownCapture}
       onCompositionStart={() => {
@@ -1541,245 +1335,108 @@ export function ReactSessionComposer(props: ComposerProps) {
                     className={`inline-flex size-8 shrink-0 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-7 ${plusMenuOpen ? "bg-gray-3 text-gray-12" : "bg-transparent text-gray-10 hover:bg-gray-3 hover:text-gray-12"}`}
                     onClick={() => {
                       setWorkModeOpen(false);
-                      setToolMenuOpen(false);
-                      setDelegationMenuOpen(false);
-                      setPlusMenuOpen((open) => {
-                        if (open) setPlusMenuSection(null);
-                        return !open;
-                      });
+                      setPlusMenuLoadState("loading");
+                      setPlusMenuOpen((open) => !open);
                     }}
                     aria-expanded={plusMenuOpen}
-                    aria-haspopup="menu"
+                    aria-haspopup="dialog"
                     title={t("composer.plus_menu_label")}
                   >
                     <Plus size={16} strokeWidth={1.75} />
                   </button>
                   {plusMenuOpen ? (
-                    <div className="absolute bottom-full left-0 z-40 mb-2 flex items-end gap-1">
-                      <div data-testid="composer-plus-menu" className="w-44 shrink-0 rounded-lg border border-dls-border bg-dls-surface p-1.5 shadow-[var(--dls-shell-shadow)]">
+                    <div
+                      data-testid="composer-plus-menu"
+                      role="dialog"
+                      aria-label={t("composer.plus_menu_label")}
+                      className="absolute bottom-full left-0 z-40 mb-2 max-h-[min(56dvh,26rem)] w-[min(24rem,calc(100cqw-2rem))] overflow-y-auto rounded-xl border border-dls-border bg-dls-surface p-1.5"
+                      onMouseDown={(event) => {
+                        if (event.target instanceof Element && event.target.closest("button")) event.preventDefault();
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          event.stopPropagation();
+                          setPlusMenuOpen(false);
+                        }
+                      }}
+                    >
+                      {plusMenuLoadState === "loading" || plusMenuLoadState === "error" ? <div className="flex items-center justify-between px-2.5 py-0.5 text-[10px] text-gray-10" role="status" aria-live="polite">
+                        <span>{plusMenuLoadState === "loading" ? t(plusMenuData ? "composer.plus_previous_refreshing" : "composer.plus_refreshing") : plusMenuLoadState === "error" ? t(plusMenuData ? "composer.plus_previous_failed" : "composer.plus_refresh_failed") : null}</span>
+                        {plusMenuLoadState === "error" ? <button type="button" className="rounded px-1.5 py-0.5 font-medium text-gray-12 hover:bg-gray-3" onClick={() => { setPlusMenuLoadState("loading"); setPlusMenuRefresh((version) => version + 1); }}>{t("common.retry")}</button> : null}
+                      </div> : null}
+                      <div className="px-2.5 pb-0.5 pt-0.5 text-[10px] font-semibold text-gray-10">{t("composer.plus_section_add")}</div>
                       <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
-                        onMouseEnter={() => {
-                          setPlusMenuSection(null);
-                          setToolMenuOpen(false);
-                          setDelegationMenuOpen(false);
-                        }}
+                        className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3"
                         onClick={() => {
                           const input = fileInput;
-                          flushSync(() => {
-                            setPlusMenuOpen(false);
-                            setPlusMenuSection(null);
-                            setToolMenuOpen(false);
-                            setDelegationMenuOpen(false);
-                          });
+                          flushSync(() => setPlusMenuOpen(false));
                           input?.click();
                         }}
                       >
-                        <Paperclip className="size-4 shrink-0 text-gray-9" aria-hidden />
+                        <span className="flex size-4 shrink-0 items-center justify-center"><Paperclip className="size-3.5 text-gray-9" aria-hidden /></span>
                         <span>{t("composer.plus_attach_files")}</span>
                       </button>
                       {props.onOpenTemplateMarket ? (
                         <button
                           type="button"
-                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs text-gray-11 transition-colors hover:bg-gray-3 hover:text-gray-12"
-                          onMouseEnter={() => {
-                            setPlusMenuSection(null);
-                            setToolMenuOpen(false);
-                            setDelegationMenuOpen(false);
-                          }}
+                          className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3"
                           onClick={() => {
                             setPlusMenuOpen(false);
-                            setPlusMenuSection(null);
                             props.onOpenTemplateMarket?.();
                           }}
                         >
-                          <TemplateIcon className="size-3.5 opacity-60" />
+                          <span className="flex size-4 shrink-0 items-center justify-center"><TemplateIcon className="size-3 opacity-60" /></span>
                           <span>{t("composer.plus_use_template")}</span>
                         </button>
                       ) : null}
-                      <button
-                        type="button"
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs ${plusMenuSection === "tools" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                        onMouseEnter={() => setPlusMenuSection("tools")}
-                        onClick={() => {
-                          setPlusMenuSection("tools");
-                          setToolMenuOpen(true);
-                          setDelegationMenuOpen(false);
-                        }}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <ToyBrick className="size-4 shrink-0 text-gray-9" strokeWidth={NAVIGATION_ICON_STROKE_WIDTH} aria-hidden />
-                          <span>{t("composer.plus_tools")}</span>
-                        </span>
-                        <ChevronRight size={14} className="text-gray-9" />
-                      </button>
-                      <button
-                        type="button"
-                        className={`flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-left text-xs ${plusMenuSection === "delegation" ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                        onMouseEnter={() => setPlusMenuSection("delegation")}
-                        onClick={() => {
-                          setPlusMenuSection("delegation");
-                          setDelegationMenuOpen(true);
-                          setToolMenuOpen(false);
-                        }}
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Bot className="size-4 shrink-0 text-gray-9" aria-hidden />
-                          <span>{t("composer.delegate_external_agents")}</span>
-                        </span>
-                        <ChevronRight size={14} className="text-gray-9" />
-                      </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <div
-                  ref={toolMenuRef}
-                  className="relative"
-                  onMouseDown={(event) => {
-                    const target = event.target;
-                    if (target instanceof Element && target.closest("button")) event.preventDefault();
-                  }}
-                >
-                  {toolMenuOpen ? (
-                    <div data-testid="composer-extensions-menu" className="absolute bottom-full left-[8.75rem] z-40 mb-2 w-[min(calc(100cqw-13rem),28rem)] @max-[26rem]/composer:left-[-2.5rem] @max-[26rem]/composer:mb-44 @max-[26rem]/composer:w-[calc(100cqw-2rem)] overflow-hidden rounded-xl border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
-                      <div className="grid grid-cols-[104px_minmax(0,1fr)] sm:grid-cols-[112px_minmax(0,1fr)]">
-                        <div className="border-r border-dls-border bg-gray-2/30 p-1.5">
-                          {([
-                            ["extensions", t("composer.extensions_label")],
-                            ["mcps", t("composer.mcps_label")],
-                          ] as const).map(([section, label]) => (
-                            <button
-                              key={section}
-                              type="button"
-                              className={`mb-1 flex w-full items-center justify-between rounded-lg px-2.5 py-1.5 text-left text-xs transition-colors ${toolMenuSection === section ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2"}`}
-                              onClick={() => setToolMenuSection(section)}
-                            >
-                              <span className="truncate">{label}</span>
-                              <ChevronRight size={14} className="shrink-0 text-gray-9" />
-                            </button>
-                          ))}
-                        </div>
-                        <div className="min-w-0 max-h-64 overflow-y-auto overflow-x-hidden p-1.5">
-                          <div className="mb-1 flex justify-end border-b border-dls-border px-1 pb-1.5">
-                            <button
-                              type="button"
-                              className="inline-flex items-center gap-1.5 rounded-md border border-dls-border px-2 py-1 text-[11px] font-medium text-gray-11 transition-colors hover:bg-gray-2"
-                              onClick={() => {
-                                setToolMenuOpen(false);
-                                openToolMenuSettings();
-                              }}
-                            >
-                              <Settings size={12} />
-                              {t("composer.configure")}
-                            </button>
-                          </div>
-                          {toolMenuSection === "mcps" ? (
-                            activeMcpItems.length > 0 ? (
-                              <div className="grid gap-1">
-                                {activeMcpItems.map(({ entry, status }) => (
-                                  <div key={entry.name} className="flex min-w-0 items-start gap-2 rounded-lg px-2.5 py-1.5 text-gray-11">
-                                    <Plug size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex min-w-0 items-center justify-between gap-2">
-                                        <div className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${mcpStatusBadgeClass(status)}`}>
-                                          {formatMcpStatusLabel(status)}
-                                        </span>
-                                      </div>
-                                      <div className="truncate text-xs text-gray-10">{entry.config.type === "remote" ? entry.config.url ?? entry.config.command?.join(" ") ?? "Remote MCP" : entry.config.command?.join(" ") ?? "Local MCP"}</div>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">
-                                {!mcpLoaded && mcpLoading ? t("common.loading") : (mcpStatus ?? t("context_panel.no_mcp"))}
-                              </div>
-                            )
-                          ) : null}
-                          {toolMenuSection === "extensions" ? (
-                            composerExtensions.length > 0 ? (
-                              <div className="grid gap-1">
-                                {composerExtensions.map((entry) => (
-                                  <button
-                                    key={entry.pluginId}
-                                    type="button"
-                                    className="flex min-w-0 w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-gray-11 transition-colors hover:bg-gray-2/70"
-                                    onClick={() => applyExtensionSelection(entry)}
-                                  >
-                                    <div className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-lg border border-dls-border bg-card shadow-sm">
-                                      {extensionIcon(entry, 14)}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <div className="flex min-w-0 items-center justify-between gap-2">
-                                        <div className="min-w-0 flex-1 truncate text-xs font-semibold text-gray-11">{entry.name}</div>
-                                        {activePluginEngineCompatibility(entry)?.status === "partial" ? (
-                                          <span className="shrink-0 rounded-full bg-amber-3 px-2 py-0.5 text-[10px] font-medium text-amber-11">{t("plugin_platform.engine.partial")}</span>
-                                        ) : (
-                                          <span className="shrink-0 rounded-full bg-green-3 px-2 py-0.5 text-[10px] font-medium text-green-11">{t("composer.enabled")}</span>
-                                        )}
-                                      </div>
-                                      <div className="truncate text-xs text-gray-10">{entry.manifest.description}</div>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="px-3 py-2 text-xs text-gray-10">
-                                {!extensionsLoaded && extensionsLoading ? t("common.loading") : t("composer.no_extensions_enabled")}
-                              </div>
-                            )
-                          ) : null}
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
 
-                <div ref={delegationMenuRef} className="relative">
-                  {delegationMenuOpen ? (
-                    <div className="absolute left-[8.75rem] bottom-full z-40 mb-2 w-[min(calc(100cqw-13rem),14rem)] @max-[26rem]/composer:left-[-2.5rem] @max-[26rem]/composer:mb-44 @max-[26rem]/composer:w-[calc(100cqw-2rem)] overflow-hidden rounded-xl border border-dls-border bg-dls-surface shadow-[var(--dls-shell-shadow)]">
-                      <div className="border-b border-dls-border px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-gray-10">
-                        {t("composer.external_agents_label")}
-                      </div>
-                      <div
-                        role="presentation"
-                        className="max-h-56 space-y-0.5 overflow-y-auto p-1.5"
-                        onMouseDown={(event) => event.preventDefault()}
-                      >
-                        {externalAgents.map((agent, index) => (
-                          <button
-                            key={agent.pluginId}
-                            ref={(element) => {
-                              delegationItemRefs.current[index] = element;
-                            }}
-                            type="button"
-                            className={`flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left transition-colors ${delegationMenuIndex === index ? "bg-gray-3 text-gray-12" : "text-gray-11 hover:bg-gray-2/70"}`}
-                            onMouseEnter={() => setDelegationMenuIndex(index)}
-                            onMouseDown={(event) => {
-                              event.preventDefault();
-                              applyExternalAgentSelection(agent);
-                            }}
-                          >
-                            <Zap size={14} className="mt-0.5 shrink-0 text-gray-9" />
-                            <span className="min-w-0">
-                              <span className="block truncate text-xs font-semibold">{agent.name}</span>
-                              <span className="mt-0.5 block line-clamp-2 text-[11px] leading-4 text-gray-10">{agent.manifest.description}</span>
-                            </span>
+                      <div className="mx-2.5 my-0.5 border-t border-dls-border" />
+                      <div className="flex items-center justify-between px-2.5 pb-0.5 pt-0.5">
+                        <span className="text-[10px] font-semibold text-gray-10">{t("composer.extensions_label")}</span>
+                        {props.onOpenSettingsSection ? (
+                          <button type="button" className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-10 hover:bg-gray-3 hover:text-gray-12" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("plugins"); }}>
+                            {t("composer.configure")}
                           </button>
-                        ))}
-                        {externalAgentsLoading ? (
-                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.loading_external_agents")}</div>
-                        ) : externalAgents.length === 0 ? (
-                          <div className="px-3 py-2 text-xs text-gray-10">{t("composer.no_external_agents")}</div>
                         ) : null}
                       </div>
+                      {composerExtensions.length > 0 ? composerExtensions.map((entry) => (
+                        <button key={entry.pluginId} type="button" disabled={!menuDataReady} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:cursor-default disabled:hover:bg-transparent" onClick={() => applyExtensionSelection(entry)}>
+                          <span className="flex size-4 shrink-0 items-center justify-center">{extensionIcon(entry, 16)}</span>
+                          <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                          <span className="max-w-[45%] shrink-0 truncate text-[10px] font-normal text-gray-10">{entry.manifest.description}</span>
+                        </button>
+                      )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? t("composer.no_extensions_enabled") : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
+
+                      <div className="mx-2.5 my-0.5 border-t border-dls-border" />
+                      <div className="px-2.5 pb-0.5 pt-0.5 text-[10px] font-semibold text-gray-10">{t("composer.external_agents_label")}</div>
+                      {(plusMenuData?.externalAgents ?? []).length > 0 ? plusMenuData?.externalAgents.map((agent) => (
+                        <button key={agent.pluginId} type="button" disabled={!menuDataReady} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:opacity-60" onClick={() => applyExternalAgentSelection(agent)}>
+                          <Bot className="size-3.5 shrink-0 text-gray-9" aria-hidden />
+                          <span className="min-w-0 flex-1 truncate">{agent.name}</span>
+                          <span className="max-w-[45%] shrink-0 truncate text-[10px] font-normal text-gray-10">{agent.manifest.description}</span>
+                        </button>
+                      )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? t("composer.no_external_agents") : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
+
+                      <div className="mx-2.5 my-0.5 border-t border-dls-border" />
+                      <div className="flex items-center justify-between px-2.5 pb-0.5 pt-0.5">
+                        <span className="text-[10px] font-semibold text-gray-10">{t("composer.mcps_label")}</span>
+                        {props.onOpenSettingsSection ? (
+                          <button type="button" className="rounded-md px-1.5 py-0.5 text-[10px] font-medium text-gray-10 hover:bg-gray-3 hover:text-gray-12" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
+                            {t("composer.configure")}
+                          </button>
+                        ) : null}
+                      </div>
+                      {activeMcpItems.length > 0 ? activeMcpItems.map(({ entry, status }) => (
+                        <button key={entry.name} type="button" disabled={!props.onOpenSettingsSection} className="flex min-h-8 w-full items-center gap-2 rounded-lg px-2.5 py-1 text-left text-[12px] font-medium text-gray-12 transition-colors hover:bg-gray-3 disabled:cursor-default disabled:hover:bg-transparent" onClick={() => { setPlusMenuOpen(false); props.onOpenSettingsSection?.("mcps"); }}>
+                          <Plug className="size-3.5 shrink-0 text-gray-9" aria-hidden />
+                          <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                          <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium ${status && menuDataReady ? mcpStatusBadgeClass(status) : "bg-gray-3 text-gray-10"}`}>{status && menuDataReady ? formatMcpStatusLabel(status) : t("composer.plus_status_unavailable")}</span>
+                        </button>
+                      )) : <div className="px-2.5 py-1 text-[11px] text-gray-9">{menuDataReady ? (plusMenuData?.mcpStatus ?? t("context_panel.no_mcp")) : plusMenuLoadState === "error" ? t("composer.plus_refresh_failed") : t("common.loading")}</div>}
                     </div>
                   ) : null}
                 </div>
-
                 <ModelBehaviorMenu
                   selectedModel={props.selectedModel}
                   modelVariant={props.modelVariant}
@@ -1799,9 +1456,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                       if (!open) return;
                       setWorkModeOpen(false);
                       setPlusMenuOpen(false);
-                      setPlusMenuSection(null);
-                      setToolMenuOpen(false);
-                      setDelegationMenuOpen(false);
                     }}
                   >
                     <PopoverTrigger
@@ -1845,9 +1499,6 @@ export function ReactSessionComposer(props: ComposerProps) {
                     setWorkModeOpen(open);
                     if (!open) return;
                     setPlusMenuOpen(false);
-                    setPlusMenuSection(null);
-                    setToolMenuOpen(false);
-                    setDelegationMenuOpen(false);
                   }}
                 >
                   <PopoverTrigger
