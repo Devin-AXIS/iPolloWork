@@ -66,11 +66,14 @@ function BrowserControlActions() {
   const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.snapshot",
     label: "Read built-in browser page",
-    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
+    description: "Return a bounded semantic accessibility tree with stable refs, optional scope, and compact change output.",
     sideEffect: "none",
     requiresArgs: true,
     args: [
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
+      { name: "mode", type: "string", description: "mixed, interactive, or content." },
+      { name: "scopeRef", type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
+      { name: "delta", type: "boolean", description: "Return only the compact change when useful." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -78,10 +81,81 @@ function BrowserControlActions() {
       if (!tabId) return { ok: false, error: "Missing tabId." };
       const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
       if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
-      return snapshot({ tabId });
+      const object = controlObjectArg(args);
+      const mode = controlStringArg(args, "mode");
+      const scopeRef = controlStringArg(args, "scopeRef");
+      return snapshot({
+        tabId,
+        ...(mode ? { mode: mode as "content" | "interactive" | "mixed" } : {}),
+        ...(scopeRef ? { scopeRef } : {}),
+        ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
+      });
     },
   }), []);
   useControlAction(snapshotBrowserControlAction);
+  const readBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.read",
+    label: "Read compact browser content",
+    description: "Read headings, paragraphs, links, tables, or forms without returning the full accessibility tree.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "mode", type: "string", description: "page, article, links, tables, or forms." },
+      { name: "maxChars", type: "number", description: "Maximum returned content characters." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      const read = window.__IPOLLOWORK_ELECTRON__?.browser?.read;
+      if (!read) return { ok: false, error: "Built-in browser runtime is not available." };
+      const mode = controlStringArg(args, "mode");
+      const rawMaxChars = object ? Reflect.get(object, "maxChars") : undefined;
+      return read({
+        tabId,
+        ...(mode ? { mode: mode as "article" | "forms" | "links" | "page" | "tables" } : {}),
+        ...(typeof rawMaxChars === "number" ? { maxChars: rawMaxChars } : {}),
+      });
+    },
+  }), []);
+  useControlAction(readBrowserControlAction);
+  const screenshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.screenshot",
+    label: "Capture built-in browser view",
+    description: "Capture the viewport, a bounded region, or one semantic ref, with optional ref annotations and unchanged-image suppression.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", description: "Latest snapshot ID, required for ref or annotated captures." },
+      { name: "target", type: "string", description: "viewport, region, or ref." },
+      { name: "ref", type: "string", description: "Stable element ref when target is ref." },
+      { name: "region", type: "object", description: "Viewport-relative x, y, width, and height." },
+      { name: "mode", type: "string", description: "plain, annotated, or auto." },
+      { name: "ifChanged", type: "boolean", description: "Do not resend an unchanged image." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId || !object) return { ok: false, error: "Missing tabId." };
+      const screenshot = window.__IPOLLOWORK_ELECTRON__?.browser?.screenshot;
+      if (!screenshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      const region = Reflect.get(object, "region");
+      return screenshot({
+        tabId,
+        ...(controlStringArg(args, "snapshotId") ? { snapshotId: controlStringArg(args, "snapshotId") } : {}),
+        ...(controlStringArg(args, "target") ? { target: controlStringArg(args, "target") as "ref" | "region" | "viewport" } : {}),
+        ...(controlStringArg(args, "ref") ? { ref: controlStringArg(args, "ref") } : {}),
+        ...(region && typeof region === "object" && !Array.isArray(region) ? { region: region as { x: number; y: number; width: number; height: number } } : {}),
+        ...(controlStringArg(args, "mode") ? { mode: controlStringArg(args, "mode") as "annotated" | "auto" | "plain" } : {}),
+        ...(Reflect.get(object, "ifChanged") === true ? { ifChanged: true } : {}),
+      });
+    },
+  }), []);
+  useControlAction(screenshotBrowserControlAction);
   const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.act",
     label: "Act in built-in browser",
@@ -93,6 +167,7 @@ function BrowserControlActions() {
       { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
       { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
       { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
+      { name: "observe", type: "object", description: "Optional compact semantic observation returned after the action batch." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -100,6 +175,7 @@ function BrowserControlActions() {
       const tabId = controlStringArg(args, "tabId");
       const snapshotId = controlStringArg(args, "snapshotId");
       const actions = object ? Reflect.get(object, "actions") : null;
+      const observe = object ? Reflect.get(object, "observe") : null;
       if (!tabId || !snapshotId || !Array.isArray(actions)) {
         return { ok: false, error: "tabId, snapshotId, and actions are required." };
       }
@@ -112,6 +188,7 @@ function BrowserControlActions() {
         actions: actions.filter((action): action is Record<string, unknown> => (
           Boolean(action) && typeof action === "object" && !Array.isArray(action)
         )),
+        ...(observe && typeof observe === "object" && !Array.isArray(observe) ? { observe } : {}),
       });
     },
   }), []);

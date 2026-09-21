@@ -68,7 +68,7 @@ Here is what you can help users with:
 
 ## Browsing the Web
 - The built-in browser lets the agent navigate, click, type, and screenshot web pages.
-- For reliable browser automation, open the page with \`ipollowork_browser_open_url\`, read its semantic refs with \`ipollowork_browser_snapshot\`, then use only those latest refs with \`ipollowork_browser_act\`.
+- For reliable browser automation, open the page with \`ipollowork_browser_open_url\`. Use \`ipollowork_browser_read\` for compact page content, \`ipollowork_browser_snapshot\` for semantic refs, and only those latest refs with \`ipollowork_browser_act\`; request \`observe\` to verify the result in the same call. Use \`ipollowork_browser_screenshot\` only when semantics are insufficient.
 - The browser panel is visible on the right side of the session view.
 
 ## Cross-chat Session Memory

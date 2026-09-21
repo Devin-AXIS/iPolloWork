@@ -1,4 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 
@@ -180,45 +181,26 @@ export default {
               label: "desktop browser control surface",
             });
             await ctx.eval('document.getElementById("ipollowork-unified-browser-proof")?.remove()');
-            const route = await ctx.eval("window.location.hash");
-            if (!/\/session\/[^/?#]+/.test(route)) {
-              const sessions = await ctx.control("session.list_sessions");
-              if (Array.isArray(sessions) && sessions.length > 0) {
-                await ctx.control("session.open", { sessionId: sessions[0].sessionId });
-              } else {
-                await ctx.waitFor(
-                  `window.__ipolloworkControl.listActions().some((action) => action.id === "session.create_task" && !action.disabled)`,
-                  { timeoutMs: 30_000, label: "new browser proof conversation" },
-                );
-                await ctx.control("session.create_task");
-              }
-              await ctx.waitFor(`window.location.hash.includes("/session/") && window.location.hash.split("/session/")[1]?.length > 0`, {
-                timeoutMs: 90_000,
-                label: "existing conversation route",
-              });
+            const serverInfo = await desktopServerInfo(ctx);
+            const status = await fetch(`${serverInfo.baseUrl}/status`, { headers: clientHeaders(serverInfo) }).then((response) => response.json());
+            const sessions = await ctx.control("session.list_sessions");
+            if (!Array.isArray(sessions) || !sessions[0]?.sessionId) {
+              throw new Error("Unified browser proof requires one durable conversation in the desktop fixture.");
             }
+            ctx.browser = { sessionId: sessions[0].sessionId, workspaceId: status.activeWorkspaceId, serverInfo };
+            await ctx.control("session.open", { sessionId: ctx.browser.sessionId });
+            await ctx.waitFor(`window.location.hash.includes(${JSON.stringify(`/session/${ctx.browser.sessionId}`)})`, {
+              timeoutMs: 90_000,
+              label: "durable browser proof conversation",
+            });
             await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
             await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
             await ctx.eval("window.__IPOLLOWORK_ELECTRON__.browser.closeAllTabs()", { awaitPromise: true });
-            await ctx.waitFor(
-              `window.__ipolloworkControl.listActions().some((action) => action.id === "eval.design.seed_html" && !action.disabled)`,
-              { timeoutMs: 30_000, label: "Design seed action" },
-            );
-            await ctx.control("eval.design.seed_html").catch(() => undefined);
-            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyDown", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-            await ctx.client.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Escape", code: "Escape", windowsVirtualKeyCode: 27, nativeVirtualKeyCode: 27 });
-            await ctx.waitFor(`Boolean(document.querySelector('button[aria-label="Select tab: entry.html"]'))`, {
-              timeoutMs: 30_000,
-              label: "seeded Design tab",
-            });
-            await ctx.trustedClick('button[aria-label="Select tab: entry.html"]');
-            await ctx.waitFor(
-              `Boolean(document.querySelector('button[aria-label="Select tab: entry.html"][aria-selected="true"]'))`,
-              { timeoutMs: 30_000, label: "active Design tab before browser launch" },
-            );
             ctx.fixture = await startFixtureServer();
-            ctx.browser = {};
             ctx.browser.opened = await ctx.control("browser.open_url", { url: ctx.fixture.url });
+            if (await ctx.eval(`Boolean(document.querySelector('button[aria-label="Open right panel"]'))`)) {
+              await ctx.trustedClick('button[aria-label="Open right panel"]');
+            }
             await ctx.waitFor(
               `Array.from(document.querySelectorAll('button[aria-label^="Select tab:"][aria-selected="true"]')).some((button) => button.closest('[id]')?.id === ${JSON.stringify("__TAB_ID__")})`
                 .replace("__TAB_ID__", ctx.browser.opened.tabId),
@@ -570,7 +552,7 @@ export default {
           assert: async () => {
             ctx.assert(ctx.browser.engineSnapshotStatus === 200, "The shared engine-host route failed.");
             ctx.assert(ctx.browser.engineSnapshot.tabId === ctx.browser.opened.tabId, "The engine route created a separate browser session.");
-            ctx.assert(ctx.browser.engineTools.length === 4, "The shared browser tool catalog is incomplete.");
+            ctx.assert(ctx.browser.engineTools.length === 6, "The shared browser tool catalog is incomplete.");
             ctx.assert(
               refFor(ctx.browser.engineSnapshot.tree, "Post title") === refFor(ctx.browser.snapshot.tree, "Post title"),
               "The engine-host route did not preserve the host-owned stable ref.",
@@ -587,7 +569,7 @@ export default {
           voiceover: vo[7],
           action: async () => {
             const run = await execFile("pnpm", [
-              "--filter", "ipollowork-server", "exec", "bun", "test", "src/extensions-connect-gating.test.ts",
+              "--filter", "ipollowork-server", "exec", "bun", "test", "src/extensions-connect-gating.test.ts", "-t", "pauses consequential browser clicks",
             ], { cwd: process.cwd(), maxBuffer: 4 * 1024 * 1024 });
             const testOutput = `${run.stdout}\n${run.stderr}`.trim();
             ctx.output("manual browser approval integration test", testOutput);
@@ -600,8 +582,6 @@ export default {
               { label: "Verified outcome", value: "Denied with 403 · page is not Published" },
             ]);
             ctx.browser.finalSnapshot = untouched;
-            await ctx.eval("window.__IPOLLOWORK_ELECTRON__.browser.closeAllTabs()", { awaitPromise: true });
-            await ctx.fixture.close();
           },
           assert: async () => {
             ctx.assert(ctx.browser.approvalTestOutput.includes("pauses consequential browser clicks and identifies the requesting session"), "The manual approval integration test did not run.");
@@ -609,6 +589,184 @@ export default {
           },
           screenshot: { name: "named-host-approval", requireText: ["高后果动作", "session_editor", "Denied with 403"] },
         });
+      },
+    },
+    {
+      name: "Compact reading avoids full browser trees",
+      run: async (ctx) => {
+        await ctx.prove("The host returns compact page structure for reading and extraction", {
+          voiceover: vo[8],
+          action: async () => {
+            ctx.browser.compactRead = await ctx.control("browser.read", {
+              tabId: ctx.browser.opened.tabId,
+              mode: "page",
+              maxChars: 8_000,
+            });
+            ctx.browser.interactiveOnly = await ctx.control("browser.snapshot", {
+              tabId: ctx.browser.opened.tabId,
+              mode: "interactive",
+            });
+            await showProofPanel(ctx, "长页面先读结构，不再吞整棵浏览器树", "标题、正文、链接、表格和表单按任务读取；需要操作时再取 interactive refs。", [
+              { label: "Read mode", value: `${ctx.browser.compactRead.mode} · ${ctx.browser.compactRead.itemCount} items` },
+              { label: "Returned", value: `${ctx.browser.compactRead.metrics.characters} chars · ${ctx.browser.compactRead.metrics.elapsedMs} ms` },
+              { label: "Interactive snapshot", value: `${ctx.browser.interactiveOnly.elementCount} refs · no paragraph noise` },
+              { label: "Content sample", value: ctx.browser.compactRead.content.slice(0, 360) },
+            ]);
+          },
+          assert: async () => {
+            ctx.assert(ctx.browser.compactRead.content.includes("Unified Browser Runtime"), "Compact read missed the page heading.");
+            ctx.assert(ctx.browser.compactRead.content.includes("Post title"), "Compact read missed the form label.");
+            ctx.assert(!ctx.browser.interactiveOnly.tree.includes("One host-owned semantic browser surface"), "Interactive mode returned unrelated page prose.");
+          },
+          screenshot: { name: "compact-browser-read", requireText: ["长页面先读结构", "INTERACTIVE SNAPSHOT", "CONTENT SAMPLE"] },
+        });
+      },
+    },
+    {
+      name: "Scoped snapshots and deltas preserve context",
+      run: async (ctx) => {
+        await ctx.prove("The host returns one semantic section or only what changed", {
+          voiceover: vo[9],
+          action: async () => {
+            const full = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId, mode: "interactive" });
+            const previewRef = refFor(full.tree, "Preview");
+            ctx.browser.unchangedDelta = await ctx.control("browser.snapshot", {
+              tabId: ctx.browser.opened.tabId,
+              mode: "interactive",
+              delta: true,
+            });
+            ctx.browser.scopedSnapshot = await ctx.control("browser.snapshot", {
+              tabId: ctx.browser.opened.tabId,
+              mode: "interactive",
+              scopeRef: previewRef,
+            });
+            await showProofPanel(ctx, "局部读取和增量一起减少上下文", "同一页面没有变化时只返回 unchanged；只关心一个控件时，不再重复整页内容。", [
+              { label: "Unchanged", value: `${ctx.browser.unchangedDelta.change} · ${ctx.browser.unchangedDelta.tree}` },
+              { label: "Saved context", value: `${ctx.browser.unchangedDelta.metrics.savedCharacters} characters` },
+              { label: "Scoped ref", value: ctx.browser.scopedSnapshot.scopeRef },
+              { label: "Scoped tree", value: ctx.browser.scopedSnapshot.tree },
+            ]);
+          },
+          assert: async () => {
+            ctx.assert(ctx.browser.unchangedDelta.change === "unchanged", "Unchanged page was resent as a full tree.");
+            ctx.assert(ctx.browser.unchangedDelta.metrics.savedCharacters > 0, "Delta mode did not save context.");
+            ctx.assert(ctx.browser.scopedSnapshot.tree.includes('button "Preview"'), "Scoped snapshot missed its target.");
+            ctx.assert(!ctx.browser.scopedSnapshot.tree.includes('textbox "Post title"'), "Scoped snapshot leaked unrelated controls.");
+          },
+          screenshot: { name: "scoped-semantic-delta", requireText: ["局部读取和增量", "UNCHANGED", "SAVED CONTEXT"] },
+        });
+      },
+    },
+    {
+      name: "Action and observation share one call",
+      run: async (ctx) => {
+        await ctx.prove("One bounded action call returns the verified semantic result", {
+          voiceover: vo[10],
+          action: async () => {
+            const before = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId, mode: "mixed" });
+            ctx.browser.actObserved = await ctx.control("browser.act", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: before.snapshotId,
+              actions: [{ type: "fill", ref: refFor(before.tree, "Post title"), value: "Observed in one call" }],
+              observe: { mode: "mixed", delta: true, settleMs: 100 },
+            });
+            await showProofPanel(ctx, "操作完成后直接返回最新观察", "不用再发一次 snapshot；结果自带新 snapshotId、变化内容、耗时和字符数。", [
+              { label: "Action", value: ctx.browser.actObserved.results.map((item) => item.type).join(" → ") },
+              { label: "Fresh snapshot", value: ctx.browser.actObserved.observation.snapshotId },
+              { label: "Observation", value: `${ctx.browser.actObserved.observation.change} · ${ctx.browser.actObserved.observation.metrics.characters} chars` },
+              { label: "Total latency", value: `${ctx.browser.actObserved.metrics.elapsedMs} ms` },
+            ]);
+          },
+          assert: async () => {
+            ctx.assert(ctx.browser.actObserved.snapshotRequired === false, "Act+observe still requested another snapshot.");
+            ctx.assert(Boolean(ctx.browser.actObserved.observation.snapshotId), "Act+observe did not return a fresh snapshot.");
+            ctx.assert(ctx.browser.actObserved.observation.tree.includes("Observed in one call"), "Observed result missed the changed field value.");
+          },
+          screenshot: { name: "act-and-observe", requireText: ["直接返回最新观察", "FRESH SNAPSHOT", "TOTAL LATENCY"] },
+        });
+      },
+    },
+    {
+      name: "Visual fallback is bounded and change-aware",
+      run: async (ctx) => {
+        await ctx.prove("The host captures annotated or scoped pixels only when semantics are insufficient", {
+          voiceover: vo[11],
+          action: async () => {
+            const snapshot = ctx.browser.actObserved.observation;
+            ctx.browser.visualFirst = await ctx.control("browser.screenshot", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              target: "viewport",
+              mode: "annotated",
+            });
+            ctx.browser.visualRepeat = await ctx.control("browser.screenshot", {
+              tabId: ctx.browser.opened.tabId,
+              snapshotId: snapshot.snapshotId,
+              target: "viewport",
+              mode: "annotated",
+              ifChanged: true,
+            });
+            const bytes = await readFile(ctx.browser.visualFirst.imagePath);
+            ctx.browser.visualPng = bytes.subarray(1, 4).toString("ascii") === "PNG";
+            await showProofPanel(ctx, "视觉只在需要时补位", "截图可以限制到 viewport、region 或 ref；标注沿用语义引用，重复像素不会再次发送。", [
+              { label: "First capture", value: `${ctx.browser.visualFirst.metrics.bytes} bytes · ${ctx.browser.visualFirst.metrics.annotations} refs` },
+              { label: "Saved PNG", value: ctx.browser.visualFirst.imagePath },
+              { label: "Repeat", value: `changed=${ctx.browser.visualRepeat.changed} · bytes=${ctx.browser.visualRepeat.metrics.bytes}` },
+              { label: "Contract", value: "semantic first · visual fallback · no OCR stream" },
+            ]);
+          },
+          assert: async () => {
+            ctx.assert(ctx.browser.visualPng, "The visual fallback did not save a valid PNG.");
+            ctx.assert(ctx.browser.visualFirst.metrics.annotations > 0, "Annotated capture did not map semantic refs.");
+            ctx.assert(ctx.browser.visualRepeat.changed === false && ctx.browser.visualRepeat.metrics.bytes === 0, "Unchanged pixels were resent.");
+          },
+          screenshot: { name: "bounded-visual-fallback", requireText: ["视觉只在需要时补位", "changed=false", "semantic first"] },
+        });
+      },
+    },
+    {
+      name: "Every engine receives the efficient contract",
+      run: async (ctx) => {
+        await ctx.prove("The same read, observe, and visual contract is exposed to every engine", {
+          voiceover: vo[12],
+          action: async () => {
+            const serverInfo = await desktopServerInfo(ctx);
+            const status = await fetch(`${serverInfo.baseUrl}/status`, { headers: clientHeaders(serverInfo) }).then((response) => response.json());
+            const catalog = await fetch(`${serverInfo.baseUrl}/engine-tools`, { headers: clientHeaders(serverInfo) }).then((response) => response.json());
+            ctx.browser.efficientTools = catalog.tools.filter((tool) => tool.name.startsWith("ipollowork_browser_"));
+            const readResponse = await fetch(`${serverInfo.baseUrl}/engine-tools/call`, {
+              method: "POST",
+              headers: { ...clientHeaders(serverInfo), "content-type": "application/json" },
+              body: JSON.stringify({
+                name: "ipollowork_browser_read",
+                args: { tabId: ctx.browser.opened.tabId, mode: "article", maxChars: 4_000 },
+                context: { workspaceId: status.activeWorkspaceId, sessionId: "fraimz-efficient-engine" },
+              }),
+            });
+            ctx.browser.engineRead = await readResponse.json();
+            await showProofPanel(ctx, "六个浏览器工具，所有引擎只有一份实现", "OpenCode、DeepSeek Harness、Codex Harness 都从 Host 发现同一套 read / snapshot / act / screenshot 契约。", [
+              { label: "Shared tools", value: ctx.browser.efficientTools.map((tool) => tool.name).join("\n") },
+              { label: "Read witness", value: `${ctx.browser.engineRead.mode} · ${ctx.browser.engineRead.metrics.characters} chars` },
+              { label: "Implementation", value: "Desktop Host Browser Runtime" },
+              { label: "Adapter duplication", value: "0 engine-specific browser runtimes" },
+            ]);
+          },
+          assert: async () => {
+            const names = ctx.browser.efficientTools.map((tool) => tool.name);
+            for (const name of ["ipollowork_browser_open_url", "ipollowork_browser_read", "ipollowork_browser_snapshot", "ipollowork_browser_act", "ipollowork_browser_screenshot", "ipollowork_browser_set_proxy"]) {
+              ctx.assert(names.includes(name), `Shared engine catalog is missing ${name}.`);
+            }
+            ctx.assert(ctx.browser.engineRead.content.includes("Unified Browser Runtime"), "The engine-neutral read route did not return page content.");
+          },
+          screenshot: { name: "efficient-browser-contract", requireText: ["六个浏览器工具", "ADAPTER DUPLICATION", "ipollowork_browser_screenshot"] },
+        });
+      },
+    },
+    {
+      name: "Browser proof resources are cleaned up",
+      run: async (ctx) => {
+        await ctx.eval("window.__IPOLLOWORK_ELECTRON__.browser.closeAllTabs()", { awaitPromise: true });
+        await ctx.fixture.close();
       },
     },
   ],
