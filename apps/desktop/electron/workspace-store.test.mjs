@@ -1,10 +1,49 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
 import { createWorkspaceStore } from "./workspace-store.mjs";
+
+test("browser upload workspaces use the server workspace identity and runtime storage", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-browser-workspaces-"));
+  const userData = path.join(root, "desktop-data");
+  const workspacePath = path.join(root, "workspace");
+  const serverConfigPath = path.join(root, "server", "server.json");
+  const runtimeDbPath = path.join(root, "runtime", "runtime.sqlite");
+  const previousServerConfig = process.env.IPOLLOWORK_SERVER_CONFIG;
+  const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_SERVER_CONFIG = serverConfigPath;
+  process.env.IPOLLOWORK_RUNTIME_DB = runtimeDbPath;
+  await mkdir(workspacePath, { recursive: true });
+  await mkdir(path.dirname(serverConfigPath), { recursive: true });
+  await writeFile(serverConfigPath, JSON.stringify({
+    workspaces: [{ id: "server-workspace", path: workspacePath, workspaceType: "local" }],
+  }), "utf8");
+  try {
+    const store = createWorkspaceStore({
+      app: { isPackaged: false, getPath: () => userData },
+      defaultDenBaseUrl: "https://default.example.com",
+      defaultRequireSignin: false,
+      forceRequireSignin: false,
+    });
+    await store.writeWorkspaceState({
+      selectedId: "desktop-workspace",
+      workspaces: [{ id: "desktop-workspace", path: workspacePath, workspaceType: "local" }],
+    });
+
+    const workspaces = await store.listLocalBrowserWorkspaces();
+    assert.equal(workspaces.length, 1);
+    assert.equal(workspaces[0].id, "server-workspace");
+    assert.equal(workspaces[0].path, await realpath(workspacePath));
+    assert.equal(workspaces[0].runtimeStorageRoot, path.dirname(runtimeDbPath));
+  } finally {
+    restoreEnv("IPOLLOWORK_SERVER_CONFIG", previousServerConfig);
+    restoreEnv("IPOLLOWORK_RUNTIME_DB", previousRuntimeDb);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 function restoreEnv(name, value) {
   if (value === undefined) delete process.env[name];

@@ -1510,8 +1510,7 @@ const workspaceStore = createWorkspaceStore({
 
 const browserPanel = createBrowserPanel({
   getWindow: () => mainWindow,
-  listLocalWorkspaces: async () => (await workspaceStore.readWorkspaceState()).workspaces
-    .filter((entry) => entry?.workspaceType !== "remote"),
+  listLocalWorkspaces: () => workspaceStore.listLocalBrowserWorkspaces(),
   onDeepLink: (urls) => queueDeepLinks(urls),
 });
 

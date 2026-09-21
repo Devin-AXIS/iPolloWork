@@ -201,6 +201,11 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "ipollowork", "server.json");
   }
 
+  function ipolloworkRuntimeStorageRoot() {
+    const runtimeDbPath = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
+    return runtimeDbPath ? path.dirname(path.resolve(runtimeDbPath)) : path.dirname(ipolloworkServerConfigPath());
+  }
+
   // Earlier Electron alpha builds copied Tauri's ipollowork-workspaces.json into
   // an Electron-only workspace-state.json. Keep importing that file when the
   // shared canonical file is missing, but write ipollowork-workspaces.json going
@@ -1041,6 +1046,22 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       .filter(Boolean);
   }
 
+  async function listLocalBrowserWorkspaces() {
+    const desktopWorkspaces = (await readWorkspaceState()).workspaces
+      .filter((entry) => entry?.workspaceType !== "remote");
+    const runtimeStorageRoot = ipolloworkRuntimeStorageRoot();
+    const serverWorkspaces = (await recoverWorkspacesFromServerConfig())
+      .filter((entry) => entry?.workspaceType !== "remote")
+      .map((entry) => ({ ...entry, runtimeStorageRoot }));
+    const byPath = new Map();
+    for (const workspace of [...desktopWorkspaces, ...serverWorkspaces]) {
+      const key = normalizeWorkspacePathKey(workspace?.path);
+      if (!key || !workspace?.id) continue;
+      byPath.set(key, workspace);
+    }
+    return [...byPath.values()];
+  }
+
   function workspacePathKey(workspace) {
     return normalizeWorkspacePathKey(workspace.path);
   }
@@ -1342,6 +1363,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     getDesktopBootstrapConfig,
     importConfig,
     importBundledDesktopBootstrapConfigIfPreferred,
+    listLocalBrowserWorkspaces,
     listLocalWorkspacePaths,
     migrateLegacyElectronWorkspaceStateIfNeeded,
     readWorkspaceiPolloWorkConfig,
