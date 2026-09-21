@@ -10,6 +10,7 @@ import {
 } from "@ipollowork/types/provider-credentials";
 
 import {
+  authenticateDeepSeekHarness,
   deepSeekHarnessChildEnvironment,
   deepSeekHarnessCompatibleProviderProfiles,
   deepSeekHarnessCredentialRefsConfigured,
@@ -60,6 +61,7 @@ describe("DeepSeek Harness provider credential sync", () => {
       "C:/runtime/plugins.patch.yml",
       "--port",
       "0",
+      "--no-open",
     ]);
     expect(deepSeekHarnessWebArgs("C:/runtime/dsh.js", "C:/runtime/plugins.patch.yml")).toEqual([
       "C:/runtime/dsh.js",
@@ -69,7 +71,19 @@ describe("DeepSeek Harness provider credential sync", () => {
       "C:/runtime/plugins.patch.yml",
       "--port",
       "0",
+      "--no-open",
     ]);
+  });
+
+  test("exchanges the new runtime launch token for an in-memory session cookie", async () => {
+    const connection = await authenticateDeepSeekHarness("http://127.0.0.1:43123/?token=test-token", (async (input, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:43123/?token=test-token");
+      expect(init?.redirect).toBe("manual");
+      return new Response(null, { status: 303, headers: { "set-cookie": "dsh-session=signed; HttpOnly; SameSite=Strict" } });
+    }) as typeof fetch);
+    expect(connection).toEqual({ baseUrl: "http://127.0.0.1:43123", cookie: "dsh-session=signed" });
+    await expect(authenticateDeepSeekHarness("http://example.com/?token=test")).rejects.toThrow("invalid local");
+    await expect(authenticateDeepSeekHarness("http://127.0.0.1:43123/")).rejects.toThrow("invalid local");
   });
 
   test("uses a standard Node runtime for the DSH JavaScript entrypoint", () => {
@@ -88,26 +102,35 @@ describe("DeepSeek Harness provider credential sync", () => {
     let attempts = 0;
 
     await waitForDeepSeekHarnessApi("http://127.0.0.1:43123/", {
+      cookie: "dsh-session=signed",
       retryDelaysMs: [10, 20],
       wait: async (delayMs) => {
         delays.push(delayMs);
       },
       fetcher: (async (input, init) => {
         attempts += 1;
-        expect(String(input)).toBe("http://127.0.0.1:43123/api/workspace.list");
+        expect(String(input)).toBe("http://127.0.0.1:43123/api/session/list");
+        expect(new Headers(init?.headers).get("cookie")).toBe("dsh-session=signed");
         expect(JSON.parse(String(init?.body))).toEqual(expect.objectContaining({
           type: "client-request",
-          method: "workspace.list",
-          payload: {},
+          method: "session/list",
+          payload: { args: { _request: {} } },
         }));
         return attempts < 3
           ? new Response("not found", { status: 404 })
-          : Response.json({ ok: true });
+          : Response.json({ result: { ok: true, value: { items: [] } } });
       }) as typeof fetch,
     });
 
     expect(attempts).toBe(3);
     expect(delays).toEqual([10, 20]);
+  });
+
+  test("does not mistake an HTTP 200 RPC error for a ready DSH engine", async () => {
+    await expect(waitForDeepSeekHarnessApi("http://127.0.0.1:43123", {
+      retryDelaysMs: [],
+      fetcher: (async (_input, _init) => Response.json({ result: { ok: false, error: { message: "unavailable" } } })) as typeof fetch,
+    })).rejects.toThrow("rejected the readiness request");
   });
 
   test("keeps shared provider credentials out of the child process environment", () => {
