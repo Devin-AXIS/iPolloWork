@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { it } from "node:test";
 import os from "node:os";
 import path from "node:path";
@@ -62,6 +62,12 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
       if (method === "Accessibility.getPartialAXTree") {
         return { nodes: [...nodes, ...frameNodes].filter((node) => node.backendDOMNodeId === params.backendNodeId) };
       }
+      if (method === "Page.getLayoutMetrics") {
+        return { cssVisualViewport: { clientWidth: 640, clientHeight: 480, pageX: 0, pageY: 0 } };
+      }
+      if (method === "Page.captureScreenshot") {
+        return { data: Buffer.from("png-fixture").toString("base64") };
+      }
       if (method === "DOM.resolveNode") return { object: { objectId: `node-${params.backendNodeId}` } };
       if (method === "Runtime.callFunctionOn") {
         const backendNodeId = Number(String(params.objectId).replace("node-", ""));
@@ -87,13 +93,28 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
               text: backendNodeId === 15 ? "发布图文笔记" : "",
               visible: backendNodeId !== 14,
               writable: backendNodeId === 11 || backendNodeId === 13,
+              bounds: { left: 80, top: 60, width: 80, height: 40 },
               x: 120,
               y: 80,
             },
           },
         };
       }
-      if (method === "Runtime.evaluate") return { result: { value: "complete" } };
+      if (method === "Runtime.evaluate") {
+        if (String(params.expression).includes("function readPage")) {
+          return { result: { value: {
+            title: "Fixture",
+            items: [
+              { kind: "heading", level: 1, text: "Create post" },
+              { kind: "p", text: "A compact page summary" },
+              { kind: "link", text: "Documentation", url: "https://example.test/docs" },
+              { kind: "field", text: "Title", fieldType: "text", required: true },
+            ],
+            truncated: false,
+          } } };
+        }
+        return { result: { value: "complete" } };
+      }
       return {};
     },
   };
@@ -141,6 +162,36 @@ it("creates bounded semantic snapshots with stable refs and protected-value reda
   assert.doesNotMatch(first.tree, /never-return-this/);
   assert.match(second.tree, /\[@e1\] textbox "Title"/);
   assert.notEqual(first.snapshotId, second.snapshotId);
+});
+
+it("supports interactive, scoped, and compact unchanged snapshots", async () => {
+  const fixture = createFixture();
+  const first = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const unchanged = await fixture.runtime.snapshot({ tabId: "tab-1", delta: true });
+  assert.equal(unchanged.change, "unchanged");
+  assert.equal(unchanged.tree, "(Page unchanged)");
+  assert.ok(unchanged.metrics.savedCharacters > 0);
+
+  const interactive = await fixture.runtime.snapshot({ tabId: "tab-1", mode: "interactive" });
+  assert.doesNotMatch(interactive.tree, /heading "Create post"/);
+  assert.match(interactive.tree, /button "Publish"/);
+  const publishRef = interactive.tree.match(/\[(@e\d+)\] button "Publish"/)?.[1];
+  assert.ok(publishRef);
+
+  const scoped = await fixture.runtime.snapshot({ tabId: "tab-1", scopeRef: publishRef, mode: "interactive" });
+  assert.match(scoped.tree, /button "Publish"/);
+  assert.doesNotMatch(scoped.tree, /textbox "Title"/);
+  assert.equal(scoped.scopeRef, publishRef);
+});
+
+it("reads compact structured page content without returning protected form values", async () => {
+  const fixture = createFixture();
+  const result = await fixture.runtime.read({ tabId: "tab-1", mode: "page", maxChars: 4_000 });
+  assert.match(result.content, /^# Create post/m);
+  assert.match(result.content, /\[Documentation\]\(https:\/\/example\.test\/docs\)/);
+  assert.match(result.content, /Title \(text, required\)/);
+  assert.doesNotMatch(result.content, /never-return-this/);
+  assert.equal(result.metrics.characters, result.content.length);
 });
 
 it("retains complete accessible link destinations without activating cards or exposing non-navigation values", async () => {
@@ -224,6 +275,22 @@ it("executes a bounded batch with real text and pointer input", async () => {
   );
   assert.deepEqual(fixture.inputEvents.map((event) => event.type), ["mouseMove", "mouseDown", "mouseUp"]);
   assert.equal(result.snapshotRequired, true);
+});
+
+it("returns a fresh semantic observation in the same action call", async () => {
+  const fixture = createFixture();
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  const result = await fixture.runtime.act({
+    tabId: "tab-1",
+    snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", ref: "@e2", expectedName: "Publish" }],
+    observe: { mode: "interactive", settleMs: 0 },
+  });
+
+  assert.equal(result.snapshotRequired, false);
+  assert.match(result.observation.tree, /button "Publish"/);
+  assert.notEqual(result.observation.snapshotId, snapshot.snapshotId);
+  assert.ok(result.metrics.elapsedMs >= 0);
 });
 
 it("supports verified hover, native select, check, and bounded scroll actions", async () => {
@@ -419,5 +486,39 @@ it("supplements hidden file inputs and uploads only registered-workspace files",
     assert.equal(upload?.params.backendNodeId, 14);
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("captures annotated ref screenshots and suppresses unchanged image bytes", async () => {
+  const userDataPath = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-capture-"));
+  try {
+    const fixture = createFixture({ userDataPath });
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    const first = await fixture.runtime.screenshot({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      target: "ref",
+      ref: "@e2",
+      mode: "annotated",
+    });
+    assert.equal(first.changed, true);
+    assert.equal((await readFile(first.imagePath)).toString(), "png-fixture");
+    assert.ok(fixture.commands.some((command) => (
+      command.method === "Runtime.evaluate" && String(command.params.expression).includes("__ipollowork_browser_annotations__")
+    )));
+
+    const second = await fixture.runtime.screenshot({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      target: "ref",
+      ref: "@e2",
+      mode: "annotated",
+      ifChanged: true,
+    });
+    assert.equal(second.changed, false);
+    assert.equal(second.metrics.bytes, 0);
+    assert.equal(second.imagePath, first.imagePath);
+  } finally {
+    await rm(userDataPath, { force: true, recursive: true });
   }
 });
