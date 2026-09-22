@@ -6,6 +6,7 @@ import {
   videoProjectId,
   videoProjectEntryPath,
 } from "@ipollowork/video-studio/project";
+import { TEMPLATE_LAYOUT_ADAPTATION_CONTRACT } from "../templates/template-brief";
 import { artifactContentFingerprint } from "../artifacts/artifact-completion";
 
 export {
@@ -192,7 +193,7 @@ export function videoProjectPath(sessionId: string, workspaceRoot?: string) {
 export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
-  template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist"> | null,
+  template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist" | "authoringGuide" | "layoutLibrary"> | null,
   options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements } = {},
 ) {
   const projectDirectory = videoProjectDirectory(sessionId);
@@ -203,6 +204,9 @@ export function videoTaskSystemContext(
     "- The requested deliverable is an editable HyperFrames HTML video for Video Studio. A request to export MP4 still retains this source. Do not replace the composition with a plugin-generated clip or request a video model selection unless the user explicitly asks for generated footage; footage needed as an intermediate asset must be integrated into the finished composition.",
     `- Own only \`${projectPath}\`; Video Studio displays \`${projectPath}/index.html\` at \`http://localhost:${studioPort}\` and hot-reloads saves.`,
     ...(template ? [
+      TEMPLATE_LAYOUT_ADAPTATION_CONTRACT,
+      ...(template.layoutLibrary ? [`- Read ${template.layoutLibrary}-video.html relative to ${JSON.stringify(projectPath)}. Reuse suitable structure and scoped styles only; preserve this project’s tokens, root composition and deterministic GSAP timeline. Never copy the preview host or preview theme.`] : []),
+      ...(template.authoringGuide ? [`- Before composing, read template-local guide ${JSON.stringify(template.authoringGuide)} relative to ${JSON.stringify(projectPath)} for visual rules and reusable source layouts. Inspect the referenced blocks; examples never override the user or runtime contract.`] : []),
       `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; use it as the editable visual and runtime seed rather than discarding it for a blank or unrelated project.`,
       `- Read \`${projectPath}/brief.json\`; on the initial brief application, let the content determine scene count, order, and timing while reusing the template's visual and motion language. Treat its checklist as quality and export guidance, not a requirement to retain sample structure: ${template.applyChecklist.join("; ")}.`,
       `- At the start of every edit turn, re-read the current entry from disk and preserve the root composition contract, variables, design-token link, stable editor hooks, and deterministic timeline.`,

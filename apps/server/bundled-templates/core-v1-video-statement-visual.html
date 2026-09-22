@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Statement and visual</title>
+<link rel="stylesheet" href="shared.css">
+<style data-layout-styles="statement-visual">.ipw-video-statement{display:grid;grid-template-columns:1.05fr 1fr;gap:8%;align-items:center}
+.ipw-video-statement .eyebrow{font-size:26px;letter-spacing:.1em;color:var(--ipw-color-primary);margin-bottom:28px}
+.ipw-video-statement h2{margin-bottom:32px}
+.ipw-video-statement .visual{aspect-ratio:1;display:grid;place-items:center;border:2px solid var(--ipw-color-border);border-radius:50%;position:relative}
+.ipw-video-statement .visual::before{content:"";position:absolute;inset:12%;border:2px solid var(--ipw-color-primary);border-radius:50%}
+.ipw-video-statement .visual span{font-size:28px;max-width:55%;text-align:center}
+.ipw-video-statement img{display:block;width:100%;height:100%;object-fit:cover}</style></head><body>
+<aside data-layout-preview-only>Statement and visual — static scene-body preview. No timeline, duration or audio is included.</aside>
+<template data-ipw-layout="statement-visual" data-layout-description="One main claim supported by a focal visual." data-layout-capacity="One short title, paragraph and meaningful visual.">
+<div class="ipw-video-layout ipw-video-statement">
+<article><p class="eyebrow" data-slot="eyebrow">ONE CLEAR IDEA</p><h2 data-slot="title">Connect the message to a meaningful visual.</h2><p data-slot="body">Explain the claim with a short, concrete supporting observation.</p></article>
+<div class="visual" data-slot="visual"><span>Replace with useful imagery or a graphic</span></div>
+</div>
+</template>
+<main data-layout-preview-only></main>
+<script data-layout-preview-only>document.querySelector('main').append(document.querySelector('template').content.cloneNode(true));</script>
+</body></html>

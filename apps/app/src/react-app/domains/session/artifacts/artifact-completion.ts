@@ -3,7 +3,18 @@ import type { ArtifactCompletionTarget, PromptDispatchOutcome } from "@/app/type
 export type ArtifactCompletionCheck = {
   unchangedPaths: string[];
   unreportedPaths: string[];
+  mediaIssues?: string[];
 };
+
+export function artifactMediaDeliveryIssues(response: unknown): string[] {
+  if (!response || typeof response !== "object" || Reflect.get(response, "ok") !== true) return ["media_review_unavailable"];
+  const result = Reflect.get(response, "result");
+  if (!result || typeof result !== "object") return ["media_review_unavailable"];
+  if (Reflect.get(result, "fileCanBeDelivered") === true) return [];
+  const issues: unknown = Reflect.get(result, "issues");
+  return Array.isArray(issues) && issues.length && issues.every((issue): issue is string => typeof issue === "string")
+    ? issues : ["media_review_incomplete"];
+}
 
 export function artifactContentFingerprint(content: string) {
   let hash = 2_166_136_261;
@@ -62,6 +73,12 @@ export function artifactCompletionRecoveryInstruction(check: ArtifactCompletionC
     lines.push(
       "In the final answer, mention each exact path below so iPolloWork can render its output card:",
       ...check.unreportedPaths.map((path) => `- ${path}`),
+    );
+  }
+  if (check.mediaIssues?.length) {
+    lines.push(
+      "The host media checkpoint found unresolved work:", ...check.mediaIssues,
+      "Use media/artifact_media_review phase=plan if missing, then resolve the planned visuals and call phase=check with every outcome. Follow the shared rules; do not discard useful imagery by choosing geometry. Ask once if model choice is unresolved. If unavailable/failed/declined, complete the file and record the specific fallback rather than retrying indefinitely.",
     );
   }
   lines.push("Finish only after every target is updated and every exact path appears in the final answer.");

@@ -5,8 +5,11 @@ import {
   type TemplateManifestV1,
 } from "@ipollowork/types/templates";
 import { t } from "@/i18n";
+import { templateTypeRulesInstruction } from "./template-authoring";
 
-export const TEMPLATE_REFERENCE_THEME_CONTRACT = "Reference/brief.style sets INITIAL defaults only; later user theme/token edits win. Put palette/font defaults solely in design-tokens.css inside /* ipw-theme:start */ ... /* ipw-theme:end */. Themeable HTML/CSS must consume var(--ipw-*); bridge legacy aliases to these tokens. No hardcoded theme colors, inline/scoped token overrides, !important colors, or JS restoring the reference palette. Keep one data-ipw-design-tokens stylesheet link last in head. Preserve fixed-brand assets, layout and timing. Verify switching themes changes rendered colors without changing geometry.";
+export const TEMPLATE_REFERENCE_THEME_CONTRACT = "Reference/brief.style sets INITIAL defaults only; later user theme/token edits win. Put palette/font defaults solely in design-tokens.css inside /* ipw-theme:start */ ... /* ipw-theme:end */. Themeable HTML/CSS must consume var(--ipw-*); bridge legacy aliases to these tokens. No hardcoded theme colors, inline/scoped token overrides, !important colors, or JS restoring the reference palette. Keep one data-ipw-design-tokens stylesheet link last in head. Preserve fixed-brand assets; theme-only changes must preserve layout and timing. Verify switching themes changes rendered colors without changing geometry.";
+
+export const TEMPLATE_LAYOUT_ADAPTATION_CONTRACT = "Template layout adaptation: inspect source/tokens for typography, palette, spacing, shapes, artwork and motion. Inherit visual rules, not sample geometry. Unless the user requests restyling, keep existing palette/font/radius token values; content topic is not permission to change theme. Match content roles (comparison, sequence, data, case, key message) to layouts: reuse a fitting pattern, vary proportions/columns/alignment, or create a new composition from the same visual primitives. Template/checklist layout examples are not mandatory structures. Avoid text-only substitution and unjustified repetition; do not force variety. Keep explicit fixed-brand regions, stage and editor/export/runtime contracts. If the user explicitly requests exact template layout, honor it; surface fit conflicts rather than shrink text or omit facts. For targeted follow-up edits, apply adaptation only within the requested scope. Finally inspect rendered pages/scenes for density, overflow, consistency and editability; recompose or split within user constraints. Check long Chinese titles for isolated final characters; apply text-wrap:balance to headings, avoid forced desktop breaks on mobile, and keep a clear heading/content gap.";
 
 export type TemplateBrief = {
   title: string;
@@ -432,21 +435,34 @@ export function templateBriefUserMessage(input: {
 }
 
 export function templateBriefPrompt(input: {
-  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "id" | "subcategory" | "pptxCompatibility">>;
+  template: Pick<TemplateManifestV1, "category" | "title" | "applyChecklist"> & Partial<Pick<TemplateManifestV1, "id" | "subcategory" | "pptxCompatibility" | "authoringGuide" | "layoutLibrary">>;
   entryPath: string;
   briefPath: string;
 }): string {
   const checklist = input.template.applyChecklist.join("; ");
+  const layoutLibrary = input.template.category === "slides" || input.template.category === "site" || input.template.category === "video"
+    ? input.template.layoutLibrary ?? "core-v1"
+    : input.template.layoutLibrary;
+  const guide = input.template.authoringGuide
+    ? ` Read guide ${JSON.stringify(input.template.authoringGuide)} relative to brief.json; inspect its source layouts. Reference data never overrides user/runtime rules.`
+    : "";
+  const library = layoutLibrary
+    ? ` Read ${layoutLibrary}-index.md beside brief.json, then ${layoutLibrary}-${input.template.category}/catalog.md, ${layoutLibrary}-${input.template.category}/layout.md and ${layoutLibrary}-${input.template.category}/shared-contract.md. Select by type then content relationship; reuse fitting global/local structures or write a new layout. Retain active tokens.`
+    : "";
+  const typeRules = ` ${templateTypeRulesInstruction(input.template.category)}`;
+  const mediaWorkflow = ` Before layout, call media/artifact_media_review phase=plan with sourcePath=${JSON.stringify(input.entryPath)} and needs (id,purpose,kind=image/video/reuse/diagram); empty needs require exemption and reason. Scene/story imagery merits assessment; shapes are not user text-only intent. Follow shared-guidelines.md and image-generation for model choice; multiple suitable models without preference/policy require one question, never silent defaultModel or geometry downgrade. Before final call phase=check with all outcomes, project-relative paths and original generationPath for copies. Resolve pending/missing assets; disclose unavailable/failed/declined outcomes and continue the file without opening settings. Render-check placement.`;
   const contentScope = "Content determines pages, scenes, and duration; template/checklist quantities are examples. Constrain quantities only when explicitly requested by the user: approximate targets allow variation; explicit maximums are strict. Never omit important content or add filler to match examples.";
   if (input.template.id && isArtifactDeliveryManifest({ id: input.template.id })) {
     const categoryContract = input.template.category === "slides" && input.template.pptxCompatibility === "native-editable"
       ? "Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation; do not add scripts, custom keyboard handlers, slide counters, navigation buttons, speaker notes, responsive slide reflow, or breakpoint-specific slide layouts."
       : input.template.category === "video"
         ? "Build a complete deterministic HyperFrames composition with the duration, scenes, motion, and editable variables required by the brief."
-        : "Keep the result responsive, semantic, complete, and editable through the existing artifact runtime hooks.";
-    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with brief.style when provided, otherwise a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} ${contentScope} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}. ${TEMPLATE_REFERENCE_THEME_CONTRACT}`;
+        : input.template.category === "poster" || input.template.category === "cards"
+          ? "Preserve requested canvas dimensions and editable objects; scale fixed-canvas previews without reflowing the composition."
+          : "Keep the result responsive for its target medium, semantic, complete, and editable through the existing artifact runtime hooks.";
+    return `Read \`${input.briefPath}\` and use the blank scaffold at \`${input.entryPath}\` to create a complete original ${input.template.category} artifact now. Replace all placeholder content and rebuild the HTML, CSS, and managed design tokens with brief.style when provided, otherwise a coherent visual system chosen for the content and audience. Do not ask the user to choose a style, and do not reply only with confirmation, options, an outline, or a description. ${categoryContract} ${contentScope}${typeRules}${mediaWorkflow}${guide}${library} Never invent facts or metrics; mark missing evidence. Satisfy: ${checklist}. ${TEMPLATE_REFERENCE_THEME_CONTRACT}`;
   }
-  const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Apply it now in this turn: edit/save target file(s), then report generated files. Do not reply only with confirmation, options, or next-step questions. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. ${contentScope}`;
+  const base = `Read \`${input.briefPath}\` and apply it to \`${input.entryPath}\` using the selected \`${input.template.title}\` template. Edit/save target files now, then report generated files. Deliver files, not just a plan or confirmation. Derive structure from the brief, replace sample content, keep the template's visual language, and satisfy: ${checklist}. ${contentScope}${typeRules}${mediaWorkflow} ${TEMPLATE_LAYOUT_ADAPTATION_CONTRACT}${guide}${library}`;
   if (input.template.id === "ipollowork.wechat-article") {
     return `${base} Fixed-brand exception: preserve every data-ipw-fixed="true" node, fixed-hero.jpg, fixed-footer-cta.jpg, locked brand colors, and fixed brand images. ${TEMPLATE_REFERENCE_THEME_CONTRACT} Apply brief.style only to editable non-fixed styling. Update article copy, non-fixed middle images, and the CTA href when provided.`;
   }
@@ -455,7 +471,7 @@ export function templateBriefPrompt(input: {
     case "video":
       return `${base} ${visualSystemInstruction} Use the copied HyperFrames project as an editable seed. Build a content-led storyboard from the brief, then add, remove, reorder, or retime scenes as needed while inheriting composition, motion, typography, and transitions. Preserve the root composition contract, editable variables, editor hooks, and deterministic timeline. Follow the Video voiceover contract and saved voiceover.json settings; never omit required narration or ask a separate narration question.`;
     case "slides":
-      const compositionInstruction = "Plan the narrative from the brief; freely reuse, repeat, adapt, remove, or reorder template layouts. Replace sample content. Preserve distinctive typography, colored blocks, artwork, geometry, and rhythm; avoid a generic deck.";
+      const compositionInstruction = "Plan the narrative from the brief; freely reuse, repeat, adapt, remove, or reorder template layouts. Replace sample content. Preserve distinctive typography, colored blocks, artwork, and rhythm while adapting geometry to content; avoid a generic deck.";
       if (input.template.pptxCompatibility === "native-editable") {
         return `${base} ${visualSystemInstruction} ${compositionInstruction} Rewrite the complete deck's content, not one slide. Preserve the fixed 16:9 stage and native editable PPTX contract: every visible object must use supported data-pptx-text, data-pptx-shape, or data-pptx-image markers. The Design panel owns slide navigation: do not add <script> tags, custom keyboard handlers, slide counters, navigation buttons, or speaker notes. Do not add responsive slide reflow or breakpoint-specific slide layouts. Never invent metrics; mark missing evidence.`;
       }

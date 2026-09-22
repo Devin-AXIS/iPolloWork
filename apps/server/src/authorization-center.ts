@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { SharedProviderBrowserLogin } from "@ipollowork/types/provider-credentials";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import { providerApiError } from "./errors.js";
+import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 
 import { authorizationVault } from "./authorization-runtime.js";
 import { createAliyunOssV4Request, createS3V4Request } from "./object-storage-signing.js";
@@ -63,8 +64,8 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     category: "media",
     agent: {
       capability: "OpenAI image generation",
-      useWhen: "Use when the user asks to create an image asset.",
-      instruction: "Prefer the iPolloWork openai-image-generation/image_generate extension so the PNG is saved as a workspace artifact. List configured models first and wait for the user's explicit model choice; never choose one automatically.",
+      useWhen: "Use for requested images or beneficial supporting imagery identified while authoring a PPT, website or video.",
+      instruction: `Prefer the iPolloWork openai-image-generation/image_generate extension so the PNG is saved as a workspace artifact. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`,
     },
   },
   {
@@ -85,7 +86,7 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     agent: {
       capability: "Volcengine Ark image and video generation",
       useWhen: "Use when the user asks to generate or edit an image with Seedream, or generate a video with Seedance.",
-      instruction: "Use the iPolloWork image or media extension and keep generation outputs in the active workspace. Before image or video generation, list configured models and wait for the user's explicit choice; never choose one automatically.",
+      instruction: `Use the iPolloWork image or media extension and keep generation outputs in the active workspace. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`,
     },
   },
   {
@@ -95,7 +96,7 @@ const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
     agent: {
       capability: "RunningHub MiniMax H3 video generation",
       useWhen: "Use for MiniMax H3 text, image or multimodal video generation.",
-      instruction: "Use video-generation actions only after listing configured video models and receiving the user's explicit model choice. Never select H3 automatically. MiniMax H3 uses the public ComfyUI workflow API with a RunningHub workflow API key; supports text, first-frame and first/last-frame video generation.",
+      instruction: `Use video-generation actions for scoped footage requests. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION} MiniMax H3 uses the public ComfyUI workflow API with a RunningHub workflow API key; supports text, first-frame and first/last-frame video generation.`,
     },
   },
   {

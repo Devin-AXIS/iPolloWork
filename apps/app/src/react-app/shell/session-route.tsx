@@ -1765,10 +1765,13 @@ export function SessionRoute() {
             }
           }
         }
+        const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
+          || parts.some(part => part.type === "text" && part.synthetic
+            && part.text.includes("media/artifact_media_review phase=plan") && part.text.includes(entry));
         const completionTemplates = automaticTemplateInstruction
           ? sessionTemplates
           : sessionTemplates.filter((template) => (
-              template.manifest.surface !== "video"
+              (template.manifest.surface !== "video" || requiresMediaReview(template.state.entry))
               && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
             ));
         const artifactCompletionTargets: ArtifactCompletionTarget[] = selectedWorkspaceEndpoint
@@ -1780,6 +1783,7 @@ export function SessionRoute() {
               return {
                 sourcePath: template.state.entry,
                 baselineFingerprint: artifactContentFingerprint(source.content),
+                mediaReview: requiresMediaReview(template.state.entry),
               };
             }))
           : [];

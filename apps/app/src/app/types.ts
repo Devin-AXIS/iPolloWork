@@ -192,6 +192,7 @@ export type PromptDispatchOptions = {
 export type ArtifactCompletionTarget = {
   sourcePath: string;
   baselineFingerprint: string;
+  mediaReview?: boolean;
 };
 
 /**

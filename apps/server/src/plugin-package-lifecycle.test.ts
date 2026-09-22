@@ -759,6 +759,20 @@ describe("plugin package lifecycle", () => {
       });
       expect(await readFile(join(workspaceRoot, skillDirectory, "skills", item.skill, "SKILL.md"), "utf8"))
         .toContain(item.heading);
+      if (item.id === "design-agent") {
+        const designSkill = join(workspaceRoot, skillDirectory, "skills", "ipollowork-design-studio");
+        for (const name of ["shared-guidelines.md", "design.md", ...["site", "app", "poster", "cards", "report", "article", "other"].map((category) => `design-${category}.md`)]) {
+          expect(await readFile(join(designSkill, "references", name), "utf8"))
+            .toBe(await readFile(join(item.root, "skills", "ipollowork-design-studio", "references", name), "utf8"));
+        }
+        const installedSkill = join(workspaceRoot, skillDirectory, "skills", "ipollowork-presentations");
+        const skill = await readFile(join(installedSkill, "SKILL.md"), "utf8");
+        for (const name of ["shared-guidelines.md", "slides-ppt.md"]) {
+          expect(skill).toContain(`references/${name}`);
+          expect(await readFile(join(installedSkill, "references", name), "utf8"))
+            .toBe(await readFile(join(item.root, "skills", "ipollowork-presentations", "references", name), "utf8"));
+        }
+      }
       if (item.id === "reference-context") {
         expect((await lifecycle.listInstalledPluginPackages({ serverConfig: config })).map((entry) => entry.pluginId)).toEqual(["reference-context"]);
       }
@@ -807,7 +821,7 @@ describe("plugin package lifecycle", () => {
       await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
       const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
       expect(installed).toEqual(expect.arrayContaining([
-        expect.objectContaining({ pluginId: "video-agent", version: "0.3.4", enabled }),
+        expect.objectContaining({ pluginId: "video-agent", version: "0.3.5", enabled }),
         expect.objectContaining({ pluginId: "reference-context", enabled: true }),
       ]));
       await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
@@ -1713,10 +1727,10 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
           { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.3.2", installedVersion: "0.3.2", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
-          { pluginId: "media-studio", version: "1.0.0", installedVersion: "1.0.0", updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.15", installedVersion: "0.3.15", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.5", installedVersion: "0.3.5", updateAvailable: false },
+          { pluginId: "media-studio", version: "1.0.3", installedVersion: "1.0.3", updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.8", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -1726,7 +1740,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(dshInstallation.status).toBe(200);
       expect(await dshInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.7" },
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.8" },
       });
       const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST",
@@ -1930,13 +1944,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.3.2",
+        version: "0.3.15",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.3.4",
+        version: "0.3.5",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

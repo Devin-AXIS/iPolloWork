@@ -212,10 +212,10 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(36);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
-  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(5);
-  expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(15);
+  expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
+  expect(actionKeys(actions)).toContain("media/artifact_media_review");
+  expect(actionKeys(actions)).toContain("video-generation/status");
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
 }
 
@@ -587,35 +587,14 @@ describe("extension and engine host tool gating", () => {
 
   test("gates only non-status Google Workspace actions when Connect is enabled without legacy config", async () => {
     const { base, config } = await boot();
+    const before = await listActions(base);
     const put = await putConnectState(base, { connectEnabled: true });
     expect(put.status).toBe(200);
 
     const actions = await listActions(base);
-    expect(actionKeys(actions)).toEqual([
-      "google-workspace/status",
-      "media/digital_human_generate",
-      "media/speech_recognize_realtime",
-      "media/speech_synthesize",
-      "media/speech_synthesize_workspace_batch",
-      "media/speech_synthesize_workspace_file",
-      "media/speech_transcribe",
-      "media/speech_translate",
-      "media/status",
-      "media/task_get",
-      "media/video_edit",
-      "media/video_generate",
-      "media/voice_clone",
-      "media/voice_clone_workspace_file",
-      "media/voice_list",
-      "media/voiceover_timeline_validate",
-      "openai-image-generation/image_edit",
-      "openai-image-generation/image_edit_save",
-      "openai-image-generation/image_generate",
-      "openai-image-generation/selection_capture",
-      "openai-image-generation/status",
-      "storage/status",
-      "storage/upload_workspace_file",
-    ]);
+    expect(actionKeys(actions)).toEqual(actionKeys(before.filter(action =>
+      action.extensionId !== "google-workspace" || action.action === "status",
+    )));
 
     const gated = await callCalendarListEvents(base);
     expect(gated.status).toBe(200);

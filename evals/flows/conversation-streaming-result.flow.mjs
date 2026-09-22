@@ -334,14 +334,15 @@ export default {
               commandDetailsClosed: !process.querySelector('[data-tool-action=command]')?.open,
               duplicateProgress: Boolean(host.querySelector('[data-testid=assistant-streaming-progress]')),
               pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               thinkingDots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
-              thinkingAnimation: getComputedStyle(host.querySelector('[data-testid=assistant-result-pending] .chat-thinking-dots span')).animationName,
               result: Boolean(host.querySelector('[data-assistant-result]')) };
           })()`);
           ctx.assert(state.open === "true" && state.commentary && state.commentaryBeforeCommand && !state.duplicateProgress && !state.result
             && state.liveAction?.includes("运行命令") && state.liveAction?.includes("检查项目文件") && state.commandDetailsClosed
-            && state.pending === "正在思考..."
-            && state.thinkingDots === 3 && state.thinkingAnimation === "chat-thinking-dot", JSON.stringify(state));
+            && state.pending?.includes("检查项目文件")
+            && state.activityKind === "tool"
+            && state.thinkingDots === 0, JSON.stringify(state));
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.getAttribute('aria-expanded') === 'false'");
           await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button').click()");
@@ -360,7 +361,7 @@ export default {
           const afterTick = await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent");
           ctx.assert(beforeTick !== afterTick && afterTick.includes("已用时"), "The live elapsed time did not advance.");
         },
-        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "正在思考"] },
+        screenshot: { name: "streaming-process", requireText: ["对话流式输出", "我先检查相关文件", "处理中", "检查项目文件"] },
       }),
     },
     {
@@ -802,8 +803,8 @@ export default {
       }),
     },
     {
-      name: "OpenCode waiting and tool work show the same thinking state",
-      run: (ctx) => ctx.prove("OpenCode shows animated thinking before an assistant part and while reasoning or tools are active", {
+      name: "OpenCode separates reasoning from tool activity",
+      run: (ctx) => ctx.prove("OpenCode shows animated thinking during reasoning and a lightweight action state while tools are active", {
         voiceover: vo[20],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showOpenCodeContinuation()");
@@ -827,12 +828,13 @@ export default {
         assert: async () => {
           const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
             return { pending: host.querySelector('[data-testid=assistant-result-pending]')?.textContent,
+              activityKind: host.querySelector('[data-testid=assistant-live-activity]')?.getAttribute('data-activity-kind'),
               dots: host.querySelectorAll('[data-testid=assistant-result-pending] .chat-thinking-dots span').length,
               command: host.querySelector('[data-tool-action=command]')?.textContent,
               result: Boolean(host.querySelector('[data-assistant-result]')) }; })()`);
-          ctx.assert(state.pending === '正在思考...' && state.dots === 3 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
+          ctx.assert(state.pending?.includes('检查项目文件') && state.activityKind === 'tool' && state.dots === 0 && state.command?.includes('检查项目文件') && !state.result, JSON.stringify(state));
         },
-        screenshot: { name: "opencode-thinking-and-tool", requireText: ["正在思考", "运行命令"] },
+        screenshot: { name: "opencode-thinking-and-tool", requireText: ["运行命令", "检查项目文件"] },
       }),
     },
     {

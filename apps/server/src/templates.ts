@@ -440,10 +440,13 @@ async function readManifest(directory: string): Promise<TemplateManifestV1> {
   const parsed = templateManifestV1Schema.safeParse(value);
   if (!parsed.success) throw new ApiError(400, "invalid_template_manifest", "Template manifest is invalid", parsed.error.flatten());
   const manifest = parsed.data;
-  for (const relativePath of [manifest.entry, manifest.cover, manifest.designSystem.tokens].filter((path): path is string => Boolean(path))) {
+  for (const relativePath of [manifest.entry, manifest.cover, manifest.designSystem.tokens, manifest.authoringGuide].filter((path): path is string => Boolean(path))) {
     const safe = validateStaticFile(relativePath);
     const target = resolve(directory, ...safe.split("/"));
     if (!target.startsWith(`${resolve(directory)}${sep}`) || !existsSync(target)) throw new ApiError(400, "invalid_template_manifest", `Missing package file: ${relativePath}`);
+  }
+  if (manifest.authoringGuide && (extname(manifest.authoringGuide).toLowerCase() !== ".md" || !(await stat(join(directory, manifest.authoringGuide))).isFile())) {
+    throw new ApiError(400, "invalid_template_manifest", "Authoring guide must reference a Markdown file inside the template package");
   }
   if (manifest.surface === "video") {
     const entry = await readFile(join(directory, ...manifest.entry.split("/")), "utf8");
@@ -748,6 +751,7 @@ function sessionScaffoldManifest(
     style: category === "video" ? "cinematic" : "minimal",
     tags: [authoring ? "authoring" : "delivery", category, ...(pptxCompatibility ? ["pptx-compatible"] : [])],
     pptxCompatibility,
+    layoutLibrary: category === "slides" || category === "site" || category === "video" ? "core-v1" : undefined,
     surface,
     title: authoring ? `${label} template draft` : `${label} deliverable`,
     description: authoring
@@ -887,6 +891,7 @@ async function writeSessionScaffoldPackage(
     writeFile(join(directory, "cover.svg"), personalTemplateCover(manifest.title, manifest.category, manifest.style), "utf8"),
     writeFile(join(directory, "brief.json"), `${JSON.stringify(brief ?? { mode: purpose, category: manifest.category, pptxCompatibility: manifest.pptxCompatibility ?? null }, null, 2)}\n`, "utf8"),
   ]);
+  await copyAppOwnedLayoutLibrary(directory, manifest);
 }
 
 export async function createTemplateAuthoringSession(
@@ -1332,6 +1337,37 @@ export async function exportLocalTemplatePackage(config: ServerConfig, workspace
   return { ...await archiveTemplateDirectory(row.packagePath), manifest };
 }
 
+function effectiveLayoutLibrary(manifest: TemplateManifestV1): string | undefined {
+  return manifest.layoutLibrary ?? (manifest.category === "slides" || manifest.category === "site" || manifest.category === "video" ? "core-v1" : undefined);
+}
+
+function appOwnedLayoutLibraryFiles(manifest: TemplateManifestV1): Array<{ source: string; destination: string }> {
+  const layoutLibrary = effectiveLayoutLibrary(manifest);
+  if (!layoutLibrary) return [];
+  const base = `${layoutLibrary}-${manifest.category}`;
+  const layouts = manifest.category === "slides"
+    ? ["comparison", "statement-visual", "parallel-principles", "lead-support", "step-sequence", "milestone-staircase", "editorial-visual", "quote-wall", "evidence-matrix", "metric-scorecard"]
+    : manifest.category === "site"
+      ? ["hero", "feature-grid", "step-sequence", "evidence-pair", "plan-comparison", "focused-cta"]
+      : ["statement-visual", "two-zone", "step-sequence", "evidence-wall", "relationship-map", "timeline", "checkpoint", "waterfall", "feature-orbit"];
+  return ["catalog.md", "layout.md", "shared-contract.md", "shared.css", ...layouts.map((layout) => `${layout}.html`)]
+    .map((file) => ({ source: `${base}-${file}`, destination: `${base}/${file}` }));
+}
+
+async function copyAppOwnedLayoutLibrary(directory: string, manifest: TemplateManifestV1) {
+  if (effectiveLayoutLibrary(manifest)) {
+    const index = join(directory, "core-v1-index.md");
+    // This entry point is app-owned even when a template package supplies it.
+    await rm(index, { recursive: true, force: true });
+    await cp(join(resolveBundledTemplatesRoot(), "core-v1-index.md"), index);
+  }
+  for (const file of appOwnedLayoutLibraryFiles(manifest)) {
+    const destination = join(directory, file.destination);
+    await mkdir(dirname(destination), { recursive: true });
+    await cp(join(resolveBundledTemplatesRoot(), file.source), destination);
+  }
+}
+
 function sessionRoot(workspace: WorkspaceInfo, sessionId: string, surface: TemplateSurface = "design"): string {
   if (!/^[A-Za-z0-9_-]{1,256}$/.test(sessionId)) throw new ApiError(400, "invalid_session_id", "Invalid template session id");
   return join(workspace.path, surface === "video" ? "video" : "design", sessionId);
@@ -1348,6 +1384,14 @@ export async function materializeTemplate(config: ServerConfig, workspace: Works
   let moved = false;
   try {
     await cp(row.packagePath, staged, { recursive: true, errorOnExist: true });
+    const layoutLibrary = effectiveLayoutLibrary(manifest);
+    if (layoutLibrary) {
+      const library = `${layoutLibrary}-${manifest.category}`;
+      // Reserved versioned reference: always use the app-owned library, never package instructions.
+      await rm(join(staged, `${library}.html`), { recursive: true, force: true });
+      await rm(join(staged, library), { recursive: true, force: true });
+      await copyAppOwnedLayoutLibrary(staged, manifest);
+    }
     const now = Date.now();
     const folder = manifest.surface === "video" ? "video" : "design";
     const state: TemplateSessionState = { schemaVersion: 1, template: { id: manifest.id, version: manifest.version, sourceType: row.sourceType }, entry: `${folder}/${sessionId}/${manifest.entry}`, briefPath: `${folder}/${sessionId}/brief.json`, createdAt: now };

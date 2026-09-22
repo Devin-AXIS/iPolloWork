@@ -1,3 +1,5 @@
+import { workspaceForContext } from "./storage.js";
+import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "../engine-host-tools.js";
 import { mkdir, readFile, realpath, stat, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import { randomUUID } from "node:crypto";
@@ -181,7 +183,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_generate",
     title: "Generate image artifact",
-    description: "Generate and save a PNG workspace artifact without opening Image Studio. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
+    description: `Generate and save a PNG workspace artifact without opening Image Studio. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`,
     inputSchema: {
       type: "object",
       properties: {
@@ -198,7 +200,7 @@ export const OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS = [
     extensionId: OPENAI_IMAGE_GENERATION_EXTENSION_ID,
     action: "image_edit",
     title: "Edit image artifact",
-    description: "Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. First list status, show the configured models to the user, and pass the model they explicitly select. Never choose a default model for them.",
+    description: `Edit a workspace image with an optional transparent PNG mask and save the result as a new PNG artifact. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`,
     effect: "write" as const,
     inputSchema: {
       type: "object",
@@ -292,7 +294,7 @@ async function modelForId(value: string, authorization: AuthorizationAccess): Pr
       400,
       "image_model_selection_required",
       models.length
-        ? "请先让用户从已配置的图片模型中选择一个，再提交生成或编辑。"
+        ? "请先查询图片模型状态，按当前任务的模型选择规则确定适用模型，并传入其 model ID。"
         : "当前没有已配置的图片模型，请先在授权中心完成连接。",
       { models },
     );
@@ -363,24 +365,6 @@ export async function openAiImageGenerationStatus(authorization: AuthorizationAc
       error: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-function workspaceForContext(config: ServerConfig, context: Record<string, unknown>): WorkspaceInfo {
-  const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
-    .filter((value) => value.length > 0)
-    .map((value) => resolve(value));
-
-  for (const candidate of candidates) {
-    const match = config.workspaces.find((workspace) => {
-      const workspaceRoot = resolve(workspace.path);
-      return candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}${sep}`);
-    });
-    if (match) return { ...match, path: resolve(match.path) };
-  }
-
-  const workspace = config.workspaces[0];
-  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for OpenAI image generation");
-  return { ...workspace, path: resolve(workspace.path) };
 }
 
 function resolveSafeChildPath(root: string, child: string): string {

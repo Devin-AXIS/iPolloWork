@@ -11,8 +11,8 @@ Create a reusable template, not a one-off artifact. The product-selected categor
 
 1. Read [references/template-generation-contract.md](references/template-generation-contract.md).
 2. Read exactly one surface reference:
-   - Design: [references/design.md](references/design.md)
-   - Slides or native editable PPT: [references/slides-ppt.md](references/slides-ppt.md)
+   - Design: [references/design.md](references/design.md), then its matching category reference (site, app, poster, cards, report, article or other)
+   - Slides or native editable PPT: [references/slides-ppt.md](references/slides-ppt.md), then [references/layout.md](references/layout.md) for reusable structure selection
    - HyperFrames Video: [references/video.md](references/video.md)
 3. When converting an existing project, preserve its category, surface, structure, and source files. Saving creates a new personal template; it never updates the source template.
 
