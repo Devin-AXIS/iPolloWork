@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -22,6 +22,7 @@ import {
   openAiCodexOAuthCredential,
   openAiCodexOAuthCredentialNeedsRefresh,
   refreshOpenAiCodexOAuthCredential,
+  removeStaleDeepSeekHarnessWriterLocks,
   sharedProviderApiCredentials,
   waitForDeepSeekHarnessApi,
 } from "./deepseek-harness-runtime.js";
@@ -80,6 +81,25 @@ describe("DeepSeek Harness provider credential sync", () => {
       IPOLLOWORK_NODE_BIN: "/development/node",
     }, "linux")).toBe("/development/node");
     expect(deepSeekHarnessNodeExecutable({}, "win32")).toBe("node.exe");
+  });
+
+  test("removes abandoned DSH writer locks and preserves live owners", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipollowork-dsh-locks-"));
+    try {
+      await writeFile(join(root, ".credentials.yaml.lock"), "41001", "utf8");
+      await writeFile(join(root, "settings.yaml.lock"), "41002", "utf8");
+
+      await expect(removeStaleDeepSeekHarnessWriterLocks(
+        root,
+        (pid) => pid === 41002,
+      )).resolves.toEqual([".credentials.yaml.lock"]);
+      await expect(readFile(join(root, ".credentials.yaml.lock"), "utf8")).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(readFile(join(root, "settings.yaml.lock"), "utf8")).resolves.toBe("41002");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test("waits through the DSH Web gateway's transient startup 404", async () => {

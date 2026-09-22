@@ -460,6 +460,52 @@ describe("session transcript sync", () => {
     }
   });
 
+  test("repairs a premature no-output error when the live response arrives after the idle snapshot", () => {
+    const cleanup = __createWorkspaceSessionSyncForTest(syncInput);
+    const releaseSession = trackWorkspaceSessionSync(syncInput, "session-a");
+    beginOptimisticSessionPrompt("workspace-a", "session-a", "你好", "user-live-response");
+    try {
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage("user-live-response", "user", "你好"),
+      });
+      __applySessionSyncEventForTest(syncInput, {
+        type: "session.status",
+        sessionId: "session-a",
+        status: { type: "busy" },
+      });
+      seedSessionState("workspace-a", snapshotWithMessages([
+        { id: "user-live-response", role: "user", text: "你好" },
+      ]));
+
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("error");
+
+      __applySessionSyncEventForTest(syncInput, {
+        type: "message.upsert",
+        sessionId: "session-a",
+        message: uiMessage(
+          "assistant-live-response",
+          "assistant",
+          "你好！我在这儿。",
+          { parentUserMessageId: "user-live-response" },
+        ),
+      });
+
+      expect(useSessionActivityStore.getState().getStatus("workspace-a", "session-a")).toBe("idle");
+      expect(useSessionActivityStore.getState().getSessionError("workspace-a", "session-a")).toBeNull();
+      const transcript = getReactQueryClient().getQueryData<UIMessage[]>(transcriptKey("workspace-a", "session-a"));
+      expect(transcript).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: "assistant-live-response", role: "assistant" }),
+      ]));
+      expect(transcript?.some((message) => message.id === "session-error:user-live-response")).toBe(false);
+      expect(useSessionActivityStore.getState().getRunOutcome("workspace-a", "session-a")).toBe("completed");
+    } finally {
+      releaseSession();
+      cleanup();
+    }
+  });
+
   test("keeps a prompt submitted after interruption visible across a stale reverted snapshot", () => {
     const interruptedSnapshot = snapshotWithMessages([
       { id: "msg-user-old", role: "user", text: "123" },

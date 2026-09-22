@@ -1,6 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
+import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
@@ -151,7 +152,56 @@ const OPENAI_CODEX_PROVIDER_BRIDGE: DeepSeekHarnessProviderBridge = {
 const PROVIDER_MODEL_DISCOVERY_TIMEOUT_MS = 10_000;
 
 const OPENCODE_ZEN_PUBLIC_API_KEY = "public";
+const DEEPSEEK_HARNESS_WRITER_LOCK_FILES: readonly string[] = [
+  ".credentials.yaml.lock",
+  "settings.yaml.lock",
+];
 const LOOPBACK_PROXY_BYPASS_HOSTS: readonly string[] = ["127.0.0.1", "localhost", "::1"];
+
+function nodeErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== "object" || !("code" in error)) return null;
+  return typeof error.code === "string" ? error.code : null;
+}
+
+function processIsAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return nodeErrorCode(error) === "EPERM";
+  }
+}
+
+/** Remove writer locks left behind by a terminated DSH process without touching live owners. */
+export async function removeStaleDeepSeekHarnessWriterLocks(
+  dshHome: string,
+  isAlive: (pid: number) => boolean = processIsAlive,
+): Promise<string[]> {
+  const removed: string[] = [];
+  for (const filename of DEEPSEEK_HARNESS_WRITER_LOCK_FILES) {
+    const path = join(dshHome, filename);
+    let owner: string;
+    try {
+      owner = (await readFile(path, "utf8")).trim();
+    } catch (error) {
+      if (nodeErrorCode(error) === "ENOENT") continue;
+      throw error;
+    }
+    if (!/^[1-9]\d*$/.test(owner)) continue;
+    const pid = Number(owner);
+    if (!Number.isSafeInteger(pid) || isAlive(pid)) continue;
+
+    try {
+      // Re-read immediately before unlinking so a newly acquired lock is kept.
+      if ((await readFile(path, "utf8")).trim() !== owner) continue;
+      await unlink(path);
+      removed.push(filename);
+    } catch (error) {
+      if (nodeErrorCode(error) !== "ENOENT") throw error;
+    }
+  }
+  return removed;
+}
 
 function withLoopbackProxyBypass(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const entries = [environment.NO_PROXY, environment.no_proxy]
@@ -882,6 +932,7 @@ export class DeepSeekHarnessRuntime {
 
     );
     await ensureDir(dshHome);
+    await removeStaleDeepSeekHarnessWriterLocks(dshHome);
     const patchPath = join(dshHome, ".ipollowork-runtime.patch.yml");
     await writeDeepSeekHarnessPatchFile({
       config: this.#config,

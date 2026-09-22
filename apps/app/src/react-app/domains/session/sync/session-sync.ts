@@ -257,7 +257,7 @@ function isLiveStatus(status: ConversationStatus | null | undefined) {
 }
 
 function messageHasVisibleAssistantOutput(message: UIMessage) {
-  if (message.role !== "assistant") return false;
+  if (message.role !== "assistant" || message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)) return false;
   return message.parts.some((part) => {
     if ("text" in part && typeof part.text === "string") return part.text.trim().length > 0;
     return part.type === "dynamic-tool" || part.type === "file";
@@ -284,12 +284,45 @@ function finalAssistantOutputAfterLatestUser(messages: UIMessage[]) {
     }
   }
   return messages.slice(lastUserIndex + 1).some((message) => (
-    message.role === "assistant" && message.parts.some((part) => (
+    message.role === "assistant"
+    && !message.id.startsWith(SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX)
+    && message.parts.some((part) => (
       part.type === "text" && part.text.trim().length > 0
       || part.type === "dynamic-tool"
       || part.type === "file"
     ))
   ));
+}
+
+function removeRecoveredNoFinalOutputError(messages: UIMessage[]) {
+  const latestUser = latestUserMessage(messages);
+  if (!latestUser) {
+    return { messages, turnId: null };
+  }
+  const latestUserIndex = messages.findLastIndex((message) => message.id === latestUser.id);
+  const recoveredOutput = messages.slice(latestUserIndex + 1).some((message) => {
+    if (!messageHasVisibleAssistantOutput(message)) return false;
+    const parentUserMessageId = conversationMessageParentUserMessageId(message);
+    return !parentUserMessageId || parentUserMessageId === latestUser.id;
+  });
+  if (!recoveredOutput) return { messages, turnId: null };
+  const errorMessageId = `${SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX}${latestUser.id}`;
+  const errorIndex = messages.findIndex((message) => (
+    message.id === errorMessageId
+    && messageVisibleText(message) === NO_FINAL_OUTPUT_ERROR
+  ));
+  if (errorIndex === -1) return { messages, turnId: null };
+  return {
+    messages: messages.filter((_message, index) => index !== errorIndex),
+    turnId: latestUser.id,
+  };
+}
+
+function settleRecoveredNoFinalOutputError(workspaceId: string, sessionId: string, turnId: string | null) {
+  if (!turnId) return;
+  const activity = useSessionActivityStore.getState();
+  activity.clearError(workspaceId, sessionId);
+  activity.finishRun(workspaceId, sessionId, "completed", turnId);
 }
 
 function latestUserMessage(messages: UIMessage[]) {
@@ -1177,9 +1210,13 @@ function applyEvent(entry: SyncEntry, workspaceId: string, event: ConversationEv
     // after the last streamed chunks. Flush those queued deltas first so the
     // final message replaces the stream instead of receiving it a second time.
     if (entry.deltaFlushBuffer.length > 0) flushDeltas(entry, workspaceId);
-    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) =>
-      upsertMessage(current, event.message),
-    );
+    let recoveredTurnId: string | null = null;
+    queryClient.setQueryData<UIMessage[]>(transcriptKey(workspaceId, event.sessionId), (current = []) => {
+      const recovered = removeRecoveredNoFinalOutputError(upsertMessage(current, event.message));
+      recoveredTurnId = recovered.turnId;
+      return recovered.messages;
+    });
+    settleRecoveredNoFinalOutputError(workspaceId, event.sessionId, recoveredTurnId);
     return;
   }
 
@@ -1593,28 +1630,7 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     && liveActivityBeforeSeed
     && !snapshotAcknowledgesRun;
   const preserveBusy = preserveOptimisticBusy || preserveLiveBusy;
-  const snapshotErrorText = latestSnapshotErrorAfterLatestUser(incoming);
-  const terminalWithoutOutput = safeSnapshot.status.type === "idle"
-    && !preserveBusy
-    && liveActivityBeforeSeed
-    && snapshotAcknowledgesRun
-    && latestUserMessage(incoming) !== null
-    && !snapshotErrorText
-    && !finalAssistantOutputAfterLatestUser(incoming);
-
-  if (!preserveBusy) {
-    useSessionActivityStore.getState().seedSessionRun(
-      workspaceId,
-      safeSnapshot.session.id,
-      safeSnapshot.status,
-      assistantOutputAfterLatestUser(incoming),
-    );
-  }
-
-  // The snapshot's revert cursor is authoritative: messages at/after it are
-  // reverted server-side, so the cache must not keep them alive (a later
-  // merge would resurrect them once the server deletes them on next prompt).
-  queryClient.setQueryData(key, applyRevertCursor(
+  const reconciledMessages = applyRevertCursor(
     reconcileTranscriptMessages({
       currentMessages: existing ?? [],
       snapshotMessages: incoming,
@@ -1622,7 +1638,33 @@ export function seedSessionState(workspaceId: string, snapshot: ConversationSnap
     }),
     safeSnapshot.session.revertMessageId ?? null,
     { preserveOptimisticUserMessages: true },
-  ));
+  );
+  const snapshotErrorText = latestSnapshotErrorAfterLatestUser(incoming);
+  const assistantOutput = assistantOutputAfterLatestUser(reconciledMessages);
+  const finalAssistantOutput = finalAssistantOutputAfterLatestUser(reconciledMessages);
+  const terminalWithoutOutput = safeSnapshot.status.type === "idle"
+    && !preserveBusy
+    && liveActivityBeforeSeed
+    && snapshotAcknowledgesRun
+    && latestUserMessage(incoming) !== null
+    && !snapshotErrorText
+    && !finalAssistantOutput;
+
+  if (!preserveBusy) {
+    useSessionActivityStore.getState().seedSessionRun(
+      workspaceId,
+      safeSnapshot.session.id,
+      safeSnapshot.status,
+      assistantOutput,
+    );
+  }
+
+  // The snapshot's revert cursor is authoritative: messages at/after it are
+  // reverted server-side, so the cache must not keep them alive (a later
+  // merge would resurrect them once the server deletes them on next prompt).
+  const recovered = removeRecoveredNoFinalOutputError(reconciledMessages);
+  queryClient.setQueryData(key, recovered.messages);
+  settleRecoveredNoFinalOutputError(workspaceId, safeSnapshot.session.id, recovered.turnId);
 
   if (snapshotErrorText) {
     useSessionActivityStore.getState().setError(workspaceId, safeSnapshot.session.id, snapshotErrorText, latestUserMessage(incoming)?.id);
