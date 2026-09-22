@@ -1093,7 +1093,6 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(providers.map((provider) => provider.id)).toEqual(["opencode"]);
     expect(providers[0]?.models.map((model) => model.id)).toEqual([
       "big-pickle",
-      "hy3-free",
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
@@ -1328,7 +1327,6 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     expect(providers.map((provider) => provider.id)).toEqual(["opencode", "openai", "chat-only"]);
     expect(providers[0]?.models.map((model) => model.id)).toEqual([
       "big-pickle",
-      "hy3-free",
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
@@ -1484,6 +1482,38 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 
 describe("Codex provider protocol gateway", () => {
+  test("rejects the obsolete public placeholder with an actionable connection error", async () => {
+    const gateway = new CodexProviderGateway();
+    try {
+      const route = (await gateway.configure([{
+        providerId: "opencode",
+        protocol: "openai-completions",
+        baseURL: "https://opencode.ai/zen/v1",
+        apiKey: "public",
+      }])).get("opencode");
+      if (!route) throw new Error("Gateway route was not created");
+
+      for (const path of ["responses", "chat/completions"]) {
+        const response = await fetch(`${route.baseURL}/${path}`, {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${route.apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({ model: "big-pickle", input: "Hello", messages: [] }),
+        });
+        expect(response.status).toBe(401);
+        await expect(response.json()).resolves.toMatchObject({
+          error: {
+            message: expect.stringContaining("Settings > AI Providers > Connect provider"),
+          },
+        });
+      }
+    } finally {
+      await gateway.close();
+    }
+  });
+
   test.each(["openai", "anthropic"])("preserves namespaced tool identity through %s responses and history", async (api) => {
     const receivedBodies: unknown[] = [];
     const namespace = "mcp__ipollowork";
@@ -1945,7 +1975,7 @@ describe("Codex provider protocol gateway", () => {
         providerId: "opencode",
         protocol: "openai-completions",
         baseURL: `http://127.0.0.1:${address.port}/v1`,
-        apiKey: "public",
+        apiKey: "zen-account-key",
       }]);
       const route = routes.get("opencode");
       if (!route) throw new Error("Gateway route was not created");

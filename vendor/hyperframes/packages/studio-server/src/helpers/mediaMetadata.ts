@@ -57,6 +57,7 @@ export interface MediaColorMetadata {
   codecName?: string;
   profile?: string;
   pixelFormat?: string;
+  hasAlpha?: boolean;
   colorSpace?: string;
   colorTransfer?: string;
   colorPrimaries?: string;
@@ -79,6 +80,7 @@ interface FfprobeStream {
   color_primaries?: string;
   bits_per_raw_sample?: string;
   disposition?: { attached_pic?: number };
+  tags?: Record<string, string | number>;
 }
 
 const VIDEO_EXT = new Set([
@@ -168,6 +170,11 @@ export function classifyMediaColor(stream: FfprobeStream | null | undefined): Me
     codecName: stream?.codec_name,
     profile: stream?.profile,
     pixelFormat: stream?.pix_fmt,
+    // WebM stores VP8/VP9 alpha separately; ffprobe can still report yuv420p.
+    hasAlpha: pixelFormatHasAlpha(stream?.pix_fmt) ||
+      Object.entries(stream?.tags ?? {}).some(
+        ([key, value]) => key.toLowerCase() === "alpha_mode" && String(value) === "1",
+      ),
     colorSpace: stream?.color_space,
     colorTransfer: stream?.color_transfer,
     colorPrimaries: stream?.color_primaries,
@@ -199,7 +206,7 @@ export async function probeMediaMetadata(
       "-v",
       "error",
       "-show_entries",
-      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic",
+      "stream=codec_type,codec_name,profile,pix_fmt,color_space,color_transfer,color_primaries,bits_per_raw_sample:stream_disposition=attached_pic:stream_tags=alpha_mode",
       "-of",
       "json",
       filePath,

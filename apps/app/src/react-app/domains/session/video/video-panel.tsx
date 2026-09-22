@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
+import { videoAvatarContextSchema, videoJobsResultSchema } from "@ipollowork/types/video-generation";
 import {
   IPOLLOWORK_VIDEO_STUDIO_FEATURES,
   type VideoStudioBranding,
@@ -29,7 +30,7 @@ import {
   videoProjectId,
 } from "./video-project";
 import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
-import { VideoAvatarPanel } from "./video-avatar-panel";
+import { resolveAvatarAudioStart, resolveAvatarDuration, VideoAvatarPanel } from "./video-avatar-panel";
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 import { VideoImageWorkbench } from "./video-image-workbench";
@@ -136,7 +137,7 @@ export function VideoPanel({ title, sessionId, conversationId = sessionId, works
     revision,
   );
   const projectDirectory = videoProjectDirectory(sessionId);
-  const handleAvatarAsset = React.useCallback((action: "view" | "insert", workspacePath: string) => {
+  const handleAvatarAsset = React.useCallback((action: "view" | "insert", workspacePath: string, timelineStart?: number, timelineDuration?: number) => {
     const frameWindow = studioFrameRef.current?.contentWindow;
     const prefix = `${videoProjectDirectory(sessionId)}/`;
     if (!frameWindow || !workspacePath.startsWith(prefix)) return Promise.reject(new Error("视频工作区尚未就绪，请稍后重试。"));
@@ -144,6 +145,8 @@ export function VideoPanel({ title, sessionId, conversationId = sessionId, works
     const projectId = videoProjectId(sessionId);
     const requestId = crypto.randomUUID();
     const targetOrigin = new URL(studioUrl).origin;
+    const start = typeof timelineStart === "number" && Number.isFinite(timelineStart) && timelineStart >= 0 ? timelineStart : undefined;
+    const duration = typeof timelineDuration === "number" && Number.isFinite(timelineDuration) && timelineDuration > 0 ? timelineDuration : undefined;
     return new Promise<void>((resolve, reject) => {
       const cleanup = () => { window.clearTimeout(timer); window.removeEventListener("message", handleResult); };
       const handleResult = (event: MessageEvent) => {
@@ -154,9 +157,52 @@ export function VideoPanel({ title, sessionId, conversationId = sessionId, works
       };
       const timer = window.setTimeout(() => { cleanup(); reject(new Error("Video Studio 没有响应，请重试。")); }, 10_000);
       window.addEventListener("message", handleResult);
-      frameWindow.postMessage({ type: "ipollowork:video-avatar-asset", projectId, requestId, action, path }, targetOrigin);
+      frameWindow.postMessage({ type: "ipollowork:video-avatar-asset", projectId, requestId, action, path, ...(start !== undefined ? { start } : {}), ...(duration !== undefined ? { duration } : {}) }, targetOrigin);
     });
   }, [sessionId, studioUrl]);
+  React.useEffect(() => {
+    if (!workspaceId || !isIPolloWorkServerClient(client)) return;
+    const targetOrigin = new URL(studioUrl).origin;
+    const projectId = videoProjectId(sessionId);
+    const context = { workspaceId, sessionId, directory: workspaceRoot };
+    const handleAvatarStartRequest = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow || event.origin !== targetOrigin) return;
+      if (event.data?.type !== "ipollowork:video-avatar-asset-start-request" || event.data.projectId !== projectId) return;
+      const { path, requestId } = event.data;
+      if (typeof requestId !== "string" || typeof path !== "string" || !/^assets\/avatar-(?:long-)?[\w.-]+\.(?:webm|mov)$/i.test(path)) return;
+      void (async () => {
+        let start: number | null = null;
+        let duration: number | null = null;
+        try {
+          const jobsResponse = await client.callExtensionAction({ extensionId: "video-generation", action: "jobs", args: {}, context });
+          if (!jobsResponse.ok) throw new Error(jobsResponse.message || "无法读取数字人任务");
+          const workspacePath = `${projectDirectory}/${path}`;
+          const job = videoJobsResultSchema.parse(jobsResponse.result).jobs.find((item) => item.path === workspacePath);
+          if (job) {
+            duration = resolveAvatarDuration(job) ?? null;
+            if (job.avatarAudioStart !== undefined) {
+              start = resolveAvatarAudioStart(job, null);
+            } else {
+              const sourceResponse = await client.callExtensionAction({ extensionId: "video-generation", action: "avatar-context", args: {}, context });
+              if (!sourceResponse.ok) throw new Error(sourceResponse.message || "无法读取音频时间");
+              start = resolveAvatarAudioStart(job, videoAvatarContextSchema.parse(sourceResponse.result));
+            }
+          }
+        } catch (error) {
+          console.warn("[video-studio] could not resolve avatar audio start", error);
+        }
+        studioFrameRef.current?.contentWindow?.postMessage({
+          type: "ipollowork:video-avatar-asset-start-result",
+          projectId,
+          requestId,
+          start,
+          duration,
+        }, targetOrigin);
+      })();
+    };
+    window.addEventListener("message", handleAvatarStartRequest);
+    return () => window.removeEventListener("message", handleAvatarStartRequest);
+  }, [client, projectDirectory, sessionId, studioUrl, workspaceId, workspaceRoot]);
   const avatarPreviewUrl = React.useCallback((workspacePath: string) => {
     const prefix = `${videoProjectDirectory(sessionId)}/`;
     if (!workspacePath.startsWith(prefix)) throw new Error("数字人素材不属于当前视频。");

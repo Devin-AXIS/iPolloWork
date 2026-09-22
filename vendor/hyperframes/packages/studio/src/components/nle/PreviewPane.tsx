@@ -12,7 +12,10 @@ import { CompositionBreadcrumb } from "./CompositionBreadcrumb";
 import { usePreviewBlockDrop } from "./usePreviewBlockDrop";
 import { useNLEContext } from "./NLEContext";
 import { AssetPreviewOverlay } from "./AssetPreviewOverlay";
-import { useDomEditSelectionContext } from "../../contexts/DomEditContext";
+import {
+  useDomEditActionsContext,
+  useDomEditSelectionContext,
+} from "../../contexts/DomEditContext";
 import { PreviewTextSelectionToolbar } from "./PreviewTextSelectionToolbar";
 import { useStudioPlaybackContext } from "../../contexts/StudioContext";
 import { LoaderCircle } from "lucide-react";
@@ -66,7 +69,9 @@ export function PreviewPane({
   } = useNLEContext();
   const { compositionLoading: studioCompositionLoading } = useStudioPlaybackContext();
   const { t } = useStudioI18n();
-  const [aiEditing, setAiEditing] = useState(false);
+  const [hostAiEditing, setHostAiEditing] = useState(false);
+  const { avatarCutoutProgress } = useDomEditActionsContext();
+  const aiEditing = hostAiEditing || avatarCutoutProgress !== null;
   const previewDeletePending = usePlayerStore((state) => state.previewDeletePending);
   const handlePreviewRefreshSettled = useCallback(() => {
     const playerState = usePlayerStore.getState();
@@ -80,11 +85,11 @@ export function PreviewPane({
     : null;
 
   useEffect(() => {
-    setAiEditing(false);
+    setHostAiEditing(false);
     const handleHostMessage = (event: MessageEvent<unknown>) => {
       if (event.source !== window.parent) return;
       const nextAiEditing = parseHostAiEditingMessage(event.data, projectId);
-      if (nextAiEditing !== null) setAiEditing(nextAiEditing);
+      if (nextAiEditing !== null) setHostAiEditing(nextAiEditing);
     };
     window.addEventListener("message", handleHostMessage);
     return () => window.removeEventListener("message", handleHostMessage);

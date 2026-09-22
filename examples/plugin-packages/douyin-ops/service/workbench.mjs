@@ -48,7 +48,12 @@ export default function createWorkbench(runtime) {
         body: JSON.stringify(input ?? {}), signal: AbortSignal.timeout(name === 'publish-draft' ? 180_000 : 60_000),
       });
       const result = await response.json();
-      if (!response.ok) throw new Error(result.error || '抖音操作失败');
+      if (!response.ok) throw Object.assign(new Error(result.error || '抖音操作失败'), {
+        // Preserve the service's sanitized validation error across the host
+        // boundary; a plain Error is replaced by an unhelpful internal_error.
+        status: response.status,
+        code: `douyin_${typeof result.code === 'string' && /^[a-z][a-z0-9_]*$/.test(result.code) ? result.code : 'operation_failed'}`,
+      });
       return result;
     }])) },
     async dispose() {

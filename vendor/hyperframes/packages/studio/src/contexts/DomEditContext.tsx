@@ -20,6 +20,8 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomPathOffsetCommit"
   | "handleDomGroupPathOffsetCommit"
   | "handleDomZIndexReorderCommit"
+  | "handleAvatarCutout"
+  | "avatarCutoutProgress"
   | "handleDomBoxSizeCommit"
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
@@ -149,6 +151,8 @@ export function DomEditProvider({
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
+    handleAvatarCutout,
+    avatarCutoutProgress,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
@@ -240,6 +244,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,
@@ -312,6 +318,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,

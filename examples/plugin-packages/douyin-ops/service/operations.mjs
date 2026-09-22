@@ -189,7 +189,7 @@ export class Operations {
   saveDraft(input) {
     const account = this.account(input.accountId);
     const existing = input.id ? this.store.get('draft', text(input.id, '草稿 ID', 100)) : null;
-    if (input.id && !existing) fail('草稿不存在');
+    if (input.id && !existing) fail('草稿不存在：id 只用于修改已有草稿，必须来自 studio-state 或 save-draft 返回值。创建新草稿请省略 id，使用同一 runKey 防止重复创建；不要原样重试。', 'draft_not_found');
     if (existing && existing.accountId !== account.id) fail('草稿不属于当前账号', 'account_mismatch');
     if (existing && existing.status !== 'draft') fail('已提交的草稿已锁定，请先核对发布记录');
     const operationKey = text(input.runKey, '日程运行标识', 700, true) || existing?.operationKey;

@@ -17,9 +17,11 @@ const requests: Array<Record<string, unknown>> = [];
 const jobs: VideoJob[] = [];
 const profiles: AvatarProfile[] = [];
 const longProof = new URLSearchParams(location.search).has("long");
+const preparationFailureProof = new URLSearchParams(location.search).has("prepareFail");
 const completedProof = new URLSearchParams(location.search).has("complete");
 const etaProof = new URLSearchParams(location.search).has("eta");
 const longSegmentCount = Number(new URLSearchParams(location.search).get("segments")) || 5;
+if (preparationFailureProof) jobs.push({ id: "f251fcef-00fb-429d-ab4f-3db091849e08", model: "minimax-h3-avatar", operation: "reference", prompt: "提交前失败验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: "failed", path: "", upstreamId: "", message: "数字人工作流节点已变化，尚未提交生成。", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0 });
 if (longProof) jobs.push({ id: "31f13c04-a138-4499-b9e4-293796ec07cc", model: "minimax-h3-avatar", operation: "reference", prompt: "长数字人验证", fingerprint: "proof", workspaceId: "proof", sessionId: "avatar-proof", status: completedProof ? "succeeded" : etaProof ? "running" : "failed", path: completedProof ? "video/avatar-proof/assets/avatar-result.mp4" : "", upstreamId: "", message: completedProof ? "已保存到素材库。" : etaProof ? "第 4 段正在生成。" : `第 2/${longSegmentCount} 段失败；第 1 段已保存，可只重试失败片段。`, createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0,
   avatarSequence: {duration:longSegmentCount === 5 ? 58 : 935.8,audioPath:"voice.wav",imagePath:"person.png",ratio:"9:16",segments:Array.from({length:longSegmentCount},(_,index)=>({start:index*11.5,end:index*11.5+12.5,status:completedProof||etaProof&&index<3||index===0?"succeeded":!etaProof&&index===1?"failed":"pending",upstreamId:index<2?`task-${index}`:"",path:completedProof?`saved-${index}.mp4`:index===0?"saved-first.mp4":!etaProof&&index===1?"rejected-second.mp4":"",attempt:0,...(etaProof && index < 3 ? { startedAt: Date.now() - (index + 4) * 60_000, completedAt: Date.now() - (index + 3) * 60_000 } : {})}))} });
 const voiceProofParams = new URLSearchParams(location.search);
@@ -93,7 +95,7 @@ window.fetch = async (input, init) => {
     if (action === "submit") {
       const receipt=document.getElementById("submission-receipt"); if(receipt&&!longProof) receipt.textContent=JSON.stringify(args,null,2);
       const profile = profiles.find(item => item.id === args.avatarProfileId);
-      const job: VideoJob = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/assets/result.mp4", message: "已自动加入当前 Video Studio 素材库（模拟结果，没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0, ...(profile ? {avatarProfileId:profile.id,avatarProfileUpdatedAt:profile.updatedAt,avatarAudioFingerprint:`${args.avatarClipId === "scene-one" ? "one" : args.avatarClipId === "scene-two" ? "two" : "all"}-${audioVersion}`} : {}) };
+      const job: VideoJob = { id: args.requestId, model: args.model, status: "succeeded", path: "video/avatar-proof/assets/result.mp4", message: "已自动加入当前 Video Studio 素材库（模拟结果，没有调用云端）", upstreamId: "simulated", workspaceId: "proof", sessionId: "avatar-proof", operation: "reference", prompt: args.prompt, fingerprint: "proof", createdAt: Date.now(), updatedAt: Date.now(), nextPoll: 0, ...(profile ? {avatarProfileId:profile.id,avatarProfileUpdatedAt:profile.updatedAt,avatarAudioFingerprint:`${args.avatarClipId === "scene-one" ? "one" : args.avatarClipId === "scene-two" ? "two" : "all"}-${audioVersion}`,avatarAudioStart:args.avatarClipId === "scene-two" ? 4.2 : 0} : {}) };
       jobs.unshift(job); return json({ ok: true, result: { job } });
     }
   }
@@ -186,7 +188,7 @@ function RoleProofPanel() {
   return <div className="relative h-screen w-full" data-testid="role-proof">
     <iframe ref={frame} title="角色面板验证" className="h-full w-full border-0" src={`${studioOrigin}/#project/video-layer-accordion-icons-proof?locale=zh&ipolloworkTheme=light&tab=voice&rc=0`} />
     <div className={`absolute bottom-0 right-0 top-[148px] overflow-auto bg-popover p-4 ${panel === "avatar" ? "" : "hidden"}`} style={{width}}>
-      <VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active={panel === "avatar"} onAssetAction={async (action, path) => { requests.push({ action: `asset-${action}`, path }); }} onOpenVoice={() => frame.current?.contentWindow?.postMessage({type:"ipollowork:video-studio-panel",projectId:"video-layer-accordion-icons-proof",panel:"voice"},studioOrigin)} />
+      <VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active={panel === "avatar"} onAssetAction={async (action, path, timelineStart) => { requests.push({ action: `asset-${action}`, path, start: timelineStart }); }} onOpenVoice={() => frame.current?.contentWindow?.postMessage({type:"ipollowork:video-studio-panel",projectId:"video-layer-accordion-icons-proof",panel:"voice"},studioOrigin)} />
     </div>
     {panel === "voice" ? <VideoVoicePanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} previewRequest={0} onClose={() => undefined} embedded embeddedWidth={width} /> : null}
   </div>;
@@ -197,6 +199,6 @@ createRoot(document.getElementById("root")!).render(<HashRouter>{voiceProofParam
   <button onClick={() => { failUpload = !failUpload; }}>切换上传失败</button>
   <pre id="submission-receipt" className="max-w-xl whitespace-pre-wrap break-all text-xs" />
   <div style={{ position: "relative", width: 440, height: 1150, marginTop: 20 }}>
-    {voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path) => { requests.push({ action: `asset-${action}`, path }); }} /></div> : <VoiceProofPanel />}
+    {voiceProofParams.get("panel") === "theme" ? <div className="relative flex h-full w-[400px]"><DesignSystemDrawer open embedded={!voiceProofParams.has("standalone")} templateName="Video Studio" onClose={() => undefined} onTokenChange={() => undefined} /></div> : voiceProofParams.get("panel") === "avatar" ? <div className="w-[400px] bg-popover p-4"><VideoAvatarPanel sessionId="avatar-proof" workspaceRoot="proof" workspaceId="proof" client={client} active onAssetAction={async (action, path, timelineStart) => { requests.push({ action: `asset-${action}`, path, start: timelineStart }); }} /></div> : <VoiceProofPanel />}
   </div>
 </div>}</HashRouter>);

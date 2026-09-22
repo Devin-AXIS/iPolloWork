@@ -24,6 +24,7 @@ import { useStudioSdkSessions } from "./hooks/useStudioSdkSessions";
 import { useBlockHandlers } from "./hooks/useBlockHandlers";
 import { useAddAssetAtPlayhead } from "./hooks/useAddAssetAtPlayhead";
 import { useAssetPreviewStore } from "./utils/assetPreviewStore";
+import { resolveGeneratedAvatarCompositePaths } from "./utils/timelineAssetDrop";
 import { useAppHotkeys } from "./hooks/useAppHotkeys";
 import { useIPolloWorkHostHistoryBridge } from "./hooks/useIPolloWorkHostHistoryBridge";
 import { useClipboard } from "./hooks/useClipboard";
@@ -279,13 +280,43 @@ export function StudioApp() {
     },
     [timelineEditing.handleTimelineGroupMove],
   );
-  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(timelineEditing.handleTimelineAssetDrop);
+  const resolveHostAssetStart = useCallback((assetPath: string, currentTime: number) => {
+    if (!projectId || window.parent === window || !resolveGeneratedAvatarCompositePaths(assetPath)) {
+      return currentTime;
+    }
+    const requestId = crypto.randomUUID();
+    let parentOrigin = "";
+    try { parentOrigin = new URL(document.referrer).origin; } catch { return currentTime; }
+    return new Promise<number | { start: number; duration?: number }>((resolve) => {
+      const cleanup = () => {
+        window.clearTimeout(timeoutId);
+        window.removeEventListener("message", handleResult);
+      };
+      const handleResult = (event: MessageEvent) => {
+        if (event.source !== window.parent || event.origin !== parentOrigin) return;
+        if (event.data?.type !== "ipollowork:video-avatar-asset-start-result" || event.data.projectId !== projectId || event.data.requestId !== requestId) return;
+        cleanup();
+        const start = event.data.start;
+        const duration = event.data.duration;
+        resolve(typeof start === "number" && Number.isFinite(start) && start >= 0
+          ? { start, ...(typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? { duration } : {}) }
+          : currentTime);
+      };
+      const timeoutId = window.setTimeout(() => { cleanup(); resolve(currentTime); }, 3_000);
+      window.addEventListener("message", handleResult);
+      window.parent.postMessage({ type: "ipollowork:video-avatar-asset-start-request", projectId, requestId, path: assetPath }, parentOrigin);
+    });
+  }, [projectId]);
+  const handleAddAssetAtPlayhead = useAddAssetAtPlayhead(
+    timelineEditing.handleTimelineAssetDrop,
+    resolveHostAssetStart,
+  );
   const [focusedHostAsset, setFocusedHostAsset] = useState("");
   useEffect(() => {
     if (!projectId || window.parent === window) return;
     const handleHostAsset = (event: MessageEvent) => {
       if (event.source !== window.parent || event.data?.type !== "ipollowork:video-avatar-asset" || event.data.projectId !== projectId) return;
-      const { action, path, requestId } = event.data;
+      const { action, path, requestId, start, duration } = event.data;
       if ((action !== "view" && action !== "insert") || typeof path !== "string" || !/^(assets|renders)\/[\w./-]+\.(mp4|webm)$/i.test(path) || typeof requestId !== "string") return;
       void (async () => {
         try {
@@ -296,7 +327,11 @@ export function StudioApp() {
             setFocusedHostAsset(path);
             useAssetPreviewStore.getState().setPreviewAsset(path, projectId);
           } else {
-            await timelineEditing.handleTimelineAssetDrop(path, { start: usePlayerStore.getState().currentTime, track: 0 }, undefined, true);
+            const requestedStart = typeof start === "number" && Number.isFinite(start) && start >= 0
+              ? start
+              : usePlayerStore.getState().currentTime;
+            const requestedDuration = typeof duration === "number" && Number.isFinite(duration) && duration > 0 ? duration : undefined;
+            await timelineEditing.handleTimelineAssetDrop(path, { start: requestedStart, track: 0 }, requestedDuration, true, { videoHasAudio: true });
           }
           window.parent.postMessage({ type: "ipollowork:video-avatar-asset-result", projectId, requestId, ok: true }, "*");
         } catch (error) {

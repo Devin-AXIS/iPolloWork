@@ -33,5 +33,21 @@ export default {
         },
       });
     },
+  }, {
+    name: "A rejected draft update exposes a correctable error and creation retries do not duplicate drafts",
+    run: async (ctx) => {
+      let result;
+      await ctx.prove("Draft creation can recover from an invented ID without duplicate drafts or publication", {
+        voiceover: "The plugin explains that a new draft must omit the ID, then saves exactly one local draft when the same creation request is retried. This check never publishes to Douyin.",
+        action: async () => {
+          result = spawnSync(process.execPath, ["--test", "--test-name-pattern", "native plugin entry", "examples/plugin-packages/douyin-ops/tests/workbench.test.mjs"], { cwd: ROOT, encoding: "utf8", timeout: 60000 });
+          ctx.output("Native plugin draft recovery", `${result.stdout}\n${result.stderr}`.trim());
+        },
+        assert: async () => {
+          ctx.assert(result.status === 0, `Native draft recovery exited ${String(result.status)}`);
+          ctx.assert(result.stdout.includes("ok 1 - native plugin entry") || result.stdout.includes("ok 2 - native plugin entry"), "Native bridge recovery test did not execute.");
+        },
+      });
+    },
   }],
 };

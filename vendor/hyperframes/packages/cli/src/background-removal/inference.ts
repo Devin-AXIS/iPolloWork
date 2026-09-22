@@ -3,7 +3,7 @@
  *
  * Pre/postprocessing matches rembg's u2net session
  * (https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2net.py)
- * so output should be pixel-equivalent to `rembg new_session("u2net_human_seg")`.
+ * then source-color edge refinement removes background spill from the cutout.
  */
 import type { InferenceSession, Tensor } from "onnxruntime-node";
 import type sharpType from "sharp";
@@ -216,7 +216,103 @@ async function postprocess(
     .raw()
     .toBuffer();
 
-  return applyMask(rgb, fullMask, rgbaBuf, rgbaBgBuf, width * height);
+  const result = applyMask(rgb, fullMask, rgbaBuf, rgbaBgBuf, width * height);
+  refineHumanEdges(rgb, fullMask, result.fg, width, height);
+  if (result.bg) {
+    for (let i = 0; i < fullMask.length; i++) result.bg[i * 4 + 3] = 255 - result.fg[i * 4 + 3]!;
+  }
+  return result;
+}
+
+/** Find nearby confident samples in two linear passes, bounded to the edge band. */
+function nearestEdgeSamples(
+  mask: Buffer,
+  width: number,
+  height: number,
+  foreground: boolean,
+  radius: number,
+): Int32Array {
+  const samples = new Int32Array(mask.length).fill(-1);
+  const inset = Math.max(1, Math.round(radius / 5));
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      const certain = foreground
+        ? mask[i]! >= 250 &&
+          mask[y * width + Math.max(0, x - inset)]! >= 250 &&
+          mask[y * width + Math.min(width - 1, x + inset)]! >= 250 &&
+          mask[Math.max(0, y - inset) * width + x]! >= 250 &&
+          mask[Math.min(height - 1, y + inset) * width + x]! >= 250
+        : mask[i]! <= 5;
+      if (certain) samples[i] = i;
+    }
+  }
+  const consider = (i: number, neighbor: number, x: number, y: number) => {
+    const candidate = samples[neighbor]!;
+    if (candidate < 0) return;
+    const distance = ((candidate % width) - x) ** 2 + (Math.floor(candidate / width) - y) ** 2;
+    if (distance > radius * radius) return;
+    const current = samples[i]!;
+    if (
+      current < 0 ||
+      distance < ((current % width) - x) ** 2 + (Math.floor(current / width) - y) ** 2
+    )
+      samples[i] = candidate;
+  };
+  for (let y = 0; y < height; y++)
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x;
+      if (x > 0) consider(i, i - 1, x, y);
+      if (y > 0) consider(i, i - width, x, y);
+    }
+  for (let y = height - 1; y >= 0; y--)
+    for (let x = width - 1; x >= 0; x--) {
+      const i = y * width + x;
+      if (x + 1 < width) consider(i, i + 1, x, y);
+      if (y + 1 < height) consider(i, i + width, x, y);
+    }
+  return samples;
+}
+
+/** Refine only the uncertain contour using C = alpha * F + (1 - alpha) * B.
+ * Nearby confident source colors preserve pale clothing as well as dark hair;
+ * low-contrast or poorly explained edges retain the model result. */
+export function refineHumanEdges(
+  rgb: Buffer,
+  mask: Buffer,
+  rgba: Buffer,
+  width: number,
+  height: number,
+): void {
+  const radius = Math.max(6, Math.min(24, Math.ceil((Math.max(width, height) / INPUT_SIZE) * 6)));
+  const foreground = nearestEdgeSamples(mask, width, height, true, radius);
+  const background = nearestEdgeSamples(mask, width, height, false, radius);
+  for (let i = 0; i < mask.length; i++) {
+    const f = foreground[i]!,
+      b = background[i]!;
+    if (mask[i]! <= 5 || f < 0 || b < 0 || f === i) continue;
+    let contrast = 0,
+      projection = 0;
+    for (let c = 0; c < 3; c++) {
+      const delta = rgb[f * 3 + c]! - rgb[b * 3 + c]!;
+      contrast += delta * delta;
+      projection += (rgb[i * 3 + c]! - rgb[b * 3 + c]!) * delta;
+    }
+    if (contrast < 3 * 25 ** 2) continue;
+    const alpha = Math.max(0, Math.min(1, projection / contrast));
+    let residual = 0;
+    for (let c = 0; c < 3; c++) {
+      const expected = alpha * rgb[f * 3 + c]! + (1 - alpha) * rgb[b * 3 + c]!;
+      residual += (rgb[i * 3 + c]! - expected) ** 2;
+    }
+    if (residual > 3 * 25 ** 2) continue;
+    rgba[i * 4 + 3] = Math.min(mask[i]!, Math.round(alpha * 255));
+    for (let c = 0; c < 3; c++) {
+      const expected = alpha * rgb[f * 3 + c]! + (1 - alpha) * rgb[b * 3 + c]!;
+      const corrected = rgb[f * 3 + c]! + (rgb[i * 3 + c]! - expected) / Math.max(alpha, 0.2);
+      rgba[i * 4 + c] = Math.max(0, Math.min(255, Math.round(corrected)));
+    }
+  }
 }
 
 /**

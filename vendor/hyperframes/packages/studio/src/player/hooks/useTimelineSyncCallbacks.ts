@@ -18,6 +18,7 @@ import {
   collectDomClipChildren,
   createTimelineElementFromManifestClip,
   findTimelineDomNodeForClip,
+  filterEditableTimelineManifestClips,
   createImplicitTimelineLayersFromDOM,
   buildStandaloneRootTimelineElement,
   getTimelineElementSelector,
@@ -135,13 +136,6 @@ export function useTimelineSyncCallbacks({
         return;
       }
 
-      usePlayerStore.getState().setClipManifest(data.clips);
-
-      // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
-      const clipCompositionIds = new Set(data.clips.map((c) => c.compositionId).filter(Boolean));
-      const filtered = data.clips.filter(
-        (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
-      );
       let iframeDoc: Document | null = null;
       const parentMap = new Map<string, string>();
       try {
@@ -149,10 +143,20 @@ export function useTimelineSyncCallbacks({
       } catch {
         iframeDoc = null;
       }
+      const editableClips = filterEditableTimelineManifestClips(iframeDoc, data.clips);
+      usePlayerStore.getState().setClipManifest(editableClips);
+
+      // Show root-level clips: no parentCompositionId, OR parent is a "phantom wrapper"
+      const clipCompositionIds = new Set(
+        editableClips.map((clip) => clip.compositionId).filter(Boolean),
+      );
+      const filtered = editableClips.filter(
+        (clip) => !clip.parentCompositionId || !clipCompositionIds.has(clip.parentCompositionId),
+      );
       const resolvedClipHosts = new Map<ClipManifestClip, Element>();
       if (iframeDoc) {
         const usedHostElements = new Set<Element>();
-        data.clips.forEach((clip, index) => {
+        editableClips.forEach((clip, index) => {
           const host = findTimelineDomNodeForClip(iframeDoc, clip, index, usedHostElements);
           if (!host) return;
           usedHostElements.add(host);
@@ -179,7 +183,7 @@ export function useTimelineSyncCallbacks({
       }
 
       if (iframeDoc) {
-        const domHierarchy = collectDomClipChildren(iframeDoc, data.clips, resolvedClipHosts);
+        const domHierarchy = collectDomClipChildren(iframeDoc, editableClips, resolvedClipHosts);
         for (const [childId, parentId] of domHierarchy.parentMap) {
           parentMap.set(childId, parentId);
         }

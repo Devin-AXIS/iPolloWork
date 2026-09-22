@@ -65,10 +65,14 @@ describe("Studio right panel layout", () => {
 
   it("places the Figma AI editing status directly below the video canvas", () => {
     const header = readFileSync(new URL("./StudioHeader.tsx", import.meta.url), "utf8");
+    const shell = readFileSync(new URL("./EditorShell.tsx", import.meta.url), "utf8");
     const preview = readFileSync(new URL("./nle/PreviewPane.tsx", import.meta.url), "utf8");
 
     expect(header).not.toContain('data-testid="studio-ai-editing-status"');
+    expect(shell).not.toContain("AI cutout in progress…");
+    expect(shell).not.toContain("avatarCutoutProgress !== null");
     expect(preview).toContain('data-testid="studio-ai-editing-status"');
+    expect(preview).toContain("hostAiEditing || avatarCutoutProgress !== null");
     expect(preview).toContain("h-[34px] min-w-[241px]");
     expect(preview).toContain("justify-center bg-transparent pb-2");
     expect(preview).toContain("rounded-[6px] bg-[#087b82]");
@@ -1013,6 +1017,10 @@ describe("Studio right panel layout", () => {
       new URL("../player/hooks/useTimelinePlayer.ts", import.meta.url),
       "utf8",
     );
+    const avatarCutout = readFileSync(
+      new URL("../hooks/useAvatarCutout.ts", import.meta.url),
+      "utf8",
+    );
     expect(player).toContain('srcUrl.searchParams.set("_hfRefresh", String(refreshToken))');
 
     expect(player).toContain("const REFRESH_LOADING_OVERLAY_DELAY_MS = 220");
@@ -1040,6 +1048,13 @@ describe("Studio right panel layout", () => {
     expect(player).toContain("onError?.()");
     expect(player).toContain("isDeferredFrameVisuallyReady");
     expect(player).toContain('doc.fonts?.status !== "loaded"');
+    expect(player).toContain("const AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS = 5_000");
+    expect(player).toContain('video.hasAttribute("data-avatar-source")');
+    expect(player).toContain("Boolean(video.error)");
+    expect(player).toContain("documentHasPendingAvatarCutout(doc)");
+    expect(player).toContain("pendingAvatarCutout &&");
+    expect(player).toContain("onError?.();");
+    expect(player).toContain("if (!pendingAvatarCutout && (timedOut");
     expect(player).toContain("DEFERRED_VISUAL_READY_PAINTS = 2");
     expect(player).toContain('iframe.style.visibility = "hidden"');
     expect(previewPane).toContain("refreshToken={refreshKey}");
@@ -1053,6 +1068,11 @@ describe("Studio right panel layout", () => {
     expect(blockHandlers).toContain("setCompositionLoading(true)");
     expect(blockHandlers).toContain("if (result === null) setCompositionLoading(false)");
     expect(timelinePlayer).not.toContain("iframe.src = url.toString()");
+    expect(avatarCutout).toContain("await waitForAvatarPreviewReady({");
+    expect(avatarCutout).toContain("await params.refreshDomEditSelectionFromPreview(selection)");
+    expect(avatarCutout.indexOf("await waitForAvatarPreviewReady({")).toBeLessThan(
+      avatarCutout.indexOf("params.showToast(removing"),
+    );
   });
 
   it("matches the Figma playback bar while preserving the existing controls", () => {

@@ -111,10 +111,29 @@ const uiControlServer = createUiControlServer({
   appName: APP_NAME,
   appIdentifier: APP_IDENTIFIER,
   getWindow: () => createMainWindow(),
+  ensureVideoStudio: async ({ workspaceId, projectId, release }) => {
+    if (typeof projectId !== "string" || !/^[A-Za-z0-9_-]+$/.test(projectId)) throw new Error("Invalid video project ID");
+    const workspace = (await workspaceStore.listLocalBrowserWorkspaces()).find(item => item.id === workspaceId);
+    if (!workspace) throw new Error("Video workspace is not registered locally");
+    const { hyperframesStudioPort } = await import("@ipollowork/types/hyperframes");
+    const win = await createMainWindow();
+    const key = hyperframesKey(win.webContents.id, projectId);
+    if (release === true) {
+      hyperframesExportLeases.delete(key);
+      return { ok: true };
+    }
+    const result = await startHyperframesPreview({ sender: win.webContents }, {
+      workspaceRoot: workspace.path, sessionId: projectId, projectDirectory: `video/${projectId}`,
+      port: hyperframesStudioPort(projectId),
+    });
+    hyperframesExportLeases.set(key, Date.now() + 30 * 60_000);
+    return result;
+  },
 });
 
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
+const hyperframesExportLeases = new Map();
 const processCleanupWebContents = new Set();
 let nextTerminalId = 1;
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
@@ -534,6 +553,7 @@ function stopHyperframesForKey(key) {
   const running = hyperframesProcesses.get(key);
   if (!running) return;
   hyperframesProcesses.delete(key);
+  hyperframesExportLeases.delete(key);
   clearTimeout(running.timeout);
   clearTimeout(running.idleTimeout);
   killProcessTree(running.process);
@@ -543,7 +563,8 @@ function scheduleHyperframesStopForKey(key) {
   const running = hyperframesProcesses.get(key);
   if (!running) return;
   clearTimeout(running.idleTimeout);
-  running.idleTimeout = setTimeout(() => stopHyperframesForKey(key), HYPERFRAMES_IDLE_STOP_DELAY_MS);
+  const delay = Math.max(HYPERFRAMES_IDLE_STOP_DELAY_MS, (hyperframesExportLeases.get(key) ?? 0) - Date.now());
+  running.idleTimeout = setTimeout(() => stopHyperframesForKey(key), delay);
 }
 
 function stopHyperframesForWebContents(webContentsId) {
@@ -3201,7 +3222,7 @@ ipcMain.handle("ipollowork:terminal:kill", (event, terminalId) => {
 ipcMain.handle("ipollowork:hyperframes:start", (event, options = {}) => startHyperframesPreview(event, options));
 ipcMain.handle("ipollowork:hyperframes:stop", (event, sessionId, options = {}) => {
   const key = hyperframesKey(event.sender.id, sessionId);
-  if (options.keepWarm === true) scheduleHyperframesStopForKey(key);
+  if (options.keepWarm === true || (hyperframesExportLeases.get(key) ?? 0) > Date.now()) scheduleHyperframesStopForKey(key);
   else stopHyperframesForKey(key);
   return { ok: true };
 });

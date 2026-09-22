@@ -1,11 +1,11 @@
 import { afterEach, expect, test } from "bun:test";
 import { avatarBackgroundForPrompt, avatarProfileResultSchema, avatarProfilesResultSchema, videoAvatarContextSchema, videoSubmitResultSchema } from "@ipollowork/types/video-generation";
 
-test("avatar defaults to a transparent person unless the motion prompt requests scenery", () => {
-  for (const prompt of ["人物自然说话，保持镜头稳定", "不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
+test("avatar preserves backgrounds by default and only removes them on explicit request", () => {
+  for (const prompt of ["不要背景，只保留人物", "背景透明", "transparent background", "without a background"]) {
     expect(avatarBackgroundForPrompt(prompt)).toBe("transparent");
   }
-  for (const prompt of ["背景是海边", "保留原图背景", "人物站在公园，面向镜头", "a studio backdrop"]) {
+  for (const prompt of ["", "人物自然说话，保持镜头稳定", "不要智能抠图", "不要去除背景", "背景是海边", "保留原图背景", "人物站在公园，面向镜头", "a studio backdrop"]) {
     expect(avatarBackgroundForPrompt(prompt)).toBe("scene");
   }
 });
@@ -75,6 +75,23 @@ function avatarFixture() {
   }) } };
 }
 
+function remappedAvatarFixture() {
+  const fixture = avatarFixture();
+  const graph = JSON.parse(fixture.data.prompt) as Record<string, { class_type: string; inputs: Record<string, unknown> }>;
+  const ids = Object.fromEntries(Object.keys(graph).map((id, index) => [id, String(index + 31)]));
+  const remapped = Object.fromEntries(Object.entries(graph).map(([id, candidate]) => [ids[id], {
+    ...candidate,
+    inputs: Object.fromEntries(Object.entries(candidate.inputs).map(([name, value]) => [name,
+      Array.isArray(value) && typeof value[0] === "string" && ids[value[0]] ? [ids[value[0]], value[1]] : value])),
+  }]));
+  const reference = remapped[ids["136"]!];
+  reference.inputs["ref_images.ref_image_0"] = reference.inputs.ref_image_0;
+  delete reference.inputs.ref_image_0;
+  delete reference.inputs.ref_audio_0;
+  fixture.data.prompt = JSON.stringify(remapped);
+  return { fixture, ids };
+}
+
 test("avatar requires one image and local audio and rejects incompatible modes", () => {
   const base = { model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "person.png", audioRefs: "voice.wav" };
   expect(validateVideoSubmission(submission(base)).model).toBe("minimax-h3-avatar");
@@ -108,6 +125,22 @@ test("avatar replaces demo media, starts at zero and preserves six steps in both
     expect(graph["999"]).toBeUndefined();
     expect(request.body.workflow).not.toContain("author demo");
   }
+});
+
+test("avatar follows validated node types and wiring when RunningHub renumbers pasted nodes", async () => {
+  const { root, config } = await setup();
+  await writeFile(join(root, "voice.wav"), "test-audio");
+  const { fixture, ids } = remappedAvatarFixture();
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
+  const request = await videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", duration: "10", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth);
+  if (!("workflow" in request.body)) throw new Error("Missing workflow");
+  const graph = JSON.parse(request.body.workflow);
+  expect(request.body.nodeInfoList).toEqual([{ nodeId: ids["136"], fieldName: "prompt", fieldValue: graph[ids["136"]!].inputs.prompt }]);
+  expect(graph[ids["136"]!]).toMatchObject({ class_type: "MiniMaxH3ImageToVideo", inputs: { first_frame: ["avatar_frame", 0] } });
+  expect(graph.avatar_frame.inputs.image).toEqual([ids["137"], 0]);
+  expect(graph[ids["171"]!].inputs.audio).toBe("input/voice.wav");
+  expect(graph[ids["172"]!].inputs.source_audio).toEqual([ids["199"], 0]);
+  expect(graph[ids["142"]!].inputs.audio).toEqual([ids["199"], 0]);
 });
 
 test("avatar rejects changed audio wiring before creating a billable task", async () => {
@@ -327,6 +360,7 @@ test.each([
   ["2084814218431385601", "142"],
   ["2099699508878860290", "142"],
   ["2099368776771919873", "142"],
+  ["2099368776771919873", "57"],
   ["2084935567606894593", "92"],
   ["2084511826766811137", "7"],
   ["2097511747551842305", "7"],
@@ -344,6 +378,25 @@ test.each([
   });
   await pollVideoJobs(config,auth);
   expect((await getVideoJob(config,job.id,"workspace",context.sessionId)).status).toBe("succeeded");
+});
+
+test("a completed H3 task without a unique MP4 becomes recoverable instead of staying in progress", async () => {
+  const { config, call } = await setup();
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => url.endsWith("getJsonApiFormat")
+    ? Response.json(workflowFixture())
+    : Response.json({ code: 0, data: { taskId: "completed-without-output", taskStatus: "QUEUED" } }));
+  const args = submission({ model: "minimax-h3", resolution: "0.5MP" });
+  await call("submit", args);
+  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string | URL) => {
+    if (String(url).endsWith("/status")) return Response.json({ code: 0, data: "SUCCESS" });
+    if (String(url).endsWith("/outputs")) return Response.json({ code: 0, data: [] });
+    throw new Error(`Unexpected request: ${String(url)}`);
+  });
+  await pollVideoJobs(config, auth);
+  const job = await getVideoJob(config, args.requestId, "workspace", context.sessionId);
+  expect(job.status).toBe("save_failed");
+  expect(job.upstreamId).toBe("completed-without-output");
+  expect(job.message).toContain("已完成生成");
 });
 
 test("authorization tests distinguish provider outages from invalid keys", async () => {
@@ -688,7 +741,7 @@ test("avatar profiles persist independently, bind one timeline narration clip, a
   let providerCalls = 0;
   Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async () => { providerCalls += 1; throw new Error("must not bill"); });
   const generated = videoSubmitResultSchema.parse((await call("submit", submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.258048MP", ratio: "9:16", avatarProfileId: second.id, avatarProfileUpdatedAt: second.updatedAt, avatarClipId: secondClip.id }))).result).job;
-  expect(generated).toMatchObject({ avatarProfileId: second.id, avatarProfileUpdatedAt: second.updatedAt, avatarAudioFingerprint: secondClip.fingerprint, avatarSequence: { duration: 21, ratio: "16:9" } });
+  expect(generated).toMatchObject({ avatarProfileId: second.id, avatarProfileUpdatedAt: second.updatedAt, avatarAudioFingerprint: secondClip.fingerprint, avatarAudioStart: 20, avatarSequence: { duration: 21, ratio: "16:9" } });
   expect(providerCalls).toBe(0);
   await writeFile(join(directory, "index.html"), '<main><h1>双人讲解</h1><audio id="vo-first" data-ipw-voiceover="true" data-ipw-scene-id="scene-one" data-ipw-voice="voice-a" src="first.wav" data-start="0" data-duration="20"></audio><audio id="vo-second" data-ipw-voiceover="true" data-ipw-scene-id="scene-two" data-ipw-voice="voice-b" src="second.wav" data-start="20" data-duration="20"></audio></main>');
   const updatedClip = videoAvatarContextSchema.parse((await call("avatar-context")).result).audioClips?.[2];
@@ -1022,6 +1075,7 @@ test.each([{ drift: false, useAudio: true }, { drift: true, useAudio: true }, { 
   expect(creates).toBe(2);
   expect(job.avatarSequence?.seams).toHaveLength(1);
   expect(job.message).toContain("26.0 秒数字人");
+  expect(job.path).toMatch(/^video\/session-one\/assets\/avatar-long-/);
   const probe=await exec(process.env.HYPERFRAMES_FFPROBE_PATH||"ffprobe",["-v","error","-show_streams","-show_format","-of","json",join(root,job.path)],{windowsHide:true});
   const media=JSON.parse(probe.stdout);
   expect(Math.abs(Number(media.format.duration)-26)).toBeLessThan(.1);
