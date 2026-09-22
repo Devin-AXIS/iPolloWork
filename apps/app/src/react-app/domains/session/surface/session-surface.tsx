@@ -42,6 +42,7 @@ import type {
 import {
   artifactContentFingerprint,
   artifactCompletionRecoveryInstruction,
+  artifactMediaDeliveryIssues,
   checkArtifactCompletion,
   promptArtifactCompletionTargets,
   promptWasDispatched,
@@ -1095,13 +1096,30 @@ export function SessionSurface(props: SessionSurfaceProps) {
     () => readStoredRunTimings(props.workspaceId, props.sessionId),
     [props.workspaceId, props.sessionId, runOutcome],
   );
+  const latestAssistantCompleted = useMemo(
+    () => latestAssistantMessageCompleted(renderedMessages),
+    [renderedMessages],
+  );
+  const finalTextCompleted = useMemo(
+    () => finalAssistantTextCompleted(renderedMessages),
+    [renderedMessages],
+  );
   const studioArtifacts = useSessionArtifacts(props.client, props.workspaceId, props.sessionId);
   const imageResultLabel = t("session.outputs.image_generated");
   const videoResultLabel = t("session.outputs.video_generated");
+  // A generated image/video may arrive before the assistant has finished the
+  // turn. Keep it in the artifact store, but only expose the delivery receipt
+  // after the authoritative session completion event (or when reopening an
+  // already completed transcript after the activity store was rehydrated).
+  const showStudioResults = !chatStreaming && (
+    runOutcome === "completed"
+    || (runOutcome === null && finalTextCompleted && latestAssistantCompleted)
+  );
   const displayMessages = useMemo(() => withStudioResults(
     renderedMessages, studioArtifacts.data?.pages.flatMap(page => page.items) ?? [],
     { image: imageResultLabel, video: videoResultLabel },
-  ), [renderedMessages, studioArtifacts.data, imageResultLabel, videoResultLabel]);
+    { showResults: showStudioResults },
+  ), [renderedMessages, showStudioResults, studioArtifacts.data, imageResultLabel, videoResultLabel]);
   const visibleUserRequestCount = useMemo(
     () => renderedMessages.filter(
       (message) => message.role === "user" && message.parts.length > 0,
@@ -1123,14 +1141,6 @@ export function SessionSurface(props: SessionSurfaceProps) {
   );
   const progressFingerprint = useMemo(
     () => sessionProgressFingerprint(renderedMessages),
-    [renderedMessages],
-  );
-  const latestAssistantCompleted = useMemo(
-    () => latestAssistantMessageCompleted(renderedMessages),
-    [renderedMessages],
-  );
-  const finalTextCompleted = useMemo(
-    () => finalAssistantTextCompleted(renderedMessages),
     [renderedMessages],
   );
   useEffect(() => {
@@ -1582,7 +1592,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
         .flatMap((message) => message.parts.flatMap((part) => part.type === "text" ? [part.text] : []))
         .join("\n");
       const check = checkArtifactCompletion(pending.targets, new Map(currentEntries), assistantOutput);
-      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0) {
+      const mediaChecks = await Promise.all(pending.targets.filter(target => target.mediaReview).map(async (target) => {
+        const response = await props.client.callExtensionAction({
+          extensionId: "media", action: "artifact_media_review",
+          args: { phase: "check", sourcePath: target.sourcePath },
+          context: { workspaceId: props.workspaceId, sessionId: props.sessionId },
+        }).catch(() => null);
+        return artifactMediaDeliveryIssues(response).map(issue => `${target.sourcePath}: ${issue}`);
+      }));
+      if (pendingArtifactCompletionRef.current !== pending) return;
+      check.mediaIssues = mediaChecks.flat();
+      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0 && check.mediaIssues.length === 0) {
         setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
           current,
           pending.requestOrdinal,
@@ -1622,7 +1642,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } finally {
       artifactCompletionValidationInFlightRef.current = false;
     }
-  }, [props.client, props.workspaceId, renderedMessages, sendDraft]);
+  }, [props.client, props.workspaceId, props.sessionId, renderedMessages, sendDraft]);
 
   const validatePendingVideoDelivery = useCallback(async () => {
     const pending = pendingVideoDeliveryRef.current;

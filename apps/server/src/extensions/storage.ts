@@ -72,6 +72,12 @@ function isStorageProvider(value: string): value is StorageProviderId {
 }
 
 export function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
+  const workspaceId = readStringField(context, "workspaceId");
+  if (workspaceId) {
+    const workspace = config.workspaces.find(entry => entry.id === workspaceId);
+    if (!workspace) throw new ApiError(404, "workspace_not_found", "The requested workspace does not exist");
+    return { ...workspace, path: resolve(workspace.path) };
+  }
   const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
     .filter(Boolean)
     .map((value) => resolve(value));

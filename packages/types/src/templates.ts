@@ -111,9 +111,14 @@ export const templateManifestV1Schema = z.object({
     tokens: z.string().trim().min(1).optional(),
     variables: z.array(templateVariableSchema).max(64).default([]),
   }).strict(),
+  authoringGuide: z.string().trim().min(1).max(240).optional(),
+  layoutLibrary: z.literal("core-v1").optional(),
   applyChecklist: z.array(z.string().trim().min(1).max(240)).min(1),
   minimumAppVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
 }).strict().superRefine((manifest, context) => {
+  if (manifest.layoutLibrary && !["slides", "site", "video"].includes(manifest.category)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["layoutLibrary"], message: "The core layout library supports slides, site and video templates" });
+  }
   if (manifest.pptxCompatibility && manifest.category !== "slides") {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["pptxCompatibility"], message: "PPTX compatibility is only supported for slide templates" });
   }

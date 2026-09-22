@@ -243,6 +243,80 @@ describe("plugin package manifest", () => {
     }]);
   });
 
+  test("ships current portable Design and PPT references in both skill distributions", async () => {
+    const root = new URL("../../../", import.meta.url);
+    const source = ".codex/skills/ipollowork-template-generation/references/";
+    const contract = await Bun.file(new URL(`${source}template-generation-contract.md`, root)).text();
+    const heading = "## iPolloWork Shared Creative and Layout Guidelines";
+    const start = contract.indexOf(heading);
+    const end = contract.indexOf("### 12. Maintenance and references", start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const header = "<!-- Distribution reference: maintained in .codex/skills/ipollowork-template-generation/references/; checked against the source by plugin-package-manifest.test.ts. -->\n\n";
+    const shared = contract.slice(start, end).replace(/^## /, "# ");
+    const slides = (await Bun.file(new URL(`${source}slides-ppt.md`, root)).text())
+      .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+    const layout = await Bun.file(new URL(`${source}layout.md`, root)).text();
+    const catalog = await Bun.file(new URL("apps/server/bundled-templates/core-v1-slides-catalog.md", root)).text();
+    const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
+    expect(files.length).toBe(10);
+    for (const file of files) expect(layout).toContain(`\`${file}\``);
+    for (const body of [contract, slides, layout]) expect(body).not.toMatch(/\p{Script=Han}/u);
+    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-slides-layout.md", root)).text()).toBe(header + layout);
+    const repositorySkill = await Bun.file(new URL(".agents/skills/ipollowork-presentations/SKILL.md", root)).text();
+    for (const directory of [".agents/skills/ipollowork-presentations/", "examples/plugin-packages/design-agent/skills/ipollowork-presentations/"]) {
+      const skill = await Bun.file(new URL(`${directory}SKILL.md`, root)).text();
+      expect(skill).toBe(repositorySkill);
+      for (const [name, body] of [["shared-guidelines.md", shared], ["slides-ppt.md", slides], ["layout.md", layout]]) {
+        expect(skill).toContain(`references/${name}`);
+        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
+      }
+    }
+    const video = (await Bun.file(new URL(`${source}video.md`, root)).text())
+      .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+    const videoSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-studio/SKILL.md", root)).text();
+    for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
+      expect(await Bun.file(new URL(`${directory}SKILL.md`, root)).text()).toBe(videoSkill);
+      for (const [name, body] of [["shared-guidelines.md", shared], ["video.md", video]]) {
+        expect(videoSkill).toContain(`references/${name}`);
+        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
+      }
+    }
+    expect(video).not.toMatch(/\p{Script=Han}/u);
+    const { previewPluginPackage } = await import("./plugin-package-lifecycle.js");
+    const { fileURLToPath } = await import("node:url");
+    for (const [engineId, directory] of [["opencode", ".opencode"], ["codex-harness", ".agents"], ["deepseek-harness", ".dsh"]]) {
+      const videoPackage = await previewPluginPackage({
+        packageRoot: fileURLToPath(new URL("examples/plugin-packages/video-agent/", root)),
+        engineId,
+      });
+      for (const name of ["shared-guidelines.md", "video.md"]) {
+        expect(videoPackage.writes.some((entry) =>
+          entry.path === `${directory}/skills/ipollowork-video-studio/references/${name}`
+        )).toBe(true);
+      }
+    }
+    const { templateCategorySchema } = await import("@ipollowork/types/templates");
+    const categories = templateCategorySchema.options.filter((category) => category !== "slides" && category !== "video");
+    const designIndex = await Bun.file(new URL(`${source}design.md`, root)).text();
+    for (const category of templateCategorySchema.options) expect(designIndex).toContain(`\`${category}\``);
+    const designSkill = await Bun.file(new URL(".agents/skills/ipollowork-design-studio/SKILL.md", root)).text();
+    for (const directory of [".agents/skills/ipollowork-design-studio/", "examples/plugin-packages/design-agent/skills/ipollowork-design-studio/"]) {
+      const skill = await Bun.file(new URL(`${directory}SKILL.md`, root)).text();
+      expect(skill).toBe(designSkill);
+      expect(skill).toContain("references/shared-guidelines.md");
+      expect(skill).toContain("references/design.md");
+      expect(await Bun.file(new URL(`${directory}references/shared-guidelines.md`, root)).text()).toBe(header + shared);
+      for (const name of ["design.md", ...categories.map((category) => `design-${category}.md`)]) {
+        const body = (await Bun.file(new URL(`${source}${name}`, root)).text())
+          .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+        expect(body).not.toMatch(/\p{Script=Han}/u);
+        expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
+        if (name !== "design.md") expect(designIndex).toContain(`(${name})`);
+      }
+    }
+  });
+
   test("accepts the official Design and Video workspace packages with managed skills", async () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const designManifest = await Bun.file(new URL("../../../examples/plugin-packages/design-agent/ipollowork.plugin.json", import.meta.url)).json();
@@ -257,9 +331,9 @@ describe("plugin package manifest", () => {
     if (!video.success) throw new Error(JSON.stringify(video.issues));
     expect(design.manifest.name).toBe("iPollo Design");
     expect(video.manifest.name).toBe("iPollo Video");
-    expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["skill", "skill"]);
-    expect(video.manifest.resources).toHaveLength(11);
-    expect(video.manifest.resources.every((resource) => resource.type === "skill")).toBe(true);
+    expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["file", "file", "skill", "skill"]);
+    expect(video.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(11);
+    expect(video.manifest.resources).toContainEqual(expect.objectContaining({ type: "file", path: "skills/ipollowork-video-studio/references" }));
     expect(video.manifest.relatedSkills).toBeUndefined();
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual(expect.arrayContaining([
       "hyperframes",

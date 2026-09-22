@@ -1,3 +1,4 @@
+import { workspaceForContext } from "./extensions/storage.js";
 import { pathToFileURL } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, rm } from "node:fs/promises";
@@ -112,20 +113,7 @@ function actionsForManifest(manifest: PluginPackageManifest): PluginServiceActio
 }
 
 export function workspaceIdForPluginContext(config: ServerConfig, context: unknown): string {
-  const record = isRecord(context) ? context : {};
-  const candidates = [record.directory, record.worktree]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => resolve(value));
-  for (const candidate of candidates) {
-    const workspace = config.workspaces.find((entry) => {
-      const root = resolve(entry.path);
-      return candidate === root || candidate.startsWith(`${root}${sep}`);
-    });
-    if (workspace) return workspace.id;
-  }
-  const workspace = config.workspaces[0];
-  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
-  return workspace.id;
+  return workspaceForContext(config, isRecord(context) ? context : {}).id;
 }
 
 export async function listPluginServiceActions(

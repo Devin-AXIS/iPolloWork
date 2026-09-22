@@ -270,6 +270,49 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   slides.forEach((slide, index) => {
     if (!slide.hasAttribute("data-ipw-slide")) slide.setAttribute("data-ipw-slide", String(index + 1));
   });
+
+  const runtimeDisplayAttribute = "data-ipw-runtime-slide-display";
+  const displayNoneRules: Array<{ style: CSSStyleDeclaration; priority: string }> = [];
+  const ruleMatchesSlide = (selectorText: string) => selectorText.split(",").some((selector) => {
+    try {
+      return slides.some((slide) => slide.matches(selector.trim()));
+    } catch {
+      return false;
+    }
+  });
+  const collectDisplayNoneRules = (rules: CSSRuleList) => {
+    for (const rule of Array.from(rules)) {
+      if (rule instanceof CSSStyleRule) {
+        if (rule.style.getPropertyValue("display").trim() === "none" && ruleMatchesSlide(rule.selectorText)) {
+          displayNoneRules.push({ style: rule.style, priority: rule.style.getPropertyPriority("display") });
+          rule.style.removeProperty("display");
+        }
+        continue;
+      }
+      if (rule instanceof CSSGroupingRule) {
+        try {
+          collectDisplayNoneRules(rule.cssRules);
+        } catch {
+          // Cross-origin stylesheets are not readable; local presentation styles remain inspectable.
+        }
+      }
+    }
+  };
+  for (const sheet of Array.from(document.styleSheets)) {
+    try {
+      collectDisplayNoneRules(sheet.cssRules);
+    } catch {
+      // Cross-origin stylesheets are not readable; local presentation styles remain inspectable.
+    }
+  }
+  const displayValues = new Map<HTMLElement, string>();
+  slides.forEach((slide, index) => {
+    const display = getComputedStyle(slide).display;
+    displayValues.set(slide, /^[a-z-]+(?:\s+[a-z-]+)?$/i.test(display) && display !== "none" ? display : "block");
+    slide.setAttribute(runtimeDisplayAttribute, String(index));
+  });
+  displayNoneRules.forEach(({ style, priority }) => style.setProperty("display", "none", priority));
+
   const slideWrappers = slides.map((slide) => slide.closest<HTMLElement>(".slide-wrap"));
   const usesSlideWrappers = slideWrappers.every(Boolean);
 
@@ -277,9 +320,15 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   // The deck runtime owns aria-hidden so only the active page is laid out.
   const visibilityStyle = document.createElement("style");
   visibilityStyle.id = "ipollowork-design-deck-runtime-style";
+  const displayRules = slides.map((slide) => {
+    const index = slide.getAttribute(runtimeDisplayAttribute) ?? "0";
+    const display = displayValues.get(slide) ?? "block";
+    return `[data-ipw-slide][${runtimeDisplayAttribute}="${index}"][aria-hidden="false"] { display: ${display} !important; }`;
+  }).join("\n");
   visibilityStyle.textContent = `
     [data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }
     [data-ipw-slide][aria-hidden="false"] { opacity: 1 !important; pointer-events: auto !important; }
+    ${displayRules}
   `;
   document.head.appendChild(visibilityStyle);
 
@@ -577,6 +626,7 @@ function designRuntime(channel: string, styleFields: readonly string[], initialE
     clone.querySelector("#ipollowork-design-fixed-slide-runtime-style")?.remove();
     clone.querySelector(`#${styleId}`)?.remove();
     clone.querySelector("#ipollowork-design-template-token-style")?.remove();
+    clone.querySelectorAll(`[data-ipw-runtime-slide-display]`).forEach((element) => element.removeAttribute("data-ipw-runtime-slide-display"));
     clone.querySelector(`#${overlayId}`)?.remove();
     clone.querySelector(`#${verticalGuideId}`)?.remove();
     clone.querySelector(`#${horizontalGuideId}`)?.remove();

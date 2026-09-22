@@ -166,7 +166,7 @@ test("only bound video models appear, without credentials or unsupported knobs",
 });
 
 test("rejects unsupported mode combinations before any network call",()=>{
-  expect(()=>validateVideoSubmission({prompt:"missing model"})).toThrow("用户");
+  expect(()=>validateVideoSubmission({prompt:"missing model"})).toThrow("model ID");
   for(const patch of [
     {model:"minimax-h3",operation:"edit",resolution:"2K"},
     {operation:"edit",videoRefs:"https://example.com/input.mp4"},

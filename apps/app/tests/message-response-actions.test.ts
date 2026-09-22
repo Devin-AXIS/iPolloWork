@@ -101,4 +101,10 @@ describe("studio result receipts", () => {
     expect(withStudioResults([], [{ path: "input.png", size: 100, updatedAt: 1 }], labels)).toEqual([]);
     expect(withStudioResults([], [artifact], labels)).toHaveLength(1);
   });
+  test("holds generated media receipts while the turn is still streaming", () => {
+    const messages: UIMessage[] = [{ id: "answer", role: "assistant", parts: [{ type: "text", text: "Still working" }] }];
+
+    expect(withStudioResults(messages, [artifact], labels, { showResults: false })).toBe(messages);
+    expect(withStudioResults(messages, [artifact], labels, { showResults: true })).toHaveLength(2);
+  });
 });

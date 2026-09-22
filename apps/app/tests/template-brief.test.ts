@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import {
   ARTIFACT_DELIVERY_ID_PREFIX,
+  templateCategorySchema,
   type TemplateCatalogItem,
   type TemplateCategory,
   type TemplateManifestV1,
@@ -69,6 +70,30 @@ function catalogItem(input: {
 }
 
 describe("template brief", () => {
+  test.each(templateCategorySchema.options)("routes both template and custom %s generation to type rules", (category) => {
+    for (const id of ["test.template", ARTIFACT_DELIVERY_ID_PREFIX + category]) {
+      const prompt = templateBriefPrompt({
+        template: catalogItem({ id, category, title: "Example" }).manifest,
+        entryPath: "design/test/entry.html",
+        briefPath: "design/test/brief.json",
+      });
+      if (category === "slides") {
+        expect(prompt).toContain("iPolloWork Presentations workflow");
+        expect(prompt).not.toContain("design-slides.md");
+      } else if (category === "video") {
+        expect(prompt).toContain("ipollowork-video-studio");
+        expect(prompt).toContain("references/shared-guidelines.md and references/video.md");
+        expect(prompt).toContain("core-v1-video/catalog.md");
+        expect(prompt).not.toContain("design-video.md");
+      } else {
+        expect(prompt).toContain(`references/design-${category}.md`);
+        expect(prompt).toContain("references/shared-guidelines.md");
+        expect(prompt).toContain("media/artifact_media_review phase=plan");
+        expect(prompt).not.toContain("slides-ppt.md");
+      }
+    }
+  });
+
   beforeEach(() => {
     setLocale("en");
   });
@@ -201,11 +226,20 @@ describe("template brief", () => {
       briefPath: "design/ses_morrow/brief.json",
     });
 
-    expect(prompt.length).toBeLessThan(2_500);
+    // Includes bounded layer selection and rendering rules; layout sources stay on disk.
+    // The slide media gate includes the explicit multi-model question protocol.
+    expect(prompt.length).toBeLessThan(5_000);
     expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
-    expect(prompt).toContain("Apply it now in this turn");
-    expect(prompt).toContain("Do not reply only with confirmation");
+    expect(prompt).toContain("Edit/save target files now");
+    expect(prompt).toContain("Deliver files, not just a plan or confirmation");
     expect(prompt).toContain("native editable PPTX contract");
+    expect(prompt).toContain("Before layout, call media/artifact_media_review phase=plan");
+    expect(prompt).toContain("Before final call phase=check");
+    expect(prompt).toContain("original generationPath");
+    expect(prompt).toContain("multiple suitable models without preference/policy require one question");
+    expect(prompt).toContain("never silent defaultModel or geometry downgrade");
+    expect(prompt).toContain("Resolve pending/missing assets");
+    expect(prompt).toContain("continue the file without opening settings");
   });
 
   test("recognizes explicit creative deliverables but leaves explanatory questions as normal chat", () => {
@@ -396,7 +430,7 @@ describe("template brief", () => {
     expect(surfaceSource).toContain("Continue the unfinished video delivery.");
   });
 
-  test("adapts slide structure to the brief while retaining the template's visual system", () => {
+test("adapts slide structure to the brief while retaining the template's visual system", () => {
     const prompt = templateBriefPrompt({
       template: {
         category: "slides",
@@ -412,8 +446,25 @@ describe("template brief", () => {
     expect(prompt).toContain("reuse, repeat, adapt, remove, or reorder");
     expect(prompt).toContain("template/checklist quantities are examples");
     expect(prompt).toContain("distinctive typography, colored blocks, artwork");
-    expect(prompt).not.toContain("Do not add or remove slides");
+  expect(prompt).not.toContain("Do not add or remove slides");
+});
+
+test("routes every slide template through presentation rules and the default layout library", () => {
+  const prompt = templateBriefPrompt({
+    template: {
+      category: "slides",
+      title: "Legacy HTML Deck",
+      applyChecklist: ["Keep the visual language"],
+    },
+    entryPath: "design/ses_legacy/entry.html",
+    briefPath: "design/ses_legacy/brief.json",
   });
+
+  expect(prompt).toContain("iPolloWork Presentations workflow");
+  expect(prompt).toContain("shared-guidelines.md, slides-ppt.md and layout.md");
+  expect(prompt).toContain("core-v1-slides/catalog.md");
+  expect(prompt).toContain("write a new layout");
+});
 
   test("adapts website structure to the brief while retaining the template's visual system", () => {
     const prompt = templateBriefPrompt({
@@ -460,5 +511,83 @@ test("template quantities remain examples for design and video, including blank 
       expect(prompt).toContain("only when explicitly requested by the user");
       expect(prompt).toContain("Never omit important content or add filler");
     }
+  }
+});
+
+
+test("template adaptation covers content roles and preserves explicit layout constraints", () => {
+  for (const category of ["slides", "site", "video", "article"] satisfies TemplateCategory[]) {
+    const prompt = templateBriefPrompt({
+      template: { category, title: "Three-card sample", applyChecklist: ["Keep the three-card layout."] },
+      entryPath: "index.html", briefPath: "brief.json",
+    });
+    expect(prompt).toContain("Template/checklist layout examples are not mandatory structures");
+    expect(prompt).toContain("create a new composition from the same visual primitives");
+    expect(prompt).toContain("If the user explicitly requests exact template layout, honor it");
+    expect(prompt).toContain("For targeted follow-up edits, apply adaptation only within the requested scope");
+    expect(prompt).toContain("Keep explicit fixed-brand regions");
+    expect(prompt).toContain("inspect rendered pages/scenes");
+    expect(prompt).not.toContain("Preserve fixed-brand assets, layout and timing.");
+  }
+});
+
+
+test("template application points to its packaged layout guide without inventing one for legacy templates", () => {
+  const template = { category: "site", title: "Guided", applyChecklist: ["Replace sample content"] } satisfies Pick<TemplateManifestV1, "category" | "title" | "applyChecklist">;
+  const paths = { entryPath: "design/example/pages/index.html", briefPath: "design/example/brief.json" };
+  const legacy = templateBriefPrompt({ template, ...paths });
+  const guided = templateBriefPrompt({ template: { ...template, authoringGuide: "references/layouts.md" }, ...paths });
+  expect(legacy).not.toContain("Read guide");
+  expect(guided).toContain('"references/layouts.md" relative to brief.json');
+  expect(guided).toContain("inspect its source layouts");
+});
+
+test("shared layouts provide structure while the selected template owns visual rules", () => {
+  const prompt = templateBriefPrompt({ template: { category: "site", title: "Example", applyChecklist: ["Replace sample copy"], layoutLibrary: "core-v1" }, entryPath: "design/example/entry.html", briefPath: "design/example/brief.json" });
+  expect(prompt).toContain("core-v1-site/catalog.md");
+  expect(prompt).toContain("core-v1-site/shared-contract.md");
+  expect(prompt).toContain("Retain active tokens");
+  expect(prompt).toContain("content topic is not permission to change theme");
+  expect(prompt).toContain("isolated final characters");
+});
+
+test("artifact delivery reads the shared slide layout library", () => {
+  const prompt = templateBriefPrompt({
+    template: {
+      id: "ipollowork.delivery.pptx",
+      category: "slides",
+      title: "Native editable PPT deliverable",
+      applyChecklist: ["Keep the 16:9 stage"],
+      pptxCompatibility: "native-editable",
+      layoutLibrary: "core-v1",
+    },
+    entryPath: "design/example/entry.html",
+    briefPath: "design/example/brief.json",
+  });
+  expect(prompt).toContain("core-v1-slides/catalog.md");
+  expect(prompt).toContain("Select by type then content relationship");
+  expect(prompt).toContain("reuse fitting global/local structures");
+});
+
+test("unified layout index routes template and custom tasks to only their active type", () => {
+  for (const category of ["slides", "site", "video"] satisfies TemplateCategory[]) {
+    for (const id of ["legacy-template", `${ARTIFACT_DELIVERY_ID_PREFIX}${category}`]) {
+      const prompt = templateBriefPrompt({
+        template: { id, category, title: "Example", applyChecklist: [] },
+        entryPath: "design/test/entry.html", briefPath: "design/test/brief.json",
+      });
+      expect(prompt).toContain("core-v1-index.md");
+      expect(prompt.indexOf("core-v1-index.md")).toBeLessThan(prompt.indexOf(`core-v1-${category}/catalog.md`));
+      expect(prompt).toContain(`core-v1-${category}/shared-contract.md`);
+      for (const other of ["slides", "site", "video"].filter((type) => type !== category)) {
+        expect(prompt).not.toContain(`core-v1-${other}/catalog.md`);
+      }
+    }
+  }
+  for (const category of ["app", "poster", "cards", "report", "article", "other"] satisfies TemplateCategory[]) {
+    expect(templateBriefPrompt({
+      template: { category, title: "Example", applyChecklist: [] },
+      entryPath: "entry.html", briefPath: "brief.json",
+    })).not.toContain("core-v1-index.md");
   }
 });

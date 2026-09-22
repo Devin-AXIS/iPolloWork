@@ -198,7 +198,9 @@ export async function apply(ctx) {
         schema: { type: "object", additionalProperties: true },
         render: (_args, value) => [{ type: "text", text: JSON.stringify(value, null, 2) }],
       },
-      timeoutMs: 120_000,
+      // Image generation can take up to 240 seconds on the server. Keep the
+      // bridge alive long enough to receive its result instead of orphaning it.
+      timeoutMs: descriptor.name === "ipollowork_extension_call" ? 300_000 : 120_000,
       async execute(args, exec) {
         const callResponse = await fetch(`${serverUrl}/engine-tools/call`, {
           method: "POST",
