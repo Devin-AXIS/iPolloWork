@@ -78,7 +78,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function workspacePathMatches(left: string | undefined, right: string): boolean {
+export function workspacePathMatches(left: string | undefined, right: string): boolean {
   if (!left?.trim()) return false;
   const normalizedLeft = resolve(left);
   const normalizedRight = resolve(right);

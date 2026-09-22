@@ -7,6 +7,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -17,14 +18,6 @@ const runtimeRoot = resolve(__dirname, "..", "dsh-runtime");
 const manifestPath = resolve(runtimeRoot, "package.json");
 const lockPath = resolve(runtimeRoot, "pnpm-lock.yaml");
 const workspacePath = resolve(runtimeRoot, "pnpm-workspace.yaml");
-const subprocessPatchPath = resolve(
-  runtimeRoot,
-  "@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
-);
-const windowsSandboxPatchPath = resolve(
-  runtimeRoot,
-  "@deepseek-ai__dsh-sandbox-windows-acl@0.1.0-rc.6.patch",
-);
 const stampPath = resolve(runtimeRoot, ".install-stamp.json");
 const cliPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const dshManifestPath = resolve(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
@@ -50,6 +43,10 @@ function stageNodeRuntime() {
   mkdirSync(dirname(nodeRuntimePath), { recursive: true });
   copyFileSync(source, nodeRuntimePath);
   if (process.platform !== "win32") chmodSync(nodeRuntimePath, 0o755);
+  const probe = spawnSync(nodeRuntimePath, ["--version"], { encoding: "utf8", windowsHide: true });
+  if (probe.status !== 0) {
+    throw new Error("The staged Node.js executable cannot run independently. Set IPOLLOWORK_NODE_BIN to an official standalone Node.js distribution (not a Homebrew shared-library build).");
+  }
 }
 
 function supportedArchitectures() {
@@ -71,10 +68,13 @@ function supportedArchitectures() {
 
 function installKey() {
   const hash = createHash("sha256");
-  for (const filePath of [manifestPath, lockPath, workspacePath, subprocessPatchPath, windowsSandboxPatchPath]) {
+  for (const filePath of [manifestPath, lockPath, workspacePath]) {
     hash.update(readFileSync(filePath));
   }
   hash.update(JSON.stringify(supportedArchitectures()));
+  const source = nodeRuntimeSource();
+  const sourceStat = statSync(source);
+  hash.update(JSON.stringify({ source, size: sourceStat.size, mtimeMs: sourceStat.mtimeMs }));
   return hash.digest("hex");
 }
 

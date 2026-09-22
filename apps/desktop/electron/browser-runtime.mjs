@@ -1,5 +1,6 @@
 import path from "node:path";
-import { realpath, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 
 const MAX_SNAPSHOT_NODES = 250;
 const MAX_SNAPSHOT_TEXT = 30_000;
@@ -15,6 +16,13 @@ const MAX_TOTAL_WAIT_MS = 10_000;
 const WAIT_POLL_MS = 100;
 const MAX_EXPECTED_NAME = 200;
 const MAX_DEBUGGER_COMMAND_MS = 5_000;
+const MAX_READ_TEXT = 24_000;
+const MAX_READ_ITEMS = 120;
+const MAX_SCREENSHOT_ANNOTATIONS = 40;
+const MAX_SCREENSHOT_DIMENSION = 8_192;
+const MAX_OBSERVATION_SETTLE_MS = 2_000;
+const SNAPSHOT_MODES = new Set(["content", "interactive", "mixed"]);
+const READ_MODES = new Set(["article", "forms", "links", "page", "tables"]);
 
 const INTERACTIVE_ROLES = new Set([
   "button",
@@ -144,6 +152,31 @@ function safeStorageSegment(value) {
   return String(value ?? "").replace(/[^A-Za-z0-9._-]/g, "_") || "default";
 }
 
+function observationKey(mode, scopeBackendNodeId) {
+  return `${mode}:${scopeBackendNodeId || "page"}`;
+}
+
+function lineDelta(previous, current) {
+  if (previous === current) return { change: "unchanged", tree: "(Page unchanged)", delta: null };
+  if (!previous) return { change: "full", tree: current, delta: null };
+  const before = previous.split("\n");
+  const after = current.split("\n");
+  let prefix = 0;
+  while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1;
+  let suffix = 0;
+  while (
+    suffix < before.length - prefix
+    && suffix < after.length - prefix
+    && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) suffix += 1;
+  const added = after.slice(prefix, after.length - suffix);
+  const delta = { fromLine: prefix + 1, removed: before.length - prefix - suffix, added };
+  const compact = `@@ line ${delta.fromLine} -${delta.removed} +${added.length}\n${added.join("\n")}`.trimEnd();
+  return compact.length < current.length
+    ? { change: "delta", tree: compact, delta }
+    : { change: "full", tree: current, delta: null };
+}
+
 function pluginDataPathAllowed(filePath, userDataRoot, workspaceId, extensionId) {
   if (!extensionId || !pathWithin(userDataRoot, filePath)) return false;
   const parts = path.relative(userDataRoot, filePath).split(path.sep);
@@ -235,10 +268,14 @@ function automationMetadataFunction() {
       || this.isContentEditable === true;
     const label = this.getAttribute?.("aria-label") || this.getAttribute?.("data-placeholder") || this.getAttribute?.("placeholder") || "";
     let context = "";
+    const ownText = (this.innerText || this.textContent || "").replace(/\\s+/g, " ").trim();
     for (let parent = this.parentElement, depth = 0; parent && depth < 8; parent = parent.parentElement, depth++) {
       const text = (parent.innerText || "").replace(/\\s+/g, " ").trim();
-      if (text.length > 600) break;
-      if (text) context = text;
+      if (text.length > 180) break;
+      if (text && text !== ownText) {
+        context = text;
+        break;
+      }
     }
     return {
       buttonLike,
@@ -257,6 +294,12 @@ function automationMetadataFunction() {
       unobstructed: Boolean(localPoint),
       text: (this.getAttribute?.("aria-label") || this.getAttribute?.("data-placeholder") || this.getAttribute?.("placeholder") || this.innerText || this.textContent || "").replace(/\\s+/g, " ").trim(),
       writable,
+      bounds: {
+        left: visibleLeft + offsetX,
+        top: visibleTop + offsetY,
+        width: visibleWidth,
+        height: visibleHeight,
+      },
       x: (localPoint?.x ?? 0) + offsetX,
       y: (localPoint?.y ?? 0) + offsetY,
     };
@@ -286,6 +329,108 @@ function selectExactOptionFunction() {
   }`;
 }
 
+function pageReadFunction() {
+  return `function readPage(request) {
+    const mode = request.mode || "page";
+    const maxItems = request.maxItems || ${MAX_READ_ITEMS};
+    const maxChars = request.maxChars || ${MAX_READ_TEXT};
+    const clean = (value, limit = 1200) => String(value ?? "").replace(/\\s+/g, " ").trim().slice(0, limit);
+    const visible = (element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+    };
+    const safeUrl = (value) => {
+      try {
+        const url = new URL(value, document.baseURI);
+        return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password ? url.href : "";
+      } catch { return ""; }
+    };
+    const items = [];
+    let characters = 0;
+    let truncated = false;
+    const add = (kind, text, extra = {}) => {
+      if (items.length >= maxItems || characters >= maxChars) { truncated = true; return; }
+      const value = clean(text);
+      if (!value) return;
+      const remaining = maxChars - characters;
+      const bounded = value.slice(0, remaining);
+      if (bounded.length < value.length) truncated = true;
+      items.push({ kind, text: bounded, ...extra });
+      characters += bounded.length;
+    };
+    const root = mode === "article"
+      ? document.querySelector("article, main, [role=main]") || document.body
+      : document.body;
+    if (["article", "page"].includes(mode)) {
+      const seen = new Set();
+      for (const element of Array.from(root.querySelectorAll("h1,h2,h3,h4,h5,h6,p,li,blockquote,pre")).slice(0, mode === "article" ? maxItems : 30)) {
+        if (items.length >= maxItems || characters >= maxChars) { truncated = true; break; }
+        if (!visible(element)) continue;
+        const text = clean(element.innerText || element.textContent);
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+        const tag = element.tagName.toLowerCase();
+        add(tag.startsWith("h") ? "heading" : tag === "li" ? "listitem" : tag, text, tag.startsWith("h") ? { level: Number(tag.slice(1)) } : {});
+      }
+    }
+    if (["links", "page"].includes(mode)) {
+      for (const link of Array.from(root.querySelectorAll("a[href]")).slice(0, 20)) {
+        if (items.length >= maxItems || characters >= maxChars) { truncated = true; break; }
+        if (!visible(link)) continue;
+        const url = safeUrl(link.getAttribute("href"));
+        if (url) add("link", link.innerText || link.getAttribute("aria-label") || url, { url });
+      }
+    }
+    if (["tables", "page"].includes(mode)) {
+      for (const table of Array.from(root.querySelectorAll("table")).slice(0, 10)) {
+        if (items.length >= maxItems || characters >= maxChars) { truncated = true; break; }
+        if (!visible(table)) continue;
+        const rows = Array.from(table.rows).slice(0, 30).map((row) => (
+          Array.from(row.cells).slice(0, 20).map((cell) => clean(cell.innerText || cell.textContent, 300))
+        )).filter((row) => row.some(Boolean));
+        if (rows.length) add("table", rows.map((row) => row.join(" | ")).join("\\n"), { rows });
+      }
+    }
+    if (["forms", "page"].includes(mode)) {
+      for (const field of Array.from(root.querySelectorAll("input,textarea,select,button")).slice(0, 30)) {
+        if (items.length >= maxItems || characters >= maxChars) { truncated = true; break; }
+        if (!visible(field)) continue;
+        const type = clean(field.getAttribute("type") || field.tagName.toLowerCase(), 40);
+        if (type === "hidden" || type === "password") continue;
+        const label = field.labels?.[0]?.innerText || field.getAttribute("aria-label") || field.getAttribute("placeholder") || field.getAttribute("name") || field.innerText;
+        add("field", label || "Unnamed field", { fieldType: type, required: Boolean(field.required) });
+      }
+    }
+    return { title: clean(document.title, 300), items, truncated };
+  }`;
+}
+
+function annotationOverlayExpression(annotations) {
+  return `(() => {
+    const overlayId = "__ipollowork_browser_annotations__";
+    document.getElementById(overlayId)?.remove();
+    const overlay = document.createElement("div");
+    overlay.id = overlayId;
+    overlay.setAttribute("aria-hidden", "true");
+    overlay.style.cssText = "position:fixed;inset:0;z-index:2147483647;pointer-events:none;overflow:hidden";
+    const stablePixels = document.createElement("style");
+    stablePixels.textContent = "*,*::before,*::after{animation-play-state:paused!important;caret-color:transparent!important;transition:none!important}";
+    overlay.appendChild(stablePixels);
+    for (const item of ${JSON.stringify(annotations)}) {
+      const box = document.createElement("div");
+      box.style.cssText = ["position:absolute","box-sizing:border-box","border:2px solid #ff4d4f","border-radius:5px","background:rgba(255,77,79,.08)","left:"+item.left+"px","top:"+item.top+"px","width:"+Math.max(1,item.width)+"px","height:"+Math.max(1,item.height)+"px"].join(";");
+      const label = document.createElement("span");
+      label.textContent = item.ref;
+      label.style.cssText = "position:absolute;left:-2px;top:-20px;padding:2px 5px;border-radius:4px;background:#ff4d4f;color:white;font:700 11px/16px ui-monospace,monospace;white-space:nowrap";
+      box.appendChild(label);
+      overlay.appendChild(box);
+    }
+    document.documentElement.appendChild(overlay);
+    return true;
+  })()`;
+}
+
 export function createBrowserRuntime({
   getTab,
   selectTab,
@@ -308,6 +453,9 @@ export function createBrowserRuntime({
         nextRef: 1,
         backendRefs: new Map(),
         refs: new Map(),
+        observations: new Map(),
+        screenshots: new Map(),
+        captureFiles: new Set(),
       };
       tabStates.set(tabId, state);
     }
@@ -322,11 +470,18 @@ export function createBrowserRuntime({
     state.nextRef = 1;
     state.backendRefs.clear();
     state.refs.clear();
+    state.observations.clear();
+    state.screenshots.clear();
   }
 
-  function forget(tabId) {
+  async function forget(tabId) {
+    const state = tabStates.get(tabId);
+    const pending = queues.get(tabId);
     tabStates.delete(tabId);
     queues.delete(tabId);
+    await pending?.catch(() => undefined);
+    await Promise.all([...state?.captureFiles ?? []].map((filePath) =>
+      rm(filePath, { force: true }).catch((error) => console.warn("Could not remove browser capture", error))));
   }
 
   function resolveTab(rawTabId) {
@@ -381,15 +536,26 @@ export function createBrowserRuntime({
     return ref;
   }
 
-  async function snapshot(payload = {}) {
+  async function captureSnapshot(tab, debuggerApi, payload = {}) {
+    const startedAt = Date.now();
     const imageSelector = payload.imageSelector;
     if (imageSelector !== undefined && (typeof imageSelector !== "string" || !imageSelector.trim() || imageSelector.length > 200)) {
       throw new Error("Browser image selector is invalid.");
     }
-    const tab = resolveTab(payload.tabId);
-    return withDebugger(tab, async (debuggerApi) => {
-      const trees = await readAccessibilityTrees(debuggerApi);
-      const state = stateFor(tab.tabId);
+    const mode = payload.mode === undefined ? "mixed" : String(payload.mode);
+    if (!SNAPSHOT_MODES.has(mode)) throw new Error("Browser snapshot mode must be content, interactive, or mixed.");
+    const state = stateFor(tab.tabId);
+    const scopeRef = typeof payload.scopeRef === "string" ? payload.scopeRef.trim() : "";
+    const scopeEntry = scopeRef ? requireRef(state, { ref: scopeRef }).entry : null;
+    const scopeBackendNodeId = scopeEntry?.backendNodeId ?? null;
+    const trees = await readAccessibilityTrees(debuggerApi);
+    if (scopeBackendNodeId && !trees.some((tree) => tree.nodes.some((node) => Number(node?.backendDOMNodeId) === scopeBackendNodeId))) {
+      const partial = await debuggerCommand(debuggerApi, "Accessibility.getPartialAXTree", {
+        backendNodeId: scopeBackendNodeId,
+        fetchRelatives: true,
+      }).catch(() => null);
+      if (Array.isArray(partial?.nodes)) trees.push({ depth: 0, nodes: partial.nodes });
+    }
       state.snapshotSerial += 1;
       state.refs.clear();
       const snapshotId = `${tab.tabId}:${state.documentRevision}:${state.snapshotSerial}`;
@@ -402,13 +568,19 @@ export function createBrowserRuntime({
       let inferredControls = 0;
       let truncated = false;
 
+      let foundScope = !scopeBackendNodeId;
       for (const tree of trees) {
         const byId = new Map(tree.nodes.map((node) => [node.nodeId, node]));
         const parentById = new Map(tree.nodes.flatMap((node) => (
           (node.childIds ?? []).map((childId) => [childId, node.nodeId])
         )));
         const childIds = new Set(tree.nodes.flatMap((node) => node.childIds ?? []));
-        const roots = tree.nodes.filter((node) => !childIds.has(node.nodeId));
+        const scopedRoot = scopeBackendNodeId
+          ? tree.nodes.find((node) => Number(node?.backendDOMNodeId) === scopeBackendNodeId)
+          : null;
+        if (scopeBackendNodeId && !scopedRoot) continue;
+        if (scopedRoot) foundScope = true;
+        const roots = scopedRoot ? [scopedRoot] : tree.nodes.filter((node) => !childIds.has(node.nodeId));
         const visited = new Set();
         const clickCandidates = [];
         const visit = (node, depth = tree.depth, insideNamedControl = false) => {
@@ -416,9 +588,9 @@ export function createBrowserRuntime({
           visited.add(node.nodeId);
           const role = String(axValue(node.role) ?? "unknown");
           const name = normalizeText(axValue(node.name));
-          const interactive = !node.ignored && INTERACTIVE_ROLES.has(role);
-          const content = !node.ignored && CONTENT_ROLES.has(role) && name && !insideNamedControl;
-          if (content && role === "StaticText" && clickCandidates.length < MAX_SNAPSHOT_NODES * 4) clickCandidates.push({ node, depth });
+          const interactive = mode !== "content" && !node.ignored && INTERACTIVE_ROLES.has(role);
+          const content = mode !== "interactive" && !node.ignored && CONTENT_ROLES.has(role) && name && !insideNamedControl;
+          if (mode !== "content" && !node.ignored && name && !insideNamedControl && role === "StaticText" && clickCandidates.length < MAX_SNAPSHOT_NODES * 4) clickCandidates.push({ node, depth });
           // Reserve room for controls after long recommendation/comment lists.
           if ((interactive || content) && emitted < MAX_SNAPSHOT_NODES - (interactive ? 0 : 50)) {
             const ref = interactive ? referenceFor(state, node) : null;
@@ -432,7 +604,7 @@ export function createBrowserRuntime({
           }
         };
         for (const root of roots) visit(root);
-        for (const node of tree.nodes) visit(node);
+        if (!scopedRoot) for (const node of tree.nodes) visit(node);
 
         const inspected = new Map();
         for (const candidate of clickCandidates) {
@@ -464,6 +636,7 @@ export function createBrowserRuntime({
           }
         }
       }
+      if (!foundScope) throw new Error("Browser scope reference is stale. Take a new full snapshot.");
 
       // Some rich editors retain a zero-height previous input when opening an
       // inline reply. Do not offer that stale editor as the active writable ref.
@@ -480,7 +653,7 @@ export function createBrowserRuntime({
 
       // Supplement file inputs and role-less rich editors omitted by the AX
       // tree, using DOM-backed refs without exposing arbitrary page evaluation.
-      const flattened = await debuggerCommand(debuggerApi, "DOM.getFlattenedDocument", {
+      const flattened = mode === "content" || scopeBackendNodeId ? { nodes: [] } : await debuggerCommand(debuggerApi, "DOM.getFlattenedDocument", {
         depth: -1,
         pierce: true,
       }).catch(() => ({ nodes: [] }));
@@ -532,6 +705,16 @@ export function createBrowserRuntime({
         truncated = true;
       }
       if (controls) tree += `\n${controls}`;
+      const fullTree = tree || "(No accessible page content)";
+      const key = observationKey(mode, scopeBackendNodeId);
+      const previousTree = state.observations.get(key)?.tree ?? "";
+      const rendered = payload.delta === true ? lineDelta(previousTree, fullTree) : {
+        change: previousTree === fullTree ? "unchanged" : "full",
+        tree: fullTree,
+        delta: null,
+      };
+      state.observations.set(key, { snapshotId, tree: fullTree });
+      const elapsedMs = Date.now() - startedAt;
       return {
         ok: true,
         provider: "builtin",
@@ -539,12 +722,26 @@ export function createBrowserRuntime({
         snapshotId,
         url: state.url,
         title: tab.view.webContents.getTitle(),
-        tree: tree || "(No accessible page content)",
+        mode,
+        ...(scopeRef ? { scopeRef } : {}),
+        tree: rendered.tree,
+        change: rendered.change,
+        ...(rendered.delta ? { delta: rendered.delta } : {}),
         ...(imageSelector ? { imageUrl } : {}),
         elementCount: state.refs.size,
         truncated,
+        metrics: {
+          elapsedMs,
+          characters: rendered.tree.length,
+          fullCharacters: fullTree.length,
+          savedCharacters: Math.max(0, fullTree.length - rendered.tree.length),
+        },
       };
-    });
+  }
+
+  async function snapshot(payload = {}) {
+    const tab = resolveTab(payload.tabId);
+    return withDebugger(tab, (debuggerApi) => captureSnapshot(tab, debuggerApi, payload));
   }
 
   async function currentAccessibleEntry(debuggerApi, entry) {
@@ -578,6 +775,188 @@ export function createBrowserRuntime({
       awaitPromise: true,
     });
     return inspected?.result?.value ?? null;
+  }
+
+  async function read(payload = {}) {
+    const tab = resolveTab(payload.tabId);
+    const mode = payload.mode === undefined ? "page" : String(payload.mode);
+    if (!READ_MODES.has(mode)) throw new Error("Browser read mode must be article, forms, links, page, or tables.");
+    const maxChars = payload.maxChars === undefined ? MAX_READ_TEXT : Number(payload.maxChars);
+    if (!Number.isInteger(maxChars) || maxChars < 1_000 || maxChars > MAX_READ_TEXT) {
+      throw new Error(`Browser read maxChars must be between 1000 and ${MAX_READ_TEXT}.`);
+    }
+    return withDebugger(tab, async (debuggerApi) => {
+      const startedAt = Date.now();
+      const url = tab.view.webContents.getURL();
+      const response = await debuggerCommand(debuggerApi, "Runtime.evaluate", {
+        expression: `(${pageReadFunction()})(${JSON.stringify({ mode, maxChars, maxItems: MAX_READ_ITEMS })})`,
+        returnByValue: true,
+        awaitPromise: true,
+      });
+      if (tab.view.webContents.getURL() !== url) throw new Error("Browser page changed during read. Retry the read on the latest page.");
+      const value = response?.result?.value;
+      const items = Array.isArray(value?.items) ? value.items : [];
+      const lines = [];
+      for (const item of items) {
+        if (!item || typeof item !== "object") continue;
+        const text = boundedText(item.text, 4_000);
+        if (!text) continue;
+        if (item.kind === "heading") lines.push(`${"#".repeat(Math.max(1, Math.min(6, Number(item.level) || 2)))} ${text}`);
+        else if (item.kind === "link" && typeof item.url === "string") lines.push(`- [${text}](${item.url})`);
+        else if (item.kind === "field") lines.push(`- ${text} (${boundedText(item.fieldType, 40)}${item.required ? ", required" : ""})`);
+        else lines.push(text);
+      }
+      const content = lines.join("\n").slice(0, maxChars) || "(No readable page content)";
+      return {
+        ok: true,
+        provider: "builtin",
+        tabId: tab.tabId,
+        url,
+        title: boundedText(value?.title || tab.view.webContents.getTitle(), 300),
+        mode,
+        content,
+        itemCount: items.length,
+        truncated: Boolean(value?.truncated) || lines.join("\n").length > maxChars,
+        metrics: { elapsedMs: Date.now() - startedAt, characters: content.length },
+      };
+    });
+  }
+
+  async function screenshot(payload = {}) {
+    const tab = resolveTab(payload.tabId);
+    const target = payload.target === undefined ? "viewport" : String(payload.target);
+    if (!["ref", "region", "viewport"].includes(target)) {
+      throw new Error("Browser screenshot target must be viewport, region, or ref.");
+    }
+    const visualMode = payload.mode === undefined ? "plain" : String(payload.mode);
+    if (!["annotated", "auto", "plain"].includes(visualMode)) {
+      throw new Error("Browser screenshot mode must be plain, annotated, or auto.");
+    }
+    return withDebugger(tab, async (debuggerApi) => {
+      const startedAt = Date.now();
+      const state = stateFor(tab.tabId);
+      const snapshotId = typeof payload.snapshotId === "string" ? payload.snapshotId.trim() : "";
+      const needsSnapshot = target === "ref" || visualMode === "annotated" || (visualMode === "auto" && state.refs.size > 0);
+      if (needsSnapshot && (!snapshotId || snapshotId !== state.latestSnapshotId || state.url !== tab.view.webContents.getURL())) {
+        throw new Error("Browser screenshot requires the latest snapshotId for ref or annotated capture.");
+      }
+      const layout = await debuggerCommand(debuggerApi, "Page.getLayoutMetrics").catch(() => null);
+      const viewport = layout?.cssVisualViewport ?? layout?.visualViewport ?? {
+        clientWidth: tab.view.getBounds?.().width ?? 800,
+        clientHeight: tab.view.getBounds?.().height ?? 600,
+        pageX: 0,
+        pageY: 0,
+      };
+      const viewportWidth = Math.max(1, Number(viewport.clientWidth) || 800);
+      const viewportHeight = Math.max(1, Number(viewport.clientHeight) || 600);
+      let clip = null;
+      let ref = "";
+      if (target === "region") {
+        const region = payload.region && typeof payload.region === "object" ? payload.region : {};
+        const x = Number(region.x);
+        const y = Number(region.y);
+        const width = Number(region.width);
+        const height = Number(region.height);
+        if (![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0
+          || width > MAX_SCREENSHOT_DIMENSION || height > MAX_SCREENSHOT_DIMENSION) {
+          throw new Error("Browser screenshot region requires bounded positive x, y, width, and height.");
+        }
+        clip = {
+          x: (Number(viewport.pageX) || 0) + Math.min(x, viewportWidth - 1),
+          y: (Number(viewport.pageY) || 0) + Math.min(y, viewportHeight - 1),
+          width: Math.min(width, viewportWidth - Math.min(x, viewportWidth - 1)),
+          height: Math.min(height, viewportHeight - Math.min(y, viewportHeight - 1)),
+          scale: 1,
+        };
+      } else if (target === "ref") {
+        const required = requireRef(state, payload);
+        ref = required.ref;
+        const objectId = await resolvedNode(debuggerApi, required.entry);
+        const metadata = await inspectElement(debuggerApi, objectId, { scrollIntoView: true });
+        if (!metadata?.visible || !metadata.bounds?.width || !metadata.bounds?.height) {
+          throw new Error("Browser screenshot reference is not visible.");
+        }
+        const currentLayout = await debuggerCommand(debuggerApi, "Page.getLayoutMetrics").catch(() => null);
+        const refViewport = currentLayout?.cssVisualViewport ?? currentLayout?.visualViewport ?? viewport;
+        clip = {
+          x: (Number(refViewport.pageX) || 0) + Math.max(0, Number(metadata.bounds.left) || 0),
+          y: (Number(refViewport.pageY) || 0) + Math.max(0, Number(metadata.bounds.top) || 0),
+          width: Math.min(MAX_SCREENSHOT_DIMENSION, Number(metadata.bounds.width)),
+          height: Math.min(MAX_SCREENSHOT_DIMENSION, Number(metadata.bounds.height)),
+          scale: 1,
+        };
+      }
+
+      const annotate = visualMode === "annotated" || (visualMode === "auto" && state.refs.size > 0);
+      let annotations = [];
+      if (annotate) {
+        for (const [entryRef, entry] of state.refs) {
+          if (annotations.length >= MAX_SCREENSHOT_ANNOTATIONS) break;
+          const objectId = await resolvedNode(debuggerApi, entry).catch(() => null);
+          const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
+          if (!metadata?.visible || !metadata.bounds?.width || !metadata.bounds?.height) continue;
+          annotations.push({ ref: entryRef, ...metadata.bounds });
+        }
+      }
+      await debuggerCommand(debuggerApi, "Runtime.evaluate", {
+        expression: annotationOverlayExpression(annotations),
+        returnByValue: true,
+      });
+      let captured;
+      try {
+        captured = await debuggerCommand(debuggerApi, "Page.captureScreenshot", {
+          format: "png",
+          fromSurface: true,
+          captureBeyondViewport: false,
+          ...(clip ? { clip } : {}),
+        });
+      } finally {
+        await debuggerCommand(debuggerApi, "Runtime.evaluate", {
+          expression: 'document.getElementById("__ipollowork_browser_annotations__")?.remove(); true',
+          returnByValue: true,
+        }).catch(() => {});
+      }
+      const bytes = Buffer.from(String(captured?.data ?? ""), "base64");
+      if (bytes.length === 0) throw new Error("Built-in browser returned an empty screenshot.");
+      const hash = createHash("sha256").update(bytes).digest("hex");
+      const screenshotKey = JSON.stringify({ target, ref, region: payload.region ?? null, annotate });
+      const previous = state.screenshots.get(screenshotKey);
+      const changed = previous?.hash !== hash;
+      if (payload.ifChanged === true && !changed) {
+        return {
+          ok: true,
+          provider: "builtin",
+          tabId: tab.tabId,
+          url: tab.view.webContents.getURL(),
+          target,
+          mode: annotate ? "annotated" : "plain",
+          changed: false,
+          imagePath: previous.filePath,
+          mimeType: "image/png",
+          metrics: { elapsedMs: Date.now() - startedAt, bytes: 0, annotations: annotations.length },
+        };
+      }
+      const directory = path.join(getUserDataPath(), "browser-captures");
+      await mkdir(directory, { recursive: true });
+      const keyHash = createHash("sha256").update(screenshotKey).digest("hex").slice(0, 12);
+      const filePath = path.join(directory, `${safeStorageSegment(tab.tabId)}-${keyHash}.png`);
+      await writeFile(filePath, bytes);
+      state.captureFiles.add(filePath);
+      state.screenshots.set(screenshotKey, { filePath, hash });
+      return {
+        ok: true,
+        provider: "builtin",
+        tabId: tab.tabId,
+        url: tab.view.webContents.getURL(),
+        target,
+        mode: annotate ? "annotated" : "plain",
+        changed,
+        imagePath: filePath,
+        mimeType: "image/png",
+        hash,
+        metrics: { elapsedMs: Date.now() - startedAt, bytes: bytes.length, annotations: annotations.length },
+      };
+    });
   }
 
   function requireExpectedName(action, current, actionName) {
@@ -914,6 +1293,7 @@ export function createBrowserRuntime({
   }
 
   async function act(payload = {}) {
+    const startedAt = Date.now();
     const tab = resolveTab(payload.tabId);
     const actions = Array.isArray(payload.actions) ? payload.actions : [];
     if (actions.length === 0 || actions.length > MAX_ACTIONS) {
@@ -928,6 +1308,15 @@ export function createBrowserRuntime({
     }, 0);
     if (!Number.isFinite(totalWait) || totalWait > MAX_TOTAL_WAIT_MS) {
       throw new Error(`Browser action batch may wait at most ${MAX_TOTAL_WAIT_MS} ms in total.`);
+    }
+    const observe = payload.observe && typeof payload.observe === "object" && !Array.isArray(payload.observe)
+      ? payload.observe
+      : null;
+    if (observe) {
+      const settleMs = observe.settleMs === undefined ? 100 : Number(observe.settleMs);
+      if (!Number.isInteger(settleMs) || settleMs < 0 || settleMs > MAX_OBSERVATION_SETTLE_MS) {
+        throw new Error(`Browser observation settleMs must be between 0 and ${MAX_OBSERVATION_SETTLE_MS}.`);
+      }
     }
     return withDebugger(tab, async (debuggerApi) => {
       const state = stateFor(tab.tabId);
@@ -951,13 +1340,34 @@ export function createBrowserRuntime({
           }));
           if (state.latestSnapshotId !== snapshotId) break;
         }
+        let observation = null;
+        if (observe) {
+          const settleMs = observe.settleMs === undefined ? 100 : Number(observe.settleMs);
+          if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
+          if (observe.waitForLoad) {
+            await performStructuredWait({
+              action: {
+                type: "waitFor",
+                condition: "load",
+                state: observe.waitForLoad,
+                ...(observe.timeoutMs === undefined ? {} : { timeoutMs: observe.timeoutMs }),
+              },
+              debuggerApi,
+              state,
+              tab,
+            });
+          }
+          observation = await captureSnapshot(tab, debuggerApi, observe);
+        }
         return {
           ok: true,
           provider: "builtin",
           tabId: tab.tabId,
           url: tab.view.webContents.getURL(),
           results,
-          snapshotRequired: state.latestSnapshotId !== snapshotId,
+          snapshotRequired: observation ? false : state.latestSnapshotId !== snapshotId,
+          ...(observation ? { observation } : {}),
+          metrics: { elapsedMs: Date.now() - startedAt },
         };
       } finally {
         await debuggerCommand(debuggerApi, "Emulation.setFocusEmulationEnabled", { enabled: false }).catch(() => {});
@@ -965,5 +1375,5 @@ export function createBrowserRuntime({
     });
   }
 
-  return { act, forget, invalidate, snapshot };
+  return { act, forget, invalidate, read, screenshot, snapshot };
 }

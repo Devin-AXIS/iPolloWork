@@ -26,7 +26,8 @@ OpenCode, DeepSeek Harness, Codex Harness, and future engines.
 Pass criteria:
 
 - Every engine exposes `ipollowork_browser_open_url`,
-  `ipollowork_browser_snapshot`, `ipollowork_browser_act`, and
+  `ipollowork_browser_read`, `ipollowork_browser_snapshot`,
+  `ipollowork_browser_screenshot`, `ipollowork_browser_act`, and
   `ipollowork_browser_set_proxy` with the same descriptions and JSON contract.
 - No engine configuration or packaged resource refers to a separate browser
   automation plugin.
@@ -130,3 +131,55 @@ Pass criteria:
 - UI enablement affects discovery without installing an engine-specific
   browser runtime.
 - Marketplace import and other extensions remain unaffected.
+
+## Flow 9 — compact reading and scoped semantic changes
+
+1. Read the fixture with `ipollowork_browser_read` in page, article, links,
+   tables, and forms modes.
+2. Take interactive-only and content-only snapshots, scope a later snapshot to
+   one stable ref, then request a delta without changing the page.
+
+Pass criteria:
+
+- Reading returns bounded headings, text, safe links, tables, and form labels
+  without protected values or the full accessibility tree.
+- Snapshot mode and scope omit unrelated content while refs remain host-owned.
+- An unchanged delta returns a short unchanged result and reports saved
+  characters; a changed delta falls back to the full tree when that is smaller.
+
+## Flow 10 — act and observe in one bounded call
+
+1. Snapshot the fixture and call `ipollowork_browser_act` with `observe`.
+2. Perform a verified action, optionally wait for document readiness, and let
+   the host settle briefly before it captures the new semantic state.
+
+Pass criteria:
+
+- The result contains the action record and a fresh snapshot with current refs.
+- `snapshotRequired` is false because the observation is already current.
+- Timing and returned-character metrics are present without persistent tracing.
+
+## Flow 11 — visual fallback stays selective
+
+1. After a semantic snapshot, capture the viewport, a bounded region, and one
+   referenced element.
+2. Request an annotated capture and then repeat it with `ifChanged`.
+
+Pass criteria:
+
+- Screenshots are PNG files owned by the Desktop Host; MCP clients receive the
+  image directly while other engines receive a local `imagePath` to inspect.
+- At most 40 visible semantic refs are overlaid, and the overlay is removed
+  immediately after capture.
+- An unchanged repeat reports `changed=false` and does not resend image bytes.
+
+## Flow 12 — efficiency contract is engine-neutral
+
+Switch between installed engines and inspect their browser tool declarations.
+
+Pass criteria:
+
+- Read, snapshot modes/deltas, act observation, screenshots, and metrics all
+  come from the same host runtime and schemas.
+- No adapter adds selectors, coordinates, arbitrary JavaScript, OCR, or its own
+  screenshot implementation.

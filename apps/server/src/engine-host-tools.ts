@@ -9,6 +9,8 @@ export const ENGINE_HOST_TOOL_NAMES = {
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
   browserOpenUrl: "ipollowork_browser_open_url",
   browserSnapshot: "ipollowork_browser_snapshot",
+  browserRead: "ipollowork_browser_read",
+  browserScreenshot: "ipollowork_browser_screenshot",
   browserAct: "ipollowork_browser_act",
   browserSetProxy: "ipollowork_browser_set_proxy",
 } as const;
@@ -33,9 +35,10 @@ const objectParameters = (
 
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 Use the iPolloWork browser tools only for external websites, never to control the iPolloWork app itself.
-Open a page with ipollowork_browser_open_url, read it with ipollowork_browser_snapshot, then act only through stable refs from that latest snapshot with ipollowork_browser_act.
+Open a page with ipollowork_browser_open_url. Prefer ipollowork_browser_read for page content, and use ipollowork_browser_snapshot for actionable controls and stable refs. Act only through refs from the latest snapshot with ipollowork_browser_act.
 Never invent or reuse stale refs. Take a new snapshot after navigation, when snapshotRequired is true, or when a target changed.
-Prefer one bounded action batch when steps are independent. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
+Prefer one bounded action batch and request its observe result when you need to verify the outcome. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
+Use ipollowork_browser_screenshot only when semantics are insufficient. Prefer a referenced element or bounded region; request annotations to map pixels back to semantic refs and ifChanged to avoid resending an unchanged image.
 Activating publish, send, submit, pay, buy, confirm, delete, or similar consequential controls by click, key, or check requires user approval and must not be retried after denial.`;
 
 export const IPOLLOWORK_SCHEDULE_OFFER_PROMPT = "是否需要生成计划并加入 iPolloWork 日程？";
@@ -159,6 +162,15 @@ const browserActionSchema = {
   ],
 };
 
+const browserObservationSchema = objectParameters({
+  mode: { type: "string", enum: ["content", "interactive", "mixed"] },
+  scopeRef: { type: "string", description: "Optional ref whose subtree should be observed." },
+  delta: { type: "boolean", description: "Return only a compact change when smaller than the full tree." },
+  settleMs: { type: "integer", minimum: 0, maximum: 2_000 },
+  waitForLoad: { type: "string", enum: ["interactive", "complete"] },
+  timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+});
+
 export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   {
     name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
@@ -269,9 +281,39 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserSnapshot,
-    description: "Read a bounded semantic accessibility tree from the built-in browser. Interactive controls receive stable refs; values of protected fields are never returned.",
+    description: "Read a bounded semantic accessibility tree from the built-in browser. Choose mixed, interactive-only, or content-only output; optionally scope to a previous ref and request a compact line delta. Interactive controls receive stable refs; protected values are never returned.",
     parameters: objectParameters({
       tabId: { type: "string", description: "Tab ID returned by ipollowork_browser_open_url." },
+      mode: { type: "string", enum: ["content", "interactive", "mixed"] },
+      scopeRef: { type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
+      delta: { type: "boolean", description: "Return unchanged or a compact line delta when it saves context." },
+    }, ["tabId"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.browserRead,
+    description: "Read compact page content without the full accessibility tree. Returns headings, paragraphs, links, tables, or forms with bounded text and timing metrics. Use this before screenshots for ordinary research and extraction.",
+    parameters: objectParameters({
+      tabId: { type: "string", description: "Built-in browser tab ID." },
+      mode: { type: "string", enum: ["article", "forms", "links", "page", "tables"] },
+      maxChars: { type: "integer", minimum: 1_000, maximum: 24_000 },
+    }, ["tabId"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.browserScreenshot,
+    description: "Capture a PNG only when semantic reading is insufficient. Supports the viewport, one viewport-relative region, or one stable ref. annotated/auto mode overlays semantic refs; ifChanged suppresses duplicate image bytes. MCP clients receive the image directly; other engines receive imagePath for their image-reading tool.",
+    parameters: objectParameters({
+      tabId: { type: "string", description: "Built-in browser tab ID." },
+      snapshotId: { type: "string", description: "Latest snapshot ID; required for ref or annotated capture." },
+      target: { type: "string", enum: ["ref", "region", "viewport"] },
+      ref: { type: "string", description: "Stable ref when target is ref." },
+      region: objectParameters({
+        x: { type: "number", minimum: 0 },
+        y: { type: "number", minimum: 0 },
+        width: { type: "number", exclusiveMinimum: 0, maximum: 8_192 },
+        height: { type: "number", exclusiveMinimum: 0, maximum: 8_192 },
+      }, ["x", "y", "width", "height"]),
+      mode: { type: "string", enum: ["annotated", "auto", "plain"] },
+      ifChanged: { type: "boolean", description: "Return changed=false without resending image bytes when pixels match the previous capture." },
     }, ["tabId"]),
   },
   {
@@ -286,6 +328,7 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
         maxItems: 8,
         items: browserActionSchema,
       },
+      observe: browserObservationSchema,
     }, ["tabId", "snapshotId", "actions"]),
   },
   {

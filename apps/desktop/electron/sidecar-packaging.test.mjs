@@ -97,40 +97,20 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(osxSignPatch, /withFileOperationLimit\(\(\) => getFilePathIfBinary\(filePath\)\)/);
 });
 
-it("hides consoles opened by packaged DSH tool subprocesses on Windows", async () => {
-  const [runtimeManifest, runtimeWorkspace, subprocessPatch, windowsSandboxPatch, prepareSource] = await Promise.all([
+it("packages the current DSH release without obsolete upstream patches", async () => {
+  const [runtimeManifest, runtimeWorkspace, constants, prepareSource] = await Promise.all([
     readFile(new URL("../dsh-runtime/package.json", import.meta.url), "utf8"),
     readFile(new URL("../dsh-runtime/pnpm-workspace.yaml", import.meta.url), "utf8"),
-    readFile(
-      new URL(
-        "../dsh-runtime/@deepseek-ai__dsh-subprocess-local@0.1.0-rc.6.patch",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
-    readFile(
-      new URL(
-        "../dsh-runtime/@deepseek-ai__dsh-sandbox-windows-acl@0.1.0-rc.6.patch",
-        import.meta.url,
-      ),
-      "utf8",
-    ),
+    readFile(new URL("../../../constants.json", import.meta.url), "utf8"),
     readFile(new URL("../scripts/prepare-dsh-runtime.mjs", import.meta.url), "utf8"),
   ]);
-  assert.match(
-    runtimeWorkspace,
-    /@deepseek-ai\/dsh-subprocess-local@0\.1\.0-rc\.6.*"@deepseek-ai__dsh-subprocess-local@0\.1\.0-rc\.6\.patch"/,
-  );
-  assert.match(
-    runtimeWorkspace,
-    /@deepseek-ai\/dsh-sandbox-windows-acl@0\.1\.0-rc\.6.*"@deepseek-ai__dsh-sandbox-windows-acl@0\.1\.0-rc\.6\.patch"/,
-  );
-  assert.match(subprocessPatch, /windowsHide: platform === "win32"/);
-  assert.match(subprocessPatch, /stdio: "ignore",\r?\n\+\s+windowsHide: true/);
-  assert.match(windowsSandboxPatch, /dwFlags: 257/);
-  assert.match(windowsSandboxPatch, /wShowWindow: 0/);
+  const dependencies = JSON.parse(runtimeManifest).dependencies;
+  assert.equal(dependencies["@deepseek-ai/dsh"], JSON.parse(constants).deepseekHarnessVersion);
+  assert.equal(dependencies["@deepseek-ai/dsh-llm-pi-ai"], dependencies["@deepseek-ai/dsh"]);
+  assert.doesNotMatch(runtimeWorkspace, /patchedDependencies/);
   assert.match(runtimeManifest, /"packageManager": "pnpm@11\.4\.0"/);
-  assert.match(prepareSource, /workspacePath, subprocessPatchPath, windowsSandboxPatchPath/);
+  assert.match(prepareSource, /manifestPath, lockPath, workspacePath/);
+  assert.doesNotMatch(prepareSource, /PatchPath/);
   assert.match(prepareSource, /CI: process\.env\.CI \|\| "1"/);
   assert.match(prepareSource, /stageNodeRuntime/);
   assert.doesNotMatch(prepareSource, /--ignore-workspace/);

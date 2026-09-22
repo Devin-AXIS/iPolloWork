@@ -295,6 +295,8 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_workspace_app_call_tool",
       "ipollowork_browser_open_url",
       "ipollowork_browser_snapshot",
+      "ipollowork_browser_read",
+      "ipollowork_browser_screenshot",
       "ipollowork_browser_act",
       "ipollowork_browser_set_proxy",
     ]);
@@ -341,6 +343,8 @@ describe("extension and engine host tool gating", () => {
         "ipollowork_workspace_app_call_tool",
         "ipollowork_browser_open_url",
         "ipollowork_browser_snapshot",
+        "ipollowork_browser_read",
+        "ipollowork_browser_screenshot",
         "ipollowork_browser_act",
         "ipollowork_browser_set_proxy",
       ]);

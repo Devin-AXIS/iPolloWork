@@ -9,6 +9,7 @@ export default {
     {
       name: "Send a GPT-5.5 message through DeepSeek Harness",
       run: async (ctx) => {
+        let workspaceId;
         await ctx.waitFor("Boolean(window.__ipolloworkControl)", {
           timeoutMs: 60_000,
           label: "window.__ipolloworkControl",
@@ -16,15 +17,28 @@ export default {
         await ctx.prove("The first DeepSeek Harness reply is retained in task history", {
           voiceover: "首次在 DeepSeek Harness 项目中发送消息后，回复正常显示，而且同一任务会立即保留在左侧历史中。",
           action: async () => {
-            const workspaceId = await ctx.eval(`(async () => {
+            workspaceId = await ctx.eval(`(async () => {
               document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
               await new Promise((resolve) => setTimeout(resolve, 80));
+              const baseUrl = localStorage.getItem('ipollowork.server.urlOverride')
+                || 'http://127.0.0.1:' + localStorage.getItem('ipollowork.server.port');
+              const response = await fetch(baseUrl + '/workspaces', {
+                headers: { Authorization: 'Bearer ' + localStorage.getItem('ipollowork.server.token') },
+              });
+              const payload = await response.json();
+              const workspace = (payload.items ?? payload.workspaces ?? [])
+                .find((item) => item.engineId === 'deepseek-harness');
               const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
-                .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
+                .find((element) => element.getAttribute('data-project-id') === workspace?.id);
               project?.click();
-              return project?.getAttribute('data-project-id') ?? null;
+              return workspace?.id ?? null;
             })()`, { awaitPromise: true });
             ctx.assert(Boolean(workspaceId), "Could not find the DeepSeek Harness project.");
+            await ctx.waitFor(`Boolean(document.querySelector('[data-testid="project-row"][data-project-id="${workspaceId}"]'))`, {
+              timeoutMs: 30_000,
+              label: "DSH project sidebar hydrated",
+            });
+            await ctx.eval(`document.querySelector('[data-testid="project-row"][data-project-id="${workspaceId}"]')?.click()`);
             await ctx.waitFor(`Boolean(document.querySelector(
               ${JSON.stringify(`[data-testid="project-new-conversation-button"][data-project-id="${workspaceId}"]`)},
             ))`, {
@@ -138,18 +152,17 @@ export default {
             const sessions = await ctx.control("session.list_sessions");
             const historyItem = sessions.find((session) => (
               session.sessionId === transcript.sessionId
-              && session.workspace.toLowerCase() === "dsh"
             ));
             ctx.assert(Boolean(historyItem), `The completed DSH task is missing from sidebar history: ${JSON.stringify(sessions)}`);
             await ctx.eval(`(() => {
               const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
-                .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
+                .find((element) => element.getAttribute('data-project-id') === ${JSON.stringify(workspaceId)});
               if (project?.getAttribute('aria-expanded') !== 'true') project?.click();
               return Boolean(project);
             })()`);
             await ctx.waitFor(`(() => {
               const project = Array.from(document.querySelectorAll('[data-testid="project-row"][data-project-id]'))
-                .find((element) => element.textContent?.trim().toLowerCase() === 'dsh');
+                .find((element) => element.getAttribute('data-project-id') === ${JSON.stringify(workspaceId)});
               const group = project?.closest('[data-slot="sidebar-group"]');
               return project?.getAttribute('aria-expanded') === 'true'
                 && Array.from(group?.querySelectorAll('span[title]') ?? [])

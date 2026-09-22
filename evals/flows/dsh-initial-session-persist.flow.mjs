@@ -41,8 +41,10 @@ async function selectAvailableModel(ctx) {
     label: "enabled account model",
   });
   await ctx.eval(`(() => {
-    const item = Array.from(document.querySelectorAll('[data-slot="command-item"]'))
-      .find((candidate) => !candidate.hasAttribute("data-disabled"));
+    const candidates = Array.from(document.querySelectorAll('[data-slot="command-item"]'))
+      .filter((candidate) => !candidate.hasAttribute("data-disabled"));
+    const item = candidates.find((candidate) => candidate.textContent?.includes("GPT-5.5")
+      && !candidate.textContent?.includes("Fast")) ?? candidates[0];
     item?.setAttribute("data-fraimz-dsh-model", "true");
     return Boolean(item);
   })()`);
@@ -109,7 +111,6 @@ export default {
                     ? body.payload.content.map((part) => part?.text ?? "").join("\\n")
                     : "";
                   window.__fraimzDshInitialCalls.push({ kind: "prompt", content });
-                  if (content.includes(${JSON.stringify(DRAFT)})) return Response.json({ ok: true });
                 }
                 return window.__fraimzDshInitialOriginalFetch(input, init);
               };
@@ -187,10 +188,13 @@ export default {
           }
           const sessionId = sessionStorage.getItem("fraimz-dsh-initial-session-id") ?? "";
           if (sessionId) {
-            await fetch("http://127.0.0.1:${ids.port}/workspace/${ids.dsh}/sessions/" + encodeURIComponent(sessionId), {
-              method: "DELETE",
-              headers: { Authorization: "Bearer ${ids.token}" },
-            }).catch(() => undefined);
+            for (const method of ["session.cancel", "workspace.archiveSession"]) {
+              await fetch("http://127.0.0.1:${ids.port}/workspace/${ids.dsh}/engine/deepseek-harness/rpc", {
+                method: "POST",
+                headers: { Authorization: "Bearer ${ids.token}", "content-type": "application/json" },
+                body: JSON.stringify({ method, payload: { sessionId } }),
+              }).catch(() => undefined);
+            }
           }
           delete window.__fraimzDshInitialOriginalFetch;
           delete window.__fraimzDshInitialCalls;

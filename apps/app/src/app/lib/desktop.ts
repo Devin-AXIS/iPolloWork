@@ -136,23 +136,79 @@ declare global {
           tabId: string;
           url: string;
         }>;
-        snapshot?: (payload: { tabId: string; imageSelector?: string }) => Promise<{
+        snapshot?: (payload: {
+          tabId: string;
+          imageSelector?: string;
+          mode?: "content" | "interactive" | "mixed";
+          scopeRef?: string;
+          delta?: boolean;
+        }) => Promise<{
           ok: true;
           provider: "builtin";
           tabId: string;
           snapshotId: string;
           url: string;
           title: string;
+          mode: "content" | "interactive" | "mixed";
+          scopeRef?: string;
           tree: string;
+          change: "delta" | "full" | "unchanged";
+          delta?: { fromLine: number; removed: number; added: string[] };
           imageUrl?: string | null;
           elementCount: number;
           truncated: boolean;
+          metrics: { elapsedMs: number; characters: number; fullCharacters: number; savedCharacters: number };
+        }>;
+        read?: (payload: {
+          tabId: string;
+          mode?: "article" | "forms" | "links" | "page" | "tables";
+          maxChars?: number;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          title: string;
+          mode: "article" | "forms" | "links" | "page" | "tables";
+          content: string;
+          itemCount: number;
+          truncated: boolean;
+          metrics: { elapsedMs: number; characters: number };
+        }>;
+        screenshot?: (payload: {
+          tabId: string;
+          snapshotId?: string;
+          target?: "ref" | "region" | "viewport";
+          ref?: string;
+          region?: { x: number; y: number; width: number; height: number };
+          mode?: "annotated" | "auto" | "plain";
+          ifChanged?: boolean;
+        }) => Promise<{
+          ok: true;
+          provider: "builtin";
+          tabId: string;
+          url: string;
+          target: "ref" | "region" | "viewport";
+          mode: "annotated" | "plain";
+          changed: boolean;
+          imagePath: string;
+          mimeType: "image/png";
+          hash?: string;
+          metrics: { elapsedMs: number; bytes: number; annotations: number };
         }>;
         act?: (payload: {
           tabId: string;
           snapshotId: string;
           workspaceRoot?: string;
           actions: Array<Record<string, unknown>>;
+          observe?: {
+            mode?: "content" | "interactive" | "mixed";
+            scopeRef?: string;
+            delta?: boolean;
+            settleMs?: number;
+            waitForLoad?: "complete" | "interactive";
+            timeoutMs?: number;
+          };
         }) => Promise<{
           ok: true;
           provider: "builtin";
@@ -160,6 +216,8 @@ declare global {
           url: string;
           results: Array<Record<string, unknown>>;
           snapshotRequired: boolean;
+          observation?: Record<string, unknown>;
+          metrics: { elapsedMs: number };
         }>;
         navigate?: (url: string) => Promise<void>;
         back?: () => Promise<void>;
