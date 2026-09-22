@@ -1,6 +1,6 @@
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { mkdir, realpath, stat, writeFile } from "node:fs/promises";
+import { mkdir, realpath, rm, stat, writeFile } from "node:fs/promises";
 
 const MAX_SNAPSHOT_NODES = 250;
 const MAX_SNAPSHOT_TEXT = 30_000;
@@ -455,6 +455,7 @@ export function createBrowserRuntime({
         refs: new Map(),
         observations: new Map(),
         screenshots: new Map(),
+        captureFiles: new Set(),
       };
       tabStates.set(tabId, state);
     }
@@ -473,9 +474,14 @@ export function createBrowserRuntime({
     state.screenshots.clear();
   }
 
-  function forget(tabId) {
+  async function forget(tabId) {
+    const state = tabStates.get(tabId);
+    const pending = queues.get(tabId);
     tabStates.delete(tabId);
     queues.delete(tabId);
+    await pending?.catch(() => undefined);
+    await Promise.all([...state?.captureFiles ?? []].map((filePath) =>
+      rm(filePath, { force: true }).catch((error) => console.warn("Could not remove browser capture", error))));
   }
 
   function resolveTab(rawTabId) {
@@ -584,7 +590,7 @@ export function createBrowserRuntime({
           const name = normalizeText(axValue(node.name));
           const interactive = mode !== "content" && !node.ignored && INTERACTIVE_ROLES.has(role);
           const content = mode !== "interactive" && !node.ignored && CONTENT_ROLES.has(role) && name && !insideNamedControl;
-          if (content && role === "StaticText" && clickCandidates.length < MAX_SNAPSHOT_NODES * 4) clickCandidates.push({ node, depth });
+          if (mode !== "content" && !node.ignored && name && !insideNamedControl && role === "StaticText" && clickCandidates.length < MAX_SNAPSHOT_NODES * 4) clickCandidates.push({ node, depth });
           // Reserve room for controls after long recommendation/comment lists.
           if ((interactive || content) && emitted < MAX_SNAPSHOT_NODES - (interactive ? 0 : 50)) {
             const ref = interactive ? referenceFor(state, node) : null;
@@ -935,6 +941,7 @@ export function createBrowserRuntime({
       const keyHash = createHash("sha256").update(screenshotKey).digest("hex").slice(0, 12);
       const filePath = path.join(directory, `${safeStorageSegment(tab.tabId)}-${keyHash}.png`);
       await writeFile(filePath, bytes);
+      state.captureFiles.add(filePath);
       state.screenshots.set(screenshotKey, { filePath, hash });
       return {
         ok: true,

@@ -235,6 +235,8 @@ it("promotes visible pointer controls without ARIA roles into safe named refs", 
     [{ value: true }],
   );
   assert.ok(!fixture.commands.some((command) => command.method === "Page.setInterceptFileChooserDialog"));
+  const interactiveSnapshot = await fixture.runtime.snapshot({ tabId: "tab-1", mode: "interactive" });
+  assert.match(interactiveSnapshot.tree, /button "发布图文笔记"/);
 });
 
 it("includes actionable controls from child frames in the same semantic snapshot", async () => {
@@ -518,6 +520,9 @@ it("captures annotated ref screenshots and suppresses unchanged image bytes", as
     assert.equal(second.changed, false);
     assert.equal(second.metrics.bytes, 0);
     assert.equal(second.imagePath, first.imagePath);
+    fixture.runtime.invalidate("tab-1");
+    await fixture.runtime.forget("tab-1");
+    await assert.rejects(readFile(first.imagePath), { code: "ENOENT" });
   } finally {
     await rm(userDataPath, { force: true, recursive: true });
   }

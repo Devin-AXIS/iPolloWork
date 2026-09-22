@@ -84,9 +84,10 @@ function BrowserControlActions() {
       const object = controlObjectArg(args);
       const mode = controlStringArg(args, "mode");
       const scopeRef = controlStringArg(args, "scopeRef");
+      if (mode !== "" && mode !== "content" && mode !== "interactive" && mode !== "mixed") return { ok: false, error: "Invalid snapshot mode." };
       return snapshot({
         tabId,
-        ...(mode ? { mode: mode as "content" | "interactive" | "mixed" } : {}),
+        mode: mode || undefined,
         ...(scopeRef ? { scopeRef } : {}),
         ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
       });
@@ -113,9 +114,11 @@ function BrowserControlActions() {
       if (!read) return { ok: false, error: "Built-in browser runtime is not available." };
       const mode = controlStringArg(args, "mode");
       const rawMaxChars = object ? Reflect.get(object, "maxChars") : undefined;
+      if (mode !== "" && mode !== "article" && mode !== "forms" && mode !== "links" && mode !== "page" && mode !== "tables") return { ok: false, error: "Invalid read mode." };
+      if (rawMaxChars !== undefined && (typeof rawMaxChars !== "number" || !Number.isFinite(rawMaxChars) || rawMaxChars <= 0)) return { ok: false, error: "Invalid maxChars." };
       return read({
         tabId,
-        ...(mode ? { mode: mode as "article" | "forms" | "links" | "page" | "tables" } : {}),
+        mode: mode || undefined,
         ...(typeof rawMaxChars === "number" ? { maxChars: rawMaxChars } : {}),
       });
     },
@@ -143,14 +146,31 @@ function BrowserControlActions() {
       if (!tabId || !object) return { ok: false, error: "Missing tabId." };
       const screenshot = window.__IPOLLOWORK_ELECTRON__?.browser?.screenshot;
       if (!screenshot) return { ok: false, error: "Built-in browser runtime is not available." };
-      const region = Reflect.get(object, "region");
+      const mode = controlStringArg(args, "mode");
+      const target = controlStringArg(args, "target");
+      if (mode !== "" && mode !== "annotated" && mode !== "auto" && mode !== "plain") return { ok: false, error: "Invalid screenshot mode." };
+      if (target !== "" && target !== "ref" && target !== "region" && target !== "viewport") return { ok: false, error: "Invalid screenshot target." };
+      const rawRegion = Reflect.get(object, "region");
+      let region: { x: number; y: number; width: number; height: number } | undefined;
+      if (rawRegion !== undefined) {
+        const value = controlObjectArg(rawRegion);
+        if (!value) return { ok: false, error: "Invalid screenshot region." };
+        const x: unknown = Reflect.get(value, "x");
+        const y: unknown = Reflect.get(value, "y");
+        const width: unknown = Reflect.get(value, "width");
+        const height: unknown = Reflect.get(value, "height");
+        if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+          || ![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0) return { ok: false, error: "Invalid screenshot region." };
+        region = { x, y, width, height };
+      }
+      if (target === "region" && !region) return { ok: false, error: "Missing screenshot region." };
       return screenshot({
         tabId,
         ...(controlStringArg(args, "snapshotId") ? { snapshotId: controlStringArg(args, "snapshotId") } : {}),
-        ...(controlStringArg(args, "target") ? { target: controlStringArg(args, "target") as "ref" | "region" | "viewport" } : {}),
+        target: target || undefined,
         ...(controlStringArg(args, "ref") ? { ref: controlStringArg(args, "ref") } : {}),
-        ...(region && typeof region === "object" && !Array.isArray(region) ? { region: region as { x: number; y: number; width: number; height: number } } : {}),
-        ...(controlStringArg(args, "mode") ? { mode: controlStringArg(args, "mode") as "annotated" | "auto" | "plain" } : {}),
+        ...(region ? { region } : {}),
+        mode: mode || undefined,
         ...(Reflect.get(object, "ifChanged") === true ? { ifChanged: true } : {}),
       });
     },

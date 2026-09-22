@@ -105,13 +105,15 @@ test.skipIf(!existsSync(cli) || !existsSync(nodeBin))("current DSH authenticates
     expect(await runtime.call<{ items: unknown[]; archivedSessionIds: string[] }>("workspace.list", {})).toEqual({ items: [], archivedSessionIds: [] });
     await runtime.call("credentials.set", { ref: "UPGRADE_TEST_KEY", value: "test-key" });
     await runtime.call("settings.mutate", { ns: "llm-pi-ai", ops: [{ op: "set", path: ["providers", "upgrade-test"], value: { api: "openai-completions", baseURL: `http://127.0.0.1:${host.port}/v1`, apiKeyEnv: "UPGRADE_TEST_KEY", models: [{ id: "test-model", name: "Test", contextWindow: 8192, maxTokens: 1024 }] } }] });
+    // A session created while the event stream starts must not fall between
+    // initial enumeration and the additions subscription.
+    const events = await runtime.events("mux", abort.signal);
     const created = await runtime.call<{ sessionId: string }>("session.create", { cwd: root });
     await runtime.call("session.selectModel", { sessionId: created.sessionId, provider: "upgrade-test", model: "test-model" });
     const permission = await runtime.call<{ result: { kind: string } }>("commands/execute", {
       args: { agentId: created.sessionId, line: "/permission workspace-write" },
     });
     expect(permission.result.kind).toBe("success");
-    const events = await runtime.events("mux", abort.signal);
     const reader = events.body!.getReader();
     const frames: string[] = [];
     const consume = (async () => {

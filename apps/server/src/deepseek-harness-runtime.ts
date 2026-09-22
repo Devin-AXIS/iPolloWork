@@ -879,10 +879,7 @@ export class DeepSeekHarnessRuntime {
                 message: error instanceof Error ? error.message : "DSH session could not be observed" });
             });
           };
-          if (stream === "mux") {
-            const sessions = await this.#callAtBaseUrl<{ items: Array<{ sessionId: string; cwd?: string }> }>(baseUrl, "session.list", {});
-            for (const session of sessions.items) observe(session);
-          } else {
+          if (stream === "host") {
             void (async () => {
               for await (const frame of connection.stream("session/control", {}, combined)) {
                 if (frame.type === "projection") emit({ ...frame, type: "session/projection" });
@@ -891,7 +888,14 @@ export class DeepSeekHarnessRuntime {
           }
           let clientId = "";
           for await (const frame of connection.stream("$events", {}, combined)) {
-            if (frame.type === "ready" && typeof frame.clientId === "string") clientId = frame.clientId;
+            if (frame.type === "ready" && typeof frame.clientId === "string") {
+              clientId = frame.clientId;
+              // Subscribe first: additions during the initial list stay queued on this stream.
+              if (stream === "mux") {
+                const sessions = await this.#callAtBaseUrl<{ items: Array<{ sessionId: string; cwd?: string }> }>(baseUrl, "session.list", {});
+                for (const session of sessions.items) observe(session);
+              }
+            }
             if (frame.type === "emit" && Array.isArray(frame.args)) {
               const [first, second] = frame.args;
               if (stream === "mux" && frame.event === "api-session/added") {

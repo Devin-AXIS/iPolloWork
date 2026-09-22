@@ -341,6 +341,19 @@ export default {
         await ctx.prove("The host reads controls as a compact semantic tree with stable refs", {
           voiceover: vo[2],
           action: async () => {
+            for (const [action, args] of [
+              ["browser.snapshot", { mode: "invalid" }],
+              ["browser.read", { mode: "invalid" }],
+              ["browser.read", { maxChars: -1 }],
+              ["browser.screenshot", { target: "invalid" }],
+              ["browser.screenshot", { mode: "invalid" }],
+              ["browser.screenshot", { target: "region", region: { x: 0, y: 0, width: "100", height: 100 } }],
+            ]) {
+              let error = "";
+              try { await ctx.control(action, { tabId: ctx.browser.opened.tabId, ...args }); }
+              catch (failure) { error = String(failure); }
+              ctx.assert(/Invalid (snapshot|read|screenshot|maxChars)/.test(error), `${action} accepted malformed browser arguments.`);
+            }
             const first = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
             const second = await ctx.control("browser.snapshot", { tabId: ctx.browser.opened.tabId });
             ctx.browser.snapshot = second;
