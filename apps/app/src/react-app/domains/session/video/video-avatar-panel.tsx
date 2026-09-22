@@ -21,7 +21,7 @@ type Props = {
   sessionId: string;
   active: boolean;
   onOpenVoice?: () => void;
-  onAssetAction?: (action: "view" | "insert", path: string) => Promise<void>;
+  onAssetAction?: (action: "view" | "insert", path: string, timelineStart?: number, timelineDuration?: number) => Promise<void>;
   previewAssetUrl?: (path: string) => string;
 };
 
@@ -69,6 +69,29 @@ function jobProgress(job: VideoJob) {
     ? `预计还需约 ${Math.max(1, Math.floor(remaining * .75 / 60_000))}–${Math.max(2, Math.ceil(remaining * 1.5 / 60_000))} 分钟`
     : job.status === "running" && !job.pauseRequested ? "正在估算时间" : "";
   return { completed, total, percent, eta };
+}
+
+export function avatarJobStatusDetail(job: VideoJob) {
+  const progress = jobProgress(job);
+  if (progress.total) return `${progress.completed}/${progress.total} 段 · ${job.avatarSequence?.duration.toFixed(1)} 秒`;
+  if (job.status === "succeeded") return "视频片段已生成";
+  if (job.message.trim()) return job.message;
+  if (job.status === "failed" || job.status === "save_failed") return "生成失败，请打开查看错误详情。";
+  if (job.status === "uncertain") return "提交结果未确认，请打开任务处理。";
+  if (job.status === "stopped") return "生成已停止。";
+  if (job.status === "paused") return "生成已暂停。";
+  if (job.status === "saving") return "正在完成最后处理";
+  if (job.status === "running") return "任务已提交，正在等待生成结果";
+  return "正在准备并提交素材";
+}
+
+export function resolveAvatarAudioStart(job: VideoJob, source: VideoAvatarContext | null) {
+  if (job.avatarAudioStart !== undefined) return job.avatarAudioStart;
+  return source?.audioClips?.find(clip => clip.fingerprint === job.avatarAudioFingerprint)?.start ?? 0;
+}
+
+export function resolveAvatarDuration(job: VideoJob) {
+  return job.avatarSequence?.duration;
 }
 
 export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId, active, onOpenVoice, onAssetAction, previewAssetUrl }: Props) {
@@ -259,11 +282,12 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     const { job } = videoSubmitResultSchema.parse(await call(action, { id }));
     setJobs(current => current.map(item => item.id === job.id ? job : item));
   };
-  const handleAssetAction = async (action: "view" | "insert", path: string) => {
+  const handleAssetAction = async (action: "view" | "insert", job: VideoJob) => {
     if (!onAssetAction) throw new Error("Video Studio 尚未就绪，请稍后重试。");
-    await onAssetAction(action, path);
+    const timelineStart = resolveAvatarAudioStart(job, source);
+    await onAssetAction(action, job.path, timelineStart, resolveAvatarDuration(job));
     setTaskOpen(false);
-    setMessage(action === "insert" ? "数字人片段已插入当前播放位置，可在时间线中调整。" : "已在素材中打开数字人片段。");
+    setMessage(action === "insert" ? `数字人片段已按配音起点 ${timelineStart.toFixed(1)} 秒插入时间线。` : "已在素材中打开数字人片段。");
   };
   const visibleJobs = draft ? jobs.filter(job => job.avatarProfileId === draft.id) : jobs.filter(job => !job.avatarProfileId);
   const taskJob = jobs.find(job => job.id === taskId);
@@ -294,7 +318,7 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
           {selectedClip && selectedClip.duration > 15 ? <p className="text-[11px] leading-5 text-muted-foreground">超过 15 秒将自动分段生成并拼接。</p> : null}
         </section>
         <section className="space-y-1.5" aria-label="动作描述">
-          <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "场景背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">如需场景，请在动作描述中写出背景。</TooltipContent></Tooltip></div>
+          <div className="flex items-center justify-between gap-2"><label htmlFor={promptId} className="text-ui-control font-semibold">动作描述</label><Tooltip><TooltipTrigger render={<button type="button" aria-label="动作与背景说明" className="flex items-center gap-1 text-[11px] text-muted-foreground" />}>{avatarBackgroundForPrompt(draft.prompt) === "transparent" ? "透明背景" : "保留背景"}<Info aria-hidden="true" className="size-3" /></TooltipTrigger><TooltipContent className="text-[11px]">默认保留背景，生成后可手动智能抠图。明确要求去除背景时才自动抠图。</TooltipContent></Tooltip></div>
           <Textarea id={promptId} value={draft.prompt} rows={3} maxLength={3000} disabled={busy} onChange={event => setDraft(current => current ? { ...current, prompt: event.target.value } : current)} className="min-h-20 resize-none border-0 bg-muted/60 text-xs leading-5 shadow-none" />
         </section>
         <div className="space-y-2">
@@ -321,12 +345,12 @@ export function VideoAvatarPanel({ client, workspaceId, workspaceRoot, sessionId
     {visibleJobs.length > 0 ? <section className="space-y-2 border-t border-border/60 pt-4" aria-label={draft ? "此数字人的生成记录" : "历史生成记录"}>
       <div className="flex items-center justify-between"><h3 className="text-ui-control font-semibold">生成记录 <span className="font-normal text-muted-foreground">{visibleJobs.length}</span></h3><Button variant="ghost" size="icon-xs" aria-label="刷新数字人任务" disabled={busy} onClick={() => void act(refresh)}><RefreshCw /></Button></div>
       {(showAllHistory ? visibleJobs : visibleJobs.slice(0, 3)).map(job => {
-        const progress = jobProgress(job);
-        return <button key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2 text-left text-xs hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0"><span className="block font-medium">{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className="block truncate text-[11px] text-muted-foreground">{progress.total ? `${progress.completed}/${progress.total} 段 · ${job.avatarSequence?.duration.toFixed(1)} 秒` : "正在准备生成"}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></button>;
+        const needsAttention = ["failed", "uncertain", "save_failed"].includes(job.status);
+        return <button key={job.id} type="button" data-testid="avatar-job-card" onClick={() => { setTaskId(job.id); setPreview(""); setTaskOpen(true); }} className="flex w-full items-center justify-between gap-2 rounded-lg border border-border/70 px-3 py-2 text-left text-xs hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><span className="min-w-0"><span className={`block font-medium ${needsAttention ? "text-destructive" : ""}`}>{jobLabel(job)} · {new Date(job.createdAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}</span><span className={`block truncate text-[11px] ${needsAttention ? "text-destructive" : "text-muted-foreground"}`} title={avatarJobStatusDetail(job)}>{avatarJobStatusDetail(job)}</span></span><ChevronRight className="size-4 shrink-0 text-muted-foreground" /></button>;
       })}
       {visibleJobs.length > 3 ? <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" onClick={() => setShowAllHistory(current => !current)}>{showAllHistory ? "收起记录" : `查看全部 ${visibleJobs.length} 条`}</Button> : null}
     </section> : null}
-    <AvatarTaskDialog open={taskOpen} onOpenChange={setTaskOpen} job={taskJob} starting={starting} error={message} busy={busy} preview={preview} recoveryId={taskJob ? recoveryIds[taskJob.id] ?? "" : ""} onRecoveryId={value => { if (taskJob) setRecoveryIds(current => ({ ...current, [taskJob.id]: value })); }} onShow={path => void act(() => show(path))} onPause={() => { if (taskJob) void act(() => updateJob("pause", taskJob.id)); }} onResume={() => { if (taskJob) void act(() => updateJob("resume", taskJob.id)); }} onStop={() => { if (taskJob) void act(() => updateJob("stop", taskJob.id)); }} onRetry={index => { if (taskJob) void act(async () => { await call("retry-segment", { id: taskJob.id, index }); await refresh(); }); }} onRecover={() => { if (taskJob) void act(async () => { await call("recover", { id: taskJob.id, ...(recoveryIds[taskJob.id]?.trim() ? { upstreamId: recoveryIds[taskJob.id].trim() } : {}) }); await refresh(); }); }} onAssetAction={action => { if (taskJob?.path) void act(() => handleAssetAction(action, taskJob.path)); }} onRegenerate={() => void beginGeneration()} canRegenerate={canSubmit} />
+    <AvatarTaskDialog open={taskOpen} onOpenChange={setTaskOpen} job={taskJob} starting={starting} error={message} busy={busy} preview={preview} recoveryId={taskJob ? recoveryIds[taskJob.id] ?? "" : ""} onRecoveryId={value => { if (taskJob) setRecoveryIds(current => ({ ...current, [taskJob.id]: value })); }} onShow={path => void act(() => show(path))} onPause={() => { if (taskJob) void act(() => updateJob("pause", taskJob.id)); }} onResume={() => { if (taskJob) void act(() => updateJob("resume", taskJob.id)); }} onStop={() => { if (taskJob) void act(() => updateJob("stop", taskJob.id)); }} onRetry={index => { if (taskJob) void act(async () => { await call("retry-segment", { id: taskJob.id, index }); await refresh(); }); }} onRecover={() => { if (taskJob) void act(async () => { await call("recover", { id: taskJob.id, ...(recoveryIds[taskJob.id]?.trim() ? { upstreamId: recoveryIds[taskJob.id].trim() } : {}) }); await refresh(); }); }} onAssetAction={action => { if (taskJob?.path) void act(() => handleAssetAction(action, taskJob)); }} onRegenerate={() => void beginGeneration()} canRegenerate={canSubmit} />
     <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}><AlertDialogContent className="video-settings-typography gap-4 rounded-xl p-5"><AlertDialogTitle className="text-sm">删除「{draft?.name}」？</AlertDialogTitle><AlertDialogDescription className="text-xs leading-5">这会删除人物配置，已生成的视频仍保留在素材库。</AlertDialogDescription><AlertDialogFooter><Button type="button" variant="outline" className="h-[34px] text-xs" onClick={() => setDeleteOpen(false)}>取消</Button><AlertDialogAction type="button" variant="destructive" className="h-[34px] text-xs" onClick={() => { setDeleteOpen(false); void act(remove); }}>删除数字人</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
   </div>;
 }
@@ -345,24 +369,25 @@ function AvatarTaskDialog({ open, onOpenChange, job, starting, error, busy, prev
   const currentIndex = sequence?.segments.findIndex(segment => segment.status !== "succeeded") ?? -1;
   const preparationFailed = sequence?.segments.some(segment => ["failed", "save_failed"].includes(segment.status) && !segment.upstreamId && !segment.path);
   const isActive = job && ["running", "submitting", "saving"].includes(job.status);
+  const showProgress = Boolean(sequence || isActive);
   return <Dialog open={open} onOpenChange={onOpenChange}>
     <DialogContent data-testid="avatar-task-dialog" className="video-settings-typography max-h-[calc(100dvh-32px)] max-w-lg gap-4 overflow-y-auto rounded-xl p-5 text-xs">
       <DialogHeader className="gap-1 pr-8"><DialogTitle className="text-ui-title-sm font-semibold">数字人片段 · {job ? jobLabel(job) : "准备中"}</DialogTitle><DialogDescription className="text-ui-caption">关闭窗口后任务仍会继续，可从生成记录重新打开。</DialogDescription></DialogHeader>
       {job ? <div className="space-y-4">
-        <div className="space-y-2 rounded-lg bg-muted/50 p-4" role="status">
-          <div className="flex items-center justify-between gap-3"><span className="font-medium">{job.status === "saving" ? "正在拼接与保存" : currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span><span className="tabular-nums">{progress?.percent}%</span></div>
-          <Progress value={progress?.percent ?? 0} aria-label="数字人生成进度" className="[&_[data-slot=progress-track]]:h-2" />
-          <div className="flex flex-wrap justify-between gap-1 text-[11px] text-muted-foreground"><span>{sequence ? `已完成 ${progress?.completed}/${progress?.total} 段 · 视频 ${sequence.duration.toFixed(1)} 秒` : job.status === "succeeded" ? "视频片段已生成" : "正在准备生成"}</span><span>{progress?.eta || (job.status === "saving" ? "正在完成最后处理" : "")}</span></div>
+        <div className="space-y-2 rounded-lg bg-muted/50 p-4" role={showProgress ? "status" : "alert"}>
+          <div className="flex items-center justify-between gap-3"><span className={showProgress ? "font-medium" : "font-medium text-destructive"}>{job.status === "saving" ? "正在拼接与保存" : currentIndex >= 0 && isActive ? `第 ${currentIndex + 1}/${progress?.total} 段正在生成` : jobLabel(job)}</span>{showProgress ? <span className="tabular-nums">{progress?.percent}%</span> : null}</div>
+          {showProgress ? <Progress value={progress?.percent ?? 0} aria-label="数字人生成进度" className="[&_[data-slot=progress-track]]:h-2" /> : null}
+          <div className={`flex flex-wrap justify-between gap-1 text-[11px] ${showProgress ? "text-muted-foreground" : "text-destructive"}`}><span>{sequence ? `已完成 ${progress?.completed}/${progress?.total} 段 · 视频 ${sequence.duration.toFixed(1)} 秒` : avatarJobStatusDetail(job)}</span><span>{progress?.eta || (job.status === "saving" ? "正在完成最后处理" : "")}</span></div>
         </div>
-        {job.message ? <p className="break-words text-[11px] leading-5 text-muted-foreground">{job.message}</p> : null}
-        {job.status === "succeeded" && job.path ? <div className="space-y-3"><p className="font-medium">片段已保存到素材库</p>{preview ? <video controls src={preview} className="max-h-60 w-full rounded-lg bg-black" /> : <Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onShow(job.path)}><Play className="size-4" />预览数字人</Button>}<div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-[34px] rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onAssetAction("view")}>在素材中查看</Button><Button type="button" className="h-[34px] rounded-lg text-xs text-white" disabled={busy} onClick={() => onAssetAction("insert")}>插入当前视频</Button></div></div> : null}
+        {job.message && sequence ? <p className="break-words text-[11px] leading-5 text-muted-foreground">{job.message}</p> : null}
+        {job.status === "succeeded" && job.path ? <div className="space-y-3"><p className="font-medium">成片已保存到素材库</p>{preview ? <video controls src={preview} className="max-h-60 w-full rounded-lg bg-black" /> : <Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onShow(job.path)}><Play className="size-4" />预览数字人</Button>}<div className="grid grid-cols-2 gap-2"><Button type="button" variant="outline" className="h-[34px] rounded-lg text-xs shadow-none" disabled={busy} onClick={() => onAssetAction("view")}>在素材中查看</Button><Button type="button" className="h-[34px] rounded-lg text-xs text-white" disabled={busy} onClick={() => onAssetAction("insert")}>插入当前视频</Button></div></div> : null}
         {job.status === "running" && sequence && !job.pauseRequested ? <Button type="button" variant="outline" className="h-[34px] w-full rounded-lg text-xs shadow-none" disabled={busy} onClick={onPause}><Pause className="size-4" />当前片段完成后暂停</Button> : null}
         {job.status === "paused" ? <Button type="button" className="h-[34px] w-full rounded-lg text-xs text-white" disabled={busy} onClick={onResume}><Play className="size-4" />继续生成</Button> : null}
         {job.pauseRequested && job.status === "running" ? <p className="text-[11px] text-muted-foreground">暂停请求已收到，当前片段保存后会暂停。</p> : null}
         {["running", "submitting", "paused", "uncertain"].includes(job.status) ? <Button type="button" variant="ghost" className="h-[30px] text-xs text-destructive" disabled={busy} onClick={() => setStopOpen(true)}>停止生成</Button> : null}
         {["uncertain", "save_failed"].includes(job.status) || job.status === "failed" && preparationFailed ? <div className="space-y-2">{job.status === "uncertain" && !job.upstreamId && !sequence?.segments.some(segment => segment.status !== "succeeded" && segment.upstreamId) ? <Input className="text-xs" aria-label="已有服务商任务 ID" placeholder="填写已有 RunningHub 任务 ID" value={recoveryId} onChange={event => onRecoveryId(event.target.value)} /> : null}<Button type="button" variant="outline" className="h-[34px] text-xs" disabled={busy} onClick={onRecover}>{preparationFailed ? "恢复准备并继续生成" : "恢复查询或拼接"}</Button></div> : null}
         {["succeeded", "failed", "stopped"].includes(job.status) && canRegenerate ? <Button type="button" variant="ghost" className="h-[30px] text-xs" disabled={busy} onClick={onRegenerate}>按当前设置重新生成（计费）</Button> : null}
-        {sequence ? <Collapsible className="rounded-lg border border-border/70"><CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger><CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-2 overflow-y-auto border-t border-border/70 p-3 text-[11px]">{sequence.segments.map((segment, index) => <div key={index} className="flex items-center justify-between gap-2"><span>第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒 · {segment.status === "succeeded" ? "已保存" : segment.status === "pending" ? "待生成" : segment.status === "running" ? "生成中" : "需处理"}</span>{segment.status === "failed" && segment.path ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" onClick={() => onShow(segment.path)}>预览</Button> : null}{["failed", "save_failed"].includes(job.status) && (segment.status === "failed" && Boolean(segment.upstreamId || segment.path) || job.status === "save_failed" && sequence.segments.every(item => item.status === "succeeded")) ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" disabled={busy} onClick={() => onRetry(index)}>重试</Button> : null}</div>)}</CollapsibleContent></Collapsible> : null}
+        {sequence ? <Collapsible className="rounded-lg border border-border/70"><CollapsibleTrigger className="flex w-full items-center justify-between p-3 text-left text-[11px] font-medium">片段详情 <ChevronDown className="size-4" /></CollapsibleTrigger><CollapsibleContent data-testid="avatar-job-details" className="max-h-48 space-y-2 overflow-y-auto border-t border-border/70 p-3 text-[11px]">{sequence.segments.map((segment, index) => <div key={index} className="flex items-center justify-between gap-2"><span>第 {index + 1} 段 · {segment.start.toFixed(1)}–{segment.end.toFixed(1)} 秒 · {segment.status === "succeeded" ? "已生成" : segment.status === "pending" ? "待生成" : segment.status === "running" ? "生成中" : "需处理"}</span>{segment.status === "failed" && segment.path ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" onClick={() => onShow(segment.path)}>预览</Button> : null}{["failed", "save_failed"].includes(job.status) && (segment.status === "failed" && Boolean(segment.upstreamId || segment.path) || job.status === "save_failed" && sequence.segments.every(item => item.status === "succeeded")) ? <Button type="button" variant="link" className="h-auto p-0 text-[11px]" disabled={busy} onClick={() => onRetry(index)}>重试</Button> : null}</div>)}</CollapsibleContent></Collapsible> : null}
         {preview && job.status !== "succeeded" ? <video controls src={preview} className="max-h-48 w-full rounded-lg bg-black" /> : null}
       </div> : <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground"><Loader2 className="size-4 animate-spin" />{starting ? "正在准备数字人任务…" : error || "正在读取任务…"}</div>}
       {error && job ? <p role="alert" className="text-[11px] text-destructive">{error}</p> : null}

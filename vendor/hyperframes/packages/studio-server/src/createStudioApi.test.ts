@@ -22,6 +22,7 @@ describe("createStudioApi project cache invalidation", () => {
     const before = "<!doctype html><html><body>Before</body></html>";
     const after = "<!doctype html><html><body>After</body></html>";
     writeFileSync(entryPath, before);
+    writeFileSync(join(projectDir, "avatar.webm"), "generated media");
 
     let signature = "old";
     let invalidations = 0;
@@ -48,6 +49,14 @@ describe("createStudioApi project cache invalidation", () => {
 
     const initialPreview = await api.request("/projects/proof/preview");
     expect(initialPreview.headers.get("etag")).toBe('"preview:old"');
+    const media = await api.request("/projects/proof/preview/avatar.webm");
+    expect(media.headers.get("cache-control")).toBe("private, no-cache");
+    const mediaEtag = media.headers.get("etag");
+    expect(mediaEtag).toBeTruthy();
+    const cachedMedia = await api.request("/projects/proof/preview/avatar.webm", {
+      headers: { "If-None-Match": mediaEtag! },
+    });
+    expect(cachedMedia.status).toBe(304);
 
     const writeResponse = await api.request("/projects/proof/files/index.html", {
       method: "PUT",

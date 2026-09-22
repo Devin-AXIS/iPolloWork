@@ -10,7 +10,7 @@ description: 通过 iPolloWork 已有日程和会话执行抖音运营任务，�
 1. 先读 `douyin-ops-worker`。调用 `list-accounts` 选择用户指定账号，记录稳定 `accountId`，不根据当前界面选中的账号临时换号。
 2. 保留日程提示中的原始 `runKey`。保存本次草稿时用 `runKey + ":post-1"`；同次任务重试不改变该值，新一轮运行使用新的日程 runKey。
 3. `publish-draft` 的 `operationKey` 使用原始 `runKey + ":publish-1"`；API 回复使用 `runKey + ":reply:" + commentId`。网页没有 commentId 时，把本轮已锁定目标的固定序号写入 `runKey + ":reply-1"`，并保存实际作品链接、原作者与原评论；重试沿用同一个 jobId，不能重新搜索后把序号分配给别的目标。草稿生成和提交分别保持固定标识。
-4. 日程中明确要求发布才执行发布；只要求选题、草稿或数据查询时不提交内容。没有 MP4 素材时先使用已有视频工作台生成，再导入。
+4. 日程中明确要求发布才执行发布；只要求选题、草稿或数据查询时不提交内容。没有 MP4 素材时，按 worker 的自动导出流程完成视频工作台生成、校验和后台渲染，再导入并继续发布；不得停在 HTML 完成后要求用户手动导出。
 5. `get-job` 读取已知操作。成功则复用回执，`running` 等待结果，`uncertain` 报告需要核对并停止后续写操作。不得通过换操作标识或重建草稿绕过。
 6. 有可用 API 时优先执行；返回 browserTask 时按 worker 技能完成 claim-browser-job → 宿主浏览器操作 → finish-browser-job。普通账号不要求开放平台配置。登录/验证码需用户处理，任务保留或按实际提交阶段回写失败/待核对；不规避限流、封禁或不确定提交。搜索后评论使用 comment-video，数量和方向必须在用户任务范围内。不要臆造账号、令牌、作品 ID 或设备 ID。
 

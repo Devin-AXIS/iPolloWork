@@ -84,7 +84,6 @@ describe("ipollowork runtime config file", () => {
       : [];
     expect(whitelist).toEqual([
       "big-pickle",
-      "hy3-free",
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",

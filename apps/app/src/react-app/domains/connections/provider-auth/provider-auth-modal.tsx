@@ -684,7 +684,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
       return method.description ?? "Use the provider and credential managed by your organization.";
     }
     if (isiPolloWorkBuiltInProvider(entry.id)) {
-      return "Connect iPolloWork built-in models with an API key to unlock paid models alongside the free tier.";
+      return "Connect iPolloWork built-in models with an API key to use the free and paid catalog.";
     }
     if (isTokenStarProvider(entry.id)) {
       return "Connect TokenStar, check available models, and choose which models to show in iPolloWork.";
@@ -924,7 +924,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                   {isiPolloWorkBuiltInProvider(selectedEntry.id) ? (
                     <div className="rounded-lg border border-indigo-5/30 bg-indigo-3/15 px-3 py-2.5 text-xs text-indigo-12 space-y-1.5">
                       <div>
-                        iPolloWork built-in models give you access to strong coding models. Free models keep working without a key.
+                        An API key is currently required for free and paid built-in models. Free models remain free after connection.
                       </div>
                       <button
                         type="button"

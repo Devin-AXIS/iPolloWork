@@ -6,7 +6,7 @@ import { avatarBackgroundForPrompt, avatarProfileSchema, avatarProfilesResultSch
 import { prepareAvatarSegments, sliceAvatarAudio, joinAvatarSegments, inspectAvatarStability } from "./video-avatar-segments.js";
 import { avatarCutoutCli, avatarCutoutTimeout, removeAvatarBackground } from "./video-local-edit.js";
 import { classifyProviderFailure, serviceErrorMessage } from "@ipollowork/types/provider-errors";
-import { ApiError, providerApiError } from "../errors.js";
+import { ApiError, isApiError, providerApiError } from "../errors.js";
 import { createAuthorizationAccess, type AuthorizationAccess } from "../authorization-center.js";
 import { resolveWithinRoot } from "../paths.js";
 import { readLimitedRequestBody } from "../limited-request-body.js";
@@ -308,58 +308,75 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId: AVATAR_WORKFLOW }, signal));
   const { prompt } = z.object({ prompt: z.string() }).parse(data);
   const graph = z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
-  const node = (id: string, type: string) => {
-    if (graph[id]?.class_type !== type) throw new ApiError(400, "video_workflow_changed", "数字人工作流节点已变化，尚未提交生成。");
-    return graph[id].inputs;
+  const nodeByType = (type: string) => {
+    const matches = Object.entries(graph).filter(([, candidate]) => candidate.class_type === type);
+    if (matches.length !== 1) throw new ApiError(400, "video_workflow_changed", "数字人工作流节点已变化，尚未提交生成。");
+    return { id: matches[0]![0], inputs: matches[0]![1].inputs };
   };
-  const reference = node("136", "MiniMaxH3ReferenceToVideo");
-  const drive = node("172", "VRGDG_MiniMaxH3AudioDrive");
-  const output = node("142", "VHS_VideoCombine");
-  const audioInput = node("171", "LoadAudio");
-  const crop = node("199", "TrimAudioDuration");
-  const scheduler = node("124", "BasicScheduler");
-  node("137", "LoadImage");
+  const linkedNode = (value: unknown, type: string) => {
+    if (!Array.isArray(value) || typeof value[0] !== "string" || typeof value[1] !== "number" || graph[value[0]]?.class_type !== type) {
+      throw new ApiError(400, "video_workflow_changed", "数字人音频或视频连接已变化，尚未提交生成。");
+    }
+    return { id: value[0], inputs: graph[value[0]].inputs };
+  };
+  const referenceNode = nodeByType("MiniMaxH3ReferenceToVideo");
+  const driveNode = nodeByType("VRGDG_MiniMaxH3AudioDrive");
+  const outputNode = nodeByType("VHS_VideoCombine");
+  const cropNode = nodeByType("TrimAudioDuration");
+  const schedulerNode = nodeByType("BasicScheduler");
+  const samplerNode = nodeByType("SamplerCustomAdvanced");
+  const guiderNode = nodeByType("BasicGuider");
+  const unetNode = nodeByType("UNETLoader");
+  const loraNode = nodeByType("LoraLoaderModelOnly");
+  const noiseNode = nodeByType("RandomNoise");
+  const reference = referenceNode.inputs;
+  const drive = driveNode.inputs;
+  const output = outputNode.inputs;
+  const crop = cropNode.inputs;
+  const scheduler = schedulerNode.inputs;
   const imageKey = Object.keys(reference).find(name => name === "ref_image_0" || name === "ref_images.ref_image_0");
-  const audioKey = Object.keys(reference).find(name => name === "ref_audio_0" || name === "ref_audios.ref_audio_0");
-  if (!imageKey || !audioKey || JSON.stringify(node("125", "SamplerCustomAdvanced").latent_image) !== '["172",0]'
-    || JSON.stringify(node("126", "BasicGuider").conditioning) !== '["136",0]'
-    || JSON.stringify(output.images) !== '["122",0]' || JSON.stringify(drive.av_latent) !== '["136",1]'
-    || node("174", "UNETLoader").unet_name !== "minimax_h3_ref2va_int8_convrot.safetensors"
-    || node("196", "LoraLoaderModelOnly").lora_name !== "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors") {
+  const imageNode = linkedNode(imageKey ? reference[imageKey] : undefined, "LoadImage");
+  const audioInputNode = linkedNode(crop.audio, "LoadAudio");
+  linkedNode(output.images, "VAEDecode");
+  if (JSON.stringify(samplerNode.inputs.latent_image) !== JSON.stringify([driveNode.id, 0])
+    || JSON.stringify(guiderNode.inputs.conditioning) !== JSON.stringify([referenceNode.id, 0])
+    || JSON.stringify(drive.av_latent) !== JSON.stringify([referenceNode.id, 1])
+    || unetNode.inputs.unet_name !== "minimax_h3_ref2va_int8_convrot.safetensors"
+    || loraNode.inputs.lora_name !== "minimax_h3_fl2v_lightx2v_turbo_4step_v0.1_comfy.safetensors") {
     throw new ApiError(400, "video_workflow_changed", "数字人音频或视频连接已变化，尚未提交生成。");
   }
-  graph["137"] = { class_type: image.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image } };
-  audioInput.audio = audio;
-  crop.audio = ["171", 0]; crop.start_index = 0; crop.duration = Number(args.duration);
-  drive.source_audio = ["199", 0];
+  graph[imageNode.id] = { class_type: image.startsWith("https://") ? "LoadImageFromUrl" : "LoadImage", inputs: { image } };
+  audioInputNode.inputs.audio = audio;
+  crop.audio = [audioInputNode.id, 0]; crop.start_index = 0; crop.duration = Number(args.duration);
+  drive.source_audio = [cropNode.id, 0];
   const standard = args.resolution === AVATAR_STANDARD_VIDEO.resolution;
   const shortEdge = standard ? AVATAR_STANDARD_VIDEO.shortEdge : 576, longEdge = standard ? AVATAR_STANDARD_VIDEO.longEdge : 1024;
   const width = args.ratio === "9:16" ? shortEdge : longEdge, height = args.ratio === "9:16" ? longEdge : shortEdge;
   if (graph["avatar_frame"]) fail("数字人工作流节点编号已变化，尚未提交。");
-  graph["avatar_frame"] = { class_type: "ImageScale", inputs: { image: ["137", 0], width, height, upscale_method: "lanczos", crop: "center" } };
+  graph["avatar_frame"] = { class_type: "ImageScale", inputs: { image: [imageNode.id, 0], width, height, upscale_method: "lanczos", crop: "center" } };
   // H3's FL2VA checkpoint binds actual endpoint frames; REF2VA only provides appearance references.
   // Keep the existing audio-drive latent, VAE, lightx2v LoRA and output workflow.
-  node("174", "UNETLoader").unet_name = "minimax_h3_fl2va_int8_convrot.safetensors";
+  unetNode.inputs.unet_name = "minimax_h3_fl2va_int8_convrot.safetensors";
   const target: Record<string, unknown> = { clip: reference.clip, vae: reference.vae, width, height,
     first_frame: ["avatar_frame", 0], last_frame: ["avatar_frame", 0],
     prompt: `One continuous fixed-camera shot of a calm, candid everyday conversation. Preserve the first frame's identity, visual style, facial texture, natural asymmetry, clothing, body size, framing and background. The person has a warm, attentive resting expression, relaxed cheeks and eyebrows, and relaxed lips between spoken phrases. Follow the supplied speech with comfortable, proportionate lip and jaw articulation. A gentle smile appears briefly when the voice calls for it, then settles back into a relaxed expression. Allow brief natural blinks at irregular moments, a soft gaze toward the camera, subtle breathing and occasional tiny, nonrepeating head adjustments. The expression feels spontaneous and understated, with the person remaining in the same position. No camera movement, zoom, cuts, extra people, props or scene changes. ${args.prompt}` };
-  graph["136"] = { class_type: "MiniMaxH3ImageToVideo", inputs: target };
+  graph[referenceNode.id] = { class_type: "MiniMaxH3ImageToVideo", inputs: target };
   const frames = Math.max(120, Math.ceil(Number(args.duration) * 24));
   target.length = frames + (5 - frames % 17 + 17) % 17;
   // Endpoint frames alone can still produce a zoom/cut in the middle of a long shot.
   // H3 image guides keep the original composition anchored every three seconds.
-  let conditioning: [string, number] = ["136", 0];
+  let conditioning: [string, number] = [referenceNode.id, 0];
   for (let frame = 72; frame < frames - 24; frame += 72) {
     const id = `avatar_guide_${frame}`;
     if (graph[id]) fail("数字人工作流节点编号已变化，尚未提交。");
-    graph[id] = { class_type: "MiniMaxH3AddGuide", inputs: { positive: conditioning, latent: ["136", 1],
+    graph[id] = { class_type: "MiniMaxH3AddGuide", inputs: { positive: conditioning, latent: [referenceNode.id, 1],
       image: ["avatar_frame", 0], vae: reference.vae, frame_idx: frame } };
     conditioning = [id, 0];
   }
-  node("126", "BasicGuider").conditioning = conditioning;
+  guiderNode.inputs.conditioning = conditioning;
   scheduler.steps = 6;
-  node("129", "RandomNoise").noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
-  output.audio = ["199", 0]; output.frame_rate = 24; output.trim_to_audio = true;
+  noiseNode.inputs.noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
+  output.audio = [cropNode.id, 0]; output.frame_rate = 24; output.trim_to_audio = true;
   output.format = "video/h264-mp4"; output.save_output = true;
   const reachable = new Set<string>();
   const visit = (id: string) => {
@@ -368,12 +385,12 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
     reachable.add(id);
     for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
   };
-  visit("142");
-  if (!reachable.has("136") || !reachable.has("171")) fail("数字人输出缺少图片或音频生成链路。");
+  visit(outputNode.id);
+  if (!reachable.has(referenceNode.id) || !reachable.has(audioInputNode.id)) fail("数字人输出缺少图片或音频生成链路。");
   return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: AVATAR_WORKFLOW,
     workflow: JSON.stringify(Object.fromEntries(Object.entries(graph).filter(([id]) => reachable.has(id)))),
     // No instanceType means RunningHub's standard 24GB instance, never Plus.
-    nodeInfoList: [{ nodeId: "136", fieldName: "prompt", fieldValue: target.prompt }], addMetadata: false } };
+    nodeInfoList: [{ nodeId: referenceNode.id, fieldName: "prompt", fieldValue: target.prompt }], addMetadata: false } };
 }
 
 // Fetch the published graph before billing, verify the bindings, and replace only
@@ -536,11 +553,14 @@ async function pollH3Workflow(job: VideoJob, key: string, signal: AbortSignal) {
   if (!["success", "failed"].includes(status)) return { status };
   const result = await jsonRequest(`${RH}/task/openapi/outputs`, key, request, signal);
   if (status === "failed") return { status, errorCode: result.code, errorMessage: result.msg || "H3 工作流生成失败，请在 RunningHub 查看任务详情。" };
-  const outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result));
+  let outputs: Array<{ fileUrl: string; fileType: string; nodeId: string }>;
+  try { outputs = z.array(z.object({ fileUrl: z.string(), fileType: z.string(), nodeId: z.string() })).parse(workflowData(result)); }
+  catch { throw new ApiError(502, "video_output_unavailable", "RunningHub 已完成生成，但暂时无法读取 MP4 输出；可恢复查询，不会重新生成。"); }
   // Persisted jobs from the previous native workflow still finish on node 7.
   const outputNode = [AVATAR_WORKFLOW, "2099699508878860290", "2084814218431385601"].includes(job.workflowId ?? "") ? "142" : [H3_WORKFLOW, "2084511826766811137"].includes(job.workflowId ?? "") ? "7" : "92";
-  const video = outputs.find(item => item.nodeId === outputNode && item.fileType.toLowerCase() === "mp4");
-  if (!video) throw new Error("H3 工作流没有返回视频保存节点的 MP4 文件，请在 RunningHub 查看任务详情。");
+  const videos = outputs.filter(item => item.fileType.toLowerCase() === "mp4");
+  const video = videos.find(item => item.nodeId === outputNode) ?? (videos.length === 1 ? videos[0] : undefined);
+  if (!video) throw new ApiError(502, "video_output_unavailable", "RunningHub 已完成生成，但没有返回唯一的 MP4 输出；请检查工作流输出节点后恢复查询，不会重新生成。");
   return { status, results: [{ url: video.fileUrl }] };
 }
 
@@ -585,8 +605,9 @@ export async function pollVideoJobs(config: ServerConfig, authorization: Authori
     } catch (error) {
       if (jobSignal.aborted) return;
       const expired = Date.now() - job.createdAt > 24 * 60 * 60 * 1000;
-      await updateVideoJob(config, job, { status: saving ? "save_failed" : expired ? "uncertain" : "running",
-        message: safeError(error, key), nextPoll: Date.now() + 60_000 });
+      const completedOutputFailure = isApiError(error) && error.code === "video_output_unavailable";
+      await updateVideoJob(config, job, { status: saving || completedOutputFailure ? "save_failed" : expired ? "uncertain" : "running",
+        message: completedOutputFailure ? error.message : safeError(error, key), nextPoll: Date.now() + 60_000 });
     } finally {
       if (activeVideoJobControllers.get(job.id) === controller) activeVideoJobControllers.delete(job.id);
     }
@@ -610,7 +631,8 @@ async function advanceAvatarSequence(config: ServerConfig, workspace: WorkspaceI
   if (index < 0) {
     await persist({ status: "saving", nextPoll: Date.now() + avatarCutoutTimeout(sequence.duration) + 5 * 60_000, message: "全部片段已生成，正在检查接缝并拼接…" });
     try {
-      const output = `video/${job.sessionId}/renders/avatar-long-${job.id}.mp4`;
+      const outputKind = job.avatarBackground === "transparent" ? "renders" : "assets";
+      const output = `video/${job.sessionId}/${outputKind}/avatar-long-${job.id}.mp4`;
       const joined = await joinAvatarSegments(workspace, sequence.segments, sequence.audioPath, sequence.duration, output, signal);
       sequence.seams = joined.seams;
       let path = joined.path;
@@ -824,6 +846,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     const source = draft.model === "minimax-h3-avatar" && draft.avatarSource ? await avatarContext(workspace, sessionId) : null;
     let narrationClips = source?.clips;
     let avatarAudioFingerprint: string | undefined;
+    let avatarAudioStart: number | undefined;
     if (source && draft.avatarSource === "video-audio") {
       if (source.audioIssue || !source.clips.length) fail(source.audioIssue || "当前视频没有配音素材。");
       if (profile) {
@@ -833,6 +856,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
         const selected = source.audioClips.find(clip => clip.id === clipId);
         if (!selected) fail("关联的配音已更改，请重新选择配音片段。");
         avatarAudioFingerprint = selected.fingerprint;
+        avatarAudioStart = selected.start;
         draft.avatarClipId = clipId;
         narrationClips = clipId === "all" ? source.clips : source.clips.filter(clip => clip.id === clipId).map(clip => ({ ...clip, start: 0 }));
         draft.duration = String(selected.duration);
@@ -851,7 +875,7 @@ export async function callVideoGenerationAction(config: ServerConfig, authorizat
     const fingerprint = createHash("sha256").update(JSON.stringify(args)).digest("hex");
     const created = await createVideoJob(config, { id: args.requestId, workspaceId: workspace.id, sessionId, fingerprint,
       ...(avatarBackground ? { avatarBackground } : {}),
-      ...(profile ? { avatarProfileId: profile.id, avatarProfileUpdatedAt: profile.updatedAt, avatarAudioFingerprint } : {}),
+      ...(profile ? { avatarProfileId: profile.id, avatarProfileUpdatedAt: profile.updatedAt, avatarAudioFingerprint, avatarAudioStart } : {}),
       ...(args.model === "minimax-h3-avatar" ? { workflowId: args.avatarSource === "video-content" ? H3_WORKFLOW : AVATAR_WORKFLOW } : args.model === "minimax-h3" ? { workflowId: H3_WORKFLOW } : {}),
       model: args.model, operation: args.operation, prompt: args.prompt, status: "submitting", upstreamId: "", path: "", message: "准备并提交素材…",
       createdAt: now, updatedAt: now, nextPoll: now + 15 * 60_000 });

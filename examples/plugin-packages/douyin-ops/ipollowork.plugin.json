@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.2.9",
+    "version": "0.2.12",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -22,7 +22,7 @@
     "updateId": "local/douyin-ops"
   },
   "composer": {
-    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker。普通用户用 connect-browser 登录并验证真实抖音号，无需开发者配置。有权限优先 API，返回 browserTask 必须用宿主浏览器完成并回写；pending 不是成功。搜索后评论用 comment-video。操作标识保持稳定。"
+    "prompt": "打开运营台使用 open-workbench。先阅读 douyin-ops-worker。制作并发布视频必须继续到后台自动导出 MP4、导入和发布，不能要求用户手动导出。普通用户用 connect-browser 登录并验证真实抖音号，无需开发者配置。有权限优先 API，返回 browserTask 必须用宿主浏览器完成并回写；pending 不是成功。搜索后评论用 comment-video。操作标识保持稳定。"
   },
   "resources": [
     {
@@ -117,13 +117,14 @@
         {
           "id": "save-draft",
           "title": "保存抖音视频草稿",
-          "description": "保存文案和素材，不发布。日程runKey使用原始运行标识加稳定操作后缀；重试复用。",
+          "description": "保存文案和素材，不发布。创建新草稿必须省略 id，由服务生成；runKey 是创建去重标识（即时发布也可用），重试复用。只有更新已有草稿才传返回的真实 id，不得自造 id。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
             "properties": {
               "id": {
                 "type": "string",
+                "description": "仅修改已有草稿时传 studio-state/save-draft 返回的真实 draft.id。创建时省略，不可编造。",
                 "minLength": 1,
                 "maxLength": 100
               },
@@ -146,6 +147,7 @@
               },
               "runKey": {
                 "type": "string",
+                "description": "本次草稿创建的稳定去重标识，即时发布与日程都适用；重试保持不变。不是草稿 id。",
                 "minLength": 1,
                 "maxLength": 700
               }

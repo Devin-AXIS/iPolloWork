@@ -21,6 +21,8 @@ import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
   refreshRuntimeMediaCache,
+  observeAvatarCutoutLayers,
+  syncAvatarCutoutLayers,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
 } from "./media";
@@ -245,6 +247,7 @@ export function initSandboxRuntimeModular(): void {
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
+  registerRuntimeCleanup(observeAvatarCutoutLayers());
   const postRuntimeDiagnosticOnce = (
     code: string,
     details: Record<string, RuntimeJson>,
@@ -1392,6 +1395,7 @@ export function initSandboxRuntimeModular(): void {
     childrenBound = false;
     bindRootTimelineIfAvailable();
     syncTimedElementVisibility(state.currentTime);
+    syncAvatarCutoutLayers();
   };
 
   const emitRootStageLayoutDiagnostics = () => {
@@ -1845,6 +1849,7 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const syncMediaForCurrentState = () => {
+    syncAvatarCutoutLayers();
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
       const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
@@ -2355,6 +2360,7 @@ export function initSandboxRuntimeModular(): void {
     onDeterministicPause: () => runAdapters("pause"),
     onDeterministicPlay: () => runAdapters("play"),
     onRenderFrameSeek: () => {
+      syncAvatarCutoutLayers();
       colorGrading.redraw();
     },
     onShowNativeVideos: () => {},

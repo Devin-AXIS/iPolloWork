@@ -1,10 +1,120 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, mkdir, readFile, realpath, utimes, writeFile } from "node:fs/promises";
+import { access, mkdtemp, mkdir, readFile, realpath, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
 import { createWorkspaceStore } from "./workspace-store.mjs";
+
+test("development browser uploads read the embedded server registry without a config override", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-upload-dev-"));
+  const keys = ["IPOLLOWORK_DEV_MODE", "IPOLLOWORK_SERVER_CONFIG", "IPOLLOWORK_RUNTIME_DB", "APPDATA", "XDG_CONFIG_HOME"];
+  const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+  try {
+    process.env.IPOLLOWORK_DEV_MODE = "1";
+    delete process.env.IPOLLOWORK_SERVER_CONFIG;
+    delete process.env.IPOLLOWORK_RUNTIME_DB;
+    process.env.APPDATA = root;
+    process.env.XDG_CONFIG_HOME = root;
+    const workspacePath = path.join(root, "video-project");
+    await mkdir(workspacePath, { recursive: true });
+    await mkdir(path.join(root, "ipollowork"));
+    await writeFile(path.join(root, "ipollowork", "server.json"), JSON.stringify({
+      workspaces: [{ id: "server-video", path: workspacePath, workspaceType: "local" }],
+    }));
+    const store = createWorkspaceStore({
+      app: { getPath: () => path.join(root, "desktop") },
+      defaultDenBaseUrl: "https://example.test",
+      defaultRequireSignin: false,
+      forceRequireSignin: false,
+    });
+    const workspaces = await store.listLocalBrowserWorkspaces();
+    assert.equal(workspaces.find(entry => entry.id === "server-video")?.path, await realpath(workspacePath));
+    assert.equal(workspaces.find(entry => entry.id === "server-video")?.runtimeStorageRoot, path.join(root, "ipollowork"));
+  } finally {
+    for (const key of keys) restoreEnv(key, previous[key]);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("browser upload workspaces use the server workspace identity and runtime storage", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-browser-workspaces-"));
+  const userData = path.join(root, "desktop-data");
+  const workspacePath = path.join(root, "workspace");
+  const serverConfigPath = path.join(root, "server", "server.json");
+  const runtimeDbPath = path.join(root, "runtime", "runtime.sqlite");
+  const previousServerConfig = process.env.IPOLLOWORK_SERVER_CONFIG;
+  const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_SERVER_CONFIG = serverConfigPath;
+  process.env.IPOLLOWORK_RUNTIME_DB = runtimeDbPath;
+  await mkdir(workspacePath, { recursive: true });
+  await mkdir(path.dirname(serverConfigPath), { recursive: true });
+  await writeFile(serverConfigPath, JSON.stringify({
+    workspaces: [{ id: "server-workspace", path: workspacePath, workspaceType: "local" }],
+  }), "utf8");
+  try {
+    const store = createWorkspaceStore({
+      app: { isPackaged: false, getPath: () => userData },
+      defaultDenBaseUrl: "https://default.example.com",
+      defaultRequireSignin: false,
+      forceRequireSignin: false,
+    });
+    await store.writeWorkspaceState({
+      selectedId: "desktop-workspace",
+      workspaces: [{ id: "desktop-workspace", path: workspacePath, workspaceType: "local" }],
+    });
+
+    const workspaces = await store.listLocalBrowserWorkspaces();
+    assert.equal(workspaces.length, 1);
+    assert.equal(workspaces[0].id, "server-workspace");
+    assert.equal(workspaces[0].path, await realpath(workspacePath));
+    assert.equal(workspaces[0].runtimeStorageRoot, path.dirname(runtimeDbPath));
+  } finally {
+    restoreEnv("IPOLLOWORK_SERVER_CONFIG", previousServerConfig);
+    restoreEnv("IPOLLOWORK_RUNTIME_DB", previousRuntimeDb);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("browser upload workspaces include distinct desktop and server workspaces", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ipollowork-browser-workspaces-"));
+  const userData = path.join(root, "desktop-data");
+  const desktopWorkspace = path.join(root, "desktop-workspace");
+  const serverWorkspace = path.join(root, "server-workspace");
+  const serverConfigPath = path.join(root, "server", "server.json");
+  const runtimeDbPath = path.join(root, "runtime", "runtime.sqlite");
+  const previousServerConfig = process.env.IPOLLOWORK_SERVER_CONFIG;
+  const previousRuntimeDb = process.env.IPOLLOWORK_RUNTIME_DB;
+  process.env.IPOLLOWORK_SERVER_CONFIG = serverConfigPath;
+  process.env.IPOLLOWORK_RUNTIME_DB = runtimeDbPath;
+  await mkdir(desktopWorkspace, { recursive: true });
+  await mkdir(serverWorkspace, { recursive: true });
+  await mkdir(path.dirname(serverConfigPath), { recursive: true });
+  await writeFile(serverConfigPath, JSON.stringify({
+    workspaces: [{ id: "server-workspace", path: serverWorkspace, workspaceType: "local" }],
+  }), "utf8");
+  try {
+    const store = createWorkspaceStore({
+      app: { isPackaged: false, getPath: () => userData },
+      defaultDenBaseUrl: "https://default.example.com",
+      defaultRequireSignin: false,
+      forceRequireSignin: false,
+    });
+    await store.writeWorkspaceState({
+      selectedId: "desktop-workspace",
+      workspaces: [{ id: "desktop-workspace", path: desktopWorkspace, workspaceType: "local" }],
+    });
+
+    const workspaces = await store.listLocalBrowserWorkspaces();
+    assert.deepEqual(workspaces.map((workspace) => workspace.id), ["desktop-workspace", "server-workspace"]);
+    assert.equal(workspaces[1].path, await realpath(serverWorkspace));
+    assert.equal(workspaces[1].runtimeStorageRoot, path.dirname(runtimeDbPath));
+  } finally {
+    restoreEnv("IPOLLOWORK_SERVER_CONFIG", previousServerConfig);
+    restoreEnv("IPOLLOWORK_RUNTIME_DB", previousRuntimeDb);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 function restoreEnv(name, value) {
   if (value === undefined) delete process.env[name];

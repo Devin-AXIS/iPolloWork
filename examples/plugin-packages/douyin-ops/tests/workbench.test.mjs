@@ -53,6 +53,19 @@ test('native plugin entry launches once without installation, exposes matching a
   assert.equal(new URL(first.url).hostname, '127.0.0.1');
   assert.deepEqual(await bridge.actions['list-accounts'](), { accounts: [] });
   await assert.rejects(bridge.actions['publish-draft']({}, {}), /会话或日程/);
+  const { account } = await bridge.actions['connect-browser']({});
+  const draftInput = { accountId: account.id, title: '验证草稿', text: '仅测试本地保存，不发布', runKey: 'create-once' };
+  await assert.rejects(bridge.actions['save-draft']({ ...draftInput, id: 'invented-session-id' }), error => {
+    assert.equal(error.status, 400);
+    assert.equal(error.code, 'douyin_draft_not_found');
+    assert.match(error.message, /创建新草稿请省略 id/);
+    return true;
+  });
+  assert.equal((await bridge.actions['studio-state']({})).drafts.length, 0);
+  const saved = await bridge.actions['save-draft'](draftInput);
+  const resumed = await bridge.actions['save-draft'](draftInput);
+  assert.equal(resumed.draft.id, saved.draft.id);
+  assert.equal((await bridge.actions['studio-state']({})).drafts.length, 1);
   await bridge.dispose();
   await assert.rejects(bridge.actions['open-workbench'](), /已关闭/);
 });

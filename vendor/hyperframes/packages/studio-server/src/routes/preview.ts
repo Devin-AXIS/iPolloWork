@@ -556,7 +556,9 @@ export function registerPreviewRoutes(api: Hono, adapter: PreviewApiAdapter): vo
     const cacheHeaders: Record<string, string> = isText
       ? { "Cache-Control": "no-store" }
       : {
-          "Cache-Control": "private, max-age=3600, must-revalidate",
+          // Project media can be generated or replaced while Studio is open.
+          // Revalidate so an incomplete range response never remains fresh.
+          "Cache-Control": "private, no-cache",
           ETag: etag,
         };
 

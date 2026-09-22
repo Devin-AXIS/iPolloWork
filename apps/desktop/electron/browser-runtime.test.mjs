@@ -18,7 +18,7 @@ function axNode({ nodeId, role, name, backendDOMNodeId = undefined, childIds = [
   };
 }
 
-function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
+function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null } = {}) {
   const commands = [];
   const inputEvents = [];
   const flattenedNodes = [];
@@ -132,7 +132,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp" } = {}) {
     getTab: (tabId) => tabId === tab.tabId ? tab : null,
     selectTab() {},
     focusWindow() {},
-    listLocalWorkspaces: async () => workspacePath ? [{ id: "workspace-1", path: workspacePath }] : [],
+    listLocalWorkspaces: async () => workspaces ?? (workspacePath ? [{ id: "workspace-1", path: workspacePath }] : []),
     getUserDataPath: () => userDataPath,
     platform: "darwin",
   });
@@ -520,5 +520,55 @@ it("captures annotated ref screenshots and suppresses unchanged image bytes", as
     assert.equal(second.imagePath, first.imagePath);
   } finally {
     await rm(userDataPath, { force: true, recursive: true });
+  }
+});
+
+it("uploads only the named plugin's file from its registered runtime storage", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-plugin-upload-"));
+  const workspacePath = path.join(root, "workspace");
+  const userDataPath = path.join(root, "desktop-data");
+  const runtimeStorageRoot = path.join(root, "server-data");
+  const allowedPath = path.join(runtimeStorageRoot, "plugin-data", "workspace-1", "douyin-ops", "assets", "video.mp4");
+  const otherPluginPath = path.join(runtimeStorageRoot, "plugin-data", "workspace-1", "other-plugin", "assets", "video.mp4");
+  await mkdir(workspacePath, { recursive: true });
+  await mkdir(userDataPath, { recursive: true });
+  await mkdir(path.dirname(allowedPath), { recursive: true });
+  await mkdir(path.dirname(otherPluginPath), { recursive: true });
+  await writeFile(allowedPath, "fixture");
+  await writeFile(otherPluginPath, "fixture");
+  try {
+    const fixture = createFixture({
+      userDataPath,
+      workspaces: [{ id: "workspace-1", path: workspacePath, runtimeStorageRoot }],
+    });
+    fixture.flattenedNodes.push({
+      nodeName: "INPUT",
+      backendNodeId: 14,
+      attributes: ["type", "file", "aria-label", "Choose video"],
+    });
+    let snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    await fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: "@e4", filePaths: [allowedPath], extensionId: "douyin-ops" }],
+    });
+    assert.deepEqual(
+      fixture.commands.find((command) => command.method === "DOM.setFileInputFiles")?.params.files,
+      [await realpath(allowedPath)],
+    );
+
+    snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    await assert.rejects(
+      fixture.runtime.act({
+        tabId: "tab-1",
+        snapshotId: snapshot.snapshotId,
+        workspaceRoot: workspacePath,
+        actions: [{ type: "upload", ref: "@e4", filePaths: [otherPluginPath], extensionId: "douyin-ops" }],
+      }),
+      /active workspace or the named plugin's private data/i,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });

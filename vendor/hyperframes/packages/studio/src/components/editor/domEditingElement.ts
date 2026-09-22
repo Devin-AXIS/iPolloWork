@@ -94,6 +94,8 @@ const DOM_LAYER_IGNORED_TAGS = new Set([
 ]);
 
 function isInspectableLayerElement(el: HTMLElement): boolean {
+  // The generated foreground is controlled through its original avatar clip.
+  if (el.hasAttribute("data-avatar-source")) return false;
   const tagName = el.tagName.toLowerCase();
   if (DOM_LAYER_IGNORED_TAGS.has(tagName)) return false;
 

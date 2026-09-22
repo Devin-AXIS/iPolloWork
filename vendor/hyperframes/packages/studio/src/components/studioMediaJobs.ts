@@ -6,6 +6,46 @@ import type {
 const MEDIA_JOB_RECONNECT_TIMEOUT_MS = 15_000;
 const ABSOLUTE_OR_ROOT_SOURCE_RE = /^(?:[a-z][a-z0-9+.-]*:|\/)/i;
 
+export async function startBackgroundRemoval(
+  projectId: string,
+  inputPath: string,
+  options: {
+    createBackgroundPlate?: boolean;
+    outputPath?: string;
+    quality?: "fast" | "balanced" | "best";
+  } = {},
+  signal?: AbortSignal,
+): Promise<string> {
+  const response = await fetch(
+    `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        inputPath,
+        ...(options.outputPath ? { outputPath: options.outputPath } : {}),
+        createBackgroundPlate: options.createBackgroundPlate === true,
+        quality: options.quality ?? "balanced",
+      }),
+    },
+  );
+  const data: unknown = await response.json();
+  if (
+    response.ok &&
+    data &&
+    typeof data === "object" &&
+    "jobId" in data &&
+    typeof data.jobId === "string"
+  )
+    return data.jobId;
+  throw new Error(
+    data && typeof data === "object" && "error" in data && typeof data.error === "string"
+      ? data.error
+      : `智能抠图启动失败 (${response.status})`,
+  );
+}
+
 function parseSerializedColorGrading(value: string): { lut?: { src?: unknown } } | null {
   try {
     return JSON.parse(value) as { lut?: { src?: unknown } } | null;

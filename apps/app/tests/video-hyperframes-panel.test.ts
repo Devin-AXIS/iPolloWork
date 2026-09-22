@@ -23,6 +23,18 @@ import {
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
+  test("shows avatar preparation failures instead of a waiting placeholder", () => {
+    const source = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-avatar-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain("if (job.message.trim()) return job.message;");
+    expect(source).toContain('role={showProgress ? "status" : "alert"}');
+    expect(source).toContain("{avatarJobStatusDetail(job)}");
+    expect(source).not.toContain('job.status === "succeeded" ? "视频片段已生成" : "正在准备生成"');
+  });
+
   test("preserves image launch context across workspace app resize and theme updates", () => {
     const source = readFileSync(new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url), "utf8");
     expect(source).toContain("hostContextRef.current = { ...hostContextRef.current, ...patch }");
@@ -1083,7 +1095,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain('data-ipw-bgm="true"');
     expect(contract).toContain("animationReferences");
     expect(contract).toContain("unresolved earlier requests");
-    expect(contract).toContain("If valid, stop using tools and answer immediately");
+    expect(contract).toContain("If valid and no export or publication was requested, stop using tools and answer immediately");
     expect(contract).toContain("do not follow it with browser/screenshot/eval calls");
     expect(contract).toContain("manual tag counting, parser scripts, file rereads, or extra shell validation");
     expect(contract).toContain("at most 20 seconds");
@@ -1093,6 +1105,23 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
+  });
+
+  test("continues explicit publication through the session-owned render API without manual export", () => {
+    const sessionId = "ses_auto_publish";
+    const contract = videoTaskSystemContext(sessionId, "C:/workspace");
+    expect(contract).toContain('action=video_render_start');
+    expect(contract).toContain('media.video_render_status');
+    expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
+    expect(contract).toContain('operationKey:"ses_auto_publish:export-1"');
+    expect(contract).toContain('Do not search for render interfaces');
+    expect(contract).toContain("never ask the user to click Export/Render");
+    expect(contract).toContain("Never repeat POST just because a tool wait timed out");
+    expect(contract).toContain("A failed/cancelled render must never be imported or published");
+    expect(contract).toContain("Export-only requests do not authorize publication");
+    expect(contract).toContain("import-media -> save-draft -> publish-draft");
+    expect(contract).toContain("never re-submit an uncertain publication");
+    expect(contract).not.toContain("If valid, stop using tools and answer immediately");
   });
 
   test("surfaces a silent provider stall without automatically replaying tools", () => {

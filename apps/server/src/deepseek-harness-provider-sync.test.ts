@@ -40,7 +40,6 @@ import {
 
 const OPENCODE_ZEN_PUBLIC_MODELS = [
   { id: "big-pickle", name: "Big Pickle", contextWindow: 200_000, maxTokens: 32_000 },
-  { id: "hy3-free", name: "Hy3 Free", contextWindow: 190_000, maxTokens: 64_000 },
   { id: "mimo-v2.5-free", name: "MiMo-V2.5 Free", contextWindow: 200_000, maxTokens: 32_000 },
   { id: "nemotron-3-ultra-free", name: "Nemotron 3 Ultra Free", contextWindow: 1_000_000, maxTokens: 128_000 },
   { id: "nemotron-3.5-lightning-free", name: "Nemotron 3.5 Lightning Free", contextWindow: 262_144, maxTokens: 262_144 },
@@ -385,12 +384,13 @@ describe("DeepSeek Harness provider credential sync", () => {
     expect(openCodeZenPublicModels()).toEqual(OPENCODE_ZEN_PUBLIC_MODELS);
     expect([
       "big-pickle",
-      "hy3-free",
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",
     ].every(isOpenCodeZenPublicModel)).toBe(true);
     expect(isOpenCodeZenPublicModel("x-preview-f-free")).toBe(false);
+    expect(isOpenCodeZenPublicModel("hy3-free")).toBe(false);
+    expect(openCodeZenPublicModelName("hy3-free")).toBe("Hy3 Free");
     expect([
       "deepseek-v4-flash-free",
       "laguna-s-2.1-free",

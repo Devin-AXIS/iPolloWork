@@ -44,6 +44,7 @@ Activating publish, send, submit, pay, buy, confirm, delete, or similar conseque
 export const IPOLLOWORK_SCHEDULE_OFFER_PROMPT = "是否需要生成计划并加入 iPolloWork 日程？";
 
 export const ENGINE_VIDEO_GENERATION_INSTRUCTION = `## Video deliverable routing
+- For MP4 export or social publication, call ipollowork_extension_call with extensionId=media, action=video_render_start, args={sourcePath:"video/<exact-project-id>/index.html",operationKey:"<stable-export-key>"}. Then video_render_status with the same args until complete/failed. The host starts bundled Studio; no CLI install, guessed HyperFrames version, shell endpoint discovery, delegated exploration agent, or manual Export step is needed. These actions are visible in media action discovery even outside a video-typed chat. On complete use outputPath for the requested publisher. Preparing/rendering is not task completion; report progress and keep polling at the returned interval. No schedule/calendar is required for an immediate publication. On failure report the exact returned error, not an invented missing capability.
 - A general request to generate/make a video (生成视频、做视频、宣传片、短视频) means an editable HyperFrames HTML composition supported by Video Studio. Follow the prepared video task/template context and deliver its HTML entry. Do not ask the user to choose between HTML and a video model for this default request.
 - MP4 export, duration, aspect ratio, realism, an attached image, or an already-open media workbench alone do not switch the deliverable to model-generated footage. Export/render requests on an existing composition keep its editable source.
 - Use video-generation or another video plugin only when the user explicitly requests that plugin/model, text-to-video/image-to-video generation, or standalone video assets/raw footage/B-roll (纯视频素材). Plugin availability and a model name mentioned as the subject of a video are not such a request. Respect negation and the latest explicit correction.
@@ -210,7 +211,7 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.schedulePreview,
-    description: `Prepare a read-only preview of planned tasks for the current iPolloWork Schedule. Whenever a completed answer presents a plan that could become scheduled tasks, end that answer by proactively asking the user exactly “${IPOLLOWORK_SCHEDULE_OFFER_PROMPT}”, even when the plan does not yet include concrete dates or times. Do not ask for scheduling details before making this offer. When the user directly asks to create, add, import, or arrange a plan or tasks in the iPolloWork Schedule—including requests such as “创建日程”, “加入日程”, or “安排到日程” in the iPolloWork context—treat that request as agreement to schedule and do not repeat the offer. If the conversation already contains the required scheduling details, call this tool immediately; otherwise ask only for the missing start date, time, duration, or recurrence needed to build the preview. Use explicit ISO 8601 time-zone offsets and 15-minute boundaries. Present the returned preview and ask for final confirmation before calling ipollowork_schedule_apply.`,
+    description: `Prepare a read-only preview of planned tasks for the current iPolloWork Schedule. Whenever a completed answer presents a plan that could become scheduled tasks, end that answer by proactively asking the user exactly “${IPOLLOWORK_SCHEDULE_OFFER_PROMPT}”, even when the plan does not yet include concrete dates or times. Do not ask for scheduling details before making this offer. When the user directly asks to create, add, import, or arrange a plan or tasks in the iPolloWork Schedule—including requests such as “创建日程”, “加入日程”, or “安排到日程” in the iPolloWork context—treat that request as agreement to schedule and do not repeat the offer. If the conversation already contains the required scheduling details, call this tool immediately; otherwise ask only for the missing start date, time, duration, or recurrence needed to build the preview. When the user explicitly asks the task to run automatically, include automation with enabled=true and use recurrence=once for a one-time run; omit automation for ordinary reminders or planned tasks. Use explicit ISO 8601 time-zone offsets and 15-minute boundaries. Present the returned preview, including whether automatic execution is enabled, and ask for final confirmation before calling ipollowork_schedule_apply.`,
     parameters: objectParameters({
       tasks: {
         type: "array",
@@ -232,6 +233,13 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
             description: "ISO 8601 date-time with an explicit Z or ±HH:mm time zone, aligned to 15 minutes.",
           },
           priority: { type: "string", enum: ["low", "normal", "high", "urgent"] },
+          automation: {
+            ...objectParameters({
+              enabled: { const: true },
+              recurrence: { type: "string", enum: ["once", "daily", "weekly"] },
+            }, ["enabled", "recurrence"]),
+            description: "Include only when the user explicitly requests automatic execution. Use once for a one-time run; the project model is used automatically.",
+          },
         }, ["title", "startAt", "dueAt"]),
       },
     }, ["tasks"]),

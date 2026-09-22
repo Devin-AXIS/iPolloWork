@@ -1061,7 +1061,12 @@ export function createBrowserRuntime({
     ));
     if (!workspace?.id) throw new Error("Browser upload workspace is not registered locally.");
     const workspaceRoot = await realpath(path.resolve(workspace.path));
-    const userDataRoot = await realpath(path.resolve(getUserDataPath()));
+    const storageRoots = [...new Set([
+      getUserDataPath(),
+      workspace.runtimeStorageRoot,
+    ].filter((value) => typeof value === "string" && value.trim()).map((value) => path.resolve(value.trim())))];
+    const trustedStorageRoots = (await Promise.all(storageRoots.map((root) => realpath(root).catch(() => null))))
+      .filter(Boolean);
     const extensionId = typeof rawExtensionId === "string" && /^[A-Za-z0-9._-]+$/.test(rawExtensionId.trim())
       ? rawExtensionId.trim()
       : "";
@@ -1069,7 +1074,7 @@ export function createBrowserRuntime({
       if (typeof rawPath !== "string" || !rawPath.trim()) throw new Error("Browser upload file paths must be non-empty strings.");
       const filePath = await realpath(path.resolve(rawPath.trim()));
       if (!pathWithin(workspaceRoot, filePath)
-        && !pluginDataPathAllowed(filePath, userDataRoot, workspace.id, extensionId)) {
+        && !trustedStorageRoots.some((root) => pluginDataPathAllowed(filePath, root, workspace.id, extensionId))) {
         throw new Error("Browser upload files must belong to the active workspace or the named plugin's private data.");
       }
       const fileStat = await stat(filePath);

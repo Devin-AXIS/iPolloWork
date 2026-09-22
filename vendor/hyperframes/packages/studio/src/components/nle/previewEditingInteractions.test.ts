@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parsePreviewAssetPayload } from "./usePreviewBlockDrop";
-import { buildTimelineAssetInsertHtml, getTimelineAssetKind } from "../../utils/timelineAssetDrop";
+import { buildTimelineAssetInsertHtml, getTimelineAssetKind, resolveGeneratedAvatarCompositePaths } from "../../utils/timelineAssetDrop";
 import { resolveTimelineSelectionSeekTime } from "../../utils/studioHelpers";
 
 describe("preview editing interactions", () => {
@@ -417,6 +417,67 @@ describe("preview editing interactions", () => {
     expect(imageAsset).toContain("width: 480px");
   });
 
+  it("keeps generated avatar narration audible at its bound timeline start", () => {
+    const avatarAsset = buildTimelineAssetInsertHtml({
+      id: "avatar",
+      hfId: "hf-avatar",
+      assetPath: "assets/avatar.mp4",
+      kind: "video",
+      start: 20,
+      duration: 21,
+      track: 0,
+      zIndex: 3,
+      videoHasAudio: true,
+    });
+    const silentAsset = buildTimelineAssetInsertHtml({
+      id: "silent-video",
+      hfId: "hf-silent-video",
+      assetPath: "assets/silent.mp4",
+      kind: "video",
+      start: 0,
+      duration: 5,
+      track: 0,
+      zIndex: 2,
+    });
+    const appSource = readFileSync(new URL("../../App.tsx", import.meta.url), "utf8");
+
+    expect(avatarAsset).toContain('data-start="20"');
+    expect(avatarAsset).toContain('data-has-audio="true"');
+    expect(avatarAsset).toContain('data-volume="1"');
+    expect(avatarAsset).not.toContain(" muted ");
+    expect(silentAsset).toContain(" muted ");
+    expect(appSource).toContain("start: requestedStart");
+    expect(appSource).toContain("videoHasAudio: true");
+  });
+
+  it("authors a generated cutout as one editable source plus a linked foreground", () => {
+    expect(resolveGeneratedAvatarCompositePaths("assets/avatar-long-job-1.webm")).toEqual({
+      sourcePath: "renders/avatar-long-job-1.mp4",
+      foregroundPath: "assets/avatar-long-job-1.webm",
+    });
+    const html = buildTimelineAssetInsertHtml({
+      id: "avatar-long-job-1",
+      hfId: "hf-avatar",
+      assetPath: "renders/avatar-long-job-1.mp4",
+      avatarForegroundPath: "assets/avatar-long-job-1.webm",
+      avatarForegroundTrack: 9,
+      kind: "video",
+      start: 12.5,
+      duration: 120,
+      track: 0,
+      zIndex: 20,
+    });
+
+    expect(html.match(/<video/g)).toHaveLength(2);
+    expect(html).toContain('data-avatar-cutout="avatar-long-job-1-avatar-foreground"');
+    expect(html).toContain('data-avatar-source="avatar-long-job-1"');
+    expect(html).toContain('data-avatar-material="assets/avatar-long-job-1.webm"');
+    expect(html).toContain('src="renders/avatar-long-job-1.mp4"');
+    expect(html).toContain('data-start="12.5"');
+    expect(html).toContain('data-track-index="9"');
+    expect(html).toContain('pointer-events: none');
+  });
+
   it("uploads OS files dropped anywhere in the right-side assets area", () => {
     const assetsSource = readFileSync(new URL("../sidebar/AssetsTab.tsx", import.meta.url), "utf8");
 
@@ -440,9 +501,10 @@ describe("preview editing interactions", () => {
     expect(assetsSource).toContain("new IntersectionObserver");
     expect(assetsSource).toContain("ASSET_VIRTUAL_OVERSCAN_PX");
     expect(assetsSource).toContain("visible ? (");
-    expect(assetsSource).toContain(
-      "type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER",
-    );
+    expect(assetsSource).toContain("type MediaCategory");
+    expect(assetsSource).toContain("CATEGORY_LABELS");
+    expect(assetsSource).toContain("getCategory");
+    expect(assetsSource).toContain("FILTER_ORDER");
     expect(assetsSource).toContain("tx(CATEGORY_LABELS[cat])");
     expect(assetsSource).not.toContain("const categoryLabels:");
     expect(assetsSource).toContain("ChevronDown");

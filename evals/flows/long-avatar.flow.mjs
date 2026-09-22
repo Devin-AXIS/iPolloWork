@@ -68,10 +68,10 @@ export default {
       voiceover: "素材操作使用这次生成的片段路径。",
       action: async () => { await ctx.clickText("在素材中查看", { selector: "[data-testid=avatar-task-dialog] button" }); await ctx.waitFor("!document.querySelector('[data-testid=avatar-task-dialog]')"); await ctx.trustedClick('[data-testid=avatar-job-card]'); await ctx.clickText("插入当前视频", { selector: "[data-testid=avatar-task-dialog] button" }); },
       assert: async () => {
-        const state = await ctx.eval("window.avatarProof.requests.filter(item=>item.action==='asset-view'||item.action==='asset-insert').map(item=>({action:item.action,path:item.path}))");
-        ctx.assert(state.length === 2 && state[0].path === "video/avatar-proof/assets/avatar-result.mp4" && state[1].path === state[0].path, JSON.stringify(state));
+        const state = await ctx.eval("window.avatarProof.requests.filter(item=>item.action==='asset-view'||item.action==='asset-insert').map(item=>({action:item.action,path:item.path,start:item.start}))");
+        ctx.assert(state.length === 2 && state[0].path === "video/avatar-proof/assets/avatar-result.mp4" && state[1].path === state[0].path && state[1].start === 0, JSON.stringify(state));
       },
-      screenshot: { name: "avatar-asset-routed", requireText: ["已插入当前播放位置"] },
+      screenshot: { name: "avatar-asset-routed", requireText: ["已按配音起点 0.0 秒插入时间线"] },
     });
   } }, { name: "Estimate remaining time from completed segments", run: async ctx => {
     await ctx.client.send("Page.navigate", { url: `${proofOrigin}/tests/video-avatar-proof.html?panel=avatar&long&eta` });
