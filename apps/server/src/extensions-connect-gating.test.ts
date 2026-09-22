@@ -303,6 +303,7 @@ describe("extension and engine host tool gating", () => {
     expect(scheduleDescription).toContain("even when the plan does not yet include concrete dates or times");
     expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
     expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
+    expect(scheduleDescription).toContain("include automation with enabled=true");
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",
@@ -443,6 +444,7 @@ describe("extension and engine host tool gating", () => {
           startAt: "2026-08-26T09:00:00+08:00",
           dueAt: "2026-08-26T10:00:00+08:00",
           priority: "high",
+          automation: { enabled: true, recurrence: "daily" },
         },
         {
           title: "Review launch plan",
@@ -455,12 +457,17 @@ describe("extension and engine host tool gating", () => {
     const preview = await previewResponse.json() as {
       previewId?: string;
       confirmationRequired?: boolean;
-      tasks?: Array<{ startAt?: string }>;
+      confirmationPrompt?: string;
+      tasks?: Array<{ startAt?: string; automation?: { enabled?: boolean; recurrence?: string } | null }>;
     };
     expect(preview.previewId).toMatch(/^schedule_/);
     expect(preview).toMatchObject({
       confirmationRequired: true,
-      tasks: [{ startAt: "2026-08-26T01:00:00.000Z" }, { startAt: "2026-08-26T02:15:00.000Z" }],
+      confirmationPrompt: expect.stringContaining("1 with automatic execution"),
+      tasks: [
+        { startAt: "2026-08-26T01:00:00.000Z", automation: { enabled: true, recurrence: "daily" } },
+        { startAt: "2026-08-26T02:15:00.000Z", automation: null },
+      ],
     });
 
     const beforeApply = await fetch(`${base}/work-items?workspaceId=ws_1`, { headers: clientHeaders() });
@@ -473,8 +480,13 @@ describe("extension and engine host tool gating", () => {
       body: {
         ok: true,
         items: [
-          { title: "Outline launch plan", status: "planned", priority: "high" },
-          { title: "Review launch plan", status: "planned", priority: "normal" },
+          {
+            title: "Outline launch plan",
+            status: "ready",
+            priority: "high",
+            automation: { enabled: true, recurrence: "daily", model: null },
+          },
+          { title: "Review launch plan", status: "planned", priority: "normal", automation: null },
         ],
       },
     });

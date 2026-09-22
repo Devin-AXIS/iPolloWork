@@ -270,6 +270,15 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(plugin.tool.ipollowork_session_read.description).toContain("never use it to recover or infer the current interrupted task");
     expect(plugin.tool.ipollowork_schedule_preview.description).toContain("是否需要生成计划并加入 iPolloWork 日程？");
     expect(plugin.tool.ipollowork_schedule_preview.description).toContain("treat that request as agreement to schedule");
+    expect(plugin.tool.ipollowork_schedule_preview.description).toContain("include automation with enabled=true");
+    expect(() => z.object(plugin.tool.ipollowork_schedule_preview.args).parse({
+      tasks: [{
+        title: "Run daily report",
+        startAt: "2026-08-26T09:00:00+08:00",
+        dueAt: "2026-08-26T10:00:00+08:00",
+        automation: { enabled: true, recurrence: "daily" },
+      }],
+    })).not.toThrow();
     expect(system).toContain("是否需要生成计划并加入 iPolloWork 日程？");
     expect(system).toContain("call this tool immediately");
     expect(system).toContain("even when the plan does not yet include concrete dates or times");

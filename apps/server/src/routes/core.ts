@@ -9,7 +9,9 @@ import {
   type ProjectWorkspaceConfig,
 } from "@ipollowork/types/project-workspace";
 import {
+  workItemAutomationRecurrenceSchema,
   workItemPrioritySchema,
+  type WorkItemAutomation,
   type WorkItemCreateInput,
   type WorkItemPriority,
 } from "@ipollowork/types/work-items";
@@ -121,6 +123,10 @@ const schedulePreviewInputSchema = z.object({
     startAt: scheduleDateTimeSchema,
     dueAt: scheduleDateTimeSchema,
     priority: workItemPrioritySchema.default("normal"),
+    automation: z.object({
+      enabled: z.literal(true),
+      recurrence: workItemAutomationRecurrenceSchema,
+    }).strict().optional(),
   }).strict()).min(1).max(50),
 }).strict();
 
@@ -130,6 +136,7 @@ type PendingScheduleTask = {
   startAt: number;
   dueAt: number;
   priority: WorkItemPriority;
+  automation: WorkItemAutomation | null;
 };
 
 type PendingSchedulePreview = {
@@ -151,6 +158,11 @@ function pruneSchedulePreviews(now = Date.now()): void {
     if (oldest.done) break;
     pendingSchedulePreviews.delete(oldest.value);
   }
+}
+
+function scheduleImportSummary(tasks: readonly PendingScheduleTask[], verb: "Add" | "Added"): string {
+  const automaticCount = tasks.filter((task) => task.automation?.enabled).length;
+  return `${verb} ${tasks.length} planned task${tasks.length === 1 ? "" : "s"}${automaticCount ? ` (${automaticCount} with automatic execution)` : ""}`;
 }
 
 function browserActionRecords(value: unknown): Record<string, unknown>[] {
@@ -388,6 +400,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         startAt: Date.parse(task.startAt),
         dueAt: Date.parse(task.dueAt),
         priority: task.priority,
+        automation: task.automation ? { ...task.automation, model: null } : null,
       }));
       const invalidTaskIndex = tasks.findIndex((task) => task.dueAt < task.startAt);
       if (invalidTaskIndex >= 0) {
@@ -406,7 +419,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         workspaceName: workspace.name,
         expiresAt,
         confirmationRequired: true,
-        confirmationPrompt: `Add ${tasks.length} planned task${tasks.length === 1 ? "" : "s"} to ${workspace.name}'s iPolloWork Schedule?`,
+        confirmationPrompt: `${scheduleImportSummary(tasks, "Add")} to ${workspace.name}'s iPolloWork Schedule?`,
         tasks: tasks.map((task) => ({
           ...task,
           startAt: new Date(task.startAt).toISOString(),
@@ -435,7 +448,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       const approval = await ctx.approvals.requestApproval({
         workspaceId: workspace.id,
         action: "schedule.import.apply",
-        summary: `Add ${preview.tasks.length} planned task${preview.tasks.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        summary: `${scheduleImportSummary(preview.tasks, "Add")} to iPolloWork Schedule`,
         paths: [],
         actor: ctx.actor ?? { type: "remote" },
       });
@@ -448,7 +461,6 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       const inputs: WorkItemCreateInput[] = preview.tasks.map((task) => ({
         ...task,
         status: "planned",
-        automation: null,
         customFields: {},
       }));
       const items = await createWorkItems(config, workspace.id, inputs);
@@ -459,7 +471,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         actor: ctx.actor ?? { type: "remote" },
         action: "schedule.import.apply",
         target: previewId,
-        summary: `Added ${items.length} planned task${items.length === 1 ? "" : "s"} to iPolloWork Schedule`,
+        summary: `${scheduleImportSummary(preview.tasks, "Added")} to iPolloWork Schedule`,
         timestamp: Date.now(),
       });
       return { ok: true, previewId, workspaceId: workspace.id, items };

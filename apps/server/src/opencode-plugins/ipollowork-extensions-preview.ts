@@ -58,6 +58,10 @@ const schedulePreviewArgsSchema = z.object({
     startAt: z.string().trim().max(40),
     dueAt: z.string().trim().max(40),
     priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    automation: z.object({
+      enabled: z.literal(true),
+      recurrence: z.enum(["once", "daily", "weekly"]),
+    }).optional().describe("Include only when the user explicitly requests automatic execution."),
   })).min(1).max(50),
 });
 
