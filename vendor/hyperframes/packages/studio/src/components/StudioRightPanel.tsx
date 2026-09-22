@@ -1,4 +1,12 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { PanelTabButton } from "./PanelTabButton";
 import { usePreviewVariablesStore } from "../hooks/previewVariablesStore";
 import type { RenderJob } from "./renders/useRenderQueue";
@@ -18,7 +26,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { useFileManagerContext } from "../contexts/FileManagerContext";
 import { useDomEditContext } from "../contexts/DomEditContext";
 import { usePlayerStore } from "../player";
-import { waitForMediaJob } from "./studioMediaJobs";
+import { startBackgroundRemoval, waitForMediaJob } from "./studioMediaJobs";
 import {
   applyColorGradingScopeUpdate,
   EMPTY_COLOR_GRADING_SCOPE_RESULT,
@@ -280,31 +288,13 @@ export function StudioRightPanel({
         onProgress?: (progress: BackgroundRemovalProgress) => void;
       },
     ) => {
-      const response = await fetch(
-        `/api/projects/${encodeURIComponent(projectId)}/media/remove-background`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            inputPath,
-            createBackgroundPlate: options.createBackgroundPlate === true,
-            quality: options.quality ?? "balanced",
-          }),
-        },
-      );
-      const data = (await response.json().catch(() => ({}))) as {
-        jobId?: string;
-        error?: string;
-      };
-      if (!response.ok || !data.jobId) {
-        throw new Error(data.error || `Background removal failed (${response.status})`);
-      }
+      const jobId = await startBackgroundRemoval(projectId, inputPath, options);
       const loadingToastId = showToast("Removing background...", "loading");
       backgroundRemovalAbortRef.current?.abort();
       const controller = new AbortController();
       backgroundRemovalAbortRef.current = controller;
       try {
-        const result = await waitForMediaJob(data.jobId, options.onProgress, controller.signal);
+        const result = await waitForMediaJob(jobId, options.onProgress, controller.signal);
         await refreshFileTree();
         dismissToast(loadingToastId);
         showToast(`Created transparent asset: ${result.outputPath.split("/").pop()}`, "success");

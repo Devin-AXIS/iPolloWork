@@ -158,17 +158,31 @@ export default {
           await ctx.clickText("切换视频配音", { selector: "button" });
           await ctx.waitFor("Boolean(document.querySelector('[aria-label=\"配音片段\"]'))");
           await ctx.trustedClick('[aria-label="配音片段"]');
-          await ctx.trustedClick('[data-slot="select-content"][data-open] [role="option"]:nth-child(2)');
-          await ctx.waitFor("document.querySelector('[aria-label=\"配音片段\"]').textContent.includes('片段 1')");
+          await ctx.trustedClick('[data-slot="select-content"][data-open] [role="option"]:nth-child(3)');
+          await ctx.waitFor("document.querySelector('[aria-label=\"配音片段\"]').textContent.includes('片段 2')");
           await ctx.clickText("生成数字人片段", { selector: "button" });
           await ctx.waitFor("window.avatarProof.requests.some(request => request.action === 'submit')");
           await ctx.waitFor("document.querySelector('[data-testid=avatar-task-dialog]')?.textContent.includes('预览数字人')");
         },
         assert: async () => {
-          const result = await ctx.eval("(() => { const request = window.avatarProof.requests.find(request => request.action === 'submit'); const profile = window.avatarProof.profiles.find(item => item.name === '产品讲解人'); return { profile: request.args.avatarProfileId === profile.id, clip: request.args.avatarClipId === 'scene-one', revision: request.args.avatarProfileUpdatedAt === profile.updatedAt, preview: document.querySelector('[data-testid=avatar-task-dialog]')?.textContent.includes('预览数字人') }; })()");
+          const result = await ctx.eval("(() => { const request = window.avatarProof.requests.find(request => request.action === 'submit'); const profile = window.avatarProof.profiles.find(item => item.name === '产品讲解人'); return { profile: request.args.avatarProfileId === profile.id, clip: request.args.avatarClipId === 'scene-two', revision: request.args.avatarProfileUpdatedAt === profile.updatedAt, preview: document.querySelector('[data-testid=avatar-task-dialog]')?.textContent.includes('预览数字人') }; })()");
           ctx.assert(result.profile && result.clip && result.revision && result.preview, JSON.stringify(result));
         },
         screenshot: { name: "avatar-selected-clip-result", requireText: ["预览数字人", "插入当前视频"] },
+      });
+    } },
+    { name: "Insert at the bound narration start", run: async ctx => {
+      await ctx.prove("The generated avatar is inserted at its selected narration clip start", {
+        voiceover: "数字人成片保留所选配音；插入当前视频时，片段二会自动对齐到原配音的四点二秒起点。",
+        action: async () => {
+          await ctx.clickText("插入当前视频", { selector: "[data-testid=avatar-task-dialog] button" });
+          await ctx.waitFor("window.avatarProof.requests.some(request => request.action === 'asset-insert')");
+        },
+        assert: async () => {
+          const result = await ctx.eval("(() => { const request = window.avatarProof.requests.find(request => request.action === 'asset-insert'); return { path: request?.path, start: request?.start, message: document.querySelector('[data-testid=video-avatar-panel]')?.textContent }; })()");
+          ctx.assert(result.path === "video/avatar-proof/assets/result.mp4" && result.start === 4.2 && result.message.includes("配音起点 4.2 秒"), JSON.stringify(result));
+        },
+        screenshot: { name: "avatar-insert-aligned-to-narration", requireText: ["配音起点 4.2 秒", "生成记录"] },
       });
     } },
     { name: "Changed narration marks its avatar stale", run: async ctx => {

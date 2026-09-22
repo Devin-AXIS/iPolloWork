@@ -20,6 +20,7 @@ import { useDomEditWiring } from "./useDomEditWiring";
 import { useGsapAwareEditing } from "./useGsapAwareEditing";
 import { useStudioSelectionPublisher } from "./useStudioSelectionPublisher";
 import { useTimelineSelectionPreviewSync } from "./useTimelineSelectionPreviewSync";
+import { useAvatarCutout } from "./useAvatarCutout";
 import { useImageWorkbench } from "./useImageWorkbench";
 
 // ── Types ──
@@ -115,8 +116,18 @@ export function useDomEditSession({
   forceReloadSdkSession,
 }: UseDomEditSessionParams) {
   void _setRefreshKey;
-  const openImageWorkbench = useImageWorkbench({ projectId, showToast, queueDomEditSave, readProjectFile,
-    writeProjectFile, updateEditingFileContent, domEditSaveTimestampRef, editHistory, reloadPreview, forceReloadSdkSession });
+  const openImageWorkbench = useImageWorkbench({
+    projectId,
+    showToast,
+    queueDomEditSave,
+    readProjectFile,
+    writeProjectFile,
+    updateEditingFileContent,
+    domEditSaveTimestampRef,
+    editHistory,
+    reloadPreview,
+    forceReloadSdkSession,
+  });
   // ── Selection ──
 
   const {
@@ -240,6 +251,22 @@ export function useDomEditSession({
     sdkSession,
     publishSdkSession,
     writeProjectFile,
+    forceReloadSdkSession,
+  });
+
+  const { handleAvatarCutout, avatarCutoutProgress } = useAvatarCutout({
+    projectId,
+    previewIframeRef,
+    activeCompPath,
+    projectIdRef,
+    showToast,
+    writeProjectFile,
+    domEditSaveTimestampRef,
+    editHistory,
+    reloadPreview,
+    clearDomSelection,
+    refreshDomEditSelectionFromPreview,
+    queueDomEditSave,
     forceReloadSdkSession,
   });
 
@@ -536,6 +563,8 @@ export function useDomEditSession({
   );
 
   return {
+    handleAvatarCutout,
+    avatarCutoutProgress,
     openImageWorkbench,
     // State
     domEditSelection,

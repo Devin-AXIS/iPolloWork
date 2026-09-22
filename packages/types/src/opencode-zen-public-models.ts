@@ -8,7 +8,9 @@ type OpenCodeZenPublicModelProfile = {
 
 const OPENCODE_ZEN_PUBLIC_MODEL_PROFILES = new Map<string, OpenCodeZenPublicModelProfile>([
   ["big-pickle", { name: "Big Pickle", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
-  ["hy3-free", { name: "Hy3 Free", agentCompatible: true, sessionAffinity: true, contextWindow: 190_000, maxTokens: 64_000 }],
+  // Removed from Zen's live catalog on 2026-09-22; inference returns
+  // "Model hy3-free is not supported". Preserve metadata for saved sessions.
+  ["hy3-free", { name: "Hy3 Free", agentCompatible: false, sessionAffinity: true, contextWindow: 190_000, maxTokens: 64_000 }],
   ["mimo-v2.5-free", { name: "MiMo-V2.5 Free", agentCompatible: true, sessionAffinity: true, contextWindow: 200_000, maxTokens: 32_000 }],
   ["nemotron-3-ultra-free", { name: "Nemotron 3 Ultra Free", agentCompatible: true, sessionAffinity: true, contextWindow: 1_000_000, maxTokens: 128_000 }],
   ["nemotron-3.5-lightning-free", { name: "Nemotron 3.5 Lightning Free", agentCompatible: true, sessionAffinity: true, contextWindow: 262_144, maxTokens: 262_144 }],

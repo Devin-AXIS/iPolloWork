@@ -9,6 +9,7 @@ import path from "node:path";
 
 import { ipolloworkWorkspaceDisplayName, selectiPolloWorkWorkspaceForConnection } from "./remote-workspace.mjs";
 import { exportWorkspaceConfig, importWorkspaceConfig } from "./workspace-archive.mjs";
+import { resolveiPolloWorkServerConfigPath } from "./runtime.mjs";
 
 const EMPTY_WORKSPACE_LIST = Object.freeze({
   selectedId: "",
@@ -193,12 +194,15 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
   }
 
   function ipolloworkServerConfigPath() {
-    if (process.env.IPOLLOWORK_SERVER_CONFIG?.trim()) return path.resolve(process.env.IPOLLOWORK_SERVER_CONFIG.trim());
-    if (process.env.IPOLLOWORK_DEV_MODE === "1") {
+    if (process.env.IPOLLOWORK_DEV_MODE === "1" && !process.env.IPOLLOWORK_SERVER_CONFIG?.trim()) {
       return path.join(app.getPath("userData"), "ipollowork-dev-data", "xdg", "config", "ipollowork", "server.json");
     }
-    if (process.platform === "win32") return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "ipollowork", "server.json");
-    return path.join(process.env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "ipollowork", "server.json");
+    return resolveiPolloWorkServerConfigPath();
+  }
+
+  function ipolloworkRuntimeStorageRoot() {
+    const runtimeDbPath = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
+    return runtimeDbPath ? path.dirname(path.resolve(runtimeDbPath)) : path.dirname(resolveiPolloWorkServerConfigPath());
   }
 
   // Earlier Electron alpha builds copied Tauri's ipollowork-workspaces.json into
@@ -598,8 +602,8 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     });
   }
 
-  async function recoverWorkspacesFromServerConfig() {
-    const config = await readJsonFile(ipolloworkServerConfigPath(), null);
+  async function recoverWorkspacesFromServerConfig(configPath = ipolloworkServerConfigPath()) {
+    const config = await readJsonFile(configPath, null);
     if (!isRecord(config) || !Array.isArray(config.workspaces)) return [];
 
     const seen = new Set();
@@ -1041,6 +1045,24 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       .filter(Boolean);
   }
 
+  async function listLocalBrowserWorkspaces() {
+    const desktopWorkspaces = (await readWorkspaceState()).workspaces
+      .filter((entry) => entry?.workspaceType !== "remote");
+    const runtimeStorageRoot = ipolloworkRuntimeStorageRoot();
+    // Upload authorization must use the running server's registry, not the
+    // development-only registry used for desktop workspace migration.
+    const serverWorkspaces = (await recoverWorkspacesFromServerConfig(resolveiPolloWorkServerConfigPath()))
+      .filter((entry) => entry?.workspaceType !== "remote")
+      .map((entry) => ({ ...entry, runtimeStorageRoot }));
+    const byPath = new Map();
+    for (const workspace of [...desktopWorkspaces, ...serverWorkspaces]) {
+      const key = normalizeWorkspacePathKey(workspace?.path);
+      if (!key || !workspace?.id) continue;
+      byPath.set(key, workspace);
+    }
+    return [...byPath.values()];
+  }
+
   function workspacePathKey(workspace) {
     return normalizeWorkspacePathKey(workspace.path);
   }
@@ -1342,6 +1364,7 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
     getDesktopBootstrapConfig,
     importConfig,
     importBundledDesktopBootstrapConfigIfPreferred,
+    listLocalBrowserWorkspaces,
     listLocalWorkspacePaths,
     migrateLegacyElectronWorkspaceStateIfNeeded,
     readWorkspaceiPolloWorkConfig,

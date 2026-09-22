@@ -68,6 +68,14 @@ function upstreamErrorType(status: number, message: string): ProviderGatewayErro
   return "provider_gateway_error";
 }
 
+function requireConnectedOpenCodeCredential(provider: GatewayProvider): void {
+  if (provider.providerId !== "opencode" || provider.apiKey !== "public") return;
+  throw providerGatewayError(
+    "iPolloWork Built-in Models requires an API key. Open Settings > AI Providers > Connect provider to continue.",
+    401,
+  );
+}
+
 function safeToolName(value: string): string {
   const normalized = value.replace(/[^A-Za-z0-9_-]+/g, "_").replace(/^_+|_+$/g, "");
   return normalized.slice(0, 64) || "tool";
@@ -464,6 +472,7 @@ async function upstreamJson(
   path: string,
   body: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  requireConnectedOpenCodeCredential(provider);
   const headers = upstreamHeaders(provider, body);
   const response = await fetch(endpoint(provider.baseURL, path), {
     method: "POST",
@@ -942,6 +951,7 @@ export class CodexProviderGateway {
     body: Record<string, unknown>,
     response: ServerResponse,
   ): Promise<void> {
+    requireConnectedOpenCodeCredential(provider);
     const upstream = await fetch(endpoint(provider.baseURL, "chat/completions"), {
       method: "POST",
       headers: upstreamHeaders(provider, body),

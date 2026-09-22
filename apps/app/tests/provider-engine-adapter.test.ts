@@ -297,6 +297,11 @@ describe("model runtime adapters", () => {
     expect(store.getSnapshot().providerAuthMethods.openai).toEqual([
       { type: "oauth", label: "OpenAI", methodIndex: 0 },
     ]);
+    expect(store.getSnapshot().providerAuthMethods.opencode).toEqual([{
+      type: "api",
+      label: expect.any(String),
+      description: "Connect iPolloWork built-in models to use the free and paid catalog.",
+    }]);
 
     store.closeProviderAuthModal();
     let releaseAuthRefresh = () => {};
@@ -1126,7 +1131,6 @@ describe("model runtime adapters", () => {
     const providers = await fetchProviderList({ client, engineId: DEFAULT_ENGINE_ID });
     expect(Object.keys(providers.all[0]?.models ?? {})).toEqual([
       "big-pickle",
-      "hy3-free",
       "mimo-v2.5-free",
       "nemotron-3-ultra-free",
       "nemotron-3.5-lightning-free",

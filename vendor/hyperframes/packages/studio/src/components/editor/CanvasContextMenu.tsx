@@ -28,6 +28,7 @@ import { createPortal } from "react-dom";
 import type { DomEditSelection } from "./domEditing";
 import { useContextMenuDismiss } from "../../hooks/useContextMenuDismiss";
 import { useStudioI18n } from "../../i18n";
+import { useDomEditActionsContextOptional } from "../../contexts/DomEditContext";
 import {
   isZOrderActionEnabled,
   resolveCrossedNeighbor,
@@ -154,6 +155,12 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   onRename,
 }: CanvasContextMenuProps) {
   const { tx } = useStudioI18n();
+  const cutout = useDomEditActionsContextOptional();
+  const canCutout = Boolean(
+    selection?.tagName === "video" &&
+    !selection.element.hasAttribute("data-avatar-source") &&
+    cutout,
+  );
   const menuRef = useContextMenuDismiss(onClose);
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(renameValue ?? "");
@@ -187,6 +194,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
   const menuHeight =
     8 +
     (hasZActions ? (Z_ACTIONS.length + (selection?.tagName === "video" ? 2 : 0)) * 28 : 0) +
+    (canCutout ? 28 : 0) +
     (hasDivider ? 1 : 0) +
     (hasRename ? (renaming ? 42 : 28) : 0) +
     (hasDelete ? 28 : 0) +
@@ -246,7 +254,7 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
     }
   }
 
-  if (!hasZActions && !hasRename && !hasDelete) return null;
+  if (!hasZActions && !hasRename && !hasDelete && !canCutout) return null;
 
   // The menu is portaled to document.body, but in the React tree it is still a
   // child of the DomEditOverlay <div>. React synthetic events bubble through the
@@ -276,18 +284,52 @@ export const CanvasContextMenu = memo(function CanvasContextMenu({
         e.stopPropagation();
       }}
     >
-      {hasZActions && el && selection?.tagName === "video" && (["low", "high"] as const).map(level => (
-        <button key={level} type="button" className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800"
-          onPointerDown={event => {
-            if (event.button !== 0) return;
-            event.preventDefault(); event.stopPropagation();
-            const patches = level === "low" ? resolveAvatarLowLayer(el) : resolveZOrderChange(el, "bring-to-front");
-            if (patches?.length) onApplyZIndex?.(patches, level === "low" ? "send-to-back" : "bring-to-front", null);
+      {canCutout && selection && cutout && (
+        <button
+          type="button"
+          disabled={cutout.avatarCutoutProgress !== null}
+          className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800 disabled:opacity-50"
+          onPointerDown={(event) => {
+            if (event.button !== 0 || cutout.avatarCutoutProgress !== null) return;
+            event.preventDefault();
+            event.stopPropagation();
+            void cutout.handleAvatarCutout(selection);
             onClose();
-          }}>
-          {tx(level === "low" ? "Low layer · above background" : "High layer · above content")}
+          }}
+        >
+          {tx(
+            cutout.avatarCutoutProgress !== null
+              ? "AI cutout in progress…"
+              : selection.element.hasAttribute("data-avatar-cutout")
+                ? "Remove smart cutout"
+                : "Smart cutout",
+          )}
         </button>
-      ))}
+      )}
+      {hasZActions &&
+        el &&
+        selection?.tagName === "video" &&
+        (["low", "high"] as const).map((level) => (
+          <button
+            key={level}
+            type="button"
+            className="w-full px-3 py-1.5 text-left text-xs text-neutral-300 hover:bg-neutral-800"
+            onPointerDown={(event) => {
+              if (event.button !== 0) return;
+              event.preventDefault();
+              event.stopPropagation();
+              const patches =
+                level === "low"
+                  ? resolveAvatarLowLayer(el)
+                  : resolveZOrderChange(el, "bring-to-front");
+              if (patches?.length)
+                onApplyZIndex?.(patches, level === "low" ? "send-to-back" : "bring-to-front", null);
+              onClose();
+            }}
+          >
+            {tx(level === "low" ? "Low layer · above background" : "High layer · above content")}
+          </button>
+        ))}
       {hasZActions &&
         Z_ACTIONS.map(({ action, label }) => {
           const enabled = el ? isZOrderActionEnabled(el, action) : false;

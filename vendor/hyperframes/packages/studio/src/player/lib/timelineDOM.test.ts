@@ -4,7 +4,9 @@ import type { ClipManifestClip } from "./playbackTypes";
 import {
   collectDomClipChildren,
   createTimelineElementFromManifestClip,
+  filterEditableTimelineManifestClips,
   findTimelineDomNodeForClip,
+  parseTimelineFromDOM,
 } from "./timelineDOM";
 import { resolveDomEditSelection } from "../../components/editor/domEditing";
 import {
@@ -142,6 +144,51 @@ describe("timeline manifest translation", () => {
     };
 
     expect(findTimelineDomNodeForClip(document, unresolvedClip, 1, used)?.id).toBe("second");
+  });
+
+  test("exposes an avatar cutout as one editable timeline element", () => {
+    document.body.innerHTML = `
+      <main data-composition-id="main" data-composition-file="index.html" data-duration="10">
+        <video
+          id="person"
+          data-start="0"
+          data-duration="10"
+          data-track-index="0"
+          data-avatar-cutout="avatar-cutout-person"
+        ></video>
+        <video
+          id="avatar-cutout-person"
+          data-start="0"
+          data-duration="10"
+          data-track-index="4"
+          data-avatar-source="person"
+        ></video>
+      </main>
+    `;
+    const sourceClip: ClipManifestClip = {
+      ...MANIFEST_CLIP,
+      id: "person",
+      label: "Person",
+      start: 0,
+      duration: 10,
+      track: 0,
+      kind: "video",
+      tagName: "video",
+    };
+    const foregroundClip: ClipManifestClip = {
+      ...sourceClip,
+      id: "avatar-cutout-person",
+      label: "Avatar cutout foreground",
+      track: 4,
+    };
+
+    expect(parseTimelineFromDOM(document, 10).map((element) => element.domId)).toEqual(["person"]);
+    expect(
+      filterEditableTimelineManifestClips(document, [sourceClip, foregroundClip]).map(
+        (clip) => clip.id,
+      ),
+    ).toEqual(["person"]);
+    expect(findTimelineDomNodeForClip(document, foregroundClip, 1)).toBeNull();
   });
 
   test("collects every untimed child below a timed scene for canvas/tree parity", () => {

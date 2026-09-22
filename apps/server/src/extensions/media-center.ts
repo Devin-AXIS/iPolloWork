@@ -8,6 +8,7 @@ import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, posix } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
+import { videoRenderAction } from "./video-render.js";
 
 // The Alibaba adapter stays internal to this module. The public action
 // contract is provider-neutral so Media Center can add providers without
@@ -720,6 +721,19 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
 }
 
 export const MEDIA_EXTENSION_ACTIONS = [
+  ...["video_render_start", "video_render_status"].map(action => ({
+    extensionId: MEDIA_EXTENSION_ID, action,
+    title: action === "video_render_start" ? "Export video to MP4" : "Read MP4 export progress",
+    description: "Built-in local Video Studio MP4 export. No external CLI, npm package, manual Export click, or provider key. Start returns immediately with preparing/rendering; poll status using the SAME sourcePath and operationKey every 2 seconds. The app starts bundled Studio automatically. Complete returns outputPath for douyin-ops import-media. Failed returns the actual error; never publish a failed export or change operationKey to blindly retry.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
+        operationKey: { type: "string", description: "Stable key for this export attempt, reused for start/status/continuation. Use a new key only for a new explicitly requested export or after resolving an error." },
+      },
+      required: ["sourcePath", "operationKey"], additionalProperties: false,
+    },
+  })),
   {
     extensionId: MEDIA_EXTENSION_ID,
     action: "status",
@@ -1764,6 +1778,10 @@ export async function callMediaExtensionAction(
   args: JsonRecord,
   context: JsonRecord,
 ) {
+  if (action === "video_render_start" || action === "video_render_status") {
+    const output = await videoRenderAction(workspaceForContext(config, context), action, args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
   if (action === "status") {
     return {
       ok: true,

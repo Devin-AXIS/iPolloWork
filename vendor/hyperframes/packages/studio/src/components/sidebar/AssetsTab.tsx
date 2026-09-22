@@ -4,12 +4,19 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { MEDIA_EXT, FONT_EXT } from "../../utils/mediaTypes";
 import { copyTextToClipboard } from "../../utils/clipboard";
 import { usePlayerStore } from "../../player/store/playerStore";
-import { type MediaCategory, CATEGORY_LABELS, getCategory, FILTER_ORDER } from "./assetHelpers";
+import {
+  type MediaCategory,
+  CATEGORY_LABELS,
+  filterMaterialLibraryAssets,
+  getCategory,
+  FILTER_ORDER,
+} from "./assetHelpers";
 import { AudioRow } from "./AudioRow";
 import { AssetCard, FontRow } from "./AssetCard";
 import { useStudioI18n } from "../../i18n";
 import importIconSrc from "../../icons/figmaAssetsImport.svg?url";
 import searchIconSrc from "../../icons/figmaAssetsSearch.svg?url";
+import { resolveGeneratedAvatarMaterialPath } from "../../utils/timelineAssetDrop";
 
 const ASSET_VIRTUAL_OVERSCAN_PX = 480;
 
@@ -133,7 +140,11 @@ export function deriveUsedPaths(elements: Array<{ src?: string }>): Set<string> 
       // Malformed encoding — use as-is
     }
 
-    if (s) paths.add(s);
+    if (s) {
+      paths.add(s);
+      const avatarMaterial = resolveGeneratedAvatarMaterialPath(s);
+      if (avatarMaterial) paths.add(avatarMaterial);
+    }
   }
   return paths;
 }
@@ -293,8 +304,12 @@ export const AssetsTab = memo(function AssetsTab({
   const elements = usePlayerStore((s) => s.elements);
   const usedPaths = useMemo(() => deriveUsedPaths(elements), [elements]);
   const allMediaAssets = useMemo(
-    () => assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
-    [assets],
+    () =>
+      filterMaterialLibraryAssets(
+        assets.filter((a) => MEDIA_EXT.test(a) || FONT_EXT.test(a)),
+        usedPaths,
+      ),
+    [assets, usedPaths],
   );
   const mediaAssets = useMemo(() => {
     const all = filterByUsage(allMediaAssets, usedPaths, usageFilter);

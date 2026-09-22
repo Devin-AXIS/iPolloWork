@@ -10,13 +10,13 @@ const ENGINES = ENGINE_FILTER
 
 const EXPECTED_MODELS = [
   "Big Pickle",
-  "Hy3 Free",
   "MiMo-V2.5 Free",
   "Nemotron 3 Ultra Free",
   "Nemotron 3.5 Lightning Free",
 ];
 
 const REMOVED_MODELS = [
+  "Hy3 Free",
   "Ox Alpha Free",
   "DeepSeek V4 Flash Free",
   "Laguna S 2.1 Free",
