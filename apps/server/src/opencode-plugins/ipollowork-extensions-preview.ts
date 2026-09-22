@@ -86,6 +86,30 @@ const browserOpenUrlArgsSchema = z.object({
 
 const browserSnapshotArgsSchema = z.object({
   tabId: z.string().trim().min(1).describe("Built-in browser tab ID returned by ipollowork_browser_open_url."),
+  mode: z.enum(["content", "interactive", "mixed"]).optional(),
+  scopeRef: z.string().trim().min(1).optional(),
+  delta: z.boolean().optional(),
+});
+
+const browserReadArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  mode: z.enum(["article", "forms", "links", "page", "tables"]).optional(),
+  maxChars: z.number().int().min(1_000).max(24_000).optional(),
+});
+
+const browserScreenshotArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  snapshotId: z.string().trim().min(1).optional(),
+  target: z.enum(["ref", "region", "viewport"]).optional(),
+  ref: z.string().trim().min(1).optional(),
+  region: z.object({
+    x: z.number().min(0),
+    y: z.number().min(0),
+    width: z.number().positive().max(8_192),
+    height: z.number().positive().max(8_192),
+  }).optional(),
+  mode: z.enum(["annotated", "auto", "plain"]).optional(),
+  ifChanged: z.boolean().optional(),
 });
 
 const browserActionSchema = z.union([
@@ -166,6 +190,14 @@ const browserActArgsSchema = z.object({
   tabId: z.string().trim().min(1),
   snapshotId: z.string().trim().min(1),
   actions: z.array(browserActionSchema).min(1).max(8),
+  observe: z.object({
+    mode: z.enum(["content", "interactive", "mixed"]).optional(),
+    scopeRef: z.string().trim().min(1).optional(),
+    delta: z.boolean().optional(),
+    settleMs: z.number().int().min(0).max(2_000).optional(),
+    waitForLoad: z.enum(["interactive", "complete"]).optional(),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }).optional(),
 });
 
 const browserSetProxyArgsSchema = z.object({
@@ -943,6 +975,32 @@ export const iPolloWorkExtensionsPreview = async () => {
         const args = browserSnapshotArgsSchema.parse(rawArgs);
         const result = await postJson("/engine-tools/call", {
           name: ENGINE_HOST_TOOL_NAMES.browserSnapshot,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserRead]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserRead),
+      args: browserReadArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserReadArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserRead,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserScreenshot]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserScreenshot),
+      args: browserScreenshotArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserScreenshotArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserScreenshot,
           args,
           context: contextPayload(context),
         });

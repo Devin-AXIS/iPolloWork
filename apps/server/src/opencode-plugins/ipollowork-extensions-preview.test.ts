@@ -257,6 +257,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).toContain("ipollowork_workspace_app_call_tool");
     expect(tools).toContain("ipollowork_browser_open_url");
     expect(tools).toContain("ipollowork_browser_snapshot");
+    expect(tools).toContain("ipollowork_browser_read");
+    expect(tools).toContain("ipollowork_browser_screenshot");
     expect(tools).toContain("ipollowork_browser_act");
     expect(tools).toContain("ipollowork_browser_set_proxy");
     expect(tools).toContain("list_motion_presets");
@@ -315,17 +317,43 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
       { type: "waitFor", condition: "load", state: "complete" },
     ];
 
+    const observe = { mode: "interactive", delta: true, settleMs: 100 };
     const output = await plugin.tool.ipollowork_browser_act.execute({
       tabId: "tab-1",
       snapshotId: "snapshot-1",
       actions,
+      observe,
     }, { directory: "/tmp/main" });
 
     expect(JSON.parse(output)).toMatchObject({ ok: true });
     expect(fake.requests.find((request) => request.pathname === "/engine-tools/call")?.body).toMatchObject({
       name: "ipollowork_browser_act",
-      args: { actions },
+      args: { actions, observe },
     });
+  });
+
+  test("validates compact reads, scoped snapshots, and bounded visual capture", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    await plugin.tool.ipollowork_browser_snapshot.execute({
+      tabId: "tab-1", mode: "interactive", scopeRef: "@e2", delta: true,
+    }, { directory: "/tmp/main" });
+    await plugin.tool.ipollowork_browser_read.execute({
+      tabId: "tab-1", mode: "article", maxChars: 4_000,
+    }, { directory: "/tmp/main" });
+    await plugin.tool.ipollowork_browser_screenshot.execute({
+      tabId: "tab-1", snapshotId: "snapshot-1", target: "region",
+      region: { x: 0, y: 0, width: 640, height: 480 }, mode: "annotated", ifChanged: true,
+    }, { directory: "/tmp/main" });
+
+    expect(fake.requests.filter((request) => request.pathname === "/engine-tools/call").map((request) => request.body)).toEqual([
+      expect.objectContaining({ name: "ipollowork_browser_snapshot" }),
+      expect.objectContaining({ name: "ipollowork_browser_read" }),
+      expect.objectContaining({ name: "ipollowork_browser_screenshot" }),
+    ]);
+    expect(() => z.object(plugin.tool.ipollowork_browser_screenshot.args).parse({
+      tabId: "tab-1", target: "region", region: { x: -1, y: 0, width: 640, height: 480 },
+    })).toThrow();
   });
 
 });
