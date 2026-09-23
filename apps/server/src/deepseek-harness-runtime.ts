@@ -1,6 +1,6 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -116,6 +116,7 @@ type DeepSeekHarnessProviderBridge = {
   displayName: string;
   api?: SharedProviderProfile["api"];
   baseURL?: string;
+  cacheRetention?: "long";
   discoverModels?: boolean;
   models?: DeepSeekHarnessDiscoveredModels["models"];
 
@@ -276,8 +277,17 @@ export function deepSeekHarnessProviderCredentials(
     openCodeZenRoute?: CodexProviderGatewayRoute;
   } = {},
 ): Map<string, DeepSeekHarnessProviderCredential> {
-  const openCodeBridge = options.openCodeZenRoute
-    ? { ...OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE, baseURL: options.openCodeZenRoute.baseURL }
+  const apiCredentials = sharedProviderApiCredentials(records);
+  const usesPublicZenCredential = (apiCredentials.get("opencode") ?? OPENCODE_ZEN_PUBLIC_API_KEY)
+    === OPENCODE_ZEN_PUBLIC_API_KEY;
+  // The supported pi-ai cache hint carries the actual DSH session ID to our
+  // loopback gateway, which consumes it without requesting upstream caching.
+  const openCodeBridge: DeepSeekHarnessProviderBridge = options.openCodeZenRoute
+    ? {
+        ...OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE,
+        baseURL: options.openCodeZenRoute.baseURL,
+        ...(usesPublicZenCredential ? { cacheRetention: "long" } : {}),
+      }
     : OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE;
   const credentials = new Map<string, DeepSeekHarnessProviderCredential>([[
     OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId,
@@ -287,7 +297,7 @@ export function deepSeekHarnessProviderCredentials(
     },
   ]]);
   const profiles = sharedProviderProfiles(records);
-  for (const [providerId, apiKey] of sharedProviderApiCredentials(records)) {
+  for (const [providerId, apiKey] of apiCredentials) {
     if (providerId === OPENCODE_ZEN_PUBLIC_PROVIDER_BRIDGE.providerId && options.openCodeZenRoute) {
       credentials.set(providerId, {
         apiKey: options.openCodeZenRoute.apiKey,
@@ -503,14 +513,16 @@ export class DeepSeekHarnessRuntime {
   #syncedCompatibleProviderIds = new Set<string>();
   #syncedCredentialRefs = new Set<string>();
   #syncedRouteProjections: DeepSeekHarnessRouteProjection[] = [];
+  readonly #legacyWorkspaceId: string | null;
   readonly #providerGateway = new CodexProviderGateway();
 
-  constructor(input: { config: ServerConfig; env: EnvService; workspace?: WorkspaceInfo }) {
+  constructor(input: { config: ServerConfig; env: EnvService; workspace?: WorkspaceInfo; legacyWorkspaceId?: string | null }) {
     this.#config = input.config;
     this.#env = input.env;
     const workspace = input.workspace ?? input.config.workspaces.find((entry) => entry.engineId === DEEPSEEK_HARNESS_ENGINE_ID);
     if (!workspace) throw new Error("DeepSeek Harness requires a configured workspace");
     this.#workspace = workspace;
+    this.#legacyWorkspaceId = input.legacyWorkspaceId ?? workspace.id;
   }
 
   async call<T>(method: string, payload: unknown): Promise<T> {
@@ -791,9 +803,10 @@ export class DeepSeekHarnessRuntime {
             apiKeyEnv: ref,
             ...(bridge.api ? { api: bridge.api } : {}),
             ...(bridge.baseURL ? { baseURL: bridge.baseURL } : {}),
+            ...(bridge.cacheRetention ? { cacheRetention: bridge.cacheRetention } : {}),
             ...(models ? { models } : {}),
           },
-          managedKeys: ["displayName", "apiKeyEnv", "api", "baseURL", "models"],
+          managedKeys: ["displayName", "apiKeyEnv", "api", "baseURL", "models", ...(providerId === "opencode" ? ["cacheRetention"] : [])],
         });
         continue;
       }
@@ -929,6 +942,7 @@ export class DeepSeekHarnessRuntime {
       this.#config,
       this.#workspace,
       process.env.IPOLLOWORK_DSH_HOME?.trim(),
+      this.#legacyWorkspaceId,
 
     );
     await ensureDir(dshHome);
@@ -975,7 +989,10 @@ export class DeepSeekHarnessRuntime {
       const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
       await waitForDeepSeekHarnessApi(normalizedBaseUrl);
       this.#baseUrl = normalizedBaseUrl;
-      await this.#syncSharedProviderApiCredentials(this.#baseUrl).catch(() => undefined);
+      // Session listing and creation do not depend on provider credentials.
+      // Do not hold DSH cold start behind a potentially slow provider scan;
+      // model selection and prompting still await the same deduplicated sync.
+      void this.#syncSharedProviderApiCredentials(this.#baseUrl).catch(() => undefined);
       child.once("exit", () => {
         if (this.#child !== child) return;
         this.#baseUrl = null;
@@ -1006,14 +1023,14 @@ function safeRuntimeSegment(value: string): string {
   return normalized.slice(start, end) || "workspace";
 }
 
-function deepSeekHarnessHome(
+export function deepSeekHarnessHome(
   config: ServerConfig,
   workspace: WorkspaceInfo,
   configuredHome?: string,
+  legacyWorkspaceId?: string | null,
 ): string {
   const root = runtimeStorageDir(config);
-  const firstWorkspace = config.workspaces.find((entry) => entry.engineId === DEEPSEEK_HARNESS_ENGINE_ID);
-  if (firstWorkspace?.id === workspace.id) {
+  if (legacyWorkspaceId === workspace.id) {
     // Preserve the original single-runtime home so existing DSH sessions remain available.
     return configuredHome || join(root, "deepseek-harness");
   }
@@ -1021,10 +1038,41 @@ function deepSeekHarnessHome(
   return join(root, "deepseek-harness-workspaces", safeRuntimeSegment(workspace.id));
 }
 
+export function resolveLegacyDeepSeekHarnessWorkspaceId(config: ServerConfig, workspace: WorkspaceInfo): string {
+  const root = runtimeStorageDir(config);
+  const markerPath = join(root, "deepseek-harness-legacy-workspace-id");
+  try {
+    const pinnedId = readFileSync(markerPath, "utf8").trim();
+    if (pinnedId) return pinnedId;
+  } catch {
+    // Existing installations have no marker yet.
+  }
+
+  const configuredHome = process.env.IPOLLOWORK_DSH_HOME?.trim();
+  const workspaces = config.workspaces.filter((item) => item.engineId === DEEPSEEK_HARNESS_ENGINE_ID);
+  if (!workspaces.some((item) => item.id === workspace.id)) workspaces.push(workspace);
+  const withoutDedicatedHome = workspaces.filter((item) => !existsSync(configuredHome
+    ? join(configuredHome, "workspaces", safeRuntimeSegment(item.id))
+    : join(root, "deepseek-harness-workspaces", safeRuntimeSegment(item.id))));
+  const legacyWorkspaceId = withoutDedicatedHome.length === 1
+    ? withoutDedicatedHome[0]!.id
+    : (workspaces[0]?.id ?? workspace.id);
+  mkdirSync(root, { recursive: true });
+  try {
+    writeFileSync(markerPath, legacyWorkspaceId, { flag: "wx" });
+  } catch {
+    // Another process may have pinned the owner first; use its decision.
+    return readFileSync(markerPath, "utf8").trim() || legacyWorkspaceId;
+  }
+  return legacyWorkspaceId;
+}
+
 export class DeepSeekHarnessRuntimePool {
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #runtimes = new Map<string, DeepSeekHarnessRuntime>();
+  #legacyWorkspaceId: string | null = null;
+  #legacyWorkspaceResolved = false;
   readonly #stopConfigListener: () => void;
 
   constructor(input: { config: ServerConfig; env: EnvService }) {
@@ -1039,7 +1087,16 @@ export class DeepSeekHarnessRuntimePool {
   forWorkspace(workspace: WorkspaceInfo): DeepSeekHarnessRuntime {
     const existing = this.#runtimes.get(workspace.id);
     if (existing) return existing;
-    const runtime = new DeepSeekHarnessRuntime({ config: this.#config, env: this.#env, workspace });
+    if (!this.#legacyWorkspaceResolved) {
+      this.#legacyWorkspaceId = resolveLegacyDeepSeekHarnessWorkspaceId(this.#config, workspace);
+      this.#legacyWorkspaceResolved = true;
+    }
+    const runtime = new DeepSeekHarnessRuntime({
+      config: this.#config,
+      env: this.#env,
+      workspace,
+      legacyWorkspaceId: this.#legacyWorkspaceId,
+    });
     this.#runtimes.set(workspace.id, runtime);
     return runtime;
   }

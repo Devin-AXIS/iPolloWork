@@ -20,10 +20,20 @@ const cleanups: Array<() => void> = [];
 const configs: ServerConfig[] = [];
 let previousDb: string | undefined;
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 afterEach(async () => {
   while (cleanups.length) cleanups.pop()?.();
   for (const config of configs.splice(0)) await disposeRuntimeOpencodeConfigStore(config);
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  while (roots.length) await removeTestRoot(roots.pop()!);
   if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
   else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
 });
@@ -77,6 +87,12 @@ describe("ipollowork runtime config file", () => {
     expect(parsed.default_agent).toBe("ipollowork");
     expect(Array.isArray(parsed.plugin)).toBe(true);
     expect((parsed.plugin as string[]).join("\n")).not.toContain("chrome-devtools");
+    expect(parsed.plugin).toEqual([]);
+    expect(mcp.ipollowork).toEqual({
+      type: "remote",
+      url: "http://127.0.0.1:0/engine-tools/mcp?workspaceId=ws_1",
+      headers: { Authorization: "Bearer owt_test_token" },
+    });
     const providers = parsed.provider as Record<string, Record<string, unknown>>;
     const openCode = providers.opencode;
     const whitelist = Array.isArray(openCode?.whitelist)
@@ -157,10 +173,11 @@ describe("ipollowork runtime config file", () => {
     for (let attempt = 0; attempt < 50; attempt += 1) {
       const parsed = await readConfigFile(config);
       mcp = (parsed.mcp ?? {}) as Record<string, Record<string, unknown>>;
-      if (mcp.stripe) break;
+      if (Object.hasOwn(mcp, "ipollowork")) break;
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
-    expect(mcp.stripe?.enabled).toBe(false);
+    expect(mcp.stripe).toBeUndefined();
+    expect(mcp.ipollowork?.url).toBe("http://127.0.0.1:0/engine-tools/mcp?workspaceId=ws_1");
   });
 
   test("keepiPolloWorkRuntimeConfigFileFresh projects global provider channel writes", async () => {

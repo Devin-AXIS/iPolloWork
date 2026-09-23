@@ -1,18 +1,19 @@
 const plugins = [
   { id: "xiaohongshu-ops", name: "小红书运营台", version: "0.4.17" },
-  { id: "douyin-ops", name: "抖音运营台", version: "0.1.11" },
+  { id: "douyin-ops", name: "抖音运营台", version: "0.2.13" },
+  { id: "wechat-channels-ops", name: "视频号运营台", version: "0.1.7" },
 ];
 
 export default {
   id: "bundled-social-plugins",
-  title: "Xiaohongshu and Douyin come from the bundled plugin collection",
+  title: "Social operations workbenches come from the bundled plugin collection",
   kind: "user-facing",
   steps: [
     {
-      name: "Show both bundled social plugins in the personal catalog",
+      name: "Show bundled social plugins in the personal catalog",
       run: async (ctx) => {
-        await ctx.prove("小红书和抖音都由主程序插件集提供", {
-          voiceover: "个人插件列表现在直接显示小红书运营台和抖音运营台，安装与更新不再依赖外部本地插件包。",
+        await ctx.prove("小红书、抖音和视频号都由主程序插件集提供", {
+          voiceover: "个人插件列表直接显示小红书、抖音和视频号运营台，安装与更新都走主软件内置目录。",
           action: async () => {
             await ctx.waitFor("Boolean(window.__ipolloworkControl)");
             await ctx.eval(`(() => {
@@ -30,10 +31,11 @@ export default {
             const workspaceId = await ctx.eval("localStorage.getItem('ipollowork.react.activeWorkspace') || ''");
             ctx.assert(workspaceId, "An active workspace is required for the plugin catalog");
             await ctx.navigateHash(`/workspace/${workspaceId}/settings/extensions`);
-            await ctx.waitFor(`document.querySelector('[data-testid="plugin-library-heading"]') !== null`, { timeoutMs: 30_000 });
+            await ctx.waitFor(`[...document.querySelectorAll('button')]
+              .some((entry) => ["刷新", "Refresh"].includes(entry.textContent?.trim() ?? ""))`, { timeoutMs: 30_000 });
             await ctx.eval(`(() => {
               const tab = [...document.querySelectorAll('button, [role="tab"]')]
-                .find((entry) => ["个人", "Personal"].includes(entry.textContent?.trim() ?? ""));
+                .find((entry) => ["插件", "Plugins", "个人", "Personal"].includes(entry.textContent?.trim() ?? ""));
               tab?.click();
               const refresh = [...document.querySelectorAll('button')]
                 .find((entry) => ["刷新", "Refresh"].includes(entry.textContent?.trim() ?? ""));
@@ -42,7 +44,7 @@ export default {
             await ctx.waitFor("Boolean(window.__bundledSocialCatalog)", { timeoutMs: 60_000, label: "bundled social catalog" });
             await ctx.waitFor(`(() => {
               const text = document.body.innerText;
-              return text.includes("小红书运营台") && text.includes("抖音运营台");
+              return text.includes("小红书运营台") && text.includes("抖音运营台") && text.includes("视频号运营台");
             })()`, { timeoutMs: 30_000, label: "social plugin cards" });
             await ctx.eval(`(() => {
               const staleDevLoader = document.querySelector('[data-testid="startup-logo-animation"]');
@@ -57,18 +59,18 @@ export default {
               ctx.assert(entry?.manifest?.source?.origin === "builtin", `${plugin.id} was not loaded from the bundled catalog`);
               ctx.assert(entry?.manifest?.source?.trusted === true, `${plugin.id} was not marked as a reviewed bundle`);
             }
-            ctx.assert(!catalog.errors?.some((error) => /xiaohongshu-ops|douyin-ops/.test(error)), `Bundled social catalog error: ${catalog.errors}`);
+            ctx.assert(!catalog.errors?.some((error) => /xiaohongshu-ops|douyin-ops|wechat-channels-ops/.test(error)), `Bundled social catalog error: ${catalog.errors}`);
             const visible = await ctx.eval(`(() => {
               const rows = [...document.querySelectorAll('[data-testid="plugin-package-list-item"]')];
               return ${JSON.stringify(plugins.map((plugin) => plugin.name))}.every((name) => rows.some((row) => row.innerText.includes(name)));
             })()`);
-            ctx.assert(visible, "Both social plugin cards were not visible in the personal catalog");
+            ctx.assert(visible, "The bundled social plugin cards were not all visible in the personal catalog");
             await ctx.output("bundled-social-catalog", JSON.stringify(catalog.items.filter((item) =>
               plugins.some((plugin) => plugin.id === item.pluginId)), null, 2));
           },
           screenshot: {
             name: "bundled-social-plugins",
-            requireText: ["小红书运营台", "抖音运营台"],
+            requireText: ["小红书运营台", "抖音运营台", "视频号运营台"],
             rejectText: ["本地插件包未生成", "Something went wrong"],
             hashIncludes: "/settings/extensions",
           },

@@ -1,4 +1,5 @@
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
+import { classifyProviderFailure, type ProviderFailure } from "@ipollowork/types/provider-errors";
 
 import { createClient, unwrap } from "@/app/lib/opencode";
 import type { Client } from "@/app/types";
@@ -8,6 +9,7 @@ import {
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
   type ConversationPermission,
+  type ConversationStatus,
   withSessionPermissionMemory,
   waitForConversationIdle,
 } from "./conversation-engine";
@@ -25,6 +27,26 @@ import {
 
 type OpenCodeAccessModeId = "default" | "read-only" | "ask" | "full-access";
 type OpenCodePermissionRule = { permission: string; pattern: string; action: "allow" | "ask" | "deny" };
+
+const MAX_BACKGROUND_RETRY_WAIT_MS = 60_000;
+
+/**
+ * OpenCode honors a free-tier `retry-after` value even when it is several
+ * hours away. That is useful for an unattended CLI, but leaves an interactive
+ * iPolloWork task looking permanently stuck. Keep short, recoverable retries
+ * and end only long quota/rate-limit waits so the user can choose another
+ * model immediately.
+ */
+export function terminalOpenCodeRetryFailure(
+  status: ConversationStatus,
+  now = Date.now(),
+): ProviderFailure | null {
+  if (status.type !== "retry" || status.next - now <= MAX_BACKGROUND_RETRY_WAIT_MS) return null;
+  const failure = classifyProviderFailure(status.message);
+  if (failure?.code === "provider_quota_exhausted" || failure?.code === "provider_rate_limited") return failure;
+  // Retry duration alone is not evidence of an exhausted quota.
+  return null;
+}
 
 const OPEN_CODE_ACCESS_RULES: Record<OpenCodeAccessModeId, OpenCodePermissionRule[]> = {
   default: [],
@@ -127,6 +149,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
   if (!isOpenCodeClient(client)) throw new Error("OpenCode conversation client is unavailable");
   const selectedAccessModes = new Map<string, OpenCodeAccessModeId>();
   const liveState = createOpenCodeConversationLiveState();
+  const terminalRetrySessions = new Set<string>();
 
   return {
     mapSnapshot(snapshot) {
@@ -147,7 +170,29 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
       for await (const raw of subscription.stream) {
         if (input.signal.aborted) return;
         const event = mapEvent(raw, liveState);
-        if (event) input.onEvent(event);
+        if (!event) continue;
+        if (event.type === "session.status") {
+          if (event.status.type === "busy") terminalRetrySessions.delete(event.sessionId);
+          const failure = terminalOpenCodeRetryFailure(event.status);
+          if (failure) {
+            if (!terminalRetrySessions.has(event.sessionId)) {
+              terminalRetrySessions.add(event.sessionId);
+              input.onEvent({
+                type: "session.error",
+                sessionId: event.sessionId,
+                errorText: failure.message,
+                ...(liveState.latestUserMessageIds.get(event.sessionId)
+                  ? { parentUserMessageId: liveState.latestUserMessageIds.get(event.sessionId) }
+                  : {}),
+              });
+              void client.session.abort({ sessionID: event.sessionId }).catch(() => undefined);
+            }
+            continue;
+          }
+        }
+        if (event.type === "session.error" && terminalRetrySessions.has(event.sessionId)) continue;
+        if (event.type === "session.deleted") terminalRetrySessions.delete(event.sessionId);
+        input.onEvent(event);
       }
     },
     async listPermissions(input) {

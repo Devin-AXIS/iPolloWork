@@ -1,0 +1,805 @@
+{
+  "schemaVersion": 2,
+  "id": "wechat-channels-ops",
+  "name": "视频号运营台",
+  "description": "多账号视频号创作与运营：本地草稿、视频封面素材、浏览器发布任务、作品数据与评论记录，支持宿主 AI 会话及日程。平台执行需登录视频号助手。",
+  "category": "营销",
+  "source": {
+    "format": "ipollowork-extension-manifest",
+    "origin": "builtin",
+    "trusted": true,
+    "reference": "https://github.com/Devin-AXIS/iPolloWork"
+  },
+  "package": {
+    "version": "0.1.7",
+    "publisher": {
+      "id": "zjy-web222",
+      "name": "zjy-web222"
+    },
+    "compatibility": {
+      "ipollowork": ">=0.21.0"
+    },
+    "updateId": "local/wechat-channels-ops"
+  },
+  "composer": {
+    "prompt": "打开工作台使用 open-workbench。执行前读 wechat-channels-ops-worker。按真实视频号 ID 和独立浏览器核验身份。prepare-job 只准备任务；最终点击前 mark-submitting，之后回读结果。待核对不能重发。日程固定账号与 operationKey。"
+  },
+  "resources": [
+    {
+      "type": "skill",
+      "id": "wechat-channels-ops-worker",
+      "label": "视频号运营执行",
+      "path": "skills/wechat-channels-ops-worker",
+      "required": true
+    },
+    {
+      "type": "skill",
+      "id": "wechat-channels-ops-dispatcher",
+      "label": "视频号日程执行",
+      "path": "skills/wechat-channels-ops-dispatcher",
+      "required": true
+    },
+    {
+      "type": "local-service",
+      "id": "workbench",
+      "label": "视频号运营台",
+      "path": "service/workbench.mjs",
+      "required": true,
+      "actions": [
+        {
+          "id": "open-workbench",
+          "title": "打开视频号运营台",
+          "description": "打开视频号运营台",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "studio-state",
+          "title": "读取本地运营状态",
+          "description": "读取本地运营状态",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "list-accounts",
+          "title": "列出视频号账号",
+          "description": "列出视频号账号",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {},
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "save-account",
+          "title": "保存本地账号与定位",
+          "description": "保存本地账号与定位",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "channelId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "positioning": {
+                "type": "string",
+                "maxLength": 1000
+              },
+              "audience": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "tone": {
+                "type": "string",
+                "maxLength": 500
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "connect-account",
+          "title": "发起视频号扫码连接",
+          "description": "创建或重新连接账号专属浏览器登录会话",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "browser-target",
+          "title": "获取账号专用浏览器入口",
+          "description": "获取账号专用浏览器入口",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "observe-browser-session",
+          "title": "自动识别视频号登录",
+          "description": "从账号专属视频号助手页面核验并保存可见身份",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "browserProfileId": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "url": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "tree": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100000
+              },
+              "avatarUrl": {
+                "type": "string",
+                "maxLength": 2048
+              }
+            },
+            "required": [
+              "browserProfileId",
+              "url",
+              "tree"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "verify-account",
+          "title": "回写实际页面身份核验",
+          "description": "回写实际页面身份核验",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "actualChannelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "actualName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "sourceUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "accountId",
+              "actualChannelId",
+              "profileId",
+              "actualName",
+              "evidence",
+              "sourceUrl"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "import-media",
+          "title": "导入工作区视频或封面",
+          "description": "导入工作区视频或封面",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "sourcePath": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "sourcePath"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "save-draft",
+          "title": "保存本地视频草稿",
+          "description": "保存本地视频草稿",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "description": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "topics": {
+                "type": "string",
+                "maxLength": 500
+              },
+              "assetId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "coverId": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "runKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "title"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "prepare-job",
+          "title": "准备平台操作但不执行",
+          "description": "准备平台操作但不执行",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "accountId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "type": {
+                "type": "string",
+                "enum": [
+                  "publish",
+                  "sync-videos",
+                  "sync-comments",
+                  "reply"
+                ]
+              },
+              "draftId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "videoId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "commentId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "body": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              "operationKey": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "accountId",
+              "type",
+              "operationKey"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "get-job",
+          "title": "读取任务和固定载荷",
+          "description": "读取任务和固定载荷",
+          "effect": "read",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "cancel-job",
+          "title": "取消未执行任务",
+          "description": "取消未执行任务",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              }
+            },
+            "required": [
+              "jobId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "claim-job",
+          "title": "核验身份并领取任务",
+          "description": "核验身份并领取任务",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "actualChannelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "jobId",
+              "actualChannelId",
+              "profileId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "mark-submitting",
+          "title": "最终点击前记录提交状态",
+          "description": "最终点击前记录提交状态",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "actualChannelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "required": [
+              "jobId",
+              "actualChannelId",
+              "profileId"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "report-job",
+          "title": "回写观察到的平台结果",
+          "description": "回写观察到的平台结果",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "actualChannelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "submitted",
+                  "reviewing",
+                  "published",
+                  "replied",
+                  "uncertain",
+                  "blocked",
+                  "failed",
+                  "succeeded"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "resultUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              },
+              "videos": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "remoteId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "title": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "status": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 100
+                    },
+                    "url": {
+                      "type": "string",
+                      "maxLength": 2000
+                    },
+                    "publishedAt": {
+                      "type": "string",
+                      "maxLength": 100
+                    },
+                    "metrics": {
+                      "type": "object",
+                      "properties": {
+                        "plays": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "likes": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "comments": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "shares": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "favorites": {
+                          "anyOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "remoteId",
+                    "title",
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              },
+              "comments": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "remoteId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "author": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 200
+                    },
+                    "body": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 4000
+                    }
+                  },
+                  "required": [
+                    "remoteId",
+                    "author",
+                    "body"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": [
+              "jobId",
+              "actualChannelId",
+              "profileId",
+              "status",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "id": "reconcile-job",
+          "title": "以页面证据核对已有任务",
+          "description": "以页面证据核对已有任务",
+          "effect": "write",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "jobId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 700
+              },
+              "actualChannelId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "profileId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "published",
+                  "reviewing",
+                  "replied",
+                  "failed"
+                ]
+              },
+              "evidence": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 4000
+              },
+              "resultUrl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            },
+            "required": [
+              "jobId",
+              "actualChannelId",
+              "profileId",
+              "status",
+              "evidence"
+            ],
+            "additionalProperties": false
+          }
+        }
+      ],
+      "browserSession": {
+        "origin": "https://channels.weixin.qq.com",
+        "paths": [
+          "/login.html",
+          "/platform",
+          "/platform/",
+          "/platform/home"
+        ],
+        "observeAction": "observe-browser-session",
+        "sessionRecovery": {
+          "loginPath": "/login.html",
+          "authenticatedPath": "/platform/",
+          "cookieNames": [
+            "sessionid",
+            "wxuin"
+          ]
+        }
+      }
+    },
+    {
+      "type": "file",
+      "id": "runtime-files",
+      "label": "本地服务",
+      "path": "service",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "workbench-files",
+      "label": "运营台页面",
+      "path": "ui",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "license",
+      "label": "许可",
+      "path": "LICENSE",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "legacy-license",
+      "label": "历史许可",
+      "path": "LICENSES/MIT-legacy.txt",
+      "required": true
+    }
+  ],
+  "localization": {
+    "defaultLocale": "zh",
+    "translations": {
+      "en": {
+        "name": "WeChat Channels Operations",
+        "description": "Multi-account WeChat Channels creation and operations with local drafts, media, browser publishing tasks, analytics and comments through the host AI and scheduler.",
+        "category": "Marketing",
+        "composer": {
+          "prompt": "Open the workbench with open-workbench and read wechat-channels-ops-worker before execution. Verify the real Channels ID in the account-specific browser. prepare-job only prepares work; persist mark-submitting before the final click and read the actual result afterward. Reconcile uncertain work instead of resubmitting. Keep scheduled account IDs and operation keys stable."
+        },
+        "resources": {
+          "wechat-channels-ops-worker": {
+            "label": "WeChat Channels operations worker"
+          },
+          "wechat-channels-ops-dispatcher": {
+            "label": "WeChat Channels scheduled operations"
+          },
+          "workbench": {
+            "label": "WeChat Channels Operations"
+          },
+          "runtime-files": {
+            "label": "Local service"
+          },
+          "workbench-files": {
+            "label": "Operations workbench"
+          },
+          "license": {
+            "label": "License"
+          },
+          "legacy-license": {
+            "label": "Legacy license"
+          }
+        }
+      }
+    }
+  }
+}

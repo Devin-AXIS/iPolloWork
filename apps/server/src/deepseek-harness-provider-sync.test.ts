@@ -347,8 +347,10 @@ describe("DeepSeek Harness provider credential sync", () => {
     });
   });
 
-  test("routes DSH Zen requests through the authenticated local gateway", () => {
-    expect(deepSeekHarnessProviderCredentials([], {
+  test.each([false, true])("routes DSH Zen requests through the authenticated local gateway (saved public: %s)", (savedPublic) => {
+    expect(deepSeekHarnessProviderCredentials(savedPublic ? [
+      { key: sharedProviderCredentialEnvKey("opencode"), value: "public" },
+    ] : [], {
       openCodeZenRoute: {
         baseURL: "http://127.0.0.1:48123/provider/opencode/v1",
         apiKey: "route-token",
@@ -360,9 +362,18 @@ describe("DeepSeek Harness provider credential sync", () => {
         displayName: "iPolloWork Built-in Models",
         api: "openai-completions",
         baseURL: "http://127.0.0.1:48123/provider/opencode/v1",
+        cacheRetention: "long",
         models: OPENCODE_ZEN_PUBLIC_MODELS,
       },
     });
+  });
+
+  test("does not change cache retention for a real Zen account key", () => {
+    const credential = deepSeekHarnessProviderCredentials([
+      { key: sharedProviderCredentialEnvKey("opencode"), value: "account-key" },
+    ], { openCodeZenRoute: { baseURL: "http://127.0.0.1:48123/provider/opencode/v1", apiKey: "route-token" } }).get("opencode");
+    expect(credential?.apiKey).toBe("route-token");
+    expect(credential?.bridge).not.toHaveProperty("cacheRetention");
   });
 
   test("bridges an OpenCode Codex OAuth access token without copying its refresh token", () => {

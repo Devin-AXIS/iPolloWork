@@ -204,6 +204,12 @@ const browserLoginUiSchema = z.object({
 }).strict();
 export type BrowserLoginUi = z.infer<typeof browserLoginUiSchema>;
 
+const browserSessionRecoverySchema = z.object({
+  loginPath: z.string().startsWith('/'),
+  authenticatedPath: z.string().startsWith('/'),
+  cookieNames: z.array(z.string().regex(/^[A-Za-z0-9_.-]{1,100}$/)).min(1).max(10),
+}).strict();
+
 const resourceSchema = z.object({
   type: resourceTypeSchema,
   id: z.string().min(1),
@@ -223,6 +229,7 @@ const resourceSchema = z.object({
     paths: z.array(z.string().startsWith('/')).min(1).max(10),
     observeAction: z.string().regex(SIMPLE_ID_RE),
     loginUi: browserLoginUiSchema.optional(),
+    sessionRecovery: browserSessionRecoverySchema.optional(),
     avatarSelector: z.string().trim().min(1).max(200).optional(),
   }).strict().optional(),
   environment: z.array(z.string().regex(ENV_KEY_RE)).optional(),

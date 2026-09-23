@@ -12,6 +12,7 @@ import { generateCodexImage, optimizeCodexImagePrompt } from "./codex-image-gene
 import { recordSessionArtifact, sessionArtifactOwner } from "../session-artifacts.js";
 import { prepareImageSelection, saveImageSelection, loadImageSelection } from "./image-selection.js";
 import { rememberImageEditResult, saveImageEditResult, validateImageEditSource } from "./image-edit-results.js";
+import { findWorkspaceForContext } from "../workspaces.js";
 
 export const OPENAI_IMAGE_GENERATION_EXTENSION_ID = "openai-image-generation";
 const IMAGE_API_TIMEOUT_MS = 120_000;
@@ -366,19 +367,7 @@ export async function openAiImageGenerationStatus(authorization: AuthorizationAc
 }
 
 function workspaceForContext(config: ServerConfig, context: Record<string, unknown>): WorkspaceInfo {
-  const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
-    .filter((value) => value.length > 0)
-    .map((value) => resolve(value));
-
-  for (const candidate of candidates) {
-    const match = config.workspaces.find((workspace) => {
-      const workspaceRoot = resolve(workspace.path);
-      return candidate === workspaceRoot || candidate.startsWith(`${workspaceRoot}${sep}`);
-    });
-    if (match) return { ...match, path: resolve(match.path) };
-  }
-
-  const workspace = config.workspaces[0];
+  const workspace = findWorkspaceForContext(config.workspaces, context) ?? config.workspaces[0];
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for OpenAI image generation");
   return { ...workspace, path: resolve(workspace.path) };
 }

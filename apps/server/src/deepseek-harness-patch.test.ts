@@ -128,4 +128,29 @@ describe("DeepSeek Harness runtime patch", () => {
     expect(new Set(mcpRows.map((row) => row.config.serverName)).size).toBe(2);
     expect(JSON.stringify(patch)).not.toContain("disabled.example");
   });
+
+  test("falls back to the authenticated host MCP when the desktop host plugin is unavailable", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-host-mcp-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    delete process.env.IPOLLOWORK_DSH_HOST_PLUGIN;
+    const config = serverConfig(workspaceRoot);
+    config.port = 43127;
+    config.token = "scoped-token";
+
+    const patch = await buildDeepSeekHarnessPatch(config, config.workspaces[0]!);
+    expect(patch[2]).toEqual({
+      insert: [{
+        id: "ipollowork-mcp-ipollowork",
+        name: "@deepseek-ai/dsh-mcp-client",
+        config: {
+          transport: "streamable-http",
+          serverName: "ipollowork",
+          url: "http://127.0.0.1:43127/engine-tools/mcp?workspaceId=ws_dsh",
+          headers: { Authorization: "Bearer scoped-token" },
+          toolCallTimeoutMs: 420_000,
+          failOnStartupError: false,
+        },
+      }],
+    });
+  });
 });

@@ -52,6 +52,16 @@ extraResources:
       - "skills/**/*"
       - "ui/**/*"
       - "!**/node_modules/**/*"
+  - from: ../../examples/plugin-packages/wechat-channels-ops
+    to: plugin-packages/wechat-channels-ops
+    filter:
+      - "ipollowork.plugin.json"
+      - "LICENSE"
+      - "LICENSES/**/*"
+      - "service/**/*"
+      - "skills/**/*"
+      - "ui/**/*"
+      - "!**/node_modules/**/*"
   - from: ../../examples/plugin-packages/design-agent
     to: plugin-packages/design-agent
   - from: ../../examples/plugin-packages/reference-context

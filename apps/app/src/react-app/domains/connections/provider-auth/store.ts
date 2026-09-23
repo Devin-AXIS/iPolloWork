@@ -1678,28 +1678,6 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
     }
 
     if (
-      availableProviders.some((provider) => (
-        provider.id.trim().toLowerCase() === DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID
-      ))
-      && !isDesktopProviderBlocked({
-        providerId: DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID] ?? [];
-      if (!existing.some((method) => method.type === "api")) {
-        merged[DESKTOP_RESTRICTION_OPENCODE_PROVIDER_ID] = [
-          ...existing,
-          {
-            type: "api",
-            label: t("providers.api_key_label"),
-            description: "Connect iPolloWork built-in models to use the free and paid catalog.",
-          },
-        ];
-      }
-    }
-
-    if (
       getProviderEngineAdapter().capabilities.customProviders &&
       !isDesktopProviderBlocked({
         providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,

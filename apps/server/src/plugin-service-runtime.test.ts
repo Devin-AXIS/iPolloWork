@@ -563,6 +563,19 @@ describe("plugin service runtime", () => {
     await expect(access(dataDir)).rejects.toThrow();
   });
 
+  test("shares social account data across projects without sharing other plugin data", async () => {
+    const runtimeRoot = await temporaryRoot("ipollowork-plugin-data-scope-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    const serverConfig = config(await temporaryRoot("ipollowork-plugin-data-workspace-"));
+
+    expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "douyin-ops"))
+      .toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "douyin-ops"));
+    expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "wechat-channels-ops"))
+      .toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "wechat-channels-ops"));
+    expect(pluginServiceDataDirectory(serverConfig, "workspace-a", "runtime-capability"))
+      .not.toBe(pluginServiceDataDirectory(serverConfig, "workspace-b", "runtime-capability"));
+  });
+
   test("runs DSH from an empty Git workspace and returns a patch without touching the source", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-workspace-");
     const runtimeRoot = await temporaryRoot("ipollowork-dsh-runtime-");

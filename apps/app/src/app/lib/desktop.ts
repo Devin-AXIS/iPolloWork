@@ -131,7 +131,7 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, options?: { profileId?: string; loginUi?: BrowserLoginUi & { origin: string } }) => Promise<{
+        openUrl?: (url: string, options?: { profileId?: string; taskId?: string; loginUi?: BrowserLoginUi & { origin: string } }) => Promise<{
           provider: "builtin";
           tabId: string;
           url: string;

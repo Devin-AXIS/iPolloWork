@@ -6,7 +6,7 @@ import type { McpItem, ServerConfig } from "./types.js";
 import { readJsoncFile } from "./jsonc.js";
 import { opencodeConfigPath } from "./workspace-files.js";
 import { validateMcpConfig, validateMcpName } from "./validators.js";
-import { forgetMcpAuthorizationConsumer, publicMcpConfig, secureMcpAuthorizationConfig } from "./mcp-authorization.js";
+import { engineMcpAuthorizationConfig, forgetMcpAuthorizationConsumer, publicMcpConfig, secureMcpAuthorizationConfig } from "./mcp-authorization.js";
 import { readRuntimeMcpConfig, writeRuntimeMcpConfig } from "./runtime-capability-store.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -100,6 +100,27 @@ export async function listRuntimeMcp(serverConfig: ServerConfig, workspaceId: st
     });
   }
   return items;
+}
+
+export async function readEngineRuntimeMcpConfig(
+  serverConfig: ServerConfig,
+  workspaceId: string,
+): Promise<Record<string, Record<string, unknown>>> {
+  const entries = await Promise.all(
+    Object.entries(await readRuntimeMcpConfig(serverConfig, workspaceId)).map(async ([name, entry]) => [
+      name,
+      await engineMcpAuthorizationConfig(serverConfig, workspaceId, name, entry),
+    ] as const),
+  );
+  return Object.fromEntries(entries.filter(([, entry]) => entry.enabled !== false));
+}
+
+export async function listEngineRuntimeMcp(serverConfig: ServerConfig, workspaceId: string): Promise<McpItem[]> {
+  return Object.entries(await readEngineRuntimeMcpConfig(serverConfig, workspaceId)).map(([name, config]) => ({
+    name,
+    config,
+    source: "config.remote",
+  }));
 }
 
 export async function addMcp(

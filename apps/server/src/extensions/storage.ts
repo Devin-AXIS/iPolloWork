@@ -13,6 +13,7 @@ import {
   sha256,
 } from "../object-storage-signing.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { findWorkspaceForContext } from "../workspaces.js";
 
 export const STORAGE_EXTENSION_ID = "storage";
 
@@ -72,19 +73,7 @@ function isStorageProvider(value: string): value is StorageProviderId {
 }
 
 export function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
-  const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
-    .filter(Boolean)
-    .map((value) => resolve(value));
-
-  for (const candidate of candidates) {
-    const workspace = config.workspaces.find((entry) => {
-      const root = resolve(entry.path);
-      return candidate === root || candidate.startsWith(`${root}${sep}`);
-    });
-    if (workspace) return { ...workspace, path: resolve(workspace.path) };
-  }
-
-  const workspace = config.workspaces[0];
+  const workspace = findWorkspaceForContext(config.workspaces, context) ?? config.workspaces[0];
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for Storage Center");
   return { ...workspace, path: resolve(workspace.path) };
 }

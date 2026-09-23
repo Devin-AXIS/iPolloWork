@@ -7,6 +7,7 @@ import {
   shouldInjectVideoTaskContext,
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
+  videoDeliveryIntentForPrompt,
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
@@ -1043,6 +1044,19 @@ describe("HyperFrames Video Studio", () => {
     expect(shouldInjectVideoTaskContext(null, "video")).toBe(true);
     expect(shouldInjectVideoTaskContext("design", "video")).toBe(false);
     expect(shouldInjectVideoTaskContext(null, "work")).toBe(false);
+  });
+
+  test("treats Douyin publication and MP4 export as unfinished video delivery", () => {
+    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频，然后发布到抖音")).toBe("publish-douyin");
+    expect(videoDeliveryIntentForPrompt("请导出这个视频为 MP4")).toBe("export");
+    expect(videoDeliveryIntentForPrompt("全程自动发布到抖音，不要手动导出")).toBe("publish-douyin");
+    expect(videoDeliveryIntentForPrompt("只修改这个视频的标题，不要发布到抖音")).toBeNull();
+    expect(videoDeliveryIntentForPrompt("只做一个可编辑视频")).toBeNull();
+    const contract = videoTaskSystemContext("ses_video", "/workspace", null, { hostExportOperationKey: "test-export-once" });
+    expect(contract).toContain("The iPolloWork host owns the MP4 export");
+    expect(contract).toContain("operationKey test-export-once");
+    expect(contract).toContain("ipollowork_ipollowork_extension_call");
+    expect(contract).not.toContain("Export directly with ipollowork_extension_call");
   });
 
   test("injects the Video Studio contract before animation guidance", () => {

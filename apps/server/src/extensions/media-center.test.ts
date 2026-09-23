@@ -35,7 +35,13 @@ afterEach(async () => {
   else Reflect.set(globalThis, mediaProviderFetchKey, nativeMediaProviderFetch);
   while (directories.length) {
     const directory = directories.pop();
-    if (directory) await rm(directory, { recursive: true, force: true });
+    if (!directory) continue;
+    try {
+      await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+    } catch (error) {
+      const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+      if (process.platform !== "win32" || (code !== "EBUSY" && code !== "EPERM")) throw error;
+    }
   }
 });
 
@@ -62,6 +68,53 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("validates media in the workspace selected by its engine directory", async () => {
+    const unrelatedRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-unrelated-"));
+    const targetRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-target-"));
+    const engineDirectory = await mkdtemp(join(tmpdir(), "ipollowork-media-engine-"));
+    directories.push(unrelatedRoot, targetRoot, engineDirectory);
+    await writeFile(join(targetRoot, "video.html"), '<main data-composition-id="main" data-duration="5"><section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section></main>');
+    const workspaceConfig = {
+      workspaces: [
+        { id: "workspace-unrelated", path: unrelatedRoot, name: "Unrelated" },
+        { id: "workspace-target", path: targetRoot, directory: engineDirectory, name: "Target" },
+      ],
+    } as unknown as ServerConfig;
+
+    const result = await callMediaExtensionAction(
+      workspaceConfig,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video.html" },
+      { directory: engineDirectory, workspaceId: "workspace-unrelated" },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { sourcePath: "video.html" } } });
+  });
+
+  test("looks up an OpenCode export in the session project despite a stale workspace id", async () => {
+    const previousRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-previous-"));
+    const currentRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-current-"));
+    directories.push(previousRoot, currentRoot);
+    const sourcePath = "video/ses_current-artifact-video/index.html";
+    await mkdir(join(currentRoot, "video", "ses_current-artifact-video"), { recursive: true });
+    await writeFile(join(currentRoot, sourcePath), "<html></html>");
+    const workspaceConfig = {
+      workspaces: [
+        { id: "previous", path: previousRoot, name: "Previous" },
+        { id: "current", path: currentRoot, name: "Current" },
+      ],
+    } as unknown as ServerConfig;
+
+    await expect(callMediaExtensionAction(
+      workspaceConfig,
+      env({}),
+      "video_render_status",
+      { sourcePath, operationKey: "existing-export" },
+      { workspaceId: "previous", directory: currentRoot },
+    )).rejects.toThrow("No export exists for this operationKey");
+  });
+
   test("estimates multilingual narration duration before provider synthesis", () => {
     expect(estimateVoiceoverDurationSeconds("这是八个汉字的旁白。")).toBeGreaterThan(2);
     expect(estimateVoiceoverDurationSeconds("Five clear words for this scene.")).toBeGreaterThan(2);

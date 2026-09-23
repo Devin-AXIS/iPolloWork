@@ -20,7 +20,7 @@ description: 面向普通用户的抖音运营：网页登录、多账号、草�
 
 - 用户明确要求制作并发布视频时，HTML 工程不是交付终点。先完成当前视频会话的校验，再使用该会话提供的 Studio 渲染接口自动导出 MP4；不能要求用户点击“导出/渲染”、自己下载或提供刚制作视频的路径。已有可用 MP4 则直接复用，不重复渲染。
 - 直接调用内置媒体动作：ipollowork_extension_call(extensionId="media", action="video_render_start", args={sourcePath:"video/<准确工程ID>/index.html", operationKey:"<本次导出的固定标识>"})；再用 video_render_status 和同一组参数按 pollAfterMs 查询。宿主自动启动内置 Studio，不查找接口、不派探索子代理、不尝试 npx/猜测 HyperFrames 版本，也不需要日程面板。准备中/渲染中要继续等待，不让用户暂停后再说继续。complete 返回 outputPath 后导入；失败报告 error，不上传半成品。
-- 用完成任务返回的准确文件路径调用 import-media，然后 save-draft → publish-draft；browserTask 按下节完成上传、填写和发布，并用 get-job 核对回执。沿用 accountId、draftId、jobId 和 operationKey，结果 uncertain 时先核对，绝不重发。
+- 用完成任务返回的准确文件路径调用 import-media，然后 save-draft → publish-draft；browserTask 按下节完成上传、填写和发布，并用 get-job 核对回执。沿用 accountId、draftId、jobId 和 operationKey，结果 uncertain 时先核对，绝不重发。publish-draft 返回 browserTask 前不得自行打开发布器、上传或填写；返回后也必须先 claim-browser-job，领取成功才可调用浏览器写操作。该领取是同账号并发发布的唯一串行锁，不能绕过。
 - 新建草稿省略 id，使用稳定 runKey；id 只用于修改服务已返回的草稿。若误传 id 得到 draft_not_found，在同一轮读取 studio-state：本次确实是创建且未创建时去掉 id、保留 runKey 后重试一次；若任务是修改不存在的草稿则报告具体缺失，不改成创建。不得原样重复失败参数，不要求用户说“继续”来启动这一步。
 - 每个可恢复的非发布步骤在同一轮完成状态核对与一次有依据的修复，再继续原发布请求。缺少 video.create.bind 表示应使用 publish-draft 返回的 browserTask，不代表无法发布；不绕过草稿/任务记录直接私自重发。只有登录/验证码、拒绝审批、真实不可恢复错误或提交结果 uncertain 才暂停。不能把 pending/browserTask、已保存草稿或已上传当成发布成功。
 - “制作并发布”已包含导出与发布授权，不额外要求用户确认导出。只制作、预览、导出、保存草稿不等于授权发布。日常只在登录/验证码时请用户操作；权限审批、账号不明确、平台限制及真实故障仍须如实报告，不绕过，也不宣称完成。
@@ -47,7 +47,7 @@ description: 面向普通用户的抖音运营：网页登录、多账号、草�
    - list-videos：在创作者中心或自己的作品页读取最多20条作品和真实链接。
    - video-data：payload.itemIds 支持真实作品链接。先打开作品，核对标题和作者，再在自己创作者中心找对应作品读取可见数据；不能把链接当 API opaque ID。无法对应 opaque ID 时报告具体缺失，不能猜。只有页面可见的指标才返回；无法看到的播放数据不得填0。
    - list-comments：打开已锁定作品并读取至多20条可见评论，返回 content、nickname、实际作品 link；comment_id 只在可见结果确实提供时填写。title 可用原评论文本。页面无法访问时明确失败，不制造空结果。
-   - publish-draft：在创作者中心打开视频发布器，用浏览器 upload 动作上传 mediaPath，并带 extensionId="douyin-ops" 访问本插件素材；按表单填写锁定 title 和 text。平台标题字数不足时先报告具体限制，不能擅自改写已经授权的内容。核对所选账号、视频、文案后提交一次，等待平台反馈和作品记录。
+   - publish-draft：在创作者中心打开视频发布器，用浏览器 upload 动作上传 mediaPath，并带 extensionId="douyin-ops" 访问本插件素材。优先用快照中的 fileinput ref；若只有“上传视频”按钮，则将其 ref 和准确 expectedName 直接交给 upload 动作，切勿先 click 弹出系统文件窗口，也不要让用户手动选刚生成的视频。按表单填写锁定 title 和 text。平台标题字数不足时先报告具体限制，不能擅自改写已经授权的内容。核对所选账号、视频、文案后提交一次，等待平台反馈和作品记录。
    - comment-video：打开 targetUrl，读视频内容；先点击“留下你的精彩评论吧”等激活入口，重新 snapshot 后定位实际 combobox/textbox，再 fill payload.content。不要把占位文本当作已可编辑输入框。检查账号与文本后用可见发送按钮提交；发送是无文字图标时可对当前编辑器使用 press Enter（带该编辑器 ref 和 expectedName），随后读取结果。仅填写或按回车都不能单独算成功，未确认新增评论时记 uncertain，不再点击另一种发送方式。
    - reply-comment：打开 targetUrl，按 payload.targetAuthor 和 targetComment 精确定位原评论，再点该评论的回复；匹配不唯一则停止并说明，不能随便选或发成顶层评论。
 6. 遵循宿主当前审批设置及用户原有授权。用户点击发送/发布即授权这条锁定内容，无需重复询问；搜索或起草不等于授权发送。提交只执行一次。

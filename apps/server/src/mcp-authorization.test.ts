@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   completeMcpAuthorization,
+  engineMcpAuthorizationConfig,
   mcpAuthorizationStatus,
   proxyMcpRequest,
   publicMcpConfig,
@@ -17,8 +18,18 @@ import type { ServerConfig } from "./types.js";
 
 const roots: string[] = [];
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 afterEach(async () => {
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  while (roots.length) await removeTestRoot(roots.pop()!);
 });
 
 async function testConfig(): Promise<ServerConfig> {
@@ -76,6 +87,7 @@ describe("MCP authorization", () => {
     const engineItem = (await listRuntimeMcp(config, "workspace")).find((item) => item.name === "github");
     expect(engineItem?.config).toEqual(secured);
     expect((engineItem?.config.headers as Record<string, unknown>).Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+    expect(await engineMcpAuthorizationConfig(config, "workspace", "github", secured)).toEqual({ ...secured, enabled: false });
 
     const publicItem = (await listMcp(config, "workspace", config.workspaces[0]!.path))
       .find((item) => item.name === "github");
@@ -149,6 +161,11 @@ describe("MCP authorization", () => {
     callback.searchParams.set("state", authorizationUrl.searchParams.get("state") ?? "");
     expect(await completeMcpAuthorization(config, callback, fetcher)).toEqual({ workspaceId: "workspace", name: "github" });
     expect(await mcpAuthorizationStatus(config, "workspace", "github")).toEqual({ connected: true });
+    const connectedRuntime = await readRuntimeOpencodeConfig(config, "workspace");
+    const connectedEngineConfig = connectedRuntime.mcp?.github;
+    expect(connectedEngineConfig).toBeDefined();
+    expect(await engineMcpAuthorizationConfig(config, "workspace", "github", connectedEngineConfig ?? {}))
+      .toEqual(connectedEngineConfig ?? {});
 
     const secondWorkspaceId = "workspace-two";
     config.workspaces.push({

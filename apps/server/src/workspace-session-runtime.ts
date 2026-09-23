@@ -182,6 +182,7 @@ export class WorkspaceSessionRuntime {
   readonly #deepseekHarness: DeepSeekHarnessRuntimePool;
   readonly #codexHarness: CodexHarnessRuntimePool;
   readonly #freshCodexThreads = new Map<string, WorkspaceSessionModel>();
+  readonly #sessionContextHints = new Map<string, string>();
 
   constructor(input: {
     config: ServerConfig;
@@ -210,6 +211,20 @@ export class WorkspaceSessionRuntime {
       const oldest = this.#freshCodexThreads.keys().next().value;
       if (typeof oldest !== "string") break;
       this.#freshCodexThreads.delete(oldest);
+    }
+  }
+
+  sessionContextHint(workspaceId: string): string | null {
+    return this.#sessionContextHints.get(workspaceId) ?? null;
+  }
+
+  #rememberSessionContext(workspaceId: string, sessionId: string): void {
+    this.#sessionContextHints.delete(workspaceId);
+    this.#sessionContextHints.set(workspaceId, sessionId);
+    while (this.#sessionContextHints.size > 500) {
+      const oldest = this.#sessionContextHints.keys().next().value;
+      if (typeof oldest !== "string") break;
+      this.#sessionContextHints.delete(oldest);
     }
   }
 
@@ -304,6 +319,7 @@ export class WorkspaceSessionRuntime {
           ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
         });
       }
+      this.#rememberSessionContext(workspace.id, sessionId);
       await runtime.call("session.prompt", {
         sessionId,
         mode: "queue",
@@ -346,6 +362,7 @@ export class WorkspaceSessionRuntime {
         }
       }
       const additionalContext = buildCodexHarnessAdditionalContext(input.system, [], input.model);
+      this.#rememberSessionContext(workspace.id, effectiveSessionId);
       await runtime.call("turn/start", {
         threadId: effectiveSessionId,
         input: [{ type: "text", text: input.text, text_elements: [] }],
@@ -360,6 +377,7 @@ export class WorkspaceSessionRuntime {
     }
 
     const opencode = this.#createWorkspaceOpencodeClient(this.#config, workspace);
+    this.#rememberSessionContext(workspace.id, sessionId);
     this.#unwrapOpencodeResult(
       await opencode.session.promptAsync({
         sessionID: sessionId,

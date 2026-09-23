@@ -5,7 +5,8 @@ import { pathToFileURL } from "node:url";
 
 import { stringify as stringifyYaml } from "yaml";
 
-import { listRuntimeMcp } from "./mcp.js";
+import { engineHostMcp } from "./engine-host-mcp.js";
+import { listEngineRuntimeMcp } from "./mcp.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 
 function mcpServerName(name: string): string {
@@ -44,18 +45,35 @@ export async function buildDeepSeekHarnessPatch(
     { id: "tool-skill", disabled: false },
   ];
   const hostPluginPath = process.env.IPOLLOWORK_DSH_HOST_PLUGIN?.trim();
-  if (hostPluginPath && existsSync(hostPluginPath)) {
+  const hostPluginFile = hostPluginPath && existsSync(hostPluginPath) ? hostPluginPath : null;
+  if (hostPluginFile) {
     patches.push({
       insert: [{
         id: "ipollowork-host-tools",
-        name: pathToFileURL(hostPluginPath).href,
+        name: pathToFileURL(hostPluginFile).href,
       }],
     });
   }
 
   const rows: unknown[] = [];
   const usedNames = new Set<string>();
-  for (const item of await listRuntimeMcp(config, workspace.id)) {
+  if (!hostPluginFile) {
+    const host = engineHostMcp(config, workspace);
+    rows.push({
+      id: "ipollowork-mcp-ipollowork",
+      name: "@deepseek-ai/dsh-mcp-client",
+      config: {
+        transport: "streamable-http",
+        serverName: "ipollowork",
+        url: host.url,
+        headers: stringRecord(host.headers),
+        toolCallTimeoutMs: 420_000,
+        failOnStartupError: false,
+      },
+    });
+    usedNames.add("ipollowork");
+  }
+  for (const item of await listEngineRuntimeMcp(config, workspace.id)) {
     const mcpConfig = item.config;
     if (mcpConfig.enabled === false || item.disabledByTools) continue;
     const serverName = uniqueMcpServerName(item.name, usedNames);

@@ -1,7 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, rm } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { EnvService } from "./env-file.js";
 import { ApiError } from "./errors.js";
@@ -13,6 +13,7 @@ import {
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
+import { findWorkspaceForContext } from "./workspaces.js";
 
 export type PluginServiceAction = {
   extensionId: string;
@@ -65,6 +66,7 @@ type CachedPluginService = {
 };
 
 const serviceCacheByConfig = new WeakMap<ServerConfig, Map<string, CachedPluginService>>();
+const globalPluginServiceDataIds = new Set(["douyin-ops", "wechat-channels-ops"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -80,7 +82,13 @@ function safeSegment(value: string): string {
 
 // Keep the image metadata directory stable across the Media Studio package migration.
 export function pluginServiceDataDirectory(config: ServerConfig, workspaceId: string, pluginId: string): string {
-  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId === "media-studio" ? "image-studio" : pluginId));
+  const dataOwner = globalPluginServiceDataIds.has(pluginId) ? null : safeSegment(workspaceId);
+  return join(
+    runtimeStorageDir(config),
+    "plugin-data",
+    ...(dataOwner ? [dataOwner] : []),
+    safeSegment(pluginId === "media-studio" ? "image-studio" : pluginId),
+  );
 }
 
 export async function deletePluginServiceData(config: ServerConfig, workspaceId: string, pluginId: string): Promise<void> {
@@ -112,17 +120,8 @@ function actionsForManifest(manifest: PluginPackageManifest): PluginServiceActio
 }
 
 export function workspaceIdForPluginContext(config: ServerConfig, context: unknown): string {
-  const record = isRecord(context) ? context : {};
-  const candidates = [record.directory, record.worktree]
-    .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-    .map((value) => resolve(value));
-  for (const candidate of candidates) {
-    const workspace = config.workspaces.find((entry) => {
-      const root = resolve(entry.path);
-      return candidate === root || candidate.startsWith(`${root}${sep}`);
-    });
-    if (workspace) return workspace.id;
-  }
+  const contextualWorkspace = findWorkspaceForContext(config.workspaces, context);
+  if (contextualWorkspace) return contextualWorkspace.id;
   const workspace = config.workspaces[0];
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
   return workspace.id;

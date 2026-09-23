@@ -146,7 +146,7 @@ export function useModelPicker(input: UseModelPickerInput) {
     // The account catalog owns selection. Runtime discovery only enriches
     // capability metadata; it must never hide or lock an account model while
     // a sidecar is cold-starting or has not projected credentials yet.
-    const entries = getChatModelCatalogEntries(accountData).map((entry) => ({
+    const entries = getChatModelCatalogEntries(accountData, engineId).map((entry) => ({
       ...entry,
       runtime: runtimeQuery.data
         ? resolveModelRuntime(

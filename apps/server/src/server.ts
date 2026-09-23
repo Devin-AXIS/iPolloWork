@@ -10,7 +10,7 @@ import { projectExecutionSystemContext } from "@ipollowork/types/work-items";
 import { DEFAULT_ENGINE_ID, type ApprovalRequest, type Capabilities, type ServerConfig, type WorkspaceInfo, type Actor, type ReloadReason, type ReloadTrigger, type TokenScope } from "./types.js";
 import { ApprovalService } from "./approvals.js";
 import { sanitizePortableOpencodeConfig } from "./portable-opencode.js";
-import { addMcp, listMcp, removeMcp, setMcpEnabled } from "./mcp.js";
+import { addMcp, listMcp, readEngineRuntimeMcpConfig, removeMcp, setMcpEnabled } from "./mcp.js";
 import {
   completeMcpAuthorization,
   mcpAuthorizationStatus,
@@ -1587,6 +1587,7 @@ function createRoutes(
     resolveToyUiEnabled,
     resolveDevLogPath,
     createOpenAiRealtimeVoiceSession,
+    resolveEngineSessionContext: (workspaceId) => sessionRuntime.sessionContextHint(workspaceId),
   });
 
   registerWorkspaceRoutes({
@@ -3550,11 +3551,16 @@ async function syncRuntimeMcpToOpencodeEngine(
   const baseUrl = connection.baseUrl?.trim() ?? "";
   if (!baseUrl) return;
 
-  const entries = Object.entries(await readRuntimeMcpConfig(config, workspace.id)).filter(
-    ([name, mcpConfig]) =>
-      (!onlyNames || onlyNames.includes(name)) &&
-      (Boolean(onlyNames) || mcpConfig.enabled !== false),
-  );
+  const engineMcp = await readEngineRuntimeMcpConfig(config, workspace.id);
+  const storedMcp = onlyNames ? await readRuntimeMcpConfig(config, workspace.id) : {};
+  const entries = onlyNames
+    ? onlyNames.flatMap((name) => {
+      const ready = engineMcp[name];
+      if (ready) return [[name, ready] as const];
+      const stored = storedMcp[name];
+      return stored ? [[name, { ...stored, enabled: false }] as const] : [];
+    })
+    : Object.entries(engineMcp);
   if (entries.length === 0) return;
 
   const url = new URL(baseUrl);

@@ -25,8 +25,8 @@ export type CodexProviderGatewayRoute = {
 
 type GatewayProvider = CodexProviderGatewayUpstream & {
   routeToken: string;
-  sessionToken: string;
 };
+type GatewayRequestHeaders = IncomingMessage["headers"];
 type ProviderGatewayErrorType = "provider_gateway_error" | "invalid_request_error";
 
 type ResponseTool = {
@@ -66,14 +66,6 @@ function upstreamErrorType(status: number, message: string): ProviderGatewayErro
     return "invalid_request_error";
   }
   return "provider_gateway_error";
-}
-
-function requireConnectedOpenCodeCredential(provider: GatewayProvider): void {
-  if (provider.providerId !== "opencode" || provider.apiKey !== "public") return;
-  throw providerGatewayError(
-    "iPolloWork Built-in Models requires an API key. Open Settings > AI Providers > Connect provider to continue.",
-    401,
-  );
 }
 
 function safeToolName(value: string): string {
@@ -467,13 +459,71 @@ function endpoint(baseURL: string, path: string): string {
   return `${baseURL.replace(/\/+$/u, "")}/${path.replace(/^\/+/, "")}`;
 }
 
+function requestHeader(headers: GatewayRequestHeaders | undefined, name: string): string | undefined {
+  const value = headers?.[name];
+  return nonEmptyString(Array.isArray(value) ? value[0] : value);
+}
+
+function jsonRecord(value: unknown): Record<string, unknown> | undefined {
+  if (isRecord(value)) return value;
+  if (typeof value !== "string") return undefined;
+  try {
+    const parsed: unknown = JSON.parse(value);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function sessionFromRecord(value: unknown): string | undefined {
+  const record = jsonRecord(value);
+  if (!record) return undefined;
+  for (const key of ["x-opencode-session", "session_id", "sessionId", "conversation_id", "conversationId"]) {
+    const session = nonEmptyString(record[key]);
+    if (session) return session;
+  }
+  return sessionFromRecord(record["x-codex-turn-metadata"]);
+}
+
+function zenSessionId(
+  headers: GatewayRequestHeaders | undefined,
+  body: Record<string, unknown>,
+): string | undefined {
+  const direct = [
+    "x-opencode-session",
+    "session-id",
+    "x-deepseek-harness-session-id",
+    "x-session-id",
+    "session_id",
+    "x-session-affinity",
+    "thread-id",
+  ].map((name) => requestHeader(headers, name)).find(Boolean);
+  const bodySession = [
+    sessionFromRecord(requestHeader(headers, "x-codex-turn-metadata")),
+    nonEmptyString(body.session_id),
+    nonEmptyString(body.sessionId),
+    nonEmptyString(body.conversation_id),
+    nonEmptyString(body.conversationId),
+    nonEmptyString(body.prompt_cache_key),
+    sessionFromRecord(body.client_metadata),
+    sessionFromRecord(body["x-codex-turn-metadata"]),
+  ].find(Boolean);
+  // Request IDs and prompt text do not identify a conversation. Missing identity
+  // must not silently join independent sessions under one provider-wide key.
+  const seed = direct ?? bodySession;
+  if (!seed) return undefined;
+  if (/^ses_[A-Za-z0-9_-]{1,200}$/u.test(seed)) return seed;
+  return `ses_${createHash("sha256").update(seed).digest("hex").slice(0, 24)}`;
+}
+
 async function upstreamJson(
   provider: GatewayProvider,
   path: string,
   body: Record<string, unknown>,
+  requestHeaders?: GatewayRequestHeaders,
+  sessionBody: Record<string, unknown> = body,
 ): Promise<Record<string, unknown>> {
-  requireConnectedOpenCodeCredential(provider);
-  const headers = upstreamHeaders(provider, body);
+  const headers = upstreamHeaders(provider, sessionBody, requestHeaders);
   const response = await fetch(endpoint(provider.baseURL, path), {
     method: "POST",
     headers,
@@ -488,8 +538,9 @@ async function upstreamJson(
     payload = null;
   }
   if (!response.ok) {
-    const detail = isRecord(payload) && isRecord(payload.error)
-      ? nonEmptyString(payload.error.message)
+    const detail = isRecord(payload)
+      ? (isRecord(payload.error) ? nonEmptyString(payload.error.message) : undefined)
+        ?? nonEmptyString(payload.message)
       : undefined;
     const message = detail ?? `Provider request failed (${response.status})`;
     throw providerGatewayError(message, response.status, upstreamErrorType(response.status, message));
@@ -501,6 +552,7 @@ async function upstreamJson(
 function upstreamHeaders(
   provider: GatewayProvider,
   body: Record<string, unknown>,
+  requestHeaders?: GatewayRequestHeaders,
 ): Headers {
   const headers = new Headers(provider.httpHeaders);
   headers.set("content-type", "application/json");
@@ -511,8 +563,11 @@ function upstreamHeaders(
       !headers.has("x-opencode-session")
       && (!modelId || openCodeZenPublicModelUsesSessionAffinity(modelId))
     ) {
-      headers.set("x-opencode-session", provider.sessionToken);
+      const session = zenSessionId(requestHeaders, body);
+      if (session) headers.set("x-opencode-session", session);
     }
+    const codexSession = requestHeader(requestHeaders, "session-id");
+    if (codexSession && !headers.has("session-id")) headers.set("session-id", codexSession);
     if (!headers.has("x-opencode-request")) {
       headers.set("x-opencode-request", `msg_${randomBytes(12).toString("hex")}`);
     }
@@ -541,6 +596,7 @@ async function callOpenAiCompatible(
   provider: GatewayProvider,
   body: Record<string, unknown>,
   tools: readonly ResponseTool[],
+  requestHeaders?: GatewayRequestHeaders,
 ): Promise<{ output: GatewayOutput[]; usage?: Record<string, unknown> }> {
   const model = nonEmptyString(body.model);
   if (!model) throw new Error("A model is required");
@@ -552,7 +608,7 @@ async function callOpenAiCompatible(
     ...(tools.length ? { tools: openAiTools(tools), tool_choice: body.tool_choice ?? "auto" } : {}),
     ...(maxOutputTokens ? { max_tokens: maxOutputTokens } : {}),
     ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
-  });
+  }, requestHeaders, body);
   const choices = Array.isArray(payload.choices) ? payload.choices : [];
   const first = choices.find(isRecord);
   const message = first && isRecord(first.message) ? first.message : {};
@@ -585,6 +641,7 @@ async function callAnthropic(
   provider: GatewayProvider,
   body: Record<string, unknown>,
   tools: readonly ResponseTool[],
+  requestHeaders?: GatewayRequestHeaders,
 ): Promise<{ output: GatewayOutput[]; usage?: Record<string, unknown> }> {
   const model = nonEmptyString(body.model);
   if (!model) throw new Error("A model is required");
@@ -598,7 +655,7 @@ async function callAnthropic(
     ...(instructions ? { system: instructions } : {}),
     ...(tools.length ? { tools: anthropicTools(tools) } : {}),
     ...(typeof body.temperature === "number" ? { temperature: body.temperature } : {}),
-  });
+  }, requestHeaders, body);
   const output: GatewayOutput[] = [];
   const content = Array.isArray(payload.content) ? payload.content : [];
   for (const part of content) {
@@ -844,7 +901,6 @@ export class CodexProviderGateway {
   #port = 0;
   #providers = new Map<string, GatewayProvider>();
   #tokens = new Map<string, string>();
-  #sessions = new Map<string, string>();
 
   async configure(upstreams: readonly CodexProviderGatewayUpstream[]): Promise<Map<string, CodexProviderGatewayRoute>> {
     if (upstreams.length) await this.#ensureStarted();
@@ -852,10 +908,8 @@ export class CodexProviderGateway {
     const routes = new Map<string, CodexProviderGatewayRoute>();
     for (const upstream of upstreams) {
       const routeToken = this.#tokens.get(upstream.providerId) ?? randomBytes(32).toString("base64url");
-      const sessionToken = this.#sessions.get(upstream.providerId) ?? `ses_${randomBytes(12).toString("hex")}`;
       this.#tokens.set(upstream.providerId, routeToken);
-      this.#sessions.set(upstream.providerId, sessionToken);
-      next.set(upstream.providerId, { ...upstream, routeToken, sessionToken });
+      next.set(upstream.providerId, { ...upstream, routeToken });
       routes.set(upstream.providerId, {
         baseURL: `http://127.0.0.1:${this.#port}/provider/${encodeURIComponent(upstream.providerId)}/v1`,
         apiKey: routeToken,
@@ -871,7 +925,6 @@ export class CodexProviderGateway {
     this.#port = 0;
     this.#providers.clear();
     this.#tokens.clear();
-    this.#sessions.clear();
     if (!server) return;
     await new Promise<void>((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -915,13 +968,13 @@ export class CodexProviderGateway {
       }
       const body = await readJsonBody(request);
       if (match?.[2] === "chat/completions") {
-        await this.#proxyChatCompletions(provider, body, response);
+        await this.#proxyChatCompletions(provider, body, request.headers, response);
         return;
       }
       const tools = responseTools(body.tools);
       const result = provider.protocol === "anthropic-messages"
-        ? await callAnthropic(provider, body, tools)
-        : await callOpenAiCompatible(provider, body, tools);
+        ? await callAnthropic(provider, body, tools, request.headers)
+        : await callOpenAiCompatible(provider, body, tools, request.headers);
       response.writeHead(200, {
         "cache-control": "no-cache",
         "content-type": "text/event-stream; charset=utf-8",
@@ -949,13 +1002,20 @@ export class CodexProviderGateway {
   async #proxyChatCompletions(
     provider: GatewayProvider,
     body: Record<string, unknown>,
+    requestHeaders: GatewayRequestHeaders,
     response: ServerResponse,
   ): Promise<void> {
-    requireConnectedOpenCodeCredential(provider);
+    const upstreamBody = { ...body };
+    if (provider.providerId === "opencode" && provider.apiKey === "public") {
+      // DSH's supported cache hint transports its real session ID to this
+      // loopback gateway. It is routing metadata, not a Zen cache contract.
+      delete upstreamBody.prompt_cache_key;
+      delete upstreamBody.prompt_cache_retention;
+    }
     const upstream = await fetch(endpoint(provider.baseURL, "chat/completions"), {
       method: "POST",
-      headers: upstreamHeaders(provider, body),
-      body: JSON.stringify(body),
+      headers: upstreamHeaders(provider, body, requestHeaders),
+      body: JSON.stringify(upstreamBody),
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     const contentType = upstream.headers.get("content-type") ?? "application/json; charset=utf-8";

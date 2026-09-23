@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
+import { EventEmitter } from "node:events";
+import { mkdir, mkdtemp, realpath, rm, stat, writeFile } from "node:fs/promises";
 import { it } from "node:test";
 import os from "node:os";
 import path from "node:path";
@@ -18,13 +19,15 @@ function axNode({ nodeId, role, name, backendDOMNodeId = undefined, childIds = [
   };
 }
 
-function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null } = {}) {
+function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces = null, fileChooserOnClick = false, platform = process.platform, selectedFileSizes = null } = {}) {
   const commands = [];
   const inputEvents = [];
   const flattenedNodes = [];
   const frameNodes = [];
   let attached = false;
   let selectedOption = "writer";
+  let fileChooserIntercepted = false;
+  let nativeDialogs = 0;
   let url = "https://example.test/form";
   const nodes = [
     axNode({ nodeId: "root", role: "RootWebArea", name: "Fixture", childIds: ["heading", "title", "publish", "password"] }),
@@ -41,12 +44,13 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
       properties: [{ name: "protected", value: { value: true } }],
     }),
   ];
-  const debuggerApi = {
+  const debuggerApi = Object.assign(new EventEmitter(), {
     attach() { attached = true; },
     detach() { attached = false; },
     isAttached() { return attached; },
     async sendCommand(method, params = {}) {
       commands.push({ method, params });
+      if (method === "Page.setInterceptFileChooserDialog") fileChooserIntercepted = params.enabled;
       if (method === "Page.getFrameTree") {
         return {
           frameTree: {
@@ -64,6 +68,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
       }
       if (method === "DOM.resolveNode") return { object: { objectId: `node-${params.backendNodeId}` } };
       if (method === "Runtime.callFunctionOn") {
+        if (String(params.functionDeclaration).includes("Array.from(this.files")) return { result: { value: selectedFileSizes } };
         const backendNodeId = Number(String(params.objectId).replace("node-", ""));
         if (String(params.functionDeclaration).includes("selectExactOption")) {
           const option = params.arguments?.[0]?.value;
@@ -96,7 +101,7 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
       if (method === "Runtime.evaluate") return { result: { value: "complete" } };
       return {};
     },
-  };
+  });
   const webContents = {
     debugger: debuggerApi,
     focus() {},
@@ -104,7 +109,13 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
     getTitle() { return "Fixture"; },
     getURL() { return url; },
     isDestroyed() { return false; },
-    sendInputEvent(event) { inputEvents.push(event); },
+    sendInputEvent(event) {
+      inputEvents.push(event);
+      if (fileChooserOnClick && event.type === "mouseUp") {
+        if (fileChooserIntercepted) debuggerApi.emit("message", {}, "Page.fileChooserOpened", { backendNodeId: 14, mode: "selectSingle" });
+        else nativeDialogs += 1;
+      }
+    },
   };
   const tab = { tabId: "tab-1", view: { getBounds: () => ({ width: 640, height: 480 }), webContents } };
   const runtime = createBrowserRuntime({
@@ -113,9 +124,9 @@ function createFixture({ workspacePath = null, userDataPath = "/tmp", workspaces
     focusWindow() {},
     listLocalWorkspaces: async () => workspaces ?? (workspacePath ? [{ id: "workspace-1", path: workspacePath }] : []),
     getUserDataPath: () => userDataPath,
-    platform: "darwin",
+    platform,
   });
-  return { commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
+  return { commands, flattenedNodes, frameNodes, inputEvents, nodes, runtime, nativeDialogs: () => nativeDialogs, selectedOption: () => selectedOption, setUrl(value) { url = value; } };
 }
 
 function addSemanticControls(fixture) {
@@ -183,7 +194,10 @@ it("promotes visible pointer controls without ARIA roles into safe named refs", 
     fixture.commands.filter((command) => command.method === "Runtime.callFunctionOn").at(-1)?.params.arguments,
     [{ value: true }],
   );
-  assert.ok(!fixture.commands.some((command) => command.method === "Page.setInterceptFileChooserDialog"));
+  assert.deepEqual(
+    fixture.commands.filter((command) => command.method === "Page.setInterceptFileChooserDialog").map((command) => command.params.enabled),
+    [true, false],
+  );
 });
 
 it("includes actionable controls from child frames in the same semantic snapshot", async () => {
@@ -412,11 +426,116 @@ it("supplements hidden file inputs and uploads only registered-workspace files",
       tabId: "tab-1",
       snapshotId: snapshot.snapshotId,
       workspaceRoot: workspacePath,
-      actions: [{ type: "upload", ref: "@e4", filePaths: [uploadPath] }],
+      actions: [{ type: "upload", ref: "@e4", filePaths: [path.relative(workspacePath, uploadPath)] }],
     });
     const upload = fixture.commands.find((command) => command.method === "DOM.setFileInputFiles");
     assert.deepEqual(upload?.params.files, [await realpath(uploadPath)]);
     assert.equal(upload?.params.backendNodeId, 14);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("uploads a generated video through a visible button without opening a native file picker", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-button-upload-"));
+  const workspacePath = path.join(root, "workspace");
+  const videoPath = path.join(workspacePath, "video.mp4");
+  await mkdir(workspacePath, { recursive: true });
+  await writeFile(videoPath, "fixture");
+  try {
+    const fixture = createFixture({ workspacePath, fileChooserOnClick: true });
+    fixture.nodes[0].childIds.push("upload-video");
+    fixture.nodes.push(axNode({ nodeId: "upload-video", role: "button", name: "上传视频", backendDOMNodeId: 15 }));
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    assert.match(snapshot.tree, /\[@e4\] button "上传视频"/);
+    const result = await fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: "@e4", expectedName: "上传视频", filePaths: [videoPath] }],
+    });
+    assert.deepEqual(result.results, [{ type: "upload", ref: "@e4", count: 1 }]);
+    assert.equal(fixture.nativeDialogs(), 0);
+    assert.deepEqual(fixture.commands.find((command) => command.method === "DOM.setFileInputFiles")?.params, {
+      files: [await realpath(videoPath)], backendNodeId: 14,
+    });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("stages long Windows upload paths under a short private path until the tab closes", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-long-upload-"));
+  const workspacePath = path.join(root, "workspace");
+  const videoPath = path.join(workspacePath, "video", "s".repeat(100), "renders", `${"v".repeat(100)}.mp4`);
+  await mkdir(path.dirname(videoPath), { recursive: true });
+  await writeFile(videoPath, "real video bytes");
+  try {
+    assert.ok(videoPath.length >= 240);
+    const fixture = createFixture({ workspacePath, platform: "win32" });
+    fixture.flattenedNodes.push({ nodeName: "INPUT", backendNodeId: 14, attributes: ["type", "file"] });
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    await fixture.runtime.act({
+      tabId: "tab-1", snapshotId: snapshot.snapshotId, workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: "@e4", filePaths: [videoPath] }],
+    });
+    const staged = fixture.commands.find((command) => command.method === "DOM.setFileInputFiles")?.params.files[0];
+    assert.ok(staged.length < 240);
+    assert.equal((await stat(staged)).size, (await stat(videoPath)).size);
+    fixture.runtime.forget("tab-1");
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (!(await stat(staged).then(() => true, () => false))) break;
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    assert.equal(await stat(staged).then(() => true, () => false), false);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("does not report upload success when Chromium selects a zero-byte file", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-zero-upload-"));
+  const workspacePath = path.join(root, "workspace");
+  const videoPath = path.join(workspacePath, "video.mp4");
+  await mkdir(workspacePath, { recursive: true });
+  await writeFile(videoPath, "nonempty video");
+  try {
+    const fixture = createFixture({ workspacePath, selectedFileSizes: [0] });
+    fixture.flattenedNodes.push({ nodeName: "INPUT", backendNodeId: 14, attributes: ["type", "file"] });
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    await assert.rejects(fixture.runtime.act({
+      tabId: "tab-1", snapshotId: snapshot.snapshotId, workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: "@e4", filePaths: [videoPath] }],
+    }), /incomplete upload file/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("intercepts an accidental upload-button click and offers a file-input ref", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-browser-click-upload-"));
+  const workspacePath = path.join(root, "workspace");
+  const videoPath = path.join(workspacePath, "video.mp4");
+  await mkdir(workspacePath, { recursive: true });
+  await writeFile(videoPath, "fixture");
+  try {
+    const fixture = createFixture({ workspacePath, fileChooserOnClick: true });
+    fixture.nodes[0].childIds.push("upload-video");
+    fixture.nodes.push(axNode({ nodeId: "upload-video", role: "button", name: "上传视频", backendDOMNodeId: 15 }));
+    const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    const clicked = await fixture.runtime.act({
+      tabId: "tab-1", snapshotId: snapshot.snapshotId, workspaceRoot: workspacePath,
+      actions: [{ type: "click", ref: "@e4", expectedName: "上传视频" }],
+    });
+    assert.equal(clicked.snapshotRequired, false);
+    assert.equal(clicked.results[0]?.type, "fileChooser");
+    assert.equal(fixture.nativeDialogs(), 0);
+    const uploaded = await fixture.runtime.act({
+      tabId: "tab-1", snapshotId: snapshot.snapshotId, workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: clicked.results[0].uploadRef, filePaths: [videoPath] }],
+    });
+    assert.equal(uploaded.results[0]?.type, "upload");
+    assert.equal(fixture.commands.find((command) => command.method === "DOM.setFileInputFiles")?.params.backendNodeId, 14);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -428,12 +547,15 @@ it("uploads only the named plugin's file from its registered runtime storage", a
   const userDataPath = path.join(root, "desktop-data");
   const runtimeStorageRoot = path.join(root, "server-data");
   const allowedPath = path.join(runtimeStorageRoot, "plugin-data", "workspace-1", "douyin-ops", "assets", "video.mp4");
+  const globalAllowedPath = path.join(runtimeStorageRoot, "plugin-data", "douyin-ops", "assets", "global-video.mp4");
   const otherPluginPath = path.join(runtimeStorageRoot, "plugin-data", "workspace-1", "other-plugin", "assets", "video.mp4");
   await mkdir(workspacePath, { recursive: true });
   await mkdir(userDataPath, { recursive: true });
   await mkdir(path.dirname(allowedPath), { recursive: true });
+  await mkdir(path.dirname(globalAllowedPath), { recursive: true });
   await mkdir(path.dirname(otherPluginPath), { recursive: true });
   await writeFile(allowedPath, "fixture");
+  await writeFile(globalAllowedPath, "fixture");
   await writeFile(otherPluginPath, "fixture");
   try {
     const fixture = createFixture({
@@ -455,6 +577,18 @@ it("uploads only the named plugin's file from its registered runtime storage", a
     assert.deepEqual(
       fixture.commands.find((command) => command.method === "DOM.setFileInputFiles")?.params.files,
       [await realpath(allowedPath)],
+    );
+
+    snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+    await fixture.runtime.act({
+      tabId: "tab-1",
+      snapshotId: snapshot.snapshotId,
+      workspaceRoot: workspacePath,
+      actions: [{ type: "upload", ref: "@e4", filePaths: [globalAllowedPath], extensionId: "douyin-ops" }],
+    });
+    assert.deepEqual(
+      fixture.commands.filter((command) => command.method === "DOM.setFileInputFiles").at(-1)?.params.files,
+      [await realpath(globalAllowedPath)],
     );
 
     snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });

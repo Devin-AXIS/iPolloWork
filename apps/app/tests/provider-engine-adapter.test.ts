@@ -20,6 +20,7 @@ import {
   getEngineChatModelEntries,
   getRunnableChatModelEntries,
   getRunnableChatModelSnapshot,
+  getSelectableChatModelSnapshot,
   getSelectableChatProviderItems,
   mergeProviderListResponses,
   projectAccountProviderConnections,
@@ -297,12 +298,6 @@ describe("model runtime adapters", () => {
     expect(store.getSnapshot().providerAuthMethods.openai).toEqual([
       { type: "oauth", label: "OpenAI", methodIndex: 0 },
     ]);
-    expect(store.getSnapshot().providerAuthMethods.opencode).toEqual([{
-      type: "api",
-      label: expect.any(String),
-      description: "Connect iPolloWork built-in models to use the free and paid catalog.",
-    }]);
-
     store.closeProviderAuthModal();
     let releaseAuthRefresh = () => {};
     const authRefreshGate = new Promise<void>((resolve) => {
@@ -710,6 +705,24 @@ describe("model runtime adapters", () => {
       runtime: codexRuntime,
       engineId: CODEX_HARNESS_ENGINE_ID,
     })).toEqual([{ providerID: "openai", modelIDs: ["gpt-5.6-sol"] }]);
+  });
+
+  test("shows OpenCode free models only in the OpenCode engine", () => {
+    const model = { id: "mimo-v2.5-free", name: "MiMo Free", capabilities: {} };
+    const catalog = {
+      all: [
+        { id: "opencode", name: "OpenCode", source: "config" as const, env: [], models: { [model.id]: model } },
+        { id: "openai", name: "OpenAI", source: "config" as const, env: [], models: { "gpt-5.5": { id: "gpt-5.5", name: "GPT-5.5", capabilities: {} } } },
+      ],
+      connected: ["opencode", "openai"],
+      default: { opencode: model.id },
+    };
+    expect(getChatModelCatalogEntries(catalog, DEFAULT_ENGINE_ID).map(({ provider }) => provider.id)).toContain("opencode");
+    for (const engineId of [CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID]) {
+      expect(getChatModelCatalogEntries(catalog, engineId).map(({ provider }) => provider.id)).toEqual(["openai"]);
+      expect(getSelectableChatModelSnapshot(catalog, engineId).map(({ providerID }) => providerID)).toEqual(["openai"]);
+      expect(getRunnableChatModelSnapshot({ catalog, runtime: catalog, engineId }).map(({ providerID }) => providerID)).toEqual(["openai"]);
+    }
   });
 
   test("persists and idempotently disconnects an OAuth provider without mirroring its secret", async () => {

@@ -137,6 +137,7 @@ import {
   shouldInjectVideoTaskContext,
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
+  videoDeliveryIntentForPrompt,
   videoProjectEntryPath,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
@@ -879,7 +880,7 @@ export function SessionRoute() {
       )
     )
   ));
-  const accountSelectableModels = getSelectableChatModelSnapshot(accountProviderList);
+  const accountSelectableModels = getSelectableChatModelSnapshot(accountProviderList, activeEngineId);
   const explicitlySelectedModel = engineModelSelection?.engineId === activeEngineId
     && selectedModel?.providerID === engineModelSelection.model.providerID
     && selectedModel.modelID === engineModelSelection.model.modelID
@@ -1662,11 +1663,15 @@ export function SessionRoute() {
           && videoTarget !== "media"
           && shouldInjectVideoTaskContext(null, cachedSessionType);
         const videoPromptText = draft.resolvedText ?? draft.text;
+        const videoDeliveryIntent = videoDeliveryIntentForPrompt(videoPromptText);
         const videoTasks = videoSessionTemplates.length > 0
           ? videoSessionTemplates.map((template) => ({ sessionId: template.sessionId, template }))
           : isLegacyVideoTask
             ? [{ sessionId: targetSessionId, template: null }]
             : [];
+        const hostVideoOperationKey = activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent && videoTasks.length === 1
+          ? `ipw:${targetSessionId}:${crypto.randomUUID()}:export`
+          : null;
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const voiceover = selectedWorkspaceEndpoint
             ? await readVideoVoiceoverAvailability(
@@ -1695,7 +1700,12 @@ export function SessionRoute() {
             sessionId,
             selectedWorkspaceRoot,
             template?.manifest ?? null,
-            { includeVoiceover: includeVoiceoverContext, deliveryRequirements: videoDeliveryRequirements },
+            {
+              includeVoiceover: includeVoiceoverContext,
+              deliveryRequirements: videoDeliveryRequirements,
+              hostManagedExport: activeEngineId === DEFAULT_ENGINE_ID && (draft.capability?.id === "video-publish-continuation" || draft.capability?.id === "video-delivery-recovery"),
+              hostExportOperationKey: hostVideoOperationKey ?? undefined,
+            },
           );
         }));
         const designSessionTemplates = sessionTemplates.filter((template) => template.manifest.surface === "design");
@@ -1783,6 +1793,13 @@ export function SessionRoute() {
               };
             }))
           : [];
+        const hostVideoTask = activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent && videoTasks.length === 1
+          ? videoTasks[0]
+          : null;
+        const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
+        const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
+          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
+          : null;
         const capabilityPromptPart = draft.capability
           ? [{
               type: "text" as const,
@@ -1883,7 +1900,14 @@ export function SessionRoute() {
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
         }
-        return { dispatched: true, sessionId: effectiveSessionId, ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}) };
+        return {
+          dispatched: true,
+          sessionId: effectiveSessionId,
+          ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}),
+          ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
+            ? { videoDeliveryTarget: { sourcePath: hostVideoSourcePath, intent: videoDeliveryIntent, baselineFingerprint: hostVideoBaseline, operationKey: hostVideoOperationKey } }
+            : {}),
+        };
         } catch (error) {
           await finishStartedExecution("failed", describeRouteError(error));
           throw error;

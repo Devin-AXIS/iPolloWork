@@ -1,5 +1,6 @@
 import path from "node:path";
-import { realpath, stat } from "node:fs/promises";
+import { copyFile, mkdtemp, realpath, rm, stat } from "node:fs/promises";
+import { tmpdir } from "node:os";
 
 const MAX_SNAPSHOT_NODES = 250;
 const MAX_SNAPSHOT_TEXT = 30_000;
@@ -8,13 +9,16 @@ const MAX_FILL_TEXT = 50_000;
 const MAX_UPLOAD_FILES = 20;
 const MAX_UPLOAD_FILE_BYTES = 1024 * 1024 * 1024;
 const MAX_INFERRED_CONTROLS = 32;
-const MAX_WAIT_MS = 2_000;
+const MAX_WAIT_MS = 10_000;
 const DEFAULT_WAIT_FOR_MS = 5_000;
 const MAX_WAIT_FOR_MS = 10_000;
 const MAX_TOTAL_WAIT_MS = 10_000;
 const WAIT_POLL_MS = 100;
 const MAX_EXPECTED_NAME = 200;
 const MAX_DEBUGGER_COMMAND_MS = 5_000;
+const FILE_CHOOSER_EVENT_MS = 250;
+const MAX_WINDOWS_BROWSER_PATH = 240;
+const UPLOAD_CONTROL_NAME = /(?:上传|选择.{0,8}(?:文件|视频|素材)|upload|choose.{0,8}(?:file|video)|select.{0,8}(?:file|video)|browse)/i;
 
 const INTERACTIVE_ROLES = new Set([
   "button",
@@ -151,10 +155,19 @@ function pluginDataPathAllowed(filePath, userDataRoot, workspaceId, extensionId)
   const expectedPlugin = safeStorageSegment(extensionId);
   return parts.some((part, index) => (
     part === "plugin-data"
-    && parts[index + 1] === expectedWorkspace
-    && parts[index + 2] === expectedPlugin
-    && index + 3 < parts.length
+    && (
+      (parts[index + 1] === expectedWorkspace && parts[index + 2] === expectedPlugin && index + 3 < parts.length)
+      || (parts[index + 1] === expectedPlugin && index + 2 < parts.length)
+    )
   ));
+}
+
+async function removeStagedUpload(directory) {
+  const resolved = path.resolve(directory);
+  if (path.dirname(resolved) !== path.resolve(tmpdir()) || !/^ipw-upload-[A-Za-z0-9_-]+$/.test(path.basename(resolved))) {
+    throw new Error("Browser upload staging path is invalid.");
+  }
+  await rm(resolved, { recursive: true, force: true });
 }
 
 function snapshotLine(node, ref, depth) {
@@ -296,6 +309,7 @@ export function createBrowserRuntime({
 }) {
   const tabStates = new Map();
   const queues = new Map();
+  const stagedUploads = new Map();
 
   function stateFor(tabId) {
     let state = tabStates.get(tabId);
@@ -327,6 +341,10 @@ export function createBrowserRuntime({
   function forget(tabId) {
     tabStates.delete(tabId);
     queues.delete(tabId);
+    for (const directory of stagedUploads.get(tabId) ?? []) {
+      void removeStagedUpload(directory).catch(() => {});
+    }
+    stagedUploads.delete(tabId);
   }
 
   function resolveTab(rawTabId) {
@@ -605,6 +623,38 @@ export function createBrowserRuntime({
     tab.view.webContents.sendInputEvent({ type: "mouseUp", ...point, button: "left", clickCount: 1 });
   }
 
+  async function interceptFileChooser(debuggerApi, trigger) {
+    let chooser = null;
+    const onMessage = (_event, method, params) => {
+      if (method === "Page.fileChooserOpened") chooser = params;
+    };
+    await debuggerCommand(debuggerApi, "Page.enable");
+    debuggerApi.on("message", onMessage);
+    try {
+      await debuggerCommand(debuggerApi, "Page.setInterceptFileChooserDialog", { enabled: true });
+      await trigger();
+      if (!chooser) await new Promise((resolve) => setTimeout(resolve, FILE_CHOOSER_EVENT_MS));
+      return chooser;
+    } finally {
+      await debuggerCommand(debuggerApi, "Page.setInterceptFileChooserDialog", { enabled: false }).catch(() => {});
+      debuggerApi.removeListener("message", onMessage);
+    }
+  }
+
+  function fileChooserResult(state, chooser) {
+    const backendNodeId = Number(chooser?.backendNodeId);
+    if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) {
+      state.latestSnapshotId = null;
+      return { type: "fileChooser", message: "File picker was intercepted. Take a new snapshot and use the browser upload action; do not ask the user to choose a file." };
+    }
+    const ref = referenceFor(state, {
+      backendDOMNodeId: backendNodeId,
+      role: { value: "fileinput" },
+      name: { value: "Upload file" },
+    });
+    return { type: "fileChooser", uploadRef: ref, message: "File picker was intercepted. Use the browser upload action with this ref and the generated file path; do not ask the user to choose a file." };
+  }
+
   async function waitUntil(check, timeoutMs, description) {
     const startedAt = Date.now();
     while (true) {
@@ -698,9 +748,12 @@ export function createBrowserRuntime({
     const extensionId = typeof rawExtensionId === "string" && /^[A-Za-z0-9._-]+$/.test(rawExtensionId.trim())
       ? rawExtensionId.trim()
       : "";
-    return Promise.all(rawPaths.map(async (rawPath) => {
+    const selected = await Promise.all(rawPaths.map(async (rawPath) => {
       if (typeof rawPath !== "string" || !rawPath.trim()) throw new Error("Browser upload file paths must be non-empty strings.");
-      const filePath = await realpath(path.resolve(rawPath.trim()));
+      const requestedPath = rawPath.trim();
+      const filePath = await realpath(path.isAbsolute(requestedPath)
+        ? path.resolve(requestedPath)
+        : path.resolve(workspaceRoot, requestedPath));
       if (!pathWithin(workspaceRoot, filePath)
         && !trustedStorageRoots.some((root) => pluginDataPathAllowed(filePath, root, workspace.id, extensionId))) {
         throw new Error("Browser upload files must belong to the active workspace or the named plugin's private data.");
@@ -708,8 +761,35 @@ export function createBrowserRuntime({
       const fileStat = await stat(filePath);
       if (!fileStat.isFile()) throw new Error("Browser upload targets must be files.");
       if (fileStat.size > MAX_UPLOAD_FILE_BYTES) throw new Error("Browser upload file exceeds the 1 GB limit.");
-      return filePath;
+      return { filePath, size: fileStat.size };
     }));
+    if (platform !== "win32" || selected.every(({ filePath }) => filePath.length < MAX_WINDOWS_BROWSER_PATH)) {
+      return { files: selected.map(({ filePath }) => filePath), sizes: selected.map(({ size }) => size), stagedDirectory: null };
+    }
+    const stagedDirectory = await mkdtemp(path.join(tmpdir(), "ipw-upload-"));
+    try {
+      const usedNames = new Set();
+      const files = [];
+      for (const [index, selectedFile] of selected.entries()) {
+        if (selectedFile.filePath.length < MAX_WINDOWS_BROWSER_PATH) {
+          files.push(selectedFile.filePath);
+          continue;
+        }
+        let name = path.basename(selectedFile.filePath);
+        if (usedNames.has(name) || path.join(stagedDirectory, name).length >= MAX_WINDOWS_BROWSER_PATH) {
+          name = `video-${index}${path.extname(name)}`;
+        }
+        usedNames.add(name);
+        const stagedPath = path.join(stagedDirectory, name);
+        if (stagedPath.length >= MAX_WINDOWS_BROWSER_PATH) throw new Error("Browser upload staging path is too long.");
+        await copyFile(selectedFile.filePath, stagedPath);
+        files.push(stagedPath);
+      }
+      return { files, sizes: selected.map(({ size }) => size), stagedDirectory };
+    } catch (error) {
+      await removeStagedUpload(stagedDirectory);
+      throw error;
+    }
   }
 
   function requireRef(state, action) {
@@ -761,20 +841,23 @@ export function createBrowserRuntime({
       const eventKey = key === "Space" ? " " : key;
       const code = key === "Space" ? "Space" : "Enter";
       const windowsVirtualKeyCode = key === "Space" ? 32 : 13;
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "keyDown",
-        key: eventKey,
-        code,
-        windowsVirtualKeyCode,
-        text: key === "Enter" ? "\r" : " ",
-        unmodifiedText: key === "Enter" ? "\r" : " ",
+      const chooser = await interceptFileChooser(debuggerApi, async () => {
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
+          type: "keyDown",
+          key: eventKey,
+          code,
+          windowsVirtualKeyCode,
+          text: key === "Enter" ? "\r" : " ",
+          unmodifiedText: key === "Enter" ? "\r" : " ",
+        });
+        await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
+          type: "keyUp",
+          key: eventKey,
+          code,
+          windowsVirtualKeyCode,
+        });
       });
-      await debuggerCommand(debuggerApi, "Input.dispatchKeyEvent", {
-        type: "keyUp",
-        key: eventKey,
-        code,
-        windowsVirtualKeyCode,
-      });
+      if (chooser) return fileChooserResult(state, chooser);
       state.latestSnapshotId = null;
       return { type: "press", key, ref, name: current.name };
     }
@@ -808,14 +891,50 @@ export function createBrowserRuntime({
     const metadata = await inspectElement(debuggerApi, objectId, { scrollIntoView: true });
 
     if (action.type === "upload") {
-      if (metadata?.disabled || !metadata?.fileInput) throw new Error("Browser upload target is not an enabled file input.");
-      const files = await resolveUploadFiles(action.filePaths, workspaceRoot, action.extensionId);
-      await debuggerCommand(debuggerApi, "DOM.setFileInputFiles", {
-        files,
-        backendNodeId: entry.backendNodeId,
-      });
+      if (!metadata?.fileInput) {
+        const current = await currentAccessibleEntry(debuggerApi, entry);
+        requireExpectedName(action, current, "upload");
+        if (!UPLOAD_CONTROL_NAME.test(current.name) || !metadata?.buttonLike || !metadata.visible || metadata.disabled || !metadata.unobstructed) {
+          throw new Error("Browser upload requires a file input or a visible upload control with its exact accessible name.");
+        }
+      } else if (metadata.disabled) {
+        throw new Error("Browser upload target is disabled.");
+      }
+      const upload = await resolveUploadFiles(action.filePaths, workspaceRoot, action.extensionId);
+      let backendNodeId = entry.backendNodeId;
+      try {
+        if (!metadata?.fileInput) {
+          const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata));
+          backendNodeId = Number(chooser?.backendNodeId);
+          if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) {
+            throw new Error("Upload control did not expose a file input. Take a new snapshot and upload through its file-input ref.");
+          }
+        }
+        await debuggerCommand(debuggerApi, "DOM.setFileInputFiles", {
+          files: upload.files,
+          backendNodeId,
+        });
+        const fileInputObjectId = await resolvedNode(debuggerApi, { backendNodeId });
+        const observed = await debuggerCommand(debuggerApi, "Runtime.callFunctionOn", {
+          objectId: fileInputObjectId,
+          functionDeclaration: "function () { return Array.from(this.files || [], file => file.size); }",
+          returnByValue: true,
+        });
+        const sizes = observed?.result?.value;
+        if (Array.isArray(sizes) && sizes.length > 0 && (sizes.length !== upload.sizes.length || sizes.some((size, index) => size !== upload.sizes[index]))) {
+          throw new Error("Browser received an incomplete upload file. The original video was not submitted.");
+        }
+        if (upload.stagedDirectory) {
+          const directories = stagedUploads.get(tab.tabId) ?? new Set();
+          directories.add(upload.stagedDirectory);
+          stagedUploads.set(tab.tabId, directories);
+        }
+      } catch (error) {
+        if (upload.stagedDirectory) await removeStagedUpload(upload.stagedDirectory);
+        throw error;
+      }
       state.latestSnapshotId = null;
-      return { type: "upload", ref, count: files.length };
+      return { type: "upload", ref, count: upload.files.length };
     }
 
     const current = entry.inferred
@@ -830,7 +949,8 @@ export function createBrowserRuntime({
       if (!metadata.buttonLike || !metadata.unobstructed) {
         throw new Error("Browser click target is not an unobstructed interactive control.");
       }
-      sendPointerClick(tab, metadata);
+      const chooser = await interceptFileChooser(debuggerApi, () => sendPointerClick(tab, metadata));
+      if (chooser) return fileChooserResult(state, chooser);
       state.latestSnapshotId = null;
       return { type: "click", ref, name: current.name };
     }
@@ -942,14 +1062,15 @@ export function createBrowserRuntime({
         const results = [];
         for (const action of actions) {
           if (!action || typeof action !== "object") throw new Error("Browser actions must be objects.");
-          results.push(await performAction({
+          const result = await performAction({
             action,
             debuggerApi,
             state,
             tab,
             workspaceRoot: payload.workspaceRoot,
-          }));
-          if (state.latestSnapshotId !== snapshotId) break;
+          });
+          results.push(result);
+          if (state.latestSnapshotId !== snapshotId || result.type === "fileChooser") break;
         }
         return {
           ok: true,

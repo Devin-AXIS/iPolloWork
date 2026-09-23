@@ -5,6 +5,12 @@ import type {
 
 type RpcValue<T> = { value: T };
 
+// Only bootstrap/provider-sync operations need the longer runtime deadline.
+// Cancellation and ordinary reads keep their existing responsiveness.
+const BOOTSTRAP_RPC_METHODS = new Set([
+  "session.create", "llm.models", "llm.providers", "session.selectModel", "thread/start",
+]);
+
 export type WorkspaceEngineEvent = {
   type: string;
   [key: string]: unknown;
@@ -41,7 +47,7 @@ export class WorkspaceEngineRpcClient {
       method: "POST",
       headers: this.#headers,
       body: JSON.stringify({ method, payload }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(BOOTSTRAP_RPC_METHODS.has(method) ? 70_000 : 30_000),
     });
     if (!response.ok) throw await this.#responseError(response);
     return (await response.json() as RpcValue<T>).value;

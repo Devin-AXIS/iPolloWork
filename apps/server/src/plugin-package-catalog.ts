@@ -15,6 +15,7 @@ export const bundledPluginPackageIds = [
   "wechat-official",
   "xiaohongshu-ops",
   "douyin-ops",
+  "wechat-channels-ops",
   "design-agent",
   "video-agent",
   "reference-context",

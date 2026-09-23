@@ -101,7 +101,7 @@ function useModelOptions(open: boolean) {
       catalogQuery.data,
       connectedProviderIds,
     );
-    const entries = getChatModelCatalogEntries(catalogValue).map((entry) => ({
+    const entries = getChatModelCatalogEntries(catalogValue, engineId).map((entry) => ({
       ...entry,
       runtime: runtimeQuery.data
         ? resolveModelRuntime(
