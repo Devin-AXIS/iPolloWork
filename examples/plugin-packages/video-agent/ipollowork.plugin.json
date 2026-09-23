@@ -25,6 +25,7 @@
         "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPollo Video to create or edit video in the current session's video project." },
         "resources": {
+          "video-authoring-references": { "label": "Video authoring references" },
           "ipollowork-video-studio": { "description": "Safely create and edit HyperFrames video in the current iPolloWork Video Studio session." },
           "ipollowork-video-voiceover": {
             "label": "Video Voiceover",
@@ -49,7 +50,7 @@
     }
   },
   "package": {
-    "version": "0.3.4",
+    "version": "0.3.8",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -74,6 +75,13 @@
     }
   ],
   "resources": [
+    {
+      "type": "file",
+      "id": "video-authoring-references",
+      "label": "视频创作规则",
+      "path": "skills/ipollowork-video-studio/references",
+      "required": true
+    },
     {
       "type": "skill",
       "id": "ipollowork-video-studio",

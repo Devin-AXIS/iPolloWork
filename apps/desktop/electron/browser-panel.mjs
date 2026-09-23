@@ -925,6 +925,8 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     ipcMain.handle("ipollowork:browser:hide", () => hideBrowserView());
     ipcMain.handle("ipollowork:browser:openUrl", (_event, url, options) => openBrowserUrlForAutomation(url, options));
     ipcMain.handle("ipollowork:browser:snapshot", (_event, payload) => browserRuntime.snapshot(payload));
+    ipcMain.handle("ipollowork:browser:read", (_event, payload) => browserRuntime.read(payload));
+    ipcMain.handle("ipollowork:browser:screenshot", (_event, payload) => browserRuntime.screenshot(payload));
     ipcMain.handle("ipollowork:browser:act", (_event, payload) => browserRuntime.act(payload));
     ipcMain.handle("ipollowork:browser:navigate", (_event, url) => {
       const view = getActiveBrowserView() ?? createBrowserTab("about:blank", { select: true }).view;

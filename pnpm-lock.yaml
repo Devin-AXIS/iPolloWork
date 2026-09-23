@@ -81,8 +81,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.4.3)
       '@opencode-ai/sdk':
-        specifier: ^1.18.16
-        version: 1.18.16
+        specifier: ^1.18.31
+        version: 1.18.31
       '@shikijs/transformers':
         specifier: ^4.0.2
         version: 4.0.2
@@ -229,8 +229,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
       '@opencode-ai/sdk':
-        specifier: ^1.18.16
-        version: 1.18.16
+        specifier: ^1.18.31
+        version: 1.18.31
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -255,6 +255,9 @@ importers:
       sharp:
         specifier: 0.34.5
         version: 0.34.5
+      ws:
+        specifier: ^8.18.3
+        version: 8.18.3
       yaml:
         specifier: ^2.6.1
         version: 2.9.0
@@ -269,8 +272,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/types
       '@opencode-ai/plugin':
-        specifier: 1.18.16
-        version: 1.18.16
+        specifier: 1.18.31
+        version: 1.18.31
       electron:
         specifier: ^35.0.0
         version: 35.7.5
@@ -290,8 +293,8 @@ importers:
   apps/orchestrator:
     dependencies:
       '@opencode-ai/sdk':
-        specifier: ^1.18.16
-        version: 1.18.16
+        specifier: ^1.18.31
+        version: 1.18.31
       '@opentui/core':
         specifier: 0.1.77
         version: 0.1.77(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -299,7 +302,7 @@ importers:
         specifier: 0.1.77
         version: 0.1.77(solid-js@1.9.9)(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
       ipollowork-server:
-        specifier: 0.50.12
+        specifier: 0.50.13
         version: link:../server
       solid-js:
         specifier: 1.9.9
@@ -342,8 +345,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
       '@opencode-ai/sdk':
-        specifier: ^1.18.16
-        version: 1.18.16
+        specifier: ^1.18.31
+        version: 1.18.31
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -362,6 +365,9 @@ importers:
       sharp:
         specifier: 0.34.5
         version: 0.34.5
+      ws:
+        specifier: ^8.18.3
+        version: 8.18.3
       yaml:
         specifier: ^2.6.1
         version: 2.9.0
@@ -375,6 +381,9 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.7
+      '@types/ws':
+        specifier: ^8.18.1
+        version: 8.18.1
       bun-types:
         specifier: ^1.3.6
         version: 1.3.6
@@ -2138,8 +2147,8 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@opencode-ai/plugin@1.18.16':
-    resolution: {integrity: sha512-XvlZ9CFAXqrNrmpTe+EhhRYnDhca6db1ebcB10v5JO8kSm1iFbVbPP982Qzc4MRSrfpPjD8W1fg13Ubnff377g==}
+  '@opencode-ai/plugin@1.18.31':
+    resolution: {integrity: sha512-Rdc1bPK06PByaGyGd0kf7JUZ4pTkexz2OOUNlqZWLpHOiMEZ+/rFGjt46ypZ3QwA697gNdWwwwQbHbKG5NMwGA==}
     peerDependencies:
       '@opentui/core': '>=0.4.5'
       '@opentui/keymap': '>=0.4.5'
@@ -2152,8 +2161,8 @@ packages:
       '@opentui/solid':
         optional: true
 
-  '@opencode-ai/sdk@1.18.16':
-    resolution: {integrity: sha512-UvaHyL93spLm7MttoprWTOBSYQN3aYWd7/3Ie5WNnG2pRAPq/U/d51qt0smYBTrkjxqlQmg+AJoGw8MEH6lGUg==}
+  '@opencode-ai/sdk@1.18.31':
+    resolution: {integrity: sha512-Raouthf8Lhe9edjvYeeSK7SgvdoU6bBjH9qV3f70dHoa6h+z0X2TMz/e22/wKp/StlFUZ4kIRpYYxFnY8/k01w==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -8487,14 +8496,14 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@opencode-ai/plugin@1.18.16':
+  '@opencode-ai/plugin@1.18.31':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@opencode-ai/sdk': 1.18.16
+      '@opencode-ai/sdk': 1.18.31
       effect: 4.0.0-beta.83
       zod: 4.1.8
 
-  '@opencode-ai/sdk@1.18.16':
+  '@opencode-ai/sdk@1.18.31':
     dependencies:
       cross-spawn: 7.0.6
 

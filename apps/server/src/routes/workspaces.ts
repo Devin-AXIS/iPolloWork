@@ -20,6 +20,7 @@ interface RegisterWorkspaceRoutesOptions {
   routes: Route[];
   config: ServerConfig;
   onWorkspacesChanged: () => Promise<void>;
+  onLocalWorkspaceReady: (workspace: WorkspaceInfo) => Promise<void>;
   jsonResponse: JsonResponse;
   readJsonBody: ReadJsonBody;
   readOptionalJsonBody: ReadJsonBody;
@@ -255,6 +256,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     routes,
     config,
     onWorkspacesChanged,
+    onLocalWorkspaceReady,
     jsonResponse,
     readJsonBody,
     readOptionalJsonBody,
@@ -304,6 +306,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
       entry.workspaceType !== "remote" && entry.id === workspaceId
     );
     if (existingWorkspace) {
+      await onLocalWorkspaceReady(existingWorkspace);
       return jsonResponse({
         activeId: existingWorkspace.id,
         workspaces: config.workspaces.map(serializeWorkspace),
@@ -339,6 +342,7 @@ export function registerWorkspaceRoutes(options: RegisterWorkspaceRoutesOptions)
     }
     const persisted = await persistServerWorkspaceState(config);
     await onWorkspacesChanged();
+    await onLocalWorkspaceReady(workspace);
 
     await recordAudit(workspace.path, {
       id: shortId(),

@@ -145,8 +145,21 @@ export function mergeSnapshotIntoCachedMessages(snapshotMessages: UIMessage[], c
   return sortFullyTimestampedMessages(merged);
 }
 
-/** Presentation only: these receipts must never be sent back to the conversation engine. */
-export function withStudioResults(messages: UIMessage[], artifacts: SessionArtifact[], labels: { image: string; video: string }) {
+/**
+ * Presentation only: these receipts must never be sent back to the conversation engine.
+ *
+ * Generated media can finish before the assistant has finished the whole turn.
+ * Keep those artifacts available to the session, but hold their delivery
+ * receipts until the caller has an authoritative end-of-turn signal.
+ */
+export function withStudioResults(
+  messages: UIMessage[],
+  artifacts: SessionArtifact[],
+  labels: { image: string; video: string },
+  options: { showResults?: boolean } = {},
+) {
+  if (options.showResults === false) return messages;
+
   const seen = new Set<string>();
   const results: UIMessage[] = [];
   for (const artifact of artifacts) {

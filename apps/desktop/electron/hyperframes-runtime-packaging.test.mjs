@@ -67,3 +67,12 @@ test("keeps a recently closed Studio process warm for a bounded same-session reo
   assert.match(electronMainSource, /current\.projectPath === projectPath/);
   assert.match(electronMainSource, /clearTimeout\(current\.idleTimeout\)/);
 });
+
+test("recovers a missing Studio entry without overwriting a non-empty project", () => {
+  assert.match(electronMainSource, /existingEntries\.length === 0/);
+  assert.match(electronMainSource, /await mkdtemp\(path\.join\(path\.dirname\(projectPath\)/);
+  assert.match(electronMainSource, /path\.join\(recoveryRoot, path\.basename\(projectPath\)\)/);
+  assert.match(electronMainSource, /force: false/);
+  assert.match(electronMainSource, /errorOnExist: false/);
+  assert.match(electronMainSource, /project recovery did not restore index\.html/);
+});

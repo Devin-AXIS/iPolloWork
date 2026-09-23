@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../engine-host-tools.js";
+import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION, ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../engine-host-tools.js";
 import { z } from "zod";
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 
@@ -223,9 +223,15 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     const plugin = await iPolloWorkExtensionsPreview();
     const system = await transformedSystem(plugin);
     expect(system).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
+    expect(plugin.tool.ipollowork_extension_list_actions.description).toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
     expect(plugin.tool.ipollowork_extension_list_actions.description).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("approved automatic-selection flow");
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("Do not ask or leave the asset pending solely because multiple suitable models are authorized");
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("defaultModel is a computed automatic candidate");
     expect(system).toContain("editable HyperFrames HTML composition supported by Video Studio");
-    expect(system).toContain("Only on the footage/plugin path");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Treat any validation error, ok=false, zero/incorrect duration, empty samples");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("unintended blank midpoint/transition frame as a failed delivery");
+    expect(system).toContain("On the footage/plugin path");
     expect(system).toContain("raw clip alone does not complete that task");
   });
   test("forwards the selected persistent account profile to the shared browser host", async () => {
@@ -257,6 +263,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(tools).toContain("ipollowork_workspace_app_call_tool");
     expect(tools).toContain("ipollowork_browser_open_url");
     expect(tools).toContain("ipollowork_browser_snapshot");
+    expect(tools).toContain("ipollowork_browser_read");
+    expect(tools).toContain("ipollowork_browser_screenshot");
     expect(tools).toContain("ipollowork_browser_act");
     expect(tools).toContain("ipollowork_browser_set_proxy");
     expect(tools).toContain("list_motion_presets");
@@ -315,21 +323,47 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
       { type: "waitFor", condition: "load", state: "complete" },
     ];
 
+    const observe = { mode: "interactive", delta: true, settleMs: 100 };
     const output = await plugin.tool.ipollowork_browser_act.execute({
       tabId: "tab-1",
       snapshotId: "snapshot-1",
       actions,
+      observe,
     }, { directory: "/tmp/main" });
 
     expect(JSON.parse(output)).toMatchObject({ ok: true });
     expect(fake.requests.find((request) => request.pathname === "/engine-tools/call")?.body).toMatchObject({
       name: "ipollowork_browser_act",
-      args: { actions },
+      args: { actions, observe },
     });
     expect(() => z.object(plugin.tool.ipollowork_browser_act.args).parse({
       tabId: "tab-1", snapshotId: "snapshot-1",
       actions: [{ type: "upload", ref: "@e1", expectedName: "上传视频", filePaths: ["video/output.mp4"] }],
     })).not.toThrow();
+  });
+
+  test("validates compact reads, scoped snapshots, and bounded visual capture", async () => {
+    const fake = startFakeiPolloWorkServer();
+    const plugin = await iPolloWorkExtensionsPreview();
+    await plugin.tool.ipollowork_browser_snapshot.execute({
+      tabId: "tab-1", mode: "interactive", scopeRef: "@e2", delta: true,
+    }, { directory: "/tmp/main" });
+    await plugin.tool.ipollowork_browser_read.execute({
+      tabId: "tab-1", mode: "article", maxChars: 4_000,
+    }, { directory: "/tmp/main" });
+    await plugin.tool.ipollowork_browser_screenshot.execute({
+      tabId: "tab-1", snapshotId: "snapshot-1", target: "region",
+      region: { x: 0, y: 0, width: 640, height: 480 }, mode: "annotated", ifChanged: true,
+    }, { directory: "/tmp/main" });
+
+    expect(fake.requests.filter((request) => request.pathname === "/engine-tools/call").map((request) => request.body)).toEqual([
+      expect.objectContaining({ name: "ipollowork_browser_snapshot" }),
+      expect.objectContaining({ name: "ipollowork_browser_read" }),
+      expect.objectContaining({ name: "ipollowork_browser_screenshot" }),
+    ]);
+    expect(() => z.object(plugin.tool.ipollowork_browser_screenshot.args).parse({
+      tabId: "tab-1", target: "region", region: { x: -1, y: 0, width: 640, height: 480 },
+    })).toThrow();
   });
 
 });

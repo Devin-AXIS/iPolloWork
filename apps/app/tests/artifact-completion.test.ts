@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import type { ArtifactCompletionTarget } from "../src/app/types";
 import {
   artifactCompletionRecoveryInstruction,
+  artifactMediaDeliveryIssues,
+  artifactPreviewDeliveryIssues,
   artifactContentFingerprint,
   checkArtifactCompletion,
   promptArtifactCompletionTargets,
@@ -81,4 +83,30 @@ describe("artifact completion", () => {
     expect(surfaceSource).toContain('const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery"');
     expect(surfaceSource).toContain("if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;");
   });
+});
+
+
+test("media completion accepts disclosed fallbacks but repairs unresolved or missing review", () => {
+  expect(artifactMediaDeliveryIssues({ok:true,result:{fileCanBeDelivered:true,complete:false,reportedFallbacks:["not authorized"]}})).toEqual([]);
+  expect(artifactMediaDeliveryIssues({ok:true,result:{fileCanBeDelivered:false,issues:["cover: pending"]}})).toEqual(["cover: pending"]);
+  expect(artifactMediaDeliveryIssues(null)).toEqual(["media_review_unavailable"]);
+  const recovery = artifactCompletionRecoveryInstruction({unchangedPaths:[],unreportedPaths:[],mediaIssues:["cover: pending"]});
+  expect(recovery).toContain("media/artifact_media_review phase=plan");
+  expect(recovery).toContain("do not discard useful imagery");
+});
+
+test("preview completion reports batched client defects without asking for ad hoc screenshots", () => {
+  expect(artifactPreviewDeliveryIssues({ ok: true, result: { passed: true, pageCount: 8, issues: [] } })).toEqual([]);
+  expect(artifactPreviewDeliveryIssues({
+    ok: true,
+    result: { passed: false, issues: [{ target: "slide-4", code: "blank_surface", detail: "No visible content." }] },
+  })).toEqual(["slide-4: blank_surface: No visible content."]);
+  expect(artifactPreviewDeliveryIssues(null)).toEqual(["preview_review_unavailable"]);
+  const recovery = artifactCompletionRecoveryInstruction({
+    unchangedPaths: [],
+    unreportedPaths: [],
+    previewIssues: ["slide-4: blank_surface"],
+  });
+  expect(recovery).toContain("media/artifact_preview_review");
+  expect(recovery).toContain("Do not start a temporary server");
 });

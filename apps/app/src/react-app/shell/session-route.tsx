@@ -165,6 +165,7 @@ import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
 import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
+import { reviewDesignPreview, type DesignPreviewReviewKind } from "@/react-app/domains/session/design/design-preview-review";
 
 import { readDenSettings } from "@/app/lib/den";
 import { denSessionUpdatedEvent } from "@/app/lib/den-session-events";
@@ -244,6 +245,12 @@ function focusPromptSoon() {
   if (typeof window === "undefined") return;
   const focus = () => window.dispatchEvent(new Event("ipollowork:focusPrompt"));
   [0, 80, 240, 600].forEach((delay) => window.setTimeout(focus, delay));
+}
+
+function controlStringValue(input: unknown, key: string) {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
+  const value = Reflect.get(input, key);
+  return typeof value === "string" ? value.trim() : "";
 }
 
 // All workspace-scoped server URLs/clients/tokens come from
@@ -1775,10 +1782,13 @@ export function SessionRoute() {
             }
           }
         }
+        const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
+          || parts.some(part => part.type === "text" && part.synthetic
+            && part.text.includes("media/artifact_media_review phase=plan") && part.text.includes(entry));
         const completionTemplates = automaticTemplateInstruction
           ? sessionTemplates
           : sessionTemplates.filter((template) => (
-              template.manifest.surface !== "video"
+              (template.manifest.surface !== "video" || requiresMediaReview(template.state.entry))
               && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
             ));
         const artifactCompletionTargets: ArtifactCompletionTarget[] = selectedWorkspaceEndpoint
@@ -1790,6 +1800,10 @@ export function SessionRoute() {
               return {
                 sourcePath: template.state.entry,
                 baselineFingerprint: artifactContentFingerprint(source.content),
+                mediaReview: requiresMediaReview(template.state.entry),
+                previewReviewKind: template.manifest.category === "site" || template.manifest.category === "slides"
+                  ? template.manifest.category
+                  : undefined,
               };
             }))
           : [];
@@ -2559,6 +2573,45 @@ export function SessionRoute() {
     execute: () => setCommandPaletteOpen(true),
   }), []);
   useControlAction(commandPaletteControlAction);
+
+  const artifactPreviewReviewControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "design.preview_review",
+    label: "Preview and review a Design artifact",
+    description: "Use the client Design renderer once to review a website at desktop/mobile sizes or every slide in a presentation.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "workspaceId", type: "string", required: true },
+      { name: "sourcePath", type: "string", required: true },
+      { name: "kind", type: "string", required: true, description: "site or slides" },
+    ],
+    disabled: !selectedWorkspaceEndpoint,
+    execute: async (rawArgs) => {
+      const workspaceId = controlStringValue(rawArgs, "workspaceId");
+      const sourcePath = controlStringValue(rawArgs, "sourcePath");
+      const kind = controlStringValue(rawArgs, "kind");
+      if (!selectedWorkspaceEndpoint || workspaceId !== selectedWorkspaceEndpoint.workspaceId) {
+        return { ok: false, error: "Open the artifact's workspace in iPolloWork before running client preview review." };
+      }
+      if (!sourcePath || (kind !== "site" && kind !== "slides")) {
+        return { ok: false, error: "sourcePath and kind=site|slides are required." };
+      }
+      const source = await selectedWorkspaceEndpoint.client.readWorkspaceFile(workspaceId, sourcePath);
+      const directory = sourcePath.split("/").slice(0, -1).join("/");
+      const tokenPath = directory ? `${directory}/design-tokens.css` : "design-tokens.css";
+      const tokenCss = await selectedWorkspaceEndpoint.client.readWorkspaceFile(workspaceId, tokenPath)
+        .then((file) => file.content)
+        .catch(() => "");
+      return reviewDesignPreview({
+        source: source.content,
+        sourcePath,
+        tokenCss,
+        kind: kind satisfies DesignPreviewReviewKind,
+        download: (path) => selectedWorkspaceEndpoint.client.downloadWorkspaceFile(workspaceId, path),
+      });
+    },
+  }), [selectedWorkspaceEndpoint]);
+  useControlAction(artifactPreviewReviewControlAction);
 
   const addProviderControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "settings.provider.add",

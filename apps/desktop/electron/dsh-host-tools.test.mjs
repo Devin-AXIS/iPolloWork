@@ -52,6 +52,11 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
             parameters: { type: "object", properties: {}, additionalProperties: false },
           },
           {
+            name: "ipollowork_extension_call",
+            description: "Call an extension action",
+            parameters: { type: "object", properties: {}, additionalProperties: false },
+          },
+          {
             name: "ipollowork_project_read",
             description: "Read the current project",
             parameters: { type: "object", properties: {}, additionalProperties: false },
@@ -135,18 +140,21 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   );
   assert.deepEqual(registered.map((tool) => tool.name), [
     "ipollowork_extension_list_actions",
+    "ipollowork_extension_call",
     "ipollowork_project_read",
     "ipollowork_schedule_preview",
     "ipollowork_schedule_apply",
   ]);
+  assert.equal(registered[0].timeoutMs, 120_000);
+  assert.equal(registered[1].timeoutMs, 300_000);
   assert.deepEqual(systemSection, {
     name: "ipollowork:schedule-import",
     order: 100,
     text: scheduleDescription,
   });
-  assert.match(registered[2].description, /是否需要生成计划并加入 iPolloWork 日程？/);
-  assert.match(registered[2].description, /treat that request as agreement to schedule/);
-  const result = await registered[1].execute({}, {
+  assert.match(registered[3].description, /是否需要生成计划并加入 iPolloWork 日程？/);
+  assert.match(registered[3].description, /treat that request as agreement to schedule/);
+  const result = await registered[2].execute({}, {
     signal: new AbortController().signal,
     agent: {
       id: "session_1",
@@ -168,11 +176,11 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
     startAt: "2026-08-26T10:15:00+08:00",
     dueAt: "2026-08-26T11:00:00+08:00",
   }];
-  await registered[2].execute({ tasks }, {
+  await registered[3].execute({ tasks }, {
     signal: new AbortController().signal,
     agent: { id: "session_1", session: { meta: { cwd: "/tmp/project" } } },
   });
-  await registered[3].execute({ previewId: "schedule_preview_1" }, {
+  await registered[4].execute({ previewId: "schedule_preview_1" }, {
     signal: new AbortController().signal,
     agent: { id: "session_1", session: { meta: { cwd: "/tmp/project" } } },
   });

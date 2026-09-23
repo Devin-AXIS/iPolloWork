@@ -25,6 +25,8 @@
         "category": "AI Agents & Automation",
         "composer": { "prompt": "Use iPollo Design to create or edit content in the current session's design project." },
         "resources": {
+          "design-authoring-references": { "label": "Design type authoring references" },
+          "presentation-authoring-references": { "label": "Presentation authoring references" },
           "ipollowork-design-studio": { "description": "Safely create and edit HTML designs in the current iPolloWork Design session." },
           "ipollowork-presentations": {
             "label": "Presentations",
@@ -39,7 +41,7 @@
     }
   },
   "package": {
-    "version": "0.3.2",
+    "version": "0.3.17",
     "publisher": {
       "id": "ipollowork",
       "name": "iPolloWork"
@@ -60,6 +62,20 @@
     }
   ],
   "resources": [
+    {
+      "type": "file",
+      "id": "design-authoring-references",
+      "label": "设计类型创作规则",
+      "path": "skills/ipollowork-design-studio/references",
+      "required": true
+    },
+    {
+      "type": "file",
+      "id": "presentation-authoring-references",
+      "label": "演示文稿创作规则",
+      "path": "skills/ipollowork-presentations/references",
+      "required": true
+    },
     {
       "type": "skill",
       "id": "ipollowork-design-studio",

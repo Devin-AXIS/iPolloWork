@@ -13,21 +13,29 @@ export default {
         await ctx.prove("Video keeps the HyperFrames canvas and timeline together", {
           voiceover: vo[0],
           action: async () => {
-            await ctx.waitFor('Boolean(document.querySelector(\'button[aria-label="Video"]:not([disabled])\'))', { timeoutMs: 30000, label: "Video rail button" });
-            await ctx.eval(`(() => { const button = document.querySelector('button[aria-label="Video"]'); if (button?.getAttribute('aria-pressed') !== 'true') button?.click(); })()`);
-            await ctx.waitForText("Studio ready", { timeoutMs: 60000 });
-            await ctx.waitFor(`document.querySelector('iframe[title="HyperFrames Video Studio"]')?.dataset.loaded === "true"`, { timeoutMs: 30000, label: "loaded HyperFrames Studio" });
+            await ctx.waitFor(`Boolean(
+              document.querySelector('iframe[title*="HyperFrames"]')
+              || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
+            )`, { timeoutMs: 30000, label: "Video Studio entry" });
+            await ctx.eval(`(() => {
+              if (document.querySelector('iframe[title*="HyperFrames"]')) return;
+              [...document.querySelectorAll('button')]
+                .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
+                ?.click();
+            })()`);
+            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 60000, label: "loaded HyperFrames Studio" });
             await new Promise((resolve) => setTimeout(resolve, 1200));
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              iframe: Boolean(document.querySelector('iframe[title="HyperFrames Video Studio"]')),
+              iframe: Boolean(document.querySelector('iframe[title*="HyperFrames"]')),
+              failed: document.body.innerText.includes('启动失败') || document.body.innerText.includes('failed to start'),
               designTab: [...document.querySelectorAll('[role="tab"]')].some((node) => node.textContent?.includes('Design')),
               htmlTab: [...document.querySelectorAll('[role="tab"]')].some((node) => node.textContent?.includes('HTML')),
             }))()`);
-            ctx.assert(state.iframe && !state.designTab && !state.htmlTab, `Video is not a single Studio workspace: ${JSON.stringify(state)}`);
+            ctx.assert(state.iframe && !state.failed && !state.designTab && !state.htmlTab, `Video is not a single Studio workspace: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "native-video-studio", requireText: ["Video Studio"], rejectText: ["Design", "HTML source"] },
+          screenshot: { name: "native-video-studio", rejectText: ["启动失败", "failed to start", "HTML source"] },
         });
       },
     },
@@ -38,8 +46,8 @@ export default {
           voiceover: vo[1],
           action: async () => {},
           assert: async () => {
-            const iframe = await ctx.eval(`document.querySelector('iframe[title="HyperFrames Video Studio"]')?.getAttribute('src') || ''`);
-            ctx.assert(iframe.includes("/#project/"), `Studio project route is wrong: ${iframe}`);
+            const iframe = await ctx.eval(`document.querySelector('iframe[title*="HyperFrames"]')?.getAttribute('src') || ''`);
+            ctx.assert(iframe.includes("#project/"), `Studio project route is wrong: ${iframe}`);
           },
         });
       },

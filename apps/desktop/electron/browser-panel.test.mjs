@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -155,6 +155,17 @@ if (!process.versions.electron) {
     const avatar = await call('snapshot', { tabId: first.tabId, imageSelector: 'img.avatar' });
     assert.equal(avatar.imageUrl, new URL('/avatar.svg', url).href);
     assert.match(avatar.tree, /扫码登录/);
+    const compactRead = await call('read', { tabId: first.tabId, mode: 'page', maxChars: 4000 });
+    assert.match(compactRead.content, /短信登录|扫码登录/);
+    assert.match(compactRead.content, /标题/);
+    const annotated = await call('screenshot', {
+      tabId: first.tabId,
+      snapshotId: avatar.snapshotId,
+      target: 'viewport',
+      mode: 'annotated',
+    });
+    assert.equal((await readFile(annotated.imagePath)).subarray(1, 4).toString('ascii'), 'PNG');
+    assert.ok(annotated.metrics.annotations > 0);
     const fieldRef = name => avatar.tree.split('\n').find(line => line.includes(`textbox "${name}"`))?.match(/\[(@e\d+)\]/)?.[1];
     await call('act', { tabId: first.tabId, snapshotId: avatar.snapshotId, actions: [
       { type: 'fill', ref: fieldRef('标题'), value: '真实填写标题' },

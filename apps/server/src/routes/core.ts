@@ -1,5 +1,5 @@
-import { appendFile, mkdir } from "node:fs/promises";
-import { dirname } from "node:path";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
 import { Server as McpServer } from "@modelcontextprotocol/sdk/server/index.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
@@ -520,7 +520,32 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     },
     [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(
       "browser.snapshot",
-      { tabId: typeof args.tabId === "string" ? args.tabId : "" },
+      {
+        tabId: typeof args.tabId === "string" ? args.tabId : "",
+        ...(typeof args.mode === "string" ? { mode: args.mode } : {}),
+        ...(typeof args.scopeRef === "string" ? { scopeRef: args.scopeRef } : {}),
+        ...(typeof args.delta === "boolean" ? { delta: args.delta } : {}),
+      },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserRead]: async (_ctx, args) => executeUiControlAction(
+      "browser.read",
+      {
+        tabId: typeof args.tabId === "string" ? args.tabId : "",
+        ...(typeof args.mode === "string" ? { mode: args.mode } : {}),
+        ...(typeof args.maxChars === "number" ? { maxChars: args.maxChars } : {}),
+      },
+    ),
+    [ENGINE_HOST_TOOL_NAMES.browserScreenshot]: async (_ctx, args) => executeUiControlAction(
+      "browser.screenshot",
+      {
+        tabId: typeof args.tabId === "string" ? args.tabId : "",
+        ...(typeof args.snapshotId === "string" ? { snapshotId: args.snapshotId } : {}),
+        ...(typeof args.target === "string" ? { target: args.target } : {}),
+        ...(typeof args.ref === "string" ? { ref: args.ref } : {}),
+        ...(isRecord(args.region) ? { region: args.region } : {}),
+        ...(typeof args.mode === "string" ? { mode: args.mode } : {}),
+        ...(typeof args.ifChanged === "boolean" ? { ifChanged: args.ifChanged } : {}),
+      },
     ),
     [ENGINE_HOST_TOOL_NAMES.browserAct]: async (ctx, args, context) => {
       if (ctx.actor?.scope === "viewer") {
@@ -551,6 +576,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         snapshotId: typeof args.snapshotId === "string" ? args.snapshotId : "",
         actions,
         workspaceRoot: workspace.path,
+        ...(isRecord(args.observe) ? { observe: args.observe } : {}),
       });
       if (isRecord(result) && result.ok !== false) {
         await recordAudit(workspace.path, {
@@ -626,11 +652,22 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         directory: workspace.path,
         ...(sessionId ? { sessionId } : {}),
       });
+      const screenshotPath = descriptor.name === ENGINE_HOST_TOOL_NAMES.browserScreenshot
+        && isRecord(value)
+        && value.changed !== false
+        && typeof value.imagePath === "string"
+        ? value.imagePath
+        : "";
+      const image = screenshotPath ? await readFile(screenshotPath).catch(() => null) : null;
       return {
         content: [{
           type: "text",
           text: JSON.stringify(value ?? null),
-        }],
+        }, ...(image ? [{
+          type: "image" as const,
+          data: image.toString("base64"),
+          mimeType: isRecord(value) && typeof value.mimeType === "string" ? value.mimeType : "image/png",
+        }] : [])],
         ...(isRecord(value) ? { structuredContent: value } : {}),
       };
     });

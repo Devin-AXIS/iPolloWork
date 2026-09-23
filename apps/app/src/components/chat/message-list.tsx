@@ -114,7 +114,7 @@ import {
   isToolPartInFlight,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, hasActiveAssistantVisibleResult, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantFinalAnswerMessage, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, hasActiveAssistantVisibleResult, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, earliestProcessTimestamp, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantFinalAnswerMessage, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
@@ -1080,6 +1080,15 @@ function ThinkingIndicator() {
   return <><span className="chat-thinking-label" aria-label={label}>{Array.from(label).map((character, index) => <span key={index} aria-hidden="true" style={{ animationDelay: `${index * 0.12}s` }}>{character}</span>)}</span><ThinkingDots /></>
 }
 
+function LiveActivityIndicator({ kind, label }: { kind: "tool" | "waiting"; label: string }) {
+  return (
+    <span className="chat-live-activity inline-flex items-center gap-2" data-testid="assistant-live-activity" data-activity-kind={kind} role="status" aria-live="polite">
+      {kind === "tool" ? <LoaderCircle className="size-3.5 shrink-0 animate-spin opacity-65" aria-hidden /> : <Clock3 className="size-3.5 shrink-0 opacity-65" aria-hidden />}
+      <span className="truncate">{label}</span>
+    </span>
+  )
+}
+
 const LoadingMessage = React.memo(({ label, paused = false, startedAt = null }: { label?: string; paused?: boolean; startedAt?: number | null }) => {
   const now = useElapsedNow(startedAt, true)
   const elapsed = startedAt === null ? null : formatElapsedDuration(now - startedAt)
@@ -1302,7 +1311,7 @@ function MessageGroup({
   runEndedAt = null,
   runTimings = {},
 }: AssistantMessageGroupProps) {
-  const { onRevertToUserMessage, onForkAtMessage, sessionTitle, showThinking } = useMessageList()
+  const { onRevertToUserMessage, onForkAtMessage, sessionTitle, showThinking, waitingLabel } = useMessageList()
   const lastItem = items[items.length - 1]
   // Branch/revert must target a real server-side message id. Synthetic
   // client-side messages (e.g. session errors) don't exist on the server and
@@ -1387,6 +1396,9 @@ function MessageGroup({
           && groups.some((group) => group.kind === "text" && Boolean(group.text.trim())),
       )
     : null
+  // Keep inline previews available while a response is streaming. They are
+  // explicitly marked as previews by FileMessage and are not delivery cards;
+  // the completed-file result area is gated separately by SessionSurface.
   const streamingFileGroups = liveProcess || runIncomplete
     ? itemRenderData.flatMap(({ groups }) => groups.filter((group) => group.kind === "file"))
     : []
@@ -1408,11 +1420,17 @@ function MessageGroup({
   const processRenderGroups = processItemGroups.flatMap((groups) => groups.filter(
     (group): group is AssistantProcessRenderGroup => group.kind !== "text",
   ))
+  const activeTool = liveProcess
+    ? processRenderGroups.findLast((group) => group.kind === "tool" && isToolPartInFlight(group.part))
+    : undefined
+  const activeToolLabel = activeTool?.kind === "tool" ? getToolActivityLabel(activeTool.part) : null
   const hasProcessContent = processItemGroups.some((groups) => groups.length > 0)
   const storedTiming = precedingUser ? runTimings[precedingUser.id] : undefined
-  const processStartedAt = storedTiming?.startedAt
-    ?? (currentTurn ? runStartedAt : null)
-    ?? (precedingUser ? getMessageCreated(precedingUser) : null)
+  const processStartedAt = earliestProcessTimestamp(
+    storedTiming?.startedAt,
+    currentTurn ? runStartedAt : null,
+    precedingUser ? getMessageCreated(precedingUser) : null,
+  )
   const processCompletedAt = storedTiming?.endedAt
     ?? (currentTurn ? runEndedAt : null)
     ?? getMessageCompleted(lastRealItem?.message ?? lastItem.message)
@@ -1448,7 +1466,12 @@ function MessageGroup({
             <summary className="flex w-fit max-w-full cursor-pointer list-none items-center gap-2 rounded-md py-1 text-left text-sm font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden">
               <action.Icon className="size-4 shrink-0" aria-hidden />
               <span>{action.label}</span>
-              {activeStep?.group.kind === "tool" ? <span className="min-w-0 truncate font-normal">· {getToolActivityLabel(activeStep.group.part)}</span> : null}
+              {activeStep?.group.kind === "tool" ? (
+                <span className="chat-tool-action-active min-w-0 truncate font-normal">
+                  <LoaderCircle className="mr-1 inline size-3 animate-spin opacity-65" aria-hidden />
+                  · {getToolActivityLabel(activeStep.group.part)}
+                </span>
+              ) : null}
               <ChevronRight className="chat-tool-action-chevron size-3.5 shrink-0 transition-transform" aria-hidden />
             </summary>
             <div className="flex w-full flex-col gap-1 pt-1 pl-6">
@@ -1502,7 +1525,9 @@ function MessageGroup({
           data-chat-readable-text="true"
           role="status"
         >
-          {finalizing ? t("session.result_pending") : <ThinkingIndicator />}
+          {waitingLabel ? <LiveActivityIndicator kind="waiting" label={waitingLabel} />
+            : activeToolLabel ? <LiveActivityIndicator kind="tool" label={activeToolLabel} />
+              : finalizing ? t("session.result_pending") : <ThinkingIndicator />}
         </p>
       ) : null}
       {resultData ? (

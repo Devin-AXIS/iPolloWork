@@ -15,3 +15,13 @@
 7. I switch to another supported engine and give the same instruction, and it uses the same browser session, element references, and permissions rather than a separate engine-specific browser.
 
 8. With manual approval enabled, publishing, payment, deletion, or another consequential action pauses for confirmation and identifies the session or plugin requesting it.
+
+9. I ask the AI to read a long page, and it receives a compact structure of headings, paragraphs, links, tables, and forms instead of spending tokens on every browser node.
+
+10. I ask it to inspect only the useful controls or one section again, and the browser returns that scoped view—or a small change set when the page changed—while preserving stable references.
+
+11. I ask it to perform an action and verify the result, and one bounded call waits for the page to settle and returns the latest semantic observation with clear timing and size metrics.
+
+12. When semantics are not enough, I ask for a viewport, region, or referenced-element screenshot; unchanged images are not resent, and an annotated view maps visible controls back to the same semantic references.
+
+13. I switch engines and use these efficient reading, observation, and visual tools unchanged, so every engine gets the same fast browser contract without its own adapter logic.

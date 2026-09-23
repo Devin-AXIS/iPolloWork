@@ -415,6 +415,60 @@ describe("workspace lifecycle registry", () => {
     });
   });
 
+  test("projects current bundled Skills before a new local workspace is returned", async () => {
+    const configRoot = await createWorkspaceRoot();
+    const workspaceRoot = await createWorkspaceRoot();
+    const configPath = join(configRoot, "server.json");
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath,
+      workspaces: [],
+      authorizedRoots: [],
+    });
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/local`, {
+      method: "POST",
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Projected Skills",
+        preset: "starter",
+        engineId: "codex-harness",
+      }),
+    });
+    expect(response.status).toBe(201);
+    const skill = await readFile(join(workspaceRoot, ".agents", "skills", "ipollowork-presentations", "SKILL.md"), "utf8");
+    expect(skill).toContain("media/artifact_preview_review");
+    expect(skill).toContain("sole preview and whole-deck batch-acceptance entry");
+  });
+
+  test("registers a workspace without replacing a conflicting user Skill", async () => {
+    const configRoot = await createWorkspaceRoot();
+    const workspaceRoot = await createWorkspaceRoot();
+    const configPath = join(configRoot, "server.json");
+    const skillPath = join(workspaceRoot, ".agents", "skills", "ipollowork-presentations", "SKILL.md");
+    await mkdir(join(workspaceRoot, ".agents", "skills", "ipollowork-presentations"), { recursive: true });
+    await writeFile(skillPath, "# User presentation workflow\n", "utf8");
+    const ipollowork = await startiPolloWorkServerWithWorkspaces({
+      configPath,
+      workspaces: [],
+      authorizedRoots: [],
+    });
+
+    const response = await fetch(`http://127.0.0.1:${ipollowork.server.port}/workspaces/local`, {
+      method: "POST",
+      headers: { ...hostAuth(ipollowork.hostToken), "Content-Type": "application/json" },
+      body: JSON.stringify({
+        folderPath: workspaceRoot,
+        name: "Preserved Skills",
+        preset: "starter",
+        engineId: "codex-harness",
+      }),
+    });
+
+    expect(response.status).toBe(201);
+    expect(await readFile(skillPath, "utf8")).toBe("# User presentation workflow\n");
+    expect(workspacesFromConfig(await readPersistedConfig(configPath))).toHaveLength(1);
+  });
+
   test("does not persist transient local OpenCode runtime fields", async () => {
     const configRoot = await createWorkspaceRoot();
     const workspaceRoot = await createWorkspaceRoot();

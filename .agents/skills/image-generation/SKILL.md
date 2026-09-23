@@ -1,14 +1,15 @@
 ---
 name: image-generation
-description: Generate image assets through the active iPolloWork Image Studio while preserving structured style, camera, lighting, size, and quality choices.
+description: Generate image assets through iPolloWork's image service, whether Image Studio is open or closed.
 ---
 
 # Image generation
 
-Use this Skill when the user wants a new image and Image Studio is active.
+Use this Skill for a requested new image or a missing supporting image identified while authoring a PPT, website or video. Image Studio does not need to be open. Plan assets during initial creation/full redesign; preserve narrow edit scopes and explicit no-image requests. Reuse suitable assets first; visual clarity and context are valid reasons to generate, not only absolute necessity. Assess the visual purpose, existing assets and best medium internally; no separate assessment report is required. Keep diagrams editable, treat pure decoration as optional, and never present generated illustrative scenes as real evidence.
 
 1. Preserve the user's subject, composition, text, brand, and format requirements.
-2. Put visual style, camera, and lighting into the matching structured Image Studio fields when possible instead of repeating them throughout the prompt.
-3. Use the installed provider exposed by Image Studio. Never request, print, or place API keys in a prompt or workspace file.
-4. Save generated results as new workspace artifacts and report the exact returned path.
-5. Keep the first pass focused. Generate variants only when the user asks for alternatives.
+2. Discover `openai-image-generation` using `ipollowork_extension_list_actions`, then call its `status` action. Call status first and check authorization, capabilities and supported parameters. Preserve a model explicitly selected for this task or captured workbench request. An ordinary requested image or a supporting asset inside an authorized Design, PPT or Video task is an approved automatic-selection flow: use a suitable authorized saved preference when present; otherwise use the suitable authorized `defaultModel`, or the first suitable authorized model in returned product order when `defaultModel` cannot perform the operation. Do not ask or leave the asset pending solely because multiple suitable models are authorized. Ask once only when the user requested a choice, an explicit model is unavailable and substitution materially changes provider, cost or capability, or no automatic candidate satisfies the task scope and allowed cost settings. Reuse the resolved task selection for compatible assets and disclose the model used after generation. `defaultModel` is a computed automatic candidate, not a persisted preference; never save it without an explicit request. Missing authorization or an unqueryable capability must not block the caller or open settings: report the state and continue. Never request keys in chat. Do not invent preferences or budgets. Pass the chosen stable model ID explicitly. Never submit variants outside scope; query or recover uncertain jobs before resubmitting. For an explicit workbench settings/annotation request, honor its captured selection instructions; do not change the workbench model through UI automation.
+3. After resolving the model by this policy, call `image_generate` through `ipollowork_extension_call` with that exact stable `model` ID, the prompt, and optional quality/size. Include style, camera, and lighting requirements in the prompt.
+4. Use this server action for ordinary chat requests even when Image Studio is open. UI tool discovery and opening the workbench are unnecessary. Use workbench tools only when the user explicitly requests the current workbench settings or selection. Never request, print, or place API keys in a prompt or workspace file.
+5. Save generated results as new workspace artifacts and include a Markdown image link to the exact returned path in the final response. Never claim success until the action returns the saved file. For a composition, place the saved image under its existing assets directory, use a project-relative reference, and verify loading, crop and export compatibility before delivering the composition. Standalone images can be opened in Image Studio from the conversation.
+6. Keep the first pass focused. Generate variants only when the user asks for alternatives.

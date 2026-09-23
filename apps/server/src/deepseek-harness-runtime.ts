@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { readFile, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { deepSeekRemoteCall, deepSeekRemoteSnapshot, DeepSeekRemoteMux, remoteRecord } from "./deepseek-harness-remote.js";
+import { workspacePathMatches } from "./deepseek-harness-session-read-model.js";
 
 import {
   providerApiKeyCredentialRef,
@@ -98,7 +100,7 @@ export function deepSeekHarnessWebArgs(
   configuredCli: string,
   patchPath: string,
 ): string[] {
-  const webArgs = ["--profile", "web", "--patch", patchPath, "--port", "0"];
+  const webArgs = ["--profile", "web", "--patch", patchPath, "--port", "0", "--no-open"];
   return configuredCli ? [configuredCli, ...webArgs] : webArgs;
 }
 
@@ -443,9 +445,28 @@ const DEEPSEEK_HARNESS_API_READY_RETRY_DELAYS_MS = [50, 100, 200, 400, 800, 1_60
  * Probe a cheap read method before publishing the runtime to callers so that
  * this internal startup phase never escapes as a user-visible model error.
  */
+export async function authenticateDeepSeekHarness(
+  launchUrl: string,
+  fetcher: typeof fetch = fetch,
+): Promise<{ baseUrl: string; cookie: string }> {
+  const url = new URL(launchUrl);
+  if (url.protocol !== "http:" || url.hostname !== "127.0.0.1" || !url.searchParams.get("token")) {
+    throw new DeepSeekHarnessUnavailableError("DeepSeek Harness returned an invalid local authentication URL");
+  }
+  // Exchange the process token once. Never persist it or forward it to Work clients.
+  const response = await fetcher(url, { redirect: "manual", signal: AbortSignal.timeout(5_000) });
+  const cookie = response.headers.getSetCookie().map((value) => value.split(";", 1)[0]).join("; ");
+  await response.body?.cancel();
+  if (response.status !== 303 || !cookie) {
+    throw new DeepSeekHarnessUnavailableError("DeepSeek Harness authentication failed");
+  }
+  return { baseUrl: url.origin, cookie };
+}
+
 export async function waitForDeepSeekHarnessApi(
   baseUrl: string,
   options: {
+    cookie?: string;
     fetcher?: typeof fetch;
     wait?: (delayMs: number) => Promise<void>;
     retryDelaysMs?: readonly number[];
@@ -462,20 +483,25 @@ export async function waitForDeepSeekHarnessApi(
   for (let attempt = 0; attempt <= retryDelaysMs.length; attempt += 1) {
     try {
       const rpcId = randomUUID();
-      const response = await fetcher(`${baseUrl.replace(/\/+$/, "")}/api/workspace.list`, {
+      const response = await fetcher(`${baseUrl.replace(/\/+$/, "")}/api/session/list`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: { "content-type": "application/json", cookie: options.cookie ?? "" },
         body: JSON.stringify({
           type: "client-request",
           rpcId,
-          method: "workspace.list",
-          payload: {},
+          method: "session/list",
+          payload: { args: { _request: {} } },
         }),
         signal: AbortSignal.timeout(5_000),
       });
       lastStatus = response.status;
+      if (response.ok) {
+        const envelope = remoteRecord(await response.json());
+        const result = remoteRecord(envelope.result);
+        if (result.ok === true) return;
+        throw new DeepSeekHarnessUnavailableError("DeepSeek Harness session API rejected the readiness request");
+      }
       await response.body?.cancel().catch(() => undefined);
-      if (response.ok) return;
       if (response.status !== 404) {
         throw new DeepSeekHarnessUnavailableError(
           `DeepSeek Harness API readiness check returned HTTP ${response.status}`,
@@ -500,6 +526,8 @@ export async function waitForDeepSeekHarnessApi(
 }
 
 export class DeepSeekHarnessRuntime {
+  #cookie = "";
+  readonly #remoteResponses = new Map<string, { clientId: string; event: string }>();
   readonly #config: ServerConfig;
   readonly #env: EnvService;
   readonly #workspace: WorkspaceInfo;
@@ -544,14 +572,26 @@ export class DeepSeekHarnessRuntime {
     payload: unknown,
     timeoutMs = 60_000,
   ): Promise<T> {
+    if (method === "workspace.list") {
+      const snapshot = await deepSeekRemoteSnapshot(baseUrl, this.#cookie, "workspace/follow", {});
+      return snapshot.value as T;
+    }
+    if (method === "session.history") {
+      const input = remoteRecord(payload);
+      const snapshot = await deepSeekRemoteSnapshot(baseUrl, this.#cookie, "session/follow", {
+        request: { address: { kind: "session", sessionId: input.sessionId }, ...(input.maxMessages ? { maxMessages: input.maxMessages } : {}) },
+      });
+      return { events: snapshot.records, hasMore: snapshot.hasMore, projections: snapshot.projections } as T;
+    }
+    const remote = deepSeekRemoteCall(method, payload);
     const rpcId = randomUUID();
     let response: Response;
     try {
-      const methodPath = method.split("/").map(encodeURIComponent).join("/");
+      const methodPath = remote.method.split("/").map(encodeURIComponent).join("/");
       response = await fetch(`${baseUrl}/api/${methodPath}`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "client-request", rpcId, method, payload }),
+        headers: { "content-type": "application/json", cookie: this.#cookie },
+        body: JSON.stringify({ type: "client-request", rpcId, method: remote.method, payload: { args: remote.args } }),
         signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (error) {
@@ -567,7 +607,10 @@ export class DeepSeekHarnessRuntime {
       throw new DeepSeekHarnessUnavailableError("DeepSeek Harness returned a mismatched response");
     }
     if (!envelope.result.ok) throw new DeepSeekHarnessRpcError(envelope.result.error);
-    return envelope.result.value;
+    const value = envelope.result.value;
+    if (method === "llm.providers") return { providers: value } as T;
+    if (method === "credentials.describe") return { credentials: value } as T;
+    return value;
   }
 
   async #syncSharedProviderApiCredentials(baseUrl: string): Promise<void> {
@@ -841,43 +884,123 @@ export class DeepSeekHarnessRuntime {
 
   async respond(input: { rpcId: string; result: unknown }): Promise<void> {
     const baseUrl = await this.#ensureStarted();
-    let response: Response;
-    try {
-      response = await fetch(`${baseUrl}/api/respond`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ type: "client-response", rpcId: input.rpcId, result: input.result }),
-        signal: AbortSignal.timeout(60_000),
-      });
-    } catch (error) {
-      throw new DeepSeekHarnessUnavailableError("DeepSeek Harness could not receive the response", { cause: error });
-    }
-    if (!response.ok) {
-      throw new DeepSeekHarnessUnavailableError(`DeepSeek Harness returned HTTP ${response.status}`);
-    }
-    const receipt = await response.json() as { accepted?: boolean; reason?: string };
-    if (receipt.accepted !== true) {
-      throw new DeepSeekHarnessUnavailableError(receipt.reason || "DeepSeek Harness rejected the response");
-    }
+    const pending = this.#remoteResponses.get(input.rpcId);
+    if (!pending) throw new DeepSeekHarnessUnavailableError("DeepSeek Harness request is no longer pending");
+    const result = remoteRecord(input.result);
+    const value = remoteRecord(result.value);
+    const answer = pending.event === "approval/request" ? value.outcome : value.answer;
+    if (result.ok !== true || answer === undefined) throw new DeepSeekHarnessUnavailableError("Invalid DeepSeek Harness response");
+    await this.#callAtBaseUrl(baseUrl, "$events/result", {
+      clientId: pending.clientId, eventId: input.rpcId, outcome: { kind: "result", value: answer },
+    });
+    this.#remoteResponses.delete(input.rpcId);
   }
 
   async events(stream: "mux" | "host", signal: AbortSignal): Promise<Response> {
     const baseUrl = await this.#ensureStarted();
-    try {
-      const response = await fetch(`${baseUrl}/api/events.${stream}`, { signal });
-      if (response.ok && response.body) return response;
-      if (response.status === 426) {
-        await response.body?.cancel();
-        return await openWebSocketEventStream(baseUrl, stream, signal);
-      }
-      if (!response.ok || !response.body) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      return response;
-    } catch (error) {
-      if (signal.aborted) throw error;
-      throw new DeepSeekHarnessUnavailableError("DeepSeek Harness event stream is unavailable", { cause: error });
-    }
+    const lifetime = new AbortController();
+    const combined = AbortSignal.any([signal, lifetime.signal]);
+    const connection = new DeepSeekRemoteMux(baseUrl, this.#cookie);
+    combined.addEventListener("abort", () => connection.close(), { once: true });
+    const encoder = new TextEncoder();
+    const watched = new Set<string>();
+    const pendingIds = new Map<string, { event: string; sessionId: unknown }>();
+    const body = new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        const emit = (payload: Record<string, unknown>, rpcId: string = randomUUID()) => {
+          if (!combined.aborted) controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "server-request", rpcId, payload })}\n\n`));
+        };
+        const fail = (error: unknown) => {
+          if (combined.aborted) return;
+          controller.error(error);
+          lifetime.abort(error);
+        };
+        const watch = async (sessionId: string) => {
+          if (watched.has(sessionId)) return;
+          watched.add(sessionId);
+          let attempt: Record<string, unknown> = {};
+          for await (const frame of connection.stream("session/follow", {
+            request: { address: { kind: "session", sessionId }, maxMessages: 1, assistantStream: true },
+          }, combined)) {
+            if (frame.type === "event") emit({ type: "session/event", sessionId, event: frame.event });
+            if (frame.type === "assistant-stream") {
+              const current = remoteRecord(frame.frame);
+              if (current.type === "start") attempt = current;
+              if (current.type === "chunk") emit({ type: "session/event", sessionId, event: {
+                type: "assistant/chunk", seq: 0, time: current.time,
+                data: { turn: attempt.turn, step: attempt.step, chunk: current.chunk },
+              } });
+            }
+          }
+        };
+        const run = async () => {
+          const observe = (session: { sessionId: string; cwd?: string }) => {
+            if (!workspacePathMatches(session.cwd, this.#workspace.path)) return;
+            void watch(session.sessionId).catch((error) => {
+              watched.delete(session.sessionId);
+              if (!combined.aborted) emit({ type: "host/agent-error", sessionId: session.sessionId,
+                message: error instanceof Error ? error.message : "DSH session could not be observed" });
+            });
+          };
+          if (stream === "host") {
+            void (async () => {
+              for await (const frame of connection.stream("session/control", {}, combined)) {
+                if (frame.type === "projection") emit({ ...frame, type: "session/projection" });
+              }
+            })().catch(fail);
+          }
+          let clientId = "";
+          for await (const frame of connection.stream("$events", {}, combined)) {
+            if (frame.type === "ready" && typeof frame.clientId === "string") {
+              clientId = frame.clientId;
+              // Subscribe first: additions during the initial list stay queued on this stream.
+              if (stream === "mux") {
+                const sessions = await this.#callAtBaseUrl<{ items: Array<{ sessionId: string; cwd?: string }> }>(baseUrl, "session.list", {});
+                for (const session of sessions.items) observe(session);
+              }
+            }
+            if (frame.type === "emit" && Array.isArray(frame.args)) {
+              const [first, second] = frame.args;
+              if (stream === "mux" && frame.event === "api-session/added") {
+                const session = remoteRecord(first);
+                if (typeof session.sessionId === "string") observe({ sessionId: session.sessionId,
+                  cwd: typeof session.cwd === "string" ? session.cwd : undefined });
+              }
+              if (stream === "host" && typeof first === "string") {
+                if (frame.event === "api-session/removed") emit({ type: "host/session-removed", sessionId: first });
+                if (frame.event === "api-session/error") emit({ type: "host/agent-error", sessionId: first, message: second });
+                if (frame.event === "api-session/status") emit({ type: "host/session-status", sessionId: first, running: second });
+              }
+            }
+            if (stream !== "host") continue;
+            if (frame.type === "waterfall" && typeof frame.eventId === "string" && typeof frame.event === "string") {
+              if (frame.event !== "approval/request" && frame.event !== "user-questions/request") continue;
+              this.#remoteResponses.set(frame.eventId, { clientId, event: frame.event });
+              pendingIds.set(frame.eventId, { event: frame.event, sessionId: frame.agentId });
+              emit({ ...remoteRecord(frame.request), sessionId: frame.agentId, approvalId: frame.eventId,
+                type: frame.event === "approval/request" ? "approval/requested" : "question/requested",
+              }, frame.eventId);
+            }
+            if (frame.type === "cancel" && typeof frame.eventId === "string") {
+              const pending = pendingIds.get(frame.eventId);
+              if (pending) emit({
+                type: pending.event === "approval/request" ? "approval/resolved" : "question/resolved",
+                sessionId: pending.sessionId, approvalId: frame.eventId, questionRpcId: frame.eventId,
+              });
+              this.#remoteResponses.delete(frame.eventId);
+              pendingIds.delete(frame.eventId);
+            }
+          }
+        };
+        void run().catch(fail).finally(() => {
+          for (const id of pendingIds.keys()) this.#remoteResponses.delete(id);
+          if (!combined.aborted) controller.close();
+          lifetime.abort();
+        });
+      },
+      cancel() { lifetime.abort(); },
+    });
+    return new Response(body);
   }
 
   async close(): Promise<void> {
@@ -894,6 +1017,8 @@ export class DeepSeekHarnessRuntime {
     if (starting) await starting.catch(() => undefined);
     const child = this.#child;
     this.#baseUrl = null;
+    this.#cookie = "";
+    this.#remoteResponses.clear();
     this.#child = null;
     this.#starting = null;
     this.#syncedCredentialFingerprint = "";
@@ -986,8 +1111,10 @@ export class DeepSeekHarnessRuntime {
       const baseUrl = await waitForReadyUrl(child);
       child.stdout?.resume();
       child.stderr?.resume();
-      const normalizedBaseUrl = baseUrl.replace(/\/+$/, "");
-      await waitForDeepSeekHarnessApi(normalizedBaseUrl);
+      const connection = await authenticateDeepSeekHarness(baseUrl);
+      const normalizedBaseUrl = connection.baseUrl;
+      this.#cookie = connection.cookie;
+      await waitForDeepSeekHarnessApi(normalizedBaseUrl, { cookie: this.#cookie });
       this.#baseUrl = normalizedBaseUrl;
       // Session listing and creation do not depend on provider credentials.
       // Do not hold DSH cold start behind a potentially slow provider scan;
@@ -996,6 +1123,7 @@ export class DeepSeekHarnessRuntime {
       child.once("exit", () => {
         if (this.#child !== child) return;
         this.#baseUrl = null;
+        this.#cookie = "";
         this.#child = null;
         this.#syncedCredentialFingerprint = "";
         this.#syncedProviderIds.clear();
@@ -1007,6 +1135,7 @@ export class DeepSeekHarnessRuntime {
     } catch (error) {
       if (child.exitCode === null) child.kill("SIGTERM");
       this.#child = null;
+      this.#cookie = "";
       throw error instanceof DeepSeekHarnessUnavailableError
         ? error
         : new DeepSeekHarnessUnavailableError("DeepSeek Harness failed to start", { cause: error });
@@ -1112,94 +1241,6 @@ export class DeepSeekHarnessRuntimePool {
     await Promise.all([...this.#runtimes.values()].map((runtime) => runtime.close()));
     this.#runtimes.clear();
   }
-}
-
-function openWebSocketEventStream(
-  baseUrl: string,
-  stream: "mux" | "host",
-  signal: AbortSignal,
-): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    const url = new URL(`/api/events.${stream}`, baseUrl);
-    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(url);
-    const encoder = new TextEncoder();
-    let opened = false;
-    let closed = false;
-    let controller: ReadableStreamDefaultController<Uint8Array>;
-    const body = new ReadableStream<Uint8Array>({
-      start(value) {
-        controller = value;
-      },
-      cancel() {
-        cancelStream();
-      },
-    });
-    const timeout = setTimeout(() => fail(new Error("WebSocket connection timed out")), 15_000);
-
-    const cleanup = () => {
-      clearTimeout(timeout);
-      signal.removeEventListener("abort", handleAbort);
-      socket.removeEventListener("open", handleOpen);
-      socket.removeEventListener("message", handleMessage);
-      socket.removeEventListener("close", handleClose);
-      socket.removeEventListener("error", handleError);
-    };
-    const closeSocket = () => {
-      if (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN) {
-        socket.close();
-      }
-    };
-    const finish = () => {
-      if (closed) return;
-      closed = true;
-      cleanup();
-      controller.close();
-    };
-    const cancelStream = () => {
-      if (closed) return;
-      closed = true;
-      cleanup();
-      closeSocket();
-    };
-    const fail = (error: unknown) => {
-      if (closed) return;
-      closed = true;
-      cleanup();
-      closeSocket();
-      if (opened) controller.error(error);
-      else reject(error);
-    };
-    const handleOpen = () => {
-      if (signal.aborted) {
-        fail(signal.reason);
-        return;
-      }
-      opened = true;
-      clearTimeout(timeout);
-      resolve(new Response(body));
-    };
-    const handleMessage = (event: MessageEvent) => {
-      if (typeof event.data !== "string") {
-        fail(new Error("DeepSeek Harness returned a binary event frame"));
-        return;
-      }
-      controller.enqueue(encoder.encode(`data: ${event.data}\n\n`));
-    };
-    const handleClose = () => {
-      if (opened) finish();
-      else fail(new Error("WebSocket connection closed before opening"));
-    };
-    const handleError = () => fail(new Error("WebSocket connection failed"));
-    const handleAbort = () => fail(signal.reason);
-
-    socket.addEventListener("open", handleOpen);
-    socket.addEventListener("message", handleMessage);
-    socket.addEventListener("close", handleClose);
-    socket.addEventListener("error", handleError);
-    signal.addEventListener("abort", handleAbort, { once: true });
-    if (signal.aborted) handleAbort();
-  });
 }
 
 function waitForReadyUrl(child: ChildProcess): Promise<string> {

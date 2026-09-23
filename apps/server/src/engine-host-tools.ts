@@ -9,6 +9,8 @@ export const ENGINE_HOST_TOOL_NAMES = {
   workspaceAppCallTool: "ipollowork_workspace_app_call_tool",
   browserOpenUrl: "ipollowork_browser_open_url",
   browserSnapshot: "ipollowork_browser_snapshot",
+  browserRead: "ipollowork_browser_read",
+  browserScreenshot: "ipollowork_browser_screenshot",
   browserAct: "ipollowork_browser_act",
   browserSetProxy: "ipollowork_browser_set_proxy",
 } as const;
@@ -33,22 +35,26 @@ const objectParameters = (
 
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 Use the iPolloWork browser tools only for external websites, never to control the iPolloWork app itself.
-Open a page with ipollowork_browser_open_url, read it with ipollowork_browser_snapshot, then act only through stable refs from that latest snapshot with ipollowork_browser_act.
+Open a page with ipollowork_browser_open_url. Prefer ipollowork_browser_read for page content, and use ipollowork_browser_snapshot for actionable controls and stable refs. Act only through refs from the latest snapshot with ipollowork_browser_act.
 For local file uploads, use the upload action with the generated file path and the file-input ref or an upload-button ref plus its exact expectedName. Do not click an upload button first: the host intercepts file choosers and will not ask the user to select a generated file.
 Never invent or reuse stale refs. Take a new snapshot after navigation, when snapshotRequired is true, or when a target changed.
-Prefer one bounded action batch when steps are independent. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
+Prefer one bounded action batch and request its observe result when you need to verify the outcome. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
+Use ipollowork_browser_screenshot only when semantics are insufficient. Prefer a referenced element or bounded region; request annotations to map pixels back to semantic refs and ifChanged to avoid resending an unchanged image.
 Activating publish, send, submit, pay, buy, confirm, delete, or similar consequential controls by click, key, or check requires user approval and must not be retried after denial.`;
 
 export const IPOLLOWORK_SCHEDULE_OFFER_PROMPT = "是否需要生成计划并加入 iPolloWork 日程？";
+
+export const ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION = "Call status first and check authorization, capabilities and supported parameters. Preserve a model explicitly selected for this task or captured workbench request. An ordinary requested image or a supporting asset inside an authorized Design, PPT or Video task is an approved automatic-selection flow: use a suitable authorized saved preference when present; otherwise use the suitable authorized defaultModel, or the first suitable authorized model in returned product order when defaultModel cannot perform the operation. Do not ask or leave the asset pending solely because multiple suitable models are authorized. Ask once only when the user requested a choice, an explicit model is unavailable and substitution materially changes provider, cost or capability, or no automatic candidate satisfies the task scope and allowed cost settings. Reuse the resolved task selection for compatible assets and disclose the model used after generation. defaultModel is a computed automatic candidate, not a saved preference; never persist it without an explicit request. Missing authorization or an unqueryable capability must not block file generation: report the asset state and continue with reusable assets or a coherent editable fallback; do not open settings or wait for authorization, and never request keys in chat. Do not invent preferences or budgets. Pass the chosen stable model ID explicitly. Never submit variants outside scope; query or recover uncertain jobs before resubmitting.";
 
 export const ENGINE_VIDEO_GENERATION_INSTRUCTION = `## Video deliverable routing
 - For MP4 export or social publication, call ipollowork_extension_call with extensionId=media, action=video_render_start, args={sourcePath:"video/<exact-project-id>/index.html",operationKey:"<stable-export-key>"}. Then video_render_status with the same args until complete/failed. The host starts bundled Studio; no CLI install, guessed HyperFrames version, shell endpoint discovery, delegated exploration agent, or manual Export step is needed. These actions are visible in media action discovery even outside a video-typed chat. On complete use outputPath for the requested publisher. Preparing/rendering is not task completion; report progress and keep polling at the returned interval. No schedule/calendar is required for an immediate publication. On failure report the exact returned error, not an invented missing capability.
 - When a publisher returns browserTask, continue automatically in the same task: claim the browser job, use the persistent account profile, and upload the exact mediaPath with the returned extensionId through the host browser upload action. Missing API application settings or scopes are a browser fallback, not a reason to ask the user to upload the generated MP4. Pause only for login, QR code, SMS/captcha verification, denied approval, or a real platform error; after submission, verify and save the receipt before claiming success.
 - A general request to generate/make a video (生成视频、做视频、宣传片、短视频) means an editable HyperFrames HTML composition supported by Video Studio. Follow the prepared video task/template context and deliver its HTML entry. Do not ask the user to choose between HTML and a video model for this default request.
+- Before reporting an editable video complete, run its supplied HyperFrames check and inspect the structured result. Treat any validation error, ok=false, zero/incorrect duration, empty samples, invalid composition variables, undecodable media, or unintended blank midpoint/transition frame as a failed delivery that must be repaired. A timeline, waveform, successful command launch, or source nodes alone do not prove rendered content.
 - MP4 export, duration, aspect ratio, realism, an attached image, or an already-open media workbench alone do not switch the deliverable to model-generated footage. Export/render requests on an existing composition keep its editable source.
-- Use video-generation or another video plugin only when the user explicitly requests that plugin/model, text-to-video/image-to-video generation, or standalone video assets/raw footage/B-roll (纯视频素材). Plugin availability and a model name mentioned as the subject of a video are not such a request. Respect negation and the latest explicit correction.
+- Use video-generation or another video plugin for explicit plugin/model or standalone footage requests, or for a scoped supporting clip identified while authoring an authorized PPT, website or editable video. Supporting footage must improve the content and obey asset permissions and costs; do not add it to a pure-text or narrow-edit request. Plugin availability and a model name mentioned as the subject of a video are not such a request. Respect negation and the latest explicit correction.
 - If the user requests footage as an intermediate step and then a complete/editable video, use the plugin only for those assets and finish the Video Studio composition. A raw clip alone does not complete that task. Editing an existing HTML composition retains its project; a new standalone footage request must not inherit an HTML editing contract just because Studio is open.
-- Only on the footage/plugin path, inspect the requested plugin's actions (video-generation: status), reuse the user's explicit configured model selection from the current request/workbench context, or show configured choices and wait for selection. Never choose the first/default model. If the requested plugin is unavailable, report it and ask for an alternative; do not silently substitute a provider or HTML.
+- On the footage/plugin path, inspect the requested plugin's actions (video-generation: status). ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION} If the requested plugin is unavailable, report it and ask for an alternative; do not silently substitute a provider or HTML.
 - Script/outline/advice-only requests do not create a video or submit a generation job. Ask a short clarification only when explicit deliverables conflict and the conversation cannot resolve them.`;
 
 const CONSEQUENTIAL_BROWSER_CONTROL = /(?:发布|发送|提交|付款|支付|购买|下单|确认|删除|移除|清空数据|授权)|(?:\b(?:publish|send|submit|pay|purchase|buy|checkout|confirm|delete|remove|authorize)\b)|(?:^post(?: now)?$)/i;
@@ -160,10 +166,19 @@ const browserActionSchema = {
   ],
 };
 
+const browserObservationSchema = objectParameters({
+  mode: { type: "string", enum: ["content", "interactive", "mixed"] },
+  scopeRef: { type: "string", description: "Optional ref whose subtree should be observed." },
+  delta: { type: "boolean", description: "Return only a compact change when smaller than the full tree." },
+  settleMs: { type: "integer", minimum: 0, maximum: 2_000 },
+  waitForLoad: { type: "string", enum: ["interactive", "complete"] },
+  timeoutMs: { type: "integer", minimum: 100, maximum: 10_000 },
+});
+
 export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   {
     name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
-    description: `List the actions currently exposed by installed and enabled iPolloWork extensions. For image generation or editing, use extensionId=openai-image-generation. Call status first, show the configured models, and wait for the user to choose unless active Image Studio context already identifies their selection. Never infer a model, choose the first result, or treat defaultModel as consent. Then call image_generate or image_edit through ipollowork_extension_call with that exact model ID. These server actions work with Image Studio closed or open; do not operate Workspace App UI tools for a normal image request. Return the saved path as a Markdown image link in the final answer. ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
+    description: `List the actions currently exposed by installed and enabled iPolloWork extensions. For image generation or editing, use extensionId=openai-image-generation. For initial or redesigned Design/PPT/Video artifacts, first discover media/artifact_media_review: phase=plan records visual needs before layout and queries capabilities; phase=check verifies actual files and placement before delivery. For final website/PPT visual acceptance, call media/artifact_preview_review once; it is the only supported client preview and batch-review entry. Do not start temporary servers, create helper preview pages, use generic browser screenshots, or capture slides one by one. Scene/story/product/people/cover imagery needs proactive consideration; an extra request for pictures is not required. Follow the shared guidelines for exemptions and model choice. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION} Then call image_generate or image_edit through ipollowork_extension_call with that model ID. These server actions work with Image Studio closed or open; do not operate Workspace App UI tools for a normal image request. Return the saved path as a Markdown image link in the final answer. ${ENGINE_VIDEO_GENERATION_INSTRUCTION}`,
     parameters: objectParameters({
       extensionId: {
         type: "string",
@@ -270,9 +285,39 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
   },
   {
     name: ENGINE_HOST_TOOL_NAMES.browserSnapshot,
-    description: "Read a bounded semantic accessibility tree from the built-in browser. Interactive controls receive stable refs; values of protected fields are never returned.",
+    description: "Read a bounded semantic accessibility tree from the built-in browser. Choose mixed, interactive-only, or content-only output; optionally scope to a previous ref and request a compact line delta. Interactive controls receive stable refs; protected values are never returned.",
     parameters: objectParameters({
       tabId: { type: "string", description: "Tab ID returned by ipollowork_browser_open_url." },
+      mode: { type: "string", enum: ["content", "interactive", "mixed"] },
+      scopeRef: { type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
+      delta: { type: "boolean", description: "Return unchanged or a compact line delta when it saves context." },
+    }, ["tabId"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.browserRead,
+    description: "Read compact page content without the full accessibility tree. Returns headings, paragraphs, links, tables, or forms with bounded text and timing metrics. Use this before screenshots for ordinary research and extraction.",
+    parameters: objectParameters({
+      tabId: { type: "string", description: "Built-in browser tab ID." },
+      mode: { type: "string", enum: ["article", "forms", "links", "page", "tables"] },
+      maxChars: { type: "integer", minimum: 1_000, maximum: 24_000 },
+    }, ["tabId"]),
+  },
+  {
+    name: ENGINE_HOST_TOOL_NAMES.browserScreenshot,
+    description: "Capture a PNG only when semantic reading is insufficient. Supports the viewport, one viewport-relative region, or one stable ref. annotated/auto mode overlays semantic refs; ifChanged suppresses duplicate image bytes. MCP clients receive the image directly; other engines receive imagePath for their image-reading tool.",
+    parameters: objectParameters({
+      tabId: { type: "string", description: "Built-in browser tab ID." },
+      snapshotId: { type: "string", description: "Latest snapshot ID; required for ref or annotated capture." },
+      target: { type: "string", enum: ["ref", "region", "viewport"] },
+      ref: { type: "string", description: "Stable ref when target is ref." },
+      region: objectParameters({
+        x: { type: "number", minimum: 0 },
+        y: { type: "number", minimum: 0 },
+        width: { type: "number", exclusiveMinimum: 0, maximum: 8_192 },
+        height: { type: "number", exclusiveMinimum: 0, maximum: 8_192 },
+      }, ["x", "y", "width", "height"]),
+      mode: { type: "string", enum: ["annotated", "auto", "plain"] },
+      ifChanged: { type: "boolean", description: "Return changed=false without resending image bytes when pixels match the previous capture." },
     }, ["tabId"]),
   },
   {
@@ -287,6 +332,7 @@ export const ENGINE_HOST_TOOLS: readonly EngineHostToolDescriptor[] = [
         maxItems: 8,
         items: browserActionSchema,
       },
+      observe: browserObservationSchema,
     }, ["tabId", "snapshotId", "actions"]),
   },
   {

@@ -16,7 +16,7 @@ Use this Skill for scene-bound narration in an active Video Studio project when 
 5. Keep one immutable narration asset and one timeline audio node per narrated scene; remove only obsolete narration references, never music or sound effects.
 6. Run both the HyperFrames project check and the active session's voiceover timeline validation before finishing.
 
-With an authorized voice service, use the saved voice selection; if it is missing or invalid, use iPolloWork's default `cosyvoice-v3-flash` / `longanyang` profile rather than omitting narration. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and direct the user to the Video Studio voice panel to connect the service in Authorization Center. Never request an API key in chat or fabricate narration assets.
+With an authorized voice service, use the saved valid voice selection; otherwise use the default voice supplied by the active iPolloWork voice contract. Do not hardcode or infer a provider, model or voice ID in this Skill. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and let the Video Studio voice panel explain how to connect the service in Authorization Center. Never request an API key in chat or fabricate narration assets.
 
 ## Content scope
 

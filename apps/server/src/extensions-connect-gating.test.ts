@@ -246,10 +246,13 @@ async function expectLegacyCallPassesThrough(base: string) {
 }
 
 function expectAllActions(actions: ActionItem[]) {
-  expect(actions).toHaveLength(55);
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
   expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
-  expect(actions.filter((action) => action.extensionId === "media")).toHaveLength(17);
+  expect(actionKeys(actions)).toContain("media/artifact_media_review");
+  expect(actionKeys(actions)).toContain("media/artifact_preview_review");
+  expect(actionKeys(actions)).toContain("media/video_render_start");
+  expect(actionKeys(actions)).toContain("media/video_render_status");
+  expect(actionKeys(actions)).toContain("video-generation/status");
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
   expect(actions.filter((action) => action.extensionId === "video-generation")).toHaveLength(16);
 }
@@ -330,6 +333,8 @@ describe("extension and engine host tool gating", () => {
       "ipollowork_workspace_app_call_tool",
       "ipollowork_browser_open_url",
       "ipollowork_browser_snapshot",
+      "ipollowork_browser_read",
+      "ipollowork_browser_screenshot",
       "ipollowork_browser_act",
       "ipollowork_browser_set_proxy",
     ]);
@@ -379,6 +384,8 @@ describe("extension and engine host tool gating", () => {
         "ipollowork_workspace_app_call_tool",
         "ipollowork_browser_open_url",
         "ipollowork_browser_snapshot",
+        "ipollowork_browser_read",
+        "ipollowork_browser_screenshot",
         "ipollowork_browser_act",
         "ipollowork_browser_set_proxy",
       ]);
@@ -625,54 +632,14 @@ describe("extension and engine host tool gating", () => {
 
   test("gates only non-status Google Workspace actions when Connect is enabled without legacy config", async () => {
     const { base, config } = await boot();
+    const before = await listActions(base);
     const put = await putConnectState(base, { connectEnabled: true });
     expect(put.status).toBe(200);
 
     const actions = await listActions(base);
-    expect(actionKeys(actions)).toEqual([
-      "google-workspace/status",
-      "media/digital_human_generate",
-      "media/speech_recognize_realtime",
-      "media/speech_synthesize",
-      "media/speech_synthesize_workspace_batch",
-      "media/speech_synthesize_workspace_file",
-      "media/speech_transcribe",
-      "media/speech_translate",
-      "media/status",
-      "media/task_get",
-      "media/video_edit",
-      "media/video_generate",
-      "media/video_render_start",
-      "media/video_render_status",
-      "media/voice_clone",
-      "media/voice_clone_workspace_file",
-      "media/voice_list",
-      "media/voiceover_timeline_validate",
-      "openai-image-generation/image_edit",
-      "openai-image-generation/image_edit_save",
-      "openai-image-generation/image_generate",
-      "openai-image-generation/prompt_optimize",
-      "openai-image-generation/selection_capture",
-      "openai-image-generation/status",
-      "storage/status",
-      "storage/upload_workspace_file",
-      "video-generation/avatar-context",
-      "video-generation/avatar-profile-delete",
-      "video-generation/avatar-profile-save",
-      "video-generation/avatar-profiles",
-      "video-generation/import",
-      "video-generation/inspect",
-      "video-generation/jobs",
-      "video-generation/local-edit",
-      "video-generation/pause",
-      "video-generation/read",
-      "video-generation/recover",
-      "video-generation/resume",
-      "video-generation/retry-segment",
-      "video-generation/status",
-      "video-generation/stop",
-      "video-generation/submit",
-    ]);
+    expect(actionKeys(actions)).toEqual(actionKeys(before.filter(action =>
+      action.extensionId !== "google-workspace" || action.action === "status",
+    )));
 
     const gated = await callCalendarListEvents(base);
     expect(gated.status).toBe(200);

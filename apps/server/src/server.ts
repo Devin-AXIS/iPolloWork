@@ -1594,6 +1594,21 @@ function createRoutes(
     routes,
     config,
     onWorkspacesChanged,
+    onLocalWorkspaceReady: async (workspace) => {
+      try {
+        await prepareDefaultPlugins();
+        await reconcilePluginPackagesForWorkspace({
+          serverConfig: config,
+          workspaceId: workspace.id,
+          workspaceRoot: workspace.path,
+        });
+      } catch (error) {
+        createServerLogger(config).log("warn", `Plugin package projection could not be completed for workspace: ${workspace.id}`, {
+          workspaceId: workspace.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    },
     jsonResponse,
     readJsonBody,
     readOptionalJsonBody,

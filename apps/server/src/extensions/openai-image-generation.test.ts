@@ -1,3 +1,4 @@
+import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "../engine-host-tools.js";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rename, rm, symlink, truncate, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -61,6 +62,12 @@ afterEach(async () => {
 });
 
 describe("OpenAI image editing", () => {
+  test("generation and editing expose the shared model policy without implicit server selection", () => {
+    for (const action of OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS.filter(action => ["image_generate", "image_edit"].includes(action.action))) {
+      expect(action.description).toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
+      expect(action.inputSchema.required).toContain("model");
+    }
+  });
   async function reviewedEdit(root: string, format: "png" | "jpeg" | "webp" = "png") {
     const serverConfig = config(root);
     const context = { workspaceId: "workspace", sessionId: "save-session" };
@@ -256,7 +263,7 @@ describe("OpenAI image editing", () => {
     expect(JSON.stringify(status)).not.toContain("private-");
   });
 
-  test("requires chat to pass the model explicitly selected by the user when Image Studio is closed", async () => {
+  test("requires an explicit model ID rather than silently using the status candidate", async () => {
     const root = await temporaryRoot();
     const calls: string[] = [];
     globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {

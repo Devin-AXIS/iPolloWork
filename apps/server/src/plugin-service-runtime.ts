@@ -1,3 +1,4 @@
+import { workspaceForContext } from "./extensions/storage.js";
 import { pathToFileURL } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, rm } from "node:fs/promises";
@@ -13,7 +14,6 @@ import {
 import type { PluginPackageManifest } from "./plugin-package-manifest.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
-import { findWorkspaceForContext } from "./workspaces.js";
 
 export type PluginServiceAction = {
   extensionId: string;
@@ -120,11 +120,7 @@ function actionsForManifest(manifest: PluginPackageManifest): PluginServiceActio
 }
 
 export function workspaceIdForPluginContext(config: ServerConfig, context: unknown): string {
-  const contextualWorkspace = findWorkspaceForContext(config.workspaces, context);
-  if (contextualWorkspace) return contextualWorkspace.id;
-  const workspace = config.workspaces[0];
-  if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for plugin service");
-  return workspace.id;
+  return workspaceForContext(config, isRecord(context) ? context : {}).id;
 }
 
 export async function listPluginServiceActions(

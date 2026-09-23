@@ -1,3 +1,4 @@
+import { ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "../engine-host-tools.js";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { basename, extname, posix } from "node:path";
@@ -79,7 +80,7 @@ function isReference(operation: string) { return ["reference", "edit", "extend",
 export function validateVideoSubmission(input: unknown): Submission {
   const selection = z.object({ model: z.string().trim().min(1) }).passthrough().safeParse(input);
   if (!selection.success) {
-    throw new ApiError(400, "video_model_selection_required", "请先让用户从已配置的视频模型中选择一个，再提交生成或编辑。");
+    throw new ApiError(400, "video_model_selection_required", "请先查询视频模型状态，按当前任务的模型选择规则确定适用模型，并传入其 model ID。");
   }
   const parsed = submissionSchema.safeParse(input);
   if (!parsed.success) fail("视频参数无效，请检查提示词和参数类型。");
@@ -133,7 +134,7 @@ export const VIDEO_GENERATION_EXTENSION_ACTIONS = [
   description: action.action === "status"
     ? "List the configured video models the user can choose from. Do not treat the first result as consent."
     : action.action === "submit"
-      ? "Generate or edit standalone video footage with the configured model explicitly selected by the user. Use only for explicit plugin/model or raw video asset requests; ordinary video creation belongs to editable HTML in Video Studio. Never choose or infer a model for them."
+      ? `Generate supporting or standalone footage, not a replacement for a requested editable composition. ${ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION}`
       : action.title,
   effect: action.effect === "read" ? "read" as const : "write" as const,
   inputSchema: {

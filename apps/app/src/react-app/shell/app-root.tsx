@@ -71,11 +71,14 @@ function BrowserControlActions() {
   const snapshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.snapshot",
     label: "Read built-in browser page",
-    description: "Return a bounded semantic accessibility tree with stable refs for one built-in browser tab.",
+    description: "Return a bounded semantic accessibility tree with stable refs, optional scope, and compact change output.",
     sideEffect: "none",
     requiresArgs: true,
     args: [
       { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID returned by browser.open_url." },
+      { name: "mode", type: "string", description: "mixed, interactive, or content." },
+      { name: "scopeRef", type: "string", description: "Optional ref from the previous snapshot whose subtree should be read." },
+      { name: "delta", type: "boolean", description: "Return only the compact change when useful." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -83,10 +86,101 @@ function BrowserControlActions() {
       if (!tabId) return { ok: false, error: "Missing tabId." };
       const snapshot = window.__IPOLLOWORK_ELECTRON__?.browser?.snapshot;
       if (!snapshot) return { ok: false, error: "Built-in browser runtime is not available." };
-      return snapshot({ tabId });
+      const object = controlObjectArg(args);
+      const mode = controlStringArg(args, "mode");
+      const scopeRef = controlStringArg(args, "scopeRef");
+      if (mode !== "" && mode !== "content" && mode !== "interactive" && mode !== "mixed") return { ok: false, error: "Invalid snapshot mode." };
+      return snapshot({
+        tabId,
+        mode: mode || undefined,
+        ...(scopeRef ? { scopeRef } : {}),
+        ...(object && Reflect.get(object, "delta") === true ? { delta: true } : {}),
+      });
     },
   }), []);
   useControlAction(snapshotBrowserControlAction);
+  const readBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.read",
+    label: "Read compact browser content",
+    description: "Read headings, paragraphs, links, tables, or forms without returning the full accessibility tree.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "mode", type: "string", description: "page, article, links, tables, or forms." },
+      { name: "maxChars", type: "number", description: "Maximum returned content characters." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId) return { ok: false, error: "Missing tabId." };
+      const read = window.__IPOLLOWORK_ELECTRON__?.browser?.read;
+      if (!read) return { ok: false, error: "Built-in browser runtime is not available." };
+      const mode = controlStringArg(args, "mode");
+      const rawMaxChars = object ? Reflect.get(object, "maxChars") : undefined;
+      if (mode !== "" && mode !== "article" && mode !== "forms" && mode !== "links" && mode !== "page" && mode !== "tables") return { ok: false, error: "Invalid read mode." };
+      if (rawMaxChars !== undefined && (typeof rawMaxChars !== "number" || !Number.isFinite(rawMaxChars) || rawMaxChars <= 0)) return { ok: false, error: "Invalid maxChars." };
+      return read({
+        tabId,
+        mode: mode || undefined,
+        ...(typeof rawMaxChars === "number" ? { maxChars: rawMaxChars } : {}),
+      });
+    },
+  }), []);
+  useControlAction(readBrowserControlAction);
+  const screenshotBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
+    id: "browser.screenshot",
+    label: "Capture built-in browser view",
+    description: "Capture the viewport, a bounded region, or one semantic ref, with optional ref annotations and unchanged-image suppression.",
+    sideEffect: "none",
+    requiresArgs: true,
+    args: [
+      { name: "tabId", type: "string", required: true, description: "Built-in browser tab ID." },
+      { name: "snapshotId", type: "string", description: "Latest snapshot ID, required for ref or annotated captures." },
+      { name: "target", type: "string", description: "viewport, region, or ref." },
+      { name: "ref", type: "string", description: "Stable element ref when target is ref." },
+      { name: "region", type: "object", description: "Viewport-relative x, y, width, and height." },
+      { name: "mode", type: "string", description: "plain, annotated, or auto." },
+      { name: "ifChanged", type: "boolean", description: "Do not resend an unchanged image." },
+    ],
+    disabled: !isElectronRuntime(),
+    execute: async (args) => {
+      const object = controlObjectArg(args);
+      const tabId = controlStringArg(args, "tabId");
+      if (!tabId || !object) return { ok: false, error: "Missing tabId." };
+      const screenshot = window.__IPOLLOWORK_ELECTRON__?.browser?.screenshot;
+      if (!screenshot) return { ok: false, error: "Built-in browser runtime is not available." };
+      const mode = controlStringArg(args, "mode");
+      const target = controlStringArg(args, "target");
+      if (mode !== "" && mode !== "annotated" && mode !== "auto" && mode !== "plain") return { ok: false, error: "Invalid screenshot mode." };
+      if (target !== "" && target !== "ref" && target !== "region" && target !== "viewport") return { ok: false, error: "Invalid screenshot target." };
+      const rawRegion = Reflect.get(object, "region");
+      let region: { x: number; y: number; width: number; height: number } | undefined;
+      if (rawRegion !== undefined) {
+        const value = controlObjectArg(rawRegion);
+        if (!value) return { ok: false, error: "Invalid screenshot region." };
+        const x: unknown = Reflect.get(value, "x");
+        const y: unknown = Reflect.get(value, "y");
+        const width: unknown = Reflect.get(value, "width");
+        const height: unknown = Reflect.get(value, "height");
+        if (typeof x !== "number" || typeof y !== "number" || typeof width !== "number" || typeof height !== "number"
+          || ![x, y, width, height].every(Number.isFinite) || x < 0 || y < 0 || width <= 0 || height <= 0) return { ok: false, error: "Invalid screenshot region." };
+        region = { x, y, width, height };
+      }
+      if (target === "region" && !region) return { ok: false, error: "Missing screenshot region." };
+      return screenshot({
+        tabId,
+        ...(controlStringArg(args, "snapshotId") ? { snapshotId: controlStringArg(args, "snapshotId") } : {}),
+        target: target || undefined,
+        ...(controlStringArg(args, "ref") ? { ref: controlStringArg(args, "ref") } : {}),
+        ...(region ? { region } : {}),
+        mode: mode || undefined,
+        ...(Reflect.get(object, "ifChanged") === true ? { ifChanged: true } : {}),
+      });
+    },
+  }), []);
+  useControlAction(screenshotBrowserControlAction);
   const actInBrowserControlAction = useMemo<iPolloWorkControlAction>(() => ({
     id: "browser.act",
     label: "Act in built-in browser",
@@ -98,6 +192,7 @@ function BrowserControlActions() {
       { name: "snapshotId", type: "string", required: true, description: "Latest semantic snapshot ID." },
       { name: "workspaceRoot", type: "string", description: "Server-injected local workspace root used only to validate uploads." },
       { name: "actions", type: "array", required: true, description: "One to eight ref-based browser actions." },
+      { name: "observe", type: "object", description: "Optional compact semantic observation returned after the action batch." },
     ],
     disabled: !isElectronRuntime(),
     execute: async (args) => {
@@ -105,6 +200,7 @@ function BrowserControlActions() {
       const tabId = controlStringArg(args, "tabId");
       const snapshotId = controlStringArg(args, "snapshotId");
       const actions = object ? Reflect.get(object, "actions") : null;
+      const observe = object ? Reflect.get(object, "observe") : null;
       if (!tabId || !snapshotId || !Array.isArray(actions)) {
         return { ok: false, error: "tabId, snapshotId, and actions are required." };
       }
@@ -117,6 +213,7 @@ function BrowserControlActions() {
         actions: actions.filter((action): action is Record<string, unknown> => (
           Boolean(action) && typeof action === "object" && !Array.isArray(action)
         )),
+        ...(observe && typeof observe === "object" && !Array.isArray(observe) ? { observe } : {}),
       });
     },
   }), []);
