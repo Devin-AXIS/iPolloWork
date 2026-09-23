@@ -7,9 +7,7 @@ description: Create or edit the HyperFrames project owned by an active iPolloWor
 
 Use this Skill only for the video project owned by the active iPolloWork session. The built-in Video Studio, timeline, preview, templates, and HyperFrames runtime exist independently of this Skill.
 
-Before editing, read [references/shared-guidelines.md](references/shared-guidelines.md), then [references/video.md](references/video.md). Shared rules own content/media decisions; the video reference owns scene, timing, playback and acceptance constraints.
-
-Before initial/full authoring, call `media/artifact_media_review` phase=plan with the active HTML sourcePath and visual needs; follow references/shared-guidelines.md. Before final delivery call phase=check, resolve pending/missing assets and disclose fallbacks. The host queries capabilities and checks saved-file placement and generation receipts; preview remains required. Do not replace this workflow with a verbal assessment or a self-selected geometric style.
+Read [references/video.md](references/video.md) once per task. Consult only the conflict, content, layout, media and repair sections it identifies in [references/shared-guidelines.md](references/shared-guidelines.md); do not ingest or reread the full shared file when unrelated sections are not needed. If Design Studio routed the task here, this packaged reference set replaces its copy. The video reference is the execution owner for scene, timing, playback and acceptance.
 
 ## Session contract
 
@@ -20,19 +18,13 @@ Before initial/full authoring, call `media/artifact_media_review` phase=plan wit
 
 ## Editing workflow
 
-1. On the initial brief application, derive a content-led storyboard and use the installed template as a reusable visual and motion system. Add, remove, reorder, or retime scenes when the brief requires it; do not inherit sample scene structure, copy, or media by default.
+1. On initial/full generation, derive a compact content-led storyboard. If the user has not approved a script/storyboard and has not explicitly requested direct generation, present it once before media submission and full composition; do not ask again after confirmation. Continue only independent preparation while confirmation is pending.
 2. Preserve the root composition contract, stable editor hooks, visual system, editable variables, and deterministic timeline so Video Studio controls continue to work.
 3. For targeted and follow-up edits, preserve unrelated user-authored scenes and media. Keep the root duration and every scene, clip, transition, audio, and animation timestamp consistent after structural changes.
 4. Use the shared `--ipw-*` design tokens when the project provides them.
 5. Save changes to the exact session-owned `index.html` and keep referenced assets inside the same project.
-6. Run the HyperFrames check required by the active session against that exact project before reporting completion.
+6. Follow the single plan → compose → batch-check → consolidated-repair flow in `references/video.md`. Do not repeat capability discovery, rule reads, catalog scans or unchanged validation.
 
 If the active session provides stricter timing, template, media, or validation instructions, those instructions take precedence.
 
-## Content-led layout adaptation
-
-Follow the injected template layout contract. Extract the template's typography, palette, spacing, graphic primitives and motion vocabulary. Choose scene compositions for their content: a comparison, sequence, data explanation, case study or key message. Reuse a fitting scene, vary its composition, or build a new scene from the same primitives instead of repeating the template's text placeholders. Keep transitions and movement stylistically consistent; new layouts must retain deterministic timing and editor hooks.
-
-Respect explicit exact-layout requests, fixed-brand regions and the scope of follow-up edits. Inspect representative frames and transitions for readability, density, clipping, unjustified repetition and style drift. Allow enough time for the actual narration and synchronize the timeline after changes; do not shrink text, drop facts or accelerate narration to fit sample geometry or timing.
-
-Video sessions receive `core-v1-index.md` and `core-v1-video/` by default. Read the index, then this type's catalog, layout guide and shared contract. Reuse fitting scene bodies with scoped styles; do not copy preview hosts, scripts, theme defaults or composition roots. Preserve active tokens unless restyling is requested, and integrate motion into the current timeline. Local/new compositions remain valid; verify real content, seeks and playback under the video rules.
+The detailed content-led layout, media, narration, timing and acceptance rules live in `references/video.md`; do not duplicate them into a second workflow.

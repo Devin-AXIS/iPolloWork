@@ -4,6 +4,7 @@ import { existsSync, readdirSync } from "node:fs";
 import {
   cp,
   mkdir,
+  mkdtemp,
   readFile,
   readdir,
   rename,
@@ -508,12 +509,7 @@ function resolveWorkspaceChild(root, childPath) {
   return { workspaceRoot, projectPath: resolved, projectDirectory: relative };
 }
 
-async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
-  if (existsSync(path.join(projectPath, "index.html"))) {
-    await ensureVisibleHyperframesStarter(projectPath);
-    return;
-  }
-  await mkdir(path.dirname(projectPath), { recursive: true });
+async function runHyperframesInitCommand(workspaceRoot, projectDirectory) {
   const child = spawnLocalHyperframes(["init", projectDirectory, "--example", "blank", "--non-interactive"], workspaceRoot);
   let output = "";
   await new Promise((resolve, reject) => {
@@ -525,6 +521,36 @@ async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) 
       else reject(new Error(output.trim() || `HyperFrames init failed (${code ?? "unknown"}).`));
     });
   });
+}
+
+async function runHyperframesInit(workspaceRoot, projectDirectory, projectPath) {
+  const entryPath = path.join(projectPath, "index.html");
+  if (existsSync(entryPath)) {
+    await ensureVisibleHyperframesStarter(projectPath);
+    return;
+  }
+  await mkdir(path.dirname(projectPath), { recursive: true });
+  const existingEntries = existsSync(projectPath) ? await readdir(projectPath) : [];
+  if (existingEntries.length === 0) {
+    await runHyperframesInitCommand(workspaceRoot, projectDirectory);
+  } else {
+    const recoveryRoot = await mkdtemp(path.join(path.dirname(projectPath), ".ipollowork-hyperframes-init-"));
+    const recoveryPath = path.join(recoveryRoot, path.basename(projectPath));
+    try {
+      const recoveryDirectory = path.relative(workspaceRoot, recoveryPath).replace(/\\/g, "/");
+      await runHyperframesInitCommand(workspaceRoot, recoveryDirectory);
+      for (const entry of await readdir(recoveryPath)) {
+        await cp(path.join(recoveryPath, entry), path.join(projectPath, entry), {
+          recursive: true,
+          force: false,
+          errorOnExist: false,
+        });
+      }
+    } finally {
+      await rm(recoveryRoot, { recursive: true, force: true });
+    }
+  }
+  if (!existsSync(entryPath)) throw new Error("HyperFrames project recovery did not restore index.html.");
   await ensureVisibleHyperframesStarter(projectPath);
 }
 
