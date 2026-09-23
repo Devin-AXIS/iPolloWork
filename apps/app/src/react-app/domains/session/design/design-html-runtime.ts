@@ -327,7 +327,7 @@ function designDeckRuntime(channel: string, runtimeOwnsNavigation = false, frame
   }).join("\n");
   visibilityStyle.textContent = `
     [data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }
-    [data-ipw-slide][aria-hidden="false"] { opacity: 1 !important; pointer-events: auto !important; }
+    [data-ipw-slide][aria-hidden="false"] { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }
     ${displayRules}
   `;
   document.head.appendChild(visibilityStyle);

@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reviewArtifactMedia } from "./artifact-media.js";
+import { reviewArtifactMedia, reviewArtifactPreview } from "./artifact-media.js";
 import { recordSessionArtifact } from "./session-artifacts.js";
 import type { ServerConfig, WorkspaceInfo } from "./types.js";
 
@@ -127,4 +127,25 @@ test("explicit engine workspace id wins over the first project and stale directo
   expect(JSON.parse(await readFile(join(first.directory, "brief.json"), "utf8")).mediaPlan).toBeUndefined();
   expect(JSON.parse(await readFile(join(selected.directory, "brief.json"), "utf8")).mediaPlan.needs).toEqual(selected.needs);
   await expect(reviewArtifactMedia(first.config, { phase: "check", sourcePath: selected.sourcePath }, { ...context, workspaceId: "missing" }, selected.query)).rejects.toThrow("requested workspace");
+});
+
+test("client preview review always checks the current rendered dependencies", async () => {
+  const f = await fixture();
+  const calls: Array<{ workspaceId: string; sourcePath: string; kind: "site" | "slides" }> = [];
+  const run = async (input: { workspaceId: string; sourcePath: string; kind: "site" | "slides" }) => {
+    calls.push(input);
+    return { ok: true, result: { passed: true, pageCount: 1, issues: [] } };
+  };
+  const input: { sourcePath: string; kind: "slides" } = { sourcePath: f.sourcePath, kind: "slides" };
+  expect((await reviewArtifactPreview(f.config, input, f.context, run)).result).toMatchObject({ passed: true, pageCount: 1 });
+  expect((await reviewArtifactPreview(f.config, input, f.context, run)).result).toMatchObject({ passed: true, pageCount: 1 });
+  expect(calls).toHaveLength(2);
+  await writeFile(join(f.directory, "entry.html"), "<h1>Revised autumn</h1>");
+  await reviewArtifactPreview(f.config, input, f.context, run);
+  expect(calls).toHaveLength(3);
+  expect(JSON.parse(await readFile(join(f.directory, "brief.json"), "utf8")).previewReview).toMatchObject({
+    sourcePath: f.sourcePath,
+    kind: "slides",
+    result: { passed: true, pageCount: 1 },
+  });
 });

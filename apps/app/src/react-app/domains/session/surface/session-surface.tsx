@@ -43,6 +43,7 @@ import {
   artifactContentFingerprint,
   artifactCompletionRecoveryInstruction,
   artifactMediaDeliveryIssues,
+  artifactPreviewDeliveryIssues,
   checkArtifactCompletion,
   promptArtifactCompletionTargets,
   promptWasDispatched,
@@ -1602,7 +1603,17 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }));
       if (pendingArtifactCompletionRef.current !== pending) return;
       check.mediaIssues = mediaChecks.flat();
-      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0 && check.mediaIssues.length === 0) {
+      const previewChecks = await Promise.all(pending.targets.filter(target => target.previewReviewKind).map(async (target) => {
+        const response = await props.client.callExtensionAction({
+          extensionId: "media", action: "artifact_preview_review",
+          args: { sourcePath: target.sourcePath, kind: target.previewReviewKind },
+          context: { workspaceId: props.workspaceId, sessionId: props.sessionId },
+        }).catch(() => null);
+        return artifactPreviewDeliveryIssues(response).map(issue => `${target.sourcePath}: ${issue}`);
+      }));
+      if (pendingArtifactCompletionRef.current !== pending) return;
+      check.previewIssues = previewChecks.flat();
+      if (check.unchangedPaths.length === 0 && check.unreportedPaths.length === 0 && check.mediaIssues.length === 0 && check.previewIssues.length === 0) {
         setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(
           current,
           pending.requestOrdinal,

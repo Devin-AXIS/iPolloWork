@@ -215,6 +215,7 @@ function expectAllActions(actions: ActionItem[]) {
   expect(actions.filter((action) => action.extensionId === "google-workspace")).toHaveLength(14);
   expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
   expect(actionKeys(actions)).toContain("media/artifact_media_review");
+  expect(actionKeys(actions)).toContain("media/artifact_preview_review");
   expect(actionKeys(actions)).toContain("video-generation/status");
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
 }

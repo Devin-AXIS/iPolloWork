@@ -225,7 +225,12 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
     expect(plugin.tool.ipollowork_extension_list_actions.description).toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
     expect(plugin.tool.ipollowork_extension_list_actions.description).toContain(ENGINE_VIDEO_GENERATION_INSTRUCTION);
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("approved automatic-selection flow");
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("Do not ask or leave the asset pending solely because multiple suitable models are authorized");
+    expect(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION).toContain("defaultModel is a computed automatic candidate");
     expect(system).toContain("editable HyperFrames HTML composition supported by Video Studio");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Treat any validation error, ok=false, zero/incorrect duration, empty samples");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("unintended blank midpoint/transition frame as a failed delivery");
     expect(system).toContain("On the footage/plugin path");
     expect(system).toContain("raw clip alone does not complete that task");
   });
