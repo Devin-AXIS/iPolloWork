@@ -284,6 +284,15 @@ export function getMessageCompleted(message: UIMessage): number | null {
   return getMessageOpencodeTime(message, "completed")
 }
 
+export function earliestProcessTimestamp(...timestamps: Array<number | null | undefined>): number | null {
+  let earliest: number | null = null
+  for (const timestamp of timestamps) {
+    if (typeof timestamp !== "number" || !Number.isFinite(timestamp)) continue
+    earliest = earliest === null ? timestamp : Math.min(earliest, timestamp)
+  }
+  return earliest
+}
+
 function getMessageOpencodeTime(message: UIMessage, key: "created" | "completed"): number | null {
   const metadata: unknown = message.metadata
   if (!metadata || typeof metadata !== "object") return null

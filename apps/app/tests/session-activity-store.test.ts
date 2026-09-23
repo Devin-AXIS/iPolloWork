@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 
-import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
+import { mergeSessionRunTiming, useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
 
 describe("session activity store", () => {
   beforeEach(() => {
@@ -8,6 +8,13 @@ describe("session activity store", () => {
       recordsByWorkspaceId: {},
       statusesByWorkspaceId: {},
     });
+  });
+
+  test("accumulates internal continuation phases under one user turn", () => {
+    expect(mergeSessionRunTiming(
+      { startedAt: 1_000, endedAt: 61_000 },
+      { startedAt: 70_000, endedAt: 70_142 },
+    )).toEqual({ startedAt: 1_000, endedAt: 70_142 });
   });
 
   test("keeps one run active across a transient idle status until the terminal event", () => {
