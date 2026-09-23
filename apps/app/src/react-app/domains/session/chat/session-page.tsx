@@ -3598,7 +3598,7 @@ export function SessionPage(props: SessionPageProps) {
     <title>iPolloWork Design Demo</title>
     <style>
       body { margin: 0; min-height: 100vh; display: grid; place-items: center; font-family: system-ui, sans-serif; background: #f5f3ff; color: #1f1636; }
-      main { width: min(680px, calc(100% - 48px)); padding: 48px; border-radius: 28px; background: white; box-shadow: 0 24px 70px rgba(76, 29, 149, .14); }
+      main { box-sizing: border-box; width: min(680px, calc(100% - 48px)); padding: 48px; border-radius: 28px; background: white; box-shadow: 0 24px 70px rgba(76, 29, 149, .14); }
       img { display: block; width: 100%; height: 180px; margin-bottom: 28px; border-radius: 20px; object-fit: cover; }
       h1 { margin: 0 0 16px; font-size: 44px; line-height: 1.05; }
       p { color: #655b76; font-size: 18px; line-height: 1.6; }
@@ -3621,7 +3621,7 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
+        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: true });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
         openDesignTab(path);
@@ -3646,7 +3646,11 @@ export function SessionPage(props: SessionPageProps) {
         // The runtime always opens the current session's materialized template.
         // Keep the visual fixture on that same production path rather than
         // creating a workspace-global HTML file that users cannot select.
-        await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.pitch-deck");
+        try {
+          await props.ipolloworkServerClient.installTemplate(props.runtimeWorkspaceId, "ipollowork.pitch-deck");
+        } catch (error) {
+          if ((error as { code?: unknown }).code !== "template_version_conflict") throw error;
+        }
         const materialized = await props.ipolloworkServerClient.materializeTemplate(
           props.runtimeWorkspaceId,
           "ipollowork.pitch-deck",
@@ -3707,7 +3711,7 @@ export function SessionPage(props: SessionPageProps) {
           baseUpdatedAt: existing?.updatedAt ?? null,
         });
         setSessionType(props.selectedSessionId, sessionTypeForTemplate(materialized.manifest));
-        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: false });
+        setTemplateSessionData({ sessionId: props.selectedSessionId, ...materialized, hasBrief: true });
         setSessionTypeRevision((value) => value + 1);
         setTemplateSessionRevision((value) => value + 1);
         openDesignTab(path);

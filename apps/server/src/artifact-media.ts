@@ -7,6 +7,7 @@ import { resolveWithinRoot } from "./paths.js";
 import { listSessionArtifacts, sessionArtifactOwner } from "./session-artifacts.js";
 import { workspaceForContext } from "./extensions/storage.js";
 import type { ServerConfig } from "./types.js";
+import { uiControlRequest } from "./ui-control-client.js";
 
 const needSchema = z.object({
   id: z.string().min(1).max(80),
@@ -36,6 +37,10 @@ const planSchema = z.object({
   createdAt: z.number(),
 });
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export const ARTIFACT_MEDIA_ACTION = {
   extensionId: "media",
   action: "artifact_media_review",
@@ -44,6 +49,58 @@ export const ARTIFACT_MEDIA_ACTION = {
   effect: "write" as const,
   inputSchema: z.toJSONSchema(reviewSchema),
 };
+
+const previewReviewSchema = z.object({
+  sourcePath: z.string(),
+  kind: z.enum(["site", "slides"]),
+}).strict();
+
+export const ARTIFACT_PREVIEW_REVIEW_ACTION = {
+  extensionId: "media",
+  action: "artifact_preview_review",
+  title: "Preview and batch-review a website or presentation",
+  description: "The only supported visual acceptance entry for Design websites and presentations. The running iPolloWork client loads the exact workspace HTML with the same Design preview runtime and hydrated local assets. Websites are reviewed once at desktop and mobile sizes; presentations are reviewed in one batch across every recognized slide. Do not start a temporary HTTP server, open generic browser tabs, create helper preview HTML, or take one screenshot per slide. Call once after authoring, then call again only after fixing reported issues.",
+  effect: "write" as const,
+  inputSchema: z.toJSONSchema(previewReviewSchema),
+};
+
+export async function reviewArtifactPreview(
+  config: ServerConfig,
+  input: unknown,
+  context: Record<string, unknown>,
+  runClientReview: (input: { workspaceId: string; sourcePath: string; kind: "site" | "slides" }) => Promise<unknown> = (review) => uiControlRequest("/execute", {
+    method: "POST",
+    timeoutMs: 120_000,
+    body: { actionId: "design.preview_review", args: review },
+  }),
+) {
+  const args = previewReviewSchema.parse(input);
+  const workspace = workspaceForContext(config, context);
+  const rootMatch = /^design\/([^/]+)\/.+\.html$/i.exec(args.sourcePath);
+  if (!rootMatch) {
+    throw new ApiError(400, "preview_review_owner", "sourcePath must be the active session's Design HTML entry");
+  }
+  const sessionRoot = await resolveWithinRoot(workspace.path, "design", sessionArtifactOwner(rootMatch[1]));
+  await boundedRead(await resolveWithinRoot(workspace.path, args.sourcePath));
+  const briefPath = await resolveWithinRoot(sessionRoot, "brief.json");
+  const brief = z.record(z.string(), z.unknown()).parse(JSON.parse((await boundedRead(briefPath)).toString()));
+  const response = await runClientReview({ workspaceId: workspace.id, sourcePath: args.sourcePath, kind: args.kind });
+  if (!isRecord(response) || response.ok !== true) {
+    throw new ApiError(409, "preview_review_unavailable", "Open this workspace in the running iPolloWork client, then retry the single preview review action", { response });
+  }
+  const result = isRecord(response.result) ? response.result : response;
+  if (config.readOnly) throw new ApiError(403, "read_only", "Cannot save preview acceptance in a read-only workspace");
+  await writeFile(briefPath, JSON.stringify({
+    ...brief,
+    previewReview: {
+      sourcePath: args.sourcePath,
+      kind: args.kind,
+      reviewedAt: Date.now(),
+      result,
+    },
+  }, null, 2) + "\n");
+  return { ok: true, result };
+}
 
 async function boundedRead(path: string, maxBytes = 2 * 1024 * 1024) {
   const info = await stat(path);

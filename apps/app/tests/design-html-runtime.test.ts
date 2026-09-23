@@ -93,6 +93,7 @@ describe("Design HTML runtime", () => {
     expect(preview).toContain('data-action=\'next\'');
     expect(preview).toContain('visibilityStyle.id = "ipollowork-design-deck-runtime-style"');
     expect(preview).toContain('[data-ipw-slide][aria-hidden="true"] { display: none !important; opacity: 0 !important; pointer-events: none !important; }');
+    expect(preview).toContain('[data-ipw-slide][aria-hidden="false"] { visibility: visible !important; opacity: 1 !important; pointer-events: auto !important; }');
     expect(preview).toContain('const runtimeDisplayAttribute = "data-ipw-runtime-slide-display"');
     expect(preview).toContain("displayNoneRules = []");
     expect(preview).toContain("rule instanceof CSSGroupingRule");

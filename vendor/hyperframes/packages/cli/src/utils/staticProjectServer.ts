@@ -149,7 +149,7 @@ export async function serveStaticProjectHtml(
   const server = createServer((req, res) => {
     const url = req.url ?? "/";
     if (url === "/" || url === "/index.html") {
-      res.writeHead(200, { "Content-Type": "text/html" });
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
       res.end(servedHtml);
       return;
     }

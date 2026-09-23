@@ -821,7 +821,7 @@ describe("plugin package lifecycle", () => {
       await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
       const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
       expect(installed).toEqual(expect.arrayContaining([
-        expect.objectContaining({ pluginId: "video-agent", version: "0.3.5", enabled }),
+        expect.objectContaining({ pluginId: "video-agent", version: "0.3.8", enabled }),
         expect.objectContaining({ pluginId: "reference-context", enabled: true }),
       ]));
       await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
@@ -1726,11 +1726,11 @@ describe("plugin package lifecycle", () => {
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
-          { pluginId: "design-agent", version: "0.3.15", installedVersion: "0.3.15", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.5", installedVersion: "0.3.5", updateAvailable: false },
-          { pluginId: "media-studio", version: "1.0.3", installedVersion: "1.0.3", updateAvailable: false },
-          { pluginId: "deepseek-harness", version: "0.3.8", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: "0.2.12", installedVersion: null, updateAvailable: false },
+          { pluginId: "design-agent", version: "0.3.17", installedVersion: "0.3.17", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.8", installedVersion: "0.3.8", updateAvailable: false },
+          { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
+          { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
       });
 
@@ -1740,7 +1740,7 @@ describe("plugin package lifecycle", () => {
       });
       expect(dshInstallation.status).toBe(200);
       expect(await dshInstallation.json()).toMatchObject({
-        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.8" },
+        result: { status: "installed", pluginId: "deepseek-harness", version: "0.3.7" },
       });
       const dshCapabilities = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST",
@@ -1876,7 +1876,7 @@ describe("plugin package lifecycle", () => {
 
       const socialServices = [
         { id: "xiaohongshu-ops", version: "0.4.17", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
-        { id: "douyin-ops", version: "0.1.11", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+        { id: "douyin-ops", version: "0.2.12", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
       ];
       for (const service of socialServices) {
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
@@ -1944,13 +1944,13 @@ describe("plugin package lifecycle", () => {
     const packages = [
       {
         pluginId: "design-agent",
-        version: "0.3.15",
+        version: "0.3.17",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-design-studio", "SKILL.md"),
         heading: "# iPolloWork Design Studio",
       },
       {
         pluginId: "video-agent",
-        version: "0.3.5",
+        version: "0.3.8",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

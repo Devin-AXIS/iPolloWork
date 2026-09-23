@@ -256,6 +256,9 @@ describe("plugin package manifest", () => {
     const shared = contract.slice(start, end).replace(/^## /, "# ");
     const slides = (await Bun.file(new URL(`${source}slides-ppt.md`, root)).text())
       .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+    expect(contract).toContain("run existing type/package validators once as an aggregate batch");
+    expect(contract).toContain("one consolidated repair pass");
+    expect(slides).toContain("activates every recognized slide in one batch");
     const layout = await Bun.file(new URL(`${source}layout.md`, root)).text();
     const catalog = await Bun.file(new URL("apps/server/bundled-templates/core-v1-slides-catalog.md", root)).text();
     const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
@@ -274,6 +277,9 @@ describe("plugin package manifest", () => {
     }
     const video = (await Bun.file(new URL(`${source}video.md`, root)).text())
       .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+    expect(video).toContain("scene-midpoint coverage in one batch/contact sheet");
+    expect(video).toContain("Shortlist at most three scene bodies");
+    expect(video).toContain("Submit independent assets as one bounded batch or in parallel");
     const videoSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-studio/SKILL.md", root)).text();
     for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
       expect(await Bun.file(new URL(`${directory}SKILL.md`, root)).text()).toBe(videoSkill);
@@ -299,6 +305,7 @@ describe("plugin package manifest", () => {
     const { templateCategorySchema } = await import("@ipollowork/types/templates");
     const categories = templateCategorySchema.options.filter((category) => category !== "slides" && category !== "video");
     const designIndex = await Bun.file(new URL(`${source}design.md`, root)).text();
+    expect(await Bun.file(new URL(`${source}design-site.md`, root)).text()).toContain("Inspect narrow phone, intermediate and desktop widths");
     for (const category of templateCategorySchema.options) expect(designIndex).toContain(`\`${category}\``);
     const designSkill = await Bun.file(new URL(".agents/skills/ipollowork-design-studio/SKILL.md", root)).text();
     for (const directory of [".agents/skills/ipollowork-design-studio/", "examples/plugin-packages/design-agent/skills/ipollowork-design-studio/"]) {

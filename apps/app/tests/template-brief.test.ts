@@ -82,7 +82,8 @@ describe("template brief", () => {
         expect(prompt).not.toContain("design-slides.md");
       } else if (category === "video") {
         expect(prompt).toContain("ipollowork-video-studio");
-        expect(prompt).toContain("references/shared-guidelines.md and references/video.md");
+        expect(prompt).toContain("read references/video.md once");
+        expect(prompt).toContain("only the shared-guidelines.md sections it identifies");
         expect(prompt).toContain("core-v1-video/catalog.md");
         expect(prompt).not.toContain("design-video.md");
       } else {
@@ -227,7 +228,7 @@ describe("template brief", () => {
     });
 
     // Includes bounded layer selection and rendering rules; layout sources stay on disk.
-    // The slide media gate includes the explicit multi-model question protocol.
+    // The slide media gate includes the automatic multi-model selection protocol.
     expect(prompt.length).toBeLessThan(5_000);
     expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
     expect(prompt).toContain("Edit/save target files now");
@@ -236,8 +237,8 @@ describe("template brief", () => {
     expect(prompt).toContain("Before layout, call media/artifact_media_review phase=plan");
     expect(prompt).toContain("Before final call phase=check");
     expect(prompt).toContain("original generationPath");
-    expect(prompt).toContain("multiple suitable models without preference/policy require one question");
-    expect(prompt).toContain("never silent defaultModel or geometry downgrade");
+    expect(prompt).toContain("Routine media auto-selects a saved preference or defaultModel");
+    expect(prompt).toContain("multiple authorized models alone never require a question/pending asset");
     expect(prompt).toContain("Resolve pending/missing assets");
     expect(prompt).toContain("continue the file without opening settings");
   });
@@ -576,7 +577,7 @@ test("unified layout index routes template and custom tasks to only their active
         template: { id, category, title: "Example", applyChecklist: [] },
         entryPath: "design/test/entry.html", briefPath: "design/test/brief.json",
       });
-      expect(prompt).toContain("core-v1-index.md");
+  expect(prompt).toContain("core-v1-index.md");
       expect(prompt.indexOf("core-v1-index.md")).toBeLessThan(prompt.indexOf(`core-v1-${category}/catalog.md`));
       expect(prompt).toContain(`core-v1-${category}/shared-contract.md`);
       for (const other of ["slides", "site", "video"].filter((type) => type !== category)) {

@@ -10,6 +10,14 @@ export type SessionRunTiming = { startedAt: number; endedAt: number };
 
 const RUN_TIMINGS_STORAGE_KEY = "ipollowork.session-run-timings";
 
+export function mergeSessionRunTiming(previous: SessionRunTiming | undefined, current: SessionRunTiming): SessionRunTiming {
+  if (!previous) return current;
+  return {
+    startedAt: Math.min(previous.startedAt, current.startedAt),
+    endedAt: Math.max(previous.endedAt, current.endedAt),
+  };
+}
+
 export function readStoredRunTimings(workspaceId: string, sessionId: string): Record<string, SessionRunTiming> {
   if (typeof window === "undefined") return {};
   try {
@@ -31,11 +39,12 @@ export function readStoredRunTimings(workspaceId: string, sessionId: string): Re
 function saveRunTiming(workspaceId: string, sessionId: string, turnId: string | undefined, timing: SessionRunTiming) {
   if (typeof window === "undefined" || !turnId) return;
   try {
-    const entries = Object.entries(readStoredRunTimings(workspaceId, sessionId));
+    const stored = readStoredRunTimings(workspaceId, sessionId);
+    const entries = Object.entries(stored);
     const recent = entries.filter(([id]) => id !== turnId).slice(-99);
     window.localStorage.setItem(`${RUN_TIMINGS_STORAGE_KEY}.${workspaceId}.${sessionId}`, JSON.stringify(Object.fromEntries([
       ...recent,
-      [turnId, timing],
+      [turnId, mergeSessionRunTiming(stored[turnId], timing)],
     ])));
   } catch {
     // Storage can be unavailable; transcript timestamps remain the fallback.

@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 
 import {
   getActiveAssistantMessageId,
+  earliestProcessTimestamp,
   getMessageCompleted,
   getMessageCreated,
   getAssistantRenderGroups,
@@ -16,6 +17,10 @@ import {
 } from "../src/components/chat/utils";
 
 describe("assistant process collapse sections", () => {
+  test("keeps the original user-turn start when a later continuation has a shorter timing", () => {
+    expect(earliestProcessTimestamp(70_000, null, 1_000)).toBe(1_000);
+  });
+
   test("reads stable transcript timing from both conversation metadata formats", () => {
     const iPolloMessage = { id: "assistant-time", role: "assistant", parts: [], metadata: { ipollowork: { created: 100, completed: 2_100 } } } satisfies Parameters<typeof getMessageCreated>[0];
     const legacyMessage = { id: "assistant-legacy-time", role: "assistant", parts: [], metadata: { opencode: { created: 200, completed: 2_200 } } } satisfies Parameters<typeof getMessageCreated>[0];

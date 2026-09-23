@@ -114,7 +114,7 @@ import {
   isToolPartInFlight,
 } from "@/lib/tool-activity"
 import { cn } from "@/lib/utils"
-import { assistantResponseMarkdownFilename, hasActiveAssistantVisibleResult, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantFinalAnswerMessage, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
+import { assistantResponseMarkdownFilename, hasActiveAssistantVisibleResult, buildAssistantResponseMarkdown, buildQuoteFollowUpPrompt, earliestProcessTimestamp, getActiveAssistantMessageId, getAssistantProcessState, getScheduleApplyResult, groupMessages, isAssistantFinalAnswerMessage, isAssistantCommentaryMessage, isInternalContinuationMessage, isMessageGroup, getLastTextPart, getAssistantRenderGroups, getFileMediaType, getFileTitle, getFileUrl, getMediaBadge, getMessageCompleted, getMessageCreated, formatMessageTimestamp, formatProcessDuration, type ScheduleApplyResult, type UIMessageWithIndex, getMessagesText, isStudioResultMessage, splitAssistantRenderGroups, stripArtifactPathLines, type AssistantProcessRenderGroup } from "./utils"
 
 const SEARCH_HIGHLIGHT_MARK_CLASS = "rounded px-0.5 bg-amber-4/70 text-current"
 const ASSISTANT_COLUMN_CLASS_NAME = "mx-auto w-full max-w-[800px] px-2 md:px-10"
@@ -1426,9 +1426,11 @@ function MessageGroup({
   const activeToolLabel = activeTool?.kind === "tool" ? getToolActivityLabel(activeTool.part) : null
   const hasProcessContent = processItemGroups.some((groups) => groups.length > 0)
   const storedTiming = precedingUser ? runTimings[precedingUser.id] : undefined
-  const processStartedAt = storedTiming?.startedAt
-    ?? (currentTurn ? runStartedAt : null)
-    ?? (precedingUser ? getMessageCreated(precedingUser) : null)
+  const processStartedAt = earliestProcessTimestamp(
+    storedTiming?.startedAt,
+    currentTurn ? runStartedAt : null,
+    precedingUser ? getMessageCreated(precedingUser) : null,
+  )
   const processCompletedAt = storedTiming?.endedAt
     ?? (currentTurn ? runEndedAt : null)
     ?? getMessageCompleted(lastRealItem?.message ?? lastItem.message)

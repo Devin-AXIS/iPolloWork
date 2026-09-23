@@ -1,5 +1,10 @@
 import { ApiError } from "../errors.js";
-import { ARTIFACT_MEDIA_ACTION, reviewArtifactMedia } from "../artifact-media.js";
+import {
+  ARTIFACT_MEDIA_ACTION,
+  ARTIFACT_PREVIEW_REVIEW_ACTION,
+  reviewArtifactMedia,
+  reviewArtifactPreview,
+} from "../artifact-media.js";
 import { callVideoGenerationAction, VIDEO_GENERATION_EXTENSION_ACTIONS, VIDEO_GENERATION_EXTENSION_ID } from "./video-generation.js";
 import { createAuthorizationAccess } from "../authorization-center.js";
 import type { EnvService } from "../env-file.js";
@@ -38,6 +43,7 @@ import {
 
 const IPOLLOWORK_EXPERIMENTAL_EXTENSION_ACTIONS = [
   ARTIFACT_MEDIA_ACTION,
+  ARTIFACT_PREVIEW_REVIEW_ACTION,
   ...VIDEO_GENERATION_EXTENSION_ACTIONS,
   ...GOOGLE_WORKSPACE_EXTENSION_ACTIONS,
   ...OPENAI_IMAGE_GENERATION_EXTENSION_ACTIONS,
@@ -143,6 +149,10 @@ async function callBuiltInExtensionAction(
       mediaExtensionId === OPENAI_IMAGE_GENERATION_EXTENSION_ID
         ? callOpenAiImageGenerationExtensionAction(config, authorization, "status", {}, context)
         : callVideoGenerationAction(config, authorization, "status", {}, context));
+  }
+
+  if (extensionId === ARTIFACT_PREVIEW_REVIEW_ACTION.extensionId && action === ARTIFACT_PREVIEW_REVIEW_ACTION.action) {
+    return reviewArtifactPreview(config, args, context);
   }
 
   if (extensionId === VIDEO_GENERATION_EXTENSION_ID) {

@@ -53,7 +53,8 @@ describe("template authoring", () => {
       expect(context).not.toContain("design-slides.md");
     } else if (category === "video") {
       expect(context).toContain("ipollowork-video-studio");
-      expect(context).toContain("references/shared-guidelines.md and references/video.md");
+      expect(context).toContain("read references/video.md once");
+      expect(context).toContain("only the shared-guidelines.md sections it identifies");
       expect(context).not.toContain("design-video.md");
     } else {
       expect(context).toContain(`references/design-${category}.md`);
@@ -114,7 +115,6 @@ describe("template authoring", () => {
     expect(page).toContain("validateTemplateFromSession");
     expect(page).toContain("hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === \"local\"");
     expect(page).toContain("repairCurrentTemplate");
-    expect(page).toContain('manifest.id.startsWith("personal.")');
     expect(design).toContain("onSaveAsTemplate={onSaveAsTemplate}");
     expect(video).toContain("saveAsTemplate: Boolean(onSaveAsTemplate)");
     expect(video).toContain('event.data.action === "save-as-template"');
