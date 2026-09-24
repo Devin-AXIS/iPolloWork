@@ -277,18 +277,28 @@ describe("plugin package manifest", () => {
     }
     const video = (await Bun.file(new URL(`${source}video.md`, root)).text())
       .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
-    expect(video).toContain("scene-midpoint coverage in one batch/contact sheet");
+    const videoMotionPrinciples = await Bun.file(new URL(`${source}video-motion-principles.md`, root)).text();
+    const videoAcceptance = await Bun.file(new URL(`${source}video-acceptance.md`, root)).text();
+    expect(video).toContain("video-acceptance.md` as the single owner");
     expect(video).toContain("Shortlist at most three scene bodies");
     expect(video).toContain("Submit independent assets as one bounded batch or in parallel");
+    expect(videoMotionPrinciples).toContain("Establish, Develop, and Land states");
+    expect(videoMotionPrinciples).toContain("Spoken intent | Time range | Visual focus | Visual action | Result or hold");
+    expect(videoMotionPrinciples).toContain("replace it with boundaries derived from the returned audio");
+    expect(videoAcceptance).toContain("one batch temporal sample");
+    expect(videoAcceptance).toContain("time ranges, visual focus, visual action, and result or hold");
+    expect(videoAcceptance).toContain("Render Establish, Develop, and Land samples");
+    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-motion-principles.md", root)).text()).toBe(header + videoMotionPrinciples);
+    expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-acceptance.md", root)).text()).toBe(header + videoAcceptance);
     const videoSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-studio/SKILL.md", root)).text();
     for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
       expect(await Bun.file(new URL(`${directory}SKILL.md`, root)).text()).toBe(videoSkill);
-      for (const [name, body] of [["shared-guidelines.md", shared], ["video.md", video]]) {
+      for (const [name, body] of [["shared-guidelines.md", shared], ["video.md", video], ["video-motion-principles.md", videoMotionPrinciples], ["video-acceptance.md", videoAcceptance]]) {
         expect(videoSkill).toContain(`references/${name}`);
         expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
       }
     }
-    expect(video).not.toMatch(/\p{Script=Han}/u);
+    for (const body of [video, videoMotionPrinciples, videoAcceptance]) expect(body).not.toMatch(/\p{Script=Han}/u);
     const { previewPluginPackage } = await import("./plugin-package-lifecycle.js");
     const { fileURLToPath } = await import("node:url");
     for (const [engineId, directory] of [["opencode", ".opencode"], ["codex-harness", ".agents"], ["deepseek-harness", ".dsh"]]) {
@@ -296,7 +306,7 @@ describe("plugin package manifest", () => {
         packageRoot: fileURLToPath(new URL("examples/plugin-packages/video-agent/", root)),
         engineId,
       });
-      for (const name of ["shared-guidelines.md", "video.md"]) {
+      for (const name of ["shared-guidelines.md", "video.md", "video-motion-principles.md", "video-acceptance.md"]) {
         expect(videoPackage.writes.some((entry) =>
           entry.path === `${directory}/skills/ipollowork-video-studio/references/${name}`
         )).toBe(true);

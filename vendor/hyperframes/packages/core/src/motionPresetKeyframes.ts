@@ -48,6 +48,30 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
   const offset = directionOffset(direction, 42 * intensity);
   const color = motionColor(params, "color", "--ipw-color-accent", "#7c3aed");
   switch (presetId) {
+    case "transition.depth-push":
+      return [
+        frame(0, { opacity: 0, scale: Math.max(0.58, 0.78 - intensity * 0.04), filter: `blur(${18 * intensity}px)` }),
+        frame(64, { opacity: 1, scale: 1.025, filter: "blur(0px)" }),
+        frame(100, { opacity: 1, scale: 1, filter: "blur(0px)" }),
+      ];
+    case "transition.diagonal-slice":
+      return [
+        frame(0, { opacity: 0, xPercent: 24 * intensity, clipPath: "polygon(100% 0, 100% 0, 76% 100%, 76% 100%)" }),
+        frame(76, { opacity: 1, xPercent: 0, clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" }),
+        frame(100, { opacity: 1, xPercent: 0, clipPath: "polygon(0 0, 100% 0, 100% 100%, 0 100%)" }),
+      ];
+    case "transition.lens-focus":
+      return [
+        frame(0, { opacity: 0, scale: 1 + 0.12 * intensity, filter: `blur(${20 * intensity}px)`, clipPath: "circle(0% at 50% 50%)" }),
+        frame(72, { opacity: 1, scale: 1, filter: "blur(0px)", clipPath: "circle(74% at 50% 50%)" }),
+        frame(100, { opacity: 1, scale: 1, filter: "blur(0px)", clipPath: "circle(100% at 50% 50%)" }),
+      ];
+    case "transition.split-wipe":
+      return [
+        frame(0, { opacity: 0, xPercent: 28 * intensity, clipPath: "inset(0 0 0 100%)" }),
+        frame(52, { opacity: 1, xPercent: 0, clipPath: "inset(0 0 0 0%)" }),
+        frame(100, { opacity: 1, xPercent: 0, clipPath: "inset(0 0 0 0%)" }),
+      ];
     case "text.enter.fade":
       return [frame(0, { opacity: 0 }), frame(100, { opacity: 1 })];
     case "text.enter.rise":

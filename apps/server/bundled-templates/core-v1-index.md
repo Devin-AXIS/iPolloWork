@@ -19,7 +19,7 @@ Global structures supply information hierarchy and reusable geometry. Template t
 | --- | --- | --- |
 | `slides` | `core-v1-slides/catalog.md` | Fixed slide canvas, page sequence and supported editable/export objects |
 | `site` | `core-v1-site/catalog.md` | Flowing sections, responsive reflow, semantic landmarks and real interactions |
-| `video` | `core-v1-video/catalog.md` | Scene bodies, declared stage, deterministic motion and synchronized audio/timing |
+| `video` | `core-v1-video/catalog.md` and `core-v1-video/motion/catalog.md` | Scene bodies, temporal story recipes, declared stage, deterministic motion and synchronized audio/timing |
 
 The server places this index beside `brief.json` and materializes only the active type's directory. Other-type paths are routing metadata, not installed files to open. App, poster, cards, report, article and other types do not yet have catalogs here. Follow their type rules and local sources; do not invent a directory or borrow incompatible markup.
 

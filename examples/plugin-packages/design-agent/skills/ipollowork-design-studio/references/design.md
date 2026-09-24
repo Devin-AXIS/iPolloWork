@@ -20,10 +20,6 @@ Landing, social, email and image are not additional manifest categories. Route l
 
 For mixed artifacts, use the primary deliverable's rules and consult only relevant secondary sections. An embedded chart does not turn a website into a report; a dashboard screenshot does not make a poster interactive.
 
-## Shared execution boundary
+## Design boundary
 
-- Preserve project paths, semantic `--ipw-*` tokens, editor hooks and fixed brand regions. Initial generation adapts structure to content; targeted edits protect unrelated work.
-- Apply shared asset rules to every type. A missing image slot or catalog does not remove a useful visual need. Type references add suitability checks, not competing model-selection or authorization policies.
-- Read a layout library only when supplied by the session. Prefer fitting catalog or local patterns; extend when none fits. Do not invent catalog paths for categories without a library or require IDs for new structures.
-- Inspect real content after fonts/assets load. Verify the requested output, not merely HTML source. Shared-style changes require checking every affected section/page.
-- These references are guidance, not evidence of automatic enforcement or completed acceptance. Report source, rendering, interaction, editing and export checks separately.
+The shared guidelines own project preservation, media policy, layout extension and verification levels. The active category reference adds only its medium-specific structure, behavior and acceptance checks. A type reference never proves automatic enforcement or a completed export.

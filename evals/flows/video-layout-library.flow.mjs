@@ -29,8 +29,22 @@ export default {
       ctx.output("Session materialization", result);
       library = join(root, "video/video-layouts/core-v1-video");
       const catalog = await readFile(join(library, "catalog.md"), "utf8");
+      const motionPrinciples = await readFile(join(library, "motion-principles.md"), "utf8");
+      const acceptance = await readFile(join(library, "acceptance.md"), "utf8");
+      const motionCatalog = await readFile(join(library, "motion", "catalog.md"), "utf8");
+      const componentMap = await readFile(join(library, "motion", "component-map.md"), "utf8");
       layouts = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
+      const motionPatterns = [...motionCatalog.matchAll(/^\| `([^`]+\.md)`/gm)].map((match) => match[1]);
       ctx.assert(layouts.length === 9, "All nine independent video layouts materialized");
+      ctx.assert(motionPrinciples.includes("Establish, Develop, and Land states"), "Temporal storytelling principles materialized with the video library");
+      ctx.assert(acceptance.includes("## 3. Temporal storytelling") && acceptance.includes("## 8. Bounded evidence and verdict"), "Video-specific acceptance materialized with temporal and bounded validation rules");
+      ctx.assert(motionPatterns.length === 6, "All six temporal story recipes materialized");
+      const mappedComponents = [...componentMap.matchAll(/^\| `([^`]+)` \| (?:opening|body|closing|overlay \/ any) \|/gm)].map((match) => match[1]);
+      ctx.assert(mappedComponents.length === 148 && new Set(mappedComponents).size === 148, "All 148 current Video Studio components have one primary temporal mapping");
+      for (const pattern of motionPatterns) {
+        const recipe = await readFile(join(library, "motion", pattern), "utf8");
+        ctx.assert(recipe.includes("## Registry candidates") && recipe.includes("## Temporal states") && recipe.includes("## Timeline recipe") && recipe.includes("## Acceptance"), `${pattern} includes registry routing, states, implementation, and acceptance`);
+      }
       await ctx.client.send("Emulation.setDeviceMetricsOverride", { width: 1920, height: 1150, deviceScaleFactor: 1, mobile: false });
     },
   }, {

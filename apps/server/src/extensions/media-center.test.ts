@@ -55,6 +55,13 @@ test("describes workspace speech synthesis as an installed iPolloWork capability
   }
 });
 
+test("exposes measured audio cues as a built-in Video Studio action", () => {
+  expect(MEDIA_EXTENSION_ACTIONS.find((action) => action.action === "video_audio_analyze")).toMatchObject({
+    extensionId: MEDIA_EXTENSION_ID,
+    inputSchema: { required: ["sourcePath"] },
+  });
+});
+
 async function workspaceConfig() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-media-"));
   directories.push(root);
@@ -463,6 +470,27 @@ describe("Media Center extension", () => {
       { directory: workspace.root },
     );
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("includes scene beat and component timing checks in the final video gate", async () => {
+    const workspace = await workspaceConfig();
+    const project = join(workspace.root, "video", "session-one");
+    await mkdir(project, { recursive: true });
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:title scene" data-motion-pattern="progressive-build" data-start="0" data-duration="5" data-track-index="0">Intro</section>
+    </main>`);
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({}),
+      "voiceover_timeline_validate",
+      { sourcePath: "video/session-one/index.html" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, componentCheck: { valid: false } } } });
+    expect(JSON.stringify(result)).toContain("invalid_scene_timing_source");
+    expect(JSON.stringify(result)).toContain("missing_scene_beats");
   });
 
   test("blocks missing GSAP and persists safe timeline initialization at the final gate", async () => {

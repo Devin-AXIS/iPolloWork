@@ -7,7 +7,7 @@ description: Create or edit the HyperFrames project owned by an active iPolloWor
 
 Use this Skill only for the video project owned by the active iPolloWork session. The built-in Video Studio, timeline, preview, templates, and HyperFrames runtime exist independently of this Skill.
 
-Read [references/video.md](references/video.md) once per task. Consult only the conflict, content, layout, media and repair sections it identifies in [references/shared-guidelines.md](references/shared-guidelines.md); do not ingest or reread the full shared file when unrelated sections are not needed. If Design Studio routed the task here, this packaged reference set replaces its copy. The video reference is the execution owner for scene, timing, playback and acceptance.
+Read [references/video.md](references/video.md) once per task. For initial generation or substantial scene redesign, also read [references/video-motion-principles.md](references/video-motion-principles.md) once; targeted edits do not need it. Read [references/video-acceptance.md](references/video-acceptance.md) once before final validation. Consult only the conflict, content, layout, and media sections identified in [references/shared-guidelines.md](references/shared-guidelines.md); do not ingest or reread the full shared file when unrelated sections are not needed. If Design Studio routed the task here, this packaged reference set replaces its copy. The video reference is the execution owner for scene, timing, and playback; the acceptance reference owns the final video verdict.
 
 ## Session contract
 

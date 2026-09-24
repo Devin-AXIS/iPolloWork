@@ -226,6 +226,7 @@ const extensionsExportArgsSchema = z.object({
 });
 
 const listMotionPresetsArgsSchema = z.object({
+  targetKind: z.enum(["text", "element"]).optional().describe("Target text for typographic motion or element for cards, media, diagrams, and other visual layers. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
   intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
   tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
@@ -233,15 +234,20 @@ const listMotionPresetsArgsSchema = z.object({
 
 const mutateMotionArgsSchema = z.object({
   operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
-  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one leaf text element in the current video."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one text or element target in the current video."),
+  targetKind: z.enum(["text", "element"]).optional().describe("Target kind used to compile the selected preset. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]),
   presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
   start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  end: z.number().finite().positive().optional().describe("Absolute timeline end in seconds for the complete effect window."),
   duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
   parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
 }).superRefine((value, context) => {
   if (value.operation === "upsert" && !value.presetId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
+  if (value.start !== undefined && value.end !== undefined && value.end <= value.start) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["end"], message: "end must be after start" });
   }
 });
 
@@ -758,12 +764,12 @@ export const iPolloWorkExtensionsPreview = async () => {
   },
   tool: {
     list_motion_presets: {
-      description: "List the product-owned semantic motion presets for a leaf text element in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+      description: "List the product-owned semantic motion presets for text or visual elements in the current Video Studio session. Filter by target kind, phase, intent, or tone, then use the returned preset id with mutate_motion.",
       args: listMotionPresetsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listMotionPresetsArgsSchema.parse(rawArgs);
         const session = requireVideoSession(context);
-        const query = new URLSearchParams({ targetKind: "text" });
+        const query = new URLSearchParams({ targetKind: args.targetKind ?? "text" });
         if (args.phase) query.set("phase", args.phase);
         if (args.intent) query.set("intent", args.intent);
         if (args.tone) query.set("tone", args.tone);
@@ -775,7 +781,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       },
     },
     mutate_motion: {
-      description: "Add, replace, update, or remove one semantic motion phase on exactly one leaf text element in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+      description: "Add, replace, update, or remove one semantic motion phase on exactly one text or element target in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
       args: mutateMotionArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = mutateMotionArgsSchema.parse(rawArgs);
@@ -788,7 +794,7 @@ export const iPolloWorkExtensionsPreview = async () => {
             body: {
               type: "mutate-motion",
               ...args,
-              targetKind: "text",
+              targetKind: args.targetKind ?? "text",
               elementId: args.targetSelector.startsWith("#") ? args.targetSelector.slice(1) : undefined,
             },
           },

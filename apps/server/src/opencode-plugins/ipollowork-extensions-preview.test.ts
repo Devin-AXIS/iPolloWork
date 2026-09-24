@@ -231,6 +231,11 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("editable HyperFrames HTML composition supported by Video Studio");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Treat any validation error, ok=false, zero/incorrect duration, empty samples");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("unintended blank midpoint/transition frame as a failed delivery");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-timing-owner=host");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-timing-source");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-beats");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Continue with a complete silent composition");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("estimated-reading");
     expect(system).toContain("On the footage/plugin path");
     expect(system).toContain("raw clip alone does not complete that task");
   });
@@ -374,7 +379,7 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
     const plugin = await iPolloWorkExtensionsPreview();
 
     const listed = JSON.parse(await plugin.tool.list_motion_presets.execute(
-      { phase: "enter", tone: "modern" },
+      { targetKind: "element", phase: "enter", tone: "modern" },
       { sessionID: fake.sessionID },
     ));
     expect(listed.presets[0].id).toBe("text.enter.rise");
@@ -383,22 +388,27 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
       {
         operation: "upsert",
         targetSelector: "#headline",
+        targetKind: "element",
         phase: "enter",
         presetId: "text.enter.rise",
+        start: 3,
+        end: 4.2,
         parameters: { intensity: 0.8 },
       },
       { sessionID: fake.sessionID },
     ));
     expect(mutated.mutation).toMatchObject({
       type: "mutate-motion",
-      targetKind: "text",
+      targetKind: "element",
       elementId: "headline",
       presetId: "text.enter.rise",
+      start: 3,
+      end: 4.2,
     });
     expect(fake.requests).toEqual(expect.arrayContaining([
       expect.objectContaining({
         pathname: `/api/projects/${fake.projectId}/motion-presets`,
-        search: "?targetKind=text&phase=enter&tone=modern",
+        search: "?targetKind=element&phase=enter&tone=modern",
       }),
       expect.objectContaining({
         pathname: `/api/projects/${fake.projectId}/gsap-mutations/index.html`,
