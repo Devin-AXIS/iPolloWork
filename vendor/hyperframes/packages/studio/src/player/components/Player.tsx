@@ -35,6 +35,7 @@ const MEDIA_NETWORK_NO_SOURCE = 3;
 const COMPOSITION_LOADING_OVERLAY_DELAY_MS = 400;
 const REFRESH_LOADING_OVERLAY_DELAY_MS = 220;
 const DEFERRED_VISUAL_READY_TIMEOUT_MS = 800;
+const AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS = 5_000;
 const DEFERRED_VISUAL_READY_PAINTS = 2;
 
 export function shouldShowCompositionLoadingOverlay(compositionLoading: boolean): boolean {
@@ -142,6 +143,32 @@ function isVisuallyActive(element: HTMLElement): boolean {
   );
 }
 
+function isPendingAvatarCutoutForeground(video: HTMLVideoElement): boolean {
+  return (
+    video.hasAttribute("data-avatar-source") &&
+    (Boolean(video.error) ||
+      video.networkState === MEDIA_NETWORK_NO_SOURCE ||
+      video.readyState < MEDIA_HAVE_CURRENT_DATA)
+  );
+}
+
+function documentHasPendingAvatarCutout(doc: Document, depth = 0): boolean {
+  for (const video of doc.querySelectorAll<HTMLVideoElement>("video[data-avatar-source]")) {
+    if (isVisuallyActive(video) && isPendingAvatarCutoutForeground(video)) return true;
+  }
+  if (depth >= 2) return false;
+  for (const childFrame of doc.querySelectorAll<HTMLIFrameElement>("iframe")) {
+    if (!isVisuallyActive(childFrame)) continue;
+    try {
+      const childDoc = childFrame.contentDocument;
+      if (childDoc && documentHasPendingAvatarCutout(childDoc, depth + 1)) return true;
+    } catch {
+      // Cross-origin child frames are covered by the bounded generic handoff.
+    }
+  }
+  return false;
+}
+
 function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   if (doc.fonts?.status !== "loaded") return true;
 
@@ -150,11 +177,13 @@ function documentHasPendingVisualAssets(doc: Document, depth = 0): boolean {
   }
 
   for (const video of doc.querySelectorAll<HTMLVideoElement>("video")) {
+    const pendingAvatarCutout = isPendingAvatarCutoutForeground(video);
     if (
       isVisuallyActive(video) &&
-      !video.error &&
-      video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
-      video.readyState < MEDIA_HAVE_CURRENT_DATA
+      (pendingAvatarCutout ||
+        (!video.error &&
+          video.networkState !== MEDIA_NETWORK_NO_SOURCE &&
+          video.readyState < MEDIA_HAVE_CURRENT_DATA))
     ) {
       return true;
     }
@@ -329,8 +358,15 @@ export const Player = forwardRef<HTMLIFrameElement, PlayerProps>(
               return;
             }
             if (visibleAt === 0) visibleAt = performance.now();
-            const timedOut = performance.now() - visibleAt >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
-            if (timedOut || isDeferredFrameVisuallyReady(iframe)) {
+            const doc = iframe.contentDocument;
+            const elapsedMs = performance.now() - visibleAt;
+            const pendingAvatarCutout = Boolean(doc && documentHasPendingAvatarCutout(doc));
+            if (pendingAvatarCutout && elapsedMs >= AVATAR_CUTOUT_VISUAL_READY_TIMEOUT_MS) {
+              onError?.();
+              return;
+            }
+            const timedOut = elapsedMs >= DEFERRED_VISUAL_READY_TIMEOUT_MS;
+            if (!pendingAvatarCutout && (timedOut || isDeferredFrameVisuallyReady(iframe))) {
               readyPaints += 1;
             } else {
               readyPaints = 0;

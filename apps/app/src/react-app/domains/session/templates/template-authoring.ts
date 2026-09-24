@@ -24,6 +24,16 @@ export function templateAuthoringKickoff(category: TemplateCategory, pptxCompati
   };
 }
 
+export function templateTypeRulesInstruction(category: TemplateCategory): string {
+  if (category === "slides") {
+    return "For slides, including HTML, follow the iPolloWork Presentations workflow: read shared-guidelines.md, slides-ppt.md and layout.md before editing, and keep the HTML runtime or native PPTX contract.";
+  }
+  if (category === "video") {
+    return "Follow the ipollowork-video-studio Skill: read references/video.md once, then only the shared-guidelines.md sections it identifies. Keep the active Video surface contract and do not repeat unchanged rule, catalog, capability, or validation reads.";
+  }
+  return `Follow the ipollowork-design-studio Skill: before editing, read references/shared-guidelines.md, references/design.md and references/design-${category}.md relative to its current installed location. Apply the same type and asset rules to template application and custom generation; do not load unrelated type references.`;
+}
+
 function surfaceRules(snapshot: TemplateSessionSnapshot) {
   const manifest = snapshot.manifest;
   if (manifest.surface === "video") {
@@ -35,9 +45,9 @@ function surfaceRules(snapshot: TemplateSessionSnapshot) {
   if (manifest.category === "slides") {
     return `- Edit ${snapshot.state.entry} as a fixed 16:9 stage with stable data-ipw-slide roots.
 - Never change slide roots or geometry merely to apply a theme.
-${manifest.pptxCompatibility ? "- This is native editable PPT mode. Keep data-pptx-text, data-pptx-shape, and data-pptx-image coverage for every exportable object." : "- This is an HTML presentation, not native PPT mode. Do not claim editable PPT export markers unless the manifest explicitly enables them."}`;
+${manifest.pptxCompatibility ? "- This is native editable PPT mode. Keep data-pptx-text, data-pptx-shape, and data-pptx-image coverage for every exportable object. Do not permanently hide slide roots with display, visibility, or opacity rules; the Design panel owns page isolation." : "- This is an HTML presentation, not native PPT mode. Do not claim editable PPT export markers unless the manifest explicitly enables them."}`;
   }
-  return `- Edit ${snapshot.state.entry} as semantic, responsive HTML.
+  return `- Edit ${snapshot.state.entry} as semantic HTML. ${manifest.category === "poster" || manifest.category === "cards" ? "Preserve the requested canvas dimensions; scale fixed-canvas previews without reflowing their composition." : "Use responsive behavior appropriate to the target medium."}
 - Consume stable --ipw-* tokens from ${manifest.designSystem.tokens ?? "design-tokens.css"}; keep local assets inside the session project.
 - Preserve landmarks, links, forms, responsive behavior, and structural geometry while changing visual tokens.`;
 }
@@ -62,8 +72,11 @@ Guide the conversation one critical question at a time in this order:
 Skip anything already answered. After enough information exists, edit the current project instead of continuing to interview.
 
 Keep manifest.json, ${manifest.designSystem.tokens ?? "design-tokens.css"}, cover metadata, variables, and the apply checklist current after every structural change. Current declared variables: ${variables}.
+For a reusable template, write a package-local authoring.md and declare authoringGuide: "authoring.md" in manifest.json. Describe the actual visual tokens and fixed regions, index real source layouts by selector with content suitability and allowed variations, and label proposed extensions separately from existing layouts. Update the guide after structural changes; do not include session-only facts.
 
 ${surfaceRules(snapshot)}
+
+${templateTypeRulesInstruction(manifest.category)}
 
 The server Manifest schema and validation report are the hard truth. Never work around a validation issue, change the category, or claim readiness without validating and re-instantiating the package.${selectedDesignSystemGuide?.trim() ? `
 

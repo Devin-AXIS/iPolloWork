@@ -47,12 +47,12 @@ function compiledStructuredTrackTargetCount(
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(67);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(67);
+    expect(MOTION_PRESETS).toHaveLength(71);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(71);
     expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(19);
     expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(24);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
-    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(7);
+    expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(11);
     expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
     expect(listMotionPresets({ targetKind: "element", phase: "exit" })).toHaveLength(3);
     expect(
@@ -86,8 +86,8 @@ describe("motion presets", () => {
       "text.emphasis.particle-burst",
     ];
 
-    expect(MOTION_PRESETS).toHaveLength(67);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(67);
+    expect(MOTION_PRESETS).toHaveLength(71);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(71);
 
     for (const id of migratedIds) {
       const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
@@ -250,6 +250,27 @@ describe("motion presets", () => {
     expect(compiled.targetSelector).toBe("#card");
     expect(compiled.keyframes[0]?.properties).toMatchObject({ opacity: 0, x: -42, y: 0 });
     expect(compiled.extras).not.toHaveProperty("stagger");
+  });
+
+  it("exposes the complete seek-safe transition library to element motion tools", () => {
+    const transitions = [
+      "transition.depth-push",
+      "transition.diagonal-slice",
+      "transition.lens-focus",
+      "transition.split-wipe",
+    ];
+    expect(listMotionPresets({ targetKind: "element", phase: "enter" }).map((preset) => preset.id)).toEqual(expect.arrayContaining(transitions));
+    for (const presetId of transitions) {
+      const compiled = compileMotionInstance(createMotionInstance({
+        presetId,
+        target: { selector: "#incoming-scene" },
+        targetKind: "element",
+        start: 2,
+        duration: 0.9,
+      }));
+      expect(compiled.keyframes.length, presetId).toBeGreaterThanOrEqual(3);
+      expect(compiled.keyframes.at(-1)?.properties.opacity, presetId).toBe(1);
+    }
   });
 
   it("compiles deterministic, finite GSAP keyframes and semantic metadata", () => {

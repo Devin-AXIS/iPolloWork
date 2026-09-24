@@ -31,6 +31,9 @@ import {
 const EASE_OPTIONS: MotionParameterOption[] = [
   { value: "power2.out", label: "柔和" },
   { value: "power3.out", label: "顺滑" },
+  { value: "power3.inOut", label: "顺滑进出" },
+  { value: "power4.inOut", label: "快速进出" },
+  { value: "expo.inOut", label: "镜头聚焦" },
   { value: "back.out(1.7)", label: "弹性" },
   { value: "sine.inOut", label: "自然" },
   { value: "none", label: "匀速" },
@@ -1664,6 +1667,29 @@ const REACT_BITS_BOX_PRESETS: readonly MotionPreset[] = [
   },
 ];
 
+const TRANSITION_MOTION_PRESETS: readonly MotionPreset[] = [
+  {
+    id: "transition.depth-push", version: 1, label: "景深推进", phase: "enter", targetKinds: ["element"],
+    parameterSchema: [...MOTION_COMMON_PARAMETERS, MOTION_INTENSITY_PARAMETER], defaults: { ease: "power3.inOut", intensity: 1 },
+    semantics: { intents: ["景深推进", "焦点切换", "进入细节"], tones: ["电影感", "克制"], preferredFor: ["场景容器", "全屏媒体", "空间层级"], avoidFor: ["小字号正文", "频繁连续切换"] },
+  },
+  {
+    id: "transition.diagonal-slice", version: 1, label: "斜切转场", phase: "enter", targetKinds: ["element"],
+    parameterSchema: [...MOTION_COMMON_PARAMETERS, MOTION_INTENSITY_PARAMETER], defaults: { ease: "power4.inOut", intensity: 1 },
+    semantics: { intents: ["斜切", "章节切换", "快速推进"], tones: ["动感", "现代"], preferredFor: ["场景容器", "全屏媒体", "章节变化"], avoidFor: ["安静访谈", "弱变化连续镜头"] },
+  },
+  {
+    id: "transition.lens-focus", version: 1, label: "镜头聚焦", phase: "enter", targetKinds: ["element"],
+    parameterSchema: [...MOTION_COMMON_PARAMETERS, MOTION_INTENSITY_PARAMETER], defaults: { ease: "expo.inOut", intensity: 1 },
+    semantics: { intents: ["镜头聚焦", "揭示", "从环境进入主体"], tones: ["电影感", "柔和"], preferredFor: ["场景容器", "图片", "关键主体"], avoidFor: ["高频数据切换", "小型控件"] },
+  },
+  {
+    id: "transition.split-wipe", version: 1, label: "分屏擦除", phase: "enter", targetKinds: ["element"],
+    parameterSchema: [...MOTION_COMMON_PARAMETERS, MOTION_INTENSITY_PARAMETER], defaults: { ease: "power3.inOut", intensity: 1 },
+    semantics: { intents: ["分屏擦除", "对比切换", "方向推进"], tones: ["现代", "克制"], preferredFor: ["场景容器", "对比画面", "位置变化"], avoidFor: ["连续对白", "细小文字"] },
+  },
+];
+
 export const MOTION_PRESETS: readonly MotionPreset[] = [
   ...TEXT_MOTION_PRESETS,
   ...MIGRATED_CAPTION_TEXT_PRESETS,
@@ -1672,4 +1698,5 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
   ...REACT_BITS_GENERAL_PRESETS,
   ...REACT_BITS_BACKGROUND_PRESETS,
   ...REACT_BITS_BOX_PRESETS,
+  ...TRANSITION_MOTION_PRESETS,
 ];

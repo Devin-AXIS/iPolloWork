@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { homedir, platform } from "node:os";
 import { z } from "zod";
 import { hyperframesStudioPort, videoProjectId } from "@ipollowork/types/hyperframes";
 import {
@@ -9,6 +6,14 @@ import {
   IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION,
   resolveiPolloWorkExtensionDiscoveryInstruction,
 } from "./ipollowork-extensions-preview-connect-steering.js";
+import {
+  ENGINE_BROWSER_INSTRUCTION,
+  ENGINE_VIDEO_GENERATION_INSTRUCTION,
+  ENGINE_HOST_TOOL_NAMES,
+  engineHostTool,
+  type EngineHostToolName,
+} from "../engine-host-tools.js";
+import { uiControlRequest } from "../ui-control-client.js";
 
 type OpenCodeContext = {
   agent?: string;
@@ -25,6 +30,12 @@ type ExtensionActionPayload = {
   context: ReturnType<typeof contextPayload>;
 };
 
+function engineHostToolDescription(name: EngineHostToolName): string {
+  const descriptor = engineHostTool(name);
+  if (!descriptor) throw new Error(`Missing iPolloWork host tool descriptor: ${name}`);
+  return descriptor.description;
+}
+
 const listActionsArgsSchema = z.object({
   extensionId: z.string().optional().describe("Optional extension id to filter by, such as google-workspace."),
 });
@@ -35,6 +46,34 @@ const callArgsSchema = z.object({
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action."),
 });
 
+const projectApplyArgsSchema = z.object({
+  config: z.record(z.string(), z.unknown()).describe("Complete schema-valid iPolloWork project configuration."),
+  summary: z.string().trim().min(1).max(240).describe("Short summary of the user-confirmed change."),
+});
+
+const schedulePreviewArgsSchema = z.object({
+  tasks: z.array(z.object({
+    title: z.string().trim().min(1).max(80),
+    description: z.string().trim().max(4_000).optional(),
+    startAt: z.string().trim().max(40),
+    dueAt: z.string().trim().max(40),
+    priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+    automation: z.object({
+      enabled: z.literal(true),
+      recurrence: z.enum(["once", "daily", "weekly"]),
+    }).optional().describe("Include only when the user explicitly requests automatic execution."),
+  })).min(1).max(50),
+});
+
+const scheduleApplyArgsSchema = z.object({
+  previewId: z.string().trim().min(1).max(120),
+});
+
+const workspaceAppCallArgsSchema = z.object({
+  name: z.string().trim().min(1).describe("Workspace App tool name returned by ipollowork_workspace_app_list_tools."),
+  arguments: z.record(z.string(), z.unknown()).optional().describe("Arguments for the Workspace App tool."),
+});
+
 const uiExecuteArgsSchema = z.object({
   actionId: z.string().describe("The action id from ipollowork_ui_list_actions, e.g. 'settings.panel.open' or 'composer.set_text'."),
   args: z.record(z.string(), z.unknown()).optional().describe("JSON arguments for the action, if required."),
@@ -42,7 +81,124 @@ const uiExecuteArgsSchema = z.object({
 
 const browserOpenUrlArgsSchema = z.object({
   url: z.string().describe("The website URL to open in the iPolloWork built-in browser."),
-  provider: z.enum(["auto", "builtin", "external"]).optional().describe("Browser provider. Use builtin or auto; external is reserved for future support."),
+  profileId: z.string().regex(/^[a-zA-Z0-9:_-]{1,200}$/).optional().describe("Persistent browser profile returned by the account plugin."),
+});
+
+const browserSnapshotArgsSchema = z.object({
+  tabId: z.string().trim().min(1).describe("Built-in browser tab ID returned by ipollowork_browser_open_url."),
+  mode: z.enum(["content", "interactive", "mixed"]).optional(),
+  scopeRef: z.string().trim().min(1).optional(),
+  delta: z.boolean().optional(),
+});
+
+const browserReadArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  mode: z.enum(["article", "forms", "links", "page", "tables"]).optional(),
+  maxChars: z.number().int().min(1_000).max(24_000).optional(),
+});
+
+const browserScreenshotArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  snapshotId: z.string().trim().min(1).optional(),
+  target: z.enum(["ref", "region", "viewport"]).optional(),
+  ref: z.string().trim().min(1).optional(),
+  region: z.object({
+    x: z.number().min(0),
+    y: z.number().min(0),
+    width: z.number().positive().max(8_192),
+    height: z.number().positive().max(8_192),
+  }).optional(),
+  mode: z.enum(["annotated", "auto", "plain"]).optional(),
+  ifChanged: z.boolean().optional(),
+});
+
+const browserActionSchema = z.union([
+  z.object({
+    type: z.literal("click"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({ type: z.literal("fill"), ref: z.string().trim().min(1), value: z.string().max(50_000) }),
+  z.object({
+    type: z.literal("press"),
+    key: z.enum(["ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp", "End", "Escape", "Home", "PageDown", "PageUp", "Tab"]),
+  }),
+  z.object({
+    type: z.literal("press"),
+    key: z.enum(["Enter", "Space"]),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("hover"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+  }),
+  z.object({
+    type: z.literal("select"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+    option: z.string().max(500),
+  }),
+  z.object({
+    type: z.literal("check"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200),
+    checked: z.boolean(),
+  }),
+  z.object({
+    type: z.literal("scroll"),
+    direction: z.enum(["down", "left", "right", "up"]),
+    amount: z.enum(["small", "page"]),
+  }),
+  z.object({
+    type: z.literal("upload"),
+    ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200).optional(),
+    filePaths: z.array(z.string().trim().min(1)).min(1).max(20),
+    extensionId: z.string().trim().min(1).optional(),
+  }),
+  z.object({ type: z.literal("wait"), durationMs: z.number().int().min(0).max(10_000) }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("url"),
+    value: z.string().min(1).max(2_048),
+    match: z.enum(["equals", "contains"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("text"),
+    value: z.string().min(1).max(500),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("ref"),
+    ref: z.string().trim().min(1),
+    state: z.enum(["attached", "visible"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+  z.object({
+    type: z.literal("waitFor"),
+    condition: z.literal("load"),
+    state: z.enum(["interactive", "complete"]),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }),
+]);
+
+const browserActArgsSchema = z.object({
+  tabId: z.string().trim().min(1),
+  snapshotId: z.string().trim().min(1),
+  actions: z.array(browserActionSchema).min(1).max(8),
+  observe: z.object({
+    mode: z.enum(["content", "interactive", "mixed"]).optional(),
+    scopeRef: z.string().trim().min(1).optional(),
+    delta: z.boolean().optional(),
+    settleMs: z.number().int().min(0).max(2_000).optional(),
+    waitForLoad: z.enum(["interactive", "complete"]).optional(),
+    timeoutMs: z.number().int().min(100).max(10_000).optional(),
+  }).optional(),
 });
 
 const browserSetProxyArgsSchema = z.object({
@@ -70,6 +226,7 @@ const extensionsExportArgsSchema = z.object({
 });
 
 const listMotionPresetsArgsSchema = z.object({
+  targetKind: z.enum(["text", "element"]).optional().describe("Target text for typographic motion or element for cards, media, diagrams, and other visual layers. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
   intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
   tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
@@ -77,15 +234,20 @@ const listMotionPresetsArgsSchema = z.object({
 
 const mutateMotionArgsSchema = z.object({
   operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
-  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one leaf text element in the current video."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one text or element target in the current video."),
+  targetKind: z.enum(["text", "element"]).optional().describe("Target kind used to compile the selected preset. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]),
   presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
   start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  end: z.number().finite().positive().optional().describe("Absolute timeline end in seconds for the complete effect window."),
   duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
   parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
 }).superRefine((value, context) => {
   if (value.operation === "upsert" && !value.presetId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
+  if (value.start !== undefined && value.end !== undefined && value.end <= value.start) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["end"], message: "end must be after start" });
   }
 });
 
@@ -155,23 +317,8 @@ Use ipollowork_session_search first to search session titles and message transcr
 Answer only from the returned search/read results. If multiple sessions match, ask a short clarifying question. If the returned transcript is limited or missing the older context needed, say so instead of guessing.
 Never use these cross-session tools to recover the current task after an interruption/continuation, discover current project files, or infer what you were working on. Current-task continuity must come from the current transcript, current system context, and explicitly scoped current-project files.`;
 
-const IPOLLOWORK_BROWSER_INSTRUCTION =
-  `Do NOT use browser_navigate, browser_click, or browser_snapshot to interact with the iPolloWork app itself. Those are for browsing external websites.
-
-## Built-in Browser (external websites)
-For web browsing tasks, ALWAYS start with ipollowork_browser_open_url. It creates/selects a built-in iPolloWork browser tab and returns browser_url plus target_id. Use that exact browser_url and target_id for every later browser_snapshot, browser_click, browser_fill, browser_eval, and browser_screenshot call.
-Do not call browser_navigate without a target_id returned by ipollowork_browser_open_url. Do not use browser_* tools on the iPolloWork app target (avoid targets with title "iPolloWork" or URLs containing ":5173/#/").`;
-
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
 For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
-
-// ── UI control bridge discovery ──
-
-type UiBridge = { baseUrl: string; token: string };
-let cachedBridge: UiBridge | null = null;
-let cachedBridgeAt = 0;
-const BRIDGE_CACHE_MS = 2_000;
-const BRIDGE_TIMEOUT_MS = 5_000;
 
 type iPolloWorkWorkspace = z.infer<typeof workspaceSchema>;
 type SessionInfo = z.infer<typeof sessionInfoSchema>;
@@ -197,12 +344,6 @@ const SESSION_SEARCH_CONCURRENCY = 6;
 const SESSION_SNIPPET_BEFORE = 36;
 const SESSION_SNIPPET_AFTER = 72;
 
-function userAppDataDir(): string {
-  if (platform() === "darwin") return join(homedir(), "Library", "Application Support");
-  if (platform() === "win32") return process.env.APPDATA || join(homedir(), "AppData", "Roaming");
-  return process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
-}
-
 // The agent-facing UI-control surface (system steering + ipollowork_ui_* tools)
 // is opt-in: it noises every session's prompt/tool list, and the supported way
 // to grant agents UI control is the hidden "iPolloWork UI Control" MCP in
@@ -211,54 +352,6 @@ function userAppDataDir(): string {
 function uiControlToolsEnabled(): boolean {
   const raw = process.env.IPOLLOWORK_UI_CONTROL_TOOLS?.trim().toLowerCase() ?? "";
   return raw === "1" || raw === "true";
-}
-
-function uiControlDiscoveryPaths(): string[] {
-  return [
-    process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY?.trim(),
-    join(userAppDataDir(), "com.differentai.ipollowork", "ipollowork-ui-control.json"),
-    join(userAppDataDir(), "com.differentai.ipollowork.dev", "ipollowork-ui-control.json"),
-  ].filter((p): p is string => Boolean(p));
-}
-
-async function discoverUiBridge(): Promise<UiBridge | null> {
-  if (cachedBridge && Date.now() - cachedBridgeAt < BRIDGE_CACHE_MS) return cachedBridge;
-  for (const candidate of uiControlDiscoveryPaths()) {
-    try {
-      const raw = await readFile(candidate, "utf8");
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
-      if (typeof parsed.baseUrl === "string" && typeof parsed.token === "string") {
-        cachedBridge = { baseUrl: parsed.baseUrl, token: parsed.token };
-        cachedBridgeAt = Date.now();
-        return cachedBridge;
-      }
-    } catch {
-      // Try next
-    }
-  }
-  return null;
-}
-
-async function uiBridgeRequest(path: string, options: { method?: string; body?: unknown } = {}): Promise<unknown> {
-  const bridge = await discoverUiBridge();
-  if (!bridge) return { ok: false, error: "iPolloWork UI bridge not available. The desktop app may not be running." };
-  try {
-    const response = await fetch(`${bridge.baseUrl}${path}`, {
-      method: options.method || "GET",
-      signal: AbortSignal.timeout(BRIDGE_TIMEOUT_MS),
-      headers: {
-        Authorization: `Bearer ${bridge.token}`,
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(options.body ? { body: JSON.stringify(options.body) } : {}),
-    });
-    const text = await response.text();
-    try { return JSON.parse(text); } catch { return { ok: false, error: text || `HTTP ${response.status}` }; }
-  } catch (error) {
-    cachedBridge = null;
-    cachedBridgeAt = 0;
-    return { ok: false, error: `UI bridge unreachable: ${error instanceof Error ? error.message : String(error)}` };
-  }
 }
 
 async function serverGet(path: string): Promise<unknown> {
@@ -574,13 +667,6 @@ function getStringProperty(value: unknown, key: string): string | null {
   return typeof property === "string" ? property : null;
 }
 
-function addContext(payload: unknown, context: OpenCodeContext): object {
-  if (typeof payload === "object" && payload !== null && !Array.isArray(payload)) {
-    return Object.assign({}, payload, { context: contextPayload(context) });
-  }
-  return { payload, context: contextPayload(context) };
-}
-
 function errorMessage(payload: unknown, fallback: string): string {
   return getStringProperty(payload, "message") ?? getStringProperty(payload, "code") ?? fallback;
 }
@@ -660,6 +746,7 @@ function contextPayload(context: OpenCodeContext) {
     messageId: context.messageID,
     directory: context.directory,
     worktree: context.worktree,
+    workspaceId: String(process.env.IPOLLOWORK_WORKSPACE_ID ?? "").trim() || undefined,
   };
 }
 
@@ -669,18 +756,20 @@ export const iPolloWorkExtensionsPreview = async () => {
   "experimental.chat.system.transform": async (_input: unknown, output: { system: string[] }) => {
     output.system.push(await resolveiPolloWorkExtensionDiscoveryInstruction());
     output.system.push(IPOLLOWORK_SESSION_MEMORY_INSTRUCTION);
-    output.system.push(IPOLLOWORK_BROWSER_INSTRUCTION);
+    output.system.push(ENGINE_BROWSER_INSTRUCTION);
+    output.system.push(ENGINE_VIDEO_GENERATION_INSTRUCTION);
     output.system.push(IPOLLOWORK_MOTION_INSTRUCTION);
+    output.system.push(engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview));
     if (uiControlEnabled) output.system.push(IPOLLOWORK_UI_CONTROL_INSTRUCTION);
   },
   tool: {
     list_motion_presets: {
-      description: "List the product-owned semantic motion presets for a leaf text element in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+      description: "List the product-owned semantic motion presets for text or visual elements in the current Video Studio session. Filter by target kind, phase, intent, or tone, then use the returned preset id with mutate_motion.",
       args: listMotionPresetsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listMotionPresetsArgsSchema.parse(rawArgs);
         const session = requireVideoSession(context);
-        const query = new URLSearchParams({ targetKind: "text" });
+        const query = new URLSearchParams({ targetKind: args.targetKind ?? "text" });
         if (args.phase) query.set("phase", args.phase);
         if (args.intent) query.set("intent", args.intent);
         if (args.tone) query.set("tone", args.tone);
@@ -692,7 +781,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       },
     },
     mutate_motion: {
-      description: "Add, replace, update, or remove one semantic motion phase on exactly one leaf text element in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+      description: "Add, replace, update, or remove one semantic motion phase on exactly one text or element target in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
       args: mutateMotionArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = mutateMotionArgsSchema.parse(rawArgs);
@@ -705,7 +794,7 @@ export const iPolloWorkExtensionsPreview = async () => {
             body: {
               type: "mutate-motion",
               ...args,
-              targetKind: "text",
+              targetKind: args.targetKind ?? "text",
               elementId: args.targetSelector.startsWith("#") ? args.targetSelector.slice(1) : undefined,
             },
           },
@@ -713,32 +802,103 @@ export const iPolloWorkExtensionsPreview = async () => {
         return JSON.stringify(result, null, 2);
       },
     },
-    ipollowork_extension_list_actions: {
-      description: `List extension actions currently exposed by iPolloWork. ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
+    [ENGINE_HOST_TOOL_NAMES.extensionListActions]: {
+      description: `${engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.extensionListActions)} ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
       args: listActionsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listActionsArgsSchema.parse(rawArgs);
-        const query = new URLSearchParams();
-        if (args.extensionId) query.set("extensionId", args.extensionId);
-        if (context.directory) query.set("directory", context.directory);
-        const { url, token } = requireiPolloWorkServer();
-        const response = await fetch(`${url}/experimental/extensions/actions?${query.toString()}`, {
-          headers: { Authorization: `Bearer ${token}` },
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.extensionListActions,
+          args,
+          context: contextPayload(context),
         });
-        const payload = await parseResponse(response);
-        if (!response.ok) throw new Error(errorMessage(payload, "iPolloWork extension action listing failed"));
-        return JSON.stringify(addContext(payload, context), null, 2);
+        return JSON.stringify(payload, null, 2);
       },
     },
-    ipollowork_extension_call: {
-      description: `Call an iPolloWork extension action. Use ipollowork_extension_list_actions first to inspect available actions and schemas. ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
+    [ENGINE_HOST_TOOL_NAMES.extensionCall]: {
+      description: `${engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.extensionCall)} ${IPOLLOWORK_EXTENSION_DISCOVERY_INSTRUCTION}`,
       args: callArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = callArgsSchema.parse(rawArgs);
-        const payload = await postJson("/experimental/extensions/call", {
-          extensionId: args.extensionId,
-          action: args.action,
-          args: args.args ?? {},
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.extensionCall,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectRead]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.projectRead),
+      args: {},
+      async execute(_rawArgs: unknown, context: OpenCodeContext) {
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.projectRead,
+          args: {},
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.projectApply]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.projectApply),
+      args: projectApplyArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = projectApplyArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.projectApply,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.schedulePreview]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.schedulePreview),
+      args: schedulePreviewArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = schedulePreviewArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.schedulePreview,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.scheduleApply]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.scheduleApply),
+      args: scheduleApplyArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = scheduleApplyArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.scheduleApply,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppListTools]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.workspaceAppListTools),
+      args: {},
+      async execute(_rawArgs: unknown, context: OpenCodeContext) {
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.workspaceAppListTools,
+          args: {},
+          context: contextPayload(context),
+        });
+        return JSON.stringify(payload, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool),
+      args: workspaceAppCallArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = workspaceAppCallArgsSchema.parse(rawArgs);
+        const payload = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.workspaceAppCallTool,
+          args,
           context: contextPayload(context),
         });
         return JSON.stringify(payload, null, 2);
@@ -749,7 +909,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       description: "Get a snapshot of the current iPolloWork UI state: active route, narration, visible actions, and status. Use this to understand what the user sees before taking action.",
       args: {},
       async execute() {
-        const result = await uiBridgeRequest("/snapshot");
+        const result = await uiControlRequest("/snapshot");
         return JSON.stringify(result, null, 2);
       },
     },
@@ -757,7 +917,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       description: `List all UI control actions currently available in iPolloWork. Each action has an id you can pass to ipollowork_ui_execute_action. ${IPOLLOWORK_UI_CONTROL_INSTRUCTION}`,
       args: {},
       async execute() {
-        const result = await uiBridgeRequest("/actions");
+        const result = await uiControlRequest("/actions");
         return JSON.stringify(result, null, 2);
       },
     },
@@ -766,7 +926,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       args: uiExecuteArgsSchema.shape,
       async execute(rawArgs: unknown) {
         const { actionId, args } = uiExecuteArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
+        const result = await uiControlRequest("/execute", {
           method: "POST",
           body: { actionId, args: args ?? {} },
         });
@@ -802,40 +962,80 @@ export const iPolloWorkExtensionsPreview = async () => {
         }
       },
     },
-    ipollowork_browser_open_url: {
-      description: "Open a URL in the iPolloWork built-in browser and return the exact CDP browser_url and target_id to use for browser_* automation tools. Always use this before browser_snapshot/click/fill/eval for web browsing tasks.",
+    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserOpenUrl),
       args: browserOpenUrlArgsSchema.shape,
-      async execute(rawArgs: unknown) {
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = browserOpenUrlArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
-          method: "POST",
-          body: {
-            actionId: "browser.open_url",
-            args: { url: args.url, provider: args.provider ?? "builtin" },
-          },
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserOpenUrl,
+          args,
+          context: contextPayload(context),
         });
         return JSON.stringify(result, null, 2);
       },
     },
-    ipollowork_browser_set_proxy: {
-      description: "Route all iPolloWork built-in browser traffic through an HTTP/SOCKS proxy — for example to fetch search results or pages as seen from another location. Applies to every built-in browser tab (including browser_* automation) until cleared with ipollowork_browser_clear_proxy. If the user has named proxies configured as IPOLLOWORK_BROWSER_PROXY_<NAME> environment variables, pass env:NAME instead of a raw URL.",
+    [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserSnapshot),
+      args: browserSnapshotArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserSnapshotArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserSnapshot,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserRead]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserRead),
+      args: browserReadArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserReadArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserRead,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserScreenshot]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserScreenshot),
+      args: browserScreenshotArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserScreenshotArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserScreenshot,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserAct]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserAct),
+      args: browserActArgsSchema.shape,
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
+        const args = browserActArgsSchema.parse(rawArgs);
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserAct,
+          args,
+          context: contextPayload(context),
+        });
+        return JSON.stringify(result, null, 2);
+      },
+    },
+    [ENGINE_HOST_TOOL_NAMES.browserSetProxy]: {
+      description: engineHostToolDescription(ENGINE_HOST_TOOL_NAMES.browserSetProxy),
       args: browserSetProxyArgsSchema.shape,
-      async execute(rawArgs: unknown) {
+      async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = browserSetProxyArgsSchema.parse(rawArgs);
-        const result = await uiBridgeRequest("/execute", {
-          method: "POST",
-          body: { actionId: "browser.set_proxy", args: { proxy: args.proxy } },
-        });
-        return JSON.stringify(result, null, 2);
-      },
-    },
-    ipollowork_browser_clear_proxy: {
-      description: "Clear the iPolloWork built-in browser proxy and restore the system network settings.",
-      args: {},
-      async execute() {
-        const result = await uiBridgeRequest("/execute", {
-          method: "POST",
-          body: { actionId: "browser.set_proxy", args: { proxy: "" } },
+        const result = await postJson("/engine-tools/call", {
+          name: ENGINE_HOST_TOOL_NAMES.browserSetProxy,
+          args,
+          context: contextPayload(context),
         });
         return JSON.stringify(result, null, 2);
       },

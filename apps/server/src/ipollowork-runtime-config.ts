@@ -16,22 +16,63 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
-  opencodeChromeDevtoolsPluginPath,
-  ipolloworkExtensionsPreviewPluginPath,
-  ipolloworkCapabilitiesKnowledgePluginPath,
-  ipolloworkAnthropicAdaptiveThinkingPluginPath,
-  ipolloworkAnthropicToolSchemaPluginPath,
-  ipolloworkMoonshotTemperaturePluginPath,
-} from "./ipollowork-extensions-plugin-path.js";
+  openCodeZenPublicModels,
+  openCodeZenPublicModelUsesSessionAffinity,
+} from "@ipollowork/types/opencode-zen-public-models";
 import type { ServerConfig } from "./types.js";
 import {
   onRuntimeOpencodeConfigWrite,
+  onRuntimeProviderChannelsWrite,
+  readRuntimeProviderChannels,
   readRuntimeOpencodeConfig,
   runtimeDisabledProviderList,
   runtimeMcpMap,
   runtimePluginList,
-  runtimeStorageDir,
 } from "./runtime-opencode-config-store.js";
+import { readEngineRuntimeMcpConfig } from "./mcp.js";
+import { engineHostMcp } from "./engine-host-mcp.js";
+import { runtimeStorageDir } from "./runtime-storage.js";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runtimeProviderMap(
+  runtimeProvider: Record<string, unknown> | undefined,
+  providerChannels: Record<string, Record<string, unknown>>,
+): Record<string, unknown> {
+  const providers = { ...runtimeProvider, ...providerChannels };
+  const publicModels = openCodeZenPublicModels();
+  const currentOpenCode = isRecord(providers.opencode) ? providers.opencode : {};
+  return {
+    ...providers,
+    opencode: {
+      ...currentOpenCode,
+      whitelist: publicModels.map((model) => model.id),
+      models: Object.fromEntries(
+        publicModels.map((model) => [
+          model.id,
+          {
+            name: model.name,
+            contextWindow: model.contextWindow,
+            maxTokens: model.maxTokens,
+            // OpenCode filters catalog entries marked deprecated before it
+            // applies a provider whitelist. The Zen free roster is checked by
+            // iPolloWork, so make that current status explicit for every
+            // managed model instead of inheriting a stale models.dev status.
+            status: "active",
+            // OpenCode adds x-opencode-session after plugin hooks. An explicit
+            // empty model header wins that merge without forking the engine and
+            // keeps Ox on Zen's working public inference route.
+            ...openCodeZenPublicModelUsesSessionAffinity(model.id)
+              ? {}
+              : { headers: { "x-opencode-session": "" } },
+          },
+        ]),
+      ),
+    },
+  };
+}
 
 const IPOLLOWORK_AGENT_PROMPT = `You are iPolloWork.
 
@@ -90,9 +131,17 @@ export async function buildiPolloWorkRuntimeConfigObject(
   workspaceId?: string,
 ): Promise<Record<string, unknown>> {
   const runtimeConfig = config && workspaceId ? await readRuntimeOpencodeConfig(config, workspaceId) : {};
+  const engineMcp = config && workspaceId
+    ? await readEngineRuntimeMcpConfig(config, workspaceId)
+    : runtimeMcpMap(runtimeConfig);
+  const hostMcp = config && workspaceId
+    ? engineHostMcp(config, { id: workspaceId })
+    : null;
+  const providerChannels = config ? await readRuntimeProviderChannels(config) : {};
   const disabledProviders = runtimeDisabledProviderList(runtimeConfig);
   return {
     ...runtimeConfig,
+    provider: runtimeProviderMap(runtimeConfig.provider, providerChannels),
     default_agent: runtimeConfig.default_agent ?? "ipollowork",
     agent: {
       ipollowork: {
@@ -102,17 +151,15 @@ export async function buildiPolloWorkRuntimeConfigObject(
         prompt: IPOLLOWORK_AGENT_PROMPT,
       },
     },
-    plugin: [
-      opencodeChromeDevtoolsPluginPath(),
-      ipolloworkExtensionsPreviewPluginPath(),
-      ipolloworkCapabilitiesKnowledgePluginPath(),
-      ipolloworkAnthropicAdaptiveThinkingPluginPath(),
-      ipolloworkAnthropicToolSchemaPluginPath(),
-      ipolloworkMoonshotTemperaturePluginPath(),
-      ...runtimePluginList(runtimeConfig),
-    ],
+    // OpenCode 1.18.x on Windows can stall while importing the bundled local
+    // plugins. Their host actions are already exposed by the authenticated
+    // iPolloWork MCP bridge, so keep only explicitly installed native plugins.
+    plugin: runtimePluginList(runtimeConfig),
     ...(disabledProviders.length ? { disabled_providers: disabledProviders } : {}),
-    mcp: runtimeMcpMap(runtimeConfig),
+    mcp: {
+      ...engineMcp,
+      ...(hostMcp ? { ipollowork: hostMcp } : {}),
+    },
   };
 }
 
@@ -156,8 +203,16 @@ export async function writeiPolloWorkRuntimeConfigFile(config: ServerConfig, wor
  * Returns an unsubscribe function.
  */
 export function keepiPolloWorkRuntimeConfigFileFresh(config: ServerConfig, workspaceId: string): () => void {
-  return onRuntimeOpencodeConfigWrite((writeConfig, writtenWorkspaceId) => {
+  const disposeWorkspaceConfig = onRuntimeOpencodeConfigWrite((writeConfig, writtenWorkspaceId) => {
     if (writtenWorkspaceId !== workspaceId) return;
     void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
   });
+  const disposeProviderChannels = onRuntimeProviderChannelsWrite((writeConfig) => {
+    if (writeConfig !== config) return;
+    void writeiPolloWorkRuntimeConfigFile(writeConfig, workspaceId).catch(() => undefined);
+  });
+  return () => {
+    disposeWorkspaceConfig();
+    disposeProviderChannels();
+  };
 }

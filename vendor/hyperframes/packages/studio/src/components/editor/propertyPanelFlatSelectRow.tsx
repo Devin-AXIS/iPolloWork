@@ -1,6 +1,6 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { Check, ChevronDown, RotateCcw } from "../../icons/SystemIcons";
+import { Check, ChevronDown, RotateCcw } from "lucide-react";
 import { useTrackDesignInput } from "../../contexts/DesignPanelInputContext";
 import { useStudioI18n } from "../../i18n";
 import {
@@ -16,6 +16,7 @@ import {
 export interface FlatDropdownOption {
   value: string;
   label: string;
+  disabled?: boolean;
 }
 
 export function FlatDropdown({
@@ -25,6 +26,8 @@ export function FlatDropdown({
   disabled,
   className = "",
   valueClassName = "",
+  icon,
+  menuWidth = 120,
   onChange,
 }: {
   ariaLabel: string;
@@ -33,6 +36,8 @@ export function FlatDropdown({
   disabled?: boolean;
   className?: string;
   valueClassName?: string;
+  icon?: ReactNode;
+  menuWidth?: number;
   onChange: (nextValue: string) => void;
 }) {
   const { tx } = useStudioI18n();
@@ -50,7 +55,7 @@ export function FlatDropdown({
   const close = () => setOpen(false);
   const selectIndex = (index: number) => {
     const option = options[index];
-    if (!option) return;
+    if (!option || option.disabled) return;
     onChange(option.value);
     close();
     buttonRef.current?.focus();
@@ -85,6 +90,7 @@ export function FlatDropdown({
         ref={buttonRef}
         type="button"
         aria-label={tx(ariaLabel)}
+        title={icon ? `${tx(ariaLabel)}: ${selectedLabel}` : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={open ? listboxId : undefined}
@@ -104,15 +110,23 @@ export function FlatDropdown({
           if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
           event.preventDefault();
           const delta = event.key === "ArrowDown" ? 1 : -1;
-          selectIndex((selectedIndex + delta + options.length) % options.length);
+          for (let step = 1; step <= options.length; step++) {
+            const index = (selectedIndex + delta * step + options.length) % options.length;
+            if (!options[index]?.disabled) {
+              selectIndex(index);
+              break;
+            }
+          }
         }}
-        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none disabled:cursor-not-allowed disabled:opacity-40 ${className}`}
+        className={`flex min-w-0 items-center justify-between gap-1.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-panel-accent/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg disabled:cursor-not-allowed disabled:opacity-60 ${className}`}
       >
-        <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
-        <ChevronDown
-          size={16}
-          className={`flex-shrink-0 text-[#858a94] transition-transform ${open ? "rotate-180" : ""}`}
-        />
+        {icon ?? <>
+          <span className={`min-w-0 truncate ${valueClassName}`}>{selectedLabel}</span>
+          <ChevronDown
+            size={16}
+            className={`flex-shrink-0 text-[#858a94] transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </>}
       </button>
       {open &&
         anchorRect &&
@@ -126,10 +140,10 @@ export function FlatDropdown({
             style={{
               left: Math.min(
                 anchorRect.left,
-                Math.max(8, window.innerWidth - anchorRect.width - 8),
+                Math.max(8, window.innerWidth - Math.max(anchorRect.width, menuWidth) - 8),
               ),
               top: Math.min(anchorRect.bottom + 4, window.innerHeight - 48),
-              width: Math.max(anchorRect.width, 120),
+              width: Math.max(anchorRect.width, menuWidth),
             }}
           >
             {options.map((option, index) => {
@@ -140,15 +154,16 @@ export function FlatDropdown({
                   type="button"
                   role="option"
                   aria-selected={selected}
+                  disabled={option.disabled}
                   onClick={() => selectIndex(index)}
-                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors ${
+                  className={`flex h-[32px] w-full items-center justify-between gap-2 rounded-[5px] px-2 text-left text-[12px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-panel-accent/50 disabled:cursor-not-allowed disabled:opacity-40 ${
                     selected
-                      ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-input dark:text-panel-text-1"
-                      : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input"
+                      ? "bg-[#f5f6f9] text-[#24262b] dark:bg-panel-accent/15 dark:text-panel-text-1 dark:ring-1 dark:ring-inset dark:ring-panel-accent/35"
+                      : "text-[#50535a] hover:bg-[#f5f6f9] active:bg-[#eceef2] dark:text-panel-text-3 dark:hover:bg-panel-input dark:active:bg-panel-hover"
                   }`}
                 >
                   <span className="min-w-0 truncate">{tx(option.label)}</span>
-                  {selected && <Check size={14} className="flex-shrink-0 text-[#20bbc0]" />}
+                  {selected && <Check size={14} className="flex-shrink-0 text-[#1FBAC0]" />}
                 </button>
               );
             })}
@@ -219,7 +234,7 @@ export function FlatSelectRow({
         <span
           className={`flex-shrink-0 ${
             large
-              ? "text-[10px] font-normal text-[#858a94]"
+              ? "text-xs font-normal text-panel-text-3"
               : `text-[8px] ${VALUE_TIER_LABEL_CLASS[tier]}`
           }`}
         >
@@ -235,7 +250,7 @@ export function FlatSelectRow({
           className={large || valueOnly ? "flex-1" : ""}
           valueClassName={`font-sans ${
             large
-              ? `text-[13px] font-normal text-[#24262b] dark:text-panel-text-1 ${valueOnly ? "capitalize" : ""}`
+              ? `text-xs font-normal text-panel-text-1 ${valueOnly ? "capitalize" : ""}`
               : `text-[10px] ${VALUE_TIER_VALUE_CLASS[tier]}`
           }`}
           onChange={(nextValue) => {

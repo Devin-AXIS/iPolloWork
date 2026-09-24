@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+<title>Oscilloscope Trace</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#oscilloscope-trace{position:relative;width:1920px;height:1080px;padding:100px 126px;background:var(--ipw-color-bg,#07100d);color:var(--ipw-color-text,#d9ffe8);font-family:var(--ipw-font-display,Inter,sans-serif)}header{display:flex;align-items:end;justify-content:space-between}h1{margin:0;font-size:74px;letter-spacing:-.06em}.signal{color:var(--ipw-color-primary,#58ff91);font:800 18px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.18em}.scope{position:absolute;left:126px;right:126px;top:250px;bottom:110px;border:2px solid color-mix(in srgb,var(--ipw-color-primary,#58ff91) 28%,transparent);border-radius:var(--ipw-card-radius,32px);overflow:hidden;background:color-mix(in srgb,var(--ipw-color-surface,#0b1712) 92%,transparent);box-shadow:inset 0 0 90px color-mix(in srgb,var(--ipw-color-primary,#58ff91) 10%,transparent),var(--ipw-card-shadow,0 25px 70px rgba(0,0,0,.25))}.grid{position:absolute;inset:0;background-image:linear-gradient(color-mix(in srgb,var(--ipw-color-primary,#58ff91) 15%,transparent) 1px,transparent 1px),linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-primary,#58ff91) 15%,transparent) 1px,transparent 1px);background-size:10% 12.5%}.scope svg{position:absolute;inset:0;width:100%;height:100%;overflow:visible}.trace{fill:none;stroke:var(--ipw-color-primary,#58ff91);stroke-width:7;stroke-linecap:round;filter:drop-shadow(0 0 12px var(--ipw-color-primary,#58ff91))}.beam{fill:var(--ipw-color-primary,#58ff91);filter:drop-shadow(0 0 18px var(--ipw-color-primary,#58ff91))}</style>
+</head>
+<body>
+<main id="oscilloscope-trace" data-composition-id="oscilloscope-trace" data-width="1920" data-height="1080" data-start="0" data-duration="8">
+<header>
+<h1 data-ipw-variable="title" data-ipw-ai-slot="title">
+</h1>
+<div class="signal" data-ipw-variable="signal" data-ipw-ai-slot="signal">
+</div>
+</header>
+<section class="scope">
+<div class="grid">
+</div>
+<svg viewBox="0 0 1668 720" preserveAspectRatio="none">
+<path class="trace"/>
+<circle class="beam" r="13"/>
+</svg>
+</section>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js">
+</script>
+<script>window.__timelines=window.__timelines||{};(function(){const root=document.getElementById("oscilloscope-trace"),values={title:"Signal trace",amplitude:.72,frequency:3,signal:"LIVE · CHANNEL A",...(window.__hyperframes?.getVariables?.()??{})},amplitude=Math.max(.1,Math.min(1,Number(values.amplitude)||.72)),frequency=Math.max(1,Math.min(8,Number(values.frequency)||3)),path=root.querySelector(".trace"),beam=root.querySelector(".beam"),points=[];root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""));for(let x=0;x<=1668;x+=8){const envelope=.5+.5*Math.sin(x/181),y=360-Math.sin(x/1668*Math.PI*2*frequency)*250*amplitude*(.55+.45*envelope);points.push(`${x===0?"M":"L"}${x.toFixed(1)} ${y.toFixed(1)}`)}path.setAttribute("d",points.join(" "));const length=path.getTotalLength(),state={progress:0};path.style.strokeDasharray=`${length} ${length}`;const placeBeam=()=>{const point=path.getPointAtLength(length*state.progress);beam.setAttribute("cx",String(point.x));beam.setAttribute("cy",String(point.y))};placeBeam();const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll("header>*"),{y:18,opacity:0,stagger:.1,duration:.45,ease:"power3.out"}).from(root.querySelector(".scope"),{scale:.98,opacity:0,duration:.48},.08).fromTo(path,{strokeDashoffset:length},{strokeDashoffset:0,duration:1.45,ease:"none"},.22).to(state,{progress:1,duration:1.45,ease:"none",onUpdate:placeBeam},.22);window.__timelines["oscilloscope-trace"]=tl;tl.seek(0)})();</script>
+</body>
+</html>

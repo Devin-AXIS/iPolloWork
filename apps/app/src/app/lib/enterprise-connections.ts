@@ -1,4 +1,5 @@
 import { desktopFetchBinaryViaMain, desktopFetchViaMain } from "./desktop";
+import { readDenSettings } from "./den";
 import { isDesktopRuntime } from "./runtime-env";
 import {
   IPOLLOWORK_PACKAGE_EXTENSION,
@@ -12,9 +13,11 @@ const ENTERPRISE_CONNECTION_LIMIT = 12;
 const ENTERPRISE_TIMEOUT_MS = 12_000;
 const ENTERPRISE_DOWNLOAD_TIMEOUT_MS = 120_000;
 const ENTERPRISE_RESOURCE_PAGE_SIZE = 50;
-const ENTERPRISE_RESOURCE_MAX_PAGES = 20;
+const ENTERPRISE_RESOURCE_PAGE_LIMIT = 20;
 const ENTERPRISE_EXTENSION_PACKAGE_EXTENSION = ".ipollowork-plugin";
 const SHA256_HEX_PATTERN = /^[a-f0-9]{64}$/u;
+const CLOUD_RESOURCE_PATH_PREFIX = "/api/v1/enterprise-resources/";
+const ENTERPRISE_RESOURCE_PATH_PREFIX = "/api/v1/resources/";
 
 export const enterpriseConnectionsChangedEvent = "ipollowork:enterprise-connections-changed";
 
@@ -49,7 +52,7 @@ export type EnterpriseResource = {
   id: string;
   type: EnterpriseResourceType;
   slug: string;
-  sourceTemplateId: string | null;
+  manifestId: string | null;
   name: string;
   description: string;
   category: string;
@@ -237,8 +240,19 @@ function parseJoinResult(value: unknown, server: EnterpriseServer): EnterpriseCo
   return { ...server, membership: { id: memberId, role }, session: { token, expiresAt } };
 }
 
-function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourceType): EnterpriseResource | null {
+type EnterpriseResourceSource = "cloud" | "enterprise";
+
+function enterpriseResourcePathPrefix(source: EnterpriseResourceSource) {
+  return source === "enterprise" ? ENTERPRISE_RESOURCE_PATH_PREFIX : CLOUD_RESOURCE_PATH_PREFIX;
+}
+
+function parseEnterpriseResource(
+  value: unknown,
+  expectedType: EnterpriseResourceType,
+  source: EnterpriseResourceSource,
+): EnterpriseResource | null {
   if (!isRecord(value) || readString(value, "type") !== expectedType) return null;
+  if (source === "enterprise" && readString(value, "status") !== "published") return null;
   const id = readString(value, "id");
   const slug = readString(value, "slug");
   const name = readString(value, "name");
@@ -246,20 +260,24 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
   const enterpriseCategory = readString(value, "enterpriseCategory");
   const updatedAt = readString(value, "updatedAt");
   if (!id || !slug || !name || !category || !enterpriseCategory || !updatedAt) return null;
-  const iconPath = typeof value.iconPath === "string" && value.iconPath.startsWith("/api/v1/resources/")
-    ? value.iconPath
+  const pathPrefix = enterpriseResourcePathPrefix(source);
+  const iconValue = source === "enterprise" ? value.iconPath : value.iconUrl;
+  const iconPath = typeof iconValue === "string" && iconValue.startsWith(pathPrefix)
+    ? iconValue
     : null;
-  const latest = isRecord(value.latestVersion) ? value.latestVersion : null;
+  const latestValue = source === "enterprise" ? value.latestVersion : value.latestArtifact;
+  const latest = isRecord(latestValue) ? latestValue : null;
   const version = latest ? readString(latest, "version") : "";
-  const digest = latest ? readString(latest, "digest") : "";
+  const manifestId = source === "enterprise"
+    ? readString(value, "sourceTemplateId")
+    : latest ? readString(latest, "manifestId") : "";
+  const digest = latest ? readString(latest, source === "enterprise" ? "digest" : "sha256") : "";
   const downloadPath = latest ? readString(latest, "downloadPath") : "";
   return {
     id,
     type: expectedType,
     slug,
-    sourceTemplateId: typeof value.sourceTemplateId === "string" && value.sourceTemplateId.trim()
-      ? value.sourceTemplateId.trim()
-      : null,
+    manifestId: manifestId || null,
     name,
     description: readString(value, "description"),
     category,
@@ -267,42 +285,80 @@ function parseEnterpriseResource(value: unknown, expectedType: EnterpriseResourc
     iconPath,
     featured: value.featured === true,
     updatedAt,
-    latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith("/api/v1/resources/")
+    latestVersion: version && SHA256_HEX_PATTERN.test(digest) && downloadPath.startsWith(pathPrefix)
       ? { version, digest, downloadPath }
       : null,
   };
 }
 
-export function enterpriseResourceUrl(connection: EnterpriseConnection, path: string | null): string | null {
-  if (!path?.startsWith("/api/v1/resources/")) return null;
-  return endpoint(connection.origin, path);
+export type EnterpriseResourceRequestOptions = {
+  connection?: EnterpriseConnection;
+  fetcher?: typeof fetch;
+};
+
+function enterpriseResourceAccess(connection?: EnterpriseConnection) {
+  if (connection) {
+    const token = connection.session.token.trim();
+    if (!token) throw new Error("enterprise_signin_required");
+    return { origin: connection.origin, token, source: "enterprise" as const };
+  }
+  const settings = readDenSettings();
+  const token = settings.authToken?.trim() ?? "";
+  if (!token) throw new Error("cloud_signin_required");
+  return { origin: settings.baseUrl, token, source: "cloud" as const };
+}
+
+export function enterpriseResourceUrl(
+  path: string | null,
+  connection?: EnterpriseConnection,
+): string | null {
+  const access = enterpriseResourceAccess(connection);
+  if (!path?.startsWith(enterpriseResourcePathPrefix(access.source))) return null;
+  return endpoint(access.origin, path);
 }
 
 export async function listEnterpriseResources(
-  connection: EnterpriseConnection,
   type: EnterpriseResourceType,
-  fetcher?: typeof fetch,
+  options: EnterpriseResourceRequestOptions = {},
 ): Promise<EnterpriseResource[]> {
-  const resources = new Map<string, EnterpriseResource>();
+  const access = enterpriseResourceAccess(options.connection);
+  const fetcher = enterpriseFetcher(options.fetcher);
+  const authorization = { Authorization: `Bearer ${access.token}` };
+  if (access.source === "cloud") {
+    const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE) });
+    const payload = await fetchJson(
+      endpoint(access.origin, `/api/v1/enterprise-resources?${query.toString()}`),
+      { headers: authorization },
+      fetcher,
+    );
+    if (!isRecord(payload) || !Array.isArray(payload.resources)) throw new Error("invalid_enterprise_resource_catalog");
+    return payload.resources.flatMap((item) => {
+      const parsed = parseEnterpriseResource(item, type, access.source);
+      return parsed ? [parsed] : [];
+    });
+  }
+
+  const resources: EnterpriseResource[] = [];
   const seenCursors = new Set<string>();
   let cursor: string | null = null;
-  for (let page = 0; page < ENTERPRISE_RESOURCE_MAX_PAGES; page += 1) {
+  for (let page = 0; page < ENTERPRISE_RESOURCE_PAGE_LIMIT; page += 1) {
     const query = new URLSearchParams({ type, limit: String(ENTERPRISE_RESOURCE_PAGE_SIZE) });
     if (cursor) query.set("cursor", cursor);
     const payload = await fetchJson(
-      endpoint(connection.origin, `/api/v1/resources?${query.toString()}`),
-      { headers: { Authorization: `Bearer ${connection.session.token}` } },
-      enterpriseFetcher(fetcher),
+      endpoint(access.origin, `/api/v1/resources?${query.toString()}`),
+      { headers: authorization },
+      fetcher,
     );
     if (!isRecord(payload) || !Array.isArray(payload.items)) throw new Error("invalid_enterprise_resource_catalog");
-    for (const item of payload.items) {
-      const parsed = parseEnterpriseResource(item, type);
-      if (parsed) resources.set(parsed.id, parsed);
-    }
-    const nextCursor = payload.nextCursor;
-    if (nextCursor === null || nextCursor === undefined) return [...resources.values()];
-    if (typeof nextCursor !== "string" || !nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
-      throw new Error("invalid_enterprise_resource_cursor");
+    resources.push(...payload.items.flatMap((item) => {
+      const parsed = parseEnterpriseResource(item, type, access.source);
+      return parsed ? [parsed] : [];
+    }));
+    if (payload.nextCursor === null) return resources;
+    if (typeof payload.nextCursor !== "string") throw new Error("invalid_enterprise_resource_catalog");
+    const nextCursor = payload.nextCursor.trim();
+    if (!nextCursor || nextCursor.length > 128 || seenCursors.has(nextCursor)) {
+      throw new Error("invalid_enterprise_resource_catalog");
     }
     seenCursors.add(nextCursor);
     cursor = nextCursor;
@@ -316,14 +372,17 @@ async function sha256Hex(bytes: ArrayBuffer) {
 }
 
 export async function downloadEnterpriseResource(
-  connection: EnterpriseConnection,
   resource: EnterpriseResource,
-  fetcher?: typeof fetch,
+  options: EnterpriseResourceRequestOptions = {},
 ): Promise<File> {
-  const downloadUrl = enterpriseResourceUrl(connection, resource.latestVersion?.downloadPath ?? null);
+  const access = enterpriseResourceAccess(options.connection);
+  const downloadUrl = enterpriseResourceUrl(
+    resource.latestVersion?.downloadPath ?? null,
+    options.connection,
+  );
   if (!downloadUrl || !resource.latestVersion) throw new Error("enterprise_resource_version_unavailable");
-  const response = await enterpriseBinaryFetcher(fetcher)(downloadUrl, {
-    headers: { Authorization: `Bearer ${connection.session.token}` },
+  const response = await enterpriseBinaryFetcher(options.fetcher)(downloadUrl, {
+    headers: { Authorization: `Bearer ${access.token}` },
     signal: AbortSignal.timeout(ENTERPRISE_DOWNLOAD_TIMEOUT_MS),
   });
   if (!response.ok) {
@@ -332,11 +391,17 @@ export async function downloadEnterpriseResource(
     throw new Error(code || `enterprise_server_${response.status}`);
   }
   const expectedDigest = resource.latestVersion.digest.toLowerCase();
-  const responseDigest = response.headers.get("x-ipollo-artifact-sha256")?.trim().toLowerCase() ?? "";
+  const responseDigestHeader = access.source === "enterprise"
+    ? "x-ipollo-artifact-sha256"
+    : "x-ipollowork-sha256";
+  const responseDigest = response.headers.get(responseDigestHeader)?.trim().toLowerCase() ?? "";
   if (!SHA256_HEX_PATTERN.test(expectedDigest) || !SHA256_HEX_PATTERN.test(responseDigest)) {
     throw new Error("enterprise_resource_digest_missing");
   }
-  if (response.headers.get("x-ipollo-resource-type")?.trim() !== resource.type) {
+  const responseTypeHeader = access.source === "enterprise"
+    ? "x-ipollo-resource-type"
+    : "x-ipollowork-resource-type";
+  if (response.headers.get(responseTypeHeader)?.trim() !== resource.type) {
     throw new Error("enterprise_resource_type_mismatch");
   }
   const contentLength = Number(response.headers.get("content-length"));

@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "ipollowork.pptx-brand-narrative",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "kind": "design",
   "category": "slides",
   "subcategory": "brand-strategy",
@@ -185,5 +185,7 @@
     "Apply brand styling through design tokens without moving slide geometry.",
     "Check text bounds, contrast, chart labels, and slide order before exporting."
   ],
-  "minimumAppVersion": "0.17.28"
+  "minimumAppVersion": "0.17.28",
+  "authoringGuide": "authoring.md",
+  "layoutLibrary": "core-v1"
 }

@@ -1,9 +1,9 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "notion",
   "name": "Notion",
   "description": "将 Notion 页面、数据库、项目文档和会议记录组合成可靠的知识工作流。",
-  "category": "知识与协作",
+  "category": "效率与协作",
   "source": {
     "format": "ipollowork-extension-manifest",
     "origin": "builtin",
@@ -17,7 +17,7 @@
     "translations": {
       "en": {
         "description": "Combine Notion pages, databases, project documents, and meeting notes into reliable knowledge workflows.",
-        "category": "Knowledge & Collaboration",
+        "category": "Productivity & Collaboration",
         "composer": { "prompt": "Use the Notion plugin to find, organize, or update team knowledge, confirming the target page or database before writing." },
         "resources": {
           "notion-mcp": {
@@ -49,11 +49,10 @@
     }
   },
   "package": {
-    "version": "1.0.1",
+    "version": "1.0.2",
     "publisher": { "id": "ipollowork", "name": "iPolloWork" },
-    "compatibility": { "ipollowork": ">=0.18.0", "opencode": ">=1.18.0" },
-    "updateId": "ipollowork/notion",
-    "entrypoints": {}
+    "compatibility": { "ipollowork": ">=0.18.0" },
+    "updateId": "ipollowork/notion"
   },
   "permissions": [
     { "id": "network", "reason": "连接 Notion 官方远程 MCP，并访问用户通过 OAuth 授权的工作区内容。" },
@@ -65,7 +64,7 @@
       "id": "notion-mcp",
       "label": "Notion 官方远程 MCP",
       "description": "通过持久化 OAuth 读取和更新用户授权的 Notion 内容。",
-      "path": ".opencode/mcps/notion.json",
+      "path": "mcp/notion.json",
       "mcpServerName": "notion",
       "oauth": true,
       "required": true
@@ -75,7 +74,7 @@
       "id": "notion-knowledge",
       "label": "知识检索",
       "description": "从页面和数据库中查找、核对并汇总有来源的团队知识。",
-      "path": ".opencode/skills/notion-knowledge/SKILL.md",
+      "path": "skills/notion-knowledge/SKILL.md",
       "requires": ["resource:notion-mcp"],
       "provides": ["workflow:notion-knowledge"],
       "required": true
@@ -85,7 +84,7 @@
       "id": "notion-databases",
       "label": "数据库工作流",
       "description": "安全地查询、创建和更新 Notion 数据库条目。",
-      "path": ".opencode/skills/notion-databases/SKILL.md",
+      "path": "skills/notion-databases/SKILL.md",
       "requires": ["resource:notion-mcp"],
       "provides": ["workflow:notion-databases"],
       "required": true
@@ -95,7 +94,7 @@
       "id": "notion-project-docs",
       "label": "项目文档",
       "description": "把项目证据整理成结构清晰、可维护的 Notion 文档。",
-      "path": ".opencode/skills/notion-project-docs/SKILL.md",
+      "path": "skills/notion-project-docs/SKILL.md",
       "requires": ["resource:notion-mcp"],
       "provides": ["workflow:notion-project-docs"],
       "required": true
@@ -105,7 +104,7 @@
       "id": "notion-meeting-notes",
       "label": "会议记录",
       "description": "整理会议结论、负责人和后续行动，并写入明确的目标位置。",
-      "path": ".opencode/skills/notion-meeting-notes/SKILL.md",
+      "path": "skills/notion-meeting-notes/SKILL.md",
       "requires": ["resource:notion-mcp"],
       "provides": ["workflow:notion-meeting-notes"],
       "required": true

@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join } from "node:path";
 
@@ -56,6 +56,58 @@ function opencodeDataDirs(): string[] {
     if (appData) dirs.push(join(appData, "opencode"));
   }
   return Array.from(new Set(dirs));
+}
+
+/** Resolve the credential file used by a managed OpenCode child environment. */
+export function opencodeAuthPathFromEnvironment(
+  env: Readonly<Record<string, string | undefined>>,
+): string | null {
+  const xdgDataHome = env.XDG_DATA_HOME?.trim();
+  if (xdgDataHome) return join(xdgDataHome, "opencode", "auth.json");
+  const home = env.HOME?.trim() || env.USERPROFILE?.trim();
+  return home ? join(home, ".local", "share", "opencode", "auth.json") : null;
+}
+
+/** The account auth vault used by the managed OpenCode control plane. */
+export function resolveOpencodeAuthPath(options: {
+  managedOnly?: boolean;
+  authPath?: string;
+} = {}): string | null {
+  const authPath = options.authPath?.trim();
+  if (authPath) return existsSync(authPath) ? authPath : null;
+  const directories = options.managedOnly ? opencodeOrchestratorDataDirs() : opencodeDataDirs();
+  return directories
+    .map((dir) => join(dir, "auth.json"))
+    .find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/** Secret-free OAuth connection metadata for account provider recovery. */
+export function listOpencodeOAuthProviderIds(
+  options: { managedOnly?: boolean; authPath?: string } = {},
+): string[] {
+  const path = resolveOpencodeAuthPath(options);
+  if (!path) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+    return Object.entries(parsed)
+      .flatMap(([providerId, credential]) => {
+        if (!credential || typeof credential !== "object" || Array.isArray(credential)) return [];
+        const record = credential as Record<string, unknown>;
+        return record.type === "oauth"
+          && typeof record.access === "string"
+          && record.access.length > 0
+          && typeof record.refresh === "string"
+          && record.refresh.length > 0
+          && typeof record.expires === "number"
+          ? [providerId.trim().toLowerCase()]
+          : [];
+      })
+      .filter(Boolean)
+      .sort();
+  } catch {
+    return [];
+  }
 }
 
 function preferredDbNames(): string[] {

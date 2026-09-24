@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-import type { TemplateManifestV1, TemplateSessionSnapshot } from "@ipollowork/types/templates";
+import { templateCategorySchema, type TemplateManifestV1, type TemplateSessionSnapshot } from "@ipollowork/types/templates";
 
 import { templateAuthoringKickoff, templateAuthoringSystemContext } from "../src/react-app/domains/session/templates/template-authoring";
 
@@ -46,6 +46,23 @@ function snapshot(nextManifest: TemplateManifestV1 = manifest, authoring = true)
 }
 
 describe("template authoring", () => {
+  test.each(templateCategorySchema.options)("routes %s authoring to its installed type rules", (category) => {
+    const context = templateAuthoringSystemContext(snapshot({ ...manifest, category, surface: category === "video" ? "video" : "design" }));
+    if (category === "slides") {
+      expect(context).toContain("shared-guidelines.md, slides-ppt.md and layout.md");
+      expect(context).not.toContain("design-slides.md");
+    } else if (category === "video") {
+      expect(context).toContain("ipollowork-video-studio");
+      expect(context).toContain("read references/video.md once");
+      expect(context).toContain("only the shared-guidelines.md sections it identifies");
+      expect(context).not.toContain("design-video.md");
+    } else {
+      expect(context).toContain(`references/design-${category}.md`);
+      expect(context).toContain("references/shared-guidelines.md");
+      if (category === "poster" || category === "cards") expect(context).toContain("scale fixed-canvas previews without reflowing");
+    }
+  });
+
   test("keeps the application-selected type and asks one ordered question at a time", () => {
     const pptManifest = { ...manifest, id: "ipollowork.authoring.pptx", pptxCompatibility: "native-editable" as const };
     const context = templateAuthoringSystemContext(snapshot(pptManifest), "Selected system rules");
@@ -80,16 +97,16 @@ describe("template authoring", () => {
     expect(context).toContain("seek-safe and deterministic");
   });
 
-  test("wires personal-only creation, automatic kickoff, validation, and both save menus", () => {
+  test("keeps session authoring and validation while removing creation from the template market", () => {
     const market = readFileSync(new URL("../src/react-app/domains/session/templates/template-market-dialog.tsx", import.meta.url), "utf8");
     const route = readFileSync(new URL("../src/react-app/shell/session-route.tsx", import.meta.url), "utf8");
     const page = readFileSync(new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url), "utf8");
     const design = readFileSync(new URL("../src/react-app/domains/session/design/design-panel.tsx", import.meta.url), "utf8");
     const video = readFileSync(new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url), "utf8");
 
-    expect(market).toContain("AUTHORING_TYPES");
-    expect(market).toContain('pptxCompatibility: "native-editable"');
-    expect(market).toContain("!enterpriseMode && props.canCreate");
+    expect(market).not.toContain("AUTHORING_TYPES");
+    expect(market).not.toContain("props.canCreate");
+    expect(market).not.toContain("props.onCreate");
     expect(route).toContain("createTemplateAuthoringSession");
     expect(route).toContain("templateAuthoringKickoff");
     expect(route).toContain("synthetic: true");
@@ -98,8 +115,8 @@ describe("template authoring", () => {
     expect(page).toContain("validateTemplateFromSession");
     expect(page).toContain("hasTemplateSession && props.selectedWorkspaceDisplay.workspaceType === \"local\"");
     expect(page).toContain("repairCurrentTemplate");
-    expect(page).toContain('manifest.id.startsWith("personal.")');
     expect(design).toContain("onSaveAsTemplate={onSaveAsTemplate}");
-    expect(video).toContain('t("template_authoring.save_as_template")');
+    expect(video).toContain("saveAsTemplate: Boolean(onSaveAsTemplate)");
+    expect(video).toContain('event.data.action === "save-as-template"');
   });
 });

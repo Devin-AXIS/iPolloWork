@@ -10,6 +10,8 @@ export interface StudioUiPreferences {
   leftCollapsed?: boolean;
   timelineVisible?: boolean;
   timelineHeight?: number;
+  /** Width of the timeline's sticky layer-control column. */
+  timelineLayerWidth?: number;
   playbackRate?: number;
   audioMuted?: boolean;
   previewZoom?: StoredPreviewZoomState;
@@ -67,6 +69,12 @@ function readStorage(storage: Storage | null): StudioUiPreferences {
     }
     if (typeof parsed.timelineHeight === "number" && Number.isFinite(parsed.timelineHeight)) {
       preferences.timelineHeight = parsed.timelineHeight;
+    }
+    if (
+      typeof parsed.timelineLayerWidth === "number" &&
+      Number.isFinite(parsed.timelineLayerWidth)
+    ) {
+      preferences.timelineLayerWidth = parsed.timelineLayerWidth;
     }
     if (typeof parsed.playbackRate === "number" && Number.isFinite(parsed.playbackRate)) {
       preferences.playbackRate = parsed.playbackRate;

@@ -1,0 +1,45 @@
+/* ipw-theme:start */
+/* ipw-design-system: ipollo-vi-light */
+:root {
+  --ipw-color-bg: #ffffff;
+  --ipw-color-surface: #ffffff;
+  --ipw-color-text: #050505;
+  --ipw-color-muted: #5a6774;
+  --ipw-color-border: rgba(5, 5, 5, .16);
+  --ipw-color-primary: #1fbac0;
+  --ipw-color-primary-text: color-mix(in srgb, var(--ipw-color-primary) 70%, var(--ipw-color-text));
+  --ipw-color-secondary: #e1ddc3;
+  --ipw-color-accent: #d0e9fc;
+  --ipw-color-success: #11875d;
+  --ipw-color-warning: #a56708;
+  --ipw-color-danger: #b42318;
+  --ipw-color-on-primary: #041718;
+  --ipw-font-display: "IPW Syne", Syne, ui-sans-serif, system-ui, sans-serif;
+  --ipw-font-body: "IPW Poppins", Poppins, ui-sans-serif, system-ui, sans-serif;
+  --ipw-type-scale: 1;
+  --ipw-body-line-height: 1.5;
+  --ipw-content-width: 1792px;
+  --ipw-page-padding: 64px;
+  --ipw-section-space: 56px;
+  --ipw-button-radius: 999px;
+  --ipw-card-bg: #ffffff;
+  --ipw-card-border: rgba(5, 5, 5, .16);
+  --ipw-card-radius: 24px;
+  --ipw-card-shadow: none;
+}
+/* ipw-theme:end */
+
+html:root,
+html:root body,
+html:root [class] {
+  --bg: var(--ipw-color-bg) !important;
+  --surface: var(--ipw-color-surface) !important;
+  --panel: var(--ipw-color-surface) !important;
+  --ink: var(--ipw-color-text) !important;
+  --text: var(--ipw-color-text) !important;
+  --muted: var(--ipw-color-muted) !important;
+  --line: var(--ipw-color-border) !important;
+  --border: var(--ipw-color-border) !important;
+  --primary: var(--ipw-color-primary) !important;
+  --accent: var(--ipw-color-primary) !important;
+}

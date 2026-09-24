@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"eyebrow","label":"Eyebrow","type":"string","default":"LIMITED RELEASE","maxLength":32},{"id":"offer","label":"Offer","type":"string","default":"Save 30%","maxLength":40},{"id":"detail","label":"Details","type":"string","default":"Annual Studio Pro plans through Friday.","maxLength":100},{"id":"action","label":"Action","type":"string","default":"Unlock the offer","maxLength":40}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Offer Card</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.offer{position:relative;display:grid;grid-template-columns:1fr 420px;gap:70px;align-items:center;width:1500px;min-height:660px;margin:auto;padding:80px 90px;overflow:hidden;border-radius:54px;background:var(--ipw-color-text,#15171a);color:var(--ipw-color-bg,#f4f6f8)}.offer::after{content:"";position:absolute;right:-170px;top:-240px;width:700px;height:700px;border:120px solid var(--ipw-color-primary,#20bbc0);border-radius:50%;opacity:.62}.offer-copy{position:relative;z-index:1}.offer-eyebrow{color:var(--ipw-color-primary,#20bbc0);font-size:17px;font-weight:850;letter-spacing:.2em}.offer-value{margin:26px 0 28px;font-size:132px;font-weight:900;line-height:.9;letter-spacing:-.08em}.offer-detail{max-width:740px;color:#b9c0c8;font-size:25px;line-height:1.35}.offer-action{position:relative;z-index:2;padding:31px 34px;border-radius:999px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);text-align:center;font-size:23px;font-weight:820}</style></head>
+<body><main id="root" data-composition-id="offer-card" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"eyebrow":"LIMITED RELEASE","offer":"Save 30%","detail":"Annual Studio Pro plans through Friday.","action":"Unlock the offer"}'><section class="offer vc-animate"><div class="offer-copy"><div class="offer-eyebrow" data-ipw-variable="eyebrow" data-ipw-ai-slot="eyebrow"></div><div class="offer-value" data-ipw-variable="offer" data-ipw-ai-slot="offer"></div><div class="offer-detail" data-ipw-variable="detail" data-ipw-ai-slot="detail"></div></div><div class="offer-action vc-pop" data-ipw-variable="action" data-ipw-ai-slot="action"></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="offer-card";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+const initial={};const motion="scale";
+if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
+else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
+else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
+else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
+else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:54,opacity:0});
+const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
+  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
+  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

@@ -54,8 +54,8 @@ function menu(overrides: Partial<React.ComponentProps<typeof DesignExportMenu>> 
 
 afterEach(() => setLocale("en"));
 
-describe("design export download menu", () => {
-  test("uses a language-independent icon trigger and localized format labels", () => {
+describe("design more-actions menu", () => {
+  test("uses a localized export trigger and localized format labels", () => {
     setLocale("en");
     const englishMenu = menu();
     const englishTrigger = findByAriaLabel(englishMenu, "Download");
@@ -69,6 +69,10 @@ describe("design export download menu", () => {
     expect(textContent(chineseTrigger).trim()).toBe("");
     expect(textContent(chineseMenu)).toContain("下载 PDF");
     expect(textContent(chineseMenu)).toContain("下载 PPTX");
+  });
+
+  test("keeps the more-actions trigger for the mixed compact menu", () => {
+    expect(findByAriaLabel(menu({ compact: true }), "More design actions")).toBeTruthy();
   });
 
   test("replaces the two toolbar export buttons with the shared menu", () => {
@@ -107,7 +111,7 @@ describe("design export download menu", () => {
     expect(Reflect.get(findByText(pptxBusy, "Download PPTX").props, "disabled")).toBe(true);
   });
 
-  test("disables the download trigger only when both formats are busy", () => {
+  test("disables the export trigger only when both formats are busy", () => {
     expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true }), "Download").props, "disabled")).toBe(false);
     expect(Reflect.get(findByAriaLabel(menu({ exportingPptx: true }), "Download").props, "disabled")).toBe(false);
     expect(Reflect.get(findByAriaLabel(menu({ exportingPdf: true, exportingPptx: true }), "Download").props, "disabled")).toBe(true);

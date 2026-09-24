@@ -1,3 +1,5 @@
+import { frameAlignedDurationSeconds } from "@hyperframes/core/runtime/protocol";
+import { acceptedRuntimeMessageFps } from "../lib/runtimeProtocol";
 import { useRef, useCallback, useEffect } from "react";
 import { usePlayerStore, liveTime, type TimelineElement } from "../store/playerStore";
 import { useMountEffect } from "../../hooks/useMountEffect";
@@ -150,13 +152,15 @@ export function useTimelinePlayer() {
 
       const playerAdapter =
         win.__player && typeof win.__player.play === "function" ? win.__player : null;
-      const docDuration = readTimelineDurationFromDocument(iframe.contentDocument);
+      const fps = acceptedRuntimeMessageFps(win.__clipManifest);
+      const docDuration = frameAlignedDurationSeconds(readTimelineDurationFromDocument(iframe.contentDocument), fps);
       const adapterDur = getAdapterDuration(playerAdapter);
       const requiredDuration = Math.max(docDuration, usePlayerStore.getState().duration);
       const withTimedVisibility = (adapter: PlaybackAdapter) =>
         wrapAdapterWithTimedClipVisibility(
           docDuration > 0 ? wrapAdapterWithDurationLimit(adapter, docDuration) : adapter,
           () => iframe.contentDocument,
+          fps,
         );
 
       if (shouldUseStudioClockForLegacyFrames(iframe.contentDocument, playerAdapter, docDuration)) {

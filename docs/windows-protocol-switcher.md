@@ -8,8 +8,8 @@ after Cloud has created the handoff grant.
 
 This repository includes two Windows helpers for local development:
 
-- `切到开发版.cmd` points `ipollowork://` at this source checkout.
-- `恢复正式版.cmd` points it back at an installed production app.
+- `scripts/windows/use-development-protocol.cmd` points `ipollowork://` at this source checkout.
+- `scripts/windows/restore-production-protocol.cmd` points it back at an installed production app.
 
 They modify only the current user's
 `HKCU\Software\Classes\ipollowork` registry key and do not require
@@ -24,10 +24,10 @@ Install dependencies and start the isolated Cloud development profile:
 .\ipollowork.cmd dev:cloud http://localhost:3100
 ```
 
-Then double-click `切到开发版.cmd`, or run:
+Then double-click `scripts/windows/use-development-protocol.cmd`, or run:
 
 ```powershell
-.\切到开发版.cmd
+.\scripts\windows\use-development-protocol.cmd
 ```
 
 After registration or sign-in in the system browser, approve the browser prompt
@@ -40,10 +40,10 @@ script again after moving or renaming the repository.
 
 ## Restore the production app
 
-When development testing is complete, double-click `恢复正式版.cmd`, or run:
+When development testing is complete, double-click `scripts/windows/restore-production-protocol.cmd`, or run:
 
 ```powershell
-.\恢复正式版.cmd
+.\scripts\windows\restore-production-protocol.cmd
 ```
 
 The helper searches standard per-user and Program Files locations plus Windows

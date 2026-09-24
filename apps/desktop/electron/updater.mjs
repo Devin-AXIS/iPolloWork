@@ -102,7 +102,7 @@ function comparePrereleaseIdentifiers(left, right) {
   return 0;
 }
 
-function compareVersions(left, right) {
+export function compareVersions(left, right) {
   const parsedLeft = parseComparableVersion(left);
   const parsedRight = parseComparableVersion(right);
   if (!parsedLeft || !parsedRight) return null;

@@ -81,6 +81,8 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const videoMotionPatternIds = ["progressive-build", "focus-transfer", "path-journey", "state-transformation", "data-accumulation", "asset-exploration", "montage", "camera-journey", "dialogue", "kinetic-type", "audio-reactive"];
+const videoMotionOverlayIds = ["montage", "camera-journey", "dialogue", "kinetic-type", "audio-reactive"];
 const pptxCompatibleTemplateIds = [
   "ipollowork.pptx-exhibition-curation",
   "ipollowork.pptx-film-treatment",
@@ -99,6 +101,7 @@ const pptxCompatibleTemplateIds = [
 ];
 const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.app-device-launch",
+  "ipollowork.hyperframes.ai-trend-briefing",
   "ipollowork.hyperframes.automation-day-planner",
   "ipollowork.hyperframes.agent-command-center",
   "ipollowork.hyperframes.cost-saving-waterfall",
@@ -118,8 +121,10 @@ const flagshipVideoTemplateIds = [
   "ipollowork.hyperframes.prompt-ab-laboratory",
   "ipollowork.hyperframes.release-spotlight",
   "ipollowork.hyperframes.research-evidence-wall",
+  "ipollowork.hyperframes.vertical-social-story",
 ];
 const novelVideoTemplates = [
+  { id: "ipollowork.hyperframes.ai-trend-briefing", composition: "ai-trend-briefing", duration: "60", scenes: 10 },
   { id: "ipollowork.hyperframes.meeting-action-conveyor", composition: "meeting-action-conveyor", duration: "11", scenes: 4 },
   { id: "ipollowork.hyperframes.research-evidence-wall", composition: "research-evidence-wall", duration: "14", scenes: 5 },
   { id: "ipollowork.hyperframes.permission-vault", composition: "permission-vault", duration: "10", scenes: 3 },
@@ -255,11 +260,15 @@ async function assertImportedTemplateCanMaterialize(input: { originalId: string;
   else expect(entry).not.toContain("data-composition-variables");
 }
 
-function localPackage(id = "local.clean-portfolio", overrides: Record<string, unknown> = {}) {
+async function bundledTemplateDirectories(): Promise<string[]> {
+  return (await readdir(bundledTemplatesRoot, { withFileTypes: true })).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+}
+
+function localPackage(id = "local.clean-portfolio", overrides: Record<string, unknown> = {}, files: Record<string, string> = {}) {
   const manifest = {
     schemaVersion: 1, id, version: "1.0.0", kind: "design", category: "site", subcategory: "portfolio", title: "Clean Portfolio", description: "A compact local portfolio template.", cover: "cover.svg", entry: "entry.html", source: { name: "Local author", license: "MIT" }, designSystem: { tokenVersion: 1, editableGroups: ["theme", "typography"] }, applyChecklist: ["Update the portfolio content"], minimumAppVersion: "0.17.0", ...overrides,
   };
-  return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": "<!doctype html><h1>Portfolio</h1>", "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT" });
+  return storedZip({ "manifest.json": JSON.stringify(manifest), "entry.html": "<!doctype html><h1>Portfolio</h1>", "cover.svg": "<svg xmlns=\"http://www.w3.org/2000/svg\"/>", LICENSE: "MIT", ...files });
 }
 
 function slidesPackage(id = "local.native-deck", entry = "<!doctype html><section data-ipw-slide><h1 data-pptx-text>Deck</h1></section>", overrides: Record<string, unknown> = {}) {
@@ -281,7 +290,7 @@ describe("template installations", () => {
     const currentLogo = await readFile(join(bundledTemplatesRoot, "ipollowork.hyperframes.course-journey", "assets", "ipollowork-logo.svg"), "utf8");
     expect(currentLogo).toContain('viewBox="0 0 281 298"');
     expect(currentLogo).not.toContain('viewBox="-150 -150 776 800"');
-    for (const directory of await readdir(bundledTemplatesRoot)) {
+    for (const directory of await bundledTemplateDirectories()) {
       const root = join(bundledTemplatesRoot, directory);
       const manifestPath = join(root, "manifest.json");
       if (!existsSync(manifestPath)) continue;
@@ -361,7 +370,7 @@ describe("template installations", () => {
   });
 
   test("ships the reviewed HTML Anything catalog with iPolloWork categories, styles and editable variables", async () => {
-    const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.html-anything."));
+    const directories = (await bundledTemplateDirectories()).filter((name) => name.startsWith("ipollowork.html-anything."));
     expect(directories).toHaveLength(52);
     const categoryCounts: Record<string, number> = {};
     for (const directory of directories) {
@@ -374,7 +383,7 @@ describe("template installations", () => {
       const upgradedCategories = new Set(["site", "other", "video"]);
       const upgradedSlides = manifest.category === "slides" && manifest.id !== "ipollowork.html-anything.weekly-update";
       const recategorizedTemplates = new Set(["ipollowork.html-anything.wireframe-sketch"]);
-      expect(manifest.version).toBe(upgradedCategories.has(manifest.category) || upgradedSlides || recategorizedTemplates.has(manifest.id) ? "1.1.5" : "1.1.4");
+      expect(manifest.version).toBe(manifest.authoringGuide ? "1.1.6" : upgradedCategories.has(manifest.category) || upgradedSlides || recategorizedTemplates.has(manifest.id) ? "1.1.5" : "1.1.4");
       expect(manifest.cover).toBe("cover.png");
       expect(JSON.stringify(manifest)).not.toMatch(/[\u3000-\u30ff\u31f0-\u31ff\u3400-\u9fff\uac00-\ud7af\uf900-\ufaff\uff00-\uffef]/);
       expect(manifest.designSystem.variables.length).toBeGreaterThanOrEqual(manifest.surface === "video" ? 4 : 20);
@@ -420,7 +429,7 @@ describe("template installations", () => {
   });
 
   test("ships flagship HyperFrames video templates with local deterministic runtimes", async () => {
-    const directories = (await readdir(bundledTemplatesRoot)).filter((name) => name.startsWith("ipollowork.hyperframes."));
+    const directories = (await bundledTemplateDirectories()).filter((name) => name.startsWith("ipollowork.hyperframes."));
     expect(directories).toHaveLength(flagshipVideoTemplateIds.length);
     const currentLogo = await readFile(join(
       bundledTemplatesRoot,
@@ -436,7 +445,9 @@ describe("template installations", () => {
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
       expect(manifest.category).toBe("video");
       expect(manifest.surface).toBe("video");
-      expect(manifest.version).toBe("1.0.1");
+      expect(manifest.version).toBe(
+        templateId === "ipollowork.hyperframes.ai-trend-briefing" ? "1.1.1" : "1.0.1",
+      );
       expect(manifest.entry).toBe("index.html");
       expect(manifest.designSystem.tokens).toBe("design-tokens.css");
       expect(entry).toMatch(/<link\b[^>]*href=["']design-tokens\.css["'][^>]*>/i);
@@ -474,6 +485,29 @@ describe("template installations", () => {
     expect(existsSync(join(bundledTemplatesRoot, flagshipVideoTemplateIds[0], "models", "macbook.glb"))).toBe(true);
   });
 
+  test("ships a customer-visible portrait template with a native 9:16 composition", async () => {
+    const templateId = "ipollowork.hyperframes.vertical-social-story";
+    const root = join(bundledTemplatesRoot, templateId);
+    const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8")) as TemplateManifestV1;
+    const entry = await readFile(join(root, manifest.entry), "utf8");
+
+    expect(isCustomerVisibleBundledTemplate(manifest)).toBe(true);
+    expect(manifest.tags).toContain("9:16");
+    expect(entry).toMatch(/<meta\s+name=["']viewport["']\s+content=["']width=1080, height=1920["']/i);
+    expect(entry).toMatch(/data-composition-id=["']vertical-social-story["'][^>]*data-width=["']1080["'][^>]*data-height=["']1920["']/i);
+    expect(entry).toContain('window.__timelines["vertical-social-story"]');
+  });
+
+  test("keeps custom creation out of the market catalog", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-custom-entry-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const catalog = await listTemplates(serverConfig, ws.id);
+
+    expect(catalog.some((item) => item.manifest.id === "ipollowork.pptx-custom")).toBe(false);
+  });
+
   test("materializes every flagship video template as an independent session project", async () => {
     const root = await mkdtemp(join(tmpdir(), "ipw-flagship-video-"));
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -496,7 +530,7 @@ describe("template installations", () => {
     }
   }, 20_000);
 
-  test("keeps the ten new HyperFrames compositions structurally distinct", async () => {
+  test("keeps the eleven new HyperFrames compositions structurally distinct", async () => {
     const durations = new Set<string>();
     const compositions = new Set<string>();
     for (const template of novelVideoTemplates) {
@@ -504,7 +538,7 @@ describe("template installations", () => {
       const entry = await readFile(join(root, "index.html"), "utf8");
       expect(entry).toContain(`data-composition-id="${template.composition}"`);
       expect(entry).toContain(`data-duration="${template.duration}"`);
-      expect(Array.from(entry.matchAll(/\bdata-ipw-scene(?:\s|>)/g))).toHaveLength(template.scenes);
+      expect(Array.from(entry.matchAll(/\bdata-ipw-scene(?:\s|=|>)/g))).toHaveLength(template.scenes);
       expect(entry).not.toContain('data-composition-id="main"');
       for (const file of ["manifest.json", "index.html", "design-tokens.css", "cover.svg", "cover.png", "NOTICE", "assets/gsap.min.js", "assets/ipollowork-logo.svg"]) {
         expect(existsSync(join(root, file))).toBe(true);
@@ -572,7 +606,7 @@ describe("template installations", () => {
   });
 
   test("ships every website template with accessible navigation and observable actions", async () => {
-    const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
+    const directories = (await bundledTemplateDirectories()).filter((name) => !name.startsWith("."));
     const websites: Array<{ manifest: TemplateManifestV1; entry: string }> = [];
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -726,8 +760,8 @@ describe("template installations", () => {
   });
 
   test("ships every bundled template with a real 960 by 540 PNG cover", async () => {
-    const directories = (await readdir(bundledTemplatesRoot)).filter((name) => !name.startsWith("."));
-    expect(directories).toHaveLength(116);
+    const directories = (await bundledTemplateDirectories()).filter((name) => !name.startsWith("."));
+    expect(directories.length).toBeGreaterThan(100);
     const hashes = new Set<string>();
     for (const directory of directories) {
       const root = join(bundledTemplatesRoot, directory);
@@ -761,6 +795,22 @@ describe("template installations", () => {
     const builtTemplatesRoot = join(root, "bundled-templates");
     try {
       execFileSync(process.execPath, [join(dirname(fileURLToPath(import.meta.url)), "..", "script", "copy-bundled-templates.mjs"), builtTemplatesRoot]);
+      for (const category of ["slides", "site", "video"]) {
+        if (category === "site") {
+          for (const file of ["core-v1-site-catalog.md", "core-v1-site-layout.md", "core-v1-site-shared-contract.md", "core-v1-site-shared.css", "core-v1-site-hero.html", "core-v1-site-feature-grid.html", "core-v1-site-step-sequence.html", "core-v1-site-evidence-pair.html", "core-v1-site-plan-comparison.html", "core-v1-site-focused-cta.html"]) {
+            expect(await readFile(join(builtTemplatesRoot, file), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, file), "utf8"));
+          }
+        } else {
+          for (const file of ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
+            const library = `core-v1-video-${file}`;
+            expect(await readFile(join(builtTemplatesRoot, library), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, library), "utf8"));
+          }
+          for (const file of ["catalog", "component-map", ...videoMotionPatternIds]) {
+            const library = `core-v1-video-motion-${file}.md`;
+            expect(await readFile(join(builtTemplatesRoot, library), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, library), "utf8"));
+          }
+        }
+      }
       for (const templateId of pptxCompatibleTemplateIds) {
         expect(existsSync(join(builtTemplatesRoot, templateId, "manifest.json"))).toBe(true);
         expect(existsSync(join(builtTemplatesRoot, `${templateId}${IPOLLOWORK_PACKAGE_EXTENSION}`))).toBe(true);
@@ -775,13 +825,27 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const first = await listTemplates(serverConfig, "alpha");
-    expect(first.filter((item) => item.installed)).toHaveLength(116);
-    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(true);
-    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(true);
-    expect(new Set(first.map((item) => item.manifest.category)).size).toBe(9);
-    await uninstallTemplate(serverConfig, "alpha", "ipollowork.saas-landing");
-    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
-    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.saas-landing")?.installed).toBe(false);
+    const expected = (await bundledTemplateDirectories())
+      .filter((name) => !name.startsWith("."))
+      .map((directory) => JSON.parse(readFileSync(join(bundledTemplatesRoot, directory, "manifest.json"), "utf8")) as TemplateManifestV1)
+      .filter(isCustomerVisibleBundledTemplate)
+      .map((manifest) => manifest.id)
+      .sort();
+    expect(first.map((item) => item.manifest.id).sort()).toEqual(expected);
+    expect(first.every((item) => item.installed)).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.saas-landing")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-northstar-strategy")).toBe(false);
+    expect(first.some((item) => item.manifest.id === "ipollowork.pptx-ipollo-vi-enterprise")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.hyperframes.ai-trend-briefing")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.hyperframes.vertical-social-story")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.app-calm-mobile")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.social-carousel")).toBe(true);
+    expect(first.some((item) => item.manifest.id === "ipollowork.html-anything.data-report")).toBe(true);
+    expect(first.find((item) => item.manifest.id === "ipollowork.html-anything.wireframe-sketch")?.manifest.category).toBe("poster");
+    expect(first.find((item) => item.manifest.id === "ipollowork.site-atelier-architecture")?.manifest.category).toBe("article");
+    await uninstallTemplate(serverConfig, "alpha", "ipollowork.html-anything.prototype-web");
+    expect((await listTemplates(serverConfig, "alpha")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
+    expect((await listTemplates(serverConfig, "beta")).find((item) => item.manifest.id === "ipollowork.html-anything.prototype-web")?.installed).toBe(false);
   });
 
   test("upgrades an installed bundled template before materializing it", async () => {
@@ -833,7 +897,8 @@ describe("template installations", () => {
     process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
     const serverConfig = config(root);
     const scope = parseTemplateLibraryScope("enterprise:ent_medical");
-    expect((await listTemplates(serverConfig, "alpha", scope)).filter((item) => item.sourceType === "bundled")).toHaveLength(108);
+    const bundledTemplateCount = (await bundledTemplateDirectories()).filter((name) => !name.startsWith(".")).length;
+    expect((await listTemplates(serverConfig, "alpha", scope)).filter((item) => item.sourceType === "bundled")).toHaveLength(bundledTemplateCount);
     const installed = await importTemplate(serverConfig, "alpha", localPackage(), "site", scope);
     expect((await listTemplates(serverConfig, "beta", scope)).map((item) => item.manifest.id)).toContain(installed.manifest.id);
     expect((await listTemplates(serverConfig, "beta", "personal")).map((item) => item.manifest.id)).not.toContain(installed.manifest.id);
@@ -968,8 +1033,57 @@ describe("template installations", () => {
       expect(created.manifest.id).toBe(`${TEMPLATE_AUTHORING_ID_PREFIX}${category}`);
       expect(created.surface).toBe(category === "video" ? "video" : "design");
       expect(existsSync(join(ws.path, created.state.entry))).toBe(true);
+      expect(existsSync(join(dirname(join(ws.path, created.state.entry)), "core-v1-index.md"))).toBe(category === "slides" || category === "site" || category === "video");
+      if (category === "slides") {
+        expect(created.manifest.layoutLibrary).toBe("core-v1");
+        for (const file of ["catalog.md", "layout.md", "shared-contract.md", "shared.css", "comparison.html", "statement-visual.html", "parallel-principles.html", "lead-support.html"]) {
+          expect(existsSync(join(ws.path, "design", sessionId, "core-v1-slides", file))).toBe(true);
+        }
+      } else if (category === "video") {
+        expect(created.manifest.layoutLibrary).toBe("core-v1");
+        for (const file of ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
+          expect(existsSync(join(ws.path, "video", sessionId, "core-v1-video", file))).toBe(true);
+        }
+        for (const file of ["catalog", "component-map", ...videoMotionPatternIds]) {
+          expect(existsSync(join(ws.path, "video", sessionId, "core-v1-video", "motion", `${file}.md`))).toBe(true);
+        }
+      } else if (category === "site") {
+        expect(created.manifest.layoutLibrary).toBe("core-v1");
+        for (const file of ["catalog.md", "layout.md", "shared-contract.md", "shared.css", "hero.html", "feature-grid.html", "step-sequence.html", "evidence-pair.html", "plan-comparison.html", "focused-cta.html"]) {
+          expect(existsSync(join(ws.path, "design", sessionId, "core-v1-site", file))).toBe(true);
+        }
+      }
       expect(await validateTemplateFromSession(serverConfig, ws, sessionId)).toMatchObject({ ready: true, surface: created.surface });
     }
+  });
+
+  test("persists artifact-delivery surfaces without turning them into template-authoring sessions", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-delivery-surfaces-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    const slides = await createTemplateAuthoringSession(serverConfig, ws, {
+      sessionId: "delivery_slides",
+      category: "slides",
+      purpose: "artifact-delivery",
+      brief: { title: "Quarterly review", audience: "Leadership" },
+    });
+    const video = await createTemplateAuthoringSession(serverConfig, ws, {
+      sessionId: "delivery_video",
+      category: "video",
+      purpose: "artifact-delivery",
+    });
+
+    expect(slides).toMatchObject({ authoring: false, surface: "design" });
+    expect(slides.state.entry).toBe("design/delivery_slides/entry.html");
+    expect(slides.manifest.layoutLibrary).toBe("core-v1");
+    expect(existsSync(join(ws.path, "design", "delivery_slides", "core-v1-slides", "catalog.md"))).toBe(true);
+    expect(JSON.parse(await readFile(join(ws.path, "design", "delivery_slides", "brief.json"), "utf8"))).toEqual({ title: "Quarterly review", audience: "Leadership" });
+    expect(await readFile(join(ws.path, slides.state.entry), "utf8")).not.toContain("template draft");
+    expect(video).toMatchObject({ authoring: false, surface: "video" });
+    expect(video.state.entry).toBe("video/delivery_video/index.html");
+    expect((await readTemplateSession(serverConfig, ws, slides.sessionId)).authoring).toBe(false);
+    expect((await readTemplateSession(serverConfig, ws, video.sessionId)).authoring).toBe(false);
   });
 
   test("initializes native PPT and HyperFrames authoring contracts without changing session paths", async () => {
@@ -980,6 +1094,8 @@ describe("template installations", () => {
     const ppt = await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "author_ppt", category: "slides", pptxCompatibility: "native-editable" });
     const pptHtml = await readFile(join(ws.path, ppt.state.entry), "utf8");
     expect(ppt.state.entry).toBe("design/author_ppt/entry.html");
+    expect(ppt.manifest.layoutLibrary).toBe("core-v1");
+    expect(existsSync(join(ws.path, "design", "author_ppt", "core-v1-slides", "catalog.md"))).toBe(true);
     expect(pptHtml).toContain("data-ipw-slide");
     expect(pptHtml).toContain("data-pptx-text");
     expect(pptHtml).toContain("data-pptx-shape");
@@ -1064,6 +1180,26 @@ describe("template installations", () => {
     expect(await readFile(join(ws.path, source.state.entry), "utf8")).toBe(sourceEntry);
     const instantiated = await materializeTemplate(serverConfig, ws, first.manifest.id, "saved_copy");
     expect(await readFile(join(ws.path, instantiated.state.entry), "utf8")).toBe(sourceEntry);
+  });
+
+  test("blocks broken video delivery and repairs registry initialization in exported packages", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ipw-video-script-export-"));
+    process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+    const serverConfig = config(root);
+    const ws = workspace(root, "alpha");
+    await createTemplateAuthoringSession(serverConfig, ws, { sessionId: "script_export", category: "video" });
+    const path = join(ws.path, "video", "script_export", "index.html");
+    const broken = (await readFile(path, "utf8")).replace("</body>", '<script>const tl=gsap.timeline({paused:true});window.__timelines["main"]=tl;</script></body>');
+    await writeFile(path, broken);
+    expect(await validateTemplateFromSession(serverConfig, ws, "script_export")).toMatchObject({ ready: false, issues: [{ code: "missing_video_gsap" }] });
+    const input = { sessionId: "script_export", category: "video", title: "Script validation" } satisfies Parameters<typeof exportTemplateFromSession>[2];
+    await expect(exportTemplateFromSession(serverConfig, ws, input)).rejects.toThrow("Fix template validation issues");
+    await writeFile(path, broken.replace("<head>", '<head><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>'));
+    const exported = await exportTemplateFromSession(serverConfig, ws, input);
+    const imported = await importTemplate(serverConfig, ws.id, exported.archive, "video");
+    const snapshot = await materializeTemplate(serverConfig, ws, imported.manifest.id, "script_roundtrip");
+    expect(await readFile(join(ws.path, snapshot.state.entry), "utf8")).toContain("window.__timelines = window.__timelines || {};");
+    expect(await readFile(path, "utf8")).not.toContain("window.__timelines = window.__timelines || {};");
   });
 
   test("exports a current video session without installing it in My templates", async () => {
@@ -1216,4 +1352,189 @@ describe("template installations", () => {
     expect((await readTemplateSession(serverConfig, ws, "legacy_session")).state.entry).toBe(entry);
     expect(existsSync(join(ws.path, "design", "legacy_session", "template.json"))).toBe(false);
   });
+});
+
+
+test("authoring guides survive install, materialization and package export", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-authoring-guide-"));
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  const serverConfig = config(root);
+  const ws = workspace(root, "alpha");
+  const guide = "# Visual rules\nUse current tokens.\n# Layouts\nRead entry.html h1 for a statement layout.";
+  const installed = await importTemplate(serverConfig, ws.id, localPackage("local.guided", { authoringGuide: "authoring.md" }, { "authoring.md": guide }));
+  expect(installed.manifest.authoringGuide).toBe("authoring.md");
+  const session = await materializeTemplate(serverConfig, ws, installed.manifest.id, "guided");
+  expect(session.manifest.authoringGuide).toBe("authoring.md");
+  expect(await readFile(join(ws.path, "design/guided/authoring.md"), "utf8")).toBe(guide);
+  const exported = await exportLocalTemplatePackage(serverConfig, ws.id, installed.manifest.id);
+  expect(exported.archive.includes(Buffer.from("authoring.md"))).toBe(true);
+  const reimported = await importTemplate(serverConfig, ws.id, exported.archive);
+  await materializeTemplate(serverConfig, ws, reimported.manifest.id, "guided_again");
+  expect(await readFile(join(ws.path, "design/guided_again/authoring.md"), "utf8")).toBe(guide);
+  for (const authoringGuide of ["missing.md", "../outside.md", "entry.html"]) {
+    await expect(importTemplate(serverConfig, ws.id, localPackage("local.invalid-guide", { authoringGuide }))).rejects.toMatchObject({ status: 400 });
+  }
+});
+
+test("video motion map covers every current Video Studio registry block exactly once", async () => {
+  const registryRoot = join(bundledTemplatesRoot, "../../../vendor/hyperframes/registry/blocks");
+  const expected: string[] = [];
+  for (const component of await readdir(registryRoot)) {
+    const manifestPath = join(registryRoot, component, "registry-item.json");
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { visualComponent?: { surfaces?: string[] } };
+    if (manifest.visualComponent?.surfaces?.includes("video")) expected.push(component);
+  }
+  const componentMap = await readFile(join(bundledTemplatesRoot, "core-v1-video-motion-component-map.md"), "utf8");
+  const mapped = [...componentMap.matchAll(/^\| `([^`]+)` \| (?:opening|body|closing|overlay \/ any) \|/gm)].map((match) => match[1]);
+  expect(mapped.length).toBe(new Set(mapped).size);
+  expect(mapped.sort()).toEqual(expected.sort());
+  const overlaySection = componentMap.split("## Narrative capability overlays")[1] ?? "";
+  const overlayRows = [...overlaySection.matchAll(/^\| `([^`]+)` \| ([^|]+) \|/gm)];
+  expect(overlayRows.map(match => match[1])).toEqual(videoMotionOverlayIds);
+  const expectedComponents = new Set(expected);
+  for (const row of overlayRows) {
+    const candidates = [...(row[2] ?? "").matchAll(/`([^`]+)`/g)].map(match => match[1]);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every(component => expectedComponents.has(component))).toBe(true);
+  }
+});
+
+test("shared layouts materialize by category without replacing template visual rules", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-layout-library-"));
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = bundledTemplatesRoot;
+  const serverConfig = config(root);
+  const ws = workspace(root, "alpha");
+  for (const id of ["ipollowork.pptx-brand-narrative", "ipollowork.html-anything.prototype-web", "ipollowork.html-anything.motion-frames"]) {
+    const installed = await installBundledTemplate(serverConfig, ws.id, id);
+    const { state, manifest } = await materializeTemplate(serverConfig, ws, id, id.replaceAll(".", "-"));
+    const directory = dirname(join(ws.path, state.entry));
+    const library = `core-v1-${manifest.category}`;
+    expect(manifest.layoutLibrary).toBe("core-v1");
+    if (["slides", "site", "video"].includes(manifest.category)) {
+      const index = await readFile(join(directory, "core-v1-index.md"), "utf8");
+      expect(index).toBe(await readFile(join(bundledTemplatesRoot, "core-v1-index.md"), "utf8"));
+      const catalog = await readFile(join(directory, library, "catalog.md"), "utf8");
+      expect(catalog).toContain("| File | Type | Relationship | Fits | Slots | Trial capacity | Variants | Verification |");
+      for (const row of catalog.split("\n").filter((line) => /^\| `[^\`]+\.html`/.test(line))) {
+        const cells = row.split("|").map((cell) => cell.trim());
+        expect(cells[2]).toBe(manifest.category);
+        expect(index).toContain(`| \`${cells[3]}\` |`);
+      }
+      for (const other of ["slides", "site", "video"].filter((category) => category !== manifest.category)) {
+        expect(existsSync(join(directory, `core-v1-${other}`))).toBe(false);
+      }
+    } else {
+      expect(existsSync(join(directory, "core-v1-index.md"))).toBe(false);
+    }
+    if (manifest.category === "slides") {
+      expect(await readFile(join(directory, library, "catalog.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-catalog.md`), "utf8"));
+      expect(await readFile(join(directory, library, "layout.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-layout.md`), "utf8"));
+      const catalog = await readFile(join(directory, library, "catalog.md"), "utf8");
+      const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
+      expect(files.length).toBe(10);
+      for (const file of files) {
+        const content = await readFile(join(directory, library, file), "utf8");
+        expect(content).toBe(await readFile(join(bundledTemplatesRoot, `${library}-${file}`), "utf8"));
+        expect(content).toContain('href="shared.css"');
+        expect(content).toContain('data-layout-description=');
+      }
+      expect(await readFile(join(directory, library, "shared.css"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-shared.css`), "utf8"));
+    } else if (manifest.category === "site" || manifest.category === "video") {
+      const catalog = await readFile(join(directory, library, "catalog.md"), "utf8");
+      const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
+      expect(files.length).toBe(manifest.category === "site" ? 6 : 9);
+      expect(await readFile(join(directory, library, "layout.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-layout.md`), "utf8"));
+      if (manifest.category === "video") {
+        expect(await readFile(join(directory, library, "acceptance.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-acceptance.md`), "utf8"));
+        expect(await readFile(join(directory, library, "motion-principles.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-motion-principles.md`), "utf8"));
+        const motionCatalog = await readFile(join(directory, library, "motion", "catalog.md"), "utf8");
+        const motionFiles = [...motionCatalog.matchAll(/^\| `([^`]+\.md)`/gm)].map((match) => match[1]);
+        expect(motionFiles).toEqual(videoMotionPatternIds.map((id) => `${id}.md`));
+        for (const file of motionFiles) {
+          expect(await readFile(join(directory, library, "motion", file), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-motion-${file}`), "utf8"));
+        }
+      }
+      expect(await readFile(join(directory, library, "shared-contract.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-shared-contract.md`), "utf8"));
+      expect(await readFile(join(directory, library, "shared.css"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-shared.css`), "utf8"));
+      for (const file of files) {
+        const content = await readFile(join(directory, library, file), "utf8");
+        expect(content).toBe(await readFile(join(bundledTemplatesRoot, `${library}-${file}`), "utf8"));
+        expect(content).toContain("data-ipw-layout=");
+        expect(content).toContain("data-layout-styles=");
+      }
+    } else {
+      expect(await readFile(join(directory, `${library}.html`), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}.html`), "utf8"));
+    }
+    expect(await readFile(join(directory, "design-tokens.css"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, id, "design-tokens.css"), "utf8"));
+    expect(installed.manifest.authoringGuide).toBe("authoring.md");
+  }
+  const imported = await importTemplate(serverConfig, ws.id, localPackage("local.core-layout", { category: "site", layoutLibrary: "core-v1" }, { "core-v1-site.html": "untrusted replacement", "core-v1-index.md": "untrusted index" }));
+  await materializeTemplate(serverConfig, ws, imported.manifest.id, "local_core");
+  expect(await readFile(join(ws.path, "design/local_core/core-v1-site/catalog.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, "core-v1-site-catalog.md"), "utf8"));
+  expect(existsSync(join(ws.path, "design/local_core/core-v1-site.html"))).toBe(false);
+  expect(await readFile(join(ws.path, "design/local_core/core-v1-index.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, "core-v1-index.md"), "utf8"));
+  await expect(importTemplate(serverConfig, ws.id, localPackage("local.invalid-layout", { category: "article", layoutLibrary: "core-v1" }))).rejects.toMatchObject({ status: 400 });
+});
+
+test("video layout index survives imported overrides and keeps session timing intact", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-video-index-"));
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = bundledTemplatesRoot;
+  const serverConfig = config(root);
+  const ws = workspace(root, "alpha");
+  const files = await readPackageFiles(join(bundledTemplatesRoot, "ipollowork.html-anything.motion-frames"));
+  const manifest = JSON.parse(files["manifest.json"].toString("utf8"));
+  delete manifest.layoutLibrary;
+  manifest.id = "local.legacy-video-index";
+  files["manifest.json"] = Buffer.from(JSON.stringify(manifest));
+  files["core-v1-index.md"] = Buffer.from("untrusted index");
+  files["core-v1-video.html"] = Buffer.from("stale monolithic reference");
+  files["core-v1-video/catalog.md"] = Buffer.from("untrusted catalog");
+  const installed = await importTemplate(serverConfig, ws.id, storedZip(files));
+  const result = await materializeTemplate(serverConfig, ws, installed.manifest.id, "video_index");
+  const directory = dirname(join(ws.path, result.state.entry));
+  expect(installed.manifest.layoutLibrary).toBeUndefined();
+  expect(await readFile(join(directory, "core-v1-index.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, "core-v1-index.md"), "utf8"));
+  expect(await readFile(join(directory, "core-v1-video/catalog.md"), "utf8")).toContain("two-zone.html");
+  expect(existsSync(join(directory, "core-v1-video.html"))).toBe(false);
+  const content = await readFile(join(directory, "index.html"), "utf8");
+  expect(content.match(/<div id="root"[^>]+>/)?.[0]).toBe(files["index.html"].toString("utf8").match(/<div id="root"[^>]+>/)?.[0]);
+  for (const name of ["statement-visual", "two-zone", "step-sequence", "evidence-wall", "relationship-map", "timeline", "checkpoint", "waterfall", "feature-orbit"]) {
+    const fragment = await readFile(join(directory, "core-v1-video", `${name}.html`), "utf8");
+    expect(fragment).toContain("data-layout-capacity=");
+    expect(fragment).not.toContain("data-composition-id=");
+    expect(fragment).not.toContain("data-duration=");
+  }
+  expect(await readFile(join(directory, "design-tokens.css"), "utf8")).toBe(files["design-tokens.css"].toString("utf8"));
+});
+
+test("unified layout index is included for legacy website sessions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-site-index-"));
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = bundledTemplatesRoot;
+  const serverConfig = config(root);
+  const ws = workspace(root, "alpha");
+  const installed = await importTemplate(serverConfig, ws.id, localPackage("local.legacy-site", { category: "site" }));
+  const legacy = await materializeTemplate(serverConfig, ws, installed.manifest.id, "legacy_site");
+  const directory = dirname(join(ws.path, legacy.state.entry));
+  expect(installed.manifest.layoutLibrary).toBeUndefined();
+  expect(await readFile(join(directory, "core-v1-index.md"), "utf8")).toContain("core-v1-site/catalog.md");
+  expect(await readFile(join(directory, "core-v1-site/catalog.md"), "utf8")).toContain("hero.html");
+});
+
+test("legacy slide templates receive the app-owned layout library by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "ipw-legacy-slide-layout-"));
+  process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
+  process.env.IPOLLOWORK_BUNDLED_TEMPLATES_DIR = bundledTemplatesRoot;
+  const serverConfig = config(root);
+  const ws = workspace(root, "alpha");
+  const installed = await importTemplate(serverConfig, ws.id, slidesPackage("local.legacy-slide"));
+  const session = await materializeTemplate(serverConfig, ws, installed.manifest.id, "legacy_slide");
+  const directory = dirname(join(ws.path, session.state.entry));
+
+  expect(installed.manifest.layoutLibrary).toBeUndefined();
+  expect(await readFile(join(directory, "core-v1-slides", "catalog.md"), "utf8")).toContain("statement-visual.html");
+  expect(await readFile(join(directory, "core-v1-slides", "layout.md"), "utf8")).toContain("ten reusable structures");
 });

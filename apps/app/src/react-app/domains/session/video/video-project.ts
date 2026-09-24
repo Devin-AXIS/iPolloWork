@@ -1,40 +1,27 @@
 import type { TemplateManifestV1 } from "@ipollowork/types/templates";
 import {
+  hyperframesStudioUrl,
   hyperframesStudioPort,
   videoProjectDirectory,
   videoProjectId,
-} from "@ipollowork/types/hyperframes";
+  videoProjectEntryPath,
+} from "@ipollowork/video-studio/project";
+import { TEMPLATE_LAYOUT_ADAPTATION_CONTRACT } from "../templates/template-brief";
+import { artifactContentFingerprint } from "../artifacts/artifact-completion";
 
-export { hyperframesStudioPort, videoProjectDirectory, videoProjectId };
+export {
+  hyperframesStudioPort,
+  hyperframesStudioUrl,
+  videoProjectDirectory,
+  videoProjectEntryPath,
+  videoProjectId,
+};
 
 export const HYPERFRAMES_STUDIO_LABEL = "Local HyperFrames Studio";
 
-export function hyperframesStudioUrl(
-  port = 3_002,
-  projectId = "video",
-  locale?: string,
-  theme?: "light" | "dark",
-  reloadToken?: number,
-) {
-  // Start on a deterministic, hydrated main-composition frame. HyperFrames can
-  // otherwise restore a panel/playhead state before its preview has mounted,
-  // which leaves the first playback visually empty until a timeline layer is
-  // selected.
-  const params = new URLSearchParams({
-    v: "1",
-    t: "0",
-    tab: "design",
-    rc: "1",
-    tv: "1",
-  });
-  if (locale) params.set("locale", locale);
-  if (theme) params.set("ipolloworkTheme", theme);
-  if (reloadToken != null) params.set("reload", String(reloadToken));
-  return `http://localhost:${port}/#project/${encodeURIComponent(projectId)}?${params.toString()}`;
-}
-
-export function videoProjectEntryPath(sessionId: string) {
-  return `${videoProjectDirectory(sessionId)}/index.html`;
+export function videoProjectSessionIdFromEntryPath(path: string) {
+  const match = /^video\/([^/]+)\/index\.html$/i.exec(path.trim().replaceAll("\\", "/").replace(/^\.\//, ""));
+  return match?.[1] ?? null;
 }
 
 /**
@@ -123,11 +110,16 @@ export function videoDeliveryRequirementsForPrompt(input: {
   capabilityId?: string;
   promptText?: string;
   animationReferences?: readonly string[];
+  voiceoverEnabled?: boolean;
+  voiceoverAvailable?: boolean;
 }): VideoDeliveryRequirements {
   const text = input.promptText ?? "";
   const targetDurationSeconds = requestedVideoDurationSeconds(text);
+  const voiceoverExplicitlyDisabled = /(?:不要|无需|关闭|禁用|去掉)(?:旁白|配音)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i.test(text);
   return {
-    voiceover: videoPromptRequestsVoiceoverContext(input.capabilityId, text),
+    voiceover: voiceoverExplicitlyDisabled || input.voiceoverAvailable === false
+      ? false
+      : videoPromptRequestsVoiceoverContext(input.capabilityId, text) || (input.voiceoverEnabled ?? true),
     captions: /(?:字幕|caption(?:s|ing)?|subtitles?)/i.test(text),
     bgm: /(?:背景音乐|背景音樂|配乐|配樂|\bbgm\b|background music|music bed)/i.test(text),
     animationReferences: Array.from(new Set((input.animationReferences ?? []).filter(Boolean))),
@@ -135,12 +127,42 @@ export function videoDeliveryRequirementsForPrompt(input: {
   };
 }
 
-export function hasVideoDeliveryRequirements(requirements: VideoDeliveryRequirements) {
-  return requirements.voiceover
-    || requirements.captions
-    || requirements.bgm
-    || requirements.animationReferences.length > 0
-    || requirements.targetDurationSeconds != null;
+export function videoDeliveryIntentForPrompt(promptText: string): "export" | "publish-douyin" | null {
+  if (!/(?:不要|无需|不必|别|取消)(?:发布|上传|发到|发至)|(?:do not|don't|without|no need to).{0,12}(?:publish|upload|post)/i.test(promptText)
+    && /(?:发布|上传|发到|发至|发).{0,12}抖音|抖音.{0,12}(?:发布|上传)|(?:publish|upload|post).{0,20}douyin|douyin.{0,20}(?:publish|upload|post)/i.test(promptText)) return "publish-douyin";
+  if (/(?:不要|无需|不必|别|取消)导出|(?:do not|don't|without|no need to).{0,12}export/i.test(promptText)) return null;
+  return /(?:导出|输出|生成).{0,12}(?:mp4|视频文件)|(?:mp4|视频文件).{0,12}(?:导出|输出|生成)|\b(?:export|render)\b.{0,20}(?:mp4|video)/i.test(promptText)
+    ? "export"
+    : null;
+}
+
+export type VideoArtifactCompletionRequirement = {
+  sourcePath: string;
+  baselineFingerprint: string;
+  assistantMessageBaseline: number;
+  requestOrdinal: number;
+};
+
+export function createVideoArtifactCompletionRequirement(
+  sourcePath: string,
+  content: string,
+  assistantMessageBaseline: number,
+  requestOrdinal: number,
+): VideoArtifactCompletionRequirement {
+  return {
+    sourcePath,
+    baselineFingerprint: artifactContentFingerprint(content),
+    assistantMessageBaseline,
+    requestOrdinal,
+  };
+}
+
+export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, after: string) {
+  if (beforeFingerprint === null || beforeFingerprint !== artifactContentFingerprint(after)) return null;
+  return {
+    code: "artifact_unchanged",
+    message: "The video source was not modified before the run ended.",
+  };
 }
 
 export function videoCompositionHasVoiceover(content?: string | null) {
@@ -172,76 +194,108 @@ export function videoProjectPath(sessionId: string, workspaceRoot?: string) {
 export function videoTaskSystemContext(
   sessionId: string,
   workspaceRoot?: string,
-  template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist"> | null,
-  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements } = {},
+  template?: Pick<TemplateManifestV1, "id" | "title" | "entry" | "applyChecklist" | "authoringGuide" | "layoutLibrary"> | null,
+  options: { includeVoiceover?: boolean; deliveryRequirements?: VideoDeliveryRequirements; hostManagedExport?: boolean; hostExportOperationKey?: string } = {},
 ) {
+  const hostManagedExport = options.hostManagedExport || Boolean(options.hostExportOperationKey);
   const projectDirectory = videoProjectDirectory(sessionId);
   const projectPath = videoProjectPath(sessionId, workspaceRoot);
   const studioPort = hyperframesStudioPort(sessionId);
   const baseContract = [
     "Video task contract:",
+    "- The requested deliverable is an editable HyperFrames HTML video for Video Studio. A request to export MP4 still retains this source. Do not replace the composition with a plugin-generated clip or request a video model selection unless the user explicitly asks for generated footage; footage needed as an intermediate asset must be integrated into the finished composition.",
     `- Own only \`${projectPath}\`; Video Studio displays \`${projectPath}/index.html\` at \`http://localhost:${studioPort}\` and hot-reloads saves.`,
     ...(template ? [
-      `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; edit it rather than starting over.`,
-      `- Read \`${projectPath}/brief.json\`; at the start of every edit turn, re-read the current entry from disk, then preserve the composition id, variables, visual system, editable hierarchy, and checklist: ${template.applyChecklist.join("; ")}.`,
+      TEMPLATE_LAYOUT_ADAPTATION_CONTRACT,
+      ...(template.layoutLibrary ? [`- Read ${template.layoutLibrary}-video.html relative to ${JSON.stringify(projectPath)}. Reuse suitable structure and scoped styles only; preserve this project’s tokens, root composition and deterministic GSAP timeline. Never copy the preview host or preview theme.`] : []),
+      ...(template.authoringGuide ? [`- Before composing, read template-local guide ${JSON.stringify(template.authoringGuide)} relative to ${JSON.stringify(projectPath)} for visual rules and reusable source layouts. Inspect the referenced blocks; examples never override the user or runtime contract.`] : []),
+      `- The copied source is template \`${template.title}\` (\`${template.id}\`), entry \`${projectPath}/${template.entry}\`; use it as the editable visual and runtime seed rather than discarding it for a blank or unrelated project.`,
+      `- Read \`${projectPath}/brief.json\`; on the initial brief application, let the content determine scene count, order, and timing while reusing the template's visual and motion language. Treat its checklist as quality and export guidance, not a requirement to retain sample structure: ${template.applyChecklist.join("; ")}.`,
+      `- At the start of every edit turn, re-read the current entry from disk and preserve the root composition contract, variables, design-token link, stable editor hooks, and deterministic timeline.`,
     ] : [
       `- At the start of every edit turn, re-read the current \`${projectPath}/index.html\` from disk. It is the prepared blank composition unless the user explicitly requests a template.`,
     ]),
-    `- Write only \`${projectPath}/index.html\` and assets below \`${projectPath}\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
+    `- Write only \`${projectPath}/index.html\`, project assets, and requested exports under \`${projectPath}/renders\`. Never create or inspect another \`video/\`/\`videos/\` project, demo media, or another session's timeline.`,
     `- Keep \`${projectPath}/design-tokens.css\` as the final stylesheet when present and use its \`--ipw-*\` tokens without breaking layout, motion, or timing.`,
+    "- Content determines scene count and duration. Template page counts and timings are examples, never limits, even if a checklist describes them as fixed. Pass targetDurationSeconds only for an explicit user duration request, never from template metadata, sample HTML, or an inherited checklist. Approximate targets allow reasonable variation; explicit maximums remain strict. Do not omit important content or add filler to fit a template. Without a user duration request, extend scenes and the composition to fit actual narration.",
     "Adaptive execution contract:",
     "- Interpret each request independently. Choose only the needed operations from update-element, add/remove/reorder-scene, apply-animation, add-voiceover, add-asset, restyle, or freeform-patch; this is an extensible planning vocabulary, not a fixed workflow.",
     "- For a small local edit, patch only that element. For a structural, multi-scene, or narrated edit, first form one complete internal operation plan from the current composition, then execute it without narrating the plan or creating a plan file.",
     "- Keep internal planning terse and action-oriented. Do not spend the response comparing alternative scene counts, repeatedly estimating duration, drafting multiple narration versions, or explaining what you might do.",
     "- For a concrete make/edit request, use at most two read-only inspection calls before the first mutation or media action unless a returned error identifies a real blocker. Prefer a smaller complete valid result over an ambitious plan that is never applied.",
     "- A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion. After inspecting, perform the requested edits in the same run; never end the run until the saved composition passes the required final validator or you report a concrete blocking error.",
-    "- Preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
+    "- After the initial content-led adaptation, preserve unrelated scenes, media, timing, interactions, and user edits. Use freeform-patch only when the typed operations cannot express the request, and still obey the composition and validation contracts.",
     "- Studio manual edits are user-owned source state. Preserve `data-hf-id`, `data-hf-studio-*`, `--hf-studio-*`, inline width/height/transform values, and existing GSAP position/scale/rotation writes unless the current request explicitly changes that exact element and property. Immediately before any whole-file write, re-read and merge the current disk bytes; never regenerate from an earlier response or cached HTML snapshot.",
+    "- Never delete or truncate the active `index.html` or `design-tokens.css` before its replacement is complete. Update the existing file in one operation; if the editing tool cannot do that, prepare a sibling file first and atomically rename it over the destination. A failed or interrupted edit must leave the last valid entry in place.",
     "Semantic motion contract:",
-    "- For ordinary motion on an existing leaf text element, call `list_motion_presets` and then `mutate_motion`. The product determines the target type and compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",
-    "- Address exactly one stable text selector, choose one of enter/emphasis/exit, use the returned stable preset id, and send only declared parameters. Replacing a phase is intentional; never stack two preset animations in the same phase.",
+    "- For ordinary motion on existing text or visual elements, call `list_motion_presets` with the correct targetKind and then `mutate_motion` with explicit start and end times. The product compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",
+    "- Address exactly one stable selector, choose one of enter/emphasis/exit, use the returned stable preset id, and send only declared parameters. Replacing a phase is intentional; never stack two preset animations in the same phase.",
     "- Treat voice-transcribed animation requests exactly like typed requests and use the same tools. Use custom GSAP only when the user explicitly requests an advanced effect that the preset catalog cannot express.",
     "Performance and runtime contract:",
     "- The app already bundles and runs HyperFrames. Never run npm/pnpm/yarn install, `npx`, catalog/version/update commands, preview/dev servers, or runtime health probes. Do not install a second HyperFrames copy.",
     "- Plan before editing. Batch compatible HTML/CSS/JS changes into one complete edit or write, then run one final validation. Do not alternate many tiny reads and edits; the validator reads the saved composition itself.",
     "- Animation reference metadata supplied by the user is complete enough to adapt directly. Do not discover the registry again. Retry a failed operation only after using its error to change the approach.",
-    "- The embedded Studio owns previewing; save the source and let hot reload update it. Do not call browser/screenshot/eval tools, open another browser, or restart/replace/health-check the Studio. If a browser preview or manual structural check was already started before this instruction applied, give that auxiliary operation at most 20 seconds; on timeout abandon it without retrying and proceed directly to the final validator.",
+    "- The embedded Studio owns previewing; save the source and let hot reload update it. Do not call browser/screenshot/eval tools for composition preview, open another preview browser, or restart/replace/health-check the Studio. This restriction does not prohibit the browser actions required for an explicitly requested social publication after validation and export. If a browser preview or manual structural check was already started before this instruction applied, give that auxiliary operation at most 20 seconds; on timeout abandon it without retrying and proceed directly to the final validator.",
     "- Never stop all Node processes (`Stop-Process -Name node`, `taskkill /IM node.exe`, `pkill node`, or equivalents). This can terminate iPolloWork, OpenCode, and Video Studio itself. Do not stop or restart any app-owned service while editing a video.",
     "- Media assets must be real decodable media, not an HTML/JSON response saved with a media extension. Use `/media-use` to resolve BGM/SFX/images/video into frozen local project assets; use the media extension's workspace synthesis actions for TTS. If a direct download is unavoidable, verify its response type and local file signature before referencing it in the composition.",
     "Composition contract:",
-    "- Every full scene is `.scene.clip` with a unique id and explicit seconds-based `data-start`, `data-duration`, and `data-track-index`; never use legacy `.frame` millisecond timelines or overlapping scene windows.",
+    "- Preserve the root composition's `data-width`, `data-height`, viewport, CSS canvas size, and aspect ratio during edits. A 1080×1920 portrait project stays 9:16 unless the user explicitly requests a format change; never rewrite it to 1920×1080 as part of an unrelated edit.",
+    "- Every full scene is `.scene.clip[data-ipw-scene]` with a unique id and explicit seconds-based `data-start`, `data-duration`, and `data-track-index`; never use legacy `.frame` millisecond timelines. Full scene windows meet at one boundary without gaps or overlap.",
+    "- Record each scene's temporal plan as literal JSON in `data-ipw-beats`, using scene-relative `start`, `end`, `intent`, `focus`, `action`, `result`, non-empty CSS `targets`, an executable `animation` reference (`component:<id>`, `preset:<id>`, `custom:<specific-label>`, or `hold:<reason>`), and a truthful `motion:{start,end}` window for the interval where pixels actually change. Beats begin at zero, meet without unexplained gaps or overlaps, and cover the complete scene. An intentional hold may last up to four seconds; longer static intervals must be split at a real narration or content boundary instead of at an arbitrary midpoint or filled with decorative loops. The install action's motionContract supplies declared duration and authored targets, not invented state timings: measure establish, develop, and land from the saved render. Apply every preset through `mutate_motion`, and preserve its `data-ipw-animation-reference`. Set `data-ipw-timing-source` to `voiceover`, `estimated-reading`, `visual-cue`, `music`, or `media`. For music-led audio-reactive scenes, call the media action `video_audio_analyze` once after the real local music file is mounted, copy a bounded set of returned measured cues into `data-ipw-audio-cues`, and bind every cue to an active beat motion window; never infer cue timestamps from duration or a waveform graphic.",
+    "- Every scene after the first declares `data-ipw-transition-in`, `data-ipw-transition-duration`, and `data-ipw-transition-intent`. Use `cut` with duration 0 or a supported incoming preset applied through `mutate_motion`; run it inside the incoming scene, never by overlapping full scene windows.",
+    "- Keep registry composition timing parent-owned: preserve `data-ipw-timing-owner=\"host\"` on installed component hosts, set the host to the actual scene duration, and never restore data-start/data-end/data-duration/data-track-index on the installed component root. A component may hold its final state briefly, but when the host extends more than two seconds beyond its native duration add a later preset/custom beat or shorten the scene.",
     "- Root `data-duration` must cover the last scene/audio/clip. Keep backgrounds/overlays as ordinary clips and keep GSAP timestamps synchronized with scene timing.",
+    "- If narration is disabled, unauthorized, unavailable, or fails, continue to a complete silent video. Use `estimated-reading` or the actual visual/music/media cue for timing, disclose the silent result, and do not open settings, leave a pending-model placeholder, or invent audio. If narration is added later, preserve scene meaning and retime dependent beats, captions, transitions, and root duration from measured audio.",
     "- Use `assets/ipollowork-logo.svg?v=20260729` as the transparent `<img>` brand asset and local fallback; preserve a supplied third-party logo and the template's intended top-left/bottom-right placement.",
       `- Give every visible element a stable, unique \`class\` name (e.g. \`class="scene-title"\` or \`class="card-1"\`). Elements without a class, id, or data-hf-group attribute are invisible to the Video Studio properties inspector and cannot be selected or edited visually.`,
       `- Use CSS custom properties for themable values. When \`${projectPath}/design-tokens.css\` is present, reference its variables for colors, fonts, spacing, and radii (e.g. \`color: var(--ipw-color-primary)\`, \`font-size: calc(1rem * var(--ipw-type-scale))\`, \`border-radius: var(--ipw-card-radius)\`, \`padding: var(--ipw-page-padding)\`). Prefer tokens over hardcoded values so the Video Studio style panel controls take effect on the composition.`,
     "Delivery requirements contract:",
+    "- Video HTML must load GSAP explicitly before inline animation code (prefer a packaged local gsap.min.js; no async/defer before inline calls). Initialize `window.__timelines = window.__timelines || {}` before registering the paused timeline under the root composition id. Never rely on Video Studio to supply these globals. The final validator also checks these script prerequisites and JavaScript syntax; fix all reported errors before claiming completion.",
     "- Treat every selected animation/voice tag and every explicit request for captions/subtitles, narration/dubbing, BGM/music, or other media as a required deliverable, not optional inspiration. Carry an explicitly requested but still missing deliverable forward across follow-up turns until it is implemented or the user cancels it.",
     "- Caption/subtitle requests require timed visible `.clip` elements marked `data-ipw-caption=\"true\"`. BGM requests require a real local audio file and one timeline-owned `<audio data-ipw-bgm=\"true\">` with src, data-start, data-duration, and data-track-index. Selected animations require the implemented owner to carry `data-ipw-animation-reference=\"<registry-name>\"`.",
     "- Default captions are transparent text overlays in the bottom safe area. Global `.clip { inset: 0 }` rules can stretch captions into full-height panels, so every default caption must override layout inline: `data-ipw-caption-style=\"transparent-bottom\" style=\"position:absolute;inset:auto 5% 5%;height:auto;display:flex;align-items:flex-end;justify-content:center;overflow:visible;background:transparent;pointer-events:none\"`. Put the visible text in a child marked `data-ipw-caption-text=\"true\"` with inline `max-width`, `background:transparent`, centered text, visible color, and text shadow or stroke. Preserve one or two readable lines; do not add padding-backed color, a pill, card, band, or backdrop unless the user explicitly asks for that treatment.",
-    `- Final gate: after all edits, call \`ipollowork_extension_call\` once with extensionId \`media\`, action \`voiceover_timeline_validate\`, sourcePath \`${projectDirectory}/index.html\`, and \`requirements\` describing all requested deliverables: booleans \`voiceover\`, \`captions\`, \`bgm\`, the user's \`targetDurationSeconds\` when specified, \`captionStyle: "transparent-bottom"\` whenever captions use the default, plus every selected registry name in \`animationReferences\`. Set \`captionStyle: "custom"\` only when the user explicitly requested a different caption position or background treatment. ${options.deliveryRequirements && hasVideoDeliveryRequirements(options.deliveryRequirements) ? `For this turn the app parsed these minimum requirements; preserve them exactly in the validator call: \`${JSON.stringify(options.deliveryRequirements)}\`.` : ""} The requirements must reflect the current request and unresolved earlier requests, even when an implementation is still missing. If invalid, fix all reported issues together and run it once more. If valid, stop using tools and answer immediately: do not follow it with browser/screenshot/eval calls, manual tag counting, parser scripts, file rereads, or extra shell validation. Never start either auxiliary operation after validation, and never wait for or retry one that is still pending. The successful validator result is the authoritative completion gate; never run \`npx hyperframes check\`.`,
+    hostManagedExport
+      ? `- Final gate for this OpenCode turn: save the completed ${projectDirectory}/index.html source, then stop. The iPolloWork host validates the saved composition and automatically renders MP4. Do not call a validator, run a CLI, ask for manual export, or claim publication complete at the HTML stage.`
+      : `- Final gate: save the complete composition and return once. The iPolloWork client automatically runs the single aggregate delivery validator for \`${projectDirectory}/index.html\` after the turn, using these parsed requirements when present: \`${JSON.stringify(options.deliveryRequirements ?? { voiceover: false, captions: false, bgm: false, animationReferences: [] })}\`. Do not run \`voiceover_timeline_validate\`, \`video_component_check\`, HyperFrames check, browser previews, screenshots, tag-counting scripts, or file rereads yourself; the client owns validation and one bounded repair continuation.`,
+    "Automatic export and publication contract:",
+    hostManagedExport
+      ? "- When the user asks to export or publish, completing HTML is not completion. The iPolloWork host owns the MP4 export after this turn. Save the source and stop; never ask the user to click Export or select an output path. For edit-only requests, do not export or publish."
+      : "- When the user asks to export, upload, or publish this video, completing HTML is not completion. Automatically render the validated composition to MP4; never ask the user to click Export/Render, select an output path, or provide an MP4 that this project can produce. For edit-only requests, do not export or publish.",
+    ...(hostManagedExport ? [
+      `- The host owns render operationKey ${options.hostExportOperationKey ?? "provided-in-continuation"}. Do not call video_render_start or video_render_status in this turn. If a renderer was nevertheless already started, use only this exact operationKey so the host can reuse that job; never create a second export. The host supplies its verified outputPath in a continuation. Keep the editable source intact.`,
+      "- In OpenCode, local host MCP tools have the server prefix: use ipollowork_ipollowork_extension_list_actions and ipollowork_ipollowork_extension_call for publisher actions, and ipollowork_ipollowork_browser_open_url, ipollowork_ipollowork_browser_snapshot, ipollowork_ipollowork_browser_act for authorized browser publication. The unprefixed plugin aliases are not installed; do not substitute cloud capability search or an external CLI.",
+    ] : [
+      `- Export directly with ipollowork_extension_call: extensionId=media, action=video_render_start, args={sourcePath:"${projectDirectory}/index.html",operationKey:"${videoProjectId(sessionId)}:export-1"}. Reuse this operationKey on continuation; a new requested revision needs a new key. Studio is started by the host. Do not search for render interfaces, delegate an exploration agent, use npx/CLI, guess a package version, or ask for manual export.`,
+      "- Call media.video_render_status with the SAME sourcePath and operationKey every returned pollAfterMs until complete or failed. Each call returns promptly with preparing/rendering progress; continue without asking the user to pause/resume. Never repeat POST just because a tool wait timed out. A failed/cancelled render must never be imported or published. Report the returned error and do not start another operation blindly.",
+      "- On complete, the action returns outputPath and size for the exact verified local MP4. Use that outputPath directly as douyin-ops import-media sourcePath. No download, file picker, manual path selection, scheduling or calendar access is required. Preserve the editable HTML and generated MP4.",
+    ]),
+    hostManagedExport
+      ? "- For an explicitly requested Douyin publication, wait for the host's rendered MP4 continuation. That continuation supplies the exact outputPath; then use douyin-ops-worker: import-media -> save-draft -> publish-draft, complete any browserTask with the host browser, and verify the receipt and actual work URL. Never re-submit an uncertain publication. Export-only requests do not authorize publication."
+      : "- For an explicitly requested Douyin publication, continue with douyin-ops-worker: import-media -> save-draft -> publish-draft, then complete any returned browserTask using the host browser and verify the saved receipt and actual work URL. Reuse the same draft/job/operationKey on continuation; never re-submit an uncertain publication. Export-only requests do not authorize publication.",
+    "- Only login/verification requires routine user interaction. Reuse the logged-in account and the original publish authorization; do not ask for another routine confirmation. Still respect host approvals, account ambiguity, platform restrictions and real errors: report the exact blocking stage rather than claiming success or defaulting to manual export. Browser tools are allowed here for authorized publishing, not for redundant composition previews.",
     "- If the user only asks for a script, concept, or storyboard, answer in chat and leave the video project unchanged until they ask to make or edit the video.",
   ];
   const voiceoverContract = options.includeVoiceover ? [
     "Video voiceover contract:",
     "- iPolloWork's `media` extension and CosyVoice workspace synthesis actions are built into the installed desktop application. They are not provided by the HeyGen CLI or an npm package. Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI, and never ask the user to run an auth/login command.",
     "- Use `ipollowork_extension_list_actions` to discover the bundled `media` actions when needed, then call `ipollowork_extension_call` with extensionId `media`. If a bundled action call fails, report and fix that application capability error; do not replace it with user setup instructions or an external CLI.",
-    `- Read \`${projectPath}/voiceover.json\`; its \`voiceId\` and \`model\` are authoritative. Never use generic \`speech_synthesize\`, another provider, or ask for a key.`,
+    `- Read \`${projectPath}/voiceover.json\`. When \`enabled\` is false, preserve existing audio but do not generate or replace voiceover unless the user explicitly asks. When \`selectionMode\` is \`manual\`, its \`voiceId\` is authoritative. When it is \`auto\`, infer a compatible CosyVoice v3 preset from the narration language and use case; always pass an explicit voice instead of omitting narration. For the default profile, use \`cosyvoice-v3-flash\` with \`longanyang\`, rate 1, pitch 1, volume 50, and omit \`instruction\` entirely. Only pass a non-empty \`instruction\` when it is explicitly saved in voiceover.json or explicitly requested by the user and supported by the selected voice. Never use generic \`speech_synthesize\`, another provider, or ask for a key.`,
     "- Before synthesis, build the final valid `.scene.clip` structure once. Derive narration primarily from the page's existing headings, body copy, names, dates, metrics, labels, and other factual anchors; when the user asks to enrich it, connect those anchors into a coherent narrative instead of replacing them with generic filler.",
     "- Give each substantial narrated scene useful depth: normally 2–4 concise sentences and multiple specific page facts when the source supports them. Keep captions readable by revealing short phrases or at most two lines at a time, while retaining the complete transcript in the scene DOM.",
     "- Put the complete visible scene transcript in one or more elements marked `data-ipw-narration-source=\"true\"`. Other titles, numbers, badges, labels, and decorative text may remain in the scene and do not need to duplicate the narration. The synthesized `text` and `sceneText` must exactly equal the combined marked transcript.",
     "- If the user specifies a duration, estimate narration before synthesis (about 4 CJK characters or 2.5 Latin words per second), preserve the most informative page facts, and compact wording to fit. Never synthesize a one-minute request into an unrequested two-minute timeline.",
     "- A request for subtitles/captions alongside narration requires caption clips covering the spoken content; mark each timed caption clip `data-ipw-caption=\"true\"` and pass `requirements.captions: true` at the final gate.",
-    `- Build one ordered scene array, then make one media call with action \`speech_synthesize_workspace_batch\`, \`compositionPath: "${projectDirectory}/index.html"\`, the selected voice/model, the user's requested \`targetDurationSeconds\` when present, and one immutable \`assets/voiceover-<revision>-<scene>.mp3\` output per scene. The media action scopes this shorthand to the current composition's assets directory; never write narration to the workspace-root assets directory or another video project.`,
+    `- Build one ordered scene array, then make one media call with action \`speech_synthesize_workspace_batch\`, \`compositionPath: "${projectDirectory}/index.html"\`, the selected voice/model and delivery controls, the user's requested \`targetDurationSeconds\` when present, and one immutable \`assets/voiceover-<revision>-<scene>.mp3\` output per scene. A voice reference attached with a selected scene is a per-scene override: put its voice and supported delivery controls on that scene item while all other scenes inherit the batch defaults. The media action scopes this shorthand to the current composition's assets directory; never write narration to the workspace-root assets directory or another video project.`,
     "- The batch action synthesizes with bounded concurrency and returns items in visual order with cumulative shifts already applied. Treat each item's timing, timelinePatch, and audioElementHtml as authoritative; do not call per-scene synthesis or apply a shift twice.",
     "- If the batch action fails, use the error to correct its input and retry the same batch at most once. Never fall back to per-scene synthesis, generic speech_synthesize, provider URLs, shell downloads, or one request per scene; preserve successful cached work and report a provider outage instead of creating a slow or partial workflow.",
-    "- In one final index edit, insert each returned audioElementHtml directly under the root composition; update its scene start/duration, every later scene/caption/transition/GSAP timestamp, and root duration. Keep narrated text visible through timing.endSeconds. Never overlap or accelerate narration.",
+    "- Preserve existing narration until the full synthesis batch succeeds. In one final index edit, insert each returned audioElementHtml unchanged, including data-ipw-voice* metadata, directly under the root composition; update its scene start/duration, every later scene/caption/transition/GSAP timestamp, and root duration. Keep narrated text visible through timing.endSeconds. Never overlap or accelerate narration.",
     "- Caption animation targets must resolve to real DOM nodes. Put caption copy in one stable leaf child marked `data-ipw-caption-text=\"true\"` (with an id or data-hf-id), keep the outer caption clip lifecycle owned by HyperFrames, and target that leaf child. For any effect available from `list_motion_presets`, call `mutate_motion` on this child exactly as you would for ordinary body text; never hand-write a reduced caption-only approximation. Use custom GSAP only for effects the semantic preset catalog cannot express, and keep it finite and seek-safe.",
     "- Before inserting replacements, remove legacy narration nodes/manual playback and old voiceover references, but preserve BGM/SFX. Use exactly one timeline-owned `audio[data-ipw-voiceover=\"true\"]` per narrated scene with matching scene/text metadata.",
-    `- A replace/regenerate voiceover or caption request is not complete when synthesis returns. It is complete only after you patch \`${projectDirectory}/index.html\` with the returned audio/timing and captions, then pass \`voiceover_timeline_validate\` for that exact sourcePath. Do not post a success summary between synthesis and the index edit.`,
+    `- A replace/regenerate voiceover or caption request is not complete when synthesis returns. Patch \`${projectDirectory}/index.html\` with the returned audio/timing and captions before ending the turn; the client then validates that exact sourcePath. Do not post a success summary between synthesis and the index edit.`,
     `- If execution is interrupted or continued, resume only from the current transcript and \`${projectDirectory}/index.html\`. Never use cross-session search/read to recover this task, enumerate the workspace's video directory, inspect sibling session projects, or switch to a different index.html.`,
-    "- If voice settings are absent or invalid, continue visually without choosing a random voice. The final local validation gate above is mandatory.",
+    "- Check the bundled media status before generating voiceover. Without a configured Alibaba Model Studio key, do not synthesize narration by default; keep existing audio and direct explicit voiceover requests to Authorization Center. Never ask the user to paste a key in chat. With authorization, absent or invalid voice settings use the fixed default `cosyvoice-v3-flash` + `longanyang` profile with rate 1, pitch 1, volume 50, and an empty `instruction`; voiceover is enabled. Do not invent a style instruction on the default path. Preserve an explicit saved enabled=false preference. The final local validation gate above is mandatory.",
   ] : [
-    "- Narration is opt-in for performance: do not synthesize speech unless the user selected a voice, explicitly requested narration, or the existing composition already contains voiceover nodes.",
+    "- No new voiceover is required for this turn. Preserve existing audio and continue visual video work without synthesizing narration. Respect a saved choice to disable automatic voiceover. If narration was explicitly requested but the voice service is unavailable, direct the user to Video Studio's voice panel to connect it in Authorization Center; never request an API key in chat.",
   ];
   return [...baseContract, ...voiceoverContract].join("\n");
 }

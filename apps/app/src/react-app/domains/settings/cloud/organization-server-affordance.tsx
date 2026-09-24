@@ -66,7 +66,7 @@ export function OrganizationServerAffordance(props: OrganizationServerAffordance
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
+        <DialogContent className="w-full max-w-md sm:max-w-md">
           <DialogHeader>
             <DialogTitle>{t("welcome.organization_server_dialog_title")}</DialogTitle>
             <DialogDescription>{t("welcome.organization_server_dialog_desc")}</DialogDescription>
@@ -85,7 +85,7 @@ export function OrganizationServerAffordance(props: OrganizationServerAffordance
             ) : null}
           </div>
 
-          <DialogFooter>
+          <DialogFooter className="mx-0 mb-0 border-0 bg-transparent p-0">
             <Button
               type="button"
               variant="outline"

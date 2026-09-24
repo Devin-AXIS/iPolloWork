@@ -1,4 +1,5 @@
 import {
+  parsePptxColor,
   createPptxShapeOverlay,
   createPptxTextOverlay,
   createPptxVisualShadow,
@@ -67,25 +68,6 @@ function cssPixels(value: string) {
   return Number.isFinite(pixels) ? pixels : 0;
 }
 
-function parseColor(value: string) {
-  if (!value || value === "transparent") return { color: "000000", transparency: 100 };
-  const hexadecimal = value.match(/^#([0-9a-f]{3,8})$/i)?.[1];
-  if (hexadecimal) {
-    const expanded = hexadecimal.length === 3 || hexadecimal.length === 4
-      ? hexadecimal.split("").map((part) => `${part}${part}`).join("")
-      : hexadecimal;
-    const alpha = expanded.length === 8 ? Number.parseInt(expanded.slice(6), 16) / 255 : 1;
-    return { color: expanded.slice(0, 6).toUpperCase(), transparency: Math.round((1 - alpha) * 100) };
-  }
-  const match = value.match(/^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
-  if (!match) return { color: "111827", transparency: 0 };
-  const alpha = match[4] == null ? 1 : Math.max(0, Math.min(1, Number(match[4])));
-  return {
-    color: match.slice(1, 4).map((part) => Number(part).toString(16).padStart(2, "0")).join("").toUpperCase(),
-    transparency: Math.round((1 - alpha) * 100),
-  };
-}
-
 function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
   let opacity = 1;
   for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
@@ -132,7 +114,7 @@ export function hasPptxBlurredBoxShadow(value: string) {
 
 function pseudoElementPaints(style: CSSStyleDeclaration) {
   if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0) return false;
-  return parseColor(style.backgroundColor).transparency < 100
+  return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
     || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
     || style.boxShadow !== "none"
@@ -182,7 +164,7 @@ function elementFrame(slideBox: DOMRect, box: DOMRect): PptxFrame {
 }
 
 function hasSimpleShapePaint(style: CSSStyleDeclaration) {
-  const fill = parseColor(style.backgroundColor).transparency < 100;
+  const fill = parsePptxColor(style.backgroundColor).transparency < 100;
   const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(cssPixels);
   const uniformBorder = borderWidths.every((width) => width > 0)
     && new Set([style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor]).size === 1
@@ -191,7 +173,7 @@ function hasSimpleShapePaint(style: CSSStyleDeclaration) {
 }
 
 function hasVisibleElementPaint(style: CSSStyleDeclaration) {
-  return parseColor(style.backgroundColor).transparency < 100
+  return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
     || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
     || style.boxShadow !== "none"
@@ -210,7 +192,7 @@ export function pptxShapeNeedsFallback(style: PptxElementStyle & {
   borderLeftWidth: string;
   outlineStyle: string;
 }) {
-  const hasPaint = parseColor(style.backgroundColor).transparency < 100
+  const hasPaint = parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
     || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
       .some((width) => cssPixels(width) > 0)
@@ -243,7 +225,7 @@ export function pptxVisualElementPaints(input: {
   if (["img", "svg", "canvas", "video"].includes(tag)) return true;
   if (input.text.trim()) return true;
   if (input.hasVisiblePseudo || input.hasStaticAnimation) return true;
-  return parseColor(input.backgroundColor).transparency < 100
+  return parsePptxColor(input.backgroundColor).transparency < 100
     || input.backgroundImage !== "none"
     || input.borderWidths.some((width) => cssPixels(width) > 0)
     || input.boxShadow !== "none"
@@ -511,10 +493,10 @@ export function collectPptxBackgroundPlan(slide: HTMLElement): PptxBackgroundPla
   const frame = { x: 0, y: 0, w: PPTX_SLIDE_WIDTH_INCHES, h: PPTX_SLIDE_HEIGHT_INCHES };
   const slideStyle = view.getComputedStyle(slide);
   if (needsPptxBackgroundFallback(slideStyle) || hasVisiblePseudoElement(slide)) return { kind: "fallback", element: slide, frame };
-  const slideColor = parseColor(slideStyle.backgroundColor);
+  const slideColor = parsePptxColor(slideStyle.backgroundColor);
   if (slideColor.transparency < 100) return { kind: "color", color: slideColor.color };
   const deckStyle = view.getComputedStyle(deck);
   if (needsPptxBackgroundFallback(deckStyle) || hasVisiblePseudoElement(deck)) return { kind: "fallback", element: deck, frame };
-  const deckColor = parseColor(deckStyle.backgroundColor);
+  const deckColor = parsePptxColor(deckStyle.backgroundColor);
   return deckColor.transparency < 100 ? { kind: "color", color: deckColor.color } : null;
 }

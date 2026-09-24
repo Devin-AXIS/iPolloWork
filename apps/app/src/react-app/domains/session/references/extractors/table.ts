@@ -1,6 +1,8 @@
 import { parseDelimitedSpreadsheet } from "../../spreadsheets/delimited";
 import { chunkPlainText } from "../chunking";
 import type { ExtractedReferenceContent } from "../types";
+import { parseTree, type Node as JsonNode, type ParseError } from "jsonc-parser";
+import { readReferenceText } from "./text";
 
 const TABLE_PROFILE_MAX_CHARS = 12_000;
 const CSV_CELL_MAX_CHARS = 500;
@@ -23,7 +25,13 @@ function compactCsvCell(value: string): string {
 }
 
 function profileCsv(fileName: string, text: string): ExtractedReferenceContent {
-  const [headerRow = [], ...parsedRows] = parseDelimitedSpreadsheet(text, ",");
+  const delimiter = [",", ";", "\t"].map((delimiter) => {
+    const sample = parseDelimitedSpreadsheet(text.slice(0, 65536), delimiter).slice(0, 10);
+    const width = sample[0]?.length ?? 0;
+    return { delimiter, score: width > 1 ? sample.filter((row) => row.length === width).length * width : 0 };
+  }).sort((a, b) => b.score - a.score)[0]!.delimiter;
+  const records = parseDelimitedSpreadsheet(text, delimiter);
+  const [headerRow = [], ...parsedRows] = records;
   const rows = parsedRows.filter((row) => row.some((cell) => cell.trim()));
   const headers = headerRow.map(compactCsvCell);
   const sample = rows.slice(0, 20);
@@ -39,6 +47,11 @@ function profileCsv(fileName: string, text: string): ExtractedReferenceContent {
 
   return {
     text: profile,
+    structuredData: { headers: headerRow, rows, records, delimiter },
+    rawText: text,
+    qualityText: text.trim(),
+    coverage: { text: "complete", visuals: "none" },
+    warnings: ["First record is treated as the header; records preserves all rows including blanks. The text overview is a sample.", ...(parsedRows.some((row) => row.length !== headerRow.length) ? ["CSV rows have inconsistent column counts; verify table alignment."] : [])],
     chunks: chunkPlainText({ source: fileName, text: profile }),
     metadata: { rows: rows.length, columns: headers.length },
   };
@@ -79,7 +92,33 @@ function boundJsonProfile(profile: string): string {
 }
 
 function profileJson(fileName: string, text: string): ExtractedReferenceContent {
-  const parsed = JSON.parse(text) as unknown;
+  const errors: ParseError[] = [];
+  const root = parseTree(text, errors, { disallowComments: true, allowTrailingComma: false });
+  if (!root || errors.length) throw new Error("Invalid JSON.");
+  const warnings: string[] = [];
+  function exactValue(node: JsonNode, depth = 0): unknown {
+    if (depth > 512) throw new Error("JSON nesting exceeds the supported depth (512).");
+    if (node.type === "number") {
+      const raw = text.slice(node.offset, node.offset + node.length);
+      if (!Number.isFinite(node.value) || (Number.isInteger(node.value) && !Number.isSafeInteger(node.value))) {
+        warnings.push("Unsafe JSON numbers preserved as strings; rawText retains original numeric tokens.");
+        return raw;
+      }
+      if (/[.eE]/.test(raw) && raw.replace(/[^0-9]/g, "").length > 16 && String(node.value) !== raw) {
+        warnings.push("High precision JSON numbers preserved as strings; rawText retains exact tokens.");
+        return raw;
+      }
+      return node.value;
+    }
+    if (node.type === "array") return (node.children ?? []).map((child) => exactValue(child, depth + 1));
+    if (node.type === "object") {
+      const entries = (node.children ?? []).map((property) => [String(property.children![0]!.value), exactValue(property.children![1]!, depth + 1)] as const);
+      if (new Set(entries.map(([key]) => key)).size !== entries.length) warnings.push("Duplicate JSON keys detected; rawText preserves all occurrences.");
+      return Object.fromEntries(entries);
+    }
+    return node.value;
+  }
+  const parsed = exactValue(root);
   const topType = Array.isArray(parsed) ? "array" : parsed === null ? "null" : typeof parsed;
   const sampleSource = Array.isArray(parsed) ? parsed.slice(0, 20) : parsed && typeof parsed === "object" ? Object.fromEntries(Object.entries(parsed).slice(0, 20)) : parsed;
   const sample = compactJsonSample(sampleSource);
@@ -96,13 +135,18 @@ function profileJson(fileName: string, text: string): ExtractedReferenceContent 
 
   return {
     text: profile,
+    structuredData: parsed,
+    rawText: text,
+    qualityText: root.type === "null" || ((root.type === "object" || root.type === "array") && !root.children?.length) ? "" : text,
+    coverage: { text: "complete", visuals: "none" },
+    warnings: [...new Set(warnings), "The text overview contains a sample; structuredData and rawText preserve the complete JSON content."],
     chunks: chunkPlainText({ source: fileName, text: profile }),
     metadata: { rows: Array.isArray(parsed) ? parsed.length : undefined },
   };
 }
 
 export async function extractTableReference(file: File): Promise<ExtractedReferenceContent> {
-  const text = await file.text();
-  if (/\.json$/i.test(file.name) || file.type.toLowerCase() === "application/json") return profileJson(file.name, text);
-  return profileCsv(file.name, text);
+  const decoded = await readReferenceText(file);
+  const result = /\.json$/i.test(file.name) || file.type.toLowerCase() === "application/json" ? profileJson(file.name, decoded.text) : profileCsv(file.name, decoded.text);
+  return { ...result, warnings: [...decoded.warnings, ...result.warnings ?? []] };
 }

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"command","label":"Command","type":"string","default":"pnpm test -- component-library","maxLength":120},{"id":"output","label":"Output","type":"string","default":"20 components discovered\\n20 manifests valid\\n20 timelines seekable","maxLength":500},{"id":"status","label":"Status","type":"string","default":"PASS","maxLength":24},{"id":"elapsed","label":"Elapsed","type":"string","default":"4.8s","maxLength":24}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Terminal Run</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
+.terminal{width:1480px;margin:auto;overflow:hidden;border-radius:32px;background:#111820;color:#e6edf3;box-shadow:0 36px 110px rgba(0,0,0,.28)}.terminal-bar{display:flex;align-items:center;height:78px;padding:0 32px;border-bottom:1px solid rgba(255,255,255,.1)}.terminal-lights{display:flex;gap:11px}.terminal-lights i{width:13px;height:13px;border-radius:50%;background:#536171}.terminal-title{margin:auto;color:#8793a1;font:17px var(--ipw-font-mono,ui-monospace,monospace)}.terminal-body{padding:54px 62px 64px;font:25px/1.75 var(--ipw-font-mono,ui-monospace,monospace)}.terminal-command{color:#fff}.terminal-command::before{content:"$ ";color:var(--ipw-color-primary,#20bbc0)}.terminal-output{display:block;margin-top:36px;color:#9eabb8;white-space:pre-wrap}.terminal-result{display:flex;justify-content:space-between;margin-top:42px;padding-top:28px;border-top:1px solid rgba(255,255,255,.1)}.terminal-status{color:#62d7a5;font-weight:800}.terminal-elapsed{color:#8793a1}</style></head>
+<body><main id="root" data-composition-id="terminal-run" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"command":"pnpm test -- component-library","output":"20 components discovered\\n20 manifests valid\\n20 timelines seekable","status":"PASS","elapsed":"4.8s"}'><section class="terminal vc-animate"><header class="terminal-bar"><div class="terminal-lights"><i></i><i></i><i></i></div><div class="terminal-title">workspace / verify</div></header><div class="terminal-body"><div class="terminal-command" data-ipw-variable="command" data-ipw-ai-slot="command"></div><code class="terminal-output" data-ipw-variable="output" data-ipw-ai-slot="output"></code><div class="terminal-result"><span class="terminal-status" data-ipw-variable="status" data-ipw-ai-slot="status"></span><span class="terminal-elapsed" data-ipw-variable="elapsed" data-ipw-ai-slot="elapsed"></span></div></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="terminal-run";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+if(values.style)root.dataset.variant=String(values.style);if(values.mode)root.dataset.mode=String(values.mode);
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"lines",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const item=document.createElement("article");item.className="vc-item vc-animate";const split=pair(raw);
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="comments"||mode==="plans"||mode==="people"||mode==="colors"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="vc-label";value.className="vc-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="people")item.dataset.initial=(split[0].trim().charAt(0)||"?").toUpperCase();
+   if(mode==="colors"){item.style.background=split[1]||"var(--ipw-color-primary,#20bbc0)"}
+   if(mode==="plans"){const period=document.createElement("div");period.className="pricing-period";period.textContent=String(values[host.dataset.periodKey]??"");item.append(period)}
+  }else if(mode==="steps"){
+   const step=document.createElement("div"),value=document.createElement("div");step.className="vc-index";value.className="vc-value";step.textContent="STEP / 0"+(index+1);value.textContent=raw;item.append(step,value);
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+root.querySelectorAll("[data-ipw-code]").forEach(function(host){
+ const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
+ lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
+});
+const initial={};const motion="rise";
+if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
+else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
+else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
+else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
+else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:54,opacity:0});
+const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
+  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
+  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

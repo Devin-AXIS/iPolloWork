@@ -113,7 +113,7 @@ export function TextIconButton({
       title={disabled ? `${tx(label)}（此图层暂不可用）` : tx(label)}
       disabled={disabled}
       onClick={onClick}
-      className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#20bbc0]/50 disabled:cursor-not-allowed disabled:opacity-45"
+      className="hf-text-icon-button flex h-[34px] min-w-0 flex-1 items-center justify-center rounded-[8px] border-[0.5px] border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 disabled:cursor-not-allowed disabled:opacity-45"
     >
       {children}
     </button>

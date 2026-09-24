@@ -1,0 +1,258 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Live campaign leaderboard","maxLength":72},{"id":"standings","label":"Standings","description":"Start and finish scores as structured rows.","type":"string","default":"{\"version\":1,\"kind\":\"series-value\",\"rows\":[{\"name\":\"Atlas\",\"start\":72,\"finish\":96},{\"name\":\"Nova\",\"start\":88,\"finish\":91},{\"name\":\"Pulse\",\"start\":81,\"finish\":89},{\"name\":\"Orbit\",\"start\":76,\"finish\":84}]}","maxLength":1800},{"id":"highlight","label":"Highlight","type":"string","default":"Atlas","maxLength":40},{"id":"source","label":"Source","type":"string","default":"Updated moments ago","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Live Leaderboard</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #ll-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 94px 150px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .ll-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+      }
+      .ll-live {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 800 15px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+      }
+      .ll-live i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        background: currentColor;
+        box-shadow: 0 0 0 8px color-mix(in srgb, currentColor 14%, transparent);
+      }
+      .ll-title {
+        margin: 0;
+        font-size: 70px;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+      .ll-source {
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .ll-board {
+        position: absolute;
+        left: 150px;
+        right: 150px;
+        top: 300px;
+        height: 650px;
+      }
+      .ll-row {
+        position: absolute;
+        left: 0;
+        right: 0;
+        height: 104px;
+        display: grid;
+        grid-template-columns: 84px 1fr 260px 120px;
+        align-items: center;
+        padding: 0 34px;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 24px);
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: 0 12px 32px rgba(20, 30, 40, 0.07);
+        will-change: transform;
+      }
+      .ll-row.is-highlight {
+        border-color: var(--ipw-color-primary, #20bbc0);
+        box-shadow: 0 16px 46px
+          color-mix(in srgb, var(--ipw-color-primary, #20bbc0) 20%, transparent);
+      }
+      .ll-rank {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 14px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        font: 800 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .ll-name {
+        font-size: 31px;
+        letter-spacing: -0.035em;
+      }
+      .ll-track {
+        height: 12px;
+        overflow: hidden;
+        border-radius: 99px;
+        background: var(--ipw-color-border, #d8dde3);
+      }
+      .ll-fill {
+        width: 100%;
+        height: 100%;
+        border-radius: inherit;
+        background: var(--ipw-color-primary, #20bbc0);
+        transform-origin: left;
+      }
+      .ll-score {
+        text-align: right;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 820 32px/1 var(--ipw-font-body, Inter, sans-serif);
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="ll-root"
+      data-composition-id="live-leaderboard"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <header class="ll-head">
+        <div>
+          <div class="ll-live"><i></i>Live update</div>
+          <h1 class="ll-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="ll-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="ll-board" data-ipw-ai-slot="standings"></section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("ll-root"),
+          id = root.dataset.compositionId,
+          defaults = {
+            title: "Live campaign leaderboard",
+            standings:
+              '{"version":1,"kind":"series-value","rows":[{"name":"Atlas","start":72,"finish":96},{"name":"Nova","start":88,"finish":91},{"name":"Pulse","start":81,"finish":89},{"name":"Orbit","start":76,"finish":84}]}',
+            highlight: "Atlas",
+            source: "Updated moments ago",
+          },
+          values = {
+            ...defaults,
+            ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+          };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        let rows = [];
+        try {
+          const parsed = JSON.parse(String(values.standings));
+          rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+        } catch {}
+        rows = rows
+          .map((row) => ({
+            name: String(row.name ?? ""),
+            start: Number(row.start),
+            finish: Number(row.finish),
+          }))
+          .filter((row) => row.name && Number.isFinite(row.start) && Number.isFinite(row.finish))
+          .slice(0, 6);
+        const startOrder = [...rows].sort((a, b) => b.start - a.start),
+          finishOrder = [...rows].sort((a, b) => b.finish - a.finish),
+          board = root.querySelector(".ll-board"),
+          items = [];
+        startOrder.forEach((row, index) => {
+          const finalIndex = finishOrder.indexOf(row),
+            item = document.createElement("article");
+          item.className =
+            "ll-row" + (row.name === String(values.highlight) ? " is-highlight" : "");
+          item.style.top = `${index * 118}px`;
+          item.dataset.targetY = String((finalIndex - index) * 118);
+          item.innerHTML = `<span class="ll-rank">${index + 1}</span><strong class="ll-name"></strong><div class="ll-track"><i class="ll-fill"></i></div><b class="ll-score">${Math.round(row.start)}</b>`;
+          item.querySelector(".ll-name").textContent = row.name;
+          board.append(item);
+          items.push({ item, row, finalRank: finalIndex + 1, state: { value: row.start } });
+        });
+        const max = Math.max(...rows.map((row) => Math.max(row.start, row.finish)), 1),
+          tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".ll-head>*"),
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.45, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            root.querySelectorAll(".ll-row"),
+            { y: 32, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.42, stagger: 0.07, ease: "power3.out" },
+            0.25,
+          )
+          .fromTo(
+            root.querySelectorAll(".ll-fill"),
+            { scaleX: 0 },
+            {
+              scaleX: (index) => Math.max(0.04, startOrder[index].start / max),
+              duration: 0.65,
+              stagger: 0.05,
+              ease: "power2.out",
+            },
+            0.42,
+          );
+        items.forEach((entry, index) => {
+          tl.to(
+            entry.item,
+            { y: Number(entry.item.dataset.targetY), duration: 0.9, ease: "power3.inOut" },
+            1.25,
+          )
+            .to(
+              entry.item.querySelector(".ll-fill"),
+              {
+                scaleX: Math.max(0.04, entry.row.finish / max),
+                duration: 0.9,
+                ease: "power3.inOut",
+              },
+              1.25,
+            )
+            .to(
+              entry.state,
+              {
+                value: entry.row.finish,
+                duration: 0.9,
+                ease: "power3.inOut",
+                onUpdate: () => {
+                  entry.item.querySelector(".ll-score").textContent = String(
+                    Math.round(entry.state.value),
+                  );
+                },
+              },
+              1.25,
+            )
+            .set(
+              entry.item.querySelector(".ll-rank"),
+              { innerText: entry.finalRank },
+              2.12 + index * 0.01,
+            );
+        });
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

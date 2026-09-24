@@ -10,6 +10,14 @@ const sessionPageUrl = new URL(
   "../src/react-app/domains/session/chat/session-page.tsx",
   import.meta.url,
 );
+const sessionSurfaceUrl = new URL(
+  "../src/react-app/domains/session/surface/session-surface.tsx",
+  import.meta.url,
+);
+const workspaceAppFrameUrl = new URL(
+  "../src/react-app/plugin-ui/workspace-app-frame.tsx",
+  import.meta.url,
+);
 
 describe("Design AI composer integration", () => {
   test("converts one Design token into a structured composer part", () => {
@@ -120,5 +128,60 @@ describe("Design AI composer integration", () => {
     expect(source).toContain("useComposerStateStore.getState()");
     expect(source).toContain("replaceDesignSelectionToken");
     expect(source).toContain('new Event("ipollowork:focusPrompt")');
+  });
+
+  test("hands Image Studio area and point annotations to a removable composer chip", async () => {
+    const surfaceSource = await Bun.file(sessionSurfaceUrl).text();
+    const frameSource = await Bun.file(workspaceAppFrameUrl).text();
+    const sessionPageSource = await Bun.file(sessionPageUrl).text();
+
+    expect(frameSource).toContain('event.data.type !== "ipollowork:image-studio:ask-ai"');
+    expect(frameSource).toContain('new CustomEvent("ipollowork:add-image-reference"');
+    expect(frameSource).toContain('const model = typeof value.model === "string"');
+    expect(frameSource).not.toContain("onImageSelectionChange");
+    expect(surfaceSource).toContain('window.addEventListener("ipollowork:add-image-reference"');
+    expect(surfaceSource).toContain('data-composer-token="image-reference"');
+    expect(surfaceSource).not.toContain("data-image-selection-chip");
+    expect(surfaceSource).toContain('? "image-studio-reference"');
+    expect(surfaceSource).toContain("Normalized annotation point:");
+    expect(surfaceSource).toContain("Normalized selected region:");
+    expect(surfaceSource).toContain("User-selected image model:");
+    expect(surfaceSource).toContain("No model was selected. List the configured image models");
+    expect(surfaceSource).toContain("pendingImageStudioRefreshRef");
+    expect(surfaceSource).toContain('viewer: "image-studio"');
+    expect(surfaceSource).toContain("props.onOpenTarget?.(target, options, props.sessionId)");
+    expect(surfaceSource).toContain('t("image_studio.ai.opened_result")');
+    expect(surfaceSource).toContain('t("image_studio.ai.result_not_opened")');
+    expect(surfaceSource).toContain("}, 30_000);");
+    expect(surfaceSource).toContain("store.completeMediaEdit");
+    expect(surfaceSource).toContain("store.resumeMediaEdit");
+    expect(sessionPageSource).toContain('options.viewer !== "image-studio"');
+    expect(sessionPageSource).toContain('await openImageStudio(target, sourceId ?? undefined)');
+    expect(sessionPageSource).toContain("resolveInstalledPluginContributions(packages.items)");
+    expect(sessionPageSource).toContain('toast.error(t("artifact.image_studio_install_required"))');
+    expect(sessionPageSource).not.toContain("WorkspaceImageSelection");
+
+    expect(frameSource).toContain('callWorkspaceAppTool("open_image", { sourcePath })');
+    expect(surfaceSource).toContain("never choose or change it with set_parameters");
+  });
+
+  test("uses the shared client controls for workspace app inspector fields", async () => {
+    const frameSource = await Bun.file(workspaceAppFrameUrl).text();
+
+    expect(frameSource).toContain('<Textarea');
+    expect(frameSource).toContain('className={cn("min-h-28 resize-y"');
+    expect(frameSource).toContain('className={cn("w-full border-transparent bg-muted shadow-none hover:bg-muted/80"');
+    expect(frameSource).not.toContain('rounded-xl bg-input/50');
+    expect(frameSource).toContain('className={cn("text-[10px] text-muted-foreground"');
+    expect(frameSource).toContain(': "space-y-3"} onSubmit=');
+  });
+
+  test("places the Image Studio inspector below its app canvas", async () => {
+    const frameSource = await Bun.file(workspaceAppFrameUrl).text();
+
+    expect(frameSource).toContain('props.surface.pluginId === "image-studio"');
+    expect(frameSource).toContain('inspectorBelowAppToolbar && inspectorOpen && inspectorContext && "flex-col');
+    expect(frameSource).toContain('inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1"');
+    expect(frameSource).toContain('className="z-10 flex shrink-0 justify-center px-4 pb-4"');
   });
 });

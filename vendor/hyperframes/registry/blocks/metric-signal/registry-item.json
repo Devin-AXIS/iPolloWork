@@ -1,0 +1,22 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "metric-signal",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Metric Signal",
+  "description": "A single decisive metric with a compact trend signal for data-led storytelling.",
+  "tags": ["component", "data", "metric", "chart", "theme"],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "metric", "label", "trend"], "instructions": "AI may calculate or replace the metric and annotate its meaning, but must retain one primary number and a legible trend signal." } },
+  "dimensions": { "width": 1920, "height": 1080 },
+  "duration": 8,
+  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
+  "files": [{ "path": "metric-signal.html", "target": "compositions/metric-signal.html", "type": "hyperframes:composition" }],
+  "variables": [
+    { "id": "title", "label": "Title", "type": "string", "default": "The signal worth watching", "maxLength": 64, "update": "live" },
+    { "id": "metric", "label": "Metric", "type": "string", "default": "42.8%", "maxLength": 18, "update": "live" },
+    { "id": "label", "label": "Metric label", "type": "string", "default": "Faster time to a reviewed outcome", "maxLength": 72, "update": "live" },
+    { "id": "trend", "label": "Trend label", "type": "string", "default": "+12.4% this quarter", "maxLength": 36, "update": "live" }
+  ]
+}

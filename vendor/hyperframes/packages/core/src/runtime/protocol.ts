@@ -1,3 +1,24 @@
+import type { FpsInput } from "../core.types";
+
+/** Video duration always covers the source; only floating-point noise is rounded away. */
+export function durationToFrameCount(seconds: number, fps: FpsInput): number {
+  const rate = typeof fps === "number" ? fps : fps.num / fps.den;
+  const frames = Math.max(0, seconds) * rate;
+  const nearest = Math.round(frames);
+  const tolerance = Number.EPSILON * Math.max(1, frames) * 8;
+  return Math.abs(frames - nearest) <= tolerance ? nearest : Math.ceil(frames);
+}
+
+export function frameAlignedDurationSeconds(seconds: number, fps: FpsInput): number {
+  return durationToFrameCount(seconds, fps) / (typeof fps === "number" ? fps : fps.num / fps.den);
+}
+
+/** Hold the final video sample at transport end without rounding audio timestamps. */
+export function lastVideoFrameTime(time: number, duration: number, fps: FpsInput): number {
+  const rate = typeof fps === "number" ? fps : fps.num / fps.den;
+  return Math.max(0, Math.min(time, (durationToFrameCount(duration, fps) - 1) / rate));
+}
+
 export const RUNTIME_PROTOCOL_VERSION = 1 as const;
 
 export const RUNTIME_PROTOCOL_CAPABILITIES = [

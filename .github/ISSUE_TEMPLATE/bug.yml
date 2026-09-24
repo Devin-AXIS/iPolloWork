@@ -4,6 +4,10 @@ title: "[Bug]: "
 labels:
   - bug
 body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not report security vulnerabilities in public issues. Follow the private reporting process in [SECURITY.md](https://github.com/Devin-AXIS/iPolloWork/security/policy).
   - type: textarea
     id: summary
     attributes:

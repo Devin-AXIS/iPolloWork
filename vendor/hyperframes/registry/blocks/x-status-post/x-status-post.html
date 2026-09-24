@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en" data-composition-variables='[{"id":"name","label":"Display Name","type":"string","default":"Northstar Labs","maxLength":40},{"id":"handle","label":"Handle","type":"string","default":"@northstarlabs","maxLength":36},{"id":"post","label":"Post","type":"string","default":"Clarity compounds. Ship the smallest useful idea, then let the signal guide the next move.","maxLength":220},{"id":"metrics","label":"Metrics","type":"string","default":"184 replies · 1.8K reposts · 12K likes","maxLength":78}]'>
+<head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>X Post</title><style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:72px 110px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 22%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:72px 72px;opacity:.2}#root>*{position:relative;z-index:1}.sm-animate,.sm-pop,.social-list-item{will-change:transform,opacity}
+.x-card{width:1440px;margin:auto;padding:64px 72px;border:1px solid var(--ipw-color-border,#d8dde3);border-radius:38px;background:var(--ipw-color-surface,#fff);box-shadow:var(--ipw-card-shadow,0 30px 90px rgba(20,30,40,.14))}.x-head{display:flex;align-items:center;gap:20px}.x-avatar{display:grid;place-items:center;width:82px;height:82px;border-radius:50%;background:#111;color:#fff;font-size:34px;font-weight:900}.x-name{font-size:30px;font-weight:850}.x-handle{margin-top:6px;color:var(--ipw-color-muted,#68717c);font-size:20px}.x-mark{margin-left:auto;font-size:48px;font-weight:950}.x-status-post{max-width:1220px;margin:54px 0 62px;font-size:54px;line-height:1.14;letter-spacing:-.035em}.x-rule{height:2px;background:var(--ipw-color-border,#d8dde3)}.x-metrics{margin-top:28px;color:var(--ipw-color-muted,#68717c);font-size:22px;font-weight:720}
+</style></head>
+<body><main id="root" data-composition-id="x-status-post" data-width="1920" data-height="1080" data-start="0" data-duration="8" data-defaults='{"name":"Northstar Labs","handle":"@northstarlabs","post":"Clarity compounds. Ship the smallest useful idea, then let the signal guide the next move.","metrics":"184 replies · 1.8K reposts · 12K likes"}'><article class="x-card sm-animate"><header class="x-head"><div class="x-avatar sm-pop">N</div><div><div class="x-name" data-ipw-variable="name" data-ipw-ai-slot="name"></div><div class="x-handle" data-ipw-variable="handle" data-ipw-ai-slot="handle"></div></div><div class="x-mark">𝕏</div></header><p class="x-status-post" data-ipw-variable="post" data-ipw-ai-slot="post"></p><div class="x-rule sm-draw"></div><footer class="x-metrics" data-ipw-variable="metrics" data-ipw-ai-slot="metrics"></footer></article></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
+window.__timelines=window.__timelines||{};(function(){
+const root=document.getElementById("root"),id="x-status-post";
+const defaults=JSON.parse(root.dataset.defaults),runtimeValues=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{},values={...defaults,...runtimeValues};
+root.querySelectorAll("[data-ipw-variable]").forEach(function(el){el.textContent=String(values[el.dataset.ipwVariable]??"")});
+function parts(value){return String(value??"").split(/[|,]/).map(function(item){return item.trim()}).filter(Boolean)}
+function pair(value){const index=value.indexOf(":");return index<0?[value,""]:[value.slice(0,index).trim(),value.slice(index+1).trim()]}
+root.querySelectorAll("[data-ipw-list]").forEach(function(host){
+ const key=host.dataset.ipwList,mode=host.dataset.listMode||"plain",highlight=String(values[host.dataset.highlightKey]??""),active=host.dataset.activeKey?Math.max(1,Number(values[host.dataset.activeKey]??0)):0;
+ parts(values[key]).slice(0,4).forEach(function(raw,index){
+  const split=pair(raw),item=document.createElement("article");item.className="social-list-item sm-animate";
+  if((highlight&&split[0]===highlight)||(active===index+1))item.classList.add("is-highlight");
+  if(mode==="pair"||mode==="meter"){
+   const label=document.createElement("div"),value=document.createElement("div");label.className="social-list-label";value.className="social-list-value";label.textContent=split[0];value.textContent=split[1];item.append(label,value);
+   if(mode==="meter"){const meter=document.createElement("div"),fill=document.createElement("span");meter.className="social-meter";fill.style.width=Math.max(0,Math.min(100,Number.parseFloat(split[1])||0))+"%";meter.append(fill);item.append(meter)}
+  }else{item.textContent=raw}
+  host.append(item);
+ });
+});
+const initial={};
+if("slide-left"==="slide-left")Object.assign(initial,{x:-58,opacity:0});
+else if("slide-left"==="slide-right")Object.assign(initial,{x:58,opacity:0});
+else if("slide-left"==="scale")Object.assign(initial,{scale:.88,opacity:0});
+else if("slide-left"==="clip")Object.assign(initial,{y:46,opacity:0,clipPath:"inset(0 0 100% 0)"});
+else Object.assign(initial,{y:48,opacity:0});
+const tl=gsap.timeline({paused:true});
+tl.fromTo(root.querySelectorAll(".sm-animate"),initial,{x:0,y:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"},.08)
+  .fromTo(root.querySelectorAll(".sm-pop"),{scale:.65,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.08,ease:"back.out(1.5)"},.38)
+  .fromTo(root.querySelectorAll(".sm-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.6,ease:"power2.out"},.22);
+window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>

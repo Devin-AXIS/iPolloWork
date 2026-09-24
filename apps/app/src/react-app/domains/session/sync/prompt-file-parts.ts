@@ -1,4 +1,6 @@
-import type { FilePartInput } from "@opencode-ai/sdk/v2/client";
+import type { ConversationPromptPart } from "../engine/conversation-engine";
+
+type ConversationFilePart = Extract<ConversationPromptPart, { type: "file" }>;
 
 const FIRST_LINE_LOCAL_PATH_RE = /(?:file:\/\/[^\s"'`<>]+|~\/[^\s"'`<>]+|[A-Za-z]:[\\/][^\s"'`<>]+|(?<![:/])\/[A-Za-z0-9._~+%/-]*[\/.][A-Za-z0-9._~+%/-]*)/g;
 const TRAILING_PUNCTUATION_RE = /[),.;:]+$/;
@@ -71,9 +73,9 @@ function toFileUrl(path: string) {
   return `file://${encodeFilePath(normalized)}`;
 }
 
-export function firstLineLocalFileParts(text: string, workspaceRoot: string): FilePartInput[] {
+export function firstLineLocalFileParts(text: string, workspaceRoot: string): ConversationFilePart[] {
   const firstLine = text.split(/\r?\n/, 1)[0] ?? "";
-  const parts: FilePartInput[] = [];
+  const parts: ConversationFilePart[] = [];
   const seen = new Set<string>();
 
   for (const match of firstLine.matchAll(FIRST_LINE_LOCAL_PATH_RE)) {

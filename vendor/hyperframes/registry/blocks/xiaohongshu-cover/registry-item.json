@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "xiaohongshu-cover",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Xiaohongshu Cover",
+  "description": "A bold Xiaohongshu-style cover card for tips, lists, guides and editorial series.",
+  "tags": [
+    "component",
+    "social",
+    "xiaohongshu",
+    "cover",
+    "thumbnail",
+    "editorial",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "category",
+        "title",
+        "subtitle",
+        "issue"
+      ],
+      "instructions": "写一个短分类、醒目标题、解释性副标题和期号；标题尽量控制在两行内。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "xiaohongshu-cover.html",
+      "target": "compositions/xiaohongshu-cover.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "category",
+      "label": "分类",
+      "type": "string",
+      "default": "效率灵感",
+      "maxLength": 24,
+      "update": "live"
+    },
+    {
+      "id": "title",
+      "label": "封面标题",
+      "type": "string",
+      "default": "让复杂信息一眼变清楚",
+      "maxLength": 56,
+      "update": "live"
+    },
+    {
+      "id": "subtitle",
+      "label": "副标题",
+      "type": "string",
+      "default": "4 个任何内容都能复用的视觉整理方法",
+      "maxLength": 82,
+      "update": "live"
+    },
+    {
+      "id": "issue",
+      "label": "期号",
+      "type": "string",
+      "default": "VOL. 08 · 收藏级指南",
+      "maxLength": 42,
+      "update": "live"
+    }
+  ]
+}
+

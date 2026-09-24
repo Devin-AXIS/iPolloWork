@@ -7,7 +7,7 @@ import {
 } from "./timelineEditing";
 import type { TimelineElement } from "../store/playerStore";
 import { liveTime, usePlayerStore } from "../store/playerStore";
-import { GUTTER, TRACKS_LEFT_PAD } from "./timelineLayout";
+import { TRACKS_LEFT_PAD } from "./timelineLayout";
 import {
   computeMarqueeSelection,
   getMarqueeRect,
@@ -32,6 +32,7 @@ interface UseTimelineRangeSelectionInput {
   elementsRef: React.RefObject<TimelineElement[]>;
   trackOrderRef: React.RefObject<number[]>;
   onSelectElement?: (element: TimelineElement | null) => void;
+  gutterWidth: number;
 }
 
 interface MarqueeDragState {
@@ -74,12 +75,14 @@ function commitMarqueeSelection(
   elements: TimelineElement[],
   trackOrder: number[],
   pps: number,
+  gutterWidth: number,
 ): void {
   const { ids, primaryId } = computeMarqueeSelection({
     clips: toMarqueeClips(elements),
     trackOrder,
     pps,
     marquee: rect,
+    gutterWidth,
     baseSelection: additive ? marquee.baseIds : undefined,
   });
   const store = usePlayerStore.getState();
@@ -103,6 +106,7 @@ export function useTimelineRangeSelection({
   elementsRef,
   trackOrderRef,
   onSelectElement,
+  gutterWidth,
 }: UseTimelineRangeSelectionInput) {
   const isRangeSelecting = useRef(false);
   const rangeAnchorTime = useRef(0);
@@ -170,9 +174,10 @@ export function useTimelineRangeSelection({
         elementsRef.current ?? [],
         trackOrderRef.current ?? [],
         ppsRef.current,
+        gutterWidth,
       );
     },
-    [toContentPoint, elementsRef, trackOrderRef, ppsRef],
+    [toContentPoint, elementsRef, trackOrderRef, ppsRef, gutterWidth],
   );
 
   const stopMarqueeAutoScroll = useCallback(() => {
@@ -230,13 +235,17 @@ export function useTimelineRangeSelection({
       const rect = scrollRef.current?.getBoundingClientRect();
       if (rect) {
         const x =
-          e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
+          e.clientX -
+          rect.left +
+          (scrollRef.current?.scrollLeft ?? 0) -
+          gutterWidth -
+          TRACKS_LEFT_PAD;
         const time = Math.max(0, x / pps);
         rangeAnchorTime.current = time;
         setRangeSelection({ start: time, end: time, anchorX: e.clientX, anchorY: e.clientY });
       }
     },
-    [scrollRef, pps, setShowPopover],
+    [scrollRef, pps, setShowPopover, gutterWidth],
   );
 
   const handlePointerDown = useCallback(
@@ -300,7 +309,7 @@ export function useTimelineRangeSelection({
       const el = scrollRef.current;
       if (el) {
         const rect = el.getBoundingClientRect();
-        const x = clientX - rect.left + el.scrollLeft - GUTTER - TRACKS_LEFT_PAD;
+        const x = clientX - rect.left + el.scrollLeft - gutterWidth - TRACKS_LEFT_PAD;
         if (x >= 0) {
           const dur = el.scrollWidth / pps;
           liveTime.notify(Math.max(0, Math.min(dur, x / pps)));
@@ -316,7 +325,7 @@ export function useTimelineRangeSelection({
         });
       }
     },
-    [scrollRef, pps, seekFromX, autoScrollDuringDrag, isDragging],
+    [scrollRef, pps, seekFromX, autoScrollDuringDrag, isDragging, gutterWidth],
   );
 
   const handlePointerMove = useCallback(
@@ -325,7 +334,11 @@ export function useTimelineRangeSelection({
         const rect = scrollRef.current?.getBoundingClientRect();
         if (rect) {
           const x =
-            e.clientX - rect.left + (scrollRef.current?.scrollLeft ?? 0) - GUTTER - TRACKS_LEFT_PAD;
+            e.clientX -
+            rect.left +
+            (scrollRef.current?.scrollLeft ?? 0) -
+            gutterWidth -
+            TRACKS_LEFT_PAD;
           setRangeSelection((prev) =>
             prev
               ? { ...prev, end: Math.max(0, x / pps), anchorX: e.clientX, anchorY: e.clientY }
@@ -345,7 +358,15 @@ export function useTimelineRangeSelection({
       if (!isDragging.current) return;
       updateScrubDrag(e.clientX);
     },
-    [pps, scrollRef, isDragging, applyMarqueeAtClient, syncMarqueeAutoScroll, updateScrubDrag],
+    [
+      pps,
+      scrollRef,
+      isDragging,
+      applyMarqueeAtClient,
+      syncMarqueeAutoScroll,
+      updateScrubDrag,
+      gutterWidth,
+    ],
   );
 
   // Release of a shift time-range gesture: keep a real range (or a shift-click

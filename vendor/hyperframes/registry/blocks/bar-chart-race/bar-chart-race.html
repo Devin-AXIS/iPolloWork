@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=1920,height=1080"/>
+<title>Bar Chart Race</title>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#bar-chart-race{width:1920px;height:1080px;padding:108px 150px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}header{display:flex;align-items:end;justify-content:space-between}h1{margin:0;font-size:82px;letter-spacing:-.07em}.period{padding:15px 20px;border-radius:999px;background:color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 14%,transparent);color:var(--ipw-color-primary,#20bbc0);font:800 20px/1 var(--ipw-font-body,Inter,sans-serif)}.race{margin-top:72px;display:grid;gap:22px}.row{display:grid;grid-template-columns:190px 1fr 90px;align-items:center;gap:22px}.name,.value{font:760 24px/1 var(--ipw-font-body,Inter,sans-serif)}.value{text-align:right}.track{height:76px;border-radius:18px;background:color-mix(in srgb,var(--ipw-color-border,#d8dde3) 58%,transparent);overflow:hidden}.bar{height:100%;border-radius:18px;background:var(--ipw-color-secondary,#9be1de);transform-origin:left}.row:first-child .bar{background:var(--ipw-color-primary,#20bbc0)}.source{margin-top:50px;color:var(--ipw-color-muted,#68717c);font:700 16px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.08em}</style>
+</head>
+<body>
+<main id="bar-chart-race" data-composition-id="bar-chart-race" data-width="1920" data-height="1080" data-start="0" data-duration="10">
+<header>
+<h1 data-ipw-variable="title" data-ipw-ai-slot="title">
+</h1>
+<div class="period" data-ipw-variable="period" data-ipw-ai-slot="period">
+</div>
+</header>
+<section class="race">
+</section>
+<div class="source" data-ipw-variable="source" data-ipw-ai-slot="source">
+</div>
+</main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js">
+</script>
+<script>window.__timelines=window.__timelines||{};(function(){const root=document.getElementById("bar-chart-race"),values={title:"Category leaders",items:"Atlas:96,Nova:82,Orbit:71,Field:58,Base:44",period:"Q4 · 2026",source:"Source · Product analytics",...(window.__hyperframes?.getVariables?.()??{})};root.querySelectorAll("[data-ipw-variable]").forEach(el=>el.textContent=String(values[el.dataset.ipwVariable]??""));const items=String(values.items).split(",").map(part=>{const split=part.lastIndexOf(":");return{name:part.slice(0,split).trim(),value:Number(part.slice(split+1))}}).filter(item=>item.name&&Number.isFinite(item.value)).sort((a,b)=>b.value-a.value).slice(0,5),max=Math.max(...items.map(item=>item.value),1),race=root.querySelector(".race");items.forEach(item=>{const row=document.createElement("div");row.className="row";row.innerHTML=`<div class="name">
+</div>
+<div class="track">
+<div class="bar">
+</div>
+</div>
+<div class="value">
+</div>`;row.querySelector(".name").textContent=item.name;row.querySelector(".value").textContent=String(item.value);row.querySelector(".bar").style.width=`${Math.max(8,item.value/max*100)}%`;race.append(row)});const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll("header>*"),{y:24,opacity:0,stagger:.1,duration:.5,ease:"power3.out"}).from(root.querySelectorAll(".row"),{y:18,opacity:0,stagger:.1,duration:.38},.18).from(root.querySelectorAll(".bar"),{scaleX:0,stagger:.1,duration:.9,ease:"power3.out"},.25).from(root.querySelector(".source"),{opacity:0,y:10,duration:.35},.9);window.__timelines["bar-chart-race"]=tl;tl.seek(0)})();</script>
+<script>window.__timelines["bar-chart-race"]?.fromTo("#bar-chart-race .period",{x:-8},{x:0,duration:9.2,ease:"none"},0);</script>
+</body>
+</html>

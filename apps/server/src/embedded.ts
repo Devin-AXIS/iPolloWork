@@ -18,8 +18,9 @@ import { startServer, syncAllWorkspacesRuntimeMcpToEngine } from "./server.js";
 import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
 import { keepiPolloWorkRuntimeConfigFileFresh, writeiPolloWorkRuntimeConfigFile } from "./ipollowork-runtime-config.js";
+import { opencodeAuthPathFromEnvironment } from "./opencode-db.js";
 import type { ServeResult } from "./serve-node.js";
-import type { ServerConfig } from "./types.js";
+import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 
 export type EmbeddedServerOptions = CliArgs & {
   /** When true, spawn a managed OpenCode child process. */
@@ -47,6 +48,11 @@ export type EmbeddedServerHandle = {
 
 export async function startEmbeddedServer(options: EmbeddedServerOptions): Promise<EmbeddedServerHandle> {
   const config = await resolveServerConfig(options);
+  // The account credential vault belongs to the managed OpenCode environment,
+  // even when the engine endpoint was already started or supplied explicitly.
+  // Resolve it independently from the child-spawn branch so every harness can
+  // project the same account authorization on Windows, macOS, and Linux.
+  config.opencodeAuthPath ??= opencodeAuthPathFromEnvironment(options.opencodeEnv ?? {}) ?? undefined;
   const serverUrl = `http://${config.host === "0.0.0.0" ? "127.0.0.1" : config.host}:${config.port}`;
 
   // Spawn managed OpenCode if requested and no explicit base URL was provided.
@@ -89,6 +95,7 @@ export async function startEmbeddedServer(options: EmbeddedServerOptions): Promi
       config.opencodeUsername = managedOpencode.username;
       config.opencodePassword = managedOpencode.password;
       for (const entry of config.workspaces) {
+        if ((entry.engineId?.trim() || DEFAULT_ENGINE_ID) !== DEFAULT_ENGINE_ID) continue;
         if (entry.workspaceType === "remote") {
           entry.baseUrl ??= managedOpencode.url;
           entry.opencodeUsername ??= managedOpencode.username;

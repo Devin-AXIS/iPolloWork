@@ -60,6 +60,34 @@ async function waitForEvent(store: ReloadEventStore, workspaceId: string) {
 }
 
 describe("reload watcher fingerprints", () => {
+  test("adds a watcher for a newly created workspace without restarting existing watchers", async () => {
+    await withWorkspace(async (root) => {
+      const { config, workspace } = buildConfig(root);
+      const addedRoot = join(root, "added-workspace");
+      await mkdir(addedRoot, { recursive: true });
+      const addedWorkspace: WorkspaceInfo = {
+        ...workspace,
+        id: "ws_reload_added",
+        name: "Added workspace",
+        path: addedRoot,
+      };
+      const events = new ReloadEventStore();
+      const watcher = startReloadWatchers({ config, reloadEvents: events, debounceMs: 30 });
+      try {
+        config.workspaces = [workspace, addedWorkspace];
+        await watcher.reconcileWorkspaces();
+        await watcher.refreshWorkspace(addedWorkspace.id);
+        await writeFile(join(addedRoot, "opencode.jsonc"), '{ "plugin": ["added"] }\n', "utf8");
+
+        const event = await waitForEvent(events, addedWorkspace.id);
+        expect(event?.reason).toBe("config");
+        expect(event?.trigger?.name).toBe("opencode.jsonc");
+      } finally {
+        await watcher.close();
+      }
+    });
+  });
+
   test("does not emit when a watched file is rewritten with identical content", async () => {
     await withWorkspace(async (root) => {
       const { config, workspace } = buildConfig(root);
@@ -76,7 +104,7 @@ describe("reload watcher fingerprints", () => {
 
         expect(events.list(workspace.id)).toEqual([]);
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -97,7 +125,7 @@ describe("reload watcher fingerprints", () => {
         expect(event?.reason).toBe("config");
         expect(event?.trigger?.name).toBe("opencode.jsonc");
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -116,7 +144,7 @@ describe("reload watcher fingerprints", () => {
         expect(ensured.reloadReasons.sort()).toEqual([]);
         expect(events.list(workspace.id)).toEqual([]);
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });
@@ -137,7 +165,7 @@ describe("reload watcher fingerprints", () => {
         expect(event?.reason).toBe("config");
         expect(event?.trigger?.name).toBe("opencode.jsonc");
       } finally {
-        watcher.close();
+        await watcher.close();
       }
     });
   });

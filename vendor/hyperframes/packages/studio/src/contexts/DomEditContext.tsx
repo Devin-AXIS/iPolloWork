@@ -20,6 +20,8 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomPathOffsetCommit"
   | "handleDomGroupPathOffsetCommit"
   | "handleDomZIndexReorderCommit"
+  | "handleAvatarCutout"
+  | "avatarCutoutProgress"
   | "handleDomBoxSizeCommit"
   | "handleDomRotationCommit"
   | "handleDomManualEditsReset"
@@ -29,6 +31,7 @@ export interface DomEditActionsValue extends Pick<
   | "handleDomAddTextField"
   | "handleDomRemoveTextField"
   | "handleAskAgent"
+  | "openImageWorkbench"
   | "handleAgentModalSubmit"
   | "handleBlockedDomMove"
   | "handleDomManualDragStart"
@@ -148,6 +151,8 @@ export function DomEditProvider({
     handleDomPathOffsetCommit,
     handleDomGroupPathOffsetCommit,
     handleDomZIndexReorderCommit,
+    handleAvatarCutout,
+    avatarCutoutProgress,
     handleDomBoxSizeCommit,
     handleDomRotationCommit,
     handleDomManualEditsReset,
@@ -158,6 +163,7 @@ export function DomEditProvider({
     handleDomAddTextField,
     handleDomRemoveTextField,
     handleAskAgent,
+    openImageWorkbench,
     handleAgentModalSubmit,
     handleBlockedDomMove,
     handleDomManualDragStart,
@@ -238,6 +244,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,
@@ -247,6 +255,7 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       handleAskAgent,
+      openImageWorkbench,
       handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,
@@ -309,6 +318,8 @@ export function DomEditProvider({
       handleDomPathOffsetCommit,
       handleDomGroupPathOffsetCommit,
       handleDomZIndexReorderCommit,
+      handleAvatarCutout,
+      avatarCutoutProgress,
       handleDomBoxSizeCommit,
       handleDomRotationCommit,
       handleDomManualEditsReset,
@@ -318,6 +329,7 @@ export function DomEditProvider({
       handleDomAddTextField,
       handleDomRemoveTextField,
       handleAskAgent,
+      openImageWorkbench,
       handleAgentModalSubmit,
       handleBlockedDomMove,
       handleDomManualDragStart,

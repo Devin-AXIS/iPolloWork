@@ -1,16 +1,17 @@
 /** @jsxImportSource react */
 import {
+  forwardRef,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useReducer,
-  type KeyboardEvent as ReactKeyboardEvent,
   type SetStateAction,
 } from "react";
 import {
   Cloud,
+  Download,
   Edit2,
-  FolderOpen,
   Loader2,
   Package,
   Plus,
@@ -18,7 +19,6 @@ import {
   Search,
   Sparkles,
   Trash2,
-  Upload,
   Users,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
@@ -55,20 +55,31 @@ import {
   tagClass,
 } from "@/react-app/domains/workspace/modal-styles";
 import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
+import {
+  settingsPageDescriptionClass,
+  settingsPageTitleClass,
+  settingsSectionTitleClass,
+  settingsStandardContentClass,
+} from "@/react-app/domains/settings/shell/panel";
+import { SettingsSegmentedTabs } from "@/react-app/domains/settings/settings-segmented-tabs";
 import {
   SelectMenu,
   type SelectMenuOption,
 } from "@/react-app/design-system/select-menu";
 
 type InstallResult = { ok: boolean; message: string };
-type SkillsFilter = "all" | "installed" | "cloud" | "hub";
+type SkillsFilter = "all" | "cloud" | "hub";
+type SkillsStatusFilter = "all" | "installed" | "available" | "update";
 type CloudSkillInstallState = "available" | "installed" | "update" | "missing_local";
 
-const pageTitleClass = "text-[28px] font-semibold tracking-[-0.5px] text-dls-text";
-const sectionTitleClass = "text-[15px] font-medium tracking-[-0.2px] text-dls-text";
+function isSkillsStatusFilter(value: string): value is SkillsStatusFilter {
+  return value === "all" || value === "installed" || value === "available" || value === "update";
+}
+
 const panelCardClass =
-  "rounded-[20px] border border-dls-border bg-dls-surface p-5 transition-all hover:border-dls-border hover:shadow-[0_2px_12px_-4px_rgba(0,0,0,0.06)]";
+  "group rounded-[8px] bg-transparent p-4 transition-colors hover:bg-[#f6f7fb] focus-within:bg-[#f6f7fb] dark:hover:bg-dls-hover dark:focus-within:bg-dls-hover";
 
 const IPOLLOWORK_DEFAULT_SKILL_NAMES = new Set([
   "workspace-guide",
@@ -126,12 +137,20 @@ export type SkillsViewProps = {
   extensions: SkillsExtensionsStore;
   onOpenLink: (url: string) => void;
   createSessionAndOpen: (initialPrompt?: string) => Promise<string | undefined> | string | void;
+  showActions?: boolean;
+};
+
+export type SkillsViewHandle = {
+  refresh: () => void;
+  importLocal: () => void;
+  createInChat: () => void;
 };
 
 type SkillsViewLocalState = {
   uninstallTarget: SkillCard | null;
   searchQuery: string;
   activeFilter: SkillsFilter;
+  statusFilter: SkillsStatusFilter;
   customRepoOpen: boolean;
   customRepoOwner: string;
   customRepoName: string;
@@ -164,6 +183,7 @@ const initialSkillsViewLocalState: SkillsViewLocalState = {
   uninstallTarget: null,
   searchQuery: "",
   activeFilter: "all",
+  statusFilter: "all",
   customRepoOpen: false,
   customRepoOwner: "",
   customRepoName: "",
@@ -228,7 +248,7 @@ function skillsViewLocalReducer(
   }
 }
 
-export function SkillsView(props: SkillsViewProps) {
+export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function SkillsView(props, ref) {
   const { extensions } = props;
   const [localState, dispatchLocal] = useReducer(
     skillsViewLocalReducer,
@@ -238,6 +258,7 @@ export function SkillsView(props: SkillsViewProps) {
     uninstallTarget,
     searchQuery,
     activeFilter,
+    statusFilter,
     customRepoOpen,
     customRepoOwner,
     customRepoName,
@@ -266,6 +287,7 @@ export function SkillsView(props: SkillsViewProps) {
   const setUninstallTarget = (value: SetStateAction<SkillCard | null>) => setLocal("uninstallTarget", value);
   const setSearchQuery = (value: SetStateAction<string>) => setLocal("searchQuery", value);
   const setActiveFilter = (value: SetStateAction<SkillsFilter>) => setLocal("activeFilter", value);
+  const setStatusFilter = (value: SetStateAction<SkillsStatusFilter>) => setLocal("statusFilter", value);
   const setCustomRepoOpen = (value: SetStateAction<boolean>) => setLocal("customRepoOpen", value);
   const setCustomRepoOwner = (value: SetStateAction<string>) => setLocal("customRepoOwner", value);
   const setCustomRepoName = (value: SetStateAction<string>) => setLocal("customRepoName", value);
@@ -441,7 +463,27 @@ export function SkillsView(props: SkillsViewProps) {
     [hubRepos],
   );
 
-  const showInstalledSection = activeFilter === "all" || activeFilter === "installed";
+  const statusFilterOptions = useMemo<SelectMenuOption[]>(
+    () => [
+      { value: "all", label: t("skills.filter_status_all") },
+      { value: "installed", label: t("skills.filter_installed") },
+      { value: "available", label: t("skills.filter_status_available") },
+      { value: "update", label: t("skills.filter_status_update") },
+    ],
+    [],
+  );
+
+  const visibleCloudOrgSkills = useMemo(() => {
+    if (statusFilter === "all") return filteredCloudOrgSkills;
+    return filteredCloudOrgSkills.filter((skill) => {
+      const state = cloudSkillInstallState(skill);
+      if (statusFilter === "available") return state === "available" || state === "missing_local";
+      return state === statusFilter;
+    });
+  }, [cloudSkillInstallState, filteredCloudOrgSkills, statusFilter]);
+
+  const visibleHubSkills = statusFilter === "all" || statusFilter === "available" ? filteredHubSkills : [];
+  const showInstalledSection = activeFilter === "all" && (statusFilter === "all" || statusFilter === "installed");
   const showCloudSection = activeFilter === "all" || activeFilter === "cloud";
   const showHubSection = activeFilter === "all" || activeFilter === "hub";
   const canCreateInChat = !props.busy && (props.canInstallSkillCreator || props.canUseDesktopTools);
@@ -542,6 +584,16 @@ export function SkillsView(props: SkillsViewProps) {
     }
     await Promise.resolve(props.createSessionAndOpen("/skill-creator"));
   }, [installSkillCreator, props, skillCreatorInstalled]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      refresh: refreshCatalogs,
+      importLocal: () => runDesktopAction(extensions.importLocalSkill),
+      createInChat: () => void handleNewSkill(),
+    }),
+    [extensions.importLocalSkill, handleNewSkill, refreshCatalogs, runDesktopAction],
+  );
 
   const openCloudSignIn = useCallback(() => {
     const base = readDenSettings().baseUrl?.trim() || DEFAULT_DEN_BASE_URL;
@@ -675,86 +727,84 @@ export function SkillsView(props: SkillsViewProps) {
       (IPOLLOWORK_DEFAULT_SKILL_NAMES.has(normalizedName) || normalizedName.endsWith("-creator"));
   };
 
-  const handleSkillCardKeyDown = (
-    event: ReactKeyboardEvent<HTMLDivElement>,
-    skill: SkillCard,
-  ) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
-    event.preventDefault();
-    void openSkill(skill);
-  };
-
   return (
-    <section className="space-y-8 max-w-3xl w-full">
-      <div className="space-y-6">
+    <section data-testid="settings-standard-page" className={`${settingsStandardContentClass} space-y-8`}>
+      <div className="space-y-4">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            {props.showHeader !== false ? <h2 className={pageTitleClass}>{t("skills.title")}</h2> : null}
-            <p className="mt-2 max-w-2xl text-[14px] leading-relaxed text-dls-secondary">
+            {props.showHeader !== false ? <h2 className={settingsPageTitleClass}>{t("skills.title")}</h2> : null}
+            <p className={`${settingsPageDescriptionClass} max-w-[714px]`}>
               {t("skills.worker_profile_desc")}
             </p>
           </div>
 
-          <div className="flex flex-wrap gap-3 lg:justify-end">
-            <button
-              type="button"
-              onClick={() => runDesktopAction(extensions.importLocalSkill)}
-              disabled={props.busy || !props.canUseDesktopTools}
-              className={pillSecondaryClass}
-            >
-              <Upload size={14} />
-              {t("skills.import_local_skill")}
-            </button>
-            <button
-              type="button"
-              onClick={() => runDesktopAction(extensions.revealSkillsFolder)}
-              disabled={props.busy || !props.canUseDesktopTools}
-              className={pillSecondaryClass}
-            >
-              <FolderOpen size={14} />
-              {t("skills.reveal_folder")}
-            </button>
-            <button type="button" onClick={() => void handleNewSkill()} disabled={!canCreateInChat} className={pillPrimaryClass}>
-              <Sparkles size={14} />
-              {t("skills.create_in_chat")}
-            </button>
-          </div>
+          {props.showActions === false ? null : (
+            <div className="flex flex-wrap gap-4 lg:justify-end">
+              <Button variant="outline" onClick={refreshCatalogs} disabled={props.busy}>
+                <RefreshCw size={14} />
+                {t("common.refresh")}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => runDesktopAction(extensions.importLocalSkill)}
+                disabled={props.busy || !props.canUseDesktopTools}
+              >
+                <Download size={14} />
+                {t("skills.import_local_skill")}
+              </Button>
+              <Button onClick={() => void handleNewSkill()} disabled={!canCreateInChat}>
+                <Sparkles size={14} />
+                {t("skills.create_in_chat")}
+              </Button>
+            </div>
+          )}
         </div>
 
-        <div className="flex flex-col gap-3 rounded-[20px] border border-dls-border bg-dls-surface p-4 md:flex-row md:items-center md:justify-between">
-          <div className="relative min-w-0 flex-1">
-            <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-dls-secondary" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.currentTarget.value)}
-              placeholder={t("skills.catalog_search_placeholder")}
-              className="w-full rounded-xl border border-dls-border bg-dls-surface py-3 pl-11 pr-4 text-[14px] text-dls-text focus:outline-none focus:ring-2 focus:ring-[rgba(var(--dls-accent-rgb),0.12)]"
+        <div className="relative min-w-0">
+          <Search size={16} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-dls-secondary" />
+          <input
+            data-testid="skills-library-search"
+            type="text"
+            value={searchQuery}
+            onChange={(event) => setSearchQuery(event.currentTarget.value)}
+            placeholder={t("skills.catalog_search_placeholder")}
+            className="h-[34px] w-full rounded-[8px] border border-transparent bg-[#f5f6f9] pl-[42px] pr-4 text-[13px] text-dls-text shadow-none outline-none transition-colors placeholder:text-[#a2a6af] focus:border-ring focus:ring-3 focus:ring-ring/30 dark:bg-dls-hover dark:placeholder:text-dls-secondary"
+          />
+        </div>
+
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div data-testid="skills-library-source">
+            <SettingsSegmentedTabs
+              value={activeFilter}
+              ariaLabel={t("skills.source_label")}
+              items={[
+                { value: "all", label: t("skills.filter_all") },
+                { value: "cloud", label: t("skills.filter_cloud") },
+                { value: "hub", label: t("skills.filter_hub") },
+              ]}
+              onValueChange={setActiveFilter}
             />
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
-            {(["all", "installed", "cloud", "hub"] as SkillsFilter[]).map((filter) => (
-              <button
-                key={filter}
-                type="button"
-                onClick={() => setActiveFilter(filter)}
-                className={activeFilter === filter ? pillPrimaryClass : pillGhostClass}
-              >
-                {filter === "all"
-                  ? t("skills.filter_all")
-                  : filter === "installed"
-                    ? t("skills.filter_installed")
-                    : filter === "cloud"
-                      ? t("skills.filter_cloud")
-                      : t("skills.filter_hub")}
-              </button>
-            ))}
-            <button type="button" onClick={refreshCatalogs} disabled={props.busy} className={pillSecondaryClass}>
-              <RefreshCw size={14} />
-              {t("common.refresh")}
-            </button>
-          </div>
+          <Select
+            value={statusFilter}
+            onValueChange={(value) => {
+              if (value && isSkillsStatusFilter(value)) setStatusFilter(value);
+            }}
+          >
+            <SelectTrigger
+              data-testid="skills-status-filter"
+              aria-label={t("skills.filter_status_all")}
+              className="w-[132px] shrink-0"
+            >
+              <SelectValue>{statusFilterOptions.find((option) => option.value === statusFilter)?.label}</SelectValue>
+            </SelectTrigger>
+            <SelectContent align="end">
+              {statusFilterOptions.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -776,126 +826,86 @@ export function SkillsView(props: SkillsViewProps) {
       ) : null}
 
       {showInstalledSection ? (
-        <div className="space-y-4">
-          <div className="flex items-end justify-between gap-3">
-            <div>
-              <h3 className={sectionTitleClass}>{t("skills.installed")}</h3>
-              <p className="mt-1 text-[13px] text-dls-secondary">{t("skills.installed_desc")}</p>
+        <div className="space-y-3">
+          <div data-testid="skills-installed-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
+            <div className="space-y-1.5">
+              <h3 className={settingsSectionTitleClass}>{t("skills.installed")}</h3>
+              <p className={settingsPageDescriptionClass}>{t("skills.installed_desc")}</p>
             </div>
-            <div className="text-[12px] text-dls-secondary">{t("skills.shown_count", undefined, { count: filteredSkills.length })}</div>
+            <span className="text-[13px] text-dls-secondary">{t("skills.shown_count", undefined, { count: filteredSkills.length })}</span>
           </div>
 
           {filteredSkills.length === 0 ? (
-            <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-8 text-[14px] text-dls-secondary">
+            <div className="rounded-[8px] border border-dashed border-dls-border px-5 py-8 text-[14px] text-dls-secondary">
               {t("skills.no_skills")}
             </div>
           ) : (
-            <div className="rounded-[24px] bg-dls-hover p-4">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {filteredSkills.map((skill) => (
-                  <div
-                    key={skill.path}
-                    role="button"
-                    tabIndex={0}
-                    className={`${panelCardClass} flex cursor-pointer flex-col gap-4 text-left`}
+            <div data-testid="skills-installed-grid" className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-x-8">
+              {filteredSkills.map((skill) => (
+                <article key={skill.path} data-testid="skill-library-card" className={`${panelCardClass} flex min-w-0 flex-col gap-4`}>
+                  <button
+                    type="button"
+                    className="flex min-w-0 items-center gap-4 rounded-[8px] text-left outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
                     onClick={() => void openSkill(skill)}
-                    onKeyDown={(event) => handleSkillCardKeyDown(event, skill)}
                   >
-                    <div className="flex min-w-0 gap-4">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover">
-                        <Package size={20} className="text-dls-secondary" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <h4 className="truncate text-[14px] font-semibold text-dls-text">{skill.name}</h4>
-                          {isiPolloWorkInjectedSkill(skill) ? <span className={tagClass}>iPolloWork</span> : null}
-                        </div>
-                        <p className="mt-2 line-clamp-2 text-[13px] leading-relaxed text-dls-secondary">
-                          {skill.description || t("skills.no_description")}
-                        </p>
-                      </div>
-                    </div>
+                    <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-[#f6f7fb] text-dls-secondary dark:bg-dls-hover">
+                      {skill.name.toLowerCase().includes("figma") ? (
+                        <img src="/ext-figma.svg" alt="" className="size-7 object-contain" />
+                      ) : (
+                        <Package size={19} />
+                      )}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-col gap-1">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <span className="truncate text-ui-body font-semibold leading-5 tracking-[0.1px] text-dls-text">{skill.name}</span>
+                        {isiPolloWorkInjectedSkill(skill) ? <span className={tagClass}>iPolloWork</span> : null}
+                      </span>
+                      <span className="line-clamp-1 text-[11px] leading-[15px] text-dls-secondary">
+                        {skill.description || t("skills.no_description")}
+                      </span>
+                    </span>
+                  </button>
 
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-t border-dls-border pt-4">
-                      <span className={tagClass}>{t("skills.installed_status")}</span>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          className={pillGhostClass}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            openShareLink(skill);
-                          }}
-                          disabled={props.busy}
-                          title={t("skills.share_option_team_title")}
-                        >
-                          <Users size={14} />
-                          {t("skills.share_option_team_title")}
-                        </button>
-                        <button
-                          type="button"
-                          className={pillSecondaryClass}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            void openSkill(skill);
-                          }}
-                          disabled={props.busy}
-                          title={t("common.edit")}
-                        >
-                          <Edit2 size={14} />
-                          {t("common.edit")}
-                        </button>
-                        <button
-                          type="button"
-                          className={pillGhostClass}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            if (props.busy || !props.canUseDesktopTools) {
-                              if (!props.canUseDesktopTools) toast.warning(t("skills.desktop_required"));
-                              return;
-                            }
-                            setUninstallTarget(skill);
-                          }}
-                          disabled={props.busy || !props.canUseDesktopTools}
-                          title={t("skills.uninstall")}
-                        >
-                          <Trash2 size={14} />
-                          {t("common.remove")}
-                        </button>
-                      </div>
+                  <div className="flex min-w-0 items-center justify-between gap-3">
+                    <span className="shrink-0 text-ui-caption text-dls-secondary/60">{t("skills.installed_status")}</span>
+                    <div className="flex min-w-0 items-center justify-end gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => openShareLink(skill)}
+                        disabled={props.busy}
+                        title={t("skills.share_option_team_title")}
+                      >
+                        <Users size={14} />
+                        {t("skills.share_option_team_title")}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void openSkill(skill)}
+                        disabled={props.busy}
+                        title={t("common.edit")}
+                      >
+                        <Edit2 size={14} />
+                        {t("common.edit")}
+                      </Button>
                     </div>
                   </div>
-                ))}
-              </div>
+                </article>
+              ))}
             </div>
           )}
         </div>
       ) : null}
 
       {showCloudSection ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="mb-0.5 text-[12px] text-dls-secondary">{cloudOrgLabel}</p>
-              <h3 className={sectionTitleClass}>{t("skills.cloud_section_title")}</h3>
-              <p className="mt-1 max-w-2xl text-[13px] leading-relaxed text-dls-secondary">
-                {t("skills.cloud_section_subtitle")}
-              </p>
+        <div className="space-y-3">
+          <div data-testid="skills-cloud-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
+            <div className="min-w-0 space-y-1.5">
+              <h3 className={settingsSectionTitleClass}>{t("skills.cloud_section_title")}</h3>
+              <p className={settingsPageDescriptionClass}>{t("skills.cloud_section_subtitle")}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => void extensions.refreshCloudOrgSkills({ force: true })}
-                disabled={props.busy}
-                className={pillSecondaryClass}
-              >
-                <RefreshCw size={14} />
-                {t("skills.cloud_refresh")}
-              </button>
-            </div>
+            <span className="max-w-[40%] shrink-0 truncate text-[13px] text-dls-secondary">{cloudOrgLabel}</span>
           </div>
 
           {!cloudSessionReady ? (
@@ -917,19 +927,23 @@ export function SkillsView(props: SkillsViewProps) {
           ) : (
             <>
               {cloudOrgSkillsStatus ? (
-                <div className="whitespace-pre-wrap break-words rounded-[20px] border border-dls-border bg-dls-hover px-5 py-4 text-[13px] text-dls-secondary">
+                <div
+                  data-testid="skills-cloud-error"
+                  role="alert"
+                  className={modalNoticeErrorClass}
+                >
                   {cloudOrgSkillsStatus}
                 </div>
               ) : null}
 
-              {filteredCloudOrgSkills.length === 0 ? (
+              {visibleCloudOrgSkills.length === 0 ? (
                 <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-8 text-[14px] text-dls-secondary">
                   {cloudOrgSkills.length === 0 ? t("skills.cloud_org_empty") : t("skills.cloud_no_search_matches")}
                 </div>
               ) : (
                 <div className="rounded-[24px] bg-dls-hover p-4">
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {filteredCloudOrgSkills.map((skill) => {
+                  {visibleCloudOrgSkills.map((skill) => {
                       const state = cloudSkillInstallState(skill);
                       const installedName = importedCloudSkills[skill.id]?.installedName ?? null;
                       return (
@@ -988,13 +1002,13 @@ export function SkillsView(props: SkillsViewProps) {
       ) : null}
 
       {showHubSection ? (
-        <div className="space-y-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <h3 className={sectionTitleClass}>{t("skills.available_from_hub")}</h3>
-              <p className="mt-1 text-[13px] text-dls-secondary">{t("skills.hub_desc")}</p>
+        <div className="space-y-3">
+          <div data-testid="skills-hub-section" className="flex items-end justify-between gap-3 border-b border-dls-border pb-2">
+            <div className="min-w-0 space-y-1.5">
+              <h3 className={settingsSectionTitleClass}>{t("skills.available_from_hub")}</h3>
+              <p className={settingsPageDescriptionClass}>{t("skills.hub_desc")}</p>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-testid="skills-hub-header-actions" className="flex shrink-0 flex-wrap items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -1011,15 +1025,6 @@ export function SkillsView(props: SkillsViewProps) {
               <button type="button" onClick={openCustomRepoModal} disabled={props.busy} className={pillSecondaryClass}>
                 <Plus size={14} />
                 {t("skills.add_git_repo")}
-              </button>
-              <button
-                type="button"
-                onClick={() => void extensions.refreshHubSkills({ force: true })}
-                disabled={props.busy}
-                className={pillSecondaryClass}
-              >
-                <RefreshCw size={14} />
-                {t("skills.refresh_hub")}
               </button>
             </div>
           </div>
@@ -1064,19 +1069,19 @@ export function SkillsView(props: SkillsViewProps) {
           </div>
 
           {hubSkillsStatus ? (
-            <div className="whitespace-pre-wrap break-words rounded-[20px] border border-dls-border bg-dls-hover px-5 py-4 text-[13px] text-dls-secondary">
+            <div data-testid="skills-hub-error" role="alert" className={modalNoticeErrorClass}>
               {hubSkillsStatus}
             </div>
           ) : null}
 
-          {filteredHubSkills.length === 0 ? (
+          {visibleHubSkills.length === 0 ? (
             <div className="rounded-[20px] border border-dashed border-dls-border bg-dls-surface px-5 py-8 text-[14px] text-dls-secondary">
               {hubRepo ? t("skills.no_hub_skills") : t("skills.no_hub_repo_selected")}
             </div>
           ) : (
             <div className="rounded-[24px] bg-dls-hover p-4">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {filteredHubSkills.map((skill) => (
+                {visibleHubSkills.map((skill) => (
                   <div key={`${skill.source.owner}/${skill.source.repo}/${skill.name}`} className={`${panelCardClass} flex flex-col gap-4 text-left`}>
                     <div className="flex min-w-0 gap-4">
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-dls-hover">
@@ -1137,22 +1142,11 @@ export function SkillsView(props: SkillsViewProps) {
       >
         <DialogContent className="flex max-h-[min(650px,calc(100dvh-160px))] min-h-0 w-full max-w-4xl flex-col overflow-hidden sm:max-w-4xl">
             <DialogHeader>
-              <div className="flex min-w-0 items-center gap-3">
-                <DialogTitle className="min-w-0 flex-1 truncate">{selectedSkill?.name}</DialogTitle>
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    disabled={!selectedDirty || props.busy}
-                    onClick={() => void saveSelectedSkill()}
-                  >
-                    {t("common.save")}
-                  </Button>
-                </div>
-              </div>
+              <DialogTitle className="truncate pr-10">{selectedSkill?.name}</DialogTitle>
             </DialogHeader>
 
             <div className="min-h-0 flex-1 overflow-y-auto">
-              {selectedError ? <div className="mb-3 rounded-xl border border-red-7/20 bg-red-1/40 px-4 py-3 text-xs text-red-12">{selectedError}</div> : null}
+              {selectedError ? <div role="alert" className={`mb-3 ${modalNoticeErrorClass}`}>{selectedError}</div> : null}
               {selectedLoading ? (
                 <div className="text-xs text-dls-secondary">{t("skills.loading")}</div>
               ) : (
@@ -1167,6 +1161,39 @@ export function SkillsView(props: SkillsViewProps) {
                 />
               )}
             </div>
+
+            <DialogFooter
+              data-testid="skill-editor-actions"
+              className="flex-row items-center justify-between sm:justify-between"
+            >
+              <Button
+                data-testid="skill-editor-uninstall"
+                type="button"
+                variant="destructive"
+                disabled={props.busy || !props.canUseDesktopTools}
+                onClick={() => {
+                  const target = selectedSkill;
+                  if (!target) return;
+                  setUninstallTarget(target);
+                  setSelectedSkill(null);
+                  setSelectedContent("");
+                  setSelectedDirty(false);
+                  setSelectedError(null);
+                  setSelectedLoading(false);
+                }}
+              >
+                <Trash2 size={14} />
+                {t("skills.uninstall")}
+              </Button>
+              <Button
+                data-testid="skill-editor-save"
+                type="button"
+                disabled={!selectedDirty || props.busy}
+                onClick={() => void saveSelectedSkill()}
+              >
+                {t("common.save")}
+              </Button>
+            </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1210,7 +1237,7 @@ export function SkillsView(props: SkillsViewProps) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={tagClass}>{shareTeamOrgLabel}</span>
                 </div>
-                {shareTeamError?.trim() ? <div className={`mt-4 ${modalNoticeErrorClass}`}>{shareTeamError}</div> : null}
+                {shareTeamError?.trim() ? <div role="alert" className={`mt-4 ${modalNoticeErrorClass}`}>{shareTeamError}</div> : null}
                 {shareTeamSuccess?.trim() ? <div className={`mt-4 ${modalNoticeSuccessClass}`}>{shareTeamSuccess}</div> : null}
                 {shareCloudSignedIn && shareTeamDisabledReason?.trim() ? (
                   <div className="mt-4 text-[12px] text-dls-secondary">{shareTeamDisabledReason}</div>
@@ -1309,7 +1336,7 @@ export function SkillsView(props: SkillsViewProps) {
                 />
               </label>
 
-              {customRepoError ? <div className="rounded-xl border border-red-7/20 bg-red-1/40 px-4 py-3 text-xs text-red-12">{customRepoError}</div> : null}
+              {customRepoError ? <div role="alert" className={modalNoticeErrorClass}>{customRepoError}</div> : null}
             </div>
             <DialogFooter>
               <DialogClose render={<Button variant="outline" />}>
@@ -1323,6 +1350,6 @@ export function SkillsView(props: SkillsViewProps) {
       </Dialog>
     </section>
   );
-}
+});
 
 export default SkillsView;

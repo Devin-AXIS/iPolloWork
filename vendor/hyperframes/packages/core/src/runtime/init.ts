@@ -21,6 +21,8 @@ import { forceDispatchSeekEvent } from "./adapters/seek-dispatch";
 import { createWaapiAdapter } from "./adapters/waapi";
 import {
   refreshRuntimeMediaCache,
+  observeAvatarCutoutLayers,
+  syncAvatarCutoutLayers,
   resolveRuntimeMediaClipDuration,
   syncRuntimeMedia,
 } from "./media";
@@ -33,6 +35,7 @@ import { collectRuntimeTimelinePayload } from "./timeline";
 import { createRuntimeStartTimeResolver } from "./startResolver";
 import { createClipTree } from "./clipTree";
 import { loadExternalCompositions, loadInlineTemplateCompositions } from "./compositionLoader";
+import { installAspectFitCompositionHosts } from "./compositionAspectFit";
 import { applyCaptionOverrides } from "./captionOverrides";
 import { applyPositionEdits, installPositionEditsSeekReapply } from "./positionEdits";
 import { applyVariableBindings } from "./applyVariableBindings";
@@ -48,6 +51,7 @@ import type {
   RuntimeTimelineLike,
 } from "./types";
 import type { PlayerAPI } from "../core.types";
+import { frameAlignedDurationSeconds, lastVideoFrameTime } from "./protocol";
 import { swallow } from "./diagnostics";
 import { shouldAttemptPeriodicTimelineBind } from "./timelineRebindPolicy";
 
@@ -243,6 +247,7 @@ export function initSandboxRuntimeModular(): void {
   const registerRuntimeCleanup = (callback: () => void) => {
     runtimeCleanupCallbacks.push(callback);
   };
+  registerRuntimeCleanup(observeAvatarCutoutLayers());
   const postRuntimeDiagnosticOnce = (
     code: string,
     details: Record<string, RuntimeJson>,
@@ -642,6 +647,14 @@ export function initSandboxRuntimeModular(): void {
     }
   }
   let externalCompositionsReady = !hasExternalCompositions && !hasInlineTemplateCompositions;
+  const aspectFitCleanups: Array<() => void> = [];
+  const refreshAspectFitCompositionHosts = () => {
+    aspectFitCleanups.push(installAspectFitCompositionHosts(document));
+  };
+  refreshAspectFitCompositionHosts();
+  registerRuntimeCleanup(() => {
+    for (const cleanup of aspectFitCleanups.splice(0)) cleanup();
+  });
 
   const getTimelineDurationSeconds = (timeline: RuntimeTimelineLike | null): number | null => {
     if (!timeline || typeof timeline.duration !== "function") return null;
@@ -806,7 +819,7 @@ export function initSandboxRuntimeModular(): void {
     } else {
       safeDuration = fallbackDuration;
     }
-    return safeDuration > 0 ? Math.max(0, safeDuration) : 0;
+    return safeDuration > 0 ? frameAlignedDurationSeconds(safeDuration, state.canonicalFps) : 0;
   };
 
   const resolveRootTimelineFromDocument = (): TimelineResolution => {
@@ -1382,6 +1395,7 @@ export function initSandboxRuntimeModular(): void {
     childrenBound = false;
     bindRootTimelineIfAvailable();
     syncTimedElementVisibility(state.currentTime);
+    syncAvatarCutoutLayers();
   };
 
   const emitRootStageLayoutDiagnostics = () => {
@@ -1774,6 +1788,9 @@ export function initSandboxRuntimeModular(): void {
   const dataHiddenDisplayNodes = new WeakSet<HTMLElement>();
 
   const syncTimedElementVisibility = (currentTime: number) => {
+    if (clock.getDuration() > 0) {
+      currentTime = lastVideoFrameTime(currentTime, clock.getDuration(), state.canonicalFps);
+    }
     const visibilityNodes = Array.from(document.querySelectorAll("[data-start]"));
     const rootComp = resolveRootCompositionElement();
     for (const rawNode of visibilityNodes) {
@@ -1832,6 +1849,7 @@ export function initSandboxRuntimeModular(): void {
   };
 
   const syncMediaForCurrentState = () => {
+    syncAvatarCutoutLayers();
     const resolveMediaCompositionContext = (element: HTMLVideoElement | HTMLAudioElement) => {
       const compositionRoot = element.closest("[data-composition-id]");
       const inheritedStart = compositionRoot ? resolveStartForElement(compositionRoot, 0) : null;
@@ -2019,7 +2037,7 @@ export function initSandboxRuntimeModular(): void {
 
     liveRootDurationOverrideSeconds = nextDuration;
     rootEl?.setAttribute("data-duration", String(nextDuration));
-    clock.setDuration(nextDuration);
+    clock.setDuration(frameAlignedDurationSeconds(nextDuration, state.canonicalFps));
     postTimeline();
     postState(true);
   };
@@ -2135,6 +2153,7 @@ export function initSandboxRuntimeModular(): void {
       .then(() => loadInlineTemplateCompositions(compositionLoaderParams))
       .finally(() => {
         externalCompositionsReady = true;
+        refreshAspectFitCompositionHosts();
         bindMediaMetadataListeners();
         installAssetFailureDiagnostics();
         applyCaptionOverrides();
@@ -2199,7 +2218,9 @@ export function initSandboxRuntimeModular(): void {
       } else {
         const rootEl = resolveRootCompositionElement();
         const declaredDur = Number(rootEl?.getAttribute("data-duration") ?? 0);
-        if (declaredDur > 0) clock.setDuration(declaredDur);
+        if (declaredDur > 0) {
+          clock.setDuration(frameAlignedDurationSeconds(declaredDur, state.canonicalFps));
+        }
       }
       pauseTimelineIfPossible(tl);
       if (!clock.play()) return;
@@ -2339,6 +2360,7 @@ export function initSandboxRuntimeModular(): void {
     onDeterministicPause: () => runAdapters("pause"),
     onDeterministicPlay: () => runAdapters("play"),
     onRenderFrameSeek: () => {
+      syncAvatarCutoutLayers();
       colorGrading.redraw();
     },
     onShowNativeVideos: () => {},
@@ -2746,6 +2768,9 @@ export function initSandboxRuntimeModular(): void {
     t: number,
     opts?: { activateChildren?: boolean; suppressEvents?: boolean },
   ) => {
+    if (clock.getDuration() > 0) {
+      t = lastVideoFrameTime(t, clock.getDuration(), state.canonicalFps);
+    }
     const tl = state.capturedTimeline;
     const suppressEvents = opts?.suppressEvents === true;
     if (tl) {

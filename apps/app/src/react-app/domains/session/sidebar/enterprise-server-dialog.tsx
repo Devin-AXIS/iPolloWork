@@ -1,11 +1,12 @@
 /** @jsxImportSource react */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   joinEnterpriseWithCode,
   type EnterpriseConnection,
 } from "../../../../app/lib/enterprise-connections";
 import { readDenSettings } from "../../../../app/lib/den";
+import { denSessionUpdatedEvent } from "../../../../app/lib/den-session-events";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -22,6 +23,7 @@ type EnterpriseServerDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onConnected: (connection: EnterpriseConnection) => void;
+  onSignInRequired: () => void;
 };
 
 function connectionErrorMessage(error: unknown) {
@@ -54,41 +56,73 @@ function connectionErrorMessage(error: unknown) {
   return t("enterprise_connection.error_unreachable");
 }
 
-export function EnterpriseServerDialog(props: EnterpriseServerDialogProps) {
+export function EnterpriseServerDialog({
+  open,
+  onConnected,
+  onOpenChange,
+  onSignInRequired,
+}: EnterpriseServerDialogProps) {
   const [serverUrl, setServerUrl] = useState("");
   const [joinCode, setJoinCode] = useState("");
   const [connecting, setConnecting] = useState(false);
+  const [awaitingSignIn, setAwaitingSignIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!props.open) return;
+    if (!open) return;
     setServerUrl("");
     setJoinCode("");
+    setAwaitingSignIn(false);
     setError(null);
-  }, [props.open]);
+  }, [open]);
 
-  const submit = async () => {
+  const submit = useCallback(async () => {
+    const settings = readDenSettings();
+    if (!settings.authToken?.trim()) {
+      setAwaitingSignIn(true);
+      setError(null);
+      onSignInRequired();
+      return;
+    }
+
+    setAwaitingSignIn(false);
     setConnecting(true);
     setError(null);
     try {
-      const settings = readDenSettings();
       const connection = await joinEnterpriseWithCode({
         joinCode,
         enterpriseBaseUrl: serverUrl,
         cloudBaseUrl: settings.baseUrl,
         cloudToken: settings.authToken ?? "",
       });
-      props.onConnected(connection);
-      props.onOpenChange(false);
+      onConnected(connection);
+      onOpenChange(false);
     } catch (connectError) {
       setError(connectionErrorMessage(connectError));
     } finally {
       setConnecting(false);
     }
-  };
+  }, [joinCode, onConnected, onOpenChange, onSignInRequired, serverUrl]);
+
+  useEffect(() => {
+    if (!open || !awaitingSignIn) return;
+
+    const resumeJoin = (event: WindowEventMap[typeof denSessionUpdatedEvent]) => {
+      if (event.detail?.status === "success") {
+        void submit();
+        return;
+      }
+      if (event.detail?.status !== "error") return;
+      setAwaitingSignIn(false);
+      setError(t("enterprise_connection.error_signin"));
+    };
+
+    window.addEventListener(denSessionUpdatedEvent, resumeJoin);
+    return () => window.removeEventListener(denSessionUpdatedEvent, resumeJoin);
+  }, [awaitingSignIn, open, submit]);
 
   return (
-    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-full max-w-md sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{t("enterprise_connection.title")}</DialogTitle>
@@ -99,7 +133,7 @@ export function EnterpriseServerDialog(props: EnterpriseServerDialogProps) {
           className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!connecting && serverUrl.trim() && joinCode.trim()) void submit();
+            if (!connecting && !awaitingSignIn && serverUrl.trim() && joinCode.trim()) void submit();
           }}
         >
           <TextInput
@@ -108,7 +142,7 @@ export function EnterpriseServerDialog(props: EnterpriseServerDialogProps) {
             value={serverUrl}
             onChange={(event) => setServerUrl(event.currentTarget.value)}
             placeholder={t("enterprise_connection.url_placeholder")}
-            disabled={connecting}
+            disabled={connecting || awaitingSignIn}
             aria-invalid={error === t("enterprise_connection.error_url") ? true : undefined}
             autoCapitalize="none"
             autoCorrect="off"
@@ -121,13 +155,17 @@ export function EnterpriseServerDialog(props: EnterpriseServerDialogProps) {
             value={joinCode}
             onChange={(event) => setJoinCode(event.currentTarget.value.toUpperCase())}
             placeholder={t("enterprise_connection.code_placeholder")}
-            disabled={connecting}
+            disabled={connecting || awaitingSignIn}
             aria-invalid={error ? true : undefined}
             autoCapitalize="characters"
             autoCorrect="off"
             spellCheck={false}
           />
-          {error ? (
+          {awaitingSignIn ? (
+            <p className="text-xs text-muted-foreground" role="status" aria-live="polite">
+              {t("enterprise_connection.signin_to_continue")}
+            </p>
+          ) : error ? (
             <p className="text-xs text-destructive" role="alert">{error}</p>
           ) : null}
 
@@ -135,13 +173,18 @@ export function EnterpriseServerDialog(props: EnterpriseServerDialogProps) {
             <Button
               type="button"
               variant="outline"
-              onClick={() => props.onOpenChange(false)}
+              onClick={() => onOpenChange(false)}
               disabled={connecting}
             >
               {t("common.cancel")}
             </Button>
-            <Button type="submit" disabled={connecting || !serverUrl.trim() || !joinCode.trim()}>
-              {connecting
+            <Button
+              type="submit"
+              disabled={connecting || awaitingSignIn || !serverUrl.trim() || !joinCode.trim()}
+            >
+              {awaitingSignIn
+                ? t("enterprise_connection.waiting_for_signin")
+                : connecting
                 ? t("enterprise_connection.connecting")
                 : t("enterprise_connection.connect")}
             </Button>

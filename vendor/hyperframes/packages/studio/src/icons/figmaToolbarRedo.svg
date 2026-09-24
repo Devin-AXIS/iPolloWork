@@ -1,1 +1,5 @@
-<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M10 2.66667L13.3333 6L10 9.33333M13.3333 6H6.33333C4.30829 6 2.66667 7.64162 2.66667 9.66667C2.66667 11.6917 4.30829 13.3333 6.33333 13.3333H8.66667" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/></svg>
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="lucide/redo-2">
+<path id="Vector" d="M10 2.66667L13.3333 6L10 9.33333M13.3333 6H6.33333C5.36087 6 4.42824 6.38631 3.74061 7.07394C3.05298 7.76158 2.66667 8.69421 2.66667 9.66667C2.66667 10.1482 2.76151 10.625 2.94577 11.0698C3.13004 11.5147 3.40013 11.9189 3.74061 12.2594C4.42824 12.947 5.36087 13.3333 6.33333 13.3333H8.66667" stroke="#858A94" stroke-width="1.33333" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>

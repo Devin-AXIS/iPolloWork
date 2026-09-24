@@ -11,8 +11,8 @@ import {
 import {
   ipolloworkExtensionsPreviewPluginPath,
   ipolloworkPluginPath,
-  opencodeChromeDevtoolsPluginPath,
 } from "./ipollowork-extensions-plugin-path.js";
+import { ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
 
 async function withWorkspace(fn: (root: string) => Promise<void>) {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-workspace-init-"));
@@ -53,7 +53,8 @@ describe("ensureWorkspaceFiles", () => {
     const pluginPath = ipolloworkExtensionsPreviewPluginPath();
     const plugin = await readFile(pluginPath, "utf8");
     expect(pluginPath).toContain(join("opencode-plugins", "ipollowork-extensions-preview.ts"));
-    expect(plugin).toContain("ipollowork_extension_call");
+    expect(plugin).toContain("ENGINE_HOST_TOOL_NAMES.extensionCall");
+    expect(ENGINE_HOST_TOOL_NAMES.extensionCall).toBe("ipollowork_extension_call");
   });
 
   test("uses external resources plugin path in packaged Electron", () => {
@@ -75,27 +76,6 @@ describe("ensureWorkspaceFiles", () => {
         delete process.resourcesPath;
       }
     }
-  });
-
-  test("uses the bundled Chrome DevTools plugin in packaged Electron", () => {
-    const resourcesPath = join("C:", "Program Files", "iPollo", "resources");
-    const pluginPath = opencodeChromeDevtoolsPluginPath(
-      join(resourcesPath, "app.asar", "server", "dist"),
-    );
-
-    expect(pluginPath).toBe(join(
-      resourcesPath,
-      "opencode-plugins",
-      "opencode-chrome-devtools",
-      "dist",
-      "plugin.js",
-    ));
-    expect(pluginPath).not.toBe("opencode-chrome-devtools");
-  });
-
-  test("keeps the package-name fallback outside packaged Electron", () => {
-    expect(opencodeChromeDevtoolsPluginPath(join("C:", "repo", "apps", "server", "dist")))
-      .toBe("opencode-chrome-devtools");
   });
 
   test("does not create workspace extension preview plugin", async () => {

@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "douyin-video",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Douyin Video",
+  "description": "A vertical Douyin-style short-video frame with creator, caption, audio and engagement context.",
+  "tags": [
+    "component",
+    "social",
+    "douyin",
+    "video",
+    "vertical",
+    "short-form",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "social",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "creator",
+        "caption",
+        "sound",
+        "metrics"
+      ],
+      "instructions": "写一句短视频标题、创作者名称、声音来源和紧凑的互动数据，避免虚构真实账号背书。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 8,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "douyin-video.html",
+      "target": "compositions/douyin-video.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "creator",
+      "label": "创作者",
+      "type": "string",
+      "default": "纸飞机研究所",
+      "maxLength": 36,
+      "update": "live"
+    },
+    {
+      "id": "caption",
+      "label": "视频文案",
+      "type": "string",
+      "default": "把复杂信息变成一眼就懂的视觉节奏。",
+      "maxLength": 100,
+      "update": "live"
+    },
+    {
+      "id": "sound",
+      "label": "声音",
+      "type": "string",
+      "default": "原声 · 纸飞机研究所",
+      "maxLength": 52,
+      "update": "live"
+    },
+    {
+      "id": "metrics",
+      "label": "互动数据",
+      "type": "string",
+      "default": "12.6万赞 · 8,420评论 · 3.1万收藏",
+      "maxLength": 72,
+      "update": "live"
+    }
+  ]
+}
+

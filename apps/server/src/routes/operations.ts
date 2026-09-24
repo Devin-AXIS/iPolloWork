@@ -14,7 +14,7 @@ interface RegisterOperationRoutesOptions {
   readJsonBody: ReadJsonBody;
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
-  reloadOpencodeEngine: (config: ServerConfig, workspace: WorkspaceInfo) => Promise<void>;
+  reloadWorkspaceEngine: (config: ServerConfig, workspace: WorkspaceInfo) => Promise<void>;
 }
 
 export function registerOperationRoutes(options: RegisterOperationRoutesOptions): void {
@@ -25,7 +25,7 @@ export function registerOperationRoutes(options: RegisterOperationRoutesOptions)
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
-    reloadOpencodeEngine,
+    reloadWorkspaceEngine,
   } = options;
 
   addRoute(routes, "GET", "/workspace/:id/events", "client", async (ctx) => {
@@ -40,14 +40,14 @@ export function registerOperationRoutes(options: RegisterOperationRoutesOptions)
     const workspace = await resolveWorkspace(config, ctx.params.id);
     requireClientScope(ctx, "collaborator");
 
-    await reloadOpencodeEngine(config, workspace);
+    await reloadWorkspaceEngine(config, workspace);
 
     await recordAudit(workspace.path, {
       id: shortId(),
       workspaceId: workspace.id,
       actor: ctx.actor ?? { type: "remote" },
       action: "engine.reload",
-      target: workspace.baseUrl ?? "opencode",
+      target: workspace.baseUrl ?? workspace.engineId ?? "opencode",
       summary: "Reloaded workspace engine",
       timestamp: Date.now(),
     });

@@ -3,7 +3,8 @@ import { readFile, stat } from "node:fs/promises";
 import { basename, extname, resolve, sep } from "node:path";
 
 import { ApiError } from "../errors.js";
-import type { EnvService } from "../env-file.js";
+import { providerFetch } from "../provider-fetch.js";
+import type { AuthorizationAccess } from "../authorization-center.js";
 import {
   createAliyunOssV4PresignedGetUrl,
   createAliyunOssV4Request,
@@ -12,6 +13,7 @@ import {
   sha256,
 } from "../object-storage-signing.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { findWorkspaceForContext } from "../workspaces.js";
 
 export const STORAGE_EXTENSION_ID = "storage";
 
@@ -70,20 +72,18 @@ function isStorageProvider(value: string): value is StorageProviderId {
   return STORAGE_PROVIDERS.some((provider) => provider === value);
 }
 
-export function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
-  const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
-    .filter(Boolean)
-    .map((value) => resolve(value));
-
-  for (const candidate of candidates) {
-    const workspace = config.workspaces.find((entry) => {
-      const root = resolve(entry.path);
-      return candidate === root || candidate.startsWith(`${root}${sep}`);
-    });
-    if (workspace) return { ...workspace, path: resolve(workspace.path) };
+export function workspaceForContext(
+  config: ServerConfig,
+  context: JsonRecord,
+  options: { strictWorkspaceId?: boolean } = {},
+): WorkspaceInfo {
+  const workspaceId = readStringField(context, "workspaceId");
+  if (options.strictWorkspaceId && workspaceId) {
+    const selected = config.workspaces.find((entry) => entry.id === workspaceId);
+    if (!selected) throw new ApiError(404, "workspace_not_found", "The requested workspace does not exist");
+    return { ...selected, path: resolve(selected.path) };
   }
-
-  const workspace = config.workspaces[0];
+  const workspace = findWorkspaceForContext(config.workspaces, context) ?? config.workspaces[0];
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for Storage Center");
   return { ...workspace, path: resolve(workspace.path) };
 }
@@ -146,23 +146,13 @@ function publicObjectUrl(baseUrl: string | undefined, objectKey: string): string
   }
 }
 
-async function valuesFrom(env: EnvService): Promise<StorageValues> {
-  const values = new Map((await env.list()).map((entry) => [entry.key, entry.value.trim()] as const));
-  for (const key of [
-    "ALIYUN_OSS_ACCESS_KEY_ID",
-    "ALIYUN_OSS_ACCESS_KEY_SECRET",
-    "ALIYUN_OSS_BUCKET",
-    "ALIYUN_OSS_REGION",
-    "ALIYUN_OSS_PUBLIC_BASE_URL",
-    "WASABI_ACCESS_KEY_ID",
-    "WASABI_SECRET_ACCESS_KEY",
-    "WASABI_BUCKET",
-    "WASABI_REGION",
-    "STORAGE_DEFAULT_PROVIDER",
-  ]) {
-    if (!values.get(key)?.trim() && process.env[key]?.trim()) values.set(key, process.env[key]!.trim());
-  }
-  return values;
+async function valuesFrom(authorization: AuthorizationAccess): Promise<StorageValues> {
+  const services = await Promise.all([
+    authorization.read("aliyun-oss"),
+    authorization.read("wasabi"),
+    authorization.read("storage-routing"),
+  ]);
+  return new Map(services.flatMap((values) => Object.entries(values).map(([key, value]) => [key, value.trim()] as const)));
 }
 
 function requiredValues(values: StorageValues, provider: StorageProviderId): Record<string, string> | null {
@@ -205,7 +195,7 @@ async function fetchStorage(input: { endpoint: string; method: "DELETE" | "PUT";
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), STORAGE_TIMEOUT_MS);
   try {
-    const response = await fetch(input.endpoint, {
+    const response = await providerFetch(input.endpoint, {
       method: input.method,
       headers: input.headers,
       ...(input.body ? { body: Uint8Array.from(input.body).buffer } : {}),
@@ -275,6 +265,7 @@ function temporaryReadUrl(input: {
   provider: StorageProviderId;
   values: Record<string, string>;
   objectKey: string;
+  expiresInSeconds?: number;
 }): string {
   if (input.provider === "aliyun-oss") {
     return createAliyunOssV4PresignedGetUrl({
@@ -283,7 +274,7 @@ function temporaryReadUrl(input: {
       bucket: input.values.ALIYUN_OSS_BUCKET,
       region: input.values.ALIYUN_OSS_REGION,
       objectKey: input.objectKey,
-      expiresInSeconds: 600,
+      expiresInSeconds: input.expiresInSeconds ?? 600,
     });
   }
   return createS3V4PresignedGetUrl({
@@ -293,7 +284,7 @@ function temporaryReadUrl(input: {
     region: input.values.WASABI_REGION,
     endpoint: `https://s3.${input.values.WASABI_REGION}.wasabisys.com`,
     objectKey: input.objectKey,
-    expiresInSeconds: 600,
+    expiresInSeconds: input.expiresInSeconds ?? 600,
   });
 }
 
@@ -334,7 +325,7 @@ async function deleteFromProvider(input: {
  */
 export async function withTemporaryWorkspaceObject<T>(input: {
   config: ServerConfig;
-  env: EnvService;
+  authorization: AuthorizationAccess;
   context: JsonRecord;
   sourcePath: string;
   purpose: string;
@@ -354,7 +345,7 @@ export async function withTemporaryWorkspaceObject<T>(input: {
     throw new ApiError(413, "workspace_file_too_large", `Source file exceeds the ${Math.floor(input.maxBytes / (1024 * 1024))} MB limit.`);
   }
 
-  const values = await valuesFrom(input.env);
+  const values = await valuesFrom(input.authorization);
   const provider = selectedProvider(values, "auto");
   const credentials = requiredValues(values, provider);
   if (!credentials) throw new ApiError(400, "storage_provider_not_configured", `${provider} is not configured in Authorization Center`);
@@ -376,8 +367,8 @@ export async function withTemporaryWorkspaceObject<T>(input: {
   }
 }
 
-export async function storageStatus(env: EnvService) {
-  const values = await valuesFrom(env);
+export async function storageStatus(authorization: AuthorizationAccess) {
+  const values = await valuesFrom(authorization);
   const configured = configuredProviders(values);
   const savedRoute = values.get("STORAGE_DEFAULT_PROVIDER")?.trim() || "auto";
   const active = savedRoute === "auto" ? configured[0] ?? null : configured.includes(savedRoute as StorageProviderId) ? savedRoute : null;
@@ -389,7 +380,7 @@ export async function storageStatus(env: EnvService) {
   };
 }
 
-async function uploadWorkspaceFile(config: ServerConfig, env: EnvService, args: JsonRecord, context: JsonRecord) {
+export async function uploadWorkspaceFile(config: ServerConfig, authorization: AuthorizationAccess, args: JsonRecord, context: JsonRecord, readUrlTtl?: number) {
   const workspace = workspaceForContext(config, context);
   const source = resolveWorkspaceFile(workspace.path, requireString(args, "sourcePath"));
   let sourceStat;
@@ -403,7 +394,7 @@ async function uploadWorkspaceFile(config: ServerConfig, env: EnvService, args: 
     throw new ApiError(413, "workspace_file_too_large", "Storage Center currently uploads files up to 100 MB. Split or export the file before uploading.");
   }
 
-  const values = await valuesFrom(env);
+  const values = await valuesFrom(authorization);
   const provider = selectedProvider(values, readStringField(args, "provider") || "auto");
   const credentials = requiredValues(values, provider);
   if (!credentials) throw new ApiError(400, "storage_provider_not_configured", `${provider} is not configured in Authorization Center`);
@@ -420,6 +411,7 @@ async function uploadWorkspaceFile(config: ServerConfig, env: EnvService, args: 
     bytes: bytes.byteLength,
     contentType,
     url: uploaded.url,
+    ...(readUrlTtl ? { signedReadUrl: temporaryReadUrl({ provider, values: credentials, objectKey, expiresInSeconds: readUrlTtl }) } : {}),
     ...(uploaded.downloadUrl ? { downloadUrl: uploaded.downloadUrl } : {}),
     workspaceId: workspace.id,
   };
@@ -427,7 +419,7 @@ async function uploadWorkspaceFile(config: ServerConfig, env: EnvService, args: 
 
 export async function callStorageExtensionAction(
   config: ServerConfig,
-  env: EnvService,
+  authorization: AuthorizationAccess,
   action: string,
   args: JsonRecord,
   context: JsonRecord,
@@ -437,12 +429,12 @@ export async function callStorageExtensionAction(
       ok: true,
       extensionId: STORAGE_EXTENSION_ID,
       action,
-      result: await storageStatus(env),
+      result: await storageStatus(authorization),
       context,
     };
   }
   if (action === "upload_workspace_file") {
-    const result = await uploadWorkspaceFile(config, env, args, context);
+    const result = await uploadWorkspaceFile(config, authorization, args, context);
     return {
       ok: true,
       extensionId: STORAGE_EXTENSION_ID,

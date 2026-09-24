@@ -60,6 +60,9 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     openAuth(url) {
       return ipcRenderer.invoke("ipollowork:shell:openAuth", url);
     },
+    clearAuthSession() {
+      return ipcRenderer.invoke("ipollowork:shell:clearAuthSession");
+    },
     relaunch() {
       return ipcRenderer.invoke("ipollowork:shell:relaunch");
     },
@@ -121,7 +124,11 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
   browser: {
     show(bounds) { return ipcRenderer.invoke("ipollowork:browser:show", bounds); },
     hide() { return ipcRenderer.invoke("ipollowork:browser:hide"); },
-    openUrl(url, provider) { return ipcRenderer.invoke("ipollowork:browser:openUrl", url, provider); },
+    openUrl(url, options) { return ipcRenderer.invoke("ipollowork:browser:openUrl", url, options); },
+    snapshot(payload) { return ipcRenderer.invoke("ipollowork:browser:snapshot", payload); },
+    read(payload) { return ipcRenderer.invoke("ipollowork:browser:read", payload); },
+    screenshot(payload) { return ipcRenderer.invoke("ipollowork:browser:screenshot", payload); },
+    act(payload) { return ipcRenderer.invoke("ipollowork:browser:act", payload); },
     navigate(url) { return ipcRenderer.invoke("ipollowork:browser:navigate", url); },
     back() { return ipcRenderer.invoke("ipollowork:browser:back"); },
     forward() { return ipcRenderer.invoke("ipollowork:browser:forward"); },

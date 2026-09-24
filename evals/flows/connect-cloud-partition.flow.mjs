@@ -132,7 +132,7 @@ export default {
             ctx.assert(proof.pageText.includes("installs on this machine"), "Filtered marketplace heading missing.");
             ctx.assert(proof.pluginCardText.includes(DESKTOP_PLUGIN_NAME), `Desktop-only plugin missing: ${proof.pluginCardText}`);
             ctx.assert(proof.pluginCardText.includes("Add"), `Install action missing: ${proof.pluginCardText}`);
-            ctx.assert(!proof.pageText.includes(READY_PLUGIN_NAME), `Ready cloud plugin leaked into Extensions marketplace: ${proof.pageText}`);
+            ctx.assert(!proof.pageText.includes(READY_PLUGIN_NAME), `Ready organization plugin leaked into Extensions marketplace: ${proof.pageText}`);
           },
           screenshot: {
             name: "connect-partition-extensions-desktop-filter",

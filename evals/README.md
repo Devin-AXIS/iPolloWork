@@ -97,7 +97,8 @@ link the spec via the flow's `spec` field.
 ### Option A: On Daytona (recommended)
 
 Run against a real Electron app in a Daytona cloud sandbox. No local Docker or
-display needed. See [`daytona-flows.md`](./daytona-flows.md) for full details.
+display is needed; the launch script prints the endpoint used by the coded
+runner.
 
 Quick start:
 
@@ -125,9 +126,10 @@ possible.
 
 ## Tool reference
 
-Evals use the CDP browser tools provided by the `opencode-chrome-devtools`
-plugin (configured in `.opencode/opencode.json`). Every tool takes
-`browser_url` as the first argument.
+Product browser automation uses the engine-neutral `ipollowork_browser_*`
+tools exposed by the Desktop Host. Coded UI evals may opt into the explicit
+development CDP port above to inspect the iPolloWork renderer; that port is not
+part of the product browser runtime.
 
 | Tool | Description |
 |------|-------------|
@@ -162,13 +164,13 @@ plugin (configured in `.opencode/opencode.json`). Every tool takes
 - Screenshots should include `claim`, `requireText`, `rejectText`, or
   `hashIncludes` whenever possible. A screenshot without an assertion is only a
   visual checkpoint, not proof that the workflow passed.
-- Use direct `browser_eval` only for debugging/prototyping or when a flow has
-  not yet been codified. If the behavior matters for a PR, codify it before
-  calling the UI validation complete.
+- Use `ctx.eval` only for debugging/prototyping or when a visible interaction
+  cannot express the required setup. If the behavior matters for a PR, codify
+  it before calling the UI validation complete.
 - For Lexical editors in coded flows, use a synthetic paste/event helper; direct
   DOM manipulation doesn't trigger Lexical state updates.
-- For React state injection (e.g., folder picker bypass), use the
-  `__reactFiber$` → reducer dispatch pattern documented in `daytona-flows.md`.
+- Do not reach into React fibers to bypass product behavior. Use a visible
+  interaction, a stable dev-only control action, or an explicit fixture setup.
 - Prefer poll-until-condition waits (`ctx.waitFor`, `ctx.waitForText`) over
   fixed sleeps.
 - The runner forces **light mode** by default before every flow runs
@@ -197,21 +199,16 @@ Before reporting a flow as passed:
 
 ## Files
 
-- [`daytona-flows.md`](./daytona-flows.md) — Daytona sandbox flows (workspace
-  creation, session messaging, screenshot verification).
 - [`react-session-flows.md`](./react-session-flows.md) — core
   session/settings flows verified during the React port cutover, including
   long streaming interruption coverage.
-- [`openable-items-flow.md`](./openable-items-flow.md) — inline openable-item
-  chips, Cmd/Ctrl+K inventory, artifact/browser opening, icon checks, and
-  screenshot evidence requirements.
 - [`reload-events-flow.md`](./reload-events-flow.md) — reload-required toast
   suppression on boot/no-op writes and positive coverage for real runtime config
   changes.
 - [`onboarding-welcome-flows.md`](./onboarding-welcome-flows.md) — the 7
   onboarding/welcome flows covering first-run experience and folder
   explanation.
-- [`browser-extension-flows.md`](./browser-extension-flows.md) — browser
+- [`unified-browser-runtime-flows.md`](./unified-browser-runtime-flows.md) — browser
   extension plugin loading, built-in browser navigation, composer extensions
   menu, extension toggle, and stale MCP migration.
 - [`extensions-marketplace-flows.md`](./extensions-marketplace-flows.md) —

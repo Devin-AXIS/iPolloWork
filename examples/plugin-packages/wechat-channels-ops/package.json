@@ -1,0 +1,20 @@
+{
+  "name": "wechat-channels-ops",
+  "version": "0.1.7",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.22.0"
+  },
+  "packageManager": "pnpm@11.13.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Devin-AXIS/iPolloWork.git",
+    "directory": "examples/plugin-packages/wechat-channels-ops"
+  },
+  "scripts": {
+    "start": "node service/server.mjs",
+    "check": "node scripts/check.mjs",
+    "test": "node --test tests/*.test.mjs"
+  }
+}

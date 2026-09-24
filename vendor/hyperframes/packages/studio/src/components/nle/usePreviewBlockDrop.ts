@@ -1,5 +1,9 @@
 import { useCallback, useRef, useState, type RefObject } from "react";
-import { TIMELINE_ASSET_MIME, TIMELINE_BLOCK_MIME } from "../../utils/timelineAssetDrop";
+import {
+  fitTimelineAssetGeometry,
+  TIMELINE_ASSET_MIME,
+  TIMELINE_BLOCK_MIME,
+} from "../../utils/timelineAssetDrop";
 
 interface UsePreviewBlockDropOptions {
   portrait?: boolean;
@@ -71,12 +75,12 @@ function resolveCompositionPosition(
 function centerBlockAtPosition(
   pos: { left: number; top: number },
   block: BlockDropPayload,
+  compositionSize: { width: number; height: number },
 ): { left: number; top: number } {
-  const blockW = block.dimensions?.width ?? 0;
-  const blockH = block.dimensions?.height ?? 0;
+  const fitted = fitTimelineAssetGeometry(block.dimensions ?? null, compositionSize);
   return {
-    left: Math.max(0, pos.left - blockW / 2),
-    top: Math.max(0, pos.top - blockH / 2),
+    left: Math.max(0, pos.left - fitted.width / 2),
+    top: Math.max(0, pos.top - fitted.height / 2),
   };
 }
 
@@ -150,7 +154,11 @@ export function usePreviewBlockDrop({
       );
       if (!pos) return;
 
-      onBlockDrop(block.name, centerBlockAtPosition(pos, block));
+      const targetCompositionSize = compositionSize ?? {
+        width: portrait ? 1080 : 1920,
+        height: portrait ? 1920 : 1080,
+      };
+      onBlockDrop(block.name, centerBlockAtPosition(pos, block, targetCompositionSize));
     },
     [onAssetDrop, onBlockDrop, stageRef, compositionSize, portrait],
   );

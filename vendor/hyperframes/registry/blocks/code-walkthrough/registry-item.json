@@ -1,0 +1,88 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "code-walkthrough",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Code Walkthrough",
+  "description": "A readable code window that reveals a small snippet and spotlights one important line.",
+  "tags": [
+    "component",
+    "developer",
+    "code",
+    "walkthrough",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "developer",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "filename",
+        "language",
+        "code",
+        "focusLine"
+      ],
+      "instructions": "Keep the snippet under eight lines, use escaped newline characters, and set focus line to a one-based visible line number."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "code-walkthrough.html",
+      "target": "compositions/code-walkthrough.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "filename",
+      "label": "File name",
+      "type": "string",
+      "default": "metrics.ts",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "language",
+      "label": "Language",
+      "type": "string",
+      "default": "TypeScript",
+      "maxLength": 32,
+      "update": "live"
+    },
+    {
+      "id": "code",
+      "label": "Code",
+      "type": "string",
+      "default": "export function total(items) {\\n  return items.reduce((sum, item) =>\\n    sum + item.value, 0\\n  );\\n}",
+      "maxLength": 1000,
+      "update": "live"
+    },
+    {
+      "id": "focusLine",
+      "label": "Focus line",
+      "type": "number",
+      "default": 2,
+      "min": 1,
+      "max": 8,
+      "step": 1,
+      "update": "live"
+    }
+  ]
+}
+

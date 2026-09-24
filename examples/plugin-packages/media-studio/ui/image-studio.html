@@ -1,0 +1,1955 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>图片工作台</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      --bg: light-dark(#f4f4f2, #151515);
+      --surface: light-dark(#fff, #232325);
+      --surface-solid: var(--surface);
+      --surface-muted: light-dark(#f0f0f2, #2e2e31);
+      --text: light-dark(#18181b, #f4f4f5);
+      --muted: light-dark(#71717a, #a1a1aa);
+      --line: light-dark(rgba(24,24,27,.1), rgba(255,255,255,.14));
+      --line-strong: light-dark(rgba(24,24,27,.18), rgba(255,255,255,.24));
+      --accent: var(--text);
+      --accent-text: light-dark(#fff, #18181b);
+      --selection: #6366f1;
+      --selection-soft: rgba(99, 102, 241, .28);
+      --success: #059669;
+      --danger: #dc2626;
+      --shadow: 0 18px 50px rgba(24, 24, 27, .08);
+      --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); }
+    button, input, select, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { cursor: not-allowed; opacity: .48; }
+    .app { display: grid; grid-template-rows: 52px minmax(0, 1fr); height: 100vh; }
+    .topbar {
+      display: flex; align-items: center; gap: 12px; padding: 0 14px;
+      border-bottom: 0; background: var(--surface);
+      backdrop-filter: blur(22px) saturate(1.2); -webkit-backdrop-filter: blur(22px) saturate(1.2);
+    }
+    .document-title { max-width: 220px; min-width: 0; overflow: hidden; font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
+    .mode-switch { flex-shrink: 0; display: flex; height: 36px; gap: 2px; padding: 2px; border-radius: 9px; background: rgba(127,127,127,.09); }
+    .mode-switch button { flex: 0 0 auto; height: 32px; border: 0; border-radius: 7px; background: transparent; padding: 0 12px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .mode-switch button.active { background: var(--surface); color: var(--text); box-shadow: none; }
+    .top-actions { margin-left: auto; flex-shrink: 0; display: flex; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; }
+    .provider { display: flex; min-width: 0; max-width: 190px; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; white-space: nowrap; }
+    .provider { position: relative; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--surface-muted); color: var(--text); }
+    .provider:hover { background: #e6e6e9; }
+    .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
+    .provider #modelMenu:disabled { cursor: wait; }
+    .provider-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .provider-status { flex: 0 0 auto; }
+    .provider-dot { flex: 0 0 7px; width: 7px; height: 7px; border-radius: 999px; background: #a1a1aa; }
+    .provider.ready .provider-dot { background: var(--success); box-shadow: 0 0 0 3px rgba(5,150,105,.12); }
+    .shell { position: relative; min-height: 0; }
+    .workspace { position: absolute; inset: 0; min-width: 0; min-height: 0; overflow: hidden; }
+    .stage {
+      position: absolute; inset: 0; display: grid; place-items: center; overflow: auto;
+      background-color: var(--bg);
+      background-image: radial-gradient(circle at 1px 1px, rgba(113,113,122,.13) 1px, transparent 0);
+      background-size: 20px 20px;
+    }
+    html.generating, html.generating body, html.generating .stage { background: transparent; }
+    .stage.panning { cursor: grabbing; user-select: none; }
+    .generation-gallery { align-self: stretch; justify-self: stretch; min-height: 0; display: flex; flex-direction: column; width: min(760px, calc(100% - 32px)); margin: 0 auto; padding: 20px 0 12px; gap: 12px; }
+    .gallery-sections { display: grid; grid-template-columns: 1fr; gap: 12px; overflow: auto; min-height: 0; flex: 1; align-content: start; }
+    .gallery-section { min-width: 0; }
+    .gallery-heading { margin: 0 0 12px; font-size: 14px; font-weight: 600; height: 36px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .gallery-heading .gallery-title { margin: 0; font-size: 14px; font-weight: 600; line-height: 20px; }
+    .gallery-heading .button { min-height: 28px; padding: 4px 8px; font-size: 12px; }
+    .gallery-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; overflow: auto; min-height: 0; padding: 0; align-content: start; grid-auto-rows: max-content; flex: 1; }
+    .image-card { min-width: 0; height: 190px; position: relative; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); box-shadow: none; overflow: hidden; }
+    .generation-pending { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; text-align: center; font-size: 12px; line-height: 1.5; }
+    .generation-progress { appearance: none; width: 100%; max-width: 140px; height: 4px; border: 0; border-radius: 999px; overflow: hidden; background: #eeeeef; }
+    .generation-progress::-webkit-progress-bar { background: #eeeeef; border-radius: 999px; }
+    .generation-progress::-webkit-progress-value { background: var(--accent); border-radius: 999px; transition: width 1s linear; }
+    .generation-progress::-moz-progress-bar { background: var(--accent); border-radius: 999px; }
+    @media (prefers-reduced-motion: reduce) { .generation-progress::-webkit-progress-value { transition: none; } }
+    .image-card.selected::after { content: "✓"; position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 8px; background: var(--accent); color: #fff; pointer-events: none; }
+    .image-card > button:first-child { width: 100%; height: 146px; border: 0; background: transparent; padding: 8px; display: grid; place-items: center; }
+    .image-card img { max-width: 100%; width: 100%; height: 130px; object-fit: contain; border-radius: 8px; }
+    .card-actions { display: flex; justify-content: space-between; gap: 4px; height: 44px; padding: 8px; border-top: 0; }
+    .card-actions button { background: transparent; border: 0; padding: 6px; border-radius: 6px; font-size: 12px; }
+    .card-actions button:hover { background: var(--surface-muted); }
+    .reference-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 0 0 auto; }
+    @media (min-width: 481px) and (max-width: 640px) {
+      .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+    @media (max-width: 480px) {
+      .card-actions { height: 42px; padding: 7px; }
+      .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .image-card { height: 142px; }
+      .image-card > button:first-child { height: 100px; }
+      .image-card img { height: 84px; }
+    }
+    .empty { display: grid; justify-items: center; width: min(520px, calc(100% - 40px)); text-align: center; }
+    .empty-orb { display: grid; place-items: center; width: 48px; height: 48px; border-radius: 8px; background: var(--surface); }
+    .empty-orb img { display: block; width: 32px; height: 32px; object-fit: contain; }
+    .empty h2 { margin: 14px 0 0; font-size: 16px; font-weight: 600; line-height: 1.4; letter-spacing: -.015em; }
+    .empty p { margin: 6px 0 0; max-width: 390px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .empty-actions { display: flex; gap: 8px; margin-top: 18px; }
+    .canvas-wrap { position: relative; display: none; margin: 72px; border-radius: 8px; background: #d4d4d8; box-shadow: 0 24px 72px rgba(0,0,0,.18); touch-action: none; }
+    .canvas-wrap.visible { display: block; }
+    .canvas-wrap canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; border-radius: inherit; }
+    .annotation-marker {
+      position: absolute; z-index: 2; width: 20px; height: 20px; transform: translate(-50%, -50%);
+      border: 2px solid #fff; border-radius: 50%; background: var(--selection); box-shadow: 0 1px 5px rgba(0,0,0,.3);
+      pointer-events: none;
+    }
+    .annotation-marker::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: var(--surface); }
+    #imageCanvas { position: relative; z-index: 0; }
+    #selectionDisplayCanvas { z-index: 1; pointer-events: none; }
+    #selectionCanvas { z-index: 2; opacity: 0; cursor: crosshair; }
+    #selectionCanvas[data-tool="smart"] { cursor: cell; }
+    #selectionCanvas[data-tool="hand"] { cursor: grab; }
+    #selectionCanvas[data-tool="hand"].dragging { cursor: grabbing; }
+    #selectionCanvas[data-annotation="true"] { cursor: crosshair; }
+    .selection-actions {
+      position: absolute; z-index: 4; display: flex; height: 36px; align-items: center; gap: 2px; padding: 3px;
+      transform: translate(-50%, 8px); border: 1px solid var(--line); border-radius: 9px;
+      background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.12);
+    }
+    .selection-action { display: flex; height: 28px; align-items: center; justify-content: center; gap: 5px; border: 0; border-radius: 6px; background: transparent; padding: 0 8px; color: var(--text); font-size: 12px; white-space: nowrap; }
+    .selection-action:hover { background: rgba(127,127,127,.09); }
+    .selection-action:disabled, .expand-run:disabled { cursor: not-allowed; opacity: .45; }
+    .selection-action .tool-icon { width: 14px; height: 14px; stroke-width: 1.7; }
+    .toolbar {
+      position: absolute; z-index: 5; top: 14px; left: 50%; transform: translateX(-50%);
+      display: none; align-items: center; gap: 3px; max-width: calc(100% - 28px); padding: 5px; overflow-x: auto;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--surface);
+      box-shadow: 0 10px 30px rgba(0,0,0,.09); backdrop-filter: blur(20px);
+      scrollbar-width: none;
+    }
+    .toolbar::-webkit-scrollbar { display: none; }
+    .toolbar.visible { display: flex; }
+    .toolbar-row { display: contents; }
+    .tool { display: flex; align-items: center; gap: 6px; border: 0; border-radius: 8px; background: transparent; padding: 7px 9px; color: var(--muted); }
+    .tool.compact { justify-content: center; width: 32px; height: 32px; padding: 0; flex: 0 0 auto; }
+    .tool:hover { color: var(--text); background: rgba(127,127,127,.08); }
+    .tool.active { color: var(--accent-text); background: var(--accent); }
+    .tool-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+    .separator { width: 1px; height: 22px; margin: 0 2px; background: var(--line); }
+    .operation-switch { display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 9px; background: rgba(127,127,127,.06); }
+    .operation-switch .tool { width: 32px; height: 32px; border-radius: 7px; }
+    .capability-switch { display: contents; }
+    .zoom-controls {
+      position: fixed; z-index: 5; bottom: 16px; left: 16px; display: none; align-items: center; gap: 3px;
+      border: 0; background: transparent;
+    }
+    .zoom-controls.visible { display: flex; }
+    .zoom-pill { min-width: 44px; color: var(--muted); text-align: center; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .button { display: inline-flex; height: 32px; flex: 0 0 auto; align-items: center; justify-content: center; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-solid); padding: 0 12px; font-size: 12px; font-weight: 500; white-space: nowrap; }
+    .button:hover { border-color: var(--line-strong); background: rgba(127,127,127,.06); }
+    .button.primary { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+    .button.primary:hover { opacity: .86; }
+    .button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+    .button.ghost:hover { border-color: transparent; background: rgba(127,127,127,.06); color: var(--text); }
+    .top-action { display: inline-flex; height: 32px; align-items: center; gap: 6px; flex-shrink: 0; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-solid); padding: 0 10px; color: var(--text); font-size: 12px; }
+    #fileInfo{position:absolute;right:16px;bottom:16px;z-index:7;width:32px;height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface-solid);display:grid;place-items:center} #fileInfo[hidden]{display:none}
+    .top-action:hover { background: rgba(127,127,127,.08); }
+    .top-action .tool-icon { width: 18px; height: 18px; stroke-width: 2; }
+    .button.full { width: 100%; }
+    .tool-options-popover {
+      position: fixed; z-index: 6; display: grid; width: 236px; gap: 8px; padding: 10px 12px;
+      border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid);
+      box-shadow: 0 10px 28px rgba(24,24,27,.1);
+    }
+    .tool-range { display: grid; grid-template-columns: 34px minmax(0, 1fr) 28px; align-items: center; gap: 8px; color: var(--muted); font-size: 11px; white-space: nowrap; }
+    input[type="range"] { width: 100%; height: 16px; margin: 0; appearance: none; background: transparent; }
+    input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 999px; background: rgba(127,127,127,.2); }
+    input[type="range"]::-webkit-slider-thumb { width: 8px; height: 16px; margin-top: -6px; appearance: none; border: 0; border-radius: 3px; background: var(--text); }
+    .range-value { color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+    .parameter-options { max-height: calc(100vh - 16px); overflow-y: auto; }
+    .parameter-options .range-value { width: 28px; padding: 3px 0; border: 1px solid var(--line); border-radius: 5px; background: transparent; text-align: center; appearance: textfield; }
+    .parameter-options .range-value::-webkit-inner-spin-button { appearance: none; }
+    .parameter-options input:focus-visible, .popover-grip:focus-visible { outline: 2px solid var(--selection); outline-offset: 2px; }
+    .popover-grip { grid-column: 1 / -1; display: grid; place-items: center; width: 100%; height: 16px; border: 0; border-radius: 4px; padding: 0; background: transparent; cursor: grab; touch-action: none; }
+    .popover-grip::after { content: ""; width: 20px; height: 4px; border-radius: 4px; background: var(--line-strong); }
+    .popover-grip:active { cursor: grabbing; }
+    .expand-controls { width: 248px; }
+    .expand-row { display: grid; grid-template-columns: 42px minmax(0, 1fr); align-items: center; gap: 8px; color: var(--muted); font-size: 11px; }
+    .expand-choices { display: flex; gap: 3px; }
+    .expand-choices button { flex: 1; height: 28px; border: 0; border-radius: 6px; background: rgba(127,127,127,.07); color: var(--muted); font-size: 11px; }
+    .expand-choices button:hover { color: var(--text); background: rgba(127,127,127,.12); }
+    .expand-choices button.active { color: var(--accent-text); background: var(--accent); }
+    .expand-run { height: 30px; border: 0; border-radius: 7px; background: var(--accent); color: var(--accent-text); font-size: 12px; }
+    .instant-tooltip {
+      position: fixed; z-index: 30; max-width: 220px; transform: translateX(-50%); border-radius: 6px;
+      background: rgba(24,24,27,.94); padding: 4px 7px; color: #fff; font-size: 11px; line-height: 1.35;
+      pointer-events: none; white-space: nowrap;
+    }
+    .annotation-hint {
+      position: fixed; z-index: 6; transform: translateX(-50%); border: 1px solid var(--line); border-radius: 8px;
+      background: var(--surface-solid); box-shadow: 0 6px 18px rgba(24,24,27,.1); padding: 6px 9px;
+      color: var(--muted); font-size: 11px; line-height: 1.35; pointer-events: none; white-space: nowrap;
+    }
+    .busy-layer { position: absolute; z-index: 8; inset: 0; display: none; place-items: center; background: rgba(244,244,242,.65); backdrop-filter: blur(9px); }
+    .busy-layer.visible { display: grid; }
+    .save-review { position: absolute; z-index: 6; bottom: 16px; left: 16px; right: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow); }
+    .save-review p { flex: 1 1 180px; min-width: 0; margin: 0; color: var(--muted); overflow-wrap: anywhere; }
+    .save-review button:focus-visible { outline: 2px solid var(--text); outline-offset: 2px; }
+    .busy-card { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-solid); box-shadow: var(--shadow); }
+    .spinner { width: 16px; height: 16px; border: 2px solid var(--line-strong); border-top-color: var(--text); border-radius: 50%; animation: spin .8s linear infinite; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @media (max-width: 760px) {
+      .provider { position: relative; height: 32px; padding: 0 10px; border-radius: 8px; background: var(--surface-muted); color: var(--text); }
+    .provider #modelMenu { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+    .provider:focus-within { outline: 2px solid var(--selection); outline-offset: 3px; border-radius: 8px; }
+    .provider #modelMenu:disabled { cursor: wait; }
+    .provider-name { display: block; }
+      .provider-status { display: none; }
+      .top-action { width: 32px; justify-content: center; padding: 0; }
+      .top-action span { display: none; }
+      .toolbar { top: 14px; left: 14px; max-height: calc(100% - 28px); transform: none; overflow-x: hidden; overflow-y: auto; }
+      .toolbar.visible, .toolbar-row { display: flex; width: auto; flex-direction: column; align-items: center; gap: 3px; }
+      .toolbar .separator { width: 22px; height: 1px; margin: 2px 0; }
+      .operation-switch { flex-direction: column; }
+      .tool-options-popover, .expand-controls { width: min(236px, calc(100vw - 92px)); }
+      .toolbar-row::-webkit-scrollbar { display: none; }
+      .parameter-options { gap: 8px; padding: 6px; }
+      #brushOptions { width: 92px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      #smartOptions { width: 52px; }
+      .parameter-options .tool-range { display: flex; min-width: 0; flex-direction: column; gap: 10px; }
+      .parameter-options input[type="range"] { writing-mode: vertical-lr; direction: rtl; width: 32px; height: clamp(80px, 24vh, 160px); flex-shrink: 0; cursor: ns-resize; touch-action: none; }
+      .parameter-options input[type="range"]::-webkit-slider-runnable-track { width: 4px; height: 100%; }
+      .parameter-options input[type="range"]::-webkit-slider-thumb { width: 16px; height: 8px; margin-top: 0; margin-left: -6px; }
+      .parameter-options .range-value { width: 36px; }
+    }
+    @media (max-width: 420px) {
+      .topbar { gap: 6px; padding: 0 8px; }
+      .mode-switch button { padding-inline: 9px; }
+      .button, .top-action { padding-inline: 8px; }
+    }
+
+  .topbar .mode-switch { height:28px; padding:2px; }
+    .topbar .mode-switch button { height:24px; font-size:12px; font-weight:400; }
+    .topbar .button, .topbar .provider, .topbar .top-action { height:28px; font-size:12px; font-weight:400; }
+    html.mac:lang(zh) .topbar button, html.mac:lang(zh) .topbar .provider { font-weight:500; }
+      .topbar .provider { width:54px; min-width:54px; max-width:54px; justify-content:center; gap:8px; }
+    .provider-name, .provider-status { display:none; }
+    .provider-logo { display:flex; width:18px; height:18px; flex:0 0 18px; }
+    .provider-logo svg { width:18px; height:18px; }
+
+    /* Shared gallery presentation for standalone media workbenches. */
+    .image-card, .media-card { height:auto; min-height:0; border-radius:0; background:transparent; color:var(--text); box-shadow:none; overflow:visible; }
+    .image-card.selected>button:first-child, .media-card.selected>button:first-child { outline:1px solid var(--text); outline-offset:2px; }
+    .image-card > button:first-child, .media-card > button:first-child { position:relative; display:block; width:100%; height:auto; aspect-ratio:16/10; padding:0; overflow:hidden; background:var(--surface); border-radius:12px; }
+    .image-card img, .media-card img, .media-card video { display:block; width:100%; height:100%; max-width:100%; object-fit:cover; border-radius:0; }
+    .image-card>button:first-child::after, .media-card>button:first-child::after { content:""; position:absolute; inset:30% 0 0; background:linear-gradient(transparent,rgba(0,0,0,.72)); opacity:0; pointer-events:none; transition:opacity .15s; }
+    .image-card:hover>button:first-child::after, .image-card:focus-within>button:first-child::after, .media-card:hover>button:first-child::after, .media-card:focus-within>button:first-child::after { opacity:1; }
+    .card-info { display:flex; align-items:center; gap:4px; padding:6px 0 0; min-width:0; }
+    .card-name { flex:1; min-width:0; margin:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; font-weight:500; line-height:16px; }
+    .card-meta { flex-shrink:0; margin:0; color:var(--muted); font-size:10px; line-height:16px; white-space:nowrap; }
+    .card-actions { position:absolute; top:calc(100% - 50px); right:6px; left:auto; transform:none; display:flex; flex-direction:row; height:auto; padding:0; gap:4px; border:0; border-radius:0; background:transparent; opacity:0; pointer-events:none; transition:opacity .15s; }
+    .image-card:hover .card-actions, .image-card:focus-within .card-actions, .media-card:hover .card-actions, .media-card:focus-within .card-actions { opacity:1; pointer-events:auto; }
+    .card-actions button { display:flex; align-items:center; justify-content:center; gap:4px; width:48px; height:24px; padding:3px 6px; border:0; border-radius:6px; background:rgba(255,255,255,.18); color:white; font-size:11px; }
+    .card-actions .card-more { width:24px; font-size:18px; }
+    .card-actions button svg { width:12px; height:12px; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+    .card-actions button:focus-visible, .image-card>button:focus-visible, .media-card>button:focus-visible { outline:2px solid var(--text); outline-offset:-2px; }
+    .play-badge { top:50%; left:50%; transform:translate(-50%,-50%); width:28px; height:28px; background:rgba(0,0,0,.32); color:rgba(255,255,255,.9); }
+    .play-badge svg { width:14px; height:14px; fill:currentColor; }
+    .duration-badge { position:absolute; z-index:1; left:6px; bottom:6px; padding:2px 4px; border-radius:4px; background:rgba(0,0,0,.48); color:white; font-size:10px; line-height:12px; }
+    .generation-pending { min-height:160px; }
+    @media (hover:none) { .card-actions { opacity:1; pointer-events:auto; } }
+    @media (prefers-reduced-motion:reduce) { .card-actions { transition:none; } }
+      .gallery-grid, #mediaCards { grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; }
+    @media (max-width:759px) { .gallery-grid, #mediaCards { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+    @media (max-width:559px) { .gallery-grid, #mediaCards { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+    @media (max-width:319px) { .gallery-grid, #mediaCards { grid-template-columns:minmax(0,1fr); } }
+    .image-card.selected::after, .media-card.selected::after { top:4px; right:4px; width:16px; height:16px; border-radius:5px; font-size:11px; }
+    .image-card:hover .play-badge, .media-card:hover .play-badge, .media-card:focus-within .play-badge { opacity:0; }
+      .image-card.selected::after, .media-card.selected::after { display:none; }
+    .reference-action { position:absolute; top:6px; right:6px; width:24px; height:24px; padding:4px; display:grid; place-items:center; border:0; border-radius:6px; background:rgba(0,0,0,.32); color:rgba(255,255,255,.9); }
+    .reference-action svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+    .reference-check, .reference-action[aria-pressed=true] .reference-plus { display:none; }
+    .reference-action[aria-pressed=true] .reference-check { display:block; }
+    .reference-action:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+
+    /* Launch actions share the generation composer's content width. */
+    #empty.empty { display:grid; justify-items:stretch; width:min(760px,calc(100% - 32px)); max-width:none; padding:24px 0 56px; text-align:left; }
+    #empty .launch-brand { display:flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; font-weight:500; }
+    #empty .empty-orb { width:44px; height:44px; background:transparent; border-radius:0; }
+    #empty .empty-orb img { width:44px; height:44px; }
+    #empty h1, #empty h2 { margin:10px 0 0; font-size:26px; font-weight:600; line-height:1.3; letter-spacing:-.025em; }
+    #empty>p { margin:6px 0 0; max-width:none; color:var(--muted); font-size:13px; line-height:1.6; }
+    #empty .empty-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:28px; }
+    #empty .launch-card { position:relative; display:flex; flex-direction:column; align-items:flex-start; justify-content:flex-start; gap:8px; width:100%; height:auto; min-height:152px; margin:0; padding:24px; border:0; border-radius:16px; background:var(--surface); color:var(--text); box-shadow:none; text-align:left; white-space:normal; transition:background .15s; }
+    #empty .launch-card:hover { background:color-mix(in srgb,var(--surface) 92%,var(--text)); filter:none; }
+    #empty .launch-card:focus-visible { outline:2px solid var(--text); outline-offset:3px; }
+    #empty .launch-card svg { width:22px; height:22px; margin:0 0 10px; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; }
+    #empty .launch-card strong { font-size:14px; font-weight:500; line-height:20px; }
+    #empty .launch-card .launch-description { color:var(--muted); font-size:12px; font-weight:400; line-height:18px; }
+    #empty .launch-card .launch-arrow { position:absolute; top:24px; right:24px; width:16px; height:16px; opacity:0; transition:opacity .15s; }
+    #empty .launch-card:hover .launch-arrow, #empty .launch-card:focus-visible .launch-arrow { opacity:1; }
+    @media (max-width:559px) { #empty .empty-actions { grid-template-columns:1fr; margin-top:20px; } #empty h1,#empty h2 { font-size:22px; } #empty .launch-card { min-height:132px; padding:20px; } }
+    #empty .empty-orb img { filter:var(--logo-filter); }
+    @media (prefers-reduced-motion:reduce) { #empty .launch-card,#empty .launch-arrow { transition:none; } }
+
+    :root { --logo-filter: none; }
+    :root[style*="dark"] { --logo-filter: invert(1); }
+    .busy-layer { background:color-mix(in srgb,var(--bg) 75%,transparent); }
+    @media(max-width:760px) { .document-title { display:none; } .top-actions .top-action span { display:none; } }
+
+    .toolbar { top:calc(14px + var(--workbench-hint-space, 0px)); }
+    .workbench-back { display:inline-flex; align-items:center; gap:6px; height:28px; padding:0 8px; flex-shrink:0; border:0; border-radius:8px; background:transparent; color:var(--text); font-size:12px; }
+    .workbench-back svg { width:16px; height:16px; flex-shrink:0; }
+    .workbench-hint { position:absolute; z-index:12; top:12px; left:50%; transform:translateX(-50%); width:max-content; max-width:calc(100% - 32px); padding:7px 12px; border:1px solid var(--line); border-radius:10px; background:var(--surface); color:var(--muted); font-size:12px; line-height:1.5; text-align:center; pointer-events:none; }
+    .workbench-hint[data-error="true"] { color:var(--danger); }
+    html.mac:lang(zh) .workbench-back { font-weight:500; }
+    @media(max-width:560px) { .workbench-back span { display:none; } }
+    @media(min-width:640px){#empty .empty-actions:has(#emptyVideo){grid-template-columns:repeat(3,minmax(0,1fr));}}
+
+    .outputs-empty { flex:1; min-height:220px; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:28px 20px; text-align:center; }
+    .outputs-empty-art { position:relative; width:140px; height:94px; margin-bottom:20px; color:var(--muted); }
+    .outputs-empty-card { position:absolute; top:16px; width:66px; height:66px; display:grid; place-items:center; border:1px solid var(--line); border-radius:16px; background:var(--surface); box-shadow:0 8px 24px color-mix(in srgb,var(--text) 5%,transparent); }
+    .outputs-empty-card:first-child { left:9px; transform:rotate(-12deg); background:var(--surface-muted); }
+    .outputs-empty-card:nth-child(2) { right:8px; top:7px; transform:rotate(9deg); }
+    .outputs-empty-card svg { width:28px; height:28px; stroke-width:1.5; }
+    .outputs-empty-spark { position:absolute; right:0; top:-5px; width:20px; height:20px; opacity:.65; }
+    .outputs-empty h2 { flex:none; margin:0; font-size:16px; line-height:1.5; font-weight:500; color:var(--text); }
+    .outputs-empty p { max-width:290px; margin:8px 0 0; font-size:13px; line-height:1.7; color:var(--muted); text-wrap:balance; }
+    @media(max-height:420px) { .outputs-empty { min-height:170px; padding:16px; } .outputs-empty-art { transform:scale(.8); height:76px; margin-bottom:8px; } }
+    .generation-gallery:has(#outputsEmpty:not([hidden])) .gallery-sections, .generation-gallery:has(#outputsEmpty:not([hidden])) .reference-bar { display:none; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header class="topbar">
+      <div id="documentTitle" class="document-title">新图片</div>
+<button id="workbenchBack" class="top-action workbench-back" type="button" hidden><svg class="tool-icon" data-lucide="arrow-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m12 19-7-7 7-7M5 12h14"/></svg><span></span></button>
+      <div id="modeSwitch" class="mode-switch" role="tablist" data-i18n-aria="工作模式" aria-label="工作模式" hidden>
+        <button id="editMode" type="button" role="tab" aria-selected="false" data-i18n="edit">编辑</button>
+        <button id="generateMode" class="active" type="button" role="tab" aria-selected="true" data-i18n="generate">生成</button>
+      </div>
+      <div class="top-actions">
+        <button id="imageToVideo" class="top-action" type="button" hidden><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 8 6 4-6 4Z"/></svg><span data-i18n="generateVideo">生成视频</span></button>
+        <button id="topImport" class="top-action" type="button" hidden>
+          <svg class="tool-icon" data-lucide="image-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 5h6"/><path d="M19 2v6"/><path d="M21 11.5V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h7.5"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/><circle cx="9" cy="9" r="2"/></svg>
+          <span data-i18n="replaceImage">打开图片</span>
+        </button>
+        <button id="downloadImage" class="top-action" type="button" data-tooltip-key="downloadImage" aria-label="下载" hidden>
+          <svg class="tool-icon" data-lucide="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+          <span data-i18n="downloadImage">另存为</span>
+        </button>
+        <div id="provider" class="provider"><span class="provider-dot"></span><span class="provider-logo" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M22.282 9.821a5.985 5.985 0 0 0-.516-4.91 6.046 6.046 0 0 0-6.51-2.9A6.065 6.065 0 0 0 4.981 4.18a5.985 5.985 0 0 0-3.998 2.9 6.046 6.046 0 0 0 .743 7.097 5.98 5.98 0 0 0 .51 4.911 6.051 6.051 0 0 0 6.515 2.9A5.985 5.985 0 0 0 13.26 24a6.056 6.056 0 0 0 5.772-4.206 5.99 5.99 0 0 0 3.997-2.9 6.056 6.056 0 0 0-.747-7.073zM13.26 22.43a4.476 4.476 0 0 1-2.876-1.04l.141-.081 4.779-2.758a.795.795 0 0 0 .392-.681v-6.737l2.02 1.168a.071.071 0 0 1 .038.052v5.583a4.504 4.504 0 0 1-4.494 4.494zM3.6 18.304a4.47 4.47 0 0 1-.535-3.014l.142.085 4.783 2.759a.771.771 0 0 0 .78 0l5.843-3.369v2.332a.08.08 0 0 1-.033.062L9.74 19.95a4.5 4.5 0 0 1-6.14-1.646zM2.34 7.896a4.485 4.485 0 0 1 2.366-1.973V11.6a.766.766 0 0 0 .388.676l5.815 3.355-2.02 1.168a.076.076 0 0 1-.071 0l-4.83-2.786A4.504 4.504 0 0 1 2.34 7.872zm16.597 3.855l-5.833-3.387L15.119 7.2a.076.076 0 0 1 .071 0l4.83 2.791a4.494 4.494 0 0 1-.676 8.105v-5.678a.79.79 0 0 0-.407-.667zm2.01-3.023l-.141-.085-4.774-2.782a.776.776 0 0 0-.785 0L9.409 9.23V6.897a.066.066 0 0 1 .028-.061l4.83-2.787a4.5 4.5 0 0 1 6.68 4.66zm-12.64 4.135l-2.02-1.164a.08.08 0 0 1-.038-.057V6.075a4.5 4.5 0 0 1 7.375-3.453l-.142.08L8.704 5.46a.795.795 0 0 0-.393.681zm1.097-2.365l2.602-1.5 2.607 1.5v2.999l-2.597 1.5-2.607-1.5z"/></svg>
+</span><span id="providerName" class="provider-name" data-i18n="model">图片模型</span><span id="providerStatus" class="provider-status" data-i18n="checking">检查中…</span><button id="modelMenu" type="button" data-i18n-aria="切换图片模型" aria-label="切换图片模型" aria-haspopup="menu"></button></div>
+      </div>
+    </header>
+
+    <div class="shell">
+      <main class="workspace">
+        <div id="workbenchHint" class="workbench-hint" role="status" hidden></div>
+        <div id="stage" class="stage">
+          <section id="generationGallery" class="generation-gallery" hidden data-i18n-aria="生成图片历史" aria-label="生成图片历史">
+            <div class="gallery-sections">
+              <section class="gallery-section"><div class="gallery-heading"><h2 class="gallery-title"><span data-i18n="从产出文件添加">从产出文件添加</span></h2><button id="loadOutputImages" class="button ghost" type="button" data-i18n-aria="刷新产出图片" aria-label="刷新产出图片"><span data-i18n="刷新">刷新</span></button></div><div id="galleryGrid" class="gallery-grid"></div></section>
+            </div>
+            <div id="outputsEmpty" class="outputs-empty" role="status" hidden>
+              <!-- Lucide image and clapperboard geometry from lucide-react (ISC). -->
+              <div class="outputs-empty-art" aria-hidden="true">
+                <span class="outputs-empty-card"><svg data-lucide="image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></span>
+                <span class="outputs-empty-card"><svg data-lucide="clapperboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m12.296 3.464 3.02 3.956"/><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z"/><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="m6.18 5.276 3.1 3.899"/></svg></span>
+                <svg class="outputs-empty-spark" data-lucide="sparkle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5Z"/></svg>
+              </div>
+              <h2 data-output-empty-title></h2><p data-output-empty-description></p>
+            </div>
+            <div class="reference-bar">
+              <span id="galleryStatus" role="status"></span>
+            </div>
+          </section>
+          <section id="empty" class="empty">
+            <div class="launch-brand"><div class="empty-orb" aria-hidden="true">
+              <img alt="" src="data:image/png;base64,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">
+            </div></div>
+            <h2 id="emptyTitle">创建或编辑图片</h2>
+            <p id="emptyBody">从一个想法开始，或继续打磨已有图片。</p>
+            <div class="empty-actions"><button id="emptyGenerate" class="launch-card" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.9 5.8L20 11l-6.1 2.2L12 19l-1.9-5.8L4 11l6.1-2.2Z"/><path d="M20 2v4m-2-2h4"/></svg><strong data-i18n="generateImage">生成图片</strong><span class="launch-description" data-i18n="launchGenerateDescription">从描述或参考素材开始创作</span><svg class="launch-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><button id="emptyImport" class="launch-card" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-3h14l-3 9H3V5a2 2 0 0 1 2-2h4l2 3h7a2 2 0 0 1 2 2v3"/></svg><strong data-i18n="openImage">打开图片</strong><span class="launch-description" data-i18n="launchOpenDescription">继续编辑已有图片</span><svg class="launch-arrow" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button><button id="emptyBack" class="button ghost" type="button" hidden data-i18n="back">返回</button></div>
+          </section>
+          <div id="canvasWrap" class="canvas-wrap">
+            <canvas id="imageCanvas"></canvas>
+            <canvas id="selectionDisplayCanvas" aria-hidden="true"></canvas>
+            <canvas id="selectionCanvas"></canvas>
+            <div id="selectionActions" class="selection-actions" role="toolbar" hidden data-i18n-aria="选区操作" aria-label="选区操作">
+              <button id="selectionAskAi" class="selection-action" type="button" aria-label="AI 批注">
+                <svg class="tool-icon" data-lucide="sparkles" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>
+                <span data-i18n="askAi">AI 批注</span>
+              </button>
+              <button id="selectionErase" class="selection-action" type="button" hidden aria-label="消除">
+                <svg class="tool-icon" data-lucide="eraser" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4.3-4.3a2.4 2.4 0 0 1 0-3.4L13.3 2.7a2.4 2.4 0 0 1 3.4 0l4.6 4.6a2.4 2.4 0 0 1 0 3.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+                <span data-i18n="eraseAction">消除</span>
+              </button>
+              <button id="selectionClear" class="selection-action" type="button" aria-label="取消选区">
+                <svg class="tool-icon" data-lucide="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                <span data-i18n="clearSelection">取消选区</span>
+              </button>
+            </div>
+            <span id="annotationMarker" class="annotation-marker" hidden aria-hidden="true"></span>
+          </div>
+        </div>
+
+        <div id="toolbar" class="toolbar" data-i18n-aria="选区工具栏" aria-label="选区工具栏">
+          <div class="toolbar-row toolbar-row-primary">
+          <button class="tool compact" type="button" data-tool="hand" data-tooltip-key="hand" aria-label="抓手">
+            <svg class="tool-icon" data-lucide="hand" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2 2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2 2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+          </button>
+          <div class="separator"></div>
+          <div class="operation-switch" data-i18n-aria="选区方式" aria-label="选区方式">
+            <button class="tool compact active" type="button" data-operation="add" data-tooltip-key="add" aria-label="加选">
+              <svg class="tool-icon" data-lucide="circle-plus" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/></svg>
+            </button>
+            <button class="tool compact" type="button" data-operation="subtract" data-tooltip-key="subtract" aria-label="减选">
+              <svg class="tool-icon" data-lucide="circle-minus" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 12h8"/></svg>
+            </button>
+          </div>
+          <div class="separator"></div>
+          <button class="tool compact active" type="button" data-tool="smart" data-tooltip-key="smart" aria-label="智能选取">
+            <svg class="tool-icon" data-lucide="wand-sparkles" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="brush" data-tooltip-key="brush" aria-label="画笔选取">
+            <svg class="tool-icon" data-lucide="brush" viewBox="0 0 24 24" aria-hidden="true"><path d="m11 10 3 3"/><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z"/><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="rectangle" data-tooltip-key="rectangle" aria-label="矩形选区">
+            <svg class="tool-icon" data-lucide="square-dashed" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3a2 2 0 0 0-2 2"/><path d="M19 3a2 2 0 0 1 2 2"/><path d="M21 19a2 2 0 0 1-2 2"/><path d="M5 21a2 2 0 0 1-2-2"/><path d="M9 3h1"/><path d="M9 21h1"/><path d="M14 3h1"/><path d="M14 21h1"/><path d="M3 9v1"/><path d="M21 9v1"/><path d="M3 14v1"/><path d="M21 14v1"/></svg>
+          </button>
+          <button class="tool compact" type="button" data-tool="ellipse" data-tooltip-key="ellipse" aria-label="椭圆选区">
+            <svg class="tool-icon" data-lucide="circle-dashed" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/></svg>
+          </button>
+          <div class="capability-switch" data-i18n-aria="高级功能" aria-label="高级功能">
+            <button class="tool compact" type="button" data-ai-mode="expand" data-tooltip-key="expand" aria-label="扩图">
+              <svg class="tool-icon" data-lucide="expand" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 15 6 6"/><path d="m15 9 6-6"/><path d="M21 16v5h-5"/><path d="M21 8V3h-5"/><path d="M3 16v5h5"/><path d="m3 21 6-6"/><path d="M3 8V3h5"/><path d="M9 9 3 3"/></svg>
+            </button>
+            <button class="tool compact" type="button" data-ai-mode="erase" data-tooltip-key="erase" aria-label="消除笔">
+              <svg class="tool-icon" data-lucide="eraser" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4.3-4.3a2.4 2.4 0 0 1 0-3.4L13.3 2.7a2.4 2.4 0 0 1 3.4 0l4.6 4.6a2.4 2.4 0 0 1 0 3.4L11 21"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+            </button>
+          </div>
+          <div class="separator"></div>
+          <button id="undo" class="tool compact" type="button" data-tooltip-key="undo" aria-label="撤销">
+            <svg class="tool-icon" data-lucide="undo-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5 5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
+          </button>
+          <button id="redo" class="tool compact" type="button" data-tooltip-key="redo" aria-label="重做">
+            <svg class="tool-icon" data-lucide="redo-2" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5 5.5 5.5 0 0 0 9.5 20H13"/></svg>
+          </button>
+          <div class="separator"></div>
+          <button id="askAi" class="tool compact" type="button" data-tooltip-key="askAi" aria-label="AI 批注">
+            <svg class="tool-icon" data-lucide="sparkles" viewBox="0 0 24 24" aria-hidden="true"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg>
+          </button>
+          </div>
+        </div>
+        <div id="zoomControls" class="zoom-controls" data-i18n-aria="画布缩放" aria-label="画布缩放">
+          <button id="zoomOut" class="tool compact" type="button" data-tooltip-key="zoomOut" aria-label="缩小">
+            <svg class="tool-icon" data-lucide="zoom-out" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+          </button>
+          <output id="zoomValue" class="zoom-pill" aria-live="polite">100%</output>
+          <button id="zoomIn" class="tool compact" type="button" data-tooltip-key="zoomIn" aria-label="放大">
+            <svg class="tool-icon" data-lucide="zoom-in" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><line x1="21" x2="16.65" y1="21" y2="16.65"/><line x1="11" x2="11" y1="8" y2="14"/><line x1="8" x2="14" y1="11" y2="11"/></svg>
+          </button>
+          <button id="fitWindow" class="tool compact" type="button" data-tooltip-key="fitWindow" data-zoom="fit" aria-label="适合窗口">
+            <svg class="tool-icon" data-lucide="maximize" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+          </button>
+        </div>
+        <div id="smartOptions" class="tool-options-popover parameter-options">
+          <button class="popover-grip" type="button" data-tooltip-key="moveParameters" aria-label="移动参数浮层"></button>
+          <label class="tool-range"><span data-i18n="toleranceShort">范围</span><input id="tolerance" type="range" min="4" max="44" value="18"><span id="toleranceValue" class="range-value">18</span></label>
+        </div>
+        <div id="brushOptions" class="tool-options-popover parameter-options" hidden>
+          <button class="popover-grip" type="button" data-tooltip-key="moveParameters" aria-label="移动参数浮层"></button>
+          <label class="tool-range"><span data-i18n="brushSizeShort">大小</span><input id="brushSize" type="range" min="8" max="220" value="64"><input id="brushSizeValue" class="range-value" type="number" aria-label="画笔大小" min="8" max="220" value="64"></label>
+          <label class="tool-range"><span data-i18n="hardnessShort">硬度</span><input id="hardness" type="range" min="10" max="100" value="80"><input id="hardnessValue" class="range-value" type="number" aria-label="边缘硬度" min="10" max="100" value="80"></label>
+        </div>
+        <div id="expandOptions" class="tool-options-popover expand-controls" hidden>
+          <div class="expand-row"><span data-i18n="expandDirection">方向</span><div class="expand-choices">
+            <button type="button" data-expand-direction="all" class="active" data-i18n="expandAll">四周</button>
+            <button type="button" data-expand-direction="left" data-i18n="expandLeft">左</button>
+            <button type="button" data-expand-direction="right" data-i18n="expandRight">右</button>
+            <button type="button" data-expand-direction="top" data-i18n="expandTop">上</button>
+            <button type="button" data-expand-direction="bottom" data-i18n="expandBottom">下</button>
+          </div></div>
+          <div class="expand-row"><span data-i18n="expandScale">尺寸</span><div class="expand-choices">
+            <button type="button" data-expand-scale="1.25">125%</button>
+            <button type="button" data-expand-scale="1.5" class="active">150%</button>
+            <button type="button" data-expand-scale="2">200%</button>
+          </div></div>
+          <button id="expandRun" class="expand-run" type="button" data-i18n="startExpand">开始扩图</button>
+        </div>
+        <div id="annotationHint" class="annotation-hint" role="status" hidden></div>
+        <div id="instantTooltip" class="instant-tooltip" role="tooltip" hidden></div>
+        <section id="saveReview" class="save-review" data-i18n-aria="保存编辑结果" aria-label="保存编辑结果" hidden>
+          <p id="saveReviewText" role="status"></p>
+          <button id="cancelOverwrite" class="button ghost" type="button" hidden data-i18n="cancel">取消</button>
+          <button id="overwriteEdit" class="button" type="button" data-i18n="overwriteOriginal">覆盖原图</button>
+          <button id="saveCopy" class="button primary" type="button" data-i18n="saveAs">另存为</button>
+        </section>
+        <div id="busyLayer" class="busy-layer"><div class="busy-card"><span class="spinner"></span><span id="busyText">正在处理图片…</span></div></div>
+      </main>
+    </div>
+  </div>
+  <input id="fileInput" class="sr-only" type="file" accept="image/png,image/jpeg,image/webp">
+
+  <button id="fileInfo" data-i18n-aria="文件信息" aria-label="文件信息" title="文件信息" hidden><svg data-lucide="info" class="lucide lucide-info" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg></button>
+  <script>
+    window.addEventListener("message",event=>{if(event.source===parent&&event.data?.type==="ipollowork:image-studio:dismiss-error")setStatus("");});
+    window.addEventListener("message",event=>{if(event.source===parent&&event.data?.type==="ipollowork:image-studio:open-model-menu")document.querySelector("#modelMenu")?.click();});
+    document.documentElement.classList.toggle("mac", /Macintosh|Mac OS X/.test(navigator.userAgent));
+    const HOST_CONTEXT_KEY = "ai.ipollo/workspace";
+    const INSPECTOR_CONTEXT_KEY = "ai.ipollo/inspector";
+    const MAX_CANVAS_DIMENSION = 4096;
+    const MAX_SMART_SELECTION_DIMENSION = 1024;
+    const MAX_SELECTION_HISTORY_BYTES = 64 * 1024 * 1024;
+    const state = {
+      mode: "start", aiMode: "inpaint", tool: "smart", operation: "add", zoom: 1, zoomMode: "fit", drawing: false, moved: false,
+      gallery: [], galleryLoading:true, galleryError:false, referencePath: "", galleryKey: "", generating: false, generationStartedAt: 0, start: null, last: null, sourcePath: "", sourceName: "", sourceDataUrl: "", sourceRevision: "", editResult: null, confirmOverwrite: false,
+      imageWidth: 0, imageHeight: 0, selectionHistory: [], redoHistory: [], gestureBase: null, pan: null,
+      activeSubtract: false, temporaryTool: "", selectionTool: "smart", annotationMode: false, annotationPoint: null, busy: false, providerReady: false,
+      expandDirection: "all", expandScale: 1.5,
+      locale: "zh", hostContext: null, prompt: "", model: "", models: [], style: "auto", camera: "auto", lighting: "auto", size: "auto", quality: "auto", selectionBlend: "natural",
+      statusMessage: "", statusTone: "info", inspectorOpenRequest: "", inspectorRequestSequence: 0,
+    };
+    const pending = new Map();
+    let requestId = 0;
+    let contextTimer = 0;
+    let selectionRevision = 0;
+    let boundsRevision = -1;
+    let cachedBounds = null;
+
+    const $ = (selector) => document.querySelector(selector);
+    const imageCanvas = $("#imageCanvas");
+    const selectionDisplayCanvas = $("#selectionDisplayCanvas");
+    const selectionCanvas = $("#selectionCanvas");
+    const imageContext = imageCanvas.getContext("2d");
+    const selectionDisplayContext = selectionDisplayCanvas.getContext("2d");
+    const selectionContext = selectionCanvas.getContext("2d", { willReadFrequently: true });
+    let selectionPattern = null;
+
+    const copy = {
+      zh: {
+        title: "图片工作台", newImage: "新图片", edit: "编辑", generate: "生成", checking: "检查图片模型…", ready: "图片模型已连接", unavailable: "图片模型未连接",
+        launchGenerateDescription: "从描述或参考素材开始创作", launchOpenDescription: "继续编辑已有图片", moreActions:"更多操作", generateVideo:"生成视频", emptyTitle: "开始你的下一张创作", emptyBody: "从一个想法开始，或继续打磨已有图片。", generateEmptyTitle: "生成一张新图片", generateEmptyBody: "描述你想要的画面，让想法变成图片。",
+        moveParameters: "移动参数浮层", openImage: "打开图片", importImage: "导入图片", replaceImage: "打开图片", downloadImage: "另存为", back: "返回", startGenerate: "开始生成", expand: "扩图", startExpand: "开始扩图", erase: "消除笔", eraseAction: "消除", smart: "智能选取", hand: "抓手", brush: "画笔选取", add: "加选", subtract: "减选", rectangle: "矩形选区", ellipse: "椭圆选区", askAi: "AI 批注", undo: "撤销选区", redo: "重做选区", clearSelection: "取消选区", zoomOut: "缩小", zoomIn: "放大", fitWindow: "适合窗口", brushSizeShort: "大小", hardnessShort: "硬度", toleranceShort: "范围", expandDirection: "方向", expandScale: "尺寸", expandAll: "四周", expandLeft: "左", expandRight: "右", expandTop: "上", expandBottom: "下", source: "当前图片", replace: "替换",
+        importWorkspace: "从本地导入", instruction: "图片描述", wholeImage: "整图", selectedArea: "已选区域", promptPlaceholder: "添加参考图或直接描述想生成的画面内容...",
+        selection: "选区", nonDestructive: "不覆盖原图", brushSize: "画笔大小", hardness: "边缘硬度", variables: "画面参数", optional: "可选",
+        model: "图片模型", chooseModel: "选择图片模型", style: "风格", camera: "镜头", lighting: "光线", ratio: "画幅", quality: "质量", editImage: "生成编辑结果", generateImage: "生成图片",
+        imageParameters: "生成图片", generateDescription: "描述内容并设置画面参数",
+        editDescription: "先预览编辑结果，再选择覆盖或另存为",
+        overwriteOriginal: "覆盖原图", confirmOverwrite: "确认覆盖", saveAs: "另存为", cancel: "取消",
+        reviewSaved: "编辑结果已保存为副本：{name}。另存为保留两版；覆盖原图只保留原文件名。",
+        overwriteWarning: "确认用当前结果替换 {name}？旧版本将被替换，本次编辑副本将移除。",
+        overwriting: "正在覆盖原图…", savingCopy: "正在另存为…", overwritten: "已覆盖 {name}，主要产出保留原文件。", copySaved: "已另存为 {name}，原图和编辑版均保留。",
+        providerNotice: "请先在设置 → 授权中心连接所选图片模型。", modelRequired: "请先从顶部选择一个已配置的图片模型。", openAiNotice: "请先在设置 → 授权中心连接 OpenAI 图片服务。", arkNotice: "请先在设置 → 授权中心连接火山引擎 Ark。",
+        connectedStatus: "已连接", chooseStatus: "请选择", notConnected: "未连接", notAvailable: "暂不可用",
+        midjourneyUnavailable: "Midjourney 官方暂未开放公共 API，当前不能在第三方工作台中直接调用。", regionUnsupported: "{name} 暂不支持选区编辑。", approximateSelection: "{name} 将按选区的大致范围编辑，边界精度取决于模型。", exactSelection: "自然融合在选区内侧渐变衔接，选区外保持不变。请给目标和光晕留出选区余量；细线、精确替换可选严格边界。风格、镜头和光线仅作提示词引导。",
+        loading: "正在打开图片…", importing: "正在导入图片…", processing: "正在处理图片…",
+        saved: "已另存为 {name}", selectionRequired: "请先涂抹或框选需要处理的区域。", selectionCleared: "选区已清除", smartSelected: "已生成智能选区，可继续加选或减选。", annotationPointHint: "请在图片上点击需要批注的位置。", annotationAdded: "已添加到输入框。", promptRequired: "请先描述想生成或修改的内容。", imageRequired: "请先打开一张图片，或切换到生成模式。",
+        tooLarge: "图片尺寸过大。精确选区目前支持最长边不超过 4096px。", failed: "操作失败", connected: "工作台已连接", dimensions: "{width} × {height}",
+      },
+      en: {"名称":"Name","格式":"Format","文件大小":"File size","尺寸":"Dimensions","比例":"Aspect ratio","生成模型":"Model","生成时间":"Created","无生成记录":"No generation record","未知":"Unknown","图片":"Image",
+"从产出文件添加":"Add from outputs","刷新":"Refresh","刷新产出图片":"Refresh outputs","切换图片模型":"Change image model","工作模式":"Mode","生成图片历史":"Generated images","选区操作":"Selection actions","选区工具栏":"Selection toolbar","选区方式":"Selection mode","高级功能":"Advanced tools","画布缩放":"Canvas zoom","保存编辑结果":"Save edited image","文件信息":"File information","请重新选择参考图":"Select the reference image again","请完成图片选区后重试。":"Finish the image selection and try again.","图片选区已变化，请检查当前选区后重新发送。":"The selection changed. Review it and send again.","历史记录暂时无法保存":"Could not save history","正在读取近期产出…":"Loading recent outputs\u2026","给灵感一个开始":"Make room for your next idea","在下方写下一个想法，或添加参考素材。你的第一份作品会出现在这里。":"Describe an idea below, or add a reference. Your first creation will appear here.","图片暂时加载不出来，请刷新重试。":"Images could not be loaded. Try refreshing.","已载入 {count} 张近期图片":"Loaded {count} recent images",
+        title: "Image Studio", newImage: "New image", edit: "Edit", generate: "Generate", checking: "Checking image model…", ready: "Image model connected", unavailable: "Image model not connected",
+        launchGenerateDescription: "Create from a prompt or reference", launchOpenDescription: "Continue editing an existing image", moreActions:"More actions", generateVideo:"Generate video", emptyTitle: "Start your next creation", emptyBody: "Start with an idea, or refine an existing image.", generateEmptyTitle: "Generate a new image", generateEmptyBody: "Describe what you imagine and turn it into an image.",
+        moveParameters: "Move parameters", openImage: "Open image", importImage: "Import image", replaceImage: "Open image", downloadImage: "Save as", back: "Back", startGenerate: "Start generating", expand: "Expand image", startExpand: "Expand image", erase: "Erase", eraseAction: "Erase", smart: "Smart select", hand: "Hand", brush: "Brush select", add: "Add to selection", subtract: "Subtract from selection", rectangle: "Rectangle select", ellipse: "Ellipse select", askAi: "Ask AI", undo: "Undo selection", redo: "Redo selection", clearSelection: "Clear selection", zoomOut: "Zoom out", zoomIn: "Zoom in", fitWindow: "Fit to window", brushSizeShort: "Size", hardnessShort: "Edge", toleranceShort: "Range", expandDirection: "Direction", expandScale: "Size", expandAll: "All", expandLeft: "Left", expandRight: "Right", expandTop: "Top", expandBottom: "Bottom", source: "Current image", replace: "Replace",
+        importWorkspace: "Import from device", instruction: "Image description", wholeImage: "Whole image", selectedArea: "Selected area", promptPlaceholder: "Add a reference image or describe the image you want to generate...",
+        selection: "Selection", nonDestructive: "Original preserved", brushSize: "Brush size", hardness: "Edge hardness", variables: "Visual controls", optional: "Optional",
+        model: "Image model", chooseModel: "Choose image model", style: "Style", camera: "Camera", lighting: "Lighting", ratio: "Aspect", quality: "Quality", editImage: "Generate edit", generateImage: "Generate image",
+        imageParameters: "Generate image", generateDescription: "Describe the image and set visual controls",
+        editDescription: "Preview the edit, then overwrite or save as a copy",
+        overwriteOriginal: "Overwrite original", confirmOverwrite: "Confirm overwrite", saveAs: "Save as", cancel: "Cancel",
+        reviewSaved: "Edited copy saved: {name}. Save as keeps both; overwrite keeps the original filename.",
+        overwriteWarning: "Replace {name} with this result? The previous version will be replaced and this edit's copy removed.",
+        overwriting: "Overwriting original…", savingCopy: "Saving copy…", overwritten: "Overwrote {name}; the original file remains in outputs.", copySaved: "Saved as {name}; both versions are kept.",
+        providerNotice: "Connect the selected image model in Settings → Authorization Center first.", modelRequired: "Choose a configured image model from the top menu first.", openAiNotice: "Connect OpenAI Images in Settings → Authorization Center first.", arkNotice: "Connect Volcengine Ark in Settings → Authorization Center first.",
+        connectedStatus: "Connected", chooseStatus: "Choose", notConnected: "Not connected", notAvailable: "Unavailable",
+        midjourneyUnavailable: "Midjourney does not currently provide a public API for third-party workspaces.", regionUnsupported: "{name} does not support selected-region editing.", approximateSelection: "{name} will edit the approximate selected region; boundary precision depends on the model.", exactSelection: "Natural blending feathers inward and preserves unselected pixels. Leave margin for the subject and glow; use Strict for fine lines or exact replacement. Style, camera and lighting are prompt guidance only.",
+        loading: "Opening image…", importing: "Importing image…", processing: "Processing image…",
+        saved: "Saved as {name}", selectionRequired: "Brush or select the area to process first.", selectionCleared: "Selection cleared", smartSelected: "Smart selection created. Add or subtract to refine it.", annotationPointHint: "Click the point you want to annotate.", annotationAdded: "Added to the composer.", promptRequired: "Describe what you want to generate or change first.", imageRequired: "Open an image first, or switch to Generate.",
+        tooLarge: "This image is too large. Precise selection currently supports a maximum side of 4096px.", failed: "Action failed", connected: "Studio connected", dimensions: "{width} × {height}",
+      },
+    };
+
+    function tr(key, values = {}) {
+      const dictionary = copy[state.locale] || copy.zh;
+      return String(dictionary[key] || copy.zh[key] || key).replace(/\{(\w+)\}/g, (_, name) => values[name] ?? "");
+    }
+    function localize() {
+      document.documentElement.lang = state.locale === "en" ? "en" : "zh-CN";
+      document.querySelectorAll("[data-i18n-aria]").forEach(node=>node.setAttribute("aria-label",tr(node.dataset.i18nAria)));
+      document.querySelectorAll("[data-i18n]").forEach((node) => { node.textContent = tr(node.dataset.i18n); });
+      document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => { node.placeholder = tr(node.dataset.i18nPlaceholder); });
+      document.querySelectorAll("[data-tooltip-key]").forEach((node) => {
+        node.dataset.tooltip = tr(node.dataset.tooltipKey);
+        node.setAttribute("aria-label", tr(node.dataset.tooltipKey));
+      });
+      $("#brushSize").ariaLabel = $("#brushSizeValue").ariaLabel = tr("brushSize");
+      $("#hardness").ariaLabel = $("#hardnessValue").ariaLabel = tr("hardness");
+      $("#selectionClear").ariaLabel = tr("clearSelection");
+      $("#selectionAskAi").ariaLabel = tr("askAi");
+      $("#selectionErase").ariaLabel = tr("eraseAction");
+      $("#annotationHint").textContent = tr("annotationPointHint");
+      $("#documentTitle").textContent = state.sourceName || tr("newImage");
+      renderMode(); renderProvider(); renderSelectionState(); renderSaveReview(); renderGallery(); renderMediaStudio();
+    }
+    function post(message) { if(message.rows)message={...message,rows:message.rows.map(row=>({...row,label:tr(row.label),value:tr(row.value)}))};parent.postMessage(message, "*"); }
+    function respond(id, result) { post({ jsonrpc: "2.0", id, result }); }
+    function request(method, params) {
+      const id = ++requestId;
+      post({ jsonrpc: "2.0", id, method, params });
+      return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+    }
+    async function callService(name, args = {}) {
+      const response = await request("tools/call", { name, arguments: args });
+      if (response?.isError) throw new Error(response.content?.map((item) => item.text || "").join("\n") || tr("failed"));
+      return response?.structuredContent || {};
+    }
+    function setStatus(message, error = false) {
+      state.statusMessage = message || "";
+      state.statusTone = error ? "error" : /已另存为|Saved as/.test(state.statusMessage) ? "success" : "info";
+      publishContext();
+    }
+    function imageProgressPercent() {
+      const seconds = Math.max(0, Math.floor((Date.now() - state.generationStartedAt) / 1000));
+      return Math.min(95, Math.round(95 * (1 - Math.exp(-seconds / 40))));
+    }
+    function imageProgressLabel() {
+      const seconds = Math.floor((Date.now() - state.generationStartedAt) / 1000);
+      const english = state.locale === "en";
+      if (seconds >= 120) return english ? `Still generating · ${seconds}s elapsed` : `仍在生成 · 已等待 ${seconds} 秒`;
+      const percent = imageProgressPercent();
+      return english ? `Generating · est. ${percent}%` : `生成中 · 预估 ${percent}%`;
+    }
+    function refreshImageProgress() {
+      const label = imageProgressLabel();
+      $("#busyText").textContent = label;
+      const pending = $("#galleryGrid").querySelector('[role="status"]');
+      if (pending) {
+        pending.querySelector(".generation-label").textContent = label;
+        const progress = pending.querySelector("progress");
+        progress.value = imageProgressPercent();
+        progress.setAttribute("aria-valuetext", label);
+      }
+      publishContext();
+    }
+    function setBusy(busy, message = tr("processing")) {
+      state.busy = busy;
+      $("#busyText").textContent = message;
+      $("#busyLayer").classList.toggle("visible", busy && state.mode !== "generate");
+      renderGallery();
+      $("#modelMenu").disabled = busy;
+      $("#editMode").disabled = busy;
+      $("#generateMode").disabled = busy;
+      $("#selectionErase").disabled = busy;
+      $("#expandRun").disabled = busy;
+      renderSaveReview();
+      publishContext();
+    }
+    function renderSaveReview() {
+      $("#saveReview").hidden = !state.editResult || state.hostContext?.launch?.returnToSource === true;
+      $("#saveReview").setAttribute("aria-label", state.locale === "en" ? "Save edited image" : "保存编辑结果");
+      $("#saveReviewText").textContent = state.editResult
+        ? tr(state.confirmOverwrite ? "overwriteWarning" : "reviewSaved", { name: state.confirmOverwrite ? state.editResult.originalPath : state.sourceName })
+        : "";
+      $("#overwriteEdit").textContent = tr(state.confirmOverwrite ? "confirmOverwrite" : "overwriteOriginal");
+      $("#cancelOverwrite").hidden = !state.confirmOverwrite;
+      for (const id of ["overwriteEdit", "saveCopy", "cancelOverwrite"]) $("#" + id).disabled = state.busy;
+    }
+    async function saveEditedResult(mode) {
+      if (state.busy || !state.editResult) return;
+      if (mode === "overwrite" && !state.confirmOverwrite) {
+        state.confirmOverwrite = true; renderSaveReview(); return;
+      }
+      const editId = state.editResult.editId;
+      setBusy(true, tr(mode === "overwrite" ? "overwriting" : "savingCopy"));
+      try {
+        const result = await callService("save-edit", { editId, mode });
+        await renderImage(result);
+        setStatus(tr(mode === "overwrite" ? "overwritten" : "copySaved", { name: result.name }));
+        $("#generateMode").focus();
+      } catch (error) {
+        state.confirmOverwrite = false;
+        setStatus(error instanceof Error ? error.message : tr("failed"), true);
+      } finally { setBusy(false); }
+    }
+    function selectedModel() {
+      return state.models.find((model) => model.id === state.model) || null;
+    }
+    function normalizeModelParameters() {
+      for (const key of ["size", "quality"]) {
+        const parameter = selectedModel()?.parameters?.[key];
+        if (!(parameter?.values.includes(state[key]) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(state[key])))) state[key] = parameter?.default || "auto";
+      }
+    }
+    function updateParameters(args) {
+      const requestedModel = typeof args.model === "string";
+      const model = requestedModel ? state.models.find((entry) => entry.id === args.model) : selectedModel();
+      if (requestedModel && !model) throw new Error(tr("modelRequired"));
+      if (!model && ["size", "quality"].some((key) => args[key] !== undefined)) throw new Error(tr("modelRequired"));
+      const changedModel = Boolean(model && model.id !== state.model);
+      const next = {};
+      if (model) {
+        for (const key of ["size", "quality"]) {
+          const parameter = model.parameters?.[key];
+          const value = args[key] ?? state[key];
+          if (parameter?.values.includes(value) || (key === "size" && parameter?.customRatio && /^[1-9]\d{0,2}x[1-9]\d{0,2}$/.test(value))) next[key] = value;
+          else if (changedModel || args[key] === undefined || value === "auto") next[key] = parameter?.default || "auto";
+          else throw new Error(`${model.label}: ${key}=${String(value)} is not supported.`);
+        }
+      }
+      const selectionBlend = args.selectionBlend ?? state.selectionBlend ?? "natural";
+      if (!["natural", "strict"].includes(selectionBlend)) throw new Error("selectionBlend must be natural or strict");
+      if (typeof args.referencePath === "string") {
+        if (args.referencePath && !state.gallery.some(entry => entry.path === args.referencePath)) throw new Error(tr("请重新选择参考图"));
+        state.referencePath = args.referencePath;
+        renderGallery();
+      }
+      Object.assign(state, next, { ...(model ? { model: model.id } : {}), selectionBlend });
+      if (changedModel) state.statusMessage = "";
+      for (const key of ["prompt", "style", "camera", "lighting"]) if (typeof args[key] === "string") state[key] = args[key];
+      if (args.mode === "generate" || args.mode === "edit") setMode(args.mode);
+      if (["inpaint", "expand", "erase"].includes(args.aiMode)) selectAiMode(args.aiMode);
+      renderProvider();
+    }
+    function applyProviderModels(provider) {
+      state.models = Array.isArray(provider.models)
+        ? provider.models.filter((model) => model && typeof model.id === "string")
+        : [];
+      const selected = state.models.find((model) => model.id === state.model);
+      if (!selected?.available || !selected.configured) {
+        state.model = "";
+      }
+      normalizeModelParameters(); syncProviderState();
+    }
+    function modelAuthorizationNotice(model) {
+      if (!model) return tr("providerNotice");
+      if (model.provider === "midjourney") return tr("midjourneyUnavailable");
+      if (model.authorizationService === "openai-images") return tr("openAiNotice");
+      if (model.authorizationService === "volcengine-video") return tr("arkNotice");
+      return tr("providerNotice");
+    }
+    function actionBlockedMessage() {
+      const model = selectedModel();
+      if (!model) return tr("modelRequired");
+      if (!model.available) return modelAuthorizationNotice(model);
+      if (!model.configured) return modelAuthorizationNotice(model);
+      if (!model.parameters) return state.locale === "en" ? "Update the image service and reopen Image Studio to load model parameters." : "请更新图片服务并重新打开工作台，以加载模型参数。";
+      const capability = state.mode === "edit" || state.referencePath ? "edit" : "generate";
+      if (!model.capabilities?.[capability]) return `${model.label} does not support ${capability}.`;
+      const regionEdit = state.mode === "edit" && (state.aiMode === "expand" || Boolean(selectionBounds()));
+      if (regionEdit && !model.capabilities?.mask && !model.capabilities?.region) {
+        return tr("regionUnsupported", { name: model.label });
+      }
+      return "";
+    }
+    function syncProviderState() {
+      const model = selectedModel();
+      state.providerReady = Boolean(model?.available && model?.configured);
+    }
+    function renderProvider() {
+      syncProviderState();
+      const model = selectedModel();
+      $("#provider").classList.toggle("ready", state.providerReady);
+      const menu = $("#modelMenu");
+      menu.disabled = state.busy;
+      $("#providerName").textContent = model?.label || tr("chooseModel");
+      $("#providerStatus").textContent = model ? tr(state.providerReady ? "connectedStatus" : "notConnected") : tr("chooseStatus");
+      $("#provider").title = `${model?.label || tr("chooseModel")} · ${$("#providerStatus").textContent}`;
+      publishContext();
+    }
+    function renderEmptyState() {
+      const generating = state.mode === "generate";
+      $("#emptyTitle").textContent = tr(generating ? "generateEmptyTitle" : "emptyTitle");
+      $("#emptyBody").textContent = tr(generating ? "generateEmptyBody" : "emptyBody");
+      $("#emptyImport").hidden = generating;
+      $("#emptyGenerate").hidden = generating;
+      $("#emptyBack").hidden = !generating || Boolean(state.sourcePath);
+      renderMediaStudio();
+    }
+    function renderMode() {
+      document.documentElement.classList.toggle("generating", state.mode === "generate");
+      const editing = state.mode === "edit";
+      const hasSource = Boolean(state.sourcePath);
+      const editingSource = editing && hasSource;
+      $("#editMode").classList.toggle("active", editing);
+      $("#generateMode").classList.toggle("active", !editing);
+      $("#editMode").setAttribute("aria-selected", String(editing));
+      $("#generateMode").setAttribute("aria-selected", String(!editing));
+      $("#modeSwitch").hidden = !hasSource && state.mode !== "generate";
+      $("#topImport").hidden = !editingSource;
+      $("#downloadImage").hidden = !editingSource;
+      $("#fileInfo").hidden = !editingSource;
+      $("#imageToVideo").hidden = !editingSource;
+      $("#empty").hidden = editingSource || state.mode === "generate";
+      $("#generationGallery").hidden = state.mode !== "generate";
+      renderGallery();
+      $("#canvasWrap").classList.toggle("visible", editingSource);
+      $("#toolbar").classList.toggle("visible", editingSource);
+      $("#zoomControls").classList.toggle("visible", editingSource);
+      $("#documentTitle").textContent = editingSource ? state.sourceName : "";
+      $("#documentTitle").hidden = !editingSource;
+      renderEmptyState();
+      positionToolOptions();
+    }
+    function setMode(mode) {
+      post({type:"ipollowork:image-studio:file-info-close"});
+      state.mode = mode;
+      if (state.aiMode !== "inpaint") {
+        state.aiMode = "inpaint";
+        document.querySelectorAll("[data-ai-mode]").forEach((button) => button.classList.remove("active"));
+        renderSelectionState();
+      }
+      if (mode === "generate") {
+        state.statusMessage = "";
+        state.statusTone = "info";
+      }
+      renderMode();
+      publishContext();
+    }
+    function requestInspector() {
+      state.inspectorRequestSequence += 1;
+      state.inspectorOpenRequest = `${Date.now()}:${state.inspectorRequestSequence}`;
+      publishContext();
+    }
+    function renderSource() {
+      const hasSource = Boolean(state.sourcePath);
+      $("#documentTitle").title = hasSource ? `${state.sourceName} · ${tr("dimensions", { width: state.imageWidth, height: state.imageHeight })}` : tr("newImage");
+      applyZoom(); renderMode(); renderSelectionState();
+    }
+    function selectionBounds() {
+      if (boundsRevision === selectionRevision) return cachedBounds;
+      if (!selectionCanvas.width || !selectionCanvas.height) return null;
+      const pixels = selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height).data;
+      let left = selectionCanvas.width, top = selectionCanvas.height, right = -1, bottom = -1;
+      for (let y = 0; y < selectionCanvas.height; y++) {
+        for (let x = 0; x < selectionCanvas.width; x++) {
+          if (pixels[(y * selectionCanvas.width + x) * 4 + 3] > 0) {
+            left = Math.min(left, x); top = Math.min(top, y); right = Math.max(right, x); bottom = Math.max(bottom, y);
+          }
+        }
+      }
+      boundsRevision = selectionRevision;
+      cachedBounds = right >= 0 ? { left, top, right, bottom } : null;
+      return cachedBounds;
+    }
+    function normalizedSelectionBounds() {
+      const bounds = selectionBounds();
+      return bounds ? {
+        left: bounds.left / selectionCanvas.width,
+        top: bounds.top / selectionCanvas.height,
+        right: (bounds.right + 1) / selectionCanvas.width,
+        bottom: (bounds.bottom + 1) / selectionCanvas.height,
+      } : null;
+    }
+    function renderSelectionState() {
+      selectionRevision++;
+      const bounds = selectionBounds();
+      $("#undo").disabled = state.selectionHistory.length === 0;
+      $("#redo").disabled = state.redoHistory.length === 0;
+      const actions = $("#selectionActions");
+      actions.hidden = !bounds;
+      const erasing = state.aiMode === "erase";
+      $("#selectionAskAi").hidden = erasing;
+      $("#selectionErase").hidden = !erasing;
+      if (bounds) {
+        const center = (bounds.left + bounds.right + 1) / 2 / selectionCanvas.width * 100;
+        actions.style.left = `clamp(58px, ${center}%, calc(100% - 58px))`;
+        actions.style.top = `${(bounds.bottom + 1) / selectionCanvas.height * 100}%`;
+      }
+      renderSelectionVisual(bounds);
+    }
+    function checkerPattern() {
+      if (selectionPattern) return selectionPattern;
+      const patternCanvas = document.createElement("canvas");
+      patternCanvas.width = patternCanvas.height = 16;
+      const context = patternCanvas.getContext("2d");
+      context.fillStyle = "rgba(99,102,241,.2)"; context.fillRect(0, 0, 16, 16);
+      context.fillStyle = "rgba(99,102,241,.38)";
+      context.fillRect(0, 0, 8, 8); context.fillRect(8, 8, 8, 8);
+      selectionPattern = selectionDisplayContext.createPattern(patternCanvas, "repeat");
+      return selectionPattern;
+    }
+    function renderSelectionVisual(bounds = null) {
+      if (!selectionDisplayCanvas.width || !selectionDisplayCanvas.height) return;
+      selectionDisplayContext.clearRect(0, 0, selectionDisplayCanvas.width, selectionDisplayCanvas.height);
+      selectionDisplayContext.save();
+      selectionDisplayContext.drawImage(selectionCanvas, 0, 0);
+      selectionDisplayContext.globalCompositeOperation = "source-in";
+      selectionDisplayContext.fillStyle = checkerPattern();
+      selectionDisplayContext.fillRect(0, 0, selectionDisplayCanvas.width, selectionDisplayCanvas.height);
+      selectionDisplayContext.restore();
+      if (!bounds) return;
+      const displayScale = selectionDisplayCanvas.clientWidth / selectionDisplayCanvas.width || 1;
+      const lineWidth = 1.25 / displayScale;
+      selectionDisplayContext.save();
+      selectionDisplayContext.strokeStyle = "rgba(79,70,229,.95)";
+      selectionDisplayContext.lineWidth = lineWidth;
+      selectionDisplayContext.setLineDash([5 / displayScale, 4 / displayScale]);
+      selectionDisplayContext.strokeRect(
+        bounds.left + lineWidth / 2,
+        bounds.top + lineWidth / 2,
+        Math.max(0, bounds.right - bounds.left + 1 - lineWidth),
+        Math.max(0, bounds.bottom - bounds.top + 1 - lineWidth),
+      );
+      selectionDisplayContext.restore();
+    }
+    function renderAnnotationMarker() {
+      const marker = $("#annotationMarker");
+      marker.hidden = !state.annotationPoint;
+      if (!state.annotationPoint) return;
+      marker.style.left = `${state.annotationPoint.x * 100}%`;
+      marker.style.top = `${state.annotationPoint.y * 100}%`;
+    }
+    function setAnnotationMode(active) {
+      state.annotationMode = active;
+      $("#askAi").classList.toggle("active", active);
+      selectionCanvas.dataset.annotation = String(active);
+      $("#annotationHint").hidden = !active;
+      positionToolOptions();
+      positionAnnotationHint();
+    }
+    function imageReference(kind, target) {
+      return {
+        sourcePath: state.sourcePath,
+        sourceName: state.sourceName,
+        imageWidth: state.imageWidth,
+        imageHeight: state.imageHeight,
+        model: state.model,
+        kind,
+        ...target,
+      };
+    }
+    function emitAiReference(reference) {
+      post({ type: "ipollowork:image-studio:ask-ai", reference });
+      setStatus(tr("annotationAdded"));
+    }
+    function requestAiAnnotation() {
+      if (!state.sourcePath) { setStatus(tr("imageRequired"), true); return; }
+      const selection = normalizedSelectionBounds();
+      if (selection) {
+        setAnnotationMode(false);
+        emitAiReference(imageReference("selection", { selection }));
+        return;
+      }
+      state.annotationPoint = null;
+      renderAnnotationMarker();
+      setAnnotationMode(true);
+      setStatus(tr("annotationPointHint"));
+    }
+    function pushHistory(history, imageData) {
+      history.push(imageData);
+      let bytes = history.reduce((total, entry) => total + entry.data.byteLength, 0);
+      while (history.length > 1 && bytes > MAX_SELECTION_HISTORY_BYTES) {
+        bytes -= history.shift().data.byteLength;
+      }
+    }
+    function currentSelection() {
+      if (!selectionCanvas.width || !selectionCanvas.height) return null;
+      return selectionContext.getImageData(0, 0, selectionCanvas.width, selectionCanvas.height);
+    }
+    function snapshotSelection() {
+      const imageData = currentSelection();
+      if (!imageData) return null;
+      pushHistory(state.selectionHistory, imageData);
+      state.redoHistory = [];
+      return imageData;
+    }
+    function undoSelection() {
+      const imageData = state.selectionHistory.pop();
+      if (!imageData) return;
+      const current = currentSelection();
+      if (current) pushHistory(state.redoHistory, current);
+      selectionContext.putImageData(imageData, 0, 0);
+      renderSelectionState(); publishContext();
+    }
+    function redoSelection() {
+      const imageData = state.redoHistory.pop();
+      if (!imageData) return;
+      const current = currentSelection();
+      if (current) pushHistory(state.selectionHistory, current);
+      selectionContext.putImageData(imageData, 0, 0);
+      renderSelectionState(); publishContext();
+    }
+    function clearSelection(announce = true) {
+      if (!selectionCanvas.width || !selectionBounds()) return;
+      snapshotSelection();
+      selectionContext.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+      if (announce) setStatus(tr("selectionCleared"));
+      renderSelectionState(); publishContext();
+    }
+    function fitZoom() {
+      if (!state.imageWidth) return 1;
+      const maxWidth = Math.max(320, $(".workspace").clientWidth - 144);
+      const maxHeight = Math.max(260, $(".workspace").clientHeight - 144);
+      return Math.min(maxWidth / state.imageWidth, maxHeight / state.imageHeight, 1);
+    }
+    function currentZoom() {
+      return state.zoomMode === "fit" ? fitZoom() : state.zoom;
+    }
+    function setZoom(scale, mode = "custom") {
+      state.zoom = Math.max(.1, Math.min(3, scale));
+      state.zoomMode = mode;
+      applyZoom();
+    }
+    function applyZoom() {
+      if (!state.imageWidth) return;
+      const scale = currentZoom();
+      $("#canvasWrap").style.width = `${Math.round(state.imageWidth * scale)}px`;
+      $("#canvasWrap").style.height = `${Math.round(state.imageHeight * scale)}px`;
+      $("#zoomValue").textContent = `${Math.round(scale * 100)}%`;
+      renderSelectionVisual(selectionBounds());
+    }
+    function showTooltip(button) {
+      const label = button.dataset.tooltip;
+      if (!label) return;
+      const tooltip = $("#instantTooltip");
+      const rect = button.getBoundingClientRect();
+      tooltip.textContent = label;
+      tooltip.hidden = false;
+      const besideToolbar = matchMedia("(max-width: 760px)").matches && button.closest("#toolbar");
+      tooltip.style.transform = besideToolbar ? "none" : "translateX(-50%)";
+      tooltip.style.left = besideToolbar
+        ? `${Math.min(innerWidth - tooltip.offsetWidth - 8, rect.right + 7)}px`
+        : `${Math.max(36, Math.min(innerWidth - 36, rect.left + rect.width / 2))}px`;
+      tooltip.style.top = besideToolbar
+        ? `${Math.max(8, rect.top + rect.height / 2 - tooltip.offsetHeight / 2)}px`
+        : button.closest("#zoomControls") ? `${rect.top - tooltip.offsetHeight - 7}px` : `${rect.bottom + 7}px`;
+    }
+    function hideTooltip() {
+      $("#instantTooltip").hidden = true;
+    }
+    function pointForEvent(event) {
+      const rect = selectionCanvas.getBoundingClientRect();
+      return {
+        x: Math.max(0, Math.min(selectionCanvas.width, (event.clientX - rect.left) * selectionCanvas.width / rect.width)),
+        y: Math.max(0, Math.min(selectionCanvas.height, (event.clientY - rect.top) * selectionCanvas.height / rect.height)),
+      };
+    }
+    function dab(point, subtract) {
+      const size = Number($("#brushSize").value);
+      const hardness = Number($("#hardness").value) / 100;
+      const radius = size / 2;
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      const gradient = selectionContext.createRadialGradient(point.x, point.y, radius * hardness, point.x, point.y, radius);
+      const color = subtract ? "rgba(0,0,0,1)" : "rgba(99,102,241,1)";
+      gradient.addColorStop(0, color);
+      gradient.addColorStop(Math.min(.999, hardness), color);
+      gradient.addColorStop(1, "rgba(99,102,241,0)");
+      selectionContext.fillStyle = gradient;
+      selectionContext.beginPath(); selectionContext.arc(point.x, point.y, radius, 0, Math.PI * 2); selectionContext.fill();
+      selectionContext.restore();
+    }
+    function strokeBetween(from, to, subtract) {
+      const distance = Math.hypot(to.x - from.x, to.y - from.y);
+      const step = Math.max(2, Number($("#brushSize").value) / 8);
+      const count = Math.max(1, Math.ceil(distance / step));
+      for (let index = 1; index <= count; index++) {
+        const amount = index / count;
+        dab({ x: from.x + (to.x - from.x) * amount, y: from.y + (to.y - from.y) * amount }, subtract);
+      }
+    }
+    function drawShape(from, to, shape, subtract) {
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      selectionContext.fillStyle = "rgba(99,102,241,1)";
+      const left = Math.min(from.x, to.x);
+      const top = Math.min(from.y, to.y);
+      const width = Math.abs(to.x - from.x);
+      const height = Math.abs(to.y - from.y);
+      if (shape === "ellipse") {
+        selectionContext.beginPath();
+        selectionContext.ellipse(left + width / 2, top + height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+        selectionContext.fill();
+      } else {
+        selectionContext.fillRect(left, top, width, height);
+      }
+      selectionContext.restore();
+    }
+    function smartSelect(point, subtract) {
+      const scale = Math.min(1, MAX_SMART_SELECTION_DIMENSION / Math.max(imageCanvas.width, imageCanvas.height));
+      const width = Math.max(1, Math.round(imageCanvas.width * scale));
+      const height = Math.max(1, Math.round(imageCanvas.height * scale));
+      const probe = document.createElement("canvas");
+      probe.width = width; probe.height = height;
+      const probeContext = probe.getContext("2d", { willReadFrequently: true });
+      probeContext.drawImage(imageCanvas, 0, 0, width, height);
+      const source = probeContext.getImageData(0, 0, width, height);
+      const seedX = Math.min(width - 1, Math.max(0, Math.floor(point.x * scale)));
+      const seedY = Math.min(height - 1, Math.max(0, Math.floor(point.y * scale)));
+      const seedOffset = (seedY * width + seedX) * 4;
+      const seedRed = source.data[seedOffset];
+      const seedGreen = source.data[seedOffset + 1];
+      const seedBlue = source.data[seedOffset + 2];
+      const seedAlpha = source.data[seedOffset + 3];
+      const tolerance = Number($("#tolerance").value) / 100;
+      const threshold = tolerance * tolerance * 255 * 255 * 3;
+      const total = width * height;
+      const visited = new Uint8Array(total);
+      const stack = new Int32Array(total);
+      const region = probeContext.createImageData(width, height);
+      let stackSize = 0;
+      const enqueue = (index) => {
+        if (visited[index]) return;
+        visited[index] = 1;
+        const offset = index * 4;
+        const red = source.data[offset] - seedRed;
+        const green = source.data[offset + 1] - seedGreen;
+        const blue = source.data[offset + 2] - seedBlue;
+        const alpha = source.data[offset + 3] - seedAlpha;
+        if (red * red + green * green + blue * blue + alpha * alpha <= threshold) stack[stackSize++] = index;
+      };
+      enqueue(seedY * width + seedX);
+      while (stackSize) {
+        const index = stack[--stackSize];
+        const offset = index * 4;
+        region.data[offset] = 99; region.data[offset + 1] = 102; region.data[offset + 2] = 241; region.data[offset + 3] = 255;
+        const x = index % width;
+        if (x > 0) enqueue(index - 1);
+        if (x + 1 < width) enqueue(index + 1);
+        if (index >= width) enqueue(index - width);
+        if (index + width < total) enqueue(index + width);
+      }
+      const regionCanvas = document.createElement("canvas");
+      regionCanvas.width = width; regionCanvas.height = height;
+      regionCanvas.getContext("2d").putImageData(region, 0, 0);
+      selectionContext.save();
+      selectionContext.globalCompositeOperation = subtract ? "destination-out" : "source-over";
+      selectionContext.imageSmoothingEnabled = true;
+      selectionContext.drawImage(regionCanvas, 0, 0, selectionCanvas.width, selectionCanvas.height);
+      selectionContext.restore();
+    }
+    function selectTool(tool, preserveAiMode = false) {
+      setAnnotationMode(false);
+      if (!preserveAiMode && tool !== "hand" && state.aiMode !== "inpaint") selectAiMode("inpaint");
+      state.tool = tool;
+      if (tool !== "hand") state.selectionTool = tool;
+      document.querySelectorAll("button[data-tool]").forEach((button) => button.classList.toggle("active", button.dataset.tool === tool));
+      selectionCanvas.dataset.tool = tool;
+      positionToolOptions();
+    }
+    function selectAiMode(mode) {
+      state.aiMode = mode;
+      document.querySelectorAll("[data-ai-mode]").forEach((button) => button.classList.toggle("active", button.dataset.aiMode === mode));
+      if (mode === "erase" && state.tool !== "brush") selectTool("brush", true);
+      else positionToolOptions();
+      renderSelectionState();
+      publishContext();
+    }
+    const toolOptionPositions = new Map();
+    function toolOptionsKey(popover) {
+      return `${popover.id}:${matchMedia("(max-width: 760px)").matches ? "vertical" : "horizontal"}`;
+    }
+    function placeToolOptions(popover, left, top) {
+      popover.style.left = `${Math.max(8, Math.min(innerWidth - popover.offsetWidth - 8, left))}px`;
+      popover.style.top = `${Math.max(8, Math.min(innerHeight - popover.offsetHeight - 8, top))}px`;
+    }
+    function positionToolOptions() {
+      const narrow = matchMedia("(max-width: 760px)").matches;
+      document.querySelectorAll('.parameter-options input[type="range"]').forEach((slider) => {
+        slider.setAttribute("aria-orientation", narrow ? "vertical" : "horizontal");
+      });
+      const visible = state.mode === "edit" && Boolean(state.sourcePath) && !state.annotationMode;
+      const smartOptions = $("#smartOptions");
+      const brushOptions = $("#brushOptions");
+      const expandOptions = $("#expandOptions");
+      smartOptions.hidden = !visible || state.aiMode === "expand" || state.tool !== "smart";
+      brushOptions.hidden = !visible || state.aiMode === "expand" || state.tool !== "brush";
+      expandOptions.hidden = !visible || state.aiMode !== "expand";
+      const popover = state.aiMode === "expand" ? expandOptions : state.tool === "smart" ? smartOptions : state.tool === "brush" ? brushOptions : null;
+      if (!popover || popover.hidden) return;
+      const saved = toolOptionPositions.get(toolOptionsKey(popover));
+      if (saved) { placeToolOptions(popover, saved.left, saved.top); return; }
+      const toolbarRect = $("#toolbar").getBoundingClientRect();
+      const anchor = state.aiMode === "expand" ? $('[data-ai-mode="expand"]') : $(`button[data-tool="${state.tool}"]`);
+      const anchorRect = anchor?.getBoundingClientRect() || toolbarRect;
+      const left = narrow ? toolbarRect.right + 8 : anchorRect.left;
+      const top = narrow ? anchorRect.top : toolbarRect.bottom + 8;
+      placeToolOptions(popover, left, top);
+    }
+    function positionAnnotationHint() {
+      const hint = $("#annotationHint");
+      if (hint.hidden) return;
+      const toolbar = $("#toolbar").getBoundingClientRect();
+      if (matchMedia("(max-width: 760px)").matches) {
+        const anchor = $("#askAi").getBoundingClientRect();
+        hint.style.transform = "none";
+        hint.style.left = `${Math.min(innerWidth - hint.offsetWidth - 8, toolbar.right + 10)}px`;
+        hint.style.top = `${Math.max(8, Math.min(innerHeight - hint.offsetHeight - 8, anchor.top + anchor.height / 2 - hint.offsetHeight / 2))}px`;
+        return;
+      }
+      hint.style.transform = "translateX(-50%)";
+      const halfWidth = hint.offsetWidth / 2;
+      const center = Math.max(halfWidth + 8, Math.min(innerWidth - halfWidth - 8, toolbar.left + toolbar.width / 2));
+      hint.style.left = `${center}px`;
+      hint.style.top = `${toolbar.bottom + 8}px`;
+    }
+    function selectOperation(operation) {
+      state.operation = operation;
+      document.querySelectorAll("[data-operation]").forEach((button) => button.classList.toggle("active", button.dataset.operation === operation));
+    }
+    function exportMask() {
+      if (!selectionBounds()) return "";
+      const output = document.createElement("canvas");
+      output.width = selectionCanvas.width; output.height = selectionCanvas.height;
+      const context = output.getContext("2d");
+      context.fillStyle = "#000"; context.fillRect(0, 0, output.width, output.height);
+      context.globalCompositeOperation = "destination-out";
+      context.drawImage(selectionCanvas, 0, 0);
+      return output.toDataURL("image/png");
+    }
+    function readFileAsDataUrl(file) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(reader.error || new Error("File read failed"));
+        reader.readAsDataURL(file);
+      });
+    }
+    async function captureSelection(expectedRevision) {
+      if (state.busy || state.drawing || state.mode !== "edit" || !selectionBounds()) throw new Error(tr("请完成图片选区后重试。"));
+      if (expectedRevision !== undefined && expectedRevision !== selectionRevision) throw new Error(tr("图片选区已变化，请检查当前选区后重新发送。"));
+      // Capture everything before the first await; later gestures cannot change this request.
+      const args = actionArguments();
+      const sourcePath = state.sourcePath;
+      const sourceDataUrl = imageCanvas.toDataURL("image/png");
+      const maskDataUrl = exportMask();
+      const preview = document.createElement("canvas");
+      preview.width = imageCanvas.width; preview.height = imageCanvas.height;
+      const context = preview.getContext("2d");
+      context.drawImage(imageCanvas, 0, 0);
+      context.globalAlpha = 0.55;
+      context.drawImage(selectionCanvas, 0, 0);
+      const previewDataUrl = preview.toDataURL("image/png");
+      const frozen = await callService("capture-selection", { sourcePath, sourceDataUrl, maskDataUrl });
+      return {
+        ...frozen, model: args.model, size: args.size, quality: args.quality, selectionBlend: args.selectionBlend, previewDataUrl,
+        guidance: [["Style", args.style], ["Camera", args.camera], ["Lighting", args.lighting]]
+          .filter((entry) => entry[1] && entry[1] !== "auto").map(([key, value]) => key + ": " + value).join(". "),
+      };
+    }
+    async function rememberGalleryImage(payload, decoded) {
+      if (!payload.path || !payload.dataUrl) return;
+      const image = decoded || new Image();
+      if (!decoded) { image.src = payload.dataUrl; await image.decode(); }
+      const thumbnail = document.createElement("canvas");
+      const scale = Math.min(1, 240 / Math.max(image.naturalWidth, image.naturalHeight));
+      thumbnail.width = Math.max(1, Math.round(image.naturalWidth * scale));
+      thumbnail.height = Math.max(1, Math.round(image.naturalHeight * scale));
+      thumbnail.getContext("2d").drawImage(image, 0, 0, thumbnail.width, thumbnail.height);
+      state.gallery = [{ path: payload.path, name: payload.name || payload.path.split("/").pop(), width:image.naturalWidth, height:image.naturalHeight, thumbnail: thumbnail.toDataURL("image/webp", .7) }, ...state.gallery.filter(entry => entry.path !== payload.path)].slice(0, 24);
+      try { if (state.galleryKey) localStorage.setItem(state.galleryKey, JSON.stringify(state.gallery)); } catch { $("#galleryStatus").textContent = tr("历史记录暂时无法保存"); }
+      renderGallery();
+    }
+    function selectReference(path) {
+      if (state.busy) return;
+      state.referencePath = path;
+      setStatus(""); renderGallery(); publishContext();
+    }
+    function renderGallery() {
+      $("#outputsEmpty").hidden = state.gallery.length > 0 || state.generating || state.busy || state.galleryLoading || state.galleryError;
+      $("[data-output-empty-title]").textContent = tr("给灵感一个开始");
+      $("[data-output-empty-description]").textContent = tr("在下方写下一个想法，或添加参考素材。你的第一份作品会出现在这里。");
+      const grid = $("#galleryGrid");
+      grid.replaceChildren();
+      if (state.generating) {
+        const pending = document.createElement("div"); pending.className = "image-card generation-pending"; pending.setAttribute("role", "status");
+        const label = document.createElement("span"); label.className = "generation-label"; label.textContent = imageProgressLabel();
+        const progress = document.createElement("progress"); progress.className = "generation-progress"; progress.max = 100; progress.value = imageProgressPercent();
+        progress.setAttribute("aria-label", state.locale === "en" ? "Estimated image generation progress" : "预估生图进度");
+        progress.setAttribute("aria-valuetext", label.textContent);
+        pending.append(label, progress); grid.append(pending);
+      }
+      for (const entry of state.gallery) {
+        const card = document.createElement("article"); card.className = `image-card${entry.path === state.referencePath ? " selected" : ""}`;
+        const select = document.createElement("button"); select.type = "button"; select.disabled = state.busy;
+        select.setAttribute("aria-label", `${state.locale==="en"?"Preview":"预览"}：${entry.name}`); select.title=entry.name;
+        const image = document.createElement("img"); image.src = entry.thumbnail; image.alt = entry.name; image.loading = "lazy"; select.append(image); select.onclick = () => previewGalleryImage(entry);
+        const actions = document.createElement("div"); actions.className = "card-actions";
+        const editAction=async()=>{if(state.hostContext?.mediaStudio){post({type:"ipollowork:media-studio:edit",path:entry.path});return;}await loadWorkspaceImage(entry.path);if(state.sourcePath===entry.path)setMode("edit");};
+        for (const [label, action] of [[state.locale==="en"?"Edit":"编辑",editAction]]) {
+          const button=document.createElement("button");button.type="button";button.textContent=label;button.disabled=state.busy;button.onclick=action;actions.append(button);
+        }
+        const more=document.createElement("button");more.type="button";more.className="card-more";more.innerHTML='<svg data-lucide="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>';more.setAttribute("aria-label",tr("moreActions"));more.onclick=()=>{const r=more.getBoundingClientRect();post({type:"ipollowork:image-studio:video-menu",path:entry.path,left:r.left,top:r.bottom});};actions.append(more);
+        const reference=document.createElement("button");reference.type="button";reference.className="reference-action";reference.disabled=state.busy;reference.setAttribute("aria-pressed",String(entry.path===state.referencePath));reference.title=entry.path===state.referencePath?(state.locale==="en"?"Remove reference":"取消参考"):(state.locale==="en"?"Use as reference":"作为参考");reference.setAttribute("aria-label",reference.title);reference.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path class="reference-plus" d="M12 5v14M5 12h14"/><path class="reference-check" d="m5 12 4 4L19 6"/></svg>';reference.onclick=()=>selectReference(entry.path===state.referencePath?"":entry.path);
+        const info=document.createElement("div");info.className="card-info";
+        const name=document.createElement("p");name.className="card-name";name.title=entry.name;name.textContent=/^[0-9a-f]{8}-/i.test(entry.name)?`${state.locale==="en"?"Image":"图片"} ${state.gallery.indexOf(entry)+1}`:entry.name;
+        const meta=document.createElement("p");meta.className="card-meta";meta.textContent=entry.width&&entry.height?`${entry.width} × ${entry.height}`:(state.locale==="en"?"Image":"图片");info.append(name,meta);
+        card.append(select,info,actions,reference); grid.append(card);
+      }
+      $("#loadOutputImages").disabled = state.busy;
+    }
+    addEventListener("message", event => {
+      if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:preview-closed") return;
+      const index = state.gallery.findIndex(entry => entry.path === event.data.path);
+      if (index >= 0) $("#galleryGrid").querySelectorAll("article > button:first-child")[index]?.focus();
+    });
+    async function previewGalleryImage(entry) {
+      setBusy(true, tr("loading"));
+      try { const payload = await callService("load-image", { sourcePath: entry.path }); post({ type: "ipollowork:image-studio:preview", src: payload.dataUrl, name: entry.name, path: entry.path }); }
+      catch (error) { setStatus(error.message, true); }
+      finally { setBusy(false); }
+    }
+    $("#loadOutputImages").onclick = () => {
+      if (state.busy) return;
+      state.galleryLoading=true; renderGallery();
+      $("#galleryStatus").textContent = tr("正在读取近期产出…");
+      post({ type: "ipollowork:image-studio:list-images" });
+    };
+    addEventListener("message", async event => {
+      if (event.source !== parent || event.data?.type !== "ipollowork:image-studio:image-list" || state.busy) return;
+      if (event.data.error) { state.galleryLoading=false; state.galleryError=true; $("#galleryStatus").textContent = event.data.error; renderGallery(); return; }
+      const paths = Array.isArray(event.data.paths) ? event.data.paths.filter(path => typeof path === "string").slice(0, 12) : [];
+      if(paths.length && !state.sourcePath && state.mode === "start"){setMode("generate");requestInspector();}
+      state.galleryLoading=true; state.galleryError=false; setBusy(true); let loaded = 0;
+      try {
+        for (const path of paths.reverse()) {
+          if (state.gallery.some(entry => entry.path === path)) { loaded++; continue; }
+          try { await rememberGalleryImage(await callService("load-image", { sourcePath: path })); loaded++; } catch { /* A missing file must not hide other outputs. */ }
+        }
+        state.galleryError = paths.length > 0 && loaded === 0 && state.gallery.length === 0;
+        $("#galleryStatus").textContent = state.galleryError ? tr("图片暂时加载不出来，请刷新重试。") : loaded ? tr("已载入 {count} 张近期图片",{count:loaded}) : "";
+      } finally { state.galleryLoading=false; setBusy(false); }
+    });
+    async function renderImage(payload) {
+      post({type:"ipollowork:image-studio:file-info-close"});
+      const image = new Image();
+      image.src = payload.dataUrl;
+      await image.decode();
+      if (image.naturalWidth > MAX_CANVAS_DIMENSION || image.naturalHeight > MAX_CANVAS_DIMENSION) throw new Error(tr("tooLarge"));
+      await rememberGalleryImage(payload, image);
+      state.sourceOriginPath = String(payload.path || "");
+      state.sourcePath = String(payload.path || ""); state.sourceName = String(payload.name || state.sourcePath.split("/").pop() || "image");
+      state.sourceRevision = String(payload.revision || "");
+      state.sourceMetadata = payload;
+      state.editResult = payload.editId ? { editId: payload.editId, originalPath: payload.originalPath } : null;
+      state.confirmOverwrite = false;
+      renderSaveReview();
+      state.sourceDataUrl = String(payload.dataUrl || ""); state.imageWidth = image.naturalWidth; state.imageHeight = image.naturalHeight;
+      imageCanvas.width = selectionDisplayCanvas.width = selectionCanvas.width = image.naturalWidth;
+      imageCanvas.height = selectionDisplayCanvas.height = selectionCanvas.height = image.naturalHeight;
+      imageContext.clearRect(0, 0, imageCanvas.width, imageCanvas.height); imageContext.drawImage(image, 0, 0);
+      selectionContext.clearRect(0, 0, selectionCanvas.width, selectionCanvas.height);
+      state.selectionHistory = []; state.redoHistory = []; state.gestureBase = null; state.zoom = 1; state.zoomMode = "fit";
+      state.annotationPoint = null; setAnnotationMode(false); renderAnnotationMarker();
+      renderSource(); publishContext();
+    }
+    async function loadWorkspaceImage(sourcePath) {
+      if (!sourcePath || sourcePath === state.sourcePath || sourcePath === state.sourceOriginPath || state.busy) return;
+      setBusy(true, tr("loading")); setStatus("");
+      try {
+        let payload = await callService("load-image", { sourcePath });
+        if (payload.mimeType === "image/svg+xml") {
+          const image = new Image();
+          image.src = payload.dataUrl;
+          await image.decode();
+          if (!image.naturalWidth || !image.naturalHeight || image.naturalWidth > MAX_CANVAS_DIMENSION || image.naturalHeight > MAX_CANVAS_DIMENSION) throw new Error(tr("tooLarge"));
+          const canvas = document.createElement("canvas");
+          canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
+          canvas.getContext("2d").drawImage(image, 0, 0);
+          payload = await callService("import-image", { dataUrl: canvas.toDataURL("image/png"), filename: payload.name.replace(/\.svg$/i, ".png") });
+        }
+        await renderImage(payload); state.sourceOriginPath = sourcePath; setMode("edit");
+      }
+      catch (error) { setStatus(error instanceof Error ? error.message : tr("failed"), true); }
+      finally { setBusy(false); }
+    }
+    async function importImage(file) {
+      if (!file || state.busy) return;
+      setBusy(true, tr("importing")); setStatus("");
+      try {
+        const dataUrl = await readFileAsDataUrl(file);
+        await renderImage(await callService("import-image", { dataUrl, filename: file.name }));
+        setMode("edit");
+      } catch (error) { setStatus(error instanceof Error ? error.message : tr("failed"), true); }
+      finally { setBusy(false); $("#fileInput").value = ""; }
+    }
+    function downloadCurrentImage() {
+      if (!state.sourceDataUrl) return;
+      const [header, data] = state.sourceDataUrl.split(",");
+      const blob = new Blob([Uint8Array.from(atob(data), char => char.charCodeAt(0))], { type: header.slice(5).split(";")[0] });
+      post({ type: "ipollowork:image-studio:download-file", blob, name: state.sourceName || "image.png" });
+    }
+    function actionArguments(prompt) {
+      return {
+        prompt: prompt ?? state.prompt.trim(), model: state.model, style: state.style, camera: state.camera,
+        lighting: state.lighting,
+        ...(state.mode === "edit" && selectionBounds() ? { selectionBlend: state.selectionBlend } : {}),
+        ...Object.fromEntries(["size", "quality"].filter((key) => selectedModel()?.parameters?.[key] && !(key === "size" && state.mode === "edit" && selectionBounds())).map((key) => [key, state[key]])),
+      };
+    }
+    function expandedGeometry() {
+      const horizontal = state.expandDirection === "all" || state.expandDirection === "left" || state.expandDirection === "right";
+      const vertical = state.expandDirection === "all" || state.expandDirection === "top" || state.expandDirection === "bottom";
+      const width = horizontal ? Math.min(MAX_CANVAS_DIMENSION, Math.round(state.imageWidth * state.expandScale)) : state.imageWidth;
+      const height = vertical ? Math.min(MAX_CANVAS_DIMENSION, Math.round(state.imageHeight * state.expandScale)) : state.imageHeight;
+      const extraX = width - state.imageWidth;
+      const extraY = height - state.imageHeight;
+      const offsetX = state.expandDirection === "left" ? extraX : state.expandDirection === "all" ? Math.floor(extraX / 2) : 0;
+      const offsetY = state.expandDirection === "top" ? extraY : state.expandDirection === "all" ? Math.floor(extraY / 2) : 0;
+      let selectionBounds;
+      if (state.expandDirection === "left") selectionBounds = { left: 0, top: 0, right: offsetX / width, bottom: 1 };
+      else if (state.expandDirection === "right") selectionBounds = { left: (offsetX + state.imageWidth) / width, top: 0, right: 1, bottom: 1 };
+      else if (state.expandDirection === "top") selectionBounds = { left: 0, top: 0, right: 1, bottom: offsetY / height };
+      else if (state.expandDirection === "bottom") selectionBounds = { left: 0, top: (offsetY + state.imageHeight) / height, right: 1, bottom: 1 };
+      else selectionBounds = { left: 0, top: 0, right: 1, bottom: 1 };
+      return { width, height, offsetX, offsetY, selectionBounds };
+    }
+    async function prepareExpandedEdit() {
+      const geometry = expandedGeometry();
+      if (geometry.width === state.imageWidth && geometry.height === state.imageHeight) throw new Error(tr("tooLarge"));
+      const expanded = document.createElement("canvas");
+      expanded.width = geometry.width; expanded.height = geometry.height;
+      expanded.getContext("2d").drawImage(imageCanvas, geometry.offsetX, geometry.offsetY);
+      const mask = document.createElement("canvas");
+      mask.width = geometry.width; mask.height = geometry.height;
+      const maskContext = mask.getContext("2d");
+      maskContext.clearRect(0, 0, mask.width, mask.height);
+      maskContext.fillStyle = "#000";
+      maskContext.fillRect(geometry.offsetX, geometry.offsetY, state.imageWidth, state.imageHeight);
+      const baseName = state.sourceName.replace(/\.[^.]+$/, "") || "image";
+      const prepared = await callService("import-image", {
+        dataUrl: expanded.toDataURL("image/png"),
+        filename: `${baseName}-expanded.png`,
+      });
+      return { sourcePath: prepared.path, maskDataUrl: mask.toDataURL("image/png"), selectionBounds: geometry.selectionBounds };
+    }
+    function editPrompt(userPrompt) {
+      if (state.aiMode === "erase") {
+        return `Remove every object inside the selected mask and reconstruct a natural, seamless background. Preserve everything outside the mask exactly.${userPrompt ? ` Additional instruction: ${userPrompt}` : ""}`;
+      }
+      if (state.aiMode === "expand") {
+        return `Extend the image naturally beyond its original boundaries. Continue the existing composition, lighting, perspective, texture, and style. Preserve the original image content exactly.${userPrompt ? ` Additional instruction: ${userPrompt}` : ""}`;
+      }
+      return userPrompt;
+    }
+    async function run() {
+      if (state.busy) return { ok: false, message: tr("processing") };
+      if (!selectedModel()) {
+        const message = tr("modelRequired");
+        setStatus(message, true); openModelMenu();
+        return { ok: false, message };
+      }
+      const userPrompt = state.prompt.trim();
+      if (state.mode === "generate" && !userPrompt) { setStatus(tr("promptRequired"), true); return { ok: false, message: tr("promptRequired") }; }
+      if (state.mode === "edit" && !state.sourcePath) { setStatus(tr("imageRequired"), true); return { ok: false, message: tr("imageRequired") }; }
+      if (state.mode === "edit" && state.aiMode !== "expand" && !selectionBounds()) { setStatus(tr("selectionRequired"), true); return { ok: false, message: tr("selectionRequired") }; }
+      if (state.mode === "edit" && state.aiMode === "inpaint" && !userPrompt) { setStatus(tr("promptRequired"), true); return { ok: false, message: tr("promptRequired") }; }
+      const blocked = actionBlockedMessage();
+      if (blocked) { setStatus(blocked, true); return { ok: false, message: blocked }; }
+      const isEdit = state.mode === "edit";
+      const sourcePath = state.sourcePath;
+      const referencePath = state.referencePath;
+      state.generating = !isEdit;
+      const frozen = isEdit && state.aiMode !== "expand" && selectionBounds() ? captureSelection() : null;
+      const sourceRevision = state.sourceRevision;
+      state.generationStartedAt = Date.now();
+      setBusy(true, imageProgressLabel()); setStatus("");
+      const progressTimer = setInterval(refreshImageProgress, 1000);
+      try {
+        const prompt = state.mode === "edit" ? editPrompt(state.aiMode === "inpaint" ? userPrompt : "") : userPrompt;
+        const args = actionArguments(prompt);
+        let result;
+        if (!isEdit) result = referencePath
+          ? await callService("edit-image", { ...args, sourcePath: referencePath })
+          : await callService("generate-image", args);
+        else if (state.aiMode === "expand") {
+          const target = await prepareExpandedEdit();
+          result = await callService("edit-image", { ...args, ...target });
+        } else {
+          const selection = await frozen;
+          result = await callService("edit-image", {
+              ...args,
+              sourcePath,
+              sourceRevision,
+              reviewResult: true,
+              selectionId: selection?.selectionId,
+            });
+        }
+        if (isEdit) { await renderImage(result); post({ type: "ipollowork:image-studio:edited", path: result.path, originalPath: sourcePath, editId: result.editId, revision: result.revision }); }
+        else { await rememberGalleryImage(result); await renderImage(result); setMode("edit"); }
+        if (!result.editId) setStatus(state.locale === "en" ? "Image ready to edit." : "图片已生成，可以继续编辑。");
+        return { ok: true, path: result.path };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : tr("failed");
+        setStatus(message, true);
+        return { ok: false, message };
+      }
+      finally { clearInterval(progressTimer); state.generationStartedAt = 0; state.generating = false; setBusy(false); }
+    }
+    function publishContext() {
+      clearTimeout(contextTimer);
+      contextTimer = setTimeout(() => {
+        const bounds = selectionBounds();
+        const english = state.locale === "en";
+        const autoLabel = state.mode === "edit" ? (english ? "Match original" : "沿用原图") : (english ? "Auto" : "自动");
+        const selectOptions = {
+          style: [["auto",autoLabel],["photorealistic",english?"Photorealistic":"写实"],["cinematic",english?"Cinematic":"电影感"],["illustration",english?"Illustration":"插画"],["anime illustration",english?"Anime":"动漫"],["high-end 3D render","3D"]],
+          camera: [["auto",autoLabel],["macro close-up",english?"Close-up":"特写"],["50mm natural perspective",english?"Medium shot":"中景"],["wide angle",english?"Wide shot":"全景"]],
+          lighting: [["auto",autoLabel],["soft daylight",english?"Natural light":"自然光"],["studio softbox",english?"Soft light":"柔光"],["dramatic rim light",english?"Dramatic light":"戏剧光"]],
+        };
+        const option = ([value, label]) => ({ value, label });
+        const modelParameters = selectedModel()?.parameters;
+        const promptSize = modelParameters?.size?.delivery === "prompt";
+        const parameterLabel = (key, value) => {
+          if (value === "auto") return english ? "Auto" : "自动";
+          if (key === "quality") return ({ low: english ? "Low · draft" : "低 · 草稿", medium: english ? "Medium" : "中", high: english ? "High" : "高" })[value] || value;
+          if (value === "2K" || value === "3K") return `${value} · ${english ? "Auto aspect ratio" : "自动画幅"}`;
+          const [width, height] = value.split("x").map(Number);
+          const gcd = (a, b) => b ? gcd(b, a % b) : a;
+          const divisor = gcd(width, height);
+          const ratio = `${width / divisor}:${height / divisor}`;
+          if (promptSize) return ratio;
+          const experimental = modelParameters?.size?.experimentalValues?.includes(value);
+          return `${value.replace("x", " × ")} · ${ratio}${experimental ? (english ? " · experimental" : " · 实验性") : ""}`;
+        };
+        const parameterFields = ["size", "quality"].flatMap((key) => {
+          if (key === "size" && state.mode === "edit" && bounds) return [];
+          const parameter = modelParameters?.[key];
+          return parameter ? [{
+            id: key, label: key === "size" ? (promptSize ? (english ? "Aspect ratio intent (prompt)" : "期望画幅（提示词）") : (english ? "Output size" : "输出尺寸")) : tr("quality"),
+            control: "select", value: state[key], ...(parameter.customRatio ? { customRatio:true } : {}),
+            options: parameter.values.map((value) => ({ value, label: parameterLabel(key, value) })),
+          }] : [];
+        });
+        const parameterNotice = promptSize
+          ? (english ? "Style, camera, lighting and aspect ratio are prompt guidance. ChatGPT login does not expose exact size or quality controls; the output is model-determined." : "风格、镜头、光线和画幅会写入提示词。ChatGPT 登录通道不提供精确尺寸或质量控制，实际输出由模型决定。")
+          : (english ? "Style, camera and lighting are prompt guidance. Output settings are sent as native model parameters." : "风格、镜头、光线会写入提示词；输出参数直接传给模型接口。");
+        const blocked = actionBlockedMessage();
+        const approximate = (bounds || state.aiMode === "expand") && selectedModel()?.capabilities?.region && !selectedModel()?.capabilities?.mask
+          ? tr("approximateSelection", { name: selectedModel()?.label || "" })
+          : "";
+        const selectionNotice = state.mode === "edit" && bounds
+          ? (state.selectionBlend === "strict"
+            ? (english ? "Strict uses the exact mask without added feathering; hard edges can show a seam. Style, camera and lighting are prompt guidance only." : "严格边界按原始蒙版替换，不额外羽化；硬边选区可能出现接缝。风格、镜头和光线仅作提示词引导。")
+            : tr("exactSelection")) + (english ? " Original dimensions and unselected pixels are preserved. Attach the selection to edit from chat." : " 保持原图尺寸和选区外像素；左侧对话可附加此选区修改。")
+          : "";
+        const status = state.statusMessage
+          ? { message: state.statusMessage, tone: state.statusTone }
+          : blocked
+            ? { message: blocked, tone: "info" }
+            : approximate
+              ? { message: approximate, tone: "info" }
+            : selectionNotice
+              ? { message: selectionNotice, tone: "info" }
+            : { message: parameterNotice, tone: "info" };
+        const inspector = state.mode === "generate" ? {
+          schemaVersion: 1,
+          title: state.referencePath ? (english ? "Generate from this image" : "参考这张图片生成") : tr("generateEmptyTitle"),
+          description: tr("generateEmptyBody"),
+          updateTool: "set_prompt",
+          submitTool: "generate_or_edit",
+          submitLabel: state.generationStartedAt ? imageProgressLabel() : tr("generateImage"),
+          submitDisabled: state.busy || Boolean(blocked),
+          openRequestId: state.inspectorOpenRequest || undefined,
+          fields: [
+            { id: "referencePath", label: english ? "Reference image" : "参考图", control: "image", value: state.referencePath, media: { kind: "image", importTool: "import_reference", readTool: "preview_reference" } },
+            { id: "prompt", label: tr("instruction"), control: "textarea", value: state.prompt, placeholder: tr("promptPlaceholder") },
+            ...(state.mode === "edit" && bounds ? [{ id: "selectionBlend", label: english ? "Edge blending" : "边缘衔接", control: "select", value: state.selectionBlend, live: true, options: [{ value: "natural", label: english ? "Natural · feather inward" : "自然融合 · 内侧渐变" }, { value: "strict", label: english ? "Strict · exact mask" : "严格边界 · 精确替换" }] }] : []),
+            { id: "style", label: tr("style"), control: "select", value: state.style, live: true, options: selectOptions.style.map(option) },
+            { id: "camera", label: tr("camera"), control: "select", value: state.camera, live: true, options: selectOptions.camera.map(option) },
+            { id: "lighting", label: tr("lighting"), control: "select", value: state.lighting, live: true, options: selectOptions.lighting.map(option) },
+            ...parameterFields,
+          ],
+          ...(status ? { status } : {}),
+        } : null;
+        void request("ui/update-model-context", {
+          content: [{ type: "text", text: `Image Studio mode: ${state.mode}. User-selected model: ${selectedModel()?.label || "none"}. Source: ${state.sourcePath || "none"}. Prompt: ${state.prompt.trim() || "none"}. Selection: ${bounds ? "active" : "whole image"}. Never choose or change the model for the user.` }],
+          structuredContent: {
+            mode: state.mode,
+            aiMode: state.aiMode,
+            model: state.model || null,
+            sourcePath: state.sourcePath || null,
+            prompt: state.prompt.trim(),
+            selection: bounds,
+            selectionRevision,
+            selectionReady: Boolean(bounds && state.mode === "edit" && !state.busy && !state.drawing),
+            ...(inspector ? { [INSPECTOR_CONTEXT_KEY]: inspector } : {}),
+          },
+        }).catch(() => undefined);
+      }, 160);
+    }
+
+    function renderWorkbench(launch) {
+      const active = launch?.returnToSource === true;
+      const back = document.querySelector('#workbenchBack'), hint = document.querySelector('#workbenchHint');
+      back.hidden = hint.hidden = !active;
+      back.disabled = launch?.workbenchBusy === true;
+      back.title = launch?.returnLabel || '';
+      back.setAttribute('aria-label', back.title);
+      back.querySelector('span').textContent = back.title;
+      hint.textContent = launch?.workbenchMessage || '';
+      hint.dataset.error = String(launch?.workbenchError === true);
+    }
+    document.querySelector('#workbenchBack').onclick = () => post({type:'ipollowork:media-workbench:back'});
+    new ResizeObserver(() => { const hint = document.querySelector('#workbenchHint'); document.documentElement.style.setProperty('--workbench-hint-space', hint.hidden ? '0px' : `${hint.offsetHeight + 12}px`); }).observe(document.querySelector('#workbenchHint'));
+
+    function renderMediaStudio() {
+      if (!state.hostContext?.mediaStudio) return;
+      const english = state.locale === "en";
+      for (const selector of ['#topImport span', '#emptyImport strong']) $(selector).textContent = english ? 'Open media' : '打开素材';
+      $('#topImport').setAttribute('aria-label', english ? 'Open media' : '打开素材');
+      $('#emptyImport .launch-description').textContent = english ? 'Continue editing an image or video' : '继续编辑已有图片或视频';
+      $('#emptyBody').textContent = english ? 'Create images and videos, or refine existing media.' : '生成图片与视频，或继续打磨已有素材。';
+      if (!$('#emptyVideo')) {
+        const button = document.createElement('button'); button.id = 'emptyVideo'; button.className = 'launch-card'; button.type = 'button';
+        button.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m10 8 6 4-6 4Z"/></svg><strong></strong><span class="launch-description"></span>';
+        button.onclick = () => post({type:'ipollowork:media-studio:switch',kind:'video'});
+        $('#emptyImport').before(button);
+      }
+      $('#emptyVideo strong').textContent = english ? 'Generate video' : '生成视频';
+      $('#emptyVideo .launch-description').textContent = english ? 'Create from a prompt or reference' : '从描述或参考素材开始创作';
+      $('#emptyVideo').hidden = state.mode === 'generate';
+    }
+    async function applyHostContext(hostContext) {
+      if (!hostContext || typeof hostContext !== "object") return;
+      if (typeof hostContext.workspaceId !== "string") return;
+      state.hostContext = hostContext;
+      renderWorkbench(hostContext.launch);
+      renderMediaStudio();
+      const galleryKey = `image-studio-gallery:${hostContext.workspaceId}:${hostContext.sessionId || "workspace"}`;
+      if (state.galleryKey !== galleryKey) {
+        state.galleryKey = galleryKey;
+        try {
+          const saved = JSON.parse(localStorage.getItem(galleryKey) || "[]");
+          state.gallery = Array.isArray(saved) ? saved.filter(entry => entry && typeof entry.path === "string" && typeof entry.thumbnail === "string" && entry.thumbnail.startsWith("data:image/")).slice(0, 24) : [];
+        } catch { state.gallery = []; }
+        renderGallery();
+      }
+      const launch = hostContext.launch;
+      if (launch?.intent === "generate-image" && !launch.source && state.appliedLaunch !== launch.requestId) {
+        state.appliedLaunch = launch.requestId; setMode("generate");
+      }
+      if (launch?.intent === "edit-image" && launch.source?.path) {
+        const key = `${launch.requestId || ""}:${launch.source.path}`;
+        if (state.appliedLaunch === key || state.busy) return;
+        const path = String(launch.source.path);
+        await loadWorkspaceImage(path);
+        if (state.sourcePath === path || state.sourceOriginPath === path) {
+          state.appliedLaunch = key;
+          setMode("edit");
+        }
+      }
+    }
+    function toolResult(message) {
+      publishContext();
+      return { content: [{ type: "text", text: message }], structuredContent: { mode: state.mode, sourcePath: state.sourcePath || null, prompt: state.prompt.trim() } };
+    }
+
+    addEventListener("message", (event) => {
+      if (event.source !== parent || !event.data || event.data.jsonrpc !== "2.0") return;
+      const message = event.data;
+      if (message.id !== undefined && !message.method) {
+        const handler = pending.get(message.id); if (!handler) return;
+        pending.delete(message.id); message.error ? handler.reject(new Error(message.error.message)) : handler.resolve(message.result); return;
+      }
+      if (message.method === "tools/list") {
+        respond(message.id, { tools: [
+          { name: "set_prompt", description: "Set Image Studio prompt and parameters without changing its model. Only the user may choose the model from the workbench menu. Model-specific size or quality values require a selected model.", inputSchema: { type: "object", properties: { prompt: { type: "string" }, mode: { type: "string", enum: ["generate", "edit"] }, aiMode: { type: "string", enum: ["inpaint", "expand", "erase"] }, style: { type: "string" }, camera: { type: "string" }, lighting: { type: "string" }, size: { type: "string" }, quality: { type: "string" }, selectionBlend: { type: "string", enum: ["natural", "strict"] } }, additionalProperties: false } },
+          { name: "import_reference", description: "Upload a reference image for generation.", inputSchema: { type: "object", properties: { dataUrl: { type: "string" }, filename: { type: "string" } }, required: ["dataUrl", "filename"] } },
+          { name: "preview_reference", description: "Read the selected reference thumbnail.", inputSchema: { type: "object", properties: { path: { type: "string" } }, required: ["path"] } },
+          { name: "open_image", description: "Open a workspace-relative image in Image Studio.", inputSchema: { type: "object", properties: { sourcePath: { type: "string" } }, required: ["sourcePath"] } },
+          { name: "generate_or_edit", description: "Run the current generation or edit only after the user has selected a configured image model in the workbench.", inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+          { name: "clear_selection", description: "Clear the active mask so the next edit applies to the whole image.", inputSchema: { type: "object", properties: {} } },
+          { name: "capture_selection", description: "Freeze the exact selected image region for the current conversation without generating an image.", inputSchema: { type: "object", properties: { revision: { type: "number" } } } },
+        ] }); return;
+      }
+      if (message.method === "tools/call") {
+        const args = message.params?.arguments || {};
+        if (message.params?.name === "capture_selection") {
+          void captureSelection(args.revision).then((result) => respond(message.id, { content: [], structuredContent: result }))
+            .catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }));
+          return;
+        }
+        if (message.params?.name === "set_prompt") {
+          if (Object.prototype.hasOwnProperty.call(args, "model")) { respond(message.id, { isError: true, content: [{ type: "text", text: tr("modelRequired") }] }); return; }
+          try { updateParameters(args); respond(message.id, toolResult("Image Studio parameters updated.")); }
+          catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
+          return;
+        }
+        if (message.params?.name === "preview_reference") {
+          const entry = state.gallery.find(entry => entry.path === args.path);
+          if (!entry) { respond(message.id, { isError: true, content: [{ type: "text", text: "参考图已不可用，请重新选择" }] }); return; }
+          const data = entry.thumbnail.split(",")[1];
+          const size = atob(data).length;
+          respond(message.id, { content: [], structuredContent: { mime: entry.thumbnail.slice(5, entry.thumbnail.indexOf(";")), data, size, nextOffset: size } }); return;
+        }
+        if (message.params?.name === "import_reference") {
+          if (state.busy) { respond(message.id, { isError: true, content: [{ type: "text", text: tr("processing") }] }); return; }
+          setBusy(true, tr("importing")); setStatus("");
+          void (async () => {
+            try { const payload = await callService("import-image", { dataUrl: args.dataUrl, filename: args.filename }); await rememberGalleryImage(payload); state.referencePath = payload.path; respond(message.id, toolResult("Reference image uploaded.")); }
+            catch (error) { respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] }); }
+            finally { setBusy(false); }
+          })(); return;
+        }
+        if (message.params?.name === "open_image") {
+          void loadWorkspaceImage(String(args.sourcePath || "")).then(() => respond(message.id, toolResult("Image opened."))).catch((error) => respond(message.id, { isError: true, content: [{ type: "text", text: error.message }] })); return;
+        }
+        if (message.params?.name === "generate_or_edit") {
+          void run().then((result) => respond(message.id, result.ok
+            ? { content: [{ type: "text", text: `Image saved: ${result.path}` }], structuredContent: { path: result.path } }
+            : { isError: true, content: [{ type: "text", text: result.message || "Image action failed." }] })); return;
+        }
+        if (message.params?.name === "clear_selection") { clearSelection(false); respond(message.id, toolResult("Selection cleared.")); return; }
+        respond(message.id, { isError: true, content: [{ type: "text", text: "Unknown Image Studio tool." }] }); return;
+      }
+      if (message.method === "ui/resource-teardown") respond(message.id, {});
+      if (message.method === "ui/notifications/host-context-changed") {
+        const params = message.params || {};
+        const host = params[HOST_CONTEXT_KEY] || params.hostContext?.[HOST_CONTEXT_KEY] || params;
+        if (params.theme) document.documentElement.style.colorScheme = params.theme;
+        if (params.locale) { state.locale = params.locale.toLowerCase().startsWith("en") ? "en" : "zh"; localize(); }
+        void applyHostContext(host);
+      }
+    });
+
+    selectionCanvas.addEventListener("pointerdown", (event) => {
+      if (state.busy || state.mode !== "edit") return;
+      if (state.annotationMode) {
+        const point = pointForEvent(event);
+        state.annotationPoint = {
+          x: Math.max(0, Math.min(1, point.x / selectionCanvas.width)),
+          y: Math.max(0, Math.min(1, point.y / selectionCanvas.height)),
+        };
+        setAnnotationMode(false);
+        renderAnnotationMarker();
+        emitAiReference(imageReference("point", { point: state.annotationPoint }));
+        return;
+      }
+      if (state.tool === "hand") {
+        state.pan = { pointerId: event.pointerId, x: event.clientX, y: event.clientY, left: $("#stage").scrollLeft, top: $("#stage").scrollTop };
+        $("#stage").classList.add("panning"); selectionCanvas.classList.add("dragging");
+        selectionCanvas.setPointerCapture(event.pointerId);
+        return;
+      }
+      state.annotationPoint = null; renderAnnotationMarker();
+      const point = pointForEvent(event);
+      state.activeSubtract = state.operation === "subtract" || event.altKey;
+      if (state.tool === "smart") {
+        snapshotSelection(); smartSelect(point, state.activeSubtract); setStatus(tr("smartSelected"));
+        renderSelectionState(); publishContext();
+        return;
+      }
+      $("#selectionActions").hidden = true;
+      state.drawing = true; state.moved = false; state.start = state.last = point; state.gestureBase = snapshotSelection();
+      selectionCanvas.setPointerCapture(event.pointerId);
+      if (state.tool === "brush") { dab(state.start, state.activeSubtract); renderSelectionVisual(); }
+    });
+    selectionCanvas.addEventListener("pointermove", (event) => {
+      if (state.pan?.pointerId === event.pointerId) {
+        $("#stage").scrollLeft = state.pan.left - (event.clientX - state.pan.x);
+        $("#stage").scrollTop = state.pan.top - (event.clientY - state.pan.y);
+        return;
+      }
+      if (!state.drawing || !state.last) return;
+      const point = pointForEvent(event); state.moved = true;
+      if (state.tool === "brush") { strokeBetween(state.last, point, state.activeSubtract); renderSelectionVisual(); }
+      if ((state.tool === "rectangle" || state.tool === "ellipse") && state.start && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        drawShape(state.start, point, state.tool, state.activeSubtract);
+        renderSelectionVisual();
+      }
+      state.last = point;
+    });
+    selectionCanvas.addEventListener("pointerup", (event) => {
+      if (state.pan?.pointerId === event.pointerId) {
+        state.pan = null; $("#stage").classList.remove("panning"); selectionCanvas.classList.remove("dragging");
+        return;
+      }
+      if (!state.drawing) return;
+      const point = pointForEvent(event);
+      if ((state.tool === "rectangle" || state.tool === "ellipse") && state.start && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        drawShape(state.start, point, state.tool, state.activeSubtract);
+      }
+      state.drawing = false; state.start = state.last = state.gestureBase = null; renderSelectionState(); publishContext();
+    });
+    selectionCanvas.addEventListener("pointercancel", () => {
+      if (state.pan) { state.pan = null; $("#stage").classList.remove("panning"); selectionCanvas.classList.remove("dragging"); }
+      if (state.drawing && state.gestureBase) {
+        selectionContext.putImageData(state.gestureBase, 0, 0);
+        state.selectionHistory.pop();
+      }
+      state.drawing = false; state.start = state.last = state.gestureBase = null; renderSelectionState();
+    });
+    document.querySelectorAll("button[data-tool]").forEach((button) => button.addEventListener("click", () => {
+      state.temporaryTool = "";
+      selectTool(button.dataset.tool === "hand" && state.tool === "hand" ? state.selectionTool : button.dataset.tool);
+    }));
+    document.querySelectorAll("[data-ai-mode]").forEach((button) => button.addEventListener("click", () => selectAiMode(button.dataset.aiMode)));
+    document.querySelectorAll("[data-operation]").forEach((button) => button.addEventListener("click", () => selectOperation(button.dataset.operation)));
+    document.querySelectorAll("[data-expand-direction]").forEach((button) => button.addEventListener("click", () => {
+      state.expandDirection = button.dataset.expandDirection;
+      document.querySelectorAll("[data-expand-direction]").forEach((candidate) => candidate.classList.toggle("active", candidate === button));
+      publishContext();
+    }));
+    document.querySelectorAll("[data-expand-scale]").forEach((button) => button.addEventListener("click", () => {
+      state.expandScale = Number(button.dataset.expandScale);
+      document.querySelectorAll("[data-expand-scale]").forEach((candidate) => candidate.classList.toggle("active", candidate === button));
+      publishContext();
+    }));
+    document.querySelectorAll(".popover-grip").forEach((handle) => {
+      const popover = handle.parentElement;
+      let drag = null;
+      const rememberPosition = () => {
+        const rect = popover.getBoundingClientRect();
+        toolOptionPositions.set(toolOptionsKey(popover), { left: rect.left, top: rect.top });
+      };
+      handle.addEventListener("pointerdown", (event) => {
+        if (event.button !== 0) return;
+        const rect = popover.getBoundingClientRect();
+        drag = { id: event.pointerId, x: event.clientX - rect.left, y: event.clientY - rect.top };
+        handle.setPointerCapture(event.pointerId);
+        event.preventDefault();
+      });
+      handle.addEventListener("pointermove", (event) => {
+        if (!drag || drag.id !== event.pointerId) return;
+        placeToolOptions(popover, event.clientX - drag.x, event.clientY - drag.y);
+        rememberPosition();
+      });
+      for (const eventName of ["pointerup", "pointercancel", "lostpointercapture"]) {
+        handle.addEventListener(eventName, () => { drag = null; });
+      }
+      handle.addEventListener("keydown", (event) => {
+        const delta = { ArrowLeft: [-10, 0], ArrowRight: [10, 0], ArrowUp: [0, -10], ArrowDown: [0, 10] }[event.key];
+        if (!delta) return;
+        event.preventDefault(); event.stopPropagation();
+        const rect = popover.getBoundingClientRect();
+        placeToolOptions(popover, rect.left + delta[0], rect.top + delta[1]);
+        rememberPosition();
+      });
+    });
+    for (const id of ["brushSize", "hardness"]) {
+      const slider = $(`#${id}`);
+      const number = $(`#${id}Value`);
+      slider.addEventListener("input", () => { number.value = slider.value; });
+      number.addEventListener("change", () => {
+        if (number.value !== "" && Number.isFinite(number.valueAsNumber)) slider.value = number.value;
+        number.value = slider.value;
+      });
+    }
+    $("#tolerance").addEventListener("input", () => { $("#toleranceValue").textContent = $("#tolerance").value; });
+    $("#undo").addEventListener("click", undoSelection);
+    $("#redo").addEventListener("click", redoSelection);
+    $("#selectionClear").addEventListener("click", (event) => { event.stopPropagation(); clearSelection(true); });
+    $("#selectionAskAi").addEventListener("click", (event) => { event.stopPropagation(); requestAiAnnotation(); });
+    $("#selectionErase").addEventListener("click", (event) => { event.stopPropagation(); void run(); });
+    $("#expandRun").addEventListener("click", () => void run());
+    $("#askAi").addEventListener("click", requestAiAnnotation);
+    $("#zoomIn").addEventListener("click", () => setZoom(currentZoom() + .1));
+    $("#zoomOut").addEventListener("click", () => setZoom(currentZoom() - .1));
+    document.querySelectorAll("[data-zoom]").forEach((button) => button.addEventListener("click", () => {
+      setZoom(fitZoom(), "fit");
+    }));
+    document.querySelectorAll("[data-tooltip-key]").forEach((button) => {
+      button.addEventListener("pointerenter", () => showTooltip(button));
+      button.addEventListener("pointerleave", hideTooltip);
+      button.addEventListener("focus", () => showTooltip(button));
+      button.addEventListener("blur", hideTooltip);
+    });
+    $("#stage").addEventListener("wheel", (event) => {
+      if (!state.imageWidth || (!event.metaKey && !event.ctrlKey)) return;
+      event.preventDefault();
+      setZoom(currentZoom() + (event.deltaY < 0 ? .1 : -.1));
+    }, { passive: false });
+    addEventListener("keydown", (event) => {
+      const target = event.target;
+      const editingText = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement;
+      if (editingText) return;
+      const command = event.metaKey || event.ctrlKey;
+      if (command && event.key.toLowerCase() === "z") { event.preventDefault(); event.shiftKey ? redoSelection() : undoSelection(); return; }
+      if (command && event.key.toLowerCase() === "y") { event.preventDefault(); redoSelection(); return; }
+      if (event.code === "Space") {
+        event.preventDefault();
+        if (!event.repeat && state.tool !== "hand") { state.temporaryTool = state.tool; selectTool("hand"); }
+        return;
+      }
+      if (event.key === "Escape") { hideTooltip(); setAnnotationMode(false); if (state.tool === "hand") { state.temporaryTool = ""; selectTool(state.selectionTool); } return; }
+      if (event.key === "0") { setZoom(fitZoom(), "fit"); return; }
+      const shortcut = { w: "smart", b: "brush", r: "rectangle", o: "ellipse", h: "hand" }[event.key.toLowerCase()];
+      if (shortcut) selectTool(shortcut);
+    });
+    addEventListener("blur", () => {
+      if (!state.temporaryTool) return;
+      const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
+    });
+    addEventListener("keyup", (event) => {
+      if (event.code !== "Space" || !state.temporaryTool) return;
+      const tool = state.temporaryTool; state.temporaryTool = ""; selectTool(tool);
+    });
+    function openModelMenu() {
+      if (state.busy) return;
+      const rect = $("#modelMenu").getBoundingClientRect();
+      post({ type: "ipollowork:image-studio:model-menu", value: state.model,
+        options: state.models.filter(entry => entry.available && entry.configured).map(entry => ({ id: entry.id, label: entry.label, disabled: false })),
+        left: rect.left, top: rect.top, width: rect.width, height: rect.height,
+        manageLabel: state.locale === "en" ? "Manage connections…" : "管理连接…" });
+    }
+    $("#modelMenu").addEventListener("click", openModelMenu);
+    addEventListener("message", event => {
+      if (event.source !== parent) return;
+      if (event.data?.type === "ipollowork:image-studio:model-menu-closed") { $("#modelMenu").focus(); return; }
+      if (event.data?.type !== "ipollowork:image-studio:select-model" || state.busy || typeof event.data.value !== "string") return;
+      const previousSize = state.size, previousQuality = state.quality;
+      try {
+        updateParameters({ model: event.data.value });
+        if (previousSize !== state.size || previousQuality !== state.quality) {
+          setStatus(state.locale === "en" ? "Output settings adjusted to this model." : "已按所选模型调整画幅或质量设置。");
+          state.statusTone = "success";
+        }
+      } catch (error) { setStatus(error.message, true); }
+      $("#modelMenu").focus();
+    });
+    $("#editMode").addEventListener("click", () => setMode("edit"));
+    $("#generateMode").addEventListener("click", () => { setMode("generate"); requestInspector(); });
+    $("#overwriteEdit").addEventListener("click", () => void saveEditedResult("overwrite"));
+    $("#saveCopy").addEventListener("click", () => void saveEditedResult("copy"));
+    $("#cancelOverwrite").addEventListener("click", () => { state.confirmOverwrite = false; renderSaveReview(); });
+    $("#emptyGenerate").addEventListener("click", () => { setMode("generate"); requestInspector(); });
+    $("#emptyBack").addEventListener("click", () => setMode("start"));
+    $("#imageToVideo").onclick=()=>post({type:"ipollowork:image-studio:generate-video",path:state.sourcePath});
+    for (const id of ["emptyImport", "topImport"]) $("#" + id).addEventListener("click", () => state.hostContext?.mediaStudio ? post({type:"ipollowork:media-studio:open"}) : $("#fileInput").click());
+    $('#fileInfo').onclick=()=>{const m=state.sourceMetadata||{},g=m.generation;const gcd=(a,b)=>b?gcd(b,a%b):a;const divisor=gcd(state.imageWidth,state.imageHeight);post({type:'ipollowork:image-studio:file-info',rows:[{label:'名称',value:state.sourceName},{label:'格式',value:m.mimeType||'图片'},{label:'文件大小',value:typeof m.bytes==='number'?`${(m.bytes/1024/1024).toFixed(2)} MB`:'未知'},{label:'尺寸',value:`${state.imageWidth} × ${state.imageHeight} px`},{label:'比例',value:`${state.imageWidth/divisor}:${state.imageHeight/divisor}`},{label:'生成模型',value:g?.model||'无生成记录'},{label:'生成时间',value:g?.createdAt||'无生成记录'}],prompt:g?.prompt||''});};
+    $("#downloadImage").addEventListener("click", () => {
+      const rect = $("#downloadImage").getBoundingClientRect();
+      post({type:"ipollowork:image-studio:download-menu",left:rect.left,top:rect.top,width:rect.width,height:rect.height});
+    });
+    addEventListener("message", event => {
+      if (event.source === parent && event.data?.type === "ipollowork:image-studio:download") downloadCurrentImage();
+    });
+    $("#fileInput").addEventListener("change", () => void importImage($("#fileInput").files?.[0]));
+    addEventListener("resize", () => { applyZoom(); positionToolOptions(); positionAnnotationHint(); });
+
+    selectTool(state.tool);
+    selectAiMode(state.aiMode);
+    selectOperation(state.operation);
+
+    request("ui/initialize", {
+      protocolVersion: "2025-11-21",
+      appInfo: { name: "iPolloWork Image Studio", version: "0.1.76" },
+      appCapabilities: { tools: {}, availableDisplayModes: ["inline", "fullscreen"] },
+    }).then(async (host) => {
+      post({ jsonrpc: "2.0", method: "ui/notifications/initialized", params: {} });
+      state.locale = String(host.hostContext?.locale || "zh").toLowerCase().startsWith("en") ? "en" : "zh";
+      document.documentElement.style.colorScheme = host.hostContext?.theme || "light dark";
+      localize(); setStatus("");
+      const pluginContext = host.hostContext?.[HOST_CONTEXT_KEY];
+      await applyHostContext(pluginContext);
+      try {
+        const provider = await callService("status", {});
+        applyProviderModels(provider);
+      } catch { applyProviderModels({ models: [] }); }
+      renderProvider();
+      post({type:"ipollowork:image-studio:list-images"});
+      publishContext();
+    }).catch((error) => { setStatus(error.message || tr("failed"), true); });
+  </script>
+</body>
+</html>

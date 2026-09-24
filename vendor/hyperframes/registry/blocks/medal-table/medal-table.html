@@ -1,0 +1,255 @@
+<!doctype html>
+<html
+  lang="en"
+  data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Championship medal table","maxLength":72},{"id":"medals","label":"Medal data","description":"Gold, silver and bronze counts as structured rows.","type":"string","default":"{\"version\":1,\"kind\":\"series-value\",\"rows\":[{\"team\":\"Orion\",\"gold\":12,\"silver\":8,\"bronze\":5},{\"team\":\"Nova\",\"gold\":10,\"silver\":9,\"bronze\":7},{\"team\":\"Atlas\",\"gold\":8,\"silver\":11,\"bronze\":6},{\"team\":\"Pulse\",\"gold\":7,\"silver\":6,\"bronze\":9}]}","maxLength":2200},{"id":"highlight","label":"Highlight","type":"string","default":"Orion","maxLength":40},{"id":"source","label":"Source","type":"string","default":"Final standings","maxLength":72}]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920,height=1080" />
+    <title>Medal Table</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        background: transparent;
+      }
+      #mt-root {
+        position: relative;
+        width: 1920px;
+        height: 1080px;
+        overflow: hidden;
+        padding: 96px 150px;
+        background: var(--ipw-color-bg, #f4f6f8);
+        color: var(--ipw-color-text, #15171a);
+        font-family: var(--ipw-font-display, Inter, sans-serif);
+      }
+      .mt-head {
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 54px;
+      }
+      .mt-kicker {
+        margin-bottom: 18px;
+        color: var(--ipw-color-primary, #20bbc0);
+        font: 780 15px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .mt-title {
+        margin: 0;
+        font-size: 70px;
+        line-height: 0.96;
+        letter-spacing: -0.055em;
+      }
+      .mt-source {
+        color: var(--ipw-color-muted, #68717c);
+        font: 650 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .mt-table {
+        overflow: hidden;
+        border: 1px solid var(--ipw-color-border, #d8dde3);
+        border-radius: var(--ipw-card-radius, 28px);
+        background: var(--ipw-color-surface, #fff);
+        box-shadow: var(--ipw-card-shadow, 0 24px 62px rgba(20, 30, 40, 0.1));
+      }
+      .mt-grid {
+        display: grid;
+        grid-template-columns: 90px 1fr repeat(3, 150px) 170px;
+        align-items: center;
+      }
+      .mt-header {
+        height: 74px;
+        padding: 0 32px;
+        border-bottom: 1px solid var(--ipw-color-border, #d8dde3);
+        color: var(--ipw-color-muted, #68717c);
+        font: 760 14px/1 var(--ipw-font-body, Inter, sans-serif);
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .mt-header span:not(:nth-child(2)) {
+        text-align: center;
+      }
+      .mt-row {
+        min-height: 112px;
+        padding: 0 32px;
+        border-bottom: 1px solid var(--ipw-color-border, #d8dde3);
+      }
+      .mt-row:last-child {
+        border-bottom: 0;
+      }
+      .mt-row.is-highlight {
+        background: color-mix(in srgb, var(--ipw-color-primary, #20bbc0) 10%, transparent);
+      }
+      .mt-rank {
+        display: grid;
+        width: 44px;
+        height: 44px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--ipw-color-bg, #f4f6f8);
+        font: 800 17px/1 var(--ipw-font-body, Inter, sans-serif);
+      }
+      .mt-team {
+        font-size: 30px;
+        letter-spacing: -0.03em;
+      }
+      .mt-medal,
+      .mt-total {
+        text-align: center;
+        font: 800 28px/1 var(--ipw-font-body, Inter, sans-serif);
+        font-variant-numeric: tabular-nums;
+      }
+      .mt-medal::before {
+        content: "";
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        margin-right: 12px;
+        border-radius: 50%;
+        vertical-align: 1px;
+      }
+      .mt-gold::before {
+        background: #d8a826;
+      }
+      .mt-silver::before {
+        background: #9aa4b1;
+      }
+      .mt-bronze::before {
+        background: #b77747;
+      }
+      .mt-total {
+        color: var(--ipw-color-primary, #20bbc0);
+        font-size: 34px;
+      }
+    </style>
+  </head>
+  <body>
+    <main
+      id="mt-root"
+      data-composition-id="medal-table"
+      data-width="1920"
+      data-height="1080"
+      data-start="0"
+      data-duration="7"
+    >
+      <header class="mt-head">
+        <div>
+          <div class="mt-kicker">Multi-series ranking</div>
+          <h1 class="mt-title" data-ipw-variable="title" data-ipw-ai-slot="title"></h1>
+        </div>
+        <div class="mt-source" data-ipw-variable="source" data-ipw-ai-slot="source"></div>
+      </header>
+      <section class="mt-table" data-ipw-ai-slot="medals">
+        <div class="mt-grid mt-header">
+          <span>Rank</span><span>Team</span><span>Gold</span><span>Silver</span><span>Bronze</span
+          ><span>Total</span>
+        </div>
+        <div class="mt-body"></div>
+      </section>
+      <span hidden data-ipw-ai-slot="highlight"></span>
+    </main>
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+    <script>
+      window.__timelines = window.__timelines || {};
+      (function () {
+        const root = document.getElementById("mt-root"),
+          id = root.dataset.compositionId,
+          defaults = {
+            title: "Championship medal table",
+            medals:
+              '{"version":1,"kind":"series-value","rows":[{"team":"Orion","gold":12,"silver":8,"bronze":5},{"team":"Nova","gold":10,"silver":9,"bronze":7},{"team":"Atlas","gold":8,"silver":11,"bronze":6},{"team":"Pulse","gold":7,"silver":6,"bronze":9}]}',
+            highlight: "Orion",
+            source: "Final standings",
+          },
+          values = {
+            ...defaults,
+            ...(window.__hyperframes?.getVariables?.() ?? window.__hfVariablesByComp?.[id] ?? {}),
+          };
+        root.querySelectorAll("[data-ipw-variable]").forEach((el) => {
+          el.textContent = String(values[el.dataset.ipwVariable] ?? "");
+        });
+        let rows = [];
+        try {
+          const parsed = JSON.parse(String(values.medals));
+          rows = Array.isArray(parsed.rows) ? parsed.rows : [];
+        } catch {}
+        rows = rows
+          .map((row) => ({
+            team: String(row.team ?? ""),
+            gold: Number(row.gold),
+            silver: Number(row.silver),
+            bronze: Number(row.bronze),
+          }))
+          .filter((row) => row.team && [row.gold, row.silver, row.bronze].every(Number.isFinite))
+          .sort((a, b) => b.gold - a.gold || b.silver - a.silver || b.bronze - a.bronze)
+          .slice(0, 6);
+        const body = root.querySelector(".mt-body"),
+          counters = [],
+          medalSelectors = { gold: ".mt-gold", silver: ".mt-silver", bronze: ".mt-bronze" };
+        rows.forEach((row, index) => {
+          const total = row.gold + row.silver + row.bronze,
+            item = document.createElement("article");
+          item.className =
+            "mt-grid mt-row" + (row.team === String(values.highlight) ? " is-highlight" : "");
+          item.innerHTML = `<span class="mt-rank">${index + 1}</span><strong class="mt-team"></strong><span class="mt-medal mt-gold">0</span><span class="mt-medal mt-silver">0</span><span class="mt-medal mt-bronze">0</span><b class="mt-total">0</b>`;
+          item.querySelector(".mt-team").textContent = row.team;
+          body.append(item);
+          ["gold", "silver", "bronze"].forEach((key) =>
+            counters.push({
+              element: item.querySelector(medalSelectors[key]),
+              state: { value: 0 },
+              target: row[key],
+            }),
+          );
+          counters.push({
+            element: item.querySelector(".mt-total"),
+            state: { value: 0 },
+            target: total,
+          });
+        });
+        const tl = gsap.timeline({ paused: true });
+        tl.fromTo(
+          root.querySelectorAll(".mt-head>*"),
+          { y: 24, opacity: 0 },
+          { y: 0, opacity: 1, duration: 0.45, stagger: 0.08, ease: "power3.out" },
+          0.05,
+        )
+          .fromTo(
+            root.querySelector(".mt-table"),
+            { scale: 0.98, opacity: 0 },
+            { scale: 1, opacity: 1, duration: 0.5, ease: "power3.out" },
+            0.18,
+          )
+          .fromTo(
+            root.querySelectorAll(".mt-row"),
+            { x: -28, opacity: 0 },
+            { x: 0, opacity: 1, duration: 0.4, stagger: 0.07, ease: "power3.out" },
+            0.35,
+          );
+        counters.forEach((counter, index) =>
+          tl.to(
+            counter.state,
+            {
+              value: counter.target,
+              duration: 0.7,
+              ease: "power2.out",
+              onUpdate: () => {
+                counter.element.textContent = String(Math.round(counter.state.value));
+              },
+            },
+            0.55 + (index % 4) * 0.06,
+          ),
+        );
+        window.__timelines[id] = tl;
+        tl.seek(0);
+      })();
+    </script>
+  </body>
+</html>

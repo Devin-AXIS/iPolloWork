@@ -9,9 +9,9 @@ import { swallow } from "./diagnostics";
 import { readElementPlaybackRate } from "./media";
 import { resolveCssStackingContextId } from "./stackingContext";
 import { createRuntimeStartTimeResolver } from "./startResolver";
-import { isSceneLikeCompositionId } from "../slideshow/index.js";
+import { isSceneLikeCompositionId } from "@hyperframes/parsers/slideshow/scene-id";
 import { COMPOSITION_CONTRACT_VERSION } from "../compositionContract.js";
-import { runtimeProtocolMetadata } from "./protocol.js";
+import { durationToFrameCount, runtimeProtocolMetadata } from "./protocol.js";
 
 const AUTHORED_DURATION_ATTR = "data-hf-authored-duration";
 const AUTHORED_END_ATTR = "data-hf-authored-end";
@@ -633,7 +633,7 @@ export function collectRuntimeTimelinePayload(params: {
   const shouldEmitNonDeterministicInf = timelineLooksLoopInflated && attrDurationCandidate == null;
   const durationInFrames = shouldEmitNonDeterministicInf
     ? Number.POSITIVE_INFINITY
-    : Math.max(1, Math.ceil(safeDuration * Math.max(1, params.canonicalFps)));
+    : Math.max(1, durationToFrameCount(safeDuration, Math.max(1, params.canonicalFps)));
   return {
     ...runtimeProtocolMetadata(params.canonicalFps),
     source: "hf-preview",

@@ -23,7 +23,7 @@ import { useDenAuth } from "./den-auth-provider";
 import { useDesktopConfig } from "./desktop-config-provider";
 import { applyBrandAppName } from "../../../app/lib/desktop";
 import { DenSignInSurface } from "./den-signin-surface";
-import { tryOpenBrowserAuthUrl } from "./open-browser-auth";
+import { tryOpenBrowserAuthUrl } from "@/app/lib/open-browser-auth";
 import { saveControlPlaneUrl } from "../settings/cloud/control-plane-url";
 
 export type ForcedSigninPageProps = {

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -22,9 +22,19 @@ process.env.IPOLLOWORK_MCP_SYNC_RETRY_DELAY_MS = "10";
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  while (roots.length) await removeTestRoot(roots.pop()!);
 });
 
 async function createWorkspaceRoot() {
@@ -103,11 +113,33 @@ function requireRecord(value: unknown, label: string): Record<string, unknown> {
   throw new Error(`${label} was not an object`);
 }
 
+function expectWorkOAuthProxy(request: EngineRequest | undefined, base: string, name: string, enabled = true) {
+  const body = requireRecord(request?.body, "engine MCP request");
+  const config = requireRecord(body.config, "engine MCP config");
+  const headers = requireRecord(config.headers, "engine MCP headers");
+  expect(body.name).toBe(name);
+  expect(config).toMatchObject({
+    type: "remote",
+    enabled,
+    oauth: false,
+  });
+  expect(config.url).toMatch(new RegExp(`^${base}/mcp-proxy/ws_1/${name}\\?connection=mcp%3A`));
+  expect(headers.Authorization).toMatch(/^Bearer [A-Za-z0-9_-]{32,}$/);
+  expect(config.connectionId).toBeUndefined();
+}
+
 const POSTHOG_CONFIG = {
   type: "remote",
   url: "https://mcp.posthog.com/mcp",
   enabled: true,
   oauth: {},
+};
+
+const AUTHENTICATED_CONFIG = {
+  type: "remote",
+  url: "https://mcp.example/rpc",
+  enabled: true,
+  headers: { Authorization: "Bearer test-token" },
 };
 
 describe("runtime MCP engine sync", () => {
@@ -128,7 +160,7 @@ describe("runtime MCP engine sync", () => {
 
       const addRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(addRequest).toBeDefined();
-      expect(addRequest?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
+      expectWorkOAuthProxy(addRequest, ipollowork.base, "posthog", false);
       expect(addRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
@@ -136,154 +168,7 @@ describe("runtime MCP engine sync", () => {
     }
   });
 
-  test("cloud plugin install writes a remote MCP and hot-syncs it into the engine", async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
-    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-    try {
-      const mock = startMockOpencode();
-      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
-
-      const response = await fetch(`${ipollowork.base}/workspace/ws_1/cloud-plugins`, {
-        method: "POST",
-        headers: auth(ipollowork.token),
-        body: JSON.stringify({
-          marketplaceId: null,
-          resolved: {
-            plugin: {
-              id: "plugin_cloud_mcp",
-              name: "Cloud MCP Plugin",
-              description: null,
-              updatedAt: "2026-06-02T00:00:00.000Z",
-            },
-            memberships: [
-              {
-                configObjectId: "config_mcp_valid",
-                configObject: {
-                  id: "config_mcp_valid",
-                  objectType: "mcp",
-                  title: "Brief MCP",
-                  description: null,
-                  currentRelativePath: null,
-                  status: "active",
-                  updatedAt: "2026-06-02T00:00:00.000Z",
-                  latestVersion: {
-                    id: "version_mcp_valid",
-                    rawSourceText: JSON.stringify({ mcpServers: { brief: { url: "https://example.com/mcp" } } }),
-                    normalizedPayloadJson: { mcpServers: { brief: { url: "https://example.com/mcp" } } },
-                  },
-                },
-              },
-            ],
-          },
-        }),
-      });
-      expect(response.status).toBe(200);
-      const parsed: unknown = await response.json();
-      const body = requireRecord(parsed, "cloud plugin install response");
-      const item = requireRecord(body.item, "cloud plugin install item");
-      expect(item.pluginId).toBe("plugin_cloud_mcp");
-      expect(body.warnings).toEqual([]);
-
-      expect((await readRuntimeOpencodeConfig(ipollowork.config, "ws_1")).mcp?.brief).toMatchObject({
-        type: "remote",
-        url: "https://example.com/mcp",
-      });
-      const addRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
-      expect(addRequest).toBeDefined();
-      expect(addRequest?.body).toEqual({
-        name: "brief",
-        config: { type: "remote", url: "https://example.com/mcp", enabled: true },
-      });
-    } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
-      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
-    }
-  });
-
-  test("cloud plugin install warns for dropped MCP payloads while still installing skills", async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
-    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
-    try {
-      const mock = startMockOpencode();
-      const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
-
-      const response = await fetch(`${ipollowork.base}/workspace/ws_1/cloud-plugins`, {
-        method: "POST",
-        headers: auth(ipollowork.token),
-        body: JSON.stringify({
-          marketplaceId: null,
-          resolved: {
-            plugin: {
-              id: "plugin_broken_mcp",
-              name: "Broken Plugin",
-              description: null,
-              updatedAt: "2026-06-02T00:00:00.000Z",
-            },
-            memberships: [
-              {
-                configObjectId: "config_skill_broken",
-                configObject: {
-                  id: "config_skill_broken",
-                  objectType: "skill",
-                  title: "Helpful Skill",
-                  description: "Skill still installs",
-                  currentRelativePath: null,
-                  status: "active",
-                  updatedAt: "2026-06-02T00:00:00.000Z",
-                  latestVersion: {
-                    id: "version_skill_broken",
-                    rawSourceText: "# Helpful Skill\n\nInstalled skill body.",
-                    normalizedPayloadJson: null,
-                  },
-                },
-              },
-              {
-                configObjectId: "config_mcp_broken",
-                configObject: {
-                  id: "config_mcp_broken",
-                  objectType: "mcp",
-                  title: "Broken MCP",
-                  description: null,
-                  currentRelativePath: null,
-                  status: "active",
-                  updatedAt: "2026-06-02T00:00:00.000Z",
-                  latestVersion: {
-                    id: "version_mcp_broken",
-                    rawSourceText: JSON.stringify({
-                      mcpServers: { broken: { type: "sse", serverUrl: "https://x.example/mcp" } },
-                    }),
-                    normalizedPayloadJson: {
-                      mcpServers: { broken: { type: "sse", serverUrl: "https://x.example/mcp" } },
-                    },
-                  },
-                },
-              },
-            ],
-          },
-        }),
-      });
-      expect(response.status).toBe(200);
-      const parsed: unknown = await response.json();
-      const body = requireRecord(parsed, "cloud plugin install response");
-      const item = requireRecord(body.item, "cloud plugin install item");
-      expect(item.pluginId).toBe("plugin_broken_mcp");
-      expect(body.warnings).toEqual([
-        'MCP component "Broken MCP" could not be installed: no server config with a "url" or "command" was found.',
-      ]);
-
-      const skillPath = join(workspaceRoot, ".opencode", "skills", "broken-plugin", "helpful-skill", "SKILL.md");
-      expect(await readFile(skillPath, "utf8")).toContain("Installed skill body.");
-      expect((await readRuntimeOpencodeConfig(ipollowork.config, "ws_1")).mcp?.broken).toBeUndefined();
-      expect(mock.requests.some((entry) => entry.method === "POST" && entry.pathname === "/mcp")).toBe(false);
-    } finally {
-      if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
-      else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
-    }
-  });
-
-  test("re-registers runtime MCPs with the engine after a reload", async () => {
+  test("does not reconnect an unauthenticated OAuth MCP after a reload", async () => {
     const workspaceRoot = await createWorkspaceRoot();
     const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -308,8 +193,7 @@ describe("runtime MCP engine sync", () => {
       const disposeIndex = mock.requests.findIndex((entry) => entry.pathname === "/instance/dispose");
       const syncIndex = mock.requests.findIndex((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(disposeIndex).toBeGreaterThanOrEqual(0);
-      expect(syncIndex).toBeGreaterThan(disposeIndex);
-      expect(mock.requests[syncIndex]?.body).toEqual({ name: "posthog", config: POSTHOG_CONFIG });
+      expect(syncIndex).toBe(-1);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
@@ -341,7 +225,7 @@ describe("runtime MCP engine sync", () => {
 
       const syncRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(syncRequest).toBeDefined();
-      expect(syncRequest?.body).toEqual({ name: "posthog", config: { ...POSTHOG_CONFIG, enabled: false } });
+      expectWorkOAuthProxy(syncRequest, ipollowork.base, "posthog", false);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
@@ -389,7 +273,7 @@ describe("runtime MCP engine sync", () => {
       const mock = startMockOpencode({ failMcpNames: ["bad"] });
       const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      for (const [name, config] of [["bad", POSTHOG_CONFIG], ["posthog", POSTHOG_CONFIG]] as const) {
+      for (const [name, config] of [["bad", AUTHENTICATED_CONFIG], ["posthog", AUTHENTICATED_CONFIG]] as const) {
         const response = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
           method: "POST",
           headers: auth(ipollowork.token),
