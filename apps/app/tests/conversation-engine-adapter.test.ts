@@ -1,4 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { WorkspaceEngineRpcClient } from "../src/app/lib/workspace-engine-rpc-client";
+
+test("longer RPC deadlines apply only to bootstrap, not cancel or ordinary reads", async () => {
+  const timeout = spyOn(AbortSignal, "timeout").mockImplementation(() => new AbortController().signal);
+  const fetchMock = spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ value: {} }));
+  const client = new WorkspaceEngineRpcClient({ name: "DSH", serverBaseUrl: "http://fixture.test", workspaceId: "one", engineId: "deepseek-harness" });
+  try {
+    for (const method of ["session.create", "llm.models", "session.cancel", "session.list"]) {
+      fetchMock.mockResolvedValueOnce(Response.json({ value: {} }));
+      await client.call(method);
+    }
+    expect(timeout.mock.calls.map(([duration]) => duration)).toEqual([70_000, 70_000, 30_000, 30_000]);
+  } finally { timeout.mockRestore(); fetchMock.mockRestore(); }
+});
 
 test("Codex transport retries are non-terminal and clear when output resumes", () => {
   const state = createCodexLiveState();
@@ -39,8 +53,31 @@ import {
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import {
   openCodeConversationEngineAdapter,
+  terminalOpenCodeRetryFailure,
 } from "../src/react-app/domains/session/engine/opencode-conversation-engine";
 import { conversationEngineAdapters } from "../src/react-app/domains/session/engine/conversation-engines";
+
+test("OpenCode ends only long quota waits while preserving short and transient retries", () => {
+  const now = 1_000;
+  expect(terminalOpenCodeRetryFailure({
+    type: "retry",
+    attempt: 1,
+    message: "Free usage limit reached. Please try again later.",
+    next: now + 29_503_000,
+  }, now)).toMatchObject({ code: "provider_quota_exhausted" });
+  expect(terminalOpenCodeRetryFailure({
+    type: "retry",
+    attempt: 1,
+    message: "429 Too Many Requests",
+    next: now + 30_000,
+  }, now)).toBeNull();
+  expect(terminalOpenCodeRetryFailure({
+    type: "retry",
+    attempt: 1,
+    message: "Network connection reset",
+    next: now + 29_503_000,
+  }, now)).toBeNull();
+});
 
 test("Codex restores missing confirmations from the runtime without an SSE event or automatic approval", async () => {
   const originalFetch = globalThis.fetch;

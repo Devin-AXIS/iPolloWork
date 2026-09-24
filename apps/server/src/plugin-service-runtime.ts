@@ -2,7 +2,7 @@ import { workspaceForContext } from "./extensions/storage.js";
 import { pathToFileURL } from "node:url";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { mkdir, rm } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { join, resolve } from "node:path";
 
 import type { EnvService } from "./env-file.js";
 import { ApiError } from "./errors.js";
@@ -66,6 +66,7 @@ type CachedPluginService = {
 };
 
 const serviceCacheByConfig = new WeakMap<ServerConfig, Map<string, CachedPluginService>>();
+const globalPluginServiceDataIds = new Set(["douyin-ops", "wechat-channels-ops"]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -81,7 +82,13 @@ function safeSegment(value: string): string {
 
 // Keep the image metadata directory stable across the Media Studio package migration.
 export function pluginServiceDataDirectory(config: ServerConfig, workspaceId: string, pluginId: string): string {
-  return join(runtimeStorageDir(config), "plugin-data", safeSegment(workspaceId), safeSegment(pluginId === "media-studio" ? "image-studio" : pluginId));
+  const dataOwner = globalPluginServiceDataIds.has(pluginId) ? null : safeSegment(workspaceId);
+  return join(
+    runtimeStorageDir(config),
+    "plugin-data",
+    ...(dataOwner ? [dataOwner] : []),
+    safeSegment(pluginId === "media-studio" ? "image-studio" : pluginId),
+  );
 }
 
 export async function deletePluginServiceData(config: ServerConfig, workspaceId: string, pluginId: string): Promise<void> {

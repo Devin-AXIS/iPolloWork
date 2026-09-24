@@ -13,6 +13,7 @@ import {
   sha256,
 } from "../object-storage-signing.js";
 import type { ServerConfig, WorkspaceInfo } from "../types.js";
+import { findWorkspaceForContext } from "../workspaces.js";
 
 export const STORAGE_EXTENSION_ID = "storage";
 
@@ -71,26 +72,18 @@ function isStorageProvider(value: string): value is StorageProviderId {
   return STORAGE_PROVIDERS.some((provider) => provider === value);
 }
 
-export function workspaceForContext(config: ServerConfig, context: JsonRecord): WorkspaceInfo {
+export function workspaceForContext(
+  config: ServerConfig,
+  context: JsonRecord,
+  options: { strictWorkspaceId?: boolean } = {},
+): WorkspaceInfo {
   const workspaceId = readStringField(context, "workspaceId");
-  if (workspaceId) {
-    const workspace = config.workspaces.find(entry => entry.id === workspaceId);
-    if (!workspace) throw new ApiError(404, "workspace_not_found", "The requested workspace does not exist");
-    return { ...workspace, path: resolve(workspace.path) };
+  if (options.strictWorkspaceId && workspaceId) {
+    const selected = config.workspaces.find((entry) => entry.id === workspaceId);
+    if (!selected) throw new ApiError(404, "workspace_not_found", "The requested workspace does not exist");
+    return { ...selected, path: resolve(selected.path) };
   }
-  const candidates = [readStringField(context, "directory"), readStringField(context, "worktree")]
-    .filter(Boolean)
-    .map((value) => resolve(value));
-
-  for (const candidate of candidates) {
-    const workspace = config.workspaces.find((entry) => {
-      const root = resolve(entry.path);
-      return candidate === root || candidate.startsWith(`${root}${sep}`);
-    });
-    if (workspace) return { ...workspace, path: resolve(workspace.path) };
-  }
-
-  const workspace = config.workspaces[0];
+  const workspace = findWorkspaceForContext(config.workspaces, context) ?? config.workspaces[0];
   if (!workspace) throw new ApiError(404, "workspace_not_found", "Workspace not found for Storage Center");
   return { ...workspace, path: resolve(workspace.path) };
 }

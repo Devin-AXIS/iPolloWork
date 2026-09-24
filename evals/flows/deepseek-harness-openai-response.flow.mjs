@@ -172,11 +172,17 @@ export default {
               label: "completed DSH task in expanded sidebar history",
             });
             await ctx.expectNoText("Provider is not configured");
+            await ctx.expectNoText("引擎已结束处理，但没有返回最终结果");
+            await ctx.expectNoText("本次任务未完成");
           },
           screenshot: {
             name: "deepseek-harness-gpt-response",
             requireText: [RESPONSE_TOKEN, "GPT-5.5"],
-            rejectText: ["Provider is not configured"],
+            rejectText: [
+              "Provider is not configured",
+              "引擎已结束处理，但没有返回最终结果",
+              "本次任务未完成",
+            ],
           },
         });
       },

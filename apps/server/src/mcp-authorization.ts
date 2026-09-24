@@ -15,6 +15,8 @@ const TOKEN_FINGERPRINT = "mcp-oauth-token-v1";
 const ACCOUNT_ID = "default";
 const FLOW_TTL_MS = 10 * 60_000;
 const tokenRefreshes = new Map<string, Promise<Record<string, string>>>();
+const REMOTE_MCP_PROBE_TTL_MS = 30_000;
+const remoteMcpProbes = new Map<string, { expiresAt: number; result: Promise<boolean> }>();
 
 type McpOAuthClientValues = {
   connectionId: string;
@@ -62,22 +64,42 @@ function proxyUrl(config: ServerConfig, workspaceId: string, name: string, id: s
   return url.toString();
 }
 
-function isProxyUrl(config: ServerConfig, value: string): boolean {
+function isProxyUrl(value: string): boolean {
   try {
-    return new URL(value).pathname.startsWith("/mcp-proxy/") && new URL(value).port === String(config.port);
+    const url = new URL(value);
+    return ["127.0.0.1", "localhost", "::1"].includes(url.hostname)
+      && url.pathname.startsWith("/mcp-proxy/")
+      && url.protocol === "http:";
   } catch {
     return false;
   }
 }
 
-function proxyConnectionId(config: ServerConfig, value: string): string | null {
-  if (!isProxyUrl(config, value)) return null;
+function proxyConnectionId(value: string): string | null {
+  if (!isProxyUrl(value)) return null;
   const id = new URL(value).searchParams.get("connection")?.trim() ?? "";
   return id.startsWith("mcp:") ? id : null;
 }
 
 function oauthConfig(config: Record<string, unknown>): Record<string, unknown> {
   return isRecord(config.oauth) ? config.oauth : {};
+}
+
+function hasAuthorizationHeader(config: Record<string, unknown>): boolean {
+  if (!isRecord(config.headers)) return false;
+  return Object.keys(config.headers).some((name) => name.toLowerCase() === "authorization");
+}
+
+async function remoteMcpAvailable(url: string): Promise<boolean> {
+  const cached = remoteMcpProbes.get(url);
+  if (cached && cached.expiresAt > Date.now()) return cached.result;
+  const result = fetch(url, {
+    method: "HEAD",
+    redirect: "manual",
+    signal: AbortSignal.timeout(2_000),
+  }).then((response) => !response.headers.has("www-authenticate"), () => false);
+  remoteMcpProbes.set(url, { expiresAt: Date.now() + REMOTE_MCP_PROBE_TTL_MS, result });
+  return result;
 }
 
 function customFetch(fetcher: typeof fetch) {
@@ -115,7 +137,7 @@ async function readClientValues(config: ServerConfig, resourceUrl: string): Prom
 async function readClientValuesForConsumer(config: ServerConfig, workspaceId: string, name: string): Promise<McpOAuthClientValues | null> {
   const current = (await readRuntimeMcpConfig(config, workspaceId))[name];
   const url = current && stringValue(current.url);
-  const id = url ? proxyConnectionId(config, url) : null;
+  const id = url ? proxyConnectionId(url) : null;
   if (!id) return null;
   const values = await (await authorizationVault(config)).readCredentialForAccount({
     connectionId: id,
@@ -194,7 +216,7 @@ export async function secureMcpAuthorizationConfig(
 
 export async function publicMcpConfig(config: ServerConfig, workspaceId: string, name: string, engineConfig: Record<string, unknown>): Promise<Record<string, unknown>> {
   const url = stringValue(engineConfig.url);
-  if (!url || !isProxyUrl(config, url)) return engineConfig;
+  if (!url || !isProxyUrl(url)) return engineConfig;
   const values = await readClientValuesForConsumer(config, workspaceId, name);
   if (!values) return { type: "remote", enabled: engineConfig.enabled !== false, oauth: true };
   return {
@@ -205,6 +227,43 @@ export async function publicMcpConfig(config: ServerConfig, workspaceId: string,
       ? { clientId: values.clientId, ...(values.scope ? { scope: values.scope } : {}) }
       : {},
   };
+}
+
+/**
+ * Keep OAuth-backed MCPs visible and configurable before login without
+ * letting an engine eagerly connect to the local proxy. The proxy correctly
+ * answers 401 until a token exists, but several engines retry that response
+ * during startup and can stall unrelated sessions.
+ */
+export async function engineMcpAuthorizationConfig(
+  config: ServerConfig,
+  workspaceId: string,
+  name: string,
+  engineConfig: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const url = stringValue(engineConfig.url);
+  const id = url ? proxyConnectionId(url) : null;
+  if (engineConfig.enabled === false) return engineConfig;
+  if (!id) {
+    if (
+      engineConfig.type === "remote"
+      && engineConfig.oauth === false
+      && url
+      && !hasAuthorizationHeader(engineConfig)
+      && !await remoteMcpAvailable(url)
+    ) {
+      return { ...engineConfig, enabled: false };
+    }
+    return engineConfig;
+  }
+  const currentEngineConfig = { ...engineConfig, url: proxyUrl(config, workspaceId, name, id) };
+  const token = await (await authorizationVault(config)).readActiveCredential({
+    consumerId: consumerId(id),
+    connectionId: id,
+    methodId: TOKEN_METHOD_ID,
+    methodFingerprint: TOKEN_FINGERPRINT,
+  });
+  return token?.values.accessToken ? currentEngineConfig : { ...currentEngineConfig, enabled: false };
 }
 
 async function resourceMetadata(resourceUrl: URL, fetcher: typeof fetch): Promise<oauth.ResourceServer> {

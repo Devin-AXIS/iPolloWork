@@ -36,6 +36,7 @@ const objectParameters = (
 export const ENGINE_BROWSER_INSTRUCTION = `## Built-in Browser
 Use the iPolloWork browser tools only for external websites, never to control the iPolloWork app itself.
 Open a page with ipollowork_browser_open_url. Prefer ipollowork_browser_read for page content, and use ipollowork_browser_snapshot for actionable controls and stable refs. Act only through refs from the latest snapshot with ipollowork_browser_act.
+For local file uploads, use the upload action with the generated file path and the file-input ref or an upload-button ref plus its exact expectedName. Do not click an upload button first: the host intercepts file choosers and will not ask the user to select a generated file.
 Never invent or reuse stale refs. Take a new snapshot after navigation, when snapshotRequired is true, or when a target changed.
 Prefer one bounded action batch and request its observe result when you need to verify the outcome. Use hover, select, check, scroll, or structured wait actions instead of guessing pointer coordinates or timing.
 Use ipollowork_browser_screenshot only when semantics are insufficient. Prefer a referenced element or bounded region; request annotations to map pixels back to semantic refs and ifChanged to avoid resending an unchanged image.
@@ -47,6 +48,7 @@ export const ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION = "Call status first and c
 
 export const ENGINE_VIDEO_GENERATION_INSTRUCTION = `## Video deliverable routing
 - For MP4 export or social publication, call ipollowork_extension_call with extensionId=media, action=video_render_start, args={sourcePath:"video/<exact-project-id>/index.html",operationKey:"<stable-export-key>"}. Then video_render_status with the same args until complete/failed. The host starts bundled Studio; no CLI install, guessed HyperFrames version, shell endpoint discovery, delegated exploration agent, or manual Export step is needed. These actions are visible in media action discovery even outside a video-typed chat. On complete use outputPath for the requested publisher. Preparing/rendering is not task completion; report progress and keep polling at the returned interval. No schedule/calendar is required for an immediate publication. On failure report the exact returned error, not an invented missing capability.
+- When a publisher returns browserTask, continue automatically in the same task: claim the browser job, use the persistent account profile, and upload the exact mediaPath with the returned extensionId through the host browser upload action. Missing API application settings or scopes are a browser fallback, not a reason to ask the user to upload the generated MP4. Pause only for login, QR code, SMS/captcha verification, denied approval, or a real platform error; after submission, verify and save the receipt before claiming success.
 - A general request to generate/make a video (生成视频、做视频、宣传片、短视频) means an editable HyperFrames HTML composition supported by Video Studio. Follow the prepared video task/template context and deliver its HTML entry. Do not ask the user to choose between HTML and a video model for this default request.
 - Before reporting an editable video complete, run its supplied HyperFrames check and inspect the structured result. Treat any validation error, ok=false, zero/incorrect duration, empty samples, invalid composition variables, undecodable media, or unintended blank midpoint/transition frame as a failed delivery that must be repaired. A timeline, waveform, successful command launch, or source nodes alone do not prove rendered content.
 - MP4 export, duration, aspect ratio, realism, an attached image, or an already-open media workbench alone do not switch the deliverable to model-generated footage. Export/render requests on an existing composition keep its editable source.
@@ -120,7 +122,8 @@ const browserActionSchema = {
     }, ["type", "direction", "amount"]),
     objectParameters({
       type: { const: "upload" },
-      ref: { type: "string", description: "File-input ref from the latest browser snapshot." },
+      ref: { type: "string", description: "File-input or visible upload-button ref from the latest browser snapshot. Never click the upload button first." },
+      expectedName: { type: "string", maxLength: 200, description: "Exact accessible name when ref is an upload button; omit for a file input." },
       filePaths: {
         type: "array",
         minItems: 1,
@@ -132,7 +135,7 @@ const browserActionSchema = {
     }, ["type", "ref", "filePaths"]),
     objectParameters({
       type: { const: "wait" },
-      durationMs: { type: "integer", minimum: 0, maximum: 2_000 },
+      durationMs: { type: "integer", minimum: 0, maximum: 10_000 },
     }, ["type", "durationMs"]),
     objectParameters({
       type: { const: "waitFor" },

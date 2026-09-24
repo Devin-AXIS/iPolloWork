@@ -99,7 +99,21 @@ export class BrowserOperations {
     }
     return this.response(job);
   }
-  response(job) { return { job, ...(job?.transport === 'browser' ? { browserTask: { jobId: job.id, action: job.browserAction, status: job.status } } : {}) }; }
+  response(job) {
+    return {
+      job,
+      ...(job?.transport === 'browser' ? {
+        browserTask: {
+          jobId: job.id,
+          action: job.browserAction,
+          status: job.status,
+          nextAction: 'claim-browser-job',
+          manualUploadRequired: false,
+          instruction: '请在当前会话领取网页任务；发布时自动使用领取结果中的 mediaPath 和 extensionId 上传生成的 MP4，不要要求用户手动上传。',
+        },
+      } : {}),
+    };
+  }
   claim(input) {
     const job = this.store.get('job', required(input.jobId, '任务 ID', 100));
     if (!job || job.transport !== 'browser' || job.status !== 'pending') fail('任务已领取或已完成，请查看记录，不要重复执行');

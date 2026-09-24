@@ -19,13 +19,6 @@ import {
   openCodeZenPublicModels,
   openCodeZenPublicModelUsesSessionAffinity,
 } from "@ipollowork/types/opencode-zen-public-models";
-import {
-  ipolloworkExtensionsPreviewPluginPath,
-  ipolloworkCapabilitiesKnowledgePluginPath,
-  ipolloworkAnthropicAdaptiveThinkingPluginPath,
-  ipolloworkAnthropicToolSchemaPluginPath,
-  ipolloworkMoonshotTemperaturePluginPath,
-} from "./ipollowork-extensions-plugin-path.js";
 import type { ServerConfig } from "./types.js";
 import {
   onRuntimeOpencodeConfigWrite,
@@ -36,6 +29,8 @@ import {
   runtimeMcpMap,
   runtimePluginList,
 } from "./runtime-opencode-config-store.js";
+import { readEngineRuntimeMcpConfig } from "./mcp.js";
+import { engineHostMcp } from "./engine-host-mcp.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,6 +131,12 @@ export async function buildiPolloWorkRuntimeConfigObject(
   workspaceId?: string,
 ): Promise<Record<string, unknown>> {
   const runtimeConfig = config && workspaceId ? await readRuntimeOpencodeConfig(config, workspaceId) : {};
+  const engineMcp = config && workspaceId
+    ? await readEngineRuntimeMcpConfig(config, workspaceId)
+    : runtimeMcpMap(runtimeConfig);
+  const hostMcp = config && workspaceId
+    ? engineHostMcp(config, { id: workspaceId })
+    : null;
   const providerChannels = config ? await readRuntimeProviderChannels(config) : {};
   const disabledProviders = runtimeDisabledProviderList(runtimeConfig);
   return {
@@ -150,16 +151,15 @@ export async function buildiPolloWorkRuntimeConfigObject(
         prompt: IPOLLOWORK_AGENT_PROMPT,
       },
     },
-    plugin: [
-      ipolloworkExtensionsPreviewPluginPath(),
-      ipolloworkCapabilitiesKnowledgePluginPath(),
-      ipolloworkAnthropicAdaptiveThinkingPluginPath(),
-      ipolloworkAnthropicToolSchemaPluginPath(),
-      ipolloworkMoonshotTemperaturePluginPath(),
-      ...runtimePluginList(runtimeConfig),
-    ],
+    // OpenCode 1.18.x on Windows can stall while importing the bundled local
+    // plugins. Their host actions are already exposed by the authenticated
+    // iPolloWork MCP bridge, so keep only explicitly installed native plugins.
+    plugin: runtimePluginList(runtimeConfig),
     ...(disabledProviders.length ? { disabled_providers: disabledProviders } : {}),
-    mcp: runtimeMcpMap(runtimeConfig),
+    mcp: {
+      ...engineMcp,
+      ...(hostMcp ? { ipollowork: hostMcp } : {}),
+    },
   };
 }
 

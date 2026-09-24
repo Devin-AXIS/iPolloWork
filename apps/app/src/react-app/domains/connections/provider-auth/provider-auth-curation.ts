@@ -40,7 +40,6 @@ export const PROVIDER_LABELS: Record<string, string> = {
 
 const RECOMMENDED_PROVIDER_IDS = [
   IPOLLOWORK_MODELS_PROVIDER_ID,
-  "opencode",
   "openai",
   "anthropic",
   "google",

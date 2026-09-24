@@ -1482,13 +1482,114 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
 });
 
 describe("Codex provider protocol gateway", () => {
-  test("rejects the obsolete public placeholder with an actionable connection error", async () => {
+  test("isolates identical prompts by runtime session across concurrent protocol requests", async () => {
+    const captured = new Map<string, { session: string; body: Record<string, unknown> }>();
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => {
+        const body: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        if (!isRecord(body)) throw new Error("Invalid request");
+        captured.set(String(body.model), { session: String(request.headers["x-opencode-session"] ?? ""), body });
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ choices: [{ message: { role: "assistant", content: "OK" } }] }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+    const gateway = new CodexProviderGateway();
+    try {
+      const route = (await gateway.configure([{
+        providerId: "opencode", protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`, apiKey: "public",
+      }])).get("opencode");
+      if (!route) throw new Error("Missing route");
+      const cases = [
+        { model: "header", headers: { "session-id": "thread-a" }, body: {} },
+        { model: "metadata", headers: { "x-codex-turn-metadata": JSON.stringify({ session_id: "thread-a" }) }, body: {} },
+        { model: "body", headers: {}, body: { client_metadata: { session_id: "thread-a" } } },
+        { model: "cache", headers: {}, body: { prompt_cache_key: "thread-a" } },
+        { model: "other", headers: { "session-id": "thread-b" }, body: {} },
+        { model: "missing", headers: { "x-client-request-id": "request-not-session" }, body: {} },
+      ];
+      await Promise.all(cases.map(async (entry) => {
+        const headers = new Headers({ authorization: `Bearer ${route.apiKey}`, "content-type": "application/json" });
+        for (const [key, value] of Object.entries(entry.headers)) if (value) headers.set(key, value);
+        const response = await fetch(`${route.baseURL}/responses`, {
+          method: "POST", headers,
+          body: JSON.stringify({ model: entry.model, input: [{ role: "user", content: "Same prompt" }], ...entry.body }),
+        });
+        expect(response.status).toBe(200);
+        await response.text();
+      }));
+      const session = captured.get("header")?.session;
+      expect(session).toMatch(/^ses_[0-9a-f]{24}$/u);
+      for (const model of ["metadata", "body", "cache"]) expect(captured.get(model)?.session).toBe(session);
+      expect(captured.get("other")?.session).not.toBe(session);
+      expect(captured.get("missing")?.session).toBe("");
+      expect(captured.get("cache")?.body).not.toHaveProperty("prompt_cache_key");
+    } finally { await gateway.close(); }
+  });
+
+  test.each(["nested", "top-level"])("preserves %s upstream denial details and status", async (shape) => {
+    const message = "OpenCode's free tier can only be used from within OpenCode";
+    const upstream = createServer((request, response) => {
+      request.resume();
+      request.on("end", () => {
+        response.writeHead(403, { "content-type": "application/json" });
+        response.end(JSON.stringify(shape === "nested" ? { error: { message } } : { type: "FreeTierError", message }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+    const gateway = new CodexProviderGateway();
+    try {
+      const route = (await gateway.configure([{
+        providerId: "opencode", protocol: "openai-completions",
+        baseURL: `http://127.0.0.1:${address.port}/v1`, apiKey: "public",
+      }])).get("opencode");
+      if (!route) throw new Error("Missing route");
+      const response = await fetch(`${route.baseURL}/responses`, {
+        method: "POST", headers: { authorization: `Bearer ${route.apiKey}`, "content-type": "application/json" },
+        body: JSON.stringify({ model: "big-pickle", input: "Hello" }),
+      });
+      expect(response.status).toBe(403);
+      expect(await response.json()).toMatchObject({ error: { message } });
+    } finally { await gateway.close(); }
+  });
+
+  test("forwards the OpenCode public credential instead of rejecting free models locally", async () => {
+    const authorizations: string[] = [];
+    const upstream = createServer((request, response) => {
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      request.on("end", () => {
+        authorizations.push(String(request.headers.authorization ?? ""));
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          choices: [{ message: { role: "assistant", content: "READY" } }],
+          usage: { prompt_tokens: 1, completion_tokens: 1 },
+        }));
+      });
+    });
+    servers.push(upstream);
+    await new Promise<void>((resolve, reject) => {
+      upstream.once("error", reject);
+      upstream.listen(0, "127.0.0.1", () => resolve());
+    });
+    const address = upstream.address();
+    if (!address || typeof address === "string") throw new Error("Mock provider failed to bind");
+
     const gateway = new CodexProviderGateway();
     try {
       const route = (await gateway.configure([{
         providerId: "opencode",
         protocol: "openai-completions",
-        baseURL: "https://opencode.ai/zen/v1",
+        baseURL: `http://127.0.0.1:${address.port}/v1`,
         apiKey: "public",
       }])).get("opencode");
       if (!route) throw new Error("Gateway route was not created");
@@ -1502,13 +1603,10 @@ describe("Codex provider protocol gateway", () => {
           },
           body: JSON.stringify({ model: "big-pickle", input: "Hello", messages: [] }),
         });
-        expect(response.status).toBe(401);
-        await expect(response.json()).resolves.toMatchObject({
-          error: {
-            message: expect.stringContaining("Settings > AI Providers > Connect provider"),
-          },
-        });
+        expect(response.status).toBe(200);
+        expect(await response.text()).toContain("READY");
       }
+      expect(authorizations).toEqual(["Bearer public", "Bearer public"]);
     } finally {
       await gateway.close();
     }
@@ -1602,6 +1700,7 @@ describe("Codex provider protocol gateway", () => {
     let receivedOpenCodeSession = "";
     let receivedOpenCodeRequest = "";
     let receivedOpenCodeClient = "";
+    let receivedCodexSession = "";
     const receivedBodies: Record<string, unknown>[] = [];
     const upstream = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -1614,6 +1713,7 @@ describe("Codex provider protocol gateway", () => {
         receivedOpenCodeSession = String(request.headers["x-opencode-session"] ?? "");
         receivedOpenCodeRequest = String(request.headers["x-opencode-request"] ?? "");
         receivedOpenCodeClient = String(request.headers["x-opencode-client"] ?? "");
+        receivedCodexSession = String(request.headers["session-id"] ?? "");
         const received: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
         if (isRecord(received)) receivedBodies.push(received);
         response.writeHead(200, { "content-type": "application/json" });
@@ -1669,6 +1769,7 @@ describe("Codex provider protocol gateway", () => {
         headers: {
           authorization: `Bearer ${route.apiKey}`,
           "content-type": "application/json",
+          "session-id": "codex-thread-one",
         },
         body: JSON.stringify({
           model: "chat-model",
@@ -1693,6 +1794,7 @@ describe("Codex provider protocol gateway", () => {
       expect(receivedOpenCodeSession).toMatch(/^ses_[0-9a-f]{24}$/u);
       expect(receivedOpenCodeRequest).toMatch(/^msg_[0-9a-f]{24}$/u);
       expect(receivedOpenCodeClient).toBe("ipollowork");
+      expect(receivedCodexSession).toBe("codex-thread-one");
       expect(receivedBodies[0]).toMatchObject({
         model: "chat-model",
         stream: false,
@@ -1815,9 +1917,12 @@ describe("Codex provider protocol gateway", () => {
       session: string;
       request: string;
     }> = [];
+    const upstreamBodies: unknown[] = [];
     const upstream = createServer((request, response) => {
-      request.resume();
+      const chunks: Buffer[] = [];
+      request.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
       request.on("end", () => {
+        upstreamBodies.push(JSON.parse(Buffer.concat(chunks).toString("utf8")));
         received.push({
           authorization: String(request.headers.authorization ?? ""),
           userAgent: String(request.headers["user-agent"] ?? ""),
@@ -1845,13 +1950,22 @@ describe("Codex provider protocol gateway", () => {
         providerId: "opencode",
         protocol: "openai-completions",
         baseURL: `http://127.0.0.1:${address.port}/v1`,
-        apiKey: "upstream-key",
+        apiKey: "public",
         httpHeaders: { "x-opencode-project": "workspace-dsh" },
       }]);
       const route = routes.get("opencode");
       if (!route) throw new Error("Gateway route was not created");
 
-      for (let index = 0; index < 2; index += 1) {
+      const conversations = [
+        [{ role: "user", content: "Start" }],
+        [
+          { role: "user", content: "Start" },
+          { role: "assistant", content: "OK" },
+          { role: "user", content: "Continue" },
+        ],
+        [{ role: "user", content: "Start" }],
+      ];
+      for (const [index, messages] of conversations.entries()) {
         const response = await fetch(`${route.baseURL}/chat/completions`, {
           method: "POST",
           headers: {
@@ -1860,7 +1974,9 @@ describe("Codex provider protocol gateway", () => {
           },
           body: JSON.stringify({
             model: "nemotron-3-ultra-free",
-            messages: [{ role: "user", content: `Hello ${index}` }],
+            prompt_cache_key: index === 2 ? "dsh-session-two" : "dsh-session-one",
+            prompt_cache_retention: "24h",
+            messages,
             stream: true,
           }),
         });
@@ -1868,18 +1984,26 @@ describe("Codex provider protocol gateway", () => {
         expect(await response.text()).toContain("data: [DONE]");
       }
 
-      expect(received).toHaveLength(2);
+      expect(received).toHaveLength(3);
+      for (const body of upstreamBodies) {
+        expect(body).not.toHaveProperty("prompt_cache_key");
+        expect(body).not.toHaveProperty("prompt_cache_retention");
+      }
       expect(received[0]).toMatchObject({
-        authorization: "Bearer upstream-key",
+        authorization: "Bearer public",
         userAgent: "opencode/ipollowork",
         client: "ipollowork",
         project: "workspace-dsh",
       });
       expect(received[0]?.session).toMatch(/^ses_[0-9a-f]{24}$/u);
       expect(received[1]?.session).toBe(received[0]?.session);
+      expect(received[2]?.session).toMatch(/^ses_[0-9a-f]{24}$/u);
+      expect(received[2]?.session).not.toBe(received[0]?.session);
       expect(received[0]?.request).toMatch(/^msg_[0-9a-f]{24}$/u);
       expect(received[1]?.request).toMatch(/^msg_[0-9a-f]{24}$/u);
+      expect(received[2]?.request).toMatch(/^msg_[0-9a-f]{24}$/u);
       expect(received[1]?.request).not.toBe(received[0]?.request);
+      expect(received[2]?.request).not.toBe(received[1]?.request);
     } finally {
       await gateway.close();
     }

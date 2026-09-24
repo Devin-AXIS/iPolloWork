@@ -22,9 +22,19 @@ process.env.IPOLLOWORK_MCP_SYNC_RETRY_DELAY_MS = "10";
 const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
 
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
+
 afterEach(async () => {
   while (stops.length) await stops.pop()?.();
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  while (roots.length) await removeTestRoot(roots.pop()!);
 });
 
 async function createWorkspaceRoot() {
@@ -125,6 +135,13 @@ const POSTHOG_CONFIG = {
   oauth: {},
 };
 
+const AUTHENTICATED_CONFIG = {
+  type: "remote",
+  url: "https://mcp.example/rpc",
+  enabled: true,
+  headers: { Authorization: "Bearer test-token" },
+};
+
 describe("runtime MCP engine sync", () => {
   test("hot-adds a runtime MCP into the running engine when added", async () => {
     const workspaceRoot = await createWorkspaceRoot();
@@ -143,7 +160,7 @@ describe("runtime MCP engine sync", () => {
 
       const addRequest = mock.requests.find((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(addRequest).toBeDefined();
-      expectWorkOAuthProxy(addRequest, ipollowork.base, "posthog");
+      expectWorkOAuthProxy(addRequest, ipollowork.base, "posthog", false);
       expect(addRequest?.search).toContain(`directory=${encodeURIComponent(workspaceRoot)}`);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
@@ -151,7 +168,7 @@ describe("runtime MCP engine sync", () => {
     }
   });
 
-  test("re-registers runtime MCPs with the engine after a reload", async () => {
+  test("does not reconnect an unauthenticated OAuth MCP after a reload", async () => {
     const workspaceRoot = await createWorkspaceRoot();
     const previousDb = process.env.IPOLLOWORK_RUNTIME_DB;
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
@@ -176,8 +193,7 @@ describe("runtime MCP engine sync", () => {
       const disposeIndex = mock.requests.findIndex((entry) => entry.pathname === "/instance/dispose");
       const syncIndex = mock.requests.findIndex((entry) => entry.method === "POST" && entry.pathname === "/mcp");
       expect(disposeIndex).toBeGreaterThanOrEqual(0);
-      expect(syncIndex).toBeGreaterThan(disposeIndex);
-      expectWorkOAuthProxy(mock.requests[syncIndex], ipollowork.base, "posthog");
+      expect(syncIndex).toBe(-1);
     } finally {
       if (previousDb === undefined) delete process.env.IPOLLOWORK_RUNTIME_DB;
       else process.env.IPOLLOWORK_RUNTIME_DB = previousDb;
@@ -257,7 +273,7 @@ describe("runtime MCP engine sync", () => {
       const mock = startMockOpencode({ failMcpNames: ["bad"] });
       const ipollowork = await startiPolloWorkServer(workspaceRoot, `http://127.0.0.1:${mock.server.port}`);
 
-      for (const [name, config] of [["bad", POSTHOG_CONFIG], ["posthog", POSTHOG_CONFIG]] as const) {
+      for (const [name, config] of [["bad", AUTHENTICATED_CONFIG], ["posthog", AUTHENTICATED_CONFIG]] as const) {
         const response = await fetch(`${ipollowork.base}/workspace/ws_1/mcp`, {
           method: "POST",
           headers: auth(ipollowork.token),

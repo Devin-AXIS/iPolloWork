@@ -69,6 +69,7 @@ import type { Capabilities, ServerConfig, WorkspaceInfo } from "../types.js";
 import { shortId } from "../utils.js";
 import { addRoute, type RequestContext, type Route } from "./registry.js";
 import { createWorkItems } from "../work-items.js";
+import { findWorkspaceForContext } from "../workspaces.js";
 
 type JsonResponse = (data: unknown, status?: number) => Response;
 type ReadJsonBody = (request: Request) => Promise<Record<string, unknown>>;
@@ -94,6 +95,7 @@ interface RegisterCoreRoutesOptions {
   resolveToyUiEnabled: () => boolean;
   resolveDevLogPath: () => string | null;
   createOpenAiRealtimeVoiceSession: (env: EnvService, input: unknown) => Promise<unknown>;
+  resolveEngineSessionContext?: (workspaceId: string) => string | null;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -177,6 +179,32 @@ function browserRequesterLabel(context: Record<string, unknown>): string {
   return "current engine session";
 }
 
+export function engineBrowserTaskId(context: Record<string, unknown>): string {
+  for (const key of ["sessionId", "workspaceId"] as const) {
+    const value = typeof context[key] === "string" ? context[key].trim() : "";
+    if (value && /^[a-zA-Z0-9:._-]{1,256}$/.test(value)) return value;
+  }
+  return "";
+}
+
+export function engineMcpSessionId(metadata: unknown, fallback: string | null = null): string {
+  const record = isRecord(metadata) ? metadata : {};
+  for (const key of ["threadId", "sessionId", "sessionID"] as const) {
+    const value = typeof record[key] === "string" ? record[key].trim() : "";
+    if (value) return value;
+  }
+  return fallback?.trim() || "";
+}
+
+export function engineCallContext(
+  context: Record<string, unknown>,
+  fallbackSessionId: string | null,
+): Record<string, unknown> {
+  const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+  if (sessionId || !fallbackSessionId?.trim()) return context;
+  return { ...context, sessionId: fallbackSessionId.trim() };
+}
+
 async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {
   const response = await uiControlRequest("/execute", {
     method: "POST",
@@ -218,6 +246,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     resolveToyUiEnabled,
     resolveDevLogPath,
     createOpenAiRealtimeVoiceSession,
+    resolveEngineSessionContext,
   } = options;
   const googleWorkspaceConnectFlows = createGoogleWorkspaceConnectFlowManager(config);
   const envPendingChangesByRuntime = new Map<string, boolean>();
@@ -271,18 +300,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
   };
 
   const resolveEngineToolWorkspace = async (context: Record<string, unknown>): Promise<WorkspaceInfo> => {
-    const workspaceId = typeof context.workspaceId === "string" ? context.workspaceId.trim() : "";
-    if (workspaceId) return resolveWorkspace(config, workspaceId);
-    const directories = [context.directory, context.worktree]
-      .filter((value): value is string => typeof value === "string" && Boolean(value.trim()))
-      .map((value) => value.trim());
-    const workspace = config.workspaces.find((candidate) => {
-      const candidatePath = candidate.path?.trim();
-      if (!candidatePath) return false;
-      return directories.some((directory) => (
-        directory === candidatePath || resolve(directory) === resolve(candidatePath)
-      ));
-    });
+    const workspace = findWorkspaceForContext(config.workspaces, context);
     if (!workspace) {
       throw new ApiError(400, "project_workspace_context_missing", "Project Builder could not resolve the current iPolloWork workspace");
     }
@@ -492,10 +510,14 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         },
       },
     }),
-    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args) => executeUiControlAction(
-      "browser.open_url",
-      { url: typeof args.url === "string" ? args.url : "", ...(typeof args.profileId === "string" ? { profileId: args.profileId } : {}) },
-    ),
+    [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args, context) => {
+      const taskId = engineBrowserTaskId(context);
+      return executeUiControlAction("browser.open_url", {
+        url: typeof args.url === "string" ? args.url : "",
+        ...(typeof args.profileId === "string" ? { profileId: args.profileId } : {}),
+        ...(taskId ? { taskId } : {}),
+      });
+    },
     [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(
       "browser.snapshot",
       {
@@ -609,7 +631,7 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
         inputSchema: tool.parameters,
       })),
     }));
-    server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
       const descriptor = engineHostTool(request.params.name);
       if (!descriptor) {
         throw new ApiError(
@@ -621,8 +643,10 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
       const args = isRecord(request.params.arguments) ? request.params.arguments : {};
       // Codex attaches the calling thread to MCP request metadata, outside model arguments.
       // Keep it request-scoped so concurrent manual and scheduled sessions cannot share a lease.
-      const threadId = request.params._meta?.threadId;
-      const sessionId = typeof threadId === "string" ? threadId.trim() : "";
+      const sessionId = engineMcpSessionId(
+        request.params._meta ?? extra._meta,
+        resolveEngineSessionContext?.(workspaceId) ?? null,
+      );
       const value = await engineHostToolHandlers[descriptor.name](ctx, args, {
         workspaceId,
         directory: workspace.path,
@@ -901,7 +925,12 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     const body = await readJsonBody(ctx.request);
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const args = isRecord(body.args) ? body.args : {};
-    const context = isRecord(body.context) ? body.context : {};
+    const inputContext = isRecord(body.context) ? body.context : {};
+    const workspace = findWorkspaceForContext(config.workspaces, inputContext);
+    const context = engineCallContext(
+      inputContext,
+      workspace ? resolveEngineSessionContext?.(workspace.id) ?? null : null,
+    );
     const descriptor = engineHostTool(name);
     if (!descriptor) {
       throw new ApiError(404, "engine_host_tool_not_found", `Engine host tool is not registered: ${name || "missing"}`);

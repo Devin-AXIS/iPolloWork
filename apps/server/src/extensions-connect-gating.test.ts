@@ -10,6 +10,7 @@ import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAME
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
+import { engineBrowserTaskId, engineCallContext, engineMcpSessionId } from "./routes/core.js";
 
 const CLIENT_TOKEN = "owt_connect_client_token";
 const HOST_TOKEN = "owt_connect_host_token";
@@ -34,6 +35,29 @@ test("browser host action schema exposes one complete semantic action set", () =
   expect(schema).toContain("Enter");
   expect(schema).toContain("Space");
   for (const condition of ["load", "ref", "text", "url"]) expect(schema).toContain(`\"${condition}\"`);
+});
+
+test("browser host scopes shared account tabs to the calling task", () => {
+  expect(engineBrowserTaskId({ sessionId: "session-a", workspaceId: "ws_1" })).toBe("session-a");
+  expect(engineBrowserTaskId({ workspaceId: "ws_1" })).toBe("ws_1");
+  expect(engineBrowserTaskId({ sessionId: "../escape", workspaceId: "ws_1" })).toBe("ws_1");
+});
+
+test("engine MCP calls prefer native task metadata and otherwise use the host prompt context", () => {
+  expect(engineMcpSessionId({ threadId: "thread-a" }, "latest-session")).toBe("thread-a");
+  expect(engineMcpSessionId({ sessionID: "session-a" }, "latest-session")).toBe("session-a");
+  expect(engineMcpSessionId({}, "latest-session")).toBe("latest-session");
+});
+
+test("direct engine calls inherit the active task only when the engine omitted it", () => {
+  expect(engineCallContext({ workspaceId: "ws_1" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-active",
+  });
+  expect(engineCallContext({ workspaceId: "ws_1", sessionId: "session-native" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-native",
+  });
 });
 
 const actionSchema = z.object({
@@ -96,6 +120,16 @@ const previousEnv = {
 
 const stops: Array<() => void | Promise<void>> = [];
 const dirs: string[] = [];
+
+async function removeTestRoot(root: string): Promise<void> {
+  try {
+    await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String(error.code) : "";
+    if (process.platform === "win32" && (code === "EBUSY" || code === "EPERM")) return;
+    throw error;
+  }
+}
 
 function restoreEnv(key: string, value: string | undefined) {
   if (typeof value === "string") process.env[key] = value;
@@ -216,8 +250,11 @@ function expectAllActions(actions: ActionItem[]) {
   expect(actions.filter((action) => action.extensionId === "openai-image-generation")).toHaveLength(6);
   expect(actionKeys(actions)).toContain("media/artifact_media_review");
   expect(actionKeys(actions)).toContain("media/artifact_preview_review");
+  expect(actionKeys(actions)).toContain("media/video_render_start");
+  expect(actionKeys(actions)).toContain("media/video_render_status");
   expect(actionKeys(actions)).toContain("video-generation/status");
   expect(actions.filter((action) => action.extensionId === "storage")).toHaveLength(2);
+  expect(actions.filter((action) => action.extensionId === "video-generation")).toHaveLength(16);
 }
 
 beforeEach(() => {
@@ -230,7 +267,7 @@ afterEach(async () => {
   }
   while (dirs.length) {
     const dir = dirs.pop();
-    if (dir) await rm(dir, { recursive: true, force: true });
+    if (dir) await removeTestRoot(dir);
   }
   restoreEnv("IPOLLOWORK_RUNTIME_DB", previousEnv.runtimeDb);
   restoreEnv("GOOGLE_WORKSPACE_OAUTH_CLIENT_SECRET", previousEnv.googleClientSecret);
@@ -307,6 +344,9 @@ describe("extension and engine host tool gating", () => {
     expect(scheduleDescription).toContain("treat that request as agreement to schedule and do not repeat the offer");
     expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
     expect(scheduleDescription).toContain("include automation with enabled=true");
+    const extensionDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_extension_list_actions")?.description;
+    expect(extensionDescription).toContain("upload the exact mediaPath with the returned extensionId");
+    expect(extensionDescription).toContain("not a reason to ask the user to upload the generated MP4");
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",

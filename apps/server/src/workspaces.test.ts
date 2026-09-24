@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { buildWorkspaceInfos, findManagedEngineWorkspace } from "./workspaces.js";
+import { buildWorkspaceInfos, findManagedEngineWorkspace, findWorkspaceForContext } from "./workspaces.js";
 import { DEFAULT_ENGINE_ID, type WorkspaceInfo } from "./types.js";
 
 function ws(fields: {
@@ -10,6 +10,7 @@ function ws(fields: {
   preset?: string;
   workspaceType: WorkspaceInfo["workspaceType"];
   engineId?: string;
+  directory?: string;
 }): WorkspaceInfo {
   return {
     id: fields.id ?? "ws_test",
@@ -18,8 +19,45 @@ function ws(fields: {
     preset: fields.preset ?? (fields.workspaceType === "remote" ? "remote" : "starter"),
     workspaceType: fields.workspaceType,
     engineId: fields.engineId,
+    directory: fields.directory,
   };
 }
+
+describe("findWorkspaceForContext", () => {
+  test("uses the current engine directory when a process-level workspace id is stale", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({ id: "ws_selected", path: "/srv/selected", workspaceType: "local" }),
+    ];
+    expect(findWorkspaceForContext(workspaces, {
+      workspaceId: "ws_selected",
+      directory: "/srv/first",
+    })?.id).toBe("ws_first");
+  });
+
+  test("uses the explicit workspace id when the engine directory is unavailable", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({ id: "ws_selected", path: "/srv/selected", workspaceType: "local" }),
+    ];
+    expect(findWorkspaceForContext(workspaces, { workspaceId: "ws_selected" })?.id).toBe("ws_selected");
+  });
+
+  test("matches the engine directory exposed by a remote workspace", () => {
+    const workspaces = [
+      ws({ id: "ws_first", path: "/srv/first", workspaceType: "local" }),
+      ws({
+        id: "ws_remote",
+        path: "/srv/remote-files",
+        directory: "/engine/projects/remote",
+        workspaceType: "remote",
+      }),
+    ];
+    expect(findWorkspaceForContext(workspaces, {
+      directory: "/engine/projects/remote/video/session",
+    })?.id).toBe("ws_remote");
+  });
+});
 
 describe("workspace engine selection", () => {
   test("defaults existing workspace configs to OpenCode", () => {

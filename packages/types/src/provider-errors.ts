@@ -39,7 +39,7 @@ export function classifyProviderFailure(value: unknown): ProviderFailure | null 
   if (status === 504 || status === 408 || /TimeoutError|AbortError/.test(info.name) || /\b(?:timed? out|timeout)\b/i.test(text)) return failure("provider_timeout");
   if (status >= 500 && status <= 599) return failure("provider_unavailable");
   // A billing-related 429 is not a request-rate limit; waiting seconds will not fix it.
-  if (status === 402 || /insufficient[_\s-]*(?:quota|balance|credit)|quota[_\s-]*(?:exceeded|exhausted)|usageLimitExceeded|billing[_\s-]*(?:hard[_\s-]*)?limit|(?:余额|额度)不足|额度已用完/i.test(text)) return failure("provider_quota_exhausted");
+  if (status === 402 || /insufficient[_\s-]*(?:quota|balance|credit)|quota[_\s-]*(?:exceeded|exhausted)|usageLimitExceeded|(?:free[_\s-]*)?usage[_\s-]*limit(?:[_\s-]*(?:exceeded|reached))?|billing[_\s-]*(?:hard[_\s-]*)?limit|(?:余额|额度)不足|额度已用完/i.test(text)) return failure("provider_quota_exhausted");
   if (status === 401 || /invalid[_\s-]*(?:api[_\s-]*)?key|unauthorized|authentication[_\s-]*(?:failed|error)|(?:token|credential)[_\s-]*(?:expired|invalid)/i.test(text)) return failure("provider_auth_failed");
   if (status === 403 || /ModelNotOpen|model[_\s-]*not[_\s-]*(?:activated|enabled)|has not activated (?:the )?model/i.test(text)) return failure("provider_access_denied");
   if (status === 429 || /too many requests|rate[_\s-]*limit/i.test(text)) return failure("provider_rate_limited");

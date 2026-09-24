@@ -27,6 +27,17 @@ if (!process.versions.electron) {
   app.setPath("userData", process.env.IPOLLOWORK_BROWSER_TEST_DATA);
   await app.whenReady();
   const server = createServer((_request, response) => {
+    if (_request.url === '/login-with-cookie') {
+      response.setHeader('Set-Cookie', 'sessionid=scanned-session; Path=/; HttpOnly; SameSite=Lax');
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      response.end('<!doctype html><title>Scanned login</title><p>扫码确认完成，正在刷新</p>');
+      return;
+    }
+    if (_request.url === '/platform/') {
+      response.setHeader('Content-Type', 'text/html; charset=utf-8');
+      response.end('<!doctype html><title>Creator dashboard</title><h1>视频号助手后台</h1>');
+      return;
+    }
     if (_request.url === '/comment-editor') {
       response.setHeader('Content-Type', 'text/html; charset=utf-8');
       response.end('<!doctype html><title>Lazy comment editor</title>' + '<p>推荐内容</p>'.repeat(270) + '<div id="entry" onclick="this.outerHTML=\'<div contenteditable=true data-placeholder=评论内容></div>\'"><span>留下你的精彩评论吧</span></div><button onclick="window.submitted=true">发送</button><article><strong>原作者</strong><p>原评论内容</p><div><div><div><div><span onclick="window.replyTarget=\'原作者\'">回复</span></div></div></div></div></article>');
@@ -139,6 +150,7 @@ if (!process.versions.electron) {
     const firstView = webContents.getAllWebContents().find(item => item !== window.webContents && item !== sharedView && item.getURL() === url);
     assert.deepEqual(await firstView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["", null]);
     assert.equal(await firstView.executeJavaScript("document.querySelector('p').textContent"), "扫码登录");
+    assert.deepEqual(await firstView.executeJavaScript("[innerWidth,innerHeight]"), [1280, 900]);
     await call('show', { x: 0, y: 0, width: 800, height: 600 });
     const avatar = await call('snapshot', { tabId: first.tabId, imageSelector: 'img.avatar' });
     assert.equal(avatar.imageUrl, new URL('/avatar.svg', url).href);
@@ -176,11 +188,35 @@ if (!process.versions.electron) {
     assert.equal(await sharedView.executeJavaScript("document.querySelector('p').textContent"), "短信登录");
     assert.equal((await call("openUrl", url, { profileId: "plugin:account-a" })).tabId, first.tabId);
     await firstView.executeJavaScript("document.cookie='login=a'; localStorage.setItem('account','a')");
+    const concurrent = await call("openUrl", url, { profileId: "plugin:account-a", taskId: "session-2" });
+    assert.notEqual(concurrent.tabId, first.tabId);
+    const concurrentView = webContents.getAllWebContents().find(item => item !== window.webContents && item !== sharedView && item !== firstView && item.getURL() === url);
+    assert.deepEqual(await concurrentView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["login=a", "a"]);
+    assert.equal((await call("openUrl", url, { profileId: "plugin:account-a", taskId: "session-2" })).tabId, concurrent.tabId);
+    await call("closeTab", concurrent.tabId);
     const second = await call("openUrl", url, { profileId: "plugin:account-b" });
     const secondView = webContents.getAllWebContents().find(item => item !== window.webContents && item !== sharedView && item !== firstView && item.getURL() === url);
+    const browserUserAgent = await secondView.executeJavaScript("navigator.userAgent");
+    assert.match(browserUserAgent, /Chrome\//);
+    assert.doesNotMatch(browserUserAgent, /Electron|iPollo/i);
     assert.deepEqual(await secondView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["", null]);
     assert.deepEqual(await sharedView.executeJavaScript("[document.cookie,localStorage.getItem('account')]"), ["login=old", "old"]);
     assert.equal((await call("state")).tabs.find(tab => tab.id === second.tabId).profileId, "plugin:account-b");
+    const recoveryOrigin = new URL(url).origin;
+    const recovered = await call("openUrl", new URL('/login-with-cookie', url).href, {
+      profileId: "wechat-channels-ops:session-recovery-test",
+      sessionRecovery: {
+        origin: recoveryOrigin,
+        loginPath: "/login-with-cookie",
+        authenticatedPath: "/platform/",
+        cookieNames: ["sessionid"],
+      },
+    });
+    const recoveredView = webContents.getAllWebContents().find(item => item.getURL() === new URL('/platform/', url).href);
+    assert.equal(recovered.url, new URL('/platform/', url).href);
+    assert.ok(recoveredView);
+    assert.equal(await recoveredView.executeJavaScript("document.body.innerText"), "视频号助手后台");
+    await call("closeTab", recovered.tabId);
     await call("closeTab", first.tabId);
     const reopened = await call("openUrl", url, { profileId: "plugin:account-a" });
     assert.notEqual(reopened.tabId, first.tabId);
@@ -200,6 +236,7 @@ if (!process.versions.electron) {
     await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
     assert.equal(window.isMinimized(), false);
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
+    await assert.rejects(call("openUrl", url, { profileId: "plugin:account-a", taskId: "../shared" }), /Invalid browser task/);
     assert.equal((await call("state")).tabs.some(tab => tab.id === shared.tabId), true);
     process.stdout.write("browser-profile-checks-passed\n");
   } catch (error) {

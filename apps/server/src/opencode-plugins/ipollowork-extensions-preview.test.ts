@@ -336,6 +336,10 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
       name: "ipollowork_browser_act",
       args: { actions, observe },
     });
+    expect(() => z.object(plugin.tool.ipollowork_browser_act.args).parse({
+      tabId: "tab-1", snapshotId: "snapshot-1",
+      actions: [{ type: "upload", ref: "@e1", expectedName: "上传视频", filePaths: ["video/output.mp4"] }],
+    })).not.toThrow();
   });
 
   test("validates compact reads, scoped snapshots, and bounded visual capture", async () => {

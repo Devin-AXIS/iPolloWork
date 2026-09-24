@@ -154,10 +154,11 @@ const browserActionSchema = z.union([
   z.object({
     type: z.literal("upload"),
     ref: z.string().trim().min(1),
+    expectedName: z.string().trim().min(1).max(200).optional(),
     filePaths: z.array(z.string().trim().min(1)).min(1).max(20),
     extensionId: z.string().trim().min(1).optional(),
   }),
-  z.object({ type: z.literal("wait"), durationMs: z.number().int().min(0).max(2_000) }),
+  z.object({ type: z.literal("wait"), durationMs: z.number().int().min(0).max(10_000) }),
   z.object({
     type: z.literal("waitFor"),
     condition: z.literal("url"),

@@ -82,6 +82,7 @@ export function ServiceWorkbenchFrame(props: {
       await browser.openUrl(url, browserProfileId ? {
         profileId: `${props.surface.pluginId}:${browserProfileId}`,
         ...(login.loginUi ? { loginUi: { ...login.loginUi, origin: login.origin } } : {}),
+        ...(login.sessionRecovery ? { sessionRecovery: { ...login.sessionRecovery, origin: login.origin } } : {}),
       } : undefined);
       return {};
     });

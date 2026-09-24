@@ -75,7 +75,7 @@ export async function reviewArtifactPreview(
   }),
 ) {
   const args = previewReviewSchema.parse(input);
-  const workspace = workspaceForContext(config, context);
+  const workspace = workspaceForContext(config, context, { strictWorkspaceId: true });
   const rootMatch = /^design\/([^/]+)\/.+\.html$/i.exec(args.sourcePath);
   if (!rootMatch) {
     throw new ApiError(400, "preview_review_owner", "sourcePath must be the active session's Design HTML entry");
@@ -125,7 +125,7 @@ export async function reviewArtifactMedia(
   query: (extensionId: string) => Promise<unknown>,
 ) {
   const args = reviewSchema.parse(input);
-  const workspace = workspaceForContext(config, context);
+  const workspace = workspaceForContext(config, context, { strictWorkspaceId: true });
   const sessionId = sessionArtifactOwner(context.sessionId);
   const rootMatch = /^(design|video)\/([^/]+)\//.exec(args.sourcePath);
   if (!rootMatch || !args.sourcePath.endsWith(".html")) {

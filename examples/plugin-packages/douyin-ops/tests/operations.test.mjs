@@ -296,6 +296,10 @@ test('browser publishing locks draft and queued browser writes block API writes'
   const input = { accountId: account.id, draftId: draft.id, operationKey: 'web-publish' };
   const result = await f.ops.action('publish-draft', input);
   assert.equal(result.job.status, 'pending');
+  assert.equal(result.browserTask.nextAction, 'claim-browser-job');
+  assert.equal(result.browserTask.manualUploadRequired, false);
+  assert.match(result.browserTask.instruction, /mediaPath.*extensionId/);
+  assert.match(result.browserTask.instruction, /不要要求用户手动上传/);
   assert.equal((await f.ops.action('publish-draft', input)).job.id, result.job.id);
   assert.throws(() => f.ops.saveDraft({ ...draft, text: 'changed' }), /锁定/);
   assert.throws(() => f.ops.beginJob(account.id, 'reply', 'another', {}), /正在执行/);

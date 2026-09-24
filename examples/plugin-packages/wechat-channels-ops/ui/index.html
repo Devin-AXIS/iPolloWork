@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer"><title>视频号运营台</title>
+  <link rel="stylesheet" href="/app.css"><script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M7 9c0-2 2-3 4-2l15 7c2 1 2 3 0 4l-15 7c-2 1-4 0-4-2z"/><path d="M8 8l12 16"/></svg></span><div><h1>视频号运营台</h1><p>让每一次创作，都有下一步</p></div></div>
+    <div class="header-actions"><span class="mode"><i></i><span id="mode-label">正在连接</span></span><button id="refresh" class="quiet" type="button" aria-label="刷新运营台">↻ <span>刷新</span></button></div>
+  </header>
+  <div class="account-bar"><div class="account-selector"><span class="avatar small" aria-hidden="true">视</span><label class="sr-only" for="account">当前视频号</label><select id="account"><option value="">尚未添加视频号</option></select><span id="account-status" class="badge neutral">待连接</span></div><button class="text-button" type="button" data-view="accounts">管理账号 <span aria-hidden="true">↗</span></button></div>
+  <nav class="tabs" aria-label="运营功能">
+    <button type="button" data-view="studio" aria-current="page"><span aria-hidden="true">✎</span> 创作</button>
+    <button type="button" data-view="videos"><span aria-hidden="true">▤</span> 作品</button>
+    <button type="button" data-view="data"><span aria-hidden="true">▥</span> 数据</button>
+    <button type="button" data-view="comments"><span aria-hidden="true">☷</span> 评论</button>
+    <button type="button" data-view="jobs"><span aria-hidden="true">◷</span> 记录</button>
+  </nav>
+  <div id="feedback" class="feedback" role="status" aria-live="polite" hidden></div>
+  <main>
+    <section id="view-studio" class="view">
+      <div class="page-heading"><div><p class="eyebrow">把想法变成作品</p><h2>开始下一次创作</h2><p>准备内容、打磨表达，让好作品被看见。</p></div><button id="new-draft" type="button">＋ 新建草稿</button></div>
+      <div class="summary-strip"><div><span>本地草稿</span><strong id="draft-count">0</strong><small>最近记录</small></div><div><span>待执行任务</span><strong id="pending-count">0</strong><small>等待处理</small></div><div><span>已同步作品</span><strong id="video-count">—</strong><small id="sync-caption">尚未同步</small></div></div>
+      <div id="onboarding" class="notice"><span class="notice-icon" aria-hidden="true">＋</span><div><strong>先为你的视频号建一个创作空间</strong><p>扫码连接账号后，就可以保存草稿、管理素材和准备发布。</p></div><button type="button" data-view="accounts">添加账号 →</button></div>
+      <div class="studio-grid">
+        <div class="editor-column">
+          <form id="draft-form" class="panel editor"><fieldset>
+            <div class="panel-heading"><h3><span class="step">01</span> 内容与素材</h3><span id="draft-status" class="subtle">尚未保存</span></div>
+            <label>内部标题<input id="draft-title" maxlength="100" placeholder="例如：让产品故事，更有温度" required></label>
+            <div class="label-row"><label for="draft-description">视频描述</label><button id="ai-draft" class="text-button" type="button">✧ 复制 AI 创作指令</button></div>
+            <textarea id="draft-description" rows="6" maxlength="2000" placeholder="用一句话吸引注意，再讲清楚这条视频想表达的内容…"></textarea>
+            <div class="field-footer"><span>内部标题仅用于查找草稿，不会自动发布。</span><span id="description-count">0 / 2000</span></div>
+            <label>话题<input id="draft-topics" maxlength="500" placeholder="# 产品故事  # 日常灵感"></label>
+            <div class="divider"></div>
+            <div class="panel-heading"><h3><span class="step">02</span> 视频与封面</h3><span class="subtle">本地素材</span></div>
+            <div class="media-grid">
+              <div><label class="upload-area" for="video-file"><span class="upload-icon" aria-hidden="true">↑</span><strong>选择视频文件</strong><span>MP4 · 本地上限 512 MiB</span><input id="video-file" type="file" accept="video/mp4,.mp4"></label><label class="sr-only" for="draft-asset">已导入的视频</label><select id="draft-asset"><option value="">或选择已导入的视频</option></select></div>
+              <div><label class="upload-area" for="cover-file"><span class="upload-icon" aria-hidden="true">▧</span><strong>选择封面图片</strong><span>PNG / JPG / WebP · 10 MiB</span><input id="cover-file" type="file" accept="image/png,image/jpeg,image/webp"></label><label class="sr-only" for="draft-cover">已导入的封面</label><select id="draft-cover"><option value="">使用视频默认封面</option></select></div>
+            </div>
+            <details class="import-details"><summary>从当前工作区导入素材</summary><label>素材文件路径<input id="media-path" placeholder="video/项目名/renders/final.mp4"></label><button id="import-media" type="button">导入素材</button></details>
+            <p id="upload-state" class="hint" role="status">素材保存在本机，上传至平台前仍会核对平台要求。</p>
+            <div class="editor-footer"><span id="save-state" class="subtle">草稿仅保存在本地</span><button id="save-draft" type="submit">保存草稿</button></div>
+          </fieldset></form>
+          <div class="publish-panel"><div><strong>准备好，让作品出发</strong><p id="publish-note">保存内容与素材后，准备一条可核对的发布任务。</p></div><button id="prepare-publish" class="primary" type="button">准备发布任务 <span aria-hidden="true">→</span></button></div>
+        </div>
+        <aside class="preview-column">
+          <div class="panel preview-panel"><div class="panel-heading"><h3>作品预览</h3><span class="subtle">内容示意</span></div>
+            <div class="phone-preview"><div class="phone-top"><span>视频号</span><span aria-hidden="true">•••</span></div><div class="preview-media"><video id="preview-video" controls preload="metadata" hidden></video><img id="preview-cover" alt="当前草稿封面" hidden><div id="preview-empty"><span class="preview-play" aria-hidden="true">▷</span><strong>你的下一条好作品</strong><span>导入视频，预览内容</span></div></div><div class="phone-caption"><strong id="preview-account">你的视频号</strong><p id="preview-description">让一个好想法，从这里开始。</p><span id="preview-topics"></span></div></div>
+            <p class="hint centered">展示当前素材与文案，实际样式以平台为准。</p>
+          </div>
+          <div class="panel drafts-panel"><div class="panel-heading"><h3>最近草稿</h3><span id="recent-count" class="subtle">0 条</span></div><div id="draft-list" class="draft-list"><p class="empty-small">还没有草稿，写下第一个想法吧。</p></div></div>
+          <p class="local-note"><span aria-hidden="true">◎</span> 内容留在本机，创作随时继续。</p>
+        </aside>
+      </div>
+    </section>
+    <section id="view-videos" class="view" hidden><div class="page-heading"><div><p class="eyebrow">从发布，到下一次进步</p><h2>作品管理</h2><p>查看从视频号助手同步的作品和平台状态。</p></div><button type="button" class="primary" data-sync="sync-videos">准备同步作品</button></div><p class="scope-note">显示最近同步的最多 100 条记录，平台状态保留原文。</p><div id="videos-list" class="record-list"></div></section>
+    <section id="view-data" class="view" hidden><div class="page-heading"><div><p class="eyebrow">让内容有据可循</p><h2>作品数据</h2><p>从真实作品表现中，找到下一次创作的方向。</p></div><button type="button" data-sync="sync-videos">准备同步数据</button></div><div id="data-metrics" class="metrics-grid"></div><div class="panel"><div class="panel-heading"><h3>作品表现对比</h3><span id="data-updated" class="subtle">尚未同步</span></div><p class="scope-note">按当前账号已同步的最近作品展示；缺失指标为「—」，不是零。数据不是账号全量统计。</p><div id="data-table" class="table-wrap"></div></div><div class="notice compact"><div><strong>先看真实表现，再做内容判断</strong><p>同步后可在主软件会话中要求 AI 复盘主题、文案和内容形式，并生成下一周选题。</p></div><button id="ai-review" type="button">复制复盘指令</button></div></section>
+    <section id="view-comments" class="view" hidden><div class="page-heading"><div><p class="eyebrow">把每一次互动，变成连接</p><h2>评论互动</h2><p>读取自己作品的评论，准备有针对性的回复。</p></div></div><div class="panel comment-filter"><label>选择作品<select id="comment-video"><option value="">请先同步作品</option></select></label><button id="sync-comments" type="button">准备读取评论</button></div><div id="comments-list" class="record-list"></div></section>
+    <section id="view-jobs" class="view" hidden><div class="page-heading"><div><p class="eyebrow">每一步，都有记录</p><h2>操作记录</h2><p>区分任务准备、实际执行和平台结果。</p></div><button type="button" data-refresh>刷新记录</button></div><div class="notice compact"><div><strong>「已准备」代表内容已锁定，尚未执行</strong><p>发布需通过主软件会话的账号浏览器执行。提交后结果不明时会保留为「待核对」，不会自动重发。</p></div></div><div id="jobs-list" class="record-list"></div></section>
+  </main>
+  <footer class="app-footer"><span>iPolloWork 插件 · 视频号运营台</span><span>v0.1.7 · 本机保存</span></footer>
+  <dialog id="accounts-dialog" aria-labelledby="accounts-dialog-title" aria-describedby="accounts-dialog-description">
+    <header class="accounts-dialog-header"><div><h2 id="accounts-dialog-title">账号管理</h2><p id="accounts-dialog-description">管理你的视频号，以及每个账号独有的内容定位。</p></div><button id="close-accounts" class="quiet" type="button" aria-label="关闭账号管理" autofocus>✕</button></header>
+    <div class="accounts-dialog-body"><p id="account-feedback" class="account-feedback" role="status" aria-live="polite" hidden></p>
+      <div class="settings-grid"><div><div class="panel-heading"><h3>我的视频号 <span id="account-total" class="subtle">0 个</span></h3><button id="new-account" class="primary" type="button">＋ 扫码添加账号</button></div><div id="accounts-list" class="record-list"></div><div class="notice compact"><div><strong>每个账号使用独立登录会话</strong><p>点击扫码后会打开视频号助手；扫码成功会自动识别昵称和视频号 ID，不需要手工复制。</p></div></div></div>
+      <div>
+        <section id="account-connect-panel" class="panel connect-panel" aria-labelledby="connect-title">
+          <div class="connect-visual" aria-hidden="true"><span></span><b>视</b></div>
+          <p class="eyebrow">微信扫码连接</p><h3 id="connect-title">添加视频号账号</h3>
+          <p id="connect-description" class="connect-description">为这个视频号创建独立登录会话，扫码成功后自动保存账号身份。</p>
+          <ol class="connect-steps"><li class="active"><span>1</span><div><strong>打开扫码窗口</strong><small>使用视频号助手官方登录页</small></div></li><li><span>2</span><div><strong>微信扫码确认</strong><small>登录凭据只保存在账号专属浏览器中</small></div></li><li><span>3</span><div><strong>自动识别账号</strong><small>核对昵称与视频号 ID 后完成添加</small></div></li></ol>
+          <button id="start-account-connect" class="primary connect-primary" type="button">打开微信扫码</button>
+          <button id="edit-account-locally" class="text-button" type="button">先填写账号定位</button>
+          <p id="connect-support" class="connect-support">需在安装本插件的 iPolloWork 主软件中使用。</p>
+        </section>
+        <form id="account-form" class="panel" hidden><fieldset><div class="panel-heading"><h3 id="account-form-title">账号资料</h3><button id="back-to-connect" class="text-button" type="button">返回扫码</button></div><label>账号名称<input id="account-name" maxlength="60" required placeholder="例如：品牌官方视频号"></label><label>视频号 ID <span class="optional">选填</span><input id="account-channel" maxlength="100" placeholder="扫码后将自动核验实际身份"></label><label>账号定位<textarea id="account-positioning" rows="3" maxlength="1000" placeholder="分享什么内容？希望带来什么价值？"></textarea></label><label>目标受众<input id="account-audience" maxlength="500" placeholder="例如：关注设计与生活方式的年轻人"></label><label>表达风格<input id="account-tone" maxlength="500" placeholder="例如：真诚、简洁、有生活感"></label><button class="primary" type="submit">保存账号资料</button></fieldset></form>
+      </div></div>
+    </div>
+  </dialog>
+  <dialog id="prompt-dialog"><div class="panel-heading"><h3>带到 AI 会话继续</h3><button id="close-prompt" class="quiet" type="button" aria-label="关闭指令窗口">✕</button></div><p class="hint">主软件空闲后，在安装本插件的会话中使用以下指令。</p><textarea id="prompt-content" rows="10" readonly aria-label="AI 指令"></textarea><button id="copy-prompt" class="primary" type="button">复制指令</button></dialog>
+</body>
+</html>
+

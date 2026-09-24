@@ -458,10 +458,17 @@ export type ChatModelCatalogEntry = {
  */
 export function getChatModelCatalogEntries(
   value: ProviderListResponse | null | undefined,
+  engineId?: string | null,
 ): ChatModelCatalogEntry[] {
-  return getSelectableChatProviderItems(value).flatMap((provider) => (
+  return getSelectableChatProviderItems(value)
+    .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
+    .flatMap((provider) => (
     Object.entries(provider.models).map(([modelId, model]) => ({ provider, modelId, model }))
   ));
+}
+
+function chatProviderVisibleForEngine(providerId: string, engineId?: string | null) {
+  return (engineId?.trim() || DEFAULT_ENGINE_ID) === DEFAULT_ENGINE_ID || providerId.toLowerCase() !== "opencode";
 }
 
 export function getModelContextWindow(
@@ -487,8 +494,11 @@ export function getModelContextWindow(
 
 export function getSelectableChatModelSnapshot(
   value: ProviderListResponse | null | undefined,
+  engineId?: string | null,
 ): SelectableChatModelSnapshot {
-  return getSelectableChatProviderItems(value).map((provider) => ({
+  return getSelectableChatProviderItems(value)
+    .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
+    .map((provider) => ({
     providerID: provider.id,
     modelIDs: Object.keys(provider.models ?? {}),
   }));
@@ -514,7 +524,7 @@ export function getEngineChatModelEntries(input: {
   engineId?: string | null;
 }): RunnableChatModelEntry[] {
   if (!input.runtime) return [];
-  return getChatModelCatalogEntries(input.catalog).flatMap(({ provider, modelId, model }) => {
+  return getChatModelCatalogEntries(input.catalog, input.engineId).flatMap(({ provider, modelId, model }) => {
     const runtime = resolveModelRuntime(
       input.runtime,
       { providerID: provider.id, modelID: modelId },

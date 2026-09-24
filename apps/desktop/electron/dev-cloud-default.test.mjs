@@ -25,6 +25,11 @@ test("development startup does not auto-install dependencies when the registry i
   assert.match(workspacePackage.scripts["dev:electron"], /pnpm_config_verify_deps_before_run=warn/);
 });
 
+test("development startup launches the app package without a nested workspace script", () => {
+  assert.match(devScript, /\["--filter", "@ipollowork\/app", "dev"\]/);
+  assert.doesNotMatch(devScript, /\["-w", "dev:ui"\]/);
+});
+
 test("embedded server requests use Electron's system-proxy-aware network stack", () => {
   assert.match(main, /Symbol\.for\("ipollowork\.mediaProviderFetch"\), electronNet\.fetch\.bind\(electronNet\)/);
   assert.doesNotMatch(main, /globalThis\.fetch\s*=/);

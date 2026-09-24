@@ -25,10 +25,11 @@ import {
   resolveOpenAiCodexOAuthSession,
   type OpenAiCodexOAuthSession,
 } from "./openai-codex-oauth.js";
-import { readRuntimeMcpConfig } from "./runtime-capability-store.js";
+import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { onRuntimeMcpConfigWrite } from "./runtime-capability-store.js";
 import { readRuntimeProviderChannels } from "./runtime-opencode-config-store.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
+import { engineHostMcp } from "./engine-host-mcp.js";
 import {
   compatibleProviderRuntimeProfiles,
   sharedProviderApiCredentials,
@@ -381,9 +382,7 @@ export function codexHarnessHostMcp(
   workspace: WorkspaceInfo,
 ): Record<string, unknown> {
   return {
-    type: "remote",
-    url: `http://127.0.0.1:${config.port}/engine-tools/mcp?workspaceId=${encodeURIComponent(workspace.id)}`,
-    headers: { Authorization: `Bearer ${config.token}` },
+    ...engineHostMcp(config, workspace),
     required: true,
     tool_timeout_sec: 420,
   };
@@ -803,7 +802,7 @@ export class CodexHarnessRuntime {
   }> {
     const [{ records, providers: sourceProviders }, mcp] = await Promise.all([
       this.#readSourceProviders(),
-      readRuntimeMcpConfig(this.#config, this.#workspace.id),
+      readEngineRuntimeMcpConfig(this.#config, this.#workspace.id),
     ]);
     const gatewayRoutes = await this.#providerGateway.configure(
       sourceProviders.flatMap((provider) => {

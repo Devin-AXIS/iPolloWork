@@ -184,6 +184,7 @@ type PendingVideoDeliveryValidation = {
   requestOrdinal: number;
   mustChange: boolean;
   recoveryAttempted: boolean;
+  hostExport?: { operationKey: string; intent: "export" | "publish-douyin" };
 };
 
 type PendingArtifactCompletionValidation = {
@@ -218,6 +219,21 @@ function videoDeliveryValidationOutput(response: unknown): VideoDeliveryValidati
     ? output.issues.filter((issue): issue is { code?: string; message?: string } => Boolean(issue && typeof issue === "object"))
     : [];
   return { valid: output.valid, issues };
+}
+
+function videoRenderOutput(response: unknown) {
+  if (!response || typeof response !== "object" || !("result" in response)) return null;
+  const result = response.result;
+  if (!result || typeof result !== "object" || !("output" in result)) return null;
+  const output = result.output;
+  if (!output || typeof output !== "object" || !("status" in output)) return null;
+  if (output.status !== "preparing" && output.status !== "rendering" && output.status !== "complete" && output.status !== "failed") return null;
+  return {
+    status: output.status,
+    outputPath: "outputPath" in output && typeof output.outputPath === "string" ? output.outputPath : null,
+    error: "error" in output && typeof output.error === "string" ? output.error : null,
+    pollAfterMs: "pollAfterMs" in output && typeof output.pollAfterMs === "number" ? output.pollAfterMs : 2_000,
+  };
 }
 
 export type SessionSurfaceProps = {
@@ -1408,6 +1424,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         }
       : null;
     const recoveryDraft = artifactRecoveryDraft
+      || nextDraft.capability?.id === "video-publish-continuation"
       || nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
     const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
@@ -1482,6 +1499,28 @@ export function SessionSurface(props: SessionSurfaceProps) {
           requestOrdinal,
           recoveryAttempted: false,
         };
+      }
+      const videoDeliveryTarget = typeof dispatchOutcome === "boolean" ? null : dispatchOutcome.videoDeliveryTarget;
+      if (dispatched && videoDeliveryTarget && !recoveryDraft) {
+        const delivery = pendingDelivery ?? {
+          sourcePath: videoDeliveryTarget.sourcePath,
+          requirements: videoDeliveryRequirementsForPrompt({
+            capabilityId: nextDraft.capability?.id,
+            promptText: nextDraft.resolvedText ?? nextDraft.text,
+            animationReferences: selectedAnimations.map((selection) => selection.item.name),
+            voiceoverAvailable: true,
+            voiceoverEnabled: false,
+          }),
+          baselineFingerprint: videoDeliveryTarget.baselineFingerprint,
+          requestOrdinal,
+          mustChange: videoDeliveryTarget.baselineFingerprint !== null,
+          recoveryAttempted: false,
+        };
+        delivery.hostExport = {
+          operationKey: videoDeliveryTarget.operationKey,
+          intent: videoDeliveryTarget.intent,
+        };
+        pendingVideoDeliveryRef.current = delivery;
       }
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
@@ -1703,6 +1742,47 @@ export function SessionSurface(props: SessionSurfaceProps) {
             pending.requestOrdinal,
             ownedPaths,
           ));
+          if (pending.hostExport) {
+            const args = { sourcePath: pending.sourcePath, operationKey: pending.hostExport.operationKey };
+            const renderCall = async (action: "video_render_start" | "video_render_status") => {
+              const response = await props.client.callExtensionAction({
+                extensionId: "media", action, args,
+                context: { directory: props.workspaceRoot || undefined },
+              });
+              if (!response.ok) throw new Error(response.message);
+              const render = videoRenderOutput(response);
+              if (!render) throw new Error("Video export returned an unreadable result.");
+              return render;
+            };
+            let render = await renderCall("video_render_start");
+            const deadline = Date.now() + 30 * 60_000;
+            while (render.status === "preparing" || render.status === "rendering") {
+              if (pendingVideoDeliveryRef.current !== pending) return;
+              if (Date.now() >= deadline) throw new Error("Video export did not finish within 30 minutes. Check the existing export before retrying.");
+              await new Promise((resolve) => window.setTimeout(resolve, Math.max(500, Math.min(render.pollAfterMs, 5_000))));
+              render = await renderCall("video_render_status");
+            }
+            if (render.status === "failed") throw new Error(render.error || "Video export failed.");
+            if (!render.outputPath) throw new Error("Video export completed without an MP4 path.");
+            if (pendingVideoDeliveryRef.current !== pending) return;
+            const outputPath = render.outputPath;
+            setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(current, pending.requestOrdinal, [...ownedPaths, outputPath]));
+            pendingVideoDeliveryRef.current = null;
+            if (pending.hostExport.intent === "publish-douyin") {
+              const instruction = `The user already authorized publication to Douyin. The host rendered the validated video to ${outputPath}. Continue automatically with douyin-ops-worker through the OpenCode host MCP tools ipollowork_ipollowork_extension_list_actions and ipollowork_ipollowork_extension_call: import-media using this exact sourcePath, save-draft, publish-draft, claim any browserTask, upload the generated MP4 through ipollowork_ipollowork_browser_open_url, ipollowork_ipollowork_browser_snapshot, and ipollowork_ipollowork_browser_act, then verify the publication receipt. Do not render again, search cloud capabilities for local publishing, run an external CLI, or ask the user to export/upload manually. Pause only for login, verification, denied approval, account ambiguity, or a real platform error. Preserve existing draft/job idempotency.`;
+              await sendDraft({
+                mode: "prompt", parts: [], attachments: [],
+                text: "Continue the authorized Douyin publication.",
+                resolvedText: "Continue the unfinished delivery.",
+                capability: { id: "video-publish-continuation", instruction },
+              }, []);
+              return;
+            }
+            props.onArtifactCompletionRequirementConsumed?.();
+            setSending(false);
+            toast.success(t("session.video_delivery_validated"));
+            return;
+          }
           pendingVideoDeliveryRef.current = null;
           props.onArtifactCompletionRequirementConsumed?.();
           setSending(false);
@@ -1721,7 +1801,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
           "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
-          "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
+          pending.hostExport
+            ? "Save the corrected index.html and stop. The host will revalidate and automatically export the MP4; do not run a CLI or ask for manual export."
+            : "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
           ...issueMessages.map((issue) => `- ${issue}`),
         ].join("\n");
         await sendDraft({

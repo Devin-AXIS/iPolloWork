@@ -204,6 +204,7 @@ export type PromptDispatchResult = {
   dispatched: boolean;
   sessionId?: string;
   artifactCompletionTargets?: ArtifactCompletionTarget[];
+  videoDeliveryTarget?: { sourcePath: string; intent: "export" | "publish-douyin"; baselineFingerprint: string | null; operationKey: string };
 };
 
 export type PromptDispatchOutcome = boolean | PromptDispatchResult;

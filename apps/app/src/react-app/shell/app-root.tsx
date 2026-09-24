@@ -51,6 +51,7 @@ function BrowserControlActions() {
     args: [
       { name: "url", type: "string", required: true, description: "The website URL to open." },
       { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
+      { name: "taskId", type: "string", required: false, description: "Host-owned task scope for an isolated tab that shares the selected profile login." },
     ],
     previewArgs: { url: "https://example.com" },
     disabled: !isElectronRuntime(),
@@ -58,7 +59,11 @@ function BrowserControlActions() {
       const url = controlStringArg(args, "url");
       if (!url) return { ok: false, error: "Missing URL." };
       const profileId = controlStringArg(args, "profileId");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId ? { profileId } : undefined);
+      const taskId = controlStringArg(args, "taskId");
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId ? {
+        ...(profileId ? { profileId } : {}),
+        ...(taskId ? { taskId } : {}),
+      } : undefined);
       return result;
     },
   }), []);

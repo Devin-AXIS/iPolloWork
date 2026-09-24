@@ -257,6 +257,13 @@ describe("client timeout policies", () => {
     expect(durations).toEqual([3_000, 420_000, 180_000]);
   });
 
+  test("Server allows project removal to finish cleanup", async () => {
+    const durations = recordTimeouts();
+    useFetch(async () => Response.json({ ok: true, deleted: true, persisted: true, activeId: null, items: [] }));
+    await serverClient().deleteWorkspace("ws-proof");
+    expect(durations).toEqual([30_000]);
+  });
+
   test("Server forwards multipart and binary files without JSON conversion", async () => {
     const durations = recordTimeouts();
     const file = new File([new Uint8Array([0, 255, 13, 10])], "proof.zip");
