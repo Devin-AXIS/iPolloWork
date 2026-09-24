@@ -8,6 +8,8 @@ import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises"
 import { basename, dirname, extname, posix } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
+import { checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { analyzeVideoMusic } from "./video-audio-analysis.js";
 import { videoRenderAction } from "./video-render.js";
 
 // The Alibaba adapter stays internal to this module. The public action
@@ -721,6 +723,49 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
 }
 
 export const MEDIA_EXTENSION_ACTIONS = [
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "video_audio_analyze",
+    title: "Analyze Video Studio music",
+    description: "Run the bundled HyperFrames beat detector for the active editable video project and return saved, reproducible cue times for audio-reactive motion. The project must contain a local audio element marked data-timeline-role=music.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
+      },
+      required: ["sourcePath"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "video_component_install",
+    title: "Install Video Studio components",
+    description: "Install only the selected bundled HyperFrames registry components into the active editable video project. Use the returned data-composition-src snippets instead of recreating the component from memory or treating the component map as visual inspiration.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
+        componentIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, description: "Registry component IDs selected from core-v1-video/motion/component-map.md." },
+      },
+      required: ["sourcePath", "componentIds"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "video_component_check",
+    title: "Check Video Studio component reuse",
+    description: "Verify that every substantive video scene either references an installed registry component with real variables and a motion pattern, or records a specific custom-composition reason. Run once before final video acceptance.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
+      },
+      required: ["sourcePath"],
+      additionalProperties: false,
+    },
+  },
   ...["video_render_start", "video_render_status"].map(action => ({
     extensionId: MEDIA_EXTENSION_ID, action,
     title: action === "video_render_start" ? "Export video to MP4" : "Read MP4 export progress",
@@ -1778,6 +1823,15 @@ export async function callMediaExtensionAction(
   args: JsonRecord,
   context: JsonRecord,
 ) {
+  if (action === "video_audio_analyze" || action === "video_component_install" || action === "video_component_check") {
+    const workspace = workspaceForContext(config, context);
+    const output = action === "video_audio_analyze"
+      ? await analyzeVideoMusic(workspace, args)
+      : action === "video_component_install"
+        ? await installVideoComponents(workspace, args)
+        : await checkVideoComponents(workspace, args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
+  }
   if (action === "video_render_start" || action === "video_render_status") {
     const output = await videoRenderAction(workspaceForContext(config, context), action, args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };
@@ -1822,7 +1876,14 @@ export async function callMediaExtensionAction(
         targetDurationSeconds: readOptionalNumber(requirementInput, "targetDurationSeconds") ?? undefined,
       },
     });
-    const issues = [...output.issues, ...await validateVideoScriptAssets(html, dirname(source.absolutePath))];
+    const componentCheck = /^video\/[A-Za-z0-9_-]+\/index\.html$/u.test(source.relativePath)
+      ? await checkVideoComponents(workspace, { sourcePath: source.relativePath })
+      : null;
+    const issues = [
+      ...output.issues,
+      ...await validateVideoScriptAssets(html, dirname(source.absolutePath)),
+      ...(componentCheck?.issues ?? []),
+    ];
     return {
       ok: true,
       extensionId: MEDIA_EXTENSION_ID,
@@ -1830,7 +1891,13 @@ export async function callMediaExtensionAction(
       result: {
         provider: "local",
         operation: action,
-        output: { sourcePath: source.relativePath, ...output, valid: issues.length === 0, issues },
+        output: {
+          sourcePath: source.relativePath,
+          ...output,
+          valid: issues.length === 0,
+          issues,
+          ...(componentCheck ? { componentCheck } : {}),
+        },
       },
       context,
     };

@@ -84,7 +84,6 @@ import {
   type VideoVoiceAiReference,
 } from "../video/video-voice";
 import {
-  hasVideoDeliveryRequirements,
   unchangedVideoArtifactIssue,
   videoDeliveryRequirementsForPrompt,
   videoProjectEntryPath,
@@ -1456,21 +1455,19 @@ export function SessionSurface(props: SessionSurfaceProps) {
           voiceoverAvailable: voiceover.configured,
         });
         const mustChange = Boolean(voiceoverRequest);
-        if (hasVideoDeliveryRequirements(requirements)) {
-          const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
-            ? props.artifactContext.entryPath
-            : templateEntryPath || videoProjectEntryPath(props.sessionId);
-          pendingDelivery = {
-            sourcePath,
-            requirements,
-            baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
-            expectedVoice: voiceoverRequest?.settings,
-            requestOrdinal,
-            mustChange,
-            recoveryAttempted: false,
-          };
-          pendingVideoDeliveryRef.current = pendingDelivery;
-        }
+        const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
+          ? props.artifactContext.entryPath
+          : templateEntryPath || videoProjectEntryPath(props.sessionId);
+        pendingDelivery = {
+          sourcePath,
+          requirements,
+          baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
+          expectedVoice: voiceoverRequest?.settings,
+          requestOrdinal,
+          mustChange,
+          recoveryAttempted: false,
+        };
+        pendingVideoDeliveryRef.current = pendingDelivery;
       }
       const dispatchOutcome = await props.onSendDraft(
         nextDraft,
@@ -1590,7 +1587,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         `Generate narration for the entire video using the current scene content and these settings: ${JSON.stringify(request.settings)}.`,
         "When selectionMode is auto, select a compatible voice for the scene language and content. Otherwise use the specified voiceId.",
         "Use media/speech_synthesize_workspace_batch. Preserve existing audio until every replacement is synthesized successfully; then apply the returned audioElementHtml (including voice metadata) and synchronized timing in one final source edit.",
-        "Preserve visuals, background music, and unrelated edits. Validate this exact sourcePath with media/voiceover_timeline_validate and requirements.voiceover=true before reporting completion.",
+        "Preserve visuals, background music, and unrelated edits. Save the repaired sourcePath and return; the client will rerun its aggregate delivery validator.",
       ].join("\n");
       void sendDraft({
         mode: "prompt", text, resolvedText: text,
@@ -1803,7 +1800,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
           pending.hostExport
             ? "Save the corrected index.html and stop. The host will revalidate and automatically export the MP4; do not run a CLI or ask for manual export."
-            : "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
+            : "Save the repaired composition and return once. The client will rerun the exact same aggregate validator; do not call validators or preview tools yourself.",
           ...issueMessages.map((issue) => `- ${issue}`),
         ].join("\n");
         await sendDraft({
