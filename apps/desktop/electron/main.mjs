@@ -21,7 +21,7 @@ import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./me
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
 import { createEnginePackageManager } from "./engine-package-manager.mjs";
-import { registerUpdaterIpc } from "./updater.mjs";
+import { electronUpdaterFeedUrl, registerUpdaterIpc } from "./updater.mjs";
 import {
   checkComputerUsePermissions,
   getComputerUseMcpCommand,
@@ -92,8 +92,8 @@ let desktopAuthWindow = null;
 const APP_IDENTIFIER =
   process.env.IPOLLOWORK_ELECTRON_APP_IDENTIFIER?.trim() ||
   (isDevMode ? DEV_APP_IDENTIFIER : TAURI_APP_IDENTIFIER);
-const RELEASE_DOWNLOAD_BASE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
-const RELEASE_PAGE_URL = "https://github.com/Devin-AXIS/iPolloWork/releases/latest";
+const RELEASE_DOWNLOAD_BASE_URL = electronUpdaterFeedUrl("stable", app.getVersion());
+const RELEASE_PAGE_URL = `https://github.com/Devin-AXIS/iPolloWork/releases/tag/data-label-v${encodeURIComponent(app.getVersion())}`;
 const DOCS_PAGE_URL = "https://ipolloworklabs.com/docs";
 const MAIN_WINDOW_DEFAULT_WIDTH = 1440;
 const MAIN_WINDOW_DEFAULT_HEIGHT = 900;
@@ -766,9 +766,9 @@ function downloadAssetExtension() {
 }
 
 function updaterManifestName(arch) {
-  if (process.platform === "darwin") return "latest-mac.yml";
-  if (process.platform === "win32") return "latest.yml";
-  return arch === "arm64" ? "latest-linux-arm64.yml" : "latest-linux.yml";
+  if (process.platform === "darwin") return "data-label-mac.yml";
+  if (process.platform === "win32") return "data-label.yml";
+  return arch === "arm64" ? "data-label-linux-arm64.yml" : "data-label-linux.yml";
 }
 
 function archLabel(arch) {
@@ -841,7 +841,7 @@ async function resolveArchitectureInfo() {
   const systemArch = resolveSystemArch();
   const version = app.getVersion();
   const targetArch = systemArch === "arm64" || systemArch === "x64" ? systemArch : appArch;
-  const assetName = `ipollowork-${platformDownloadSlug()}-${downloadAssetArch(targetArch)}-${version}.${downloadAssetExtension()}`;
+  const assetName = `ipollowork-data-label-${platformDownloadSlug()}-${downloadAssetArch(targetArch)}-${version}.${downloadAssetExtension()}`;
   const latestDownloadUrl = await resolveCorrectArchitectureDownloadUrl(targetArch);
   const hasCorrectArchitectureDownload = Boolean(latestDownloadUrl);
   return {

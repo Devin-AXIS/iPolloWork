@@ -818,7 +818,7 @@ export function validatePluginPackageManifest(value: unknown): PluginManifestVal
 
 export function parsePluginPackageManifest(value: unknown): PluginPackageManifest {
   const result = validatePluginPackageManifest(value);
-  if (result.success) return result.manifest;
+  if (result.success === true) return result.manifest;
   const detail = result.issues.map((issue) => `${issue.path || "manifest"}: ${issue.message}`).join("; ");
   throw new Error(`Invalid plugin package manifest: ${detail}`);
 }

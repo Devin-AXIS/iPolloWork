@@ -35,7 +35,7 @@ it("runs annotation actions and serves offline assets from the packaged applicat
   const manifest = JSON.parse(await readFile(path.join(root, "ipollowork.plugin.json"), "utf8"));
   const expected = JSON.parse(await readFile(path.join(source, "ipollowork.plugin.json"), "utf8"));
   assert.deepEqual(manifest, expected);
-  const { default: createService } = await import(pathToFileURL(path.join(root, "service/dist/data-annotation.mjs")));
+  const { default: createService } = await import(pathToFileURL(path.join(root, "service/dist/data-annotation.mjs")).href);
   const service = await createService({ plugin: { id: manifest.id, version: manifest.package.version } });
   const directory = await mkdtemp(path.join(os.tmpdir(), "ipollowork-packaged-annotation-"));
   const call = (action, args = {}) => service.actions[action](args, { directory });
