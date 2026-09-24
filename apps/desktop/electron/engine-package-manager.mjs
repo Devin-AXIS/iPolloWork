@@ -442,12 +442,12 @@ export function createEnginePackageManager(options) {
   }
 
   function assetName(descriptor) {
-    return `ipollowork-engine-${descriptor.id}-${platformAssetSegment(platform)}-${architecture}-${descriptor.version}.tar.gz`;
+    return `ipollowork-data-label-engine-${descriptor.id}-${platformAssetSegment(platform)}-${architecture}-${descriptor.version}.tar.gz`;
   }
 
   function officialReleaseAssetUrl(name) {
     const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
-    return `https://github.com/Devin-AXIS/iPolloWork/releases/download/v${version}/${name}`;
+    return `https://github.com/Devin-AXIS/iPolloWork/releases/download/data-label-v${version}/${name}`;
   }
 
   async function fetchEnginePackage(url, init = {}, consume = null) {
@@ -479,8 +479,7 @@ export function createEnginePackageManager(options) {
   async function resolveOfficialReleaseAsset(name) {
     const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
     const metadataUrls = [
-      `https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/v${version}`,
-      "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest",
+      `https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/data-label-v${version}`,
     ];
     const failures = [];
     for (const metadataUrl of metadataUrls) {

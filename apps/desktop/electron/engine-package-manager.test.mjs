@@ -23,7 +23,7 @@ function commandPath(command) {
 
 async function createDshArchiveFixture(temporaryRoot, { platform, architecture, version }) {
   const fixtureRoot = path.join(temporaryRoot, `${platform}-${architecture}-fixture`);
-  const name = `ipollowork-engine-deepseek-harness-${platformAssetSegment(platform)}-${architecture}-${version}.tar.gz`;
+  const name = `ipollowork-data-label-engine-deepseek-harness-${platformAssetSegment(platform)}-${architecture}-${version}.tar.gz`;
   const archivePath = path.join(temporaryRoot, name);
   const cliRelativePath = path.join("node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
   const nodeRelativePath = path.join("node-runtime", platform === "win32" ? "node.exe" : "node");
@@ -111,21 +111,20 @@ test("installs and removes a bundled optional engine package without touching Wo
   }
 });
 
-test("falls back to the latest mirrored release and rejects a corrupted mirror response", async () => {
+test("uses only the data-label release and rejects a corrupted mirror response", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-engine-mirror-test-"));
   const version = "9.8.7";
-  const name = `ipollowork-engine-deepseek-harness-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
+  const name = `ipollowork-data-label-engine-deepseek-harness-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
   const requestedUrls = [];
 
   try {
     const { archive, checksum } = await createDshArchiveFixture(temporaryRoot, {
       platform: process.platform, architecture: process.arch, version,
     });
-    const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0.0/${name}`;
+    const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/data-label-v1.0.0/${name}`;
     const firstMirror = `https://gh-proxy.com/${officialArchive}`;
     const secondMirror = `https://ghfast.top/${officialArchive}`;
-    const tagMetadata = "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/v1.0.1-local";
-    const latestMetadata = "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest";
+    const tagMetadata = "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/data-label-v1.0.1-local";
     /** @type {NodeJS.ProcessEnv} */
     const environment = {
       ...process.env,
@@ -155,8 +154,7 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
       fetch: async (url, init) => {
         requestedUrls.push(String(url));
         assert.ok(init?.signal);
-        if (url === tagMetadata) return new Response("missing", { status: 404 });
-        if (url === latestMetadata) return Response.json({
+        if (url === tagMetadata) return Response.json({
           assets: [{ name, digest: `sha256:${checksum}`, browser_download_url: officialArchive }],
         });
         if (url === officialArchive) throw new Error("net::ERR_CONNECTION_TIMED_OUT");
@@ -171,7 +169,7 @@ test("falls back to the latest mirrored release and rejects a corrupted mirror r
     assert.equal(installed.status, "ready");
     assert.equal(installed.source, "downloaded");
     assert.ok(requestedUrls.includes(tagMetadata));
-    assert.ok(requestedUrls.includes(latestMetadata));
+    assert.ok(requestedUrls.every(url => !url.includes("/releases/latest")));
     assert.ok(requestedUrls.includes(firstMirror));
     assert.ok(requestedUrls.includes(secondMirror));
   } finally {
@@ -208,7 +206,7 @@ test("reports real streamed byte progress for DeepSeek engine downloads", async 
     for (const fixture of fixtures) {
       const fixtureRoot = path.join(temporaryRoot, `${fixture.id}-fixture`);
       const archivePath = path.join(temporaryRoot, `${fixture.id}.tar.gz`);
-      const name = `ipollowork-engine-${fixture.id}-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
+      const name = `ipollowork-data-label-engine-${fixture.id}-${platformAssetSegment()}-${process.arch}-${version}.tar.gz`;
       await mkdir(path.join(fixtureRoot, path.dirname(fixture.cliRelativePath)), { recursive: true });
       await writeFile(path.join(fixtureRoot, fixture.cliRelativePath), `${fixture.id}-runtime\n`);
       await writeFile(path.join(fixtureRoot, "package.json"), JSON.stringify({ name: fixture.id }));
@@ -306,7 +304,7 @@ test("installs a checksum-pinned DeepSeek Harness for Apple Silicon without GitH
     architecture: "arm64",
     version,
   });
-  const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/v1.0.0/${fixture.name}`;
+  const officialArchive = `https://github.com/Devin-AXIS/iPolloWork/releases/download/data-label-v1.0.0/${fixture.name}`;
   const requestedUrls = [];
   /** @type {NodeJS.ProcessEnv} */
   const environment = { ...process.env, PATH: "" };

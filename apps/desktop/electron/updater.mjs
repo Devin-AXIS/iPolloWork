@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
-const OFFICIAL_ELECTRON_UPDATER_FEED = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 
 // In dev mode, app.getVersion() returns the Electron framework version
 // (e.g. "35.7.5") instead of the iPolloWork app version. Read from
@@ -46,8 +45,8 @@ export async function clearLegacyElectronUpdaterChannel(app) {
   }
 }
 
-export function electronUpdaterFeedUrl(_channel) {
-  return OFFICIAL_ELECTRON_UPDATER_FEED;
+export function electronUpdaterFeedUrl(_channel, version) {
+  return `https://github.com/Devin-AXIS/iPolloWork/releases/download/data-label-v${encodeURIComponent(version)}`;
 }
 
 function parseComparableVersion(value) {
@@ -126,7 +125,7 @@ function updaterChannelState(app) {
   const normalized = normalizeElectronUpdaterChannel();
   return {
     channel: normalized,
-    feedUrl: electronUpdaterFeedUrl(normalized),
+    feedUrl: electronUpdaterFeedUrl(normalized, resolveAppVersion(app)),
     currentVersion: resolveAppVersion(app),
   };
 }
@@ -137,7 +136,7 @@ async function applyElectronUpdaterFeed(app, updater) {
   updater.allowPrerelease = false;
   updater.allowDowngrade = false;
   if (updater?.setFeedURL) {
-    updater.setFeedURL({ provider: "generic", url: state.feedUrl });
+    updater.setFeedURL({ provider: "generic", url: state.feedUrl, channel: "data-label" });
   }
   return state;
 }

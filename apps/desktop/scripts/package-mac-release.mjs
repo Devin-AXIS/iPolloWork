@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(desktopRoot, "../..");
-const outputDir = path.join(desktopRoot, "dist-electron");
+const outputDir = path.join(desktopRoot, "dist-electron-data-label");
 const embeddedEnginePacksDir = path.join(desktopRoot, "dist-engine-packs");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 

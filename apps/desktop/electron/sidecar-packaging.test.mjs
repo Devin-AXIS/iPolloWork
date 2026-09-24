@@ -116,9 +116,9 @@ it("excludes stale Codex archives and checksums from every installer", async () 
     const resource = config[platform].extraResources.find((entry) => entry.to === "engine-packs");
     assert.ok(resource);
     for (const suffix of [".tar.gz", ".tar.gz.sha256"]) {
-      assert.equal(resource.filter.some((pattern) => minimatch(`ipollowork-engine-codex-harness-windows-x64-0.149.0${suffix}`, pattern)), false);
+      assert.equal(resource.filter.some((pattern) => minimatch(`ipollowork-data-label-engine-codex-harness-windows-x64-0.149.0${suffix}`, pattern)), false);
     }
-    assert.ok(resource.filter.some((pattern) => minimatch("ipollowork-engine-deepseek-harness-windows-x64-0.1.0-rc.6.tar.gz.sha256", pattern)));
+    assert.ok(resource.filter.some((pattern) => minimatch("ipollowork-data-label-engine-deepseek-harness-windows-x64-0.1.0-rc.6.tar.gz.sha256", pattern)));
   }
 });
 
@@ -157,8 +157,8 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
   const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";
   const windowsConfig = builderConfig.match(/\r?\nwin:\r?\n[\s\S]*$/)?.[0] ?? "";
-  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-engine-deepseek-harness-\*\.tar\.gz\.sha256/);
-  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-engine-deepseek-harness-\*\.tar\.gz"\s*$/m);
+  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-data-label-engine-deepseek-harness-\*\.tar\.gz\.sha256/);
+  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-data-label-engine-deepseek-harness-\*\.tar\.gz"\s*$/m);
   assert.match(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
@@ -174,7 +174,7 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   assert.match(managerSource, /officialReleaseAssetUrl/);
   assert.match(managerSource, /gh-proxy\.com/);
   assert.match(managerSource, /ghfast\.top/);
-  assert.match(managerSource, /api\.github\.com\/repos\/Devin-AXIS\/iPolloWork\/releases\/latest/);
+  assert.doesNotMatch(managerSource, /api\.github\.com\/repos\/Devin-AXIS\/iPolloWork\/releases\/latest/);
   assert.doesNotMatch(buildSource, /prepare-dsh-runtime\.mjs/);
   assert.doesNotMatch(devSource, /prepare-dsh-runtime\.mjs/);
   assert.doesNotMatch(buildSource, /prepare-codex-runtime\.mjs/);
@@ -242,12 +242,12 @@ it("keeps native engine archives outside the notarized macOS app while retaining
   const appPath = path.join(appRoot, "iPollo.app");
   const enginePacksPath = path.join(appPath, "Contents", "Resources", "engine-packs");
   await mkdir(enginePacksPath, { recursive: true });
-  const dshChecksum = path.join(enginePacksPath, "ipollowork-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz.sha256");
+  const dshChecksum = path.join(enginePacksPath, "ipollowork-data-label-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz.sha256");
   await writeFile(dshChecksum, `${"a".repeat(64)}  dsh.tar.gz\n`);
 
   try {
     assert.doesNotThrow(() => assertMacEngineTrustFiles(appPath));
-    const archivePath = path.join(enginePacksPath, "ipollowork-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz");
+    const archivePath = path.join(enginePacksPath, "ipollowork-data-label-engine-deepseek-harness-macos-arm64-1.0.0.tar.gz");
     await writeFile(archivePath, "native archive");
     assert.throws(() => assertMacEngineTrustFiles(appPath), /must not contain native engine archives/);
     await rm(archivePath);

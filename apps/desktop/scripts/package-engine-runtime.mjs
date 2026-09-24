@@ -59,7 +59,7 @@ async function packageEngine(engineId, outputDirectory) {
 
   const version = readRuntimeVersion();
   if (!version) throw new Error(`Could not resolve ${engineId} version.`);
-  const name = `ipollowork-engine-${engineId}-${targetPlatform()}-${targetArch()}-${version}.tar.gz`;
+  const name = `ipollowork-data-label-engine-${engineId}-${targetPlatform()}-${targetArch()}-${version}.tar.gz`;
   const archivePath = resolve(outputDirectory, name);
   const entries = ["package.json", "node_modules", "ipollowork-host-tools.mjs", "node-runtime"];
   for (const entry of entries) {

@@ -30,8 +30,8 @@ describe("official updater feed", () => {
     assert.equal(normalizeElectronUpdaterChannel("alpha"), "stable");
     assert.equal(normalizeElectronUpdaterChannel("stable"), "stable");
     assert.equal(
-      electronUpdaterFeedUrl("alpha"),
-      "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download",
+      electronUpdaterFeedUrl("alpha", "0.50.20"),
+      "https://github.com/Devin-AXIS/iPolloWork/releases/download/data-label-v0.50.20",
     );
   });
 

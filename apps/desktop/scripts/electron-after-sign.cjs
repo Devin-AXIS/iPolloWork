@@ -46,7 +46,7 @@ function assertMacEngineTrustFiles(appPath) {
     throw new Error(`macOS packaged app must not contain native engine archives: ${archives.join(", ")}`);
   }
   for (const engineId of ["deepseek-harness"]) {
-    if (!entries.some((name) => name.startsWith(`ipollowork-engine-${engineId}-macos-`) && name.endsWith(".tar.gz.sha256"))) {
+    if (!entries.some((name) => name.startsWith(`ipollowork-data-label-engine-${engineId}-macos-`) && name.endsWith(".tar.gz.sha256"))) {
       throw new Error(`macOS packaged app is missing the ${engineId} engine checksum.`);
     }
   }

@@ -51,3 +51,18 @@ For CI releases, configure these repository secrets:
 
 The existing macOS release workflows use these secrets for signed and notarized
 Electron artifacts.
+
+## data-label branch distribution
+
+This branch uses its own checked-out scripts, locked dependencies, annotation
+plugin, and resources. Run the annotation plugin's `pnpm check` before the
+macOS release command above. Output is `apps/desktop/dist-electron-data-label`.
+Installer and optional engine assets start with `ipollowork-data-label-`.
+
+Publish the exact build commit as `data-label-v<desktop-version>` and create a
+GitHub prerelease with `--latest=false`. Upload the matching engine archive,
+checksum, and `data-label-mac.yml` alongside the signed DMG/ZIP. The updater
+feed is pinned to this branch release; engine downloads never fall back to the
+stable Latest release. Future branch upgrades are manual installations.
+Do not run the stable `v*` tag workflow, publish stable updater manifests, or
+replace assets belonging to another release.
