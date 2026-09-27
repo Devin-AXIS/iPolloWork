@@ -28,7 +28,7 @@ export const VIDEO_STORYBOARD_FORMAT_CONTRACT = [
   "```markdown",
   VIDEO_STORYBOARD_EXAMPLE.trimEnd(),
   "```",
-  "- Before reporting the script ready, re-read the saved file and verify frontmatter, one Frame heading per shot, separate metadata list lines, non-empty scene content, and positive duration. For spatial recipes use the exact `component:spatial-camera-suite#<shotStyle>` ID, not `camera:<recipe>`. The user reviews this file in the existing Studio script table; link its exact project path as the editable script, not a generic planning document.",
+  "- Before reporting the script ready, re-read the saved file and verify frontmatter, one Frame heading per shot, separate metadata list lines, non-empty scene content, and positive duration. For every finished non-static video, resolve at least one focal shot to the exact `component:spatial-camera-suite#<shotStyle>` ID (one of graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, steep-tilt-glide), not `camera:<recipe>` or `custom:*`; this is a per-video shot choice, not a global setting. The user reviews this file in the existing Studio script table; link its exact project path as the editable script, not a generic planning document.",
 ].join("\n");
 
 /** Only a project-owned canonical script should open the video editor. */

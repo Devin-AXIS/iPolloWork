@@ -1505,22 +1505,22 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (dispatched && videoDeliveryTarget && !recoveryDraft) {
         const delivery = pendingDelivery ?? {
           sourcePath: videoDeliveryTarget.sourcePath,
-          requirements: videoDeliveryRequirementsForPrompt({
-            capabilityId: nextDraft.capability?.id,
-            promptText: nextDraft.resolvedText ?? nextDraft.text,
-            animationReferences: selectedAnimations.map((selection) => selection.item.name),
-            voiceoverAvailable: true,
-            voiceoverEnabled: false,
-          }),
+          requirements: videoDeliveryTarget.requirements,
           baselineFingerprint: videoDeliveryTarget.baselineFingerprint,
           requestOrdinal,
           mustChange: videoDeliveryTarget.baselineFingerprint !== null,
           recoveryAttempted: false,
         };
-        delivery.hostExport = {
-          operationKey: videoDeliveryTarget.operationKey,
-          intent: videoDeliveryTarget.intent,
-        };
+        delivery.sourcePath = videoDeliveryTarget.sourcePath;
+        delivery.requirements = videoDeliveryTarget.requirements;
+        delivery.baselineFingerprint = videoDeliveryTarget.baselineFingerprint;
+        delivery.mustChange = videoDeliveryTarget.baselineFingerprint !== null;
+        if (videoDeliveryTarget.operationKey && videoDeliveryTarget.intent) {
+          delivery.hostExport = {
+            operationKey: videoDeliveryTarget.operationKey,
+            intent: videoDeliveryTarget.intent,
+          };
+        }
         pendingVideoDeliveryRef.current = delivery;
       }
       if (selectedAnimations.length) {
@@ -1796,6 +1796,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const issueMessages = issues
         .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
         .filter(Boolean);
+      const needsSpatialCameraRepair = issues.some(issue =>
+        issue.code === "missing_spatial_camera_component"
+        || issue.code === "invalid_spatial_camera_recipe"
+        || (issue.code === "required_animation_missing" && /spatial-camera-suite/i.test(issue.message ?? "")),
+      );
       if (!pending.recoveryAttempted) {
         pending.recoveryAttempted = true;
         deliveryRecoveryAttemptKeysRef.current.add(`${pending.sourcePath}:${pending.requestOrdinal}`);
@@ -1804,6 +1809,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           "The preceding video run ended without satisfying the application's authoritative delivery validation.",
           `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
+          ...(needsSpatialCameraRepair ? [
+            "For the missing/invalid spatial-camera issue, install `spatial-camera-suite` through media/video_component_install and integrate its returned composition snippet into a focal scene. Set `shotStyle` to one exact supported recipe (graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, steep-tilt-glide), pass the real scene text and a project-local image/video asset path, and preserve the component's seekable camera/depth choreography. Do not satisfy this by adding metadata, ordinary 2D transforms, or a second camera wrapper. Then rerun the aggregate delivery check.",
+          ] : []),
           "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
           pending.hostExport
             ? "Save the corrected index.html and stop. The host will revalidate and automatically export the MP4; do not run a CLI or ask for manual export."

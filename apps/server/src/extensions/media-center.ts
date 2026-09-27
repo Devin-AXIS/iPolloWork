@@ -620,6 +620,16 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       .map((value) => value.trim())
       .filter(Boolean)),
   );
+  // A mounted registry component owns its native timeline. Count the
+  // component itself as implemented so the delivery gate verifies actual
+  // per-video mounting instead of requiring a duplicate marker in the nested
+  // composition.
+  for (const node of nodes) {
+    if (node.attributes.get("data-ipw-registry-component") === "spatial-camera-suite"
+      && node.attributes.get("data-composition-src")) {
+      implementedAnimationReferences.add("spatial-camera-suite");
+    }
+  }
   const requirements = {
     ...options.requirements,
     bgm: options.requirements?.bgm || Boolean(musicPlan?.prompt.trim() && musicPlan.prompt.trim().toLowerCase() !== "none"),

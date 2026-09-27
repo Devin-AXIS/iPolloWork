@@ -122,16 +122,30 @@ export function videoDeliveryRequirementsForPrompt(input: {
   // Default finished-video sound design belongs to the delivery contract, not
   // just the model's prompt. Planning and local edits must not add new tracks.
   const planningOnly = /(?:只|仅|先).{0,12}(?:脚本|分镜|规划)|(?:先别|不要|暂不).{0,8}(?:生成|制作|做)(?:视频|成片)|(?:only|just).{0,16}(?:script|storyboard|plan)|(?:script|storyboard|plan)[ -]only/i.test(text);
-  const createsVideo = /(?:制作|生成|做|创作|创建).{0,60}(?:视频|短片|宣传片|广告片)|\b(?:make|create|produce|generate)\b.{0,80}\b(?:video|film|promo|commercial|explainer)\b/i.test(text);
+  const createsVideo = /(?:制作|生成|创作|创建).{0,60}(?:视频|短片|宣传片|广告片)|(?:做)(?!\s*(?:配音|旁白|字幕))[\s\S]{0,60}(?:视频|短片|宣传片|广告片)|\b(?:make|create|produce|generate)\b.{0,80}\b(?:video|film|promo|commercial|explainer)\b/i.test(text);
+  const explicitNoMotion = /(?:不要|无需|不需要|关闭|禁用|去掉|取消|不加|无).{0,12}(?:动画|运镜|镜头运动|空间镜头|motion|camera movement|animation)|(?:静态|固定镜头|fixed camera|static video)/i.test(text);
+  const spatialCameraRequired = !planningOnly && !explicitNoMotion && (
+    createsVideo || /(?:动画|运镜|镜头|空间镜头|shotcraft|spatial camera|camera journey)/i.test(text)
+  );
   const silenceRequested = /(?:静音|无声|无音乐|無音樂|仅保留原声|只保留原声)|\b(?:silent|music-free|original[ -]sound[ -]only)\b/i.test(text);
   return {
-    voiceover: voiceoverExplicitlyDisabled || input.voiceoverAvailable === false
+    // Provider availability is an execution constraint, not user intent. If a
+    // finished video has narration in its brief, keep it in the delivery
+    // contract so validation cannot silently accept a narration-free result.
+    voiceover: voiceoverExplicitlyDisabled
+      || (input.voiceoverAvailable !== false && input.voiceoverEnabled === false)
       ? false
-      : videoPromptRequestsVoiceoverContext(input.capabilityId, text) || (input.voiceoverEnabled ?? true),
+      : videoPromptRequestsVoiceoverContext(input.capabilityId, text)
+        || (input.voiceoverAvailable === false && createsVideo)
+        || (input.voiceoverEnabled ?? true),
     captions: /(?:字幕|caption(?:s|ing)?|subtitles?)/i.test(text),
     bgm: !planningOnly && !silenceRequested && requestsAudio(/(?:背景音乐|背景音樂|配乐|配樂|音乐|音樂|\bbgm\b|background music|music bed|\bmusic\b|soundtrack)/gi, createsVideo),
     sfx: requestsAudio(/(?:音效|\bsfx\b|sound[ -]?effects?)/gi),
-    animationReferences: Array.from(new Set((input.animationReferences ?? []).filter(Boolean))),
+    // ShotCraft is a per-video production requirement, not a global switch.
+    animationReferences: Array.from(new Set([
+      ...(spatialCameraRequired ? ["spatial-camera-suite"] : []),
+      ...(input.animationReferences ?? []).filter(Boolean),
+    ])),
     ...(targetDurationSeconds != null ? { targetDurationSeconds } : {}),
   };
 }
@@ -246,7 +260,7 @@ export function videoTaskSystemContext(
     "- Never delete or truncate the active `index.html` or `design-tokens.css` before its replacement is complete. Update the existing file in one operation; if the editing tool cannot do that, prepare a sibling file first and atomically rename it over the destination. A failed or interrupted edit must leave the last valid entry in place.",
     "Semantic motion contract:",
     "- Plan an observable Establish -> Develop -> Land for each substantive scene. Make the middle change meaningfully: explore actual imagery, move between spatial subjects, advance a route, accumulate evidence, compare values, or transform an object/state in narration order. Choose from the existing motion/component catalogs with targeted queries; inspect only shortlisted sources. Vary framing, scale and pacing across shots, and use a transition to express continuity or a real change of idea. Repeating an entrance, the same camera on every scene, decorative loops, or a long static card after the opening is not a developed scene. A purposeful readable hold is valid.",
-    "- Record camera as at most one shared camera.* wrapper preset plus a note, or component:spatial-camera-suite#<shotStyle> for graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim or steep-tilt-glide. Install the selected component through media/video_component_install, set its real shotStyle and content variables, and retain its native deterministic choreography. Do not add a wrapper camera to a component that already owns its camera; keep captions screen-fixed. Component motion, semantic presets and scene timing must run on the same seekable HyperFrames timeline.",
+    "- Resolve every AI-selected camera into a concrete treatment before composition; never leave `AI decides`, `basic`, or an unbound camera note as the final choice. For every finished video that is not explicitly static, at least one focal scene MUST install and use `spatial-camera-suite` with one exact shotStyle value: `graze-face-tour`, `depth-layer-moves`, `spotlight-hero-card`, `runway-ground-skim`, or `steep-tilt-glide`. This is a per-video scene decision, not a global switch. Put the chosen component/recipe in that scene's STORYBOARD.md `camera` field, install it through `media/video_component_install`, pass real content and the actual local image path as variables, and retain its native deterministic choreography. Vary recipes only where the story benefits; do not repeat one camera on every shot. Validate the selected recipe, not merely the presence of an image; simple footage need not use a spatial card. Do not add a wrapper camera to a component that already owns its camera; keep captions screen-fixed. Component motion, semantic presets and scene timing must run on the same seekable HyperFrames timeline.",
     "- For ordinary motion on existing text or visual elements, call `list_motion_presets` with the correct targetKind and then `mutate_motion` with explicit start and end times. The product compiles the preset into the current GSAP/HyperFrames timeline; do not hand-write equivalent GSAP.",
     "- Address exactly one stable selector, choose one of enter/emphasis/exit, use the returned stable preset id, and send only declared parameters. Replacing a phase is intentional; never stack two preset animations in the same phase.",
     "- Treat voice-transcribed animation requests exactly like typed requests and use the same tools. Use custom GSAP only when the required semantic motion cannot be expressed by an existing preset/component, and record the specific structural reason; a style preference does not justify duplicating a library effect.",
@@ -264,7 +278,7 @@ export function videoTaskSystemContext(
     "- Every scene after the first declares `data-ipw-transition-in`, `data-ipw-transition-duration`, and `data-ipw-transition-intent`. Use `cut` with duration 0 or a supported incoming preset applied through `mutate_motion`; run it inside the incoming scene, never by overlapping full scene windows.",
     "- Keep registry composition timing parent-owned: preserve `data-ipw-timing-owner=\"host\"` on installed component hosts, set the host to the actual scene duration, and never restore data-start/data-end/data-duration/data-track-index on the installed component root. A component may hold its final state briefly, but when the host extends more than two seconds beyond its native duration add a later preset/custom beat or shorten the scene.",
     "- Root `data-duration` must cover the last scene/audio/clip. Keep backgrounds/overlays as ordinary clips and keep GSAP timestamps synchronized with scene timing.",
-    "- If narration is disabled, unauthorized, unavailable, or fails, continue to a complete silent video. Use `estimated-reading` or the actual visual/music/media cue for timing, disclose the silent result, and do not open settings, leave a pending-model placeholder, or invent audio. If narration is added later, preserve scene meaning and retime dependent beats, captions, transitions, and root duration from measured audio.",
+    "- If narration is explicitly disabled, make a silent video. Otherwise, missing authorization, unavailable service, or synthesis failure is a delivery blocker whenever narration is in the required delivery contract or the saved script contains non-empty voiceover lines: do not silently downgrade to a silent completed video, do not mark those lines as spoken, and do not invent audio. Report the concrete blocker so the user can configure voice service or explicitly choose no narration. If narration is added later, preserve scene meaning and retime dependent beats, captions, transitions, and root duration from measured audio.",
     "- Use `assets/ipollowork-logo.svg?v=20260729` as the transparent `<img>` brand asset and local fallback; preserve a supplied third-party logo and the template's intended top-left/bottom-right placement.",
       `- Give every visible element a stable, unique \`class\` name (e.g. \`class="scene-title"\` or \`class="card-1"\`). Elements without a class, id, or data-hf-group attribute are invisible to the Video Studio properties inspector and cannot be selected or edited visually.`,
       `- Use CSS custom properties for themable values. When \`${projectPath}/design-tokens.css\` is present, reference its variables for colors, fonts, spacing, and radii (e.g. \`color: var(--ipw-color-primary)\`, \`font-size: calc(1rem * var(--ipw-type-scale))\`, \`border-radius: var(--ipw-card-radius)\`, \`padding: var(--ipw-page-padding)\`). Prefer tokens over hardcoded values so the Video Studio style panel controls take effect on the composition.`,

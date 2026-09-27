@@ -1480,6 +1480,12 @@ describe("HyperFrames Video Studio", () => {
     expect(
       videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).voiceover,
     ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).animationReferences,
+    ).toEqual(["spatial-camera-suite"]);
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "制作一个静态视频，不要动画" }).animationReferences,
+    ).toEqual([]);
     expect(videoDeliveryRequirementsForPrompt({ promptText: "制作视频，不要配音" }).voiceover).toBe(
       false,
     );
@@ -1491,12 +1497,27 @@ describe("HyperFrames Video Studio", () => {
       videoDeliveryRequirementsForPrompt({
         promptText: "制作一个产品介绍视频",
         voiceoverAvailable: false,
+        voiceoverEnabled: false,
+      }).voiceover,
+    ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "继续修改画面",
+        voiceoverAvailable: false,
+        voiceoverEnabled: false,
       }).voiceover,
     ).toBe(false);
     expect(
       videoDeliveryRequirementsForPrompt({
         promptText: "请给视频添加旁白",
         voiceoverAvailable: false,
+      }).voiceover,
+    ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "制作一个产品介绍视频",
+        voiceoverAvailable: true,
+        voiceoverEnabled: false,
       }).voiceover,
     ).toBe(false);
   });
