@@ -40,6 +40,41 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("installs the shared spatial stage with all five seekable shot recipes", async () => {
+    const { root, project } = await fixture();
+    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(
+      import.meta.dir,
+      "../../../../vendor/hyperframes/registry/blocks",
+    );
+
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+      componentIds: ["spatial-camera-suite"],
+    });
+
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0]?.componentId).toBe("spatial-camera-suite");
+    expect(result.components[0]?.motionContract).toMatchObject({
+      version: 2,
+      durationSeconds: 9,
+      timing: "measure-from-render",
+    });
+    expect(result.components[0]?.snippet).toContain('data-composition-src="compositions/spatial-camera-suite.html"');
+    expect(result.components[0]?.snippet).toContain('data-ipw-registry-component="spatial-camera-suite"');
+    expect(result.components[0]?.snippet).toContain('data-ipw-timing-owner="host"');
+
+    const installed = await readFile(join(project, "compositions", "spatial-camera-suite.html"), "utf8");
+    expect(installed).toContain('data-ipw-native-duration="9"');
+    expect(installed).not.toContain('data-duration="9"');
+    for (const recipe of [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ]) expect(installed).toContain(recipe);
+  });
+
   test("installs selected components and returns a traceable native subcomposition snippet", async () => {
     const { root, project } = await fixture();
     const result = await installVideoComponents({ id: "workspace", path: root }, {

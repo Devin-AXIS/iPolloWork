@@ -804,6 +804,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const pendingImageStudioRefreshRef = useRef<PendingImageStudioRefresh | null>(null);
   const artifactCompletionValidationInFlightRef = useRef(false);
   const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
+  // A recovery turn must not create another recovery turn when the engine
+  // republishes the same incomplete artifact requirement. Keep the guard
+  // keyed to the original request/source, not to the transient pending object.
+  const deliveryRecoveryAttemptKeysRef = useRef<Set<string>>(new Set());
   const promptDispatchAbortRef = useRef<AbortController | null>(null);
   const activeClientUserMessageIdRef = useRef<string | null>(null);
 
@@ -838,7 +842,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       baselineFingerprint: requirement.baselineFingerprint,
       requestOrdinal: requirement.requestOrdinal,
       mustChange: true,
-      recoveryAttempted: false,
+      recoveryAttempted: deliveryRecoveryAttemptKeysRef.current.has(`${requirement.sourcePath}:${requirement.requestOrdinal}`),
     };
     runActivityObservedRef.current = false;
     setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
@@ -1494,7 +1498,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           targets: artifactCompletionTargets,
           assistantMessageBaseline: renderedMessages.length,
           requestOrdinal,
-          recoveryAttempted: false,
+          recoveryAttempted: artifactCompletionTargets.some((target) => deliveryRecoveryAttemptKeysRef.current.has(`${target.sourcePath}:${requestOrdinal}`)),
         };
       }
       const videoDeliveryTarget = typeof dispatchOutcome === "boolean" ? null : dispatchOutcome.videoDeliveryTarget;
@@ -1584,8 +1588,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const text = t(request.updating ? "video.voice.update_action" : "video.voice.generate_action");
       const instruction = [
         `Edit only the existing video at ${sourcePath}. Do not create or apply another template.`,
-        `Generate narration for the entire video using the current scene content and these settings: ${JSON.stringify(request.settings)}.`,
-        "When selectionMode is auto, select a compatible voice for the scene language and content. Otherwise use the specified voiceId.",
+        `Generate narration for the entire video using the current scene content and these project-default settings: ${JSON.stringify(request.settings)}.`,
+        "Read the video's STORYBOARD.md and apply each frame's speaker, voiceover, voice_id and voice_model. A frame-level voice_id is higher priority than the project default; use its exact voice_id and voice_model. For voice_id=auto, match a voice to that frame's role and narration, then pass an explicit voice/model override on that scene item. Frames without an override inherit the project settings. Keep the role label and voice identity separate: speaker names the character, voice_id selects the sound.",
+        "When the project-level selectionMode is auto, select a compatible voice for scenes without a frame override. Otherwise use the specified project-default voiceId.",
         "Use media/speech_synthesize_workspace_batch. Preserve existing audio until every replacement is synthesized successfully; then apply the returned audioElementHtml (including voice metadata) and synchronized timing in one final source edit.",
         "Preserve visuals, background music, and unrelated edits. Save the repaired sourcePath and return; the client will rerun its aggregate delivery validator.",
       ].join("\n");
@@ -1661,6 +1666,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }
       if (!pending.recoveryAttempted) {
         pending.recoveryAttempted = true;
+        for (const target of pending.targets) deliveryRecoveryAttemptKeysRef.current.add(`${target.sourcePath}:${pending.requestOrdinal}`);
         toast.warning(t("session.artifact_delivery_repairing"));
         const recoveryInstruction = artifactCompletionRecoveryInstruction(check);
         await sendDraft({
@@ -1792,6 +1798,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         .filter(Boolean);
       if (!pending.recoveryAttempted) {
         pending.recoveryAttempted = true;
+        deliveryRecoveryAttemptKeysRef.current.add(`${pending.sourcePath}:${pending.requestOrdinal}`);
         toast.warning(t("session.video_delivery_repairing"));
         const recoveryInstruction = [
           "The preceding video run ended without satisfying the application's authoritative delivery validation.",

@@ -116,14 +116,12 @@ describe("AnimationTemplatesTab catalog", () => {
       'type AnimationMutationStatus = "applied" | "updated" | "removed" | "selection-required";',
     );
     expect(source).toContain('onStatus?.("selection-required")');
-    expect(source).toContain(
-      'targetKind ?? (template.category === "text" ? "text" : "element")',
-    );
+    expect(source).toContain('targetKind ?? (template.category === "text" ? "text" : "element")');
     expect(source).toContain(
       "if (targetKind && !resolveAnimationTemplateApplication(template, targetKind)) return false;",
     );
     expect(source).not.toContain("!domEditSelection ? (");
-    expect(source).toContain(': t("animation.selectElement")');
+    expect(source).toContain('t("animation.selected", { label: domEditSelection.label })');
     expect(source).toContain("usedTemplates.length === 0 ? (");
     expect(source).toContain("renderCards(unusedTemplates)");
   });
@@ -133,26 +131,22 @@ describe("AnimationTemplatesTab catalog", () => {
     const styles = readFileSync(new URL("../../styles/studio.css", import.meta.url), "utf8");
     const removeAction = source.indexOf('data-animation-action="remove"');
 
-    expect(source).toContain(
-      'absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0',
-    );
+    expect(source).toContain("absolute inset-0 rounded-[8px] border-2 border-[#1FBAC0] opacity-0");
     expect(source).toContain('data-testid="animation-card-hover-border"');
     expect(source).toContain("hf-animation-category-filter");
-    expect(source).toContain('? "bg-black"');
-    expect(source).toContain(
-      ': "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2]"',
-    );
+    expect(source).toContain('? "bg-black text-white');
+    expect(source).toContain(': "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:');
     expect(styles).toContain(
       '.hf-animation-category-filter[aria-pressed="true"] {\n  color: #ffffff !important;',
     );
     expect(removeAction).toBeGreaterThan(-1);
-    expect(source.slice(removeAction, removeAction + 350)).not.toContain('border border-[#5a6774]');
+    expect(source.slice(removeAction, removeAction + 350)).not.toContain("border border-[#5a6774]");
   });
 
   it("shows one universal catalog and appends text animation for text selections", () => {
-    expect(ANIMATION_TEMPLATES).toHaveLength(43);
+    expect(ANIMATION_TEMPLATES).toHaveLength(51);
     expect(new Set(ANIMATION_TEMPLATES.map((template) => template.category))).toEqual(
-      new Set(["general", "text"]),
+      new Set(["general", "text", "camera", "transition"]),
     );
     expect(
       ANIMATION_TEMPLATES.filter((template) => template.id.startsWith("box-")).every(
@@ -227,7 +221,7 @@ describe("AnimationTemplatesTab catalog", () => {
   it("shows universal and box automation animations for non-text selections", () => {
     expect(
       createAnimationTemplateSections(ANIMATION_TEMPLATES, "element").map((section) => section.key),
-    ).toEqual(["general", "box-automation"]);
+    ).toEqual(["general", "box-automation", "camera", "transition"]);
   });
 
   it("runs every text preview through the real preset only while its card is hovered", () => {
@@ -239,6 +233,30 @@ describe("AnimationTemplatesTab catalog", () => {
     expect(source).toContain("onMouseEnter={() => setPreviewActive(true)}");
     expect(source).toContain("onMouseLeave={() => setPreviewActive(false)}");
     expect(source).toContain('contentVisibility: "auto"');
+  });
+
+  it("reuses semantic camera and transition presets instead of installing effect components", () => {
+    const spatial = ANIMATION_TEMPLATES.filter(
+      (template) => template.category === "camera" || template.category === "transition",
+    );
+    expect(spatial).toHaveLength(8);
+    for (const template of spatial) {
+      const application = resolveAnimationTemplateApplication(template, "element");
+      expect(application?.preset.id).toBe(template.presetId);
+      expect(application?.targetKind).toBe("element");
+      const instance = createMotionInstance({
+        presetId: template.presetId!,
+        target: { selector: "#world" },
+        targetKind: "element",
+        start: 0,
+      });
+      expect(compileMotionInstance(instance).keyframes.length).toBeGreaterThanOrEqual(2);
+    }
+    expect(
+      createAnimationTemplateSections(ANIMATION_TEMPLATES, "text").flatMap(
+        (section) => section.templates,
+      ),
+    ).not.toEqual(expect.arrayContaining(spatial));
   });
 
   it("resolves universal templates per target", () => {

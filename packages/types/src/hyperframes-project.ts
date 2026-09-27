@@ -1,6 +1,17 @@
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
 
+/** Requested deliverables shared by video task context and the host delivery gate. */
+export type VideoDeliveryRequirements = {
+  voiceover: boolean;
+  captions: boolean;
+  captionStyle?: "transparent-bottom" | "custom";
+  bgm: boolean;
+  sfx: boolean;
+  animationReferences: string[];
+  targetDurationSeconds?: number;
+};
+
 export function hyperframesStudioPort(sessionId: string): number {
   let hash = 0;
   for (const character of sessionId) hash = ((hash * 31) + character.charCodeAt(0)) >>> 0;

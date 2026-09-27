@@ -116,7 +116,7 @@ Move attention among peers while their relationship remains visible.
 | `comparison-matrix` | body | seekable | A compact multi-criterion matrix for comparing two options without replacing the before-and-after component. |
 | `creator-profile-card` | body | seekable | Introduce a creator with platform identity and content pillars. |
 | `customer-quote-wall` | body | seekable | Show several concise customer proof points together. |
-| `device-carousel` | body | seekable | Compare how one product moment appears across devices. |
+| `device-carousel` | body | seekable | Visit three screen images with independent depth planes, focus transfers and an overview landing. |
 | `douyin-comment-stack` | body | seekable | A stacked Douyin-style comment panel for audience reactions, Q and A, and pinned responses. |
 | `expert-panel` | body | seekable | Present several expert viewpoints in one balanced frame. |
 | `feature-grid` | body | seekable | A product showcase that stages three focused benefits as a theme-aware card system. |
@@ -244,7 +244,8 @@ Guide attention through media, an interface, a device, or social content.
 | `media-hero` | body | seekable | A cinematic media-first hero with a readable headline and optional image source. |
 | `mobile-walkthrough` | body | seekable | A phone-focused UI walkthrough with editable task steps and a selected interaction state. |
 | `picture-in-picture` | overlay / any | seekable | Place a supporting view over a primary media surface. |
-| `screenshot-zoom` | body | seekable | Frame a product screenshot and call attention to one area. |
+| `screenshot-zoom` | body | seekable | Establish a real screenshot, push into an adjustable focal detail, hold and pull back. |
+| `spatial-camera-suite` | body | seekable | A theme-aware layered interface stage with five selectable camera shot recipes. |
 | `social-post` | body | seekable | A platform-neutral social post card with author identity, message and engagement context. |
 | `x-space` | body | seekable | An X Spaces-style live audio room card with host, speakers and listener context. |
 | `x-status-post` | body | seekable | A focused X-style post card for concise statements, launch updates and social proof. |
@@ -264,7 +265,7 @@ These overlays are deliberately many-to-many. They do not add 148 duplicate comp
 | Capability | Compatible component candidates | Boundary |
 | --- | --- | --- |
 | `montage` | `device-carousel`, `instagram-carousel`, `picture-in-picture`, `media-hero`, `split-screen`, `x-thread`, `instagram-story`, `xiaohongshu-note` | Requires at least three intentional shot or focus changes; a grid shown all at once is not montage. |
-| `camera-journey` | `browser-walkthrough`, `mobile-walkthrough`, `screenshot-zoom`, `device-mockup`, `route-map`, `map-flow`, `metro-network-map`, `location-pulse-map`, `us-map-flow` | Requires a continuous path with stable orientation and a motivated landing point; unrelated zooms do not qualify. |
+| `camera-journey` | `screenshot-zoom`, `device-carousel`, `spatial-camera-suite`, `browser-walkthrough`, `mobile-walkthrough`, `device-mockup`, `route-map`, `map-flow`, `metro-network-map`, `location-pulse-map`, `us-map-flow` | Requires a continuous path with stable orientation and a motivated landing point; unrelated zooms do not qualify. |
 | `dialogue` | `speaker-intro`, `expert-panel`, `profile-quote`, `split-screen`, `comment-thread`, `douyin-comment-stack`, `social-comment-highlight`, `customer-quote-wall`, `testimonial-card`, `x-space`, `lt-clean-bar` | Requires timed turns and responses; a static collection of quotes is only `focus-transfer`. |
 | `kinetic-type` | `kinetic-keyword`, `narrative-hook`, `brand-headline`, `brand-manifesto`, `quote-pullout`, `pull-quote`, `definition-highlight`, `chapter-countdown`, `chapter-divider`, `section-marker` | Text changes must follow meaning and reading order; decorative text motion alone does not qualify. |
 | `audio-reactive` | `oscilloscope-trace`, `x-space`, `douyin-video`, `instagram-reel` | These are visual bases only. The finished scene qualifies only when its beat map references measured speech, music, or media cues and the timeline changes at those cues. |

@@ -4,7 +4,8 @@ import { repairVideoTimelineRegistry, validateVideoHtmlScripts, validateVideoScr
 import type { AuthorizationAccess } from "../authorization-center.js";
 import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
-import { link, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import type { VideoDeliveryRequirements } from "@ipollowork/types/hyperframes-project";
+import { link, mkdir, open, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, extname, posix } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
@@ -205,15 +206,6 @@ type VoiceoverTimelineIssue = {
   sceneId?: string;
 };
 
-type VideoTimelineRequirements = {
-  voiceover?: boolean;
-  captions?: boolean;
-  captionStyle?: "transparent-bottom" | "custom";
-  bgm?: boolean;
-  animationReferences?: string[];
-  targetDurationSeconds?: number;
-};
-
 type TimelineNode = {
   tagName: string;
   attributes: Map<string, string>;
@@ -230,7 +222,10 @@ function htmlAttributeMap(source: string) {
 }
 
 function timelineNodes(html: string): TimelineNode[] {
-  return Array.from(html.matchAll(/<(?!\/|!)([a-zA-Z][\w:-]*)\b([^>]*)>/g), (match) => {
+  // Keep offsets into the original HTML, but ignore examples and strings that
+  // do not create DOM timeline clips.
+  const markup = html.replace(/<!--[\s\S]*?-->|<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, (match) => " ".repeat(match.length));
+  return Array.from(markup.matchAll(/<(?!\/|!)([a-zA-Z][\w:-]*)\b([^>]*)>/g), (match) => {
     const attributes = htmlAttributeMap(match[2] ?? "");
     return {
       tagName: match[1]!.toLowerCase(),
@@ -479,10 +474,37 @@ export function avatarTimelineContext(html: string) {
   return { content: visibleTextFromHtml(source).slice(0, 4000), clips };
 }
 
+// Read only the two delivery scalars using the canonical storyboard's first-colon
+// and paired-quote rules; this is not a second scene/script parser.
+async function readStoryboardMusicPlan(path: string) {
+  const file = await open(path, "r").catch((error: unknown) => {
+    if (isRecord(error) && error.code === "ENOENT") return null;
+    throw error;
+  });
+  if (!file) return undefined;
+  try {
+    const buffer = Buffer.alloc(256 * 1024);
+    const { bytesRead } = await file.read(buffer, 0, buffer.length, 0);
+    const lines = buffer.subarray(0, bytesRead).toString("utf8").trimStart().split(/\r?\n/);
+    const end = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
+    if (lines[0]?.trim() !== "---" || end < 0) throw new ApiError(400, "invalid_storyboard_music_plan", "STORYBOARD.md needs a closed frontmatter block within its first 256 KiB and an explicit music_prompt decision.");
+    const plan = { prompt: "", asset: "" };
+    for (const line of lines.slice(1, end)) {
+      const colon = line.indexOf(":");
+      const key = line.slice(0, colon).trim().toLowerCase().replace(/_/g, "");
+      if (colon < 0 || (key !== "musicprompt" && key !== "musicasset")) continue;
+      const value = line.slice(colon + 1).trim();
+      plan[key === "musicprompt" ? "prompt" : "asset"] = /^("[\s\S]*"|'[\s\S]*')$/.test(value) ? value.slice(1, -1) : value;
+    }
+    return plan;
+  } finally { await file.close(); }
+}
+
 export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];
-  requirements?: VideoTimelineRequirements;
+  musicPlan?: { prompt: string; asset: string };
+  requirements?: Partial<VideoDeliveryRequirements>;
 } = {}) {
   const epsilon = 0.001;
   const issues: VoiceoverTimelineIssue[] = validateVideoHtmlScripts(html);
@@ -561,14 +583,47 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       duration: finiteTimelineNumber(node, "data-duration"),
     }));
   const captions = nodes.filter((node) => node.attributes.get("data-ipw-caption") === "true");
-  const bgmNodes = nodes.filter((node) => node.tagName === "audio" && node.attributes.get("data-ipw-bgm") === "true");
+  const bgmNodes = nodes.filter((node) => node.tagName === "audio"
+    && (node.attributes.has("data-timeline-role")
+      ? node.attributes.get("data-timeline-role") === "music"
+      : node.attributes.get("data-ipw-bgm") === "true"));
+  const sfxNodes = nodes.filter((node) => node.tagName === "audio" && node.attributes.get("data-timeline-role") === "sfx");
+  const musicPlan = options.musicPlan;
+  if (musicPlan) {
+    const prompt = musicPlan.prompt.trim();
+    const silent = prompt.toLowerCase() === "none";
+    const asset = musicPlan.asset.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+    const mounted = bgmNodes.map((node) => decodeHtmlText(node.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, ""));
+    if (!musicPlan.prompt.trim()) {
+      issues.push({ code: "music_plan_missing", message: "Set STORYBOARD.md music_prompt to a deliberate music direction, or none for an intentionally music-free video." });
+    }
+    if (!silent && /^none\b/i.test(prompt)) {
+      issues.push({ code: "invalid_music_decision", message: "Use the exact music_prompt value none only for an intentionally music-free video; keep the explanation in the script body. Otherwise provide a real music direction and deliver its soundtrack." });
+    }
+    if (silent && (asset || mounted.length || options.requirements?.bgm)) {
+      issues.push({ code: "music_plan_conflict", message: "STORYBOARD.md requests no background music, but the delivery requires background music, or music_asset/a music timeline clip is still present." });
+    } else if (!silent) {
+      if ((musicPlan.prompt.trim() || mounted.length) && !asset) {
+        issues.push({ code: "music_asset_missing", message: "Choose appropriate music and write its actual project-relative path to STORYBOARD.md music_asset; do not leave the script out of sync with the video." });
+      }
+      if (asset && (mounted.length === 0 || mounted.some((source) => source !== asset))) {
+        issues.push({ code: "music_asset_mismatch", message: "The music timeline must reference the exact music_asset selected in STORYBOARD.md." });
+      }
+      if (musicPlan.prompt.trim() && mounted.length === 0) {
+        issues.push({ code: "planned_music_missing", message: "STORYBOARD.md has a music direction, but no background music is mounted on the timeline." });
+      }
+    }
+  }
   const implementedAnimationReferences = new Set(
     nodes.flatMap((node) => (node.attributes.get("data-ipw-animation-reference") ?? "")
       .split(/[\s,]+/)
       .map((value) => value.trim())
       .filter(Boolean)),
   );
-  const requirements = options.requirements ?? {};
+  const requirements = {
+    ...options.requirements,
+    bgm: options.requirements?.bgm || Boolean(musicPlan?.prompt.trim() && musicPlan.prompt.trim().toLowerCase() !== "none"),
+  };
   if (requirements.targetDurationSeconds != null && requirements.targetDurationSeconds > 0 && compositionDuration != null) {
     const toleranceSeconds = Math.max(0.5, requirements.targetDurationSeconds * 0.1);
     const minimumDuration = requirements.targetDurationSeconds - toleranceSeconds;
@@ -614,18 +669,32 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       issues.push(...defaultCaptionStyleIssues(html, caption));
     }
   }
-  if (requirements.bgm && bgmNodes.length === 0) {
-    issues.push({ code: "required_bgm_missing", message: "The user requested BGM, but the timeline has no data-ipw-bgm audio node." });
-  }
-  for (const bgm of bgmNodes) {
-    const source = (bgm.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
-    const start = finiteTimelineNumber(bgm, "data-start");
-    const duration = finiteTimelineNumber(bgm, "data-duration");
-    const available = new Set((options.mediaAssets ?? []).map((asset) => asset.replace(/\\/g, "/").replace(/^\.\//, "")));
-    const fileName = source.split("/").pop() ?? source;
-    const sourceExists = options.mediaAssets === undefined || available.has(source) || Array.from(available).some((asset) => asset.endsWith(`/${fileName}`));
-    if (!source || start == null || duration == null || duration <= 0 || !sourceExists) {
-      issues.push({ code: "invalid_bgm_timeline", message: "BGM must reference a real local media file and have explicit data-start and positive data-duration." });
+  const available = new Set((options.mediaAssets ?? []).map((asset) => asset.replace(/\\/g, "/").replace(/^\.\//, "")));
+  for (const { requirement, role, clips } of [
+    { requirement: "bgm", role: "music", clips: bgmNodes },
+    { requirement: "sfx", role: "sfx", clips: sfxNodes },
+  ] satisfies Array<{ requirement: "bgm" | "sfx"; role: string; clips: TimelineNode[] }>) {
+    if (requirements[requirement] && clips.length === 0) {
+      issues.push({ code: `required_${requirement}_missing`, message: `The user requested ${requirement.toUpperCase()}, but the timeline has no data-timeline-role="${role}" audio node.` });
+    }
+    let unmutedClips = 0;
+    for (const clip of clips) {
+      const source = decodeHtmlText(clip.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
+      const start = finiteTimelineNumber(clip, "data-start");
+      const duration = finiteTimelineNumber(clip, "data-duration");
+      const local = source.length > 0 && !/^(?:\/|[a-z][a-z\d+.-]*:)/i.test(source) && !source.split("/").includes("..");
+      const sourceExists = options.mediaAssets === undefined || available.has(source);
+      if (!local || !sourceExists || start == null || start < 0 || duration == null || duration <= 0
+        || (compositionDuration != null && start + duration > compositionDuration + epsilon)) {
+        issues.push({ code: `invalid_${requirement}_timeline`, message: `${requirement.toUpperCase()} must reference an existing project-relative audio file with a positive duration and a window inside the composition.` });
+      }
+      const openingTag = html.slice(html.lastIndexOf("<", clip.contentStart - 1), clip.contentStart);
+      if (!/\smuted(?:\s|=|\/?>)/i.test(openingTag)) unmutedClips += 1;
+    }
+    // Initial volume can legitimately be zero for a timeline-owned fade-in.
+    // Sampled playback/export, not static source, proves the resulting level.
+    if (requirements[requirement] && clips.length > 0 && unmutedClips === 0) {
+      issues.push({ code: `inaudible_${requirement}`, message: `All requested ${requirement.toUpperCase()} clips are muted; timeline presence alone does not satisfy audible delivery.` });
     }
   }
   for (const reference of requirements.animationReferences ?? []) {
@@ -715,6 +784,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
     voiceoverAssetCount: normalizedAssets.length,
     captionCount: captions.length,
     bgmCount: bgmNodes.length,
+    sfxCount: sfxNodes.length,
     animationReferences: Array.from(implementedAnimationReferences),
     compositionDurationSeconds: compositionDuration,
     requiredDurationSeconds: roundVoiceoverTime(latestEnd + (voiceovers.length ? VOICEOVER_READING_BUFFER_SECONDS : 0)),
@@ -898,6 +968,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
             captions: { type: "boolean" },
             captionStyle: { type: "string", enum: ["transparent-bottom", "custom"], description: "Defaults to transparent-bottom. Use custom only when the user explicitly requested a different caption position or background treatment." },
             bgm: { type: "boolean" },
+            sfx: { type: "boolean" },
             animationReferences: { type: "array", items: { type: "string" } },
             targetDurationSeconds: { type: "number", description: "Optional user-requested final video duration. The final composition must remain within ten percent of this target." },
           },
@@ -1866,12 +1937,14 @@ export async function callMediaExtensionAction(
     if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
     const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
-      mediaAssets,
+      musicPlan: await readStoryboardMusicPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath),
+      mediaAssets: mediaAssets.map((path) => posix.relative(sourceDirectory, path)),
       requirements: {
         voiceover: readOptionalBoolean(requirementInput, "voiceover") === true,
         captions: readOptionalBoolean(requirementInput, "captions") === true,
         captionStyle: readStringField(requirementInput, "captionStyle") === "custom" ? "custom" : "transparent-bottom",
         bgm: readOptionalBoolean(requirementInput, "bgm") === true,
+        sfx: readOptionalBoolean(requirementInput, "sfx") === true,
         animationReferences: readStringArray(requirementInput, "animationReferences"),
         targetDurationSeconds: readOptionalNumber(requirementInput, "targetDurationSeconds") ?? undefined,
       },

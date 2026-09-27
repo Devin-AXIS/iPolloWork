@@ -1116,6 +1116,10 @@
       "type": "hyperframes:block"
     },
     {
+      "name": "spatial-camera-suite",
+      "type": "hyperframes:block"
+    },
+    {
       "name": "social-metrics-pulse",
       "type": "hyperframes:block"
     },

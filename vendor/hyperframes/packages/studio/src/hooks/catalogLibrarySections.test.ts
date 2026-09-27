@@ -19,7 +19,7 @@ const EXPECTED_VISUAL_COMPONENT_COUNTS = {
   maps: 12,
   media: 11,
   people: 6,
-  product: 10,
+  product: 9,
   proof: 10,
   scene: 9,
   social: 22,
@@ -63,6 +63,7 @@ const VISUAL_COMPONENTS = [
   ["media-hero", "media"],
   ["split-screen", "media"],
   ["device-mockup", "media"],
+  ["spatial-camera-suite", "media"],
   ["browser-walkthrough", "media"],
   ["mobile-walkthrough", "media"],
   ["ranking-list", "data"],
@@ -169,7 +170,12 @@ interface MotionManifest {
     data?: RegistryVisualComponentDataContract;
     ai?: { slots: string[] };
   };
-  variables?: Array<{ id: string; default: string | number | boolean }>;
+  variables?: Array<{
+    id: string;
+    default: string | number | boolean;
+    type?: string;
+    options?: Array<{ value: string; label: string }>;
+  }>;
 }
 
 interface RegistryIndex {
@@ -201,7 +207,7 @@ function isVariableEntry(value: unknown): value is { id: string } {
 }
 
 describe("component catalog registry", () => {
-  it("publishes exactly 150 visual components in the intentional category distribution", () => {
+  it("publishes exactly 149 visual components in the intentional category distribution", () => {
     const components = visualComponentManifests();
     const categoryCounts = Object.fromEntries(
       Object.keys(EXPECTED_VISUAL_COMPONENT_COUNTS).map((category) => [
@@ -210,9 +216,9 @@ describe("component catalog registry", () => {
       ]),
     );
 
-    expect(components).toHaveLength(150);
+    expect(components).toHaveLength(149);
     expect(categoryCounts).toEqual(EXPECTED_VISUAL_COMPONENT_COUNTS);
-    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(150);
+    expect(new Set(components.map(({ manifest }) => manifest.name)).size).toBe(149);
   });
 
   it("keeps every visual component themeable, seekable, and bounded to four properties", () => {
@@ -238,6 +244,30 @@ describe("component catalog registry", () => {
     }
   });
 
+  it("exposes the five spatial camera recipes through one editable registry stage", () => {
+    const manifest = parseManifest(
+      join(REGISTRY_ROOT, "blocks", "spatial-camera-suite", "registry-item.json"),
+    );
+    const html = readFileSync(
+      join(REGISTRY_ROOT, "blocks", "spatial-camera-suite", "spatial-camera-suite.html"),
+      "utf8",
+    );
+    const shotStyle = manifest.variables?.find((variable) => variable.id === "shotStyle");
+    const recipeIds = [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ];
+
+    expect(shotStyle?.type).toBe("enum");
+    expect(shotStyle?.options?.map((option) => option.value)).toEqual(recipeIds);
+    expect(html.match(/gsap\.timeline\(\{paused:true\}\)/g)).toHaveLength(1);
+    expect(html).toContain("window.__timelines[id]=tl;tl.seek(0)");
+    for (const recipeId of recipeIds) expect(html).toContain(`shotStyle==="${recipeId}"`);
+  });
+
   it("keeps the generated expansion property-safe and instance-aware", () => {
     const generated = visualComponentManifests().filter(({ manifestPath, manifest }) => {
       const html = readFileSync(
@@ -247,7 +277,7 @@ describe("component catalog registry", () => {
       return html.includes("visual-component-catalog.ts");
     });
 
-    expect(generated).toHaveLength(66);
+    expect(generated).toHaveLength(62);
     for (const { manifestPath, manifest } of generated) {
       const html = readFileSync(
         join(dirname(manifestPath), manifest.files?.[0]?.path ?? ""),

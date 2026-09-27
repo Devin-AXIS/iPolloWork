@@ -38,6 +38,7 @@ export type VideoPanelTab = {
   type: "video";
   label: string;
   sessionId: string;
+  view?: "storyboard";
 };
 
 export type WorkspaceAppPanelTab = {

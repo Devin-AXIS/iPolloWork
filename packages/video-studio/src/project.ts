@@ -14,6 +14,7 @@ export function hyperframesStudioUrl(
   locale?: string,
   theme?: "light" | "dark",
   reloadToken?: number,
+  view?: "storyboard",
 ) {
   const routeParams = new URLSearchParams({
     v: "1",
@@ -26,6 +27,7 @@ export function hyperframesStudioUrl(
   if (theme) routeParams.set("ipolloworkTheme", theme);
 
   const requestParams = new URLSearchParams();
+  if (view) requestParams.set("view", view);
   if (reloadToken != null) requestParams.set("ipwReload", String(reloadToken));
   const requestQuery = requestParams.size ? `?${requestParams.toString()}` : "";
 

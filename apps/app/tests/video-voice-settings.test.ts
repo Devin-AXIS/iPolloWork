@@ -149,6 +149,18 @@ describe("video voiceover settings", () => {
     expect(panelSource).toContain('t("video.voice.configure_title")');
     expect(panelSource).toContain('t("video.voice.configure_description")');
   });
+
+  test("keeps synthesized previews accessible and auditioning read-only", () => {
+    const source = readFileSync(new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url), "utf8");
+    const preview = source.slice(source.indexOf("const previewVoice ="), source.indexOf("const cloneVoice ="));
+    expect(preview).toContain("audio.src = url");
+    expect(preview).toContain("await audio.play()");
+    expect(preview).not.toContain("saveSettings(");
+    expect(source).toContain('<audio ref={audioRef} controls hidden={!previewUrl}');
+    const picker = source.slice(source.indexOf('<PopoverContent data-testid="voice-picker"'), source.indexOf("</PopoverContent>", source.indexOf("</Tabs>")));
+    expect(picker).toContain('role="alert"');
+    expect(picker).toContain("audioRef.current?.play().catch");
+  });
 });
 
 

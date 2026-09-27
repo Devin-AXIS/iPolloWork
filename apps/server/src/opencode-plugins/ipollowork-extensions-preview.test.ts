@@ -297,6 +297,9 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("even when the plan does not yet include concrete dates or times");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
+    expect(system).toContain("do not enumerate or stack the whole catalog");
+    expect(system).toContain("prefer a mapped component's native camera timeline");
+    expect(system).toContain('Camera presets require targetKind="element"');
     expect(system).toContain("stale refs");
     expect(system).not.toContain("browser_url plus target_id");
   });
@@ -377,6 +380,18 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
   test("locks preset listing and mutation to the current Video Studio session", async () => {
     const fake = startFakeVideoStudio();
     const plugin = await iPolloWorkExtensionsPreview();
+    const system: string[] = [];
+    await plugin["experimental.chat.system.transform"]({}, { system });
+    const motionGuidance = system.find((entry) => entry.includes("## Video motion presets")) ?? "";
+    for (const recipe of [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ]) expect(motionGuidance).toContain(recipe);
+    expect(motionGuidance).toContain("spatial-camera-suite");
+    expect(motionGuidance).toContain("Do not stack camera transforms");
 
     const listed = JSON.parse(await plugin.tool.list_motion_presets.execute(
       { targetKind: "element", phase: "enter", tone: "modern" },

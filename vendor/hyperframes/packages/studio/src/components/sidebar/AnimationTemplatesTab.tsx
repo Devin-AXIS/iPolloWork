@@ -43,7 +43,7 @@ const AnimationPropertiesPanel = lazy(() =>
   })),
 );
 
-export type AnimationTemplateCategory = "general" | "text";
+export type AnimationTemplateCategory = "general" | "text" | "camera" | "transition";
 
 export interface AnimationTemplateDefinition {
   id: string;
@@ -122,6 +122,19 @@ const CATEGORY_LABELS: Record<
     zh: "文字动画",
     hint: { en: "Word, character, mask, and glow motion", zh: "支持按词、按字、遮罩与流光" },
   },
+  camera: {
+    en: "Camera",
+    zh: "运镜",
+    hint: {
+      en: "Frame a world inside a clipped viewport; keep captions outside",
+      zh: "用于裁切视口内的画面，字幕保持在镜头之外",
+    },
+  },
+  transition: {
+    en: "Transitions",
+    zh: "转场",
+    hint: { en: "Apply at the start of the incoming scene", zh: "用于下一场景的起始衔接" },
+  },
 };
 
 const BOX_AUTOMATION_SECTION_LABEL = {
@@ -135,6 +148,82 @@ const BOX_AUTOMATION_SECTION_LABEL = {
 const ANIMATION_EDITOR_WIDTH = 200;
 
 export const ANIMATION_TEMPLATES: readonly AnimationTemplateDefinition[] = [
+  ...(
+    [
+      [
+        "camera.push-in",
+        "camera",
+        "Focus Push",
+        "焦点推进",
+        "Move from overview into a detail",
+        "从全景推进到指定细节",
+      ],
+      [
+        "camera.pull-back",
+        "camera",
+        "Pull Back",
+        "拉远揭示",
+        "Reveal the context around a detail",
+        "从细节拉远，揭示整体关系",
+      ],
+      [
+        "camera.focus-travel",
+        "camera",
+        "Focus Travel",
+        "焦点巡游",
+        "Travel between two framed points",
+        "在两个焦点之间连续移动",
+      ],
+      [
+        "camera.oblique-glide",
+        "camera",
+        "Oblique Glide",
+        "空间掠过",
+        "Glide across a tilted product plane",
+        "斜角掠过产品画面并稳定落位",
+      ],
+      [
+        "transition.depth-push",
+        "transition",
+        "Depth Push",
+        "景深推进",
+        "Enter a deeper focal plane",
+        "从环境进入更深的焦点层",
+      ],
+      [
+        "transition.diagonal-slice",
+        "transition",
+        "Diagonal Slice",
+        "斜切转场",
+        "Reveal the incoming scene diagonally",
+        "沿斜向揭示下一场景",
+      ],
+      [
+        "transition.lens-focus",
+        "transition",
+        "Lens Focus",
+        "镜头聚焦",
+        "Resolve the next scene from a focal aperture",
+        "从光圈聚焦到下一场景",
+      ],
+      [
+        "transition.split-wipe",
+        "transition",
+        "Split Wipe",
+        "分屏擦除",
+        "Hand off to the incoming scene",
+        "方向明确的场景交接",
+      ],
+    ] satisfies Array<[string, AnimationTemplateCategory, string, string, string, string]>
+  ).map(([presetId, category, en, zh, descriptionEn, descriptionZh]) => ({
+    id: presetId,
+    presetId,
+    category,
+    preview: presetId,
+    title: { en, zh },
+    description: { en: descriptionEn, zh: descriptionZh },
+    keywords: [category, category === "camera" ? "运镜 空间 焦点 镜头" : "转场 场景 衔接"],
+  })),
   {
     id: "general-fade-in",
     category: "general",
@@ -575,8 +664,11 @@ function TemplatePreview({
   active: boolean;
 }) {
   const boxPreview = template.id.startsWith("box-");
+  const spatial = template.category === "camera" || template.category === "transition";
   const textPreset =
-    template.category === "text" ? resolveAnimationTemplatePreset(template, "text") : null;
+    template.category === "text" || spatial
+      ? resolveAnimationTemplatePreset(template, spatial ? "element" : "text")
+      : null;
   const textParameters = textPreset
     ? resolveAnimationTemplateParameters(template, textPreset, false)
     : null;
@@ -595,11 +687,13 @@ function TemplatePreview({
           <Suspense fallback={<span>Make motion clear.</span>}>
             <StructuredMotionThumbnail
               presetId={textPreset.id}
-              targetKind="text"
+              targetKind={spatial ? "element" : "text"}
               parameters={textParameters}
               duration={defaultMotionDuration(textPreset)}
             />
           </Suspense>
+        ) : spatial ? (
+          <span>{template.title.en}</span>
         ) : template.category === "text" ? (
           "Make motion clear."
         ) : null}
@@ -633,6 +727,19 @@ export function createAnimationTemplateSections(
   const textTemplates = sortTextAnimationTemplates(
     templates.filter((item) => item.category === "text"),
   );
+  const spatialSections = (["camera", "transition"] as const).flatMap((category) => {
+    const matching = templates.filter((item) => item.category === category);
+    return matching.length
+      ? [
+          {
+            key: category,
+            title: CATEGORY_LABELS[category],
+            hint: CATEGORY_LABELS[category].hint,
+            templates: matching,
+          },
+        ]
+      : [];
+  });
 
   const generalSection =
     generalTemplates.length > 0
@@ -654,7 +761,7 @@ export function createAnimationTemplateSections(
       : null;
 
   if (targetKind !== "text") {
-    return [generalSection, boxAutomationSection].filter(
+    return [generalSection, boxAutomationSection, ...spatialSections].filter(
       (section): section is AnimationTemplateSection => section !== null,
     );
   }
@@ -673,7 +780,7 @@ export function createAnimationTemplateSections(
   );
 }
 
-export type AnimationLibraryCategory = "all" | "box-automation" | "text";
+export type AnimationLibraryCategory = "all" | "box-automation" | "text" | "camera" | "transition";
 
 export function animationTemplateMatchesCategory(
   template: AnimationTemplateDefinition,
@@ -681,7 +788,7 @@ export function animationTemplateMatchesCategory(
 ): boolean {
   if (category === "all") return true;
   if (category === "box-automation") return isBoxAutomationTemplate(template);
-  return template.category === "text";
+  return template.category === category;
 }
 
 export function resolveAppliedAnimationTemplate(
@@ -1120,31 +1227,33 @@ export const AnimationTemplatesTab = memo(function AnimationTemplatesTab({
       </div>
 
       <div className="hf-animation-template-scroll min-h-0 flex-1 overflow-y-auto">
-          <div className="flex h-11 items-center gap-1.5 px-4 pt-2">
-            {(
-              [
-                ["all", `${t("animation.filterAll")} ${matchingTemplates.length}`],
-                ["box-automation", t("animation.filterBoxAutomation")],
-                ["text", t("animation.filterText")],
-              ] satisfies Array<[AnimationLibraryCategory, string]>
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                data-testid="animation-category-filter"
-                data-category={id}
-                aria-pressed={category === id}
-                onClick={() => setCategory(id)}
-                className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
-                  category === id
-                    ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
-                    : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="flex min-h-11 flex-wrap items-center gap-1.5 px-4 pt-2 pb-1">
+          {(
+            [
+              ["all", `${t("animation.filterAll")} ${matchingTemplates.length}`],
+              ["box-automation", t("animation.filterBoxAutomation")],
+              ["text", t("animation.filterText")],
+              ["camera", t("animation.filterCamera")],
+              ["transition", t("animation.filterTransition")],
+            ] satisfies Array<[AnimationLibraryCategory, string]>
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              data-testid="animation-category-filter"
+              data-category={id}
+              aria-pressed={category === id}
+              onClick={() => setCategory(id)}
+              className={`hf-animation-category-filter h-7 rounded-[6px] px-2.5 text-xs font-medium transition-[color,background-color,box-shadow,transform] active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1FBAC0]/50 focus-visible:ring-offset-1 focus-visible:ring-offset-panel-bg ${
+                category === id
+                  ? "bg-black text-white dark:bg-panel-accent/20 dark:text-panel-text-0 dark:ring-1 dark:ring-inset dark:ring-panel-accent/45"
+                  : "bg-[#f5f6f9] text-[#5a6774] hover:bg-[#eceef2] dark:bg-panel-input dark:text-panel-text-2 dark:hover:bg-panel-hover dark:hover:text-panel-text-1"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
 
           {applyFailed ? (
             <p role="alert" className="mx-4 mt-2 text-[11px] leading-4 text-red-500">

@@ -1667,6 +1667,79 @@ const REACT_BITS_BOX_PRESETS: readonly MotionPreset[] = [
   },
 ];
 
+// Camera motion applies to a viewport-sized world wrapper, not captions or clip lifecycle.
+const CAMERA_FOCUS_PARAMETERS: MotionParameter[] = [
+  { id: "focusX", label: "焦点 X", kind: "number", min: 0, max: 100, step: 1, unit: "%" },
+  { id: "focusY", label: "焦点 Y", kind: "number", min: 0, max: 100, step: 1, unit: "%" },
+  { id: "zoom", label: "近景倍率", kind: "number", min: 1, max: 3, step: 0.05, unit: "x" },
+];
+
+// Camera framing is bounded; overshooting easing would uncover viewport edges.
+const CAMERA_EASE_PARAMETER: MotionParameter = {
+  id: "ease",
+  label: "速度曲线",
+  kind: "select",
+  options: EASE_OPTIONS.filter((option) => !option.value.startsWith("back.")),
+};
+
+const CAMERA_MOTION_PRESETS: readonly MotionPreset[] = [
+  ...["push-in", "pull-back"].map((move): MotionPreset => ({
+    id: `camera.${move}`,
+    version: 1,
+    label: move === "push-in" ? "焦点推进" : "拉远揭示",
+    phase: "emphasis",
+    targetKinds: ["element"],
+    parameterSchema: [CAMERA_EASE_PARAMETER, ...CAMERA_FOCUS_PARAMETERS],
+    defaults: { ease: "power3.inOut", focusX: 65, focusY: 50, zoom: 1.8 },
+    semantics: {
+      intents: ["运镜", "camera", "zoom", move === "push-in" ? "推进细节" : "拉远全景"],
+      tones: ["电影感", "克制"],
+      preferredFor: ["裁切视口内的等尺寸画面容器", "截图", "地图"],
+      avoidFor: ["字幕", "单个小控件", "没有裁切视口的画面"],
+    },
+  })),
+  {
+    id: "camera.focus-travel",
+    version: 1,
+    label: "焦点巡游",
+    phase: "emphasis",
+    targetKinds: ["element"],
+    parameterSchema: [
+      CAMERA_EASE_PARAMETER,
+      ...CAMERA_FOCUS_PARAMETERS,
+      { id: "fromX", label: "起点 X", kind: "number", min: 0, max: 100, step: 1, unit: "%" },
+      { id: "fromY", label: "起点 Y", kind: "number", min: 0, max: 100, step: 1, unit: "%" },
+    ],
+    defaults: { ease: "power3.inOut", fromX: 30, fromY: 40, focusX: 70, focusY: 60, zoom: 1.8 },
+    semantics: {
+      intents: ["运镜", "camera", "pan", "焦点转移", "界面巡游"],
+      tones: ["连续", "电影感"],
+      preferredFor: ["裁切视口内的等尺寸画面容器", "截图", "数据看板"],
+      avoidFor: ["字幕", "无关联内容"],
+    },
+  },
+  {
+    id: "camera.oblique-glide",
+    version: 1,
+    label: "空间掠过",
+    phase: "emphasis",
+    targetKinds: ["element"],
+    parameterSchema: [
+      CAMERA_EASE_PARAMETER,
+      MOTION_DIRECTION_PARAMETER,
+      { id: "angle", label: "倾斜角度", kind: "number", min: 0, max: 35, step: 1, unit: "°" },
+      { id: "travel", label: "横移幅度", kind: "number", min: 0, max: 20, step: 1, unit: "%" },
+    ],
+    defaults: { ease: "power3.inOut", direction: "right", angle: 22, travel: 8 },
+    semantics: {
+      intents: ["运镜", "camera", "空间", "斜角掠过", "perspective"],
+      tones: ["立体", "电影感"],
+      preferredFor: ["带留白的界面舞台", "设备组合", "产品画面"],
+      avoidFor: ["满屏出血背景", "密集小字", "字幕"],
+    },
+  },
+];
+
 const TRANSITION_MOTION_PRESETS: readonly MotionPreset[] = [
   {
     id: "transition.depth-push", version: 1, label: "景深推进", phase: "enter", targetKinds: ["element"],
@@ -1698,5 +1771,6 @@ export const MOTION_PRESETS: readonly MotionPreset[] = [
   ...REACT_BITS_GENERAL_PRESETS,
   ...REACT_BITS_BACKGROUND_PRESETS,
   ...REACT_BITS_BOX_PRESETS,
+  ...CAMERA_MOTION_PRESETS,
   ...TRANSITION_MOTION_PRESETS,
 ];

@@ -517,6 +517,7 @@ describe("Media Center extension", () => {
         voiceover: true,
         captions: true,
         bgm: true,
+        sfx: true,
         animationReferences: ["caption-clip-wipe"],
         targetDurationSeconds: 120,
       },
@@ -527,6 +528,7 @@ describe("Media Center extension", () => {
       "required_voiceover_missing",
       "required_captions_missing",
       "required_bgm_missing",
+      "required_sfx_missing",
       "required_animation_missing",
       "requested_duration_mismatch",
     ]));
@@ -538,13 +540,15 @@ describe("Media Center extension", () => {
       <div class="clip" data-ipw-caption="true" data-ipw-caption-style="transparent-bottom" data-ipw-animation-reference="caption-clip-wipe" data-start="0" data-duration="5" style="position:absolute;inset:auto 5% 5%;height:auto;display:flex;align-items:flex-end;justify-content:center;overflow:visible;background:transparent;pointer-events:none"><span data-ipw-caption-text="true" style="max-width:90%;background:transparent;color:white;text-align:center;text-shadow:0 2px 8px black">Intro</span></div>
       <audio src="./assets/voiceover-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
       <audio src="./assets/bgm.mp3" data-ipw-bgm="true" data-start="0" data-duration="5.25" data-track-index="11"></audio>
+      <audio src="./assets/reveal.wav" data-timeline-role="sfx" data-start="2" data-duration="0.5" data-track-index="12"></audio>
     </main>`, {
-      mediaAssets: ["assets/voiceover-intro.mp3", "assets/bgm.mp3"],
+      mediaAssets: ["assets/voiceover-intro.mp3", "assets/bgm.mp3", "assets/reveal.wav"],
       requirements: {
         voiceover: true,
         captions: true,
         captionStyle: "transparent-bottom",
         bgm: true,
+        sfx: true,
         animationReferences: ["caption-clip-wipe"],
         targetDurationSeconds: 5,
       },
@@ -555,8 +559,106 @@ describe("Media Center extension", () => {
       voiceoverCount: 1,
       captionCount: 1,
       bgmCount: 1,
+      sfxCount: 1,
       animationReferences: ["caption-clip-wipe"],
     });
+  });
+
+  test("validates music and SFX by their shared timeline roles and exact project-relative paths", () => {
+    const validate = (attributes: string, role = "sfx") => validateVoiceoverTimelineHtml(
+      `<main data-composition-id="main" data-duration="5"><audio data-timeline-role="${role}" ${attributes}></audio></main>`,
+      { mediaAssets: ["assets/hit.wav"], requirements: role === "music" ? { bgm: true } : { sfx: true } },
+    );
+    const valid = 'src="./assets/hit.wav" data-start="1" data-duration="0.5"';
+    expect(validate(valid).valid).toBe(true);
+    expect(validate(valid, "music").valid).toBe(true);
+    // A fade-in may start at zero; the source gate cannot prove the sampled mix.
+    expect(validate(`${valid} data-volume="0"`).valid).toBe(true);
+    expect(validate(`${valid} muted`).issues).toContainEqual(expect.objectContaining({ code: "inaudible_sfx" }));
+    for (const attributes of [
+      'src="missing/hit.wav" data-start="1" data-duration="0.5"',
+      'src="https://example.com/hit.wav" data-start="1" data-duration="0.5"',
+      'src="../assets/hit.wav" data-start="1" data-duration="0.5"',
+      'src="assets/hit.wav" data-start="-1" data-duration="0.5"',
+      'src="assets/hit.wav" data-start="4.8" data-duration="0.5"',
+      'src="assets/hit.wav" data-start="1" data-duration="0"',
+    ]) {
+      expect(validate(attributes).issues).toContainEqual(expect.objectContaining({ code: "invalid_sfx_timeline" }));
+    }
+  });
+
+  test("checks requested soundtrack through the real action and project asset inventory", async () => {
+    const workspace = await workspaceConfig();
+    const project = join(workspace.root, "video", "soundtrack");
+    await mkdir(join(project, "assets"), { recursive: true });
+    // Source validation only: decode and audible output are separate playback checks.
+    await writeFile(join(project, "assets", "hit.wav"), "audio inventory fixture");
+    const sourcePath = "video/soundtrack/delivery.html";
+    const path = join(project, "delivery.html");
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath, requirements: { bgm: true, sfx: true } }, { directory: workspace.root });
+    const html = `<main data-composition-id="main" data-duration="5">
+      <audio data-timeline-role="music" src="assets/hit.wav" data-start="0" data-duration="5"></audio>
+      <audio data-timeline-role="sfx" src="missing/hit.wav" data-start="1" data-duration="0.5"></audio>
+    </main>`;
+    await writeFile(path, html);
+    const missing = await validate();
+    expect(missing).toMatchObject({ result: { output: { valid: false, issues: [{ code: "invalid_sfx_timeline" }] } } });
+    await writeFile(path, html.replace("missing/hit.wav", "assets/hit.wav"));
+    expect(await validate()).toMatchObject({ result: { output: { valid: true, bgmCount: 1, sfxCount: 1 } } });
+    await writeFile(path, '<main data-composition-id="main" data-duration="5"></main>');
+    expect(await validate()).toMatchObject({ result: { output: { valid: false } } });
+    expect(JSON.stringify(await validate())).toContain("required_sfx_missing");
+  });
+
+  test("requires a deliberate, synchronized storyboard music decision without forcing old videos to add music", async () => {
+    const workspace = await workspaceConfig();
+    await mkdir(join(workspace.root, "assets"));
+    await writeFile(join(workspace.root, "assets", "bed.mp3"), "inventory fixture");
+    const silent = '<main data-composition-id="main" data-duration="5"></main>';
+    const music = silent.replace('</main>', '<audio data-timeline-role="music" src="./assets/bed.mp3" data-start="0" data-duration="5"></audio></main>');
+    await writeFile(join(workspace.root, "video.html"), silent);
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate", { sourcePath: "video.html" }, { directory: workspace.root });
+    const storyboard = (metadata: string) => writeFile(join(workspace.root, "STORYBOARD.md"), `---\n${metadata}\n---\n## Frame 1\n`);
+    expect(await validate()).toMatchObject({ result: { output: { valid: true } } });
+    await storyboard('music_prompt: ""');
+    expect(JSON.stringify(await validate())).toContain('music_plan_missing');
+    await storyboard("music_prompt: 'none'");
+    expect(await validate()).toMatchObject({ result: { output: { valid: true } } });
+    const requiredMusic = validateVoiceoverTimelineHtml(silent, { musicPlan: { prompt: "none", asset: "" }, requirements: { bgm: true } });
+    expect(requiredMusic.valid).toBe(false);
+    expect(requiredMusic.issues).toContainEqual(expect.objectContaining({ code: "required_bgm_missing" }));
+    expect(requiredMusic.issues).toContainEqual(expect.objectContaining({ code: "music_plan_conflict" }));
+    await storyboard('music_prompt: none — 突出旁白，不加音乐');
+    const malformedDecision = await validate();
+    expect(malformedDecision).toMatchObject({ result: { output: { valid: false } } });
+    expect(JSON.stringify(malformedDecision)).toContain('invalid_music_decision');
+    expect(JSON.stringify(malformedDecision)).toContain('required_bgm_missing');
+    await storyboard("music_prompt: 'none'");
+    await writeFile(join(workspace.root, "video.html"), music);
+    expect(JSON.stringify(await validate())).toContain('music_plan_conflict');
+    await storyboard('music_prompt: Optimistic: restrained electronic pulse');
+    expect(JSON.stringify(await validate())).toContain('music_asset_missing');
+    await storyboard('music_prompt: Optimistic: restrained electronic pulse\nmusic_asset: "assets/wrong.mp3"');
+    expect(JSON.stringify(await validate())).toContain('music_asset_mismatch');
+    await storyboard('music_prompt: "Optimistic: restrained electronic pulse"\nmusic_asset: \'assets/bed.mp3\'');
+    expect(await validate()).toMatchObject({ result: { output: { valid: true } } });
+    await writeFile(join(workspace.root, "video.html"), music.replace('<audio ', '<audio muted '));
+    expect(JSON.stringify(await validate())).toContain('inaudible_bgm');
+    await writeFile(join(workspace.root, "video.html"), silent);
+    expect(JSON.stringify(await validate())).toContain('planned_music_missing');
+    await writeFile(join(workspace.root, "STORYBOARD.md"), '---\nmusic_prompt: none');
+    await expect(validate()).rejects.toMatchObject({ code: 'invalid_storyboard_music_plan' });
+  });
+
+  test("does not count commented audio or a sound effect as delivered background music", () => {
+    const effect = '<audio data-timeline-role="sfx" data-ipw-bgm="true" src="assets/hit.wav" data-start="1" data-duration="0.5"></audio>';
+    const source = `<main data-composition-id="main" data-duration="5">${effect}</main>`;
+    expect(validateVoiceoverTimelineHtml(source, { requirements: { bgm: true, sfx: true } }).issues)
+      .toContainEqual(expect.objectContaining({ code: "required_bgm_missing" }));
+    const examplesOnly = `<main data-composition-id="main" data-duration="5"><!-- ${effect} --></main><script>const example = '${effect}';</script>`;
+    expect(validateVoiceoverTimelineHtml(examplesOnly, { requirements: { sfx: true } }).issues)
+      .toContainEqual(expect.objectContaining({ code: "required_sfx_missing" }));
   });
 
   test("rejects narration that differs from its visible scene text before calling Model Studio", async () => {

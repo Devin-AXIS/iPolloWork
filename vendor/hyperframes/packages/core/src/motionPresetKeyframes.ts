@@ -47,7 +47,50 @@ export function buildPresetKeyframes(presetId: string, params: MotionParameters)
   const direction = String(params.direction ?? "up");
   const offset = directionOffset(direction, 42 * intensity);
   const color = motionColor(params, "color", "--ipw-color-accent", "#7c3aed");
+  if (
+    presetId === "camera.push-in" ||
+    presetId === "camera.pull-back" ||
+    presetId === "camera.focus-travel"
+  ) {
+    const zoom = Number(params.zoom);
+    // Clamp framing, not the input: even an edge focus must keep the viewport covered.
+    const pose = (x: number, y: number, scale: number) => {
+      const margin = 50 / scale;
+      const bounded = (value: number) => Math.max(margin, Math.min(100 - margin, value));
+      return {
+        xPercent: (50 - bounded(x)) * scale,
+        yPercent: (50 - bounded(y)) * scale,
+        scale,
+        transformOrigin: "50% 50%",
+      };
+    };
+    const near = pose(Number(params.focusX), Number(params.focusY), zoom);
+    const wide = pose(50, 50, 1);
+    const start =
+      presetId === "camera.pull-back"
+        ? near
+        : presetId === "camera.focus-travel"
+          ? pose(Number(params.fromX), Number(params.fromY), zoom)
+          : wide;
+    return [frame(0, start), frame(100, presetId === "camera.pull-back" ? wide : near)];
+  }
   switch (presetId) {
+    case "camera.oblique-glide": {
+      const sign = direction === "left" || direction === "up" ? -1 : 1;
+      const horizontal = direction === "left" || direction === "right";
+      const angle = Number(params.angle) * sign;
+      const travel = Number(params.travel) * sign;
+      const pose = (progress: number) => ({
+        xPercent: horizontal ? progress * travel : 0,
+        yPercent: horizontal ? 0 : progress * travel,
+        rotationY: horizontal ? -progress * angle : 0,
+        rotationX: horizontal ? 6 * Math.abs(progress) : progress * angle,
+        scale: 1 - Math.abs(progress) * 0.08,
+        transformOrigin: "50% 50%",
+        transformPerspective: 1600,
+      });
+      return [frame(0, pose(-1)), frame(65, pose(0.4)), frame(100, pose(0))];
+    }
     case "transition.depth-push":
       return [
         frame(0, { opacity: 0, scale: Math.max(0.58, 0.78 - intensity * 0.04), filter: `blur(${18 * intensity}px)` }),

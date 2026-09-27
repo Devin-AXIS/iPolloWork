@@ -108,14 +108,139 @@ async function boundedRead(path: string, maxBytes = 2 * 1024 * 1024) {
   return readFile(path);
 }
 
-// Only actual URL-bearing attributes/styles count. Mentioning a filename in
-// copy, comments, scripts or an alt label is not placement in the document.
-function mediaUrls(text: string) {
-  const content = text.replace(/<!--[\s\S]*?-->|<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
-  return [
-    ...Array.from(content.matchAll(/<(?:img|video|source)\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi), match => match[1]),
-    ...Array.from(content.matchAll(/url\(\s*["']?([^\s"')]+)["']?\s*\)/gi), match => match[1]),
-  ];
+// Match URLs only in CSS, not in quoted copy such as content:"url(example)".
+function cssReferences(css: string) {
+  const media: string[] = [];
+  const styles: string[] = [];
+  const active = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const match of active.matchAll(/@import\s+(?:url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)|"[^"]*"|'[^']*')|url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/gi)) {
+    const token = match[0];
+    if (/^["']/.test(token)) continue;
+    const isImport = /^@import\b/i.test(token);
+    const value = token.replace(/^@import\s+/i, "").replace(/^url\(\s*|\s*\)$/gi, "").trim().replace(/^["']|["']$/g, "");
+    (isImport ? styles : media).push(value);
+  }
+  return { media, styles };
+}
+
+function htmlAttributes(source: string) {
+  const attributes = new Map<string, string>();
+  for (const match of source.matchAll(/([^\s=/>]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+    const value = (match[2] ?? match[3] ?? match[4]).replace(/&(?:amp|quot|apos|lt|gt);|&#(?:x[\da-f]+|\d+);/gi, (entity) => {
+      const named: Record<string, string> = { "&amp;": "&", "&quot;": '"', "&apos;": "'", "&lt;": "<", "&gt;": ">" };
+      const key = entity.toLowerCase();
+      if (key in named) return named[key];
+      const code = key.startsWith("&#x") ? Number.parseInt(key.slice(3), 16) : Number.parseInt(key.slice(2), 10);
+      return code > 0 && code <= 0x10ffff ? String.fromCodePoint(code) : "\ufffd";
+    });
+    attributes.set(match[1].toLowerCase(), value);
+  }
+  return attributes;
+}
+
+async function collectArtifactReferences(source: string, sessionRoot: string) {
+  const referenced = new Set<string>();
+  const issues: string[] = [];
+  const seenStyles = new Set<string>();
+  let bytesRead = 0;
+  let urlCount = 0;
+  const localPath = async (url: string, directory: string) => {
+    if (++urlCount > 512) throw new ApiError(400, "media_review_references", "Too many local references for media review; simplify the entry or split the video");
+    const value = url.trim();
+    if (!value || /^(?:[a-z][a-z\d+.-]*:|\/\/|#)/i.test(value)) return null;
+    let path: string;
+    try { path = decodeURIComponent(value.split(/[?#]/)[0]); }
+    catch { throw new ApiError(400, "media_review_url", "Media reference contains invalid URL encoding"); }
+    const candidate = await resolveWithinRoot(sessionRoot, relative(sessionRoot, resolve(directory, path)));
+    return realpath(candidate).catch(() => candidate);
+  };
+  const read = async (path: string, kind: string) => {
+    try {
+      const bytes = await boundedRead(path);
+      bytesRead += bytes.length;
+      if (bytesRead > 8 * 1024 * 1024) throw new ApiError(400, "media_review_total_size", "Media review dependencies exceed 8 MB; simplify the composition or stylesheets");
+      return bytes.toString();
+    } catch (error) {
+      if (error instanceof ApiError) throw error;
+      issues.push(`missing_${kind}: ${relative(sessionRoot, path).replaceAll("\\", "/")}`);
+      return null;
+    }
+  };
+  const collectCss = async (css: string, directoryFor: (url: string) => string): Promise<void> => {
+    const refs = cssReferences(css);
+    for (const url of refs.media) {
+      const path = await localPath(url, directoryFor(url));
+      if (path) referenced.add(path);
+    }
+    for (const url of refs.styles) await stylesheet(url, directoryFor(url));
+  };
+  const stylesheet = async (url: string, directory: string): Promise<void> => {
+    const path = await localPath(url, directory);
+    if (!path || seenStyles.has(path)) return;
+    if (seenStyles.size >= 12) throw new ApiError(400, "media_review_styles", "Too many stylesheets for bounded media review");
+    seenStyles.add(path);
+    const css = await read(path, "stylesheet");
+    if (css !== null) await collectCss(css, () => dirname(path));
+  };
+  const inspectHtml = async (html: string, path: string, compositionId?: string) => {
+    const active = html.replace(/<!--[\s\S]*?-->|<(script|textarea|title)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
+    const templates = [...active.matchAll(/<template\b([^>]*)>([\s\S]*?)<\/template\s*>/gi)];
+    const template = compositionId !== undefined ? templates.find(match => htmlAttributes(match[1]).get("id") === `${compositionId}-template`) ?? templates[0] : undefined;
+    const head = active.match(/<head\b[^>]*>([\s\S]*?)<\/head\s*>/i)?.[1] ?? "";
+    const headLinks = [...head.matchAll(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi)].map(match => match[0]).join("");
+    // The loader keeps head links even when it mounts a template, but does
+    // not mount unrelated templates or head styles from that document.
+    const markup = template ? `<head>${headLinks}</head>${template[2]}` : active.replace(/<template\b[^>]*>[\s\S]*?<\/template\s*>/gi, "");
+    // HyperFrames mounts child HTML into the entry. Only ../ paths are
+    // rewritten against the child; plain assets/... stays entry-relative.
+    const directoryFor = (url: string) => compositionId !== undefined && url.trim().startsWith("../") ? dirname(path) : dirname(source);
+    for (const style of markup.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)) await collectCss(style[1], directoryFor);
+    const compositions: Array<{ url: string; id: string; inline?: string }> = [];
+    const tags = markup.replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, "");
+    const headEnd = tags.search(/<\/head\s*>/i);
+    for (const tag of tags.matchAll(/<([a-z][\w:-]*)\b((?:[^>"']|"[^"]*"|'[^']*')*)>/gi)) {
+      const name = tag[1].toLowerCase();
+      const attrs = htmlAttributes(tag[2]);
+      const media = /^(?:img|video|source)$/.test(name) ? [attrs.get("src"), name === "video" ? attrs.get("poster") : undefined] : [];
+      for (const url of media) {
+        if (!url) continue;
+        const asset = await localPath(url, directoryFor(url));
+        if (asset) referenced.add(asset);
+      }
+      if (attrs.has("style")) await collectCss(attrs.get("style")!, directoryFor);
+      if (name === "link" && attrs.get("rel")?.toLowerCase().split(/\s+/).includes("stylesheet")) {
+        const href = attrs.get("href");
+        if (href) await stylesheet(href, compositionId !== undefined && tag.index < headEnd ? dirname(path) : directoryFor(href));
+      }
+      const url = attrs.get("data-composition-src");
+      // Runtime discovers hosts once before mounting: nested new hosts and
+      // arbitrary data-variable-values do not prove rendered media usage.
+      if (url && compositionId === undefined) {
+        const id = attrs.get("data-composition-id") ?? "";
+        const localTemplate = id ? templates.find(match => htmlAttributes(match[1]).get("id") === `${id}-template`) : undefined;
+        compositions.push({ url, id, inline: localTemplate?.[2] });
+      }
+    }
+    return compositions;
+  };
+  const html = await read(source, "source");
+  if (html === null) return { referenced, issues };
+  const compositions = await inspectHtml(html, source);
+  if (compositions.length > 32) throw new ApiError(400, "media_review_compositions", "Too many composition hosts for bounded media review");
+  const seenCompositions = new Set<string>();
+  for (const { url, id, inline } of compositions) {
+    // A local matching template takes precedence over an external file.
+    if (inline !== undefined) {
+      await inspectHtml(inline, source, id);
+      continue;
+    }
+    const path = await localPath(url, dirname(source));
+    if (!path || seenCompositions.has(`${path}\0${id}`)) continue;
+    seenCompositions.add(`${path}\0${id}`);
+    const child = await read(path, "composition");
+    if (child !== null) await inspectHtml(child, path, id);
+  }
+  return { referenced, issues };
 }
 
 export async function reviewArtifactMedia(
@@ -126,10 +251,17 @@ export async function reviewArtifactMedia(
 ) {
   const args = reviewSchema.parse(input);
   const workspace = workspaceForContext(config, context, { strictWorkspaceId: true });
-  const sessionId = sessionArtifactOwner(context.sessionId);
   const rootMatch = /^(design|video)\/([^/]+)\//.exec(args.sourcePath);
   if (!rootMatch || !args.sourcePath.endsWith(".html")) {
     throw new ApiError(400, "media_review_owner", "sourcePath must be the active session's design/video HTML entry");
+  }
+  // Some engine MCP transports omit session metadata. The explicit artifact
+  // directory still identifies its owner; never guess from a workspace's
+  // most recently active conversation (parallel tasks may be running).
+  const projectId = sessionArtifactOwner(rootMatch[2]);
+  const sessionId = sessionArtifactOwner(projectId.replace(/-artifact-(?:site|video|app|slides|poster|cards|report|article|other)(?:-\d+)?$/, ""));
+  if (context.sessionId !== undefined && sessionArtifactOwner(context.sessionId) !== sessionId) {
+    throw new ApiError(400, "media_review_owner", "sourcePath must belong to the calling session");
   }
   const sessionRoot = await resolveWithinRoot(workspace.path, rootMatch[1], sessionArtifactOwner(rootMatch[2]));
   const projectPrefix = `${rootMatch[1]}/${rootMatch[2]}/`;
@@ -174,28 +306,11 @@ export async function reviewArtifactMedia(
   if (!brief.mediaPlan) return { ok: true, result: { complete: false, fileCanBeDelivered: false, issues: ["missing_media_plan"], next: "Call phase=plan before completing this artifact" } };
   const plan = planSchema.parse(brief.mediaPlan);
   if (plan.sourcePath !== args.sourcePath) throw new ApiError(400, "media_review_entry", "Check the entry recorded in the media plan");
-  const html = (await boundedRead(source)).toString();
-  const referenced = new Set<string>();
-  const collect = async (text: string, directory: string) => {
-    for (const url of mediaUrls(text)) {
-      if (/^(?:[a-z]+:|\/\/|#)/i.test(url)) continue;
-      const path = decodeURIComponent(url.split(/[?#]/)[0]);
-      referenced.add(await resolveWithinRoot(sessionRoot, relative(sessionRoot, resolve(directory, path))));
-    }
-  };
-  await collect(html, dirname(source));
-  const styles = Array.from(html.matchAll(/<link\b[^>]*\bhref=["']([^"']+\.css)["'][^>]*>/gi), match => match[1]);
-  if (styles.length > 12) throw new ApiError(400, "media_review_styles", "Too many stylesheets for bounded media review");
-  for (const path of styles) {
-    if (/^(?:[a-z]+:|\/\/)/i.test(path)) continue;
-    const css = await resolveWithinRoot(sessionRoot, relative(sessionRoot, resolve(dirname(source), path)));
-    await collect((await boundedRead(css)).toString(), dirname(css));
-  }
+  const { referenced, issues } = await collectArtifactReferences(source, sessionRoot);
   const outcomes = args.outcomes ?? z.array(outcomeSchema).parse(brief.mediaOutcomes ?? []);
   const resolveAssetPath = (value: string) => value.replaceAll("\\", "/").startsWith(projectPrefix)
     ? resolveWithinRoot(workspace.path, value)
     : resolveWithinRoot(sessionRoot, value);
-  const issues: string[] = [];
   const reports: string[] = [];
   if (new Set(outcomes.map(item => item.id)).size !== outcomes.length || outcomes.some(item => !plan.needs.some(need => need.id === item.id))) issues.push("unexpected_or_duplicate_outcome");
   for (const need of plan.needs) {
