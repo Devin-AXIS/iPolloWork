@@ -62,6 +62,13 @@ const registryManifestSchema = z.object({
 }).passthrough();
 
 const MAX_STILL_SECONDS = 4;
+const SPATIAL_CAMERA_RECIPES = new Set([
+  "graze-face-tour",
+  "depth-layer-moves",
+  "spotlight-hero-card",
+  "runway-ground-skim",
+  "steep-tilt-glide",
+]);
 
 export const videoComponentInstallInput = z.object({
   sourcePath: videoSourcePathSchema,
@@ -173,7 +180,8 @@ function componentMotionContract(componentId: string, durationSeconds: number, v
 
 function componentSnippet(componentId: string, target: string, motionContract: MotionContract): string {
   const duration = motionContract.durationSeconds;
-  return `<section id="<scene-id>" class="scene clip" data-ipw-scene data-composition-id="${componentId}-<scene-id>" data-composition-src="${target}" data-ipw-registry-component="${componentId}" data-ipw-timing-owner="host" data-motion-pattern="<selected-pattern>" data-ipw-timing-source="<voiceover|estimated-reading|visual-cue|music|media>" data-ipw-beats='[{"start":0,"end":${duration},"intent":"<spoken-or-silent-intent>","focus":"<visual-focus>","action":"<visual-action>","result":"<land-state>","targets":["#<scene-id>"],"animation":"component:${componentId}","motion":{"start":0,"end":${duration}}}]' data-ipw-motion-contract='${JSON.stringify(motionContract)}' data-variable-values='{}' data-start="<seconds>" data-duration="${duration}" data-track-index="<track>"></section>`;
+  const animationReference = componentId === "spatial-camera-suite" ? ` data-ipw-animation-reference="${componentId}"` : "";
+  return `<section id="<scene-id>" class="scene clip" data-ipw-scene data-composition-id="${componentId}-<scene-id>" data-composition-src="${target}" data-ipw-registry-component="${componentId}"${animationReference} data-ipw-timing-owner="host" data-motion-pattern="<selected-pattern>" data-ipw-timing-source="<voiceover|estimated-reading|visual-cue|music|media>" data-ipw-beats='[{"start":0,"end":${duration},"intent":"<spoken-or-silent-intent>","focus":"<visual-focus>","action":"<visual-action>","result":"<land-state>","targets":["#<scene-id>"],"animation":"component:${componentId}","motion":{"start":0,"end":${duration}}}]' data-ipw-motion-contract='${JSON.stringify(motionContract)}' data-variable-values='{}' data-start="<seconds>" data-duration="${duration}" data-track-index="<track>"></section>`;
 }
 
 function attribute(tag: string, name: string): string {
@@ -416,6 +424,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const scenes = [];
   const compositionIds = new Set<string>();
   const timedScenes: Array<{ sceneId: string; start: number; end: number; transition: string; transitionDuration: number | null; transitionIntent: string }> = [];
+  let hasSpatialCameraRecipe = false;
 
   for (const tag of openingTags) {
     const classes = classTokens(tag);
@@ -442,6 +451,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
     const start = numberAttribute(tag, "data-start");
     const duration = numberAttribute(tag, "data-duration");
     const track = numberAttribute(tag, "data-track-index");
+    let componentInstalled = false;
 
     if (sceneId === "unnamed-scene") issues.push({ code: "missing_scene_id", sceneId, message: "Every video scene must have a stable id." });
     if (start === null || start < 0) issues.push({ code: "invalid_scene_start", sceneId, message: `${sceneId} must have a non-negative numeric data-start.` });
@@ -504,6 +514,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         if (!installedFile?.isFile()) {
           issues.push({ code: "component_source_not_installed", sceneId, message: `${sceneId} references missing component source ${compositionSource}.` });
         } else {
+          componentInstalled = true;
           const componentHtml = await readFile(installed.absolutePath, "utf8");
           const rootTag = componentHtml.match(/<[a-z][^>]*\bdata-composition-id\s*=\s*(["']).*?\1[^>]*>/iu)?.[0] ?? "";
           const nativeDuration = numberAttribute(rootTag, "data-ipw-native-duration");
@@ -542,7 +553,16 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       } else {
         try {
           const values: unknown = JSON.parse(variableValues);
-          if (!z.record(z.string(), z.unknown()).safeParse(values).success) throw new Error("invalid values");
+          const parsedValues = z.record(z.string(), z.unknown()).safeParse(values);
+          if (!parsedValues.success) throw new Error("invalid values");
+          if (componentId === "spatial-camera-suite") {
+            const shotStyle = parsedValues.data.shotStyle;
+            if (componentInstalled && typeof shotStyle === "string" && SPATIAL_CAMERA_RECIPES.has(shotStyle)) {
+              hasSpatialCameraRecipe = true;
+            } else if (typeof shotStyle !== "string" || !SPATIAL_CAMERA_RECIPES.has(shotStyle)) {
+              issues.push({ code: "invalid_spatial_camera_recipe", sceneId, message: `${sceneId} must choose one real spatial-camera-suite shotStyle: ${Array.from(SPATIAL_CAMERA_RECIPES).join(", ")}.` });
+            }
+          }
         } catch {
           issues.push({ code: "invalid_component_values", sceneId, message: `${sceneId} must use literal valid JSON in data-variable-values.` });
         }
@@ -551,6 +571,12 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       issues.push({ code: "missing_component_decision", sceneId, message: `${sceneId} must use an installed registry component or record data-ipw-component-decision="custom:<specific reason>".` });
     }
     scenes.push({ sceneId, componentId: componentId || null, customDecision: customDecision || null, motionPattern: motionPattern || null, compositionSource: compositionSource || null, compositionId: compositionId || null, timingSource: timingSource || null, transition: transition || null, transitionDuration, transitionIntent: transitionIntent || null });
+  }
+  if (/data-ipw-registry-component\s*=\s*["']spatial-camera-suite["']/iu.test(html) && !hasSpatialCameraRecipe) {
+    issues.push({
+      code: "missing_spatial_camera_component",
+      message: "This video declares spatial-camera-suite but has no valid installed camera recipe. Install the component and select one of its five shotStyle values before delivery.",
+    });
   }
   timedScenes.sort((left, right) => left.start - right.start);
   for (let index = 1; index < timedScenes.length; index += 1) {

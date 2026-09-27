@@ -3,6 +3,7 @@ import type { CSSProperties } from "react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { UIMessage } from "ai";
 import { mediaKindForPath } from "@ipollowork/types/video-image-workbench";
+import { videoProjectIdFromStoryboardPath } from "../video/video-storyboard";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
@@ -1962,7 +1963,7 @@ export function SessionPage(props: SessionPageProps) {
     setSessionType(sessionId, "video");
     setSessionTypeRevision((value) => value + 1);
   }, []);
-  const openVideoStudio = useCallback((sessionId: string, options?: { auto?: boolean; label?: string }) => {
+  const openVideoStudio = useCallback((sessionId: string, options?: { auto?: boolean; label?: string; view?: "storyboard" }) => {
     if (!options?.auto) prioritizeRightPanel();
     const videoTabId = `video:${sessionId}`;
     openTab(props.selectedSessionId ?? sessionId, {
@@ -1970,6 +1971,7 @@ export function SessionPage(props: SessionPageProps) {
       type: "video",
       label: options?.label || selectedSessionTitle || t("video.title"),
       sessionId,
+      view: options?.view,
     });
     setSidePanelState(props.selectedSessionId ?? sessionId, "panel");
   }, [openTab, prioritizeRightPanel, props.selectedSessionId, selectedSessionTitle, setSidePanelState]);
@@ -3323,6 +3325,13 @@ export function SessionPage(props: SessionPageProps) {
     }, sourceSessionId);
   }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, setCurrentSidePanel, workspaceApps]);
   const openTarget = useCallback(async (target: OpenTarget, options?: OpenTargetOptions, sourceSessionId?: string) => {
+    const storyboardProjectId = target.kind === "file" && !options?.external
+      ? videoProjectIdFromStoryboardPath(target.value)
+      : null;
+    if (storyboardProjectId) {
+      openVideoStudio(storyboardProjectId, { auto: options?.auto, view: "storyboard" });
+      return;
+    }
     if (isVideoSession && options?.auto) return;
     if (target.kind === "url" || target.preview === "browser") {
       const url = browserUrlForTarget(target);

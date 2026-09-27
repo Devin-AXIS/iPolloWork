@@ -48,10 +48,15 @@ Any invalid root, missing timeline, zero or inconsistent duration, out-of-bounds
 ## 5. Media and audio
 
 - Every planned media need has a final outcome: reused, generated, declined, unavailable, failed, or intentionally replaced by an editable visual.
+- The saved storyboard matches the delivered scene order, narration, asset decisions and timing; generation is not a substitute for a missing script or shot purpose.
 - Visible media uses the intended file, crop, timing, and resolution. Video clips decode and play inside their declared windows.
 - Enabled narration is audible, mapped to the correct scene, and measured from the actual returned audio. Captions and dependent timing follow it.
 - Explicitly disabled or unavailable narration is reported honestly and does not block visual delivery. Timeline clips or waveforms alone do not prove sound.
 - Music and effects do not mask speech or start outside project bounds.
+- A finished video's saved script contains an explicit music direction or deliberate `music_prompt: none`. Selected music is recorded in `music_asset` and matches the real mounted track; absent, stale or conflicting script/audio choices fail delivery. A missing source remains partial delivery, not a reason to silently mark music unnecessary.
+- Track choice has a source/license and a content-fit rationale, not just a successful download. A corrected subject is reflected in the actual narration and rendered content, not only in replacement imagery.
+- Requested BGM and SFX have separate real local timeline clips (`data-timeline-role="music"` / `"sfx"`), valid source/trim windows and audible levels. Muted, missing, wrong-path or out-of-bounds clips do not satisfy delivery. Effects coincide with their planned visual events; music does not acquire invented beat cues.
+- Source validation checks references and declared timing, not waveform content, licensing, perceived mix quality or device output. Audition narration, music and effects together and verify the rendered mix separately when export is requested.
 
 ## 6. Editor and playback experience
 

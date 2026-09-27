@@ -17,7 +17,7 @@ const cases = [
   { pattern: "state-transformation", component: "media-before-after", visibleText: "Media Before / After" },
   { pattern: "data-accumulation", component: "bar-chart-race", visibleText: "Category leaders" },
   { pattern: "asset-exploration", component: "mobile-walkthrough", visibleText: "A complete flow in three taps" },
-  { pattern: "montage", component: "device-carousel", visibleText: "Device Carousel" },
+  { pattern: "montage", component: "device-carousel", visibleText: "One product. Every moment." },
   { pattern: "camera-journey", component: "mobile-walkthrough", visibleText: "A complete flow in three taps" },
   { pattern: "dialogue", component: "speaker-intro", visibleText: "Speaker Intro" },
   { pattern: "kinetic-type", component: "kinetic-keyword", visibleText: "Kinetic Keyword" },

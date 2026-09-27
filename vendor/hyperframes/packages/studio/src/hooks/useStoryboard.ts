@@ -24,6 +24,8 @@ export interface StoryboardResponse {
   exists: boolean;
   path: string;
   globals: StoryboardGlobals;
+  /** Exact disk revision used to derive these rows; saves use it as their precondition. */
+  source: string | null;
   frames: StoryboardFrameView[];
   warnings: StoryboardWarning[];
   script?: StoryboardScript;

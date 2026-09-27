@@ -53,6 +53,19 @@ type VideoVoicePanelProps = {
   workspaceId: string | null;
   previewRequest: number;
   onClose: () => void;
+  selectionTarget?: {
+    frameIndex: number;
+    speaker: string;
+    voiceId: string;
+    model: string;
+    name: string;
+  } | null;
+  onVoiceSelected?: (selection: {
+    voiceId: string;
+    model: string;
+    name: string;
+    source: "preset" | "cloned";
+  }) => void;
   embedded?: boolean;
   embeddedWidth?: number;
 };
@@ -152,7 +165,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, embedded = false, embeddedWidth = 400 }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, selectionTarget = null, onVoiceSelected, embedded = false, embeddedWidth = 400 }: VideoVoicePanelProps) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const voicePickerAnchorRef = React.useRef<HTMLDivElement>(null);
   const previewGenerationRef = React.useRef(0);
@@ -161,7 +174,13 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   const [customVoices, setCustomVoices] = React.useState<CustomVoice[]>([]);
   const [mediaReady, setMediaReady] = React.useState(false);
   const [loading, setLoading] = React.useState(true);
-  const [activeTab, setActiveTab] = React.useState<"preset" | "mine">("preset");
+  const [activeTab, setActiveTab] = React.useState<"preset" | "mine">(
+    selectionTarget?.voiceId &&
+      selectionTarget.voiceId !== "auto" &&
+      !BAILIAN_PRESET_VOICES.some((voice) => voice.id === selectionTarget.voiceId)
+      ? "mine"
+      : "preset",
+  );
   const [mineDataLoaded, setMineDataLoaded] = React.useState(false);
   const [loadingMineData, setLoadingMineData] = React.useState(false);
   const [cloning, setCloning] = React.useState(false);
@@ -173,9 +192,10 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   const [cloneError, setCloneError] = React.useState("");
   const cloneNameId = React.useId();
   const [previewingVoiceId, setPreviewingVoiceId] = React.useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = React.useState("");
   const previewing = previewingVoiceId !== null;
   const [message, setMessage] = React.useState("");
-  const [voicePickerOpen, setVoicePickerOpen] = React.useState(false);
+  const [voicePickerOpen, setVoicePickerOpen] = React.useState(Boolean(selectionTarget));
   const [voiceQuery, setVoiceQuery] = React.useState("");
   const [languageFilter, setLanguageFilter] = React.useState<(typeof BAILIAN_VOICE_LANGUAGES)[number]>("all");
   const [genderFilter, setGenderFilter] = React.useState<(typeof BAILIAN_VOICE_GENDERS)[number]>("all");
@@ -202,6 +222,12 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     : presetVoiceLabel(activeVoice?.voiceId ?? DEFAULT_COSYVOICE_VOICE);
   const selectedVoiceReady = activeVoice?.source === "preset"
     || (activeVoice?.source === "cloned" && canSynthesizeCustomVoice(customVoices.find(voice => voice.id === activeVoice.voiceId)));
+  const targetVoiceId = selectionTarget?.voiceId ?? "";
+  const targetVoiceIsAuto = targetVoiceId === "auto";
+  const targetVoiceIsCustom = Boolean(targetVoiceId && targetVoiceId !== "auto" && !BAILIAN_PRESET_VOICES.some((voice) => voice.id === targetVoiceId));
+  const targetVoiceLabel = targetVoiceIsAuto
+    ? t("video.voice.auto_role")
+    : selectionTarget?.name || (targetVoiceIsCustom ? customVoices.find((voice) => voice.id === targetVoiceId)?.name : undefined) || (targetVoiceId ? presetVoiceLabel(targetVoiceId) : t("video.voice.choose_role_voice"));
   const filterCount = [languageFilter, genderFilter, ageFilter].filter(value => value !== "all").length;
   const context = React.useMemo(() => ({ directory: workspaceRoot }), [workspaceRoot]);
   const filteredPresetVoices = React.useMemo(() => BAILIAN_PRESET_VOICES.filter((voice) => {
@@ -294,6 +320,16 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   }, [client, sessionId, settings.updatedAt, workspaceId]);
 
   const choosePreset = React.useCallback(async (voiceId: string) => {
+    if (selectionTarget) {
+      onVoiceSelected?.({
+        voiceId,
+        model: DEFAULT_COSYVOICE_MODEL,
+        name: presetVoiceLabel(voiceId),
+        source: "preset",
+      });
+      onClose();
+      return;
+    }
     setMessage("");
     try {
       await saveSettings(voiceSettings(activeVoice, voiceId, "preset"));
@@ -301,9 +337,19 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     } catch (error) {
       setMessage(readableError(error));
     }
-  }, [activeVoice, saveSettings]);
+  }, [activeVoice, onClose, onVoiceSelected, saveSettings, selectionTarget]);
 
   const chooseAuto = React.useCallback(async () => {
+    if (selectionTarget) {
+      onVoiceSelected?.({
+        voiceId: "auto",
+        model: DEFAULT_COSYVOICE_MODEL,
+        name: t("video.voice.auto_role"),
+        source: "preset",
+      });
+      onClose();
+      return;
+    }
     if (activeVoice?.source === "preset" && activeVoice.selectionMode === "auto") {
       setVoicePickerOpen(false);
       return;
@@ -323,7 +369,13 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     } catch (error) {
       setMessage(readableError(error));
     }
-  }, [activeVoice, saveSettings]);
+  }, [activeVoice, onClose, onVoiceSelected, saveSettings, selectionTarget]);
+
+  const useProjectVoice = React.useCallback(() => {
+    if (!selectionTarget) return;
+    onVoiceSelected?.({ voiceId: "", model: "", name: "", source: "preset" });
+    onClose();
+  }, [onClose, onVoiceSelected, selectionTarget]);
 
   const updateSettings = React.useCallback(async (changes: Partial<VideoVoiceoverSettings>) => {
     const current = activeVoice ?? defaultVideoVoiceoverSettings();
@@ -343,13 +395,18 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
       setMessage(customVoiceAvailabilityMessage(voice));
       return;
     }
+    if (selectionTarget) {
+      onVoiceSelected?.({ voiceId: voice.id, model: voice.model, name: voice.name, source: "cloned" });
+      onClose();
+      return;
+    }
     try {
       await saveSettings(voiceSettings(activeVoice, voice.id, "cloned", voice.model));
       setVoicePickerOpen(false);
     } catch (error) {
       setMessage(readableError(error));
     }
-  }, [activeVoice, customVoices, saveSettings]);
+  }, [activeVoice, customVoices, onClose, onVoiceSelected, saveSettings, selectionTarget]);
 
   const previewVoice = React.useCallback(async (target?: Pick<VideoVoiceoverSettings, "voiceId" | "source" | "model">) => {
     const voice = target ? voiceSettings(activeVoice, target.voiceId, target.source, target.model) : activeVoice;
@@ -359,6 +416,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     }
     const generation = ++previewGenerationRef.current;
     audioRef.current?.pause();
+    setPreviewUrl("");
     setPreviewingVoiceId(voice.voiceId);
     setMessage("");
     try {
@@ -367,7 +425,6 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
         const latestVoice = (await loadCustomVoices()).find((item) => item.id === voice.voiceId);
         if (!latestVoice || !canSynthesizeCustomVoice(latestVoice)) throw new Error(customVoiceAvailabilityMessage(latestVoice));
         model = latestVoice.model;
-        if (model !== voice.model) await saveSettings(voiceSettings(voice, voice.voiceId, "cloned", model));
       }
       const result = await client.callMedia("speech_synthesize", {
         text: t("video.voice.preview_sample"),
@@ -383,16 +440,17 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
       if (!result.ok) throw new Error(result.message);
       const url = synthesizedAudioUrl(mediaOutput(result.result));
       if (!url) throw new Error(t("video.voice.error.preview_url_missing"));
-      audioRef.current?.pause();
-      const audio = new Audio(url);
-      audioRef.current = audio;
+      const audio = audioRef.current;
+      if (!audio) return;
+      setPreviewUrl(url);
+      audio.src = url;
       await audio.play();
     } catch (error) {
       if (generation === previewGenerationRef.current) setMessage(readableError(error));
     } finally {
       if (generation === previewGenerationRef.current) setPreviewingVoiceId(null);
     }
-  }, [activeVoice, client, context, loadCustomVoices, mediaReady, saveSettings]);
+  }, [activeVoice, client, context, loadCustomVoices, mediaReady]);
 
   const cloneVoice = React.useCallback(async (file: File, name: string) => {
     if (cloning || !name.trim()) return;
@@ -453,6 +511,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     let cancelled = false;
     setLoading(true);
     setPreviewingVoiceId(null);
+    setPreviewUrl("");
     setMessage("");
     setCustomVoices([]);
     setMineDataLoaded(false);
@@ -478,6 +537,9 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
         // An unavailable provider must not create a saved preference that overrides
         // the authorized default later. Existing user choices remain intact.
         if (!configured) return;
+        // A per-shot library picker is selection-only: opening it must not create or
+        // migrate the whole-video voiceover.json preference.
+        if (selectionTarget) return;
         if (!parsed || restored.voiceId !== parsed.voiceId) {
           const next = { ...restored, updatedAt: new Date().toISOString() };
           const written = await client.writeWorkspaceFile(workspaceId, {
@@ -500,9 +562,8 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
       cancelled = true;
       previewGenerationRef.current += 1;
       audioRef.current?.pause();
-      audioRef.current = null;
     };
-  }, [client, context, sessionId, workspaceId]);
+  }, [client, context, selectionTarget, sessionId, workspaceId]);
 
   const openClone = () => { setVoicePickerOpen(false); setCloneError(""); setSampleBusy(false); setCloneOpen(true); };
 
@@ -539,28 +600,32 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
       /> : undefined}
     >
           {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
-          {!loading && activeVoice ? <div className="mb-6 flex min-h-8 items-center justify-between gap-3">
+          {!loading && selectionTarget ? <div data-testid="voice-selection-target" className="mb-4 rounded-lg bg-muted/45 px-3 py-2.5">
+            <p className="text-xs font-medium">{t("video.voice.select_for_frame", { frame: selectionTarget.frameIndex })}</p>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{selectionTarget.speaker || t("video.voice.this_role")}</p>
+          </div> : null}
+          {!loading && !selectionTarget && activeVoice ? <div className="mb-6 flex min-h-8 items-center justify-between gap-3">
             <p className="min-w-0 text-[13px] font-medium text-foreground">{t("video.voice.enabled_title")}</p>
             <Switch checked={mediaReady && activeVoice.enabled} disabled={!mediaReady || busy} onCheckedChange={(checked) => void updateSettings({ enabled: checked })} aria-label={t("video.voice.enabled_title")} />
           </div> : null}
-          {!loading && !mediaReady ? <div data-testid="voice-authorization-empty" className="flex flex-col items-center gap-3 rounded-lg bg-muted/45 px-4 py-8 text-center">
+          {!loading && !mediaReady ? <div data-testid="voice-authorization-empty" className={`flex flex-col items-center gap-3 rounded-lg bg-muted/45 px-4 text-center ${selectionTarget ? "mb-4 py-3" : "py-8"}`}>
             <KeyRound aria-hidden="true" className="size-6 text-muted-foreground" />
             <div className="space-y-1"><p className="text-xs font-medium">{t("video.voice.configure_title")}</p><p className="text-[11px] leading-5 text-muted-foreground">{t("video.voice.configure_description")}</p></div>
             <Button className="h-[34px] rounded-lg text-xs" render={<Link to={workspaceId ? workspaceSettingsRoute(workspaceId, "authorizations") : globalSettingsRoute("authorizations")} />}>{t("video.voice.open_authorizations")}</Button>
           </div> : null}
-          {!loading && mediaReady && activeVoice && (activeVoice.enabled || hasApplied) ? <fieldset disabled={busy || cloning} className="min-w-0 space-y-6">
+          {!loading && (selectionTarget || (mediaReady && activeVoice && (activeVoice.enabled || hasApplied))) ? <fieldset disabled={selectionTarget ? cloning : busy || cloning} className="min-w-0 space-y-6">
             <div className="space-y-2">
-              <h3 data-testid="voice-label" className="text-ui-control font-semibold">{t("video.voice.voice_label")}</h3>
+              <h3 data-testid="voice-label" className="text-ui-control font-semibold">{selectionTarget ? t("video.voice.voice_for_role") : t("video.voice.voice_label")}</h3>
               <div ref={voicePickerAnchorRef} className="relative">
-              {activeVoice.selectionMode === "manual" && selectedVoiceReady ? <div data-testid="voice-selected-preview" className="absolute left-1 top-1/2 z-10 -translate-y-1/2">
+              {!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? <div data-testid="voice-selected-preview" className="absolute left-1 top-1/2 z-10 -translate-y-1/2">
                 <VoicePreviewButton label={activeVoiceLabel} previewing={previewingVoiceId === activeVoice.voiceId} disabled={previewing} onPreview={() => void previewVoice()} />
               </div> : null}
               <Popover open={voicePickerOpen} onOpenChange={(open) => {
                 setVoicePickerOpen(open);
-                if (open) setActiveTab(activeVoice.source === "cloned" ? "mine" : "preset");
+                if (open) setActiveTab(selectionTarget ? targetVoiceIsCustom ? "mine" : "preset" : activeVoice?.source === "cloned" ? "mine" : "preset");
               }}>
-                <PopoverTrigger render={<button type="button" data-testid="voice-selection-trigger" aria-label={`${t("video.voice.preset_tab")} / ${t("video.voice.my_voices_tab")}`} className={voiceFieldClassName + ` flex items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${activeVoice.selectionMode === "manual" && selectedVoiceReady ? "pl-9" : ""}`} />}>
-                  <span className="min-w-0 truncate">{activeVoice.source === "cloned" ? activeVoiceLabel : activeVoice.selectionMode === "auto" ? hasApplied && appliedIds.length && !needsUpdate ? appliedLabel : t("video.voice.auto_title") : activeVoiceLabel}</span>
+                <PopoverTrigger render={<button type="button" data-testid="voice-selection-trigger" aria-label={`${t("video.voice.preset_tab")} / ${t("video.voice.my_voices_tab")}`} className={voiceFieldClassName + ` flex items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? "pl-9" : ""}`} />}>
+                  <span className="min-w-0 truncate">{selectionTarget ? targetVoiceLabel : activeVoice?.source === "cloned" ? activeVoiceLabel : activeVoice?.selectionMode === "auto" ? hasApplied && appliedIds.length && !needsUpdate ? appliedLabel : t("video.voice.auto_title") : activeVoiceLabel}</span>
                   <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
                 </PopoverTrigger>
                 <PopoverContent data-testid="voice-picker" anchor={voicePickerAnchorRef} align="start" className={voiceMenuClassName + " w-(--anchor-width) gap-2 overflow-hidden"}>
@@ -571,10 +636,14 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                     </TabsList>
                     <TabsContent value="preset" className="min-h-0 space-y-2">
                       <PopoverTitle className="sr-only">{t("video.voice.official_presets")}</PopoverTitle>
-                      <button type="button" data-testid="voice-auto-match" aria-pressed={activeVoice.source === "preset" && activeVoice.selectionMode === "auto"} onClick={() => void chooseAuto()} className={`flex h-12 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left hover:bg-foreground/10 ${activeVoice.source === "preset" && activeVoice.selectionMode === "auto" ? "bg-foreground/10" : ""}`}>
+                      {selectionTarget ? <button type="button" data-testid="voice-inherit-project" aria-pressed={!targetVoiceId} onClick={useProjectVoice} className={`flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-xs hover:bg-foreground/10 ${!targetVoiceId ? "bg-foreground/10" : ""}`}>
+                        <span className="min-w-0 flex-1">{t("video.voice.inherit_project")}</span>
+                        {!targetVoiceId ? <Check aria-hidden="true" className="size-3.5 text-primary" /> : null}
+                      </button> : null}
+                      <button type="button" data-testid="voice-auto-match" aria-pressed={selectionTarget ? targetVoiceIsAuto : activeVoice?.source === "preset" && activeVoice.selectionMode === "auto"} onClick={() => void chooseAuto()} className={`flex h-12 w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left hover:bg-foreground/10 ${selectionTarget ? targetVoiceIsAuto ? "bg-foreground/10" : "" : activeVoice?.source === "preset" && activeVoice.selectionMode === "auto" ? "bg-foreground/10" : ""}`}>
                         <Sparkles aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1"><span className="block text-xs font-medium">{t("video.voice.auto_title")}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{t("video.voice.auto_help")}</span></span>
-                        {activeVoice.source === "preset" && activeVoice.selectionMode === "auto" ? <Check aria-hidden="true" className="size-3.5 text-primary" /> : null}
+                        <span className="min-w-0 flex-1"><span className="block text-xs font-medium">{selectionTarget ? t("video.voice.auto_role") : t("video.voice.auto_title")}</span><span className="mt-0.5 block text-[11px] text-muted-foreground">{selectionTarget ? t("video.voice.auto_role_help") : t("video.voice.auto_help")}</span></span>
+                        {(selectionTarget ? targetVoiceIsAuto : activeVoice?.source === "preset" && activeVoice.selectionMode === "auto") ? <Check aria-hidden="true" className="size-3.5 text-primary" /> : null}
                       </button>
                       <div className="flex shrink-0 items-center gap-2" data-testid="voice-search-toolbar">
                         <div className="relative min-w-0 flex-1">
@@ -596,14 +665,14 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                       </div>
                       <div aria-label={t("video.voice.official_presets")} className="min-h-0 max-h-60 space-y-0.5 overflow-y-auto">
                         {filteredPresetVoices.map((voice) => {
-                          const selected = activeVoice?.selectionMode === "manual" && activeVoice.source === "preset" && activeVoice.voiceId === voice.id;
+                          const selected = selectionTarget ? targetVoiceId === voice.id : activeVoice?.selectionMode === "manual" && activeVoice.source === "preset" && activeVoice.voiceId === voice.id;
                           return <div key={voice.id} className={`flex h-12 items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-foreground/10 ${selected ? "bg-foreground/10" : ""}`}>
                             <button data-testid="preset-voice-card" data-voice-id={voice.id} type="button" aria-pressed={selected} className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void choosePreset(voice.id)}>
                               <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{presetVoiceLabel(voice.id).slice(0, 1)}</span>
                               <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{presetVoiceLabel(voice.id)}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{t(`video.voice.preset_description.${voice.id}`)}</span></span>
                               {selected ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" /> : null}
                             </button>
-                            <VoicePreviewButton label={presetVoiceLabel(voice.id)} previewing={previewingVoiceId === voice.id} disabled={previewing} onPreview={() => void previewVoice({ voiceId: voice.id, source: "preset", model: DEFAULT_COSYVOICE_MODEL })} />
+                            <VoicePreviewButton label={presetVoiceLabel(voice.id)} previewing={previewingVoiceId === voice.id} disabled={!mediaReady || previewing} onPreview={() => void previewVoice({ voiceId: voice.id, source: "preset", model: DEFAULT_COSYVOICE_MODEL })} />
                           </div>;
                         })}
                         {filteredPresetVoices.length === 0 ? <p className="rounded-xl bg-muted/40 px-3 py-5 text-center text-[11px] text-muted-foreground">{t("video.voice.no_matches")}</p> : null}
@@ -617,12 +686,12 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                     <Button variant="ghost" size="icon-xs" onClick={() => void loadMineData()} disabled={loadingMineData} aria-label={t("video.voice.refresh_my_voices")}>{loadingMineData ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button>
                   </div>
                   <div className="min-h-0 max-h-60 space-y-0.5 overflow-y-auto">{customVoices.map((voice) => {
-                    const selected = activeVoice.source === "cloned" && activeVoice.voiceId === voice.id;
+                    const selected = selectionTarget ? targetVoiceId === voice.id : activeVoice?.source === "cloned" && activeVoice.voiceId === voice.id;
                     return <div key={voice.id} className={`flex min-h-[34px] items-center gap-1 rounded-lg pr-1 hover:bg-foreground/10 ${selected ? "bg-foreground/10" : ""}`}>
                       <button type="button" data-testid="custom-voice-option" disabled={!canSynthesizeCustomVoice(voice)} aria-pressed={selected} onClick={() => void chooseCustomVoice(voice.id)} className="flex min-h-[34px] min-w-0 flex-1 items-center gap-2 rounded-lg px-2 py-1.5 text-left text-ui-control focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
                         <span className="min-w-0 flex-1 truncate">{voice.name}{voice.status === "OK" ? "" : ` · ${t(voice.status === "DEPLOYING" ? "video.voice.preparing" : "video.voice.unavailable")}`}</span>{selected ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" /> : null}
                       </button>
-                      <VoicePreviewButton label={voice.name} previewing={previewingVoiceId === voice.id} disabled={previewing || !canSynthesizeCustomVoice(voice)} onPreview={() => void previewVoice({ voiceId: voice.id, source: "cloned", model: voice.model })} />
+                      <VoicePreviewButton label={voice.name} previewing={previewingVoiceId === voice.id} disabled={!mediaReady || previewing || !canSynthesizeCustomVoice(voice)} onPreview={() => void previewVoice({ voiceId: voice.id, source: "cloned", model: voice.model })} />
                     </div>;
                   })}</div>
                   <button type="button" data-testid="voice-clone-entry" onClick={openClone} className="mt-1 flex h-[34px] shrink-0 items-center gap-2 rounded-lg px-2 text-left text-ui-control hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"><Plus aria-hidden="true" className="size-3.5" />{t("video.voice.clone_new")}</button>
@@ -633,13 +702,18 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                       </div> : null}
                     </TabsContent>
                   </Tabs>
+                  {previewUrl ? <Button type="button" variant="ghost" size="sm" onClick={() => {
+                    setMessage("");
+                    void audioRef.current?.play().catch((error: unknown) => setMessage(readableError(error)));
+                  }}><Play className="size-3.5" />{t("video.voice.preview")}</Button> : null}
+                  {message ? <p role="alert" className="rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-destructive">{message}</p> : null}
                 </PopoverContent>
               </Popover>
               </div>
-              {hasApplied ? <p data-testid="voice-applied" role="status" className={`text-xs leading-5 ${appliedIds.length ? "font-medium text-[#087C82] dark:text-[#6CDBE0]" : "text-warning"}`}>{appliedIds.length ? t("video.voice.applied_label", { label: appliedLabel }) : t("video.voice.applied_unknown")}</p> : null}
+              {!selectionTarget && hasApplied ? <p data-testid="voice-applied" role="status" className={`text-xs leading-5 ${appliedIds.length ? "font-medium text-[#087C82] dark:text-[#6CDBE0]" : "text-warning"}`}>{appliedIds.length ? t("video.voice.applied_label", { label: appliedLabel }) : t("video.voice.applied_unknown")}</p> : null}
             </div>
-            {selectedVoiceReady ? <VoiceControls settings={activeVoice} onChange={(changes) => void updateSettings(changes)} /> : null}
-            {selectedVoiceReady ? <div className="space-y-2">
+            {!selectionTarget && selectedVoiceReady && activeVoice ? <VoiceControls settings={activeVoice} onChange={(changes) => void updateSettings(changes)} /> : null}
+            {!selectionTarget && selectedVoiceReady ? <div className="space-y-2">
               {hasApplied && appliedMetadataKnown && needsUpdate && !busy ? <p data-testid="voice-pending-changes" className="text-[11px] text-muted-foreground">{t("video.voice.pending_changes")}</p> : null}
               <VoiceAiButton disabled={busy || cloning || readingApplied || appliedReadFailed || !needsUpdate} busy={busy} label={actionLabel} onClick={() => void generateVoiceover()} />
             </div> : null}
@@ -665,7 +739,12 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
               </form>
             </DialogContent>
           </Dialog>
-          {message ? <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-muted-foreground" role="status">{message}</p> : null}
+          <audio ref={audioRef} controls hidden={!previewUrl} data-testid="voice-preview-audio" aria-label={t("video.voice.preview_current")} className="mt-3 h-9 w-full" onError={() => {
+            if (!previewUrl) return;
+            setMessage(audioRef.current?.error?.message || t("video.voice.error.generic"));
+            setPreviewingVoiceId(null);
+          }} />
+          {message && !voicePickerOpen ? <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-muted-foreground" role="alert">{message}</p> : null}
     </StudioInspectorPanel>
   );
 }

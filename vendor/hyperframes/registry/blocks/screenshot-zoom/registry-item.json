@@ -1,14 +1,15 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
   "name": "screenshot-zoom",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "hyperframes:block",
   "title": "Screenshot Zoom",
-  "description": "Frame a product screenshot and call attention to one area.",
+  "description": "Reveal a screenshot in perspective, push into a chosen detail, hold, and pull back.",
   "tags": [
     "component",
     "media",
-    "frame",
+    "camera",
+    "screenshot",
     "theme"
   ],
   "author": "iPolloWork",
@@ -23,11 +24,11 @@
     "ai": {
       "slots": [
         "title",
-        "items",
-        "highlight",
-        "note"
+        "imageUrl",
+        "focusX",
+        "focusY"
       ],
-      "instructions": "AI may rewrite the title, supporting note, and up to four interface frame. Keep pipe separators between items and preserve the frame layout."
+      "instructions": "Supply a real project-local screenshot through imageUrl. Blank imageUrl shows clearly marked illustrative content. focusX/focusY are percentages of the displayed screenshot; use a 1660:692 crop to avoid object-fit cropping. This 8s scene establishes the view, pushes to the detail, holds and pulls back. Keep captions outside its camera world; do not apply another camera transform to the same world."
     }
   },
   "dimensions": {
@@ -52,34 +53,36 @@
       "id": "title",
       "label": "Title",
       "type": "string",
-      "default": "Screenshot Zoom",
+      "default": "Focus on what matters",
       "maxLength": 76,
       "update": "live"
     },
     {
-      "id": "items",
-      "label": "Items (label::detail | ...)",
+      "id": "imageUrl",
+      "label": "Screenshot URL",
       "type": "string",
-      "default": "Canvas::Main workspace|Inspector::Safe controls|Timeline::Precise timing|Export::Ready output",
-      "maxLength": 280,
+      "default": "",
+      "maxLength": 2000,
       "update": "live"
     },
     {
-      "id": "highlight",
-      "label": "Highlighted item",
+      "id": "focusX",
+      "label": "Focus X (%)",
       "type": "number",
-      "default": 1,
-      "min": 1,
-      "max": 4,
+      "default": 52,
+      "min": 0,
+      "max": 100,
       "step": 1,
       "update": "live"
     },
     {
-      "id": "note",
-      "label": "Supporting note",
-      "type": "string",
-      "default": "Focus the viewer before explaining the detail",
-      "maxLength": 100,
+      "id": "focusY",
+      "label": "Focus Y (%)",
+      "type": "number",
+      "default": 27,
+      "min": 0,
+      "max": 100,
+      "step": 1,
       "update": "live"
     }
   ]

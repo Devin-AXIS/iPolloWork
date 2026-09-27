@@ -47,13 +47,13 @@ function compiledStructuredTrackTargetCount(
 
 describe("motion presets", () => {
   it("ships stable text and element presets across all three phases", () => {
-    expect(MOTION_PRESETS).toHaveLength(71);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(71);
+    expect(MOTION_PRESETS).toHaveLength(75);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(75);
     expect(listMotionPresets({ targetKind: "text", phase: "enter" })).toHaveLength(19);
     expect(listMotionPresets({ targetKind: "text", phase: "emphasis" })).toHaveLength(24);
     expect(listMotionPresets({ targetKind: "text", phase: "exit" })).toHaveLength(6);
     expect(listMotionPresets({ targetKind: "element", phase: "enter" })).toHaveLength(11);
-    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(14);
+    expect(listMotionPresets({ targetKind: "element", phase: "emphasis" })).toHaveLength(18);
     expect(listMotionPresets({ targetKind: "element", phase: "exit" })).toHaveLength(3);
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", tone: "modern" }).map(
@@ -63,6 +63,16 @@ describe("motion presets", () => {
     expect(
       listMotionPresets({ targetKind: "text", phase: "enter", intent: "title reveal" }),
     ).not.toHaveLength(0);
+    expect(
+      listMotionPresets({ targetKind: "element", phase: "emphasis", intent: "camera" }).map(
+        (preset) => preset.id,
+      ),
+    ).toEqual([
+      "camera.push-in",
+      "camera.pull-back",
+      "camera.focus-travel",
+      "camera.oblique-glide",
+    ]);
   });
 
   it("ships migrated caption effects as editable text presets", () => {
@@ -86,8 +96,8 @@ describe("motion presets", () => {
       "text.emphasis.particle-burst",
     ];
 
-    expect(MOTION_PRESETS).toHaveLength(71);
-    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(71);
+    expect(MOTION_PRESETS).toHaveLength(75);
+    expect(new Set(MOTION_PRESETS.map((preset) => preset.id)).size).toBe(75);
 
     for (const id of migratedIds) {
       const preset = MOTION_PRESETS.find((candidate) => candidate.id === id);
@@ -259,17 +269,97 @@ describe("motion presets", () => {
       "transition.lens-focus",
       "transition.split-wipe",
     ];
-    expect(listMotionPresets({ targetKind: "element", phase: "enter" }).map((preset) => preset.id)).toEqual(expect.arrayContaining(transitions));
+    expect(
+      listMotionPresets({ targetKind: "element", phase: "enter" }).map((preset) => preset.id),
+    ).toEqual(expect.arrayContaining(transitions));
     for (const presetId of transitions) {
-      const compiled = compileMotionInstance(createMotionInstance({
-        presetId,
-        target: { selector: "#incoming-scene" },
-        targetKind: "element",
-        start: 2,
-        duration: 0.9,
-      }));
+      const compiled = compileMotionInstance(
+        createMotionInstance({
+          presetId,
+          target: { selector: "#incoming-scene" },
+          targetKind: "element",
+          start: 2,
+          duration: 0.9,
+        }),
+      );
       expect(compiled.keyframes.length, presetId).toBeGreaterThanOrEqual(3);
       expect(compiled.keyframes.at(-1)?.properties.opacity, presetId).toBe(1);
+    }
+  });
+
+  it("keeps camera framing inside its viewport at every focal edge and zoom", () => {
+    for (const presetId of ["camera.push-in", "camera.pull-back", "camera.focus-travel"]) {
+      for (const zoom of [1, 1.05, 1.8, 3]) {
+        for (const focus of [0, 15, 50, 85, 100]) {
+          const instance = createMotionInstance({
+            presetId,
+            target: { selector: "#world" },
+            targetKind: "element",
+            start: 2,
+            parameters: {
+              zoom,
+              focusX: focus,
+              focusY: 100 - focus,
+              ...(presetId === "camera.focus-travel" ? { fromX: 0, fromY: 100 } : {}),
+            },
+          });
+          const compiled = compileMotionInstance(instance);
+          expect(compiled.duration).toBe(3);
+          expect(readMotionInstanceFromExtras({ data: compiled.extras.data })).toEqual(instance);
+          expect(compileMotionInstance(instance).keyframes).toEqual(compiled.keyframes);
+          const [start, end] = compiled.keyframes;
+          for (let step = 0; step <= 20; step++) {
+            const interpolate = (key: string) =>
+              Number(start!.properties[key]) +
+              ((Number(end!.properties[key]) - Number(start!.properties[key])) * step) / 20;
+            const half = interpolate("scale") * 50;
+            for (const key of ["xPercent", "yPercent"]) {
+              const center = 50 + interpolate(key);
+              expect(center - half).toBeLessThanOrEqual(0.00001);
+              expect(center + half).toBeGreaterThanOrEqual(99.99999);
+            }
+          }
+        }
+      }
+      const preset = MOTION_PRESETS.find((entry) => entry.id === presetId)!;
+      expect(
+        preset.parameterSchema
+          .find((parameter) => parameter.id === "ease")
+          ?.options?.some((option) => option.value.startsWith("back.")),
+      ).toBe(false);
+      expect(() =>
+        compileMotionInstance(
+          createMotionInstance({
+            presetId,
+            target: { selector: "#title" },
+            targetKind: "text",
+            start: 0,
+          }),
+        ),
+      ).toThrow();
+    }
+  });
+
+  it("uses one editable perspective path and lands oblique cameras in a neutral pose", () => {
+    for (const direction of ["left", "right", "up", "down"]) {
+      const result = compileMotionInstance(
+        createMotionInstance({
+          presetId: "camera.oblique-glide",
+          target: { selector: "#stage" },
+          targetKind: "element",
+          start: 1,
+          parameters: { direction, angle: 30, travel: 12 },
+        }),
+      );
+      expect(result.keyframes).toHaveLength(3);
+      expect(result.keyframes[0]!.properties).not.toEqual(result.keyframes[1]!.properties);
+      expect(result.keyframes.at(-1)!.properties).toMatchObject({
+        scale: 1,
+        transformPerspective: 1600,
+      });
+      for (const property of ["rotationX", "rotationY", "xPercent", "yPercent"]) {
+        expect(Number(result.keyframes.at(-1)!.properties[property])).toBeCloseTo(0);
+      }
     }
   });
 

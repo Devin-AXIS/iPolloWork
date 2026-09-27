@@ -108,8 +108,8 @@ function define(
 }
 
 /**
- * Canonical batch manifest for the 66 scene components that expand Studio's
- * reusable component catalog from 84 to exactly 150 entries. Every entry
+ * Canonical batch manifest for 62 generated scenes in the 149-component catalog.
+ * Screenshot Zoom, Device Carousel, and Spatial Camera Suite own their specialized camera choreography. Every entry
  * records its closest neighbor and a concrete visual/semantic distinction.
  */
 export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
@@ -232,21 +232,6 @@ export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
     "Makes one keyword the full visual subject instead of marking a chapter.",
     "CLARITY::See the work|CONTROL::Shape the result|MOMENTUM::Keep moving|TRUST::Review every step",
     "One word carries the scene",
-  ),
-  define(
-    1,
-    "screenshot-zoom",
-    "Screenshot Zoom",
-    "media",
-    "frame",
-    "Frame a product screenshot and call attention to one area.",
-    "interface frame",
-    "camera approach",
-    "cinematic",
-    "media-hero",
-    "Uses a UI viewport and focus callout rather than a full-bleed image.",
-    "Canvas::Main workspace|Inspector::Safe controls|Timeline::Precise timing|Export::Ready output",
-    "Focus the viewer before explaining the detail",
   ),
   define(
     1,
@@ -416,21 +401,6 @@ export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
   ),
   define(
     2,
-    "browser-feature-tour",
-    "Browser Feature Tour",
-    "media",
-    "frame",
-    "Walk through a browser product feature with named hotspots.",
-    "browser viewport",
-    "hotspot sequence",
-    "guided",
-    "browser-walkthrough",
-    "Uses spatial hotspots instead of a fixed step list.",
-    "Sidebar::Find projects|Canvas::Shape the story|Properties::Tune safely|Timeline::Control the beat",
-    "A guided tour of the working surface",
-  ),
-  define(
-    2,
     "social-comment-highlight",
     "Social Comment Highlight",
     "social",
@@ -488,21 +458,6 @@ export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
     "Previews the coming beats instead of showing only a chapter title.",
     "03::Frame the issue|02::Reveal the signal|01::Make the move|NOW::Begin",
     "A countdown that also sets expectations",
-  ),
-  define(
-    2,
-    "workflow-demo-cards",
-    "Workflow Demo Cards",
-    "product",
-    "cards",
-    "Demonstrate a product workflow as a sequence of state cards.",
-    "workflow states",
-    "card progression",
-    "guided",
-    "product-steps",
-    "Shows interface states and outputs rather than generic step labels.",
-    "Brief::Goal captured|Draft::Options generated|Review::Changes approved|Deliver::Video ready",
-    "A product story told through changing states",
   ),
   define(
     2,
@@ -594,21 +549,6 @@ export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
     "Makes the term itself the typographic hero.",
     "AGENT::A system that chooses and uses tools|CONTEXT::The information shaping a decision|PROOF::Evidence a claim actually holds|CONTROL::The user's ability to direct outcomes",
     "Use the term the same way throughout the story",
-  ),
-  define(
-    3,
-    "device-carousel",
-    "Device Carousel",
-    "media",
-    "carousel",
-    "Compare how one product moment appears across devices.",
-    "device frames",
-    "carousel shift",
-    "fluid",
-    "device-mockup",
-    "Shows several responsive contexts instead of one device.",
-    "Desktop::Full workspace|Tablet::Review mode|Phone::Quick approval|Watch::Status glance",
-    "One experience across four contexts",
   ),
   define(
     3,
@@ -1258,6 +1198,17 @@ function renderManifest(definition: ComponentDefinition): string {
       category: definition.category,
       surfaces: ["video"],
       themeMode: "inherit",
+      ...(definition.name === "agenda-opener" ? {
+        data: {
+          version: 1, kind: "category-value", mode: "replace", rowId: "label",
+          binding: { variable: "items", encoding: "label-detail-list" },
+          columns: [
+            { id: "label", label: "Label", labelZh: "编号", type: "string", role: "label", required: true },
+            { id: "detail", label: "Detail", labelZh: "内容", type: "string", role: "value", required: true },
+          ],
+          minRows: 1, maxRows: 4, highlightVariable: "highlight",
+        },
+      } : {}),
       ai: {
         slots: parameters,
         instructions: `AI may rewrite the title, supporting note, and up to four ${definition.subject}. Keep pipe separators between items and preserve the ${definition.layout} layout.`,
@@ -1387,8 +1338,8 @@ async function countVisualComponents(): Promise<number> {
 }
 
 function assertManifest(): void {
-  if (VISUAL_COMPONENT_EXPANSION.length !== 66) {
-    throw new Error(`Expected 66 expansion components, found ${VISUAL_COMPONENT_EXPANSION.length}`);
+  if (VISUAL_COMPONENT_EXPANSION.length !== 62) {
+    throw new Error(`Expected 62 expansion components, found ${VISUAL_COMPONENT_EXPANSION.length}`);
   }
   const names = new Set<string>();
   for (const definition of VISUAL_COMPONENT_EXPANSION) {
@@ -1425,11 +1376,11 @@ async function check(): Promise<void> {
   }
   if (!(await updateRegistryIndex(false))) mismatches.push(registryIndexPath);
   const total = await countVisualComponents();
-  if (total !== 150) mismatches.push(`visual-component-count:${total}`);
+  if (total !== 149) mismatches.push(`visual-component-count:${total}`);
   if (mismatches.length > 0) {
     throw new Error(`Visual component catalog is stale:\n${mismatches.join("\n")}`);
   }
-  console.log("Visual component catalog is current: 150 components.");
+  console.log("Visual component catalog is current: 149 components.");
 }
 
 const command = process.argv[2] ?? "check";

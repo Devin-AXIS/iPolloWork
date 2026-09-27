@@ -57,6 +57,7 @@ export function registerStoryboardRoutes(api: Hono, adapter: StudioApiAdapter): 
       return c.json({
         exists: false,
         path: STORYBOARD_FILENAME,
+        source: null,
         globals: { extra: {} },
         frames: [],
         warnings: [],
@@ -76,6 +77,7 @@ export function registerStoryboardRoutes(api: Hono, adapter: StudioApiAdapter): 
     return c.json({
       exists: true,
       path: STORYBOARD_FILENAME,
+      source,
       globals: manifest.globals,
       frames: resolveFrames(project.dir, manifest.frames),
       warnings: manifest.warnings,

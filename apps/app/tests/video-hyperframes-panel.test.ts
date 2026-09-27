@@ -37,7 +37,10 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("preserves image launch context across workspace app resize and theme updates", () => {
-    const source = readFileSync(new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url), "utf8");
+    const source = readFileSync(
+      new URL("../src/react-app/plugin-ui/workspace-app-frame.tsx", import.meta.url),
+      "utf8",
+    );
     expect(source).toContain("hostContextRef.current = { ...hostContextRef.current, ...patch }");
     expect(source).toContain("hostContextRef.current = hostContext");
     expect(source.match(/\.setHostContext\(/g)).toHaveLength(1);
@@ -56,7 +59,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const previewSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewPane.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewPane.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
@@ -84,13 +90,24 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("<DesignSystemDrawer");
     expect(panelSource).toContain("embedded");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-panel"');
+    expect(panelSource).toContain("type StudioVoiceSelectionTarget = {");
+    expect(panelSource).toMatch(
+      /setVoiceSelectionTarget\(\s*Number\.isInteger\(index\)\s*&&\s*index > 0\s*\?\s*\{/,
+    );
+    expect(panelSource).toContain('type: "ipollowork:video-studio-voice-selected"');
+    expect(panelSource).toContain("selectionTarget={voiceSelectionTarget}");
+    expect(panelSource).toContain(
+      "selectRoleVoice: features.voice && isIPolloWorkServerClient(client)",
+    );
     expect(panelSource).toContain('event.data.panel === "style"');
     expect(panelSource).toContain('event.data.panel === "avatar"');
     expect(panelSource).toContain('setStudioHostPanel("avatar")');
-    expect(panelSource).toContain('const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)');
+    expect(panelSource).toContain(
+      "const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null)",
+    );
     expect(panelSource).toContain('setStudioHostPanel("voice")');
     expect(panelSource).toContain('setStudioHostPanel("style")');
-    expect(panelSource).toContain('setStudioHostPanel(null)');
+    expect(panelSource).toContain("setStudioHostPanel(null)");
     expect(panelSource).not.toContain("voicePanelOpen");
     expect(panelSource).not.toContain("designSystemOpen");
     expect(panelSource).not.toContain('aria-label={t("video.design_system")}');
@@ -98,17 +115,19 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain('testId="video-avatar-tab-content"');
     expect(panelSource).toContain("<VideoAvatarPanel");
     expect(panelSource).not.toContain("<DesignSystemInspectorShell");
-    expect(panelSource).toContain('`${projectDirectory}/design-tokens.css`');
+    expect(panelSource).toContain("`${projectDirectory}/design-tokens.css`");
     expect(panelSource).toContain("ensureHtmlDesignSystemContract(current.content, theme.id)");
     expect(panelSource).toContain("buildTemplateTokenCss(theme)");
     expect(panelSource).toContain("next = replaceDesignTokenValue(next, name, value)");
     expect(panelSource).toContain("handleDesignTokenChanges({ [name]: value })");
     expect(panelSource).toContain('type: "ipollowork:studio-design-token-change"');
     expect(panelSource).not.toContain("variablesDisabled={!appliedDesignSystemId}");
-    expect(panelSource).toContain("pickLocalImageFile(\"选择视频背景图片\")");
+    expect(panelSource).toContain('pickLocalImageFile("选择视频背景图片")');
     expect(panelSource).toContain("readLocalImageAsDataUrl(pickedPath)");
     expect(panelSource).toContain('"--ipw-bg-image": `url(\"${dataUrl}\")`');
-    expect(panelSource).toContain("onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}");
+    expect(panelSource).toContain(
+      "onChooseBackgroundImage={() => void chooseDesignSystemBackgroundImage()}",
+    );
     expect(registrySource).toContain("[data-composition-file][data-composition-id]");
     expect(panelSource).toContain("top-[90px]");
   });
@@ -119,17 +138,24 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const previewPersistenceSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/usePreviewPersistence.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/hooks/usePreviewPersistence.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
 
     expect(panelSource).toContain("const syncStudioDesignTokens = React.useCallback");
-    expect(panelSource).toContain("syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)");
-    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
+    expect(panelSource).toContain(
+      "syncStudioDesignTokens(parseDesignTokenValues(nextTokens), nextTokens)",
+    );
+    expect(panelSource).toContain("key={`${sessionId}:${revision}`}");
     expect(panelSource).not.toContain("key={`${sessionId}:${revision}:${studioHostPanel}`}");
     expect(previewPersistenceSource).toContain("parseHostDesignTokensMessage");
     expect(previewPersistenceSource).toContain("applyDesignTokensToPreview");
-    expect(previewPersistenceSource).toContain("doc.documentElement.style.setProperty(name, value)");
+    expect(previewPersistenceSource).toContain(
+      "doc.documentElement.style.setProperty(name, value)",
+    );
     expect(previewPersistenceSource).toContain("cssSource?: string");
     expect(previewPersistenceSource).toContain("style[data-ipw-live-design-tokens]");
     expect(previewPersistenceSource).toContain("domEditSaveTimestampRef.current = Date.now()");
@@ -143,9 +169,13 @@ describe("HyperFrames Video Studio", () => {
 
     expect(registrySource).toContain("function templateTokenAliasLine");
     expect(registrySource).toContain("/^--(?:text|font-size|fs)-[A-Za-z0-9_-]+$/.test(name)");
-    expect(registrySource).toContain("calc(var(${storageName}) * var(--ipw-type-scale)) !important");
+    expect(registrySource).toContain(
+      "calc(var(${storageName}) * var(--ipw-type-scale)) !important",
+    );
     expect(registrySource).toContain("body :where(*):not(svg):not(svg *)");
-    expect(registrySource).toContain(".title, .title *, .headline, .headline *, .heading, .heading *");
+    expect(registrySource).toContain(
+      ".title, .title *, .headline, .headline *, .heading, .heading *",
+    );
     expect(registrySource).toContain("buildStableTokenBridgeCss");
     expect(registrySource).toContain("--page-padding: var(--ipw-page-padding)");
     expect(registrySource).toContain("--duration-normal: var(--ipw-motion-duration)");
@@ -181,7 +211,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const urlStateSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useStudioUrlState.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/hooks/useStudioUrlState.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
     const studioSource = readFileSync(
@@ -193,10 +226,16 @@ describe("HyperFrames Video Studio", () => {
     expect(desktopSource).toContain("hfId: target.hfId || undefined");
     expect(desktopSource).toContain("'[data-hf-id=\"' + CSS.escape(hfId) + '\"]'");
     expect(desktopSource).toContain("applyCanvasSelectionLive(target, { revealPanel: true })");
-    expect(desktopSource).not.toContain("const current = document.querySelector('button[aria-label=\"Inspector\"]')");
-    expect(studioSource).toContain("const loadStudioRightPanelModule = () => import(\"./components/StudioRightPanel\")");
+    expect(desktopSource).not.toContain(
+      "const current = document.querySelector('button[aria-label=\"Inspector\"]')",
+    );
+    expect(studioSource).toContain(
+      'const loadStudioRightPanelModule = () => import("./components/StudioRightPanel")',
+    );
     expect(studioSource).toContain("void loadStudioRightPanel()");
-    expect(studioSource).toContain("function RightPanelLoadingFallback({ width }: { width: number })");
+    expect(studioSource).toContain(
+      "function RightPanelLoadingFallback({ width }: { width: number })",
+    );
     expect(studioSource).toContain('t("right.openingProperties")');
     expect(studioSource).toContain("style={{ width }}");
     expect(studioSource).toMatch(
@@ -210,13 +249,19 @@ describe("HyperFrames Video Studio", () => {
     );
     expect(advancedBranchStart).toBeGreaterThan(-1);
     expect(advancedBranchEnd).toBeGreaterThan(advancedBranchStart);
-    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain("showToolbar(selected)");
-    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).not.toContain("toolbar.style.display = 'none'");
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).toContain(
+      "showToolbar(selected)",
+    );
+    expect(desktopSource.slice(advancedBranchStart, advancedBranchEnd)).not.toContain(
+      "toolbar.style.display = 'none'",
+    );
 
     expect(urlStateSource).toContain('window.addEventListener("ipollowork:studio-apply-selection"');
-    expect(urlStateSource).toContain("setRightPanelTab(\"design\")");
+    expect(urlStateSource).toContain('setRightPanelTab("design")');
     expect(urlStateSource).toContain("setRightCollapsed(false)");
-    expect(urlStateSource.indexOf("setRightPanelTab(\"design\")")).toBeLessThan(urlStateSource.indexOf("applyUrlSelection(command.selection)"));
+    expect(urlStateSource.indexOf('setRightPanelTab("design")')).toBeLessThan(
+      urlStateSource.indexOf("applyUrlSelection(command.selection)"),
+    );
   });
 
   test("deletes selected canvas elements optimistically and refreshes once after persistence", () => {
@@ -225,31 +270,50 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const lifecycleSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useElementLifecycleOps.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/hooks/useElementLifecycleOps.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
     const commitsSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useDomEditCommits.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/hooks/useDomEditCommits.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
 
     expect(lifecycleSource).toContain("function removeLivePreviewElement");
     expect(lifecycleSource).toContain("findElementForSelection(doc, selection, activeCompPath)");
-    expect(lifecycleSource).toContain("parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null)");
+    expect(lifecycleSource).toContain(
+      "parent.insertBefore(element, nextSibling?.parentNode === parent ? nextSibling : null)",
+    );
     expect(lifecycleSource).toContain("const requestPreviewRefresh = () => {");
     expect(lifecycleSource).toContain("if (!previewRefreshRequested && loadingShown)");
     expect(lifecycleSource).not.toContain("if (!liveRemoval) reloadPreview()");
     expect(lifecycleSource).not.toContain("forceReloadSdkSession?.();\n        reloadPreview();");
     expect(commitsSource).toContain("previewIframeRef,");
-    const deleteFunctionStart = desktopSource.indexOf("const deleteSelectedElement = async () => {");
-    const deleteFunctionEnd = desktopSource.indexOf("const displayScale = () => {", deleteFunctionStart);
+    const deleteFunctionStart = desktopSource.indexOf(
+      "const deleteSelectedElement = async () => {",
+    );
+    const deleteFunctionEnd = desktopSource.indexOf(
+      "const displayScale = () => {",
+      deleteFunctionStart,
+    );
     expect(deleteFunctionStart).toBeGreaterThan(-1);
     expect(deleteFunctionEnd).toBeGreaterThan(deleteFunctionStart);
     const deleteFunctionSource = desktopSource.slice(deleteFunctionStart, deleteFunctionEnd);
     expect(desktopSource).toContain("data-ipollowork-delete-pending");
-    expect(deleteFunctionSource).toContain("element.setAttribute('data-ipollowork-delete-pending', 'true')");
-    expect(deleteFunctionSource).toContain("element.removeAttribute('data-ipollowork-delete-pending')");
-    expect(deleteFunctionSource).not.toContain("postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });");
+    expect(deleteFunctionSource).toContain(
+      "element.setAttribute('data-ipollowork-delete-pending', 'true')",
+    );
+    expect(deleteFunctionSource).toContain(
+      "element.removeAttribute('data-ipollowork-delete-pending')",
+    );
+    expect(deleteFunctionSource).not.toContain(
+      "postEditorMessage({ type: 'ipollowork:hyperframes:close-side-panels' });",
+    );
   });
 
   test("commits embedded theme reset tokens as a single batch", () => {
@@ -283,14 +347,16 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(panelSource).toContain("setStudioPanelWidth(Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)))");
+    expect(panelSource).toMatch(
+      /setStudioPanelWidth\([\s\S]*?MIN_STUDIO_PANEL_WIDTH[\s\S]*?MAX_STUDIO_PANEL_WIDTH[\s\S]*?event\.data\.width[\s\S]*?\);/,
+    );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
     expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
     expect(voiceSource).toContain("width={embedded ? embeddedWidth : undefined}");
-    expect(panelSource).toContain('top-[90px]');
-    expect(voiceSource).toContain('top-[148px]');
-    expect(panelSource).not.toContain('top-[82px]');
-    expect(voiceSource).not.toContain('top-[82px]');
+    expect(panelSource).toContain("top-[90px]");
+    expect(voiceSource).toContain("top-[148px]");
+    expect(panelSource).not.toContain("top-[82px]");
+    expect(voiceSource).not.toContain("top-[82px]");
     expect(voiceSource).not.toContain("flex w-[400px]");
   });
 
@@ -320,7 +386,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const studioHeaderSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
@@ -343,12 +412,16 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(panelSource).toContain("const showStudioStartupOverlay = status === \"starting\" || (status === \"ready\" && !studioChromeReady)");
+    expect(panelSource).toMatch(
+      /const showStudioStartupOverlay\s*=\s*status === "starting" \|\| \(status === "ready" && !studioChromeReady\)/,
+    );
     expect(panelSource).toContain("{showStudioStartupOverlay ? (");
     expect(panelSource).toContain("absolute inset-0 z-10 grid place-items-center");
-    expect(panelSource).toContain('data-loading-covered={showStudioStartupOverlay ? "true" : "false"}');
-    expect(panelSource).toContain('key={`${sessionId}:${revision}`}');
-    expect(panelSource).not.toContain("studioChromeReady ? \"opacity-100\" : \"opacity-0\"");
+    expect(panelSource).toContain(
+      'data-loading-covered={showStudioStartupOverlay ? "true" : "false"}',
+    );
+    expect(panelSource).toContain("key={`${sessionId}:${revision}`}");
+    expect(panelSource).not.toContain('studioChromeReady ? "opacity-100" : "opacity-0"');
     expect(panelSource.indexOf("setStudioChromeReady(true)")).toBeLessThan(
       panelSource.indexOf("scheduleStudioLocaleSync()"),
     );
@@ -356,7 +429,10 @@ describe("HyperFrames Video Studio", () => {
 
   test("debounces source saves and lazy-loads optional Studio panels", () => {
     const saveSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/hooks/useEditorSave.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/hooks/useEditorSave.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
     const studioSource = readFileSync(
@@ -374,11 +450,17 @@ describe("HyperFrames Video Studio", () => {
 
   test("opens export settings before the user explicitly starts a render", () => {
     const headerSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
     const queueSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/renders/RenderQueue.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/renders/RenderQueue.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
@@ -386,18 +468,27 @@ describe("HyperFrames Video Studio", () => {
     expect(headerSource).toContain("setRightCollapsed(false)");
     expect(headerSource).not.toContain("onExport?.()");
     expect(queueSource).toContain("if (exportBusy) return");
-    expect(queueSource).toContain("onStartRender(format, quality, outputResolution, fps, outputSize, captureSize)");
+    expect(queueSource).toContain(
+      "onStartRender(format, quality, outputResolution, fps, outputSize, captureSize)",
+    );
   });
 
   test("hides properties and export actions while previewing", () => {
     const headerSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
-    expect(headerSource).toContain("{!previewMode ? (");
-    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(headerSource.indexOf("onClick={toggleProperties}"));
-    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(headerSource.indexOf("onClick={openExport}"));
+    expect(headerSource).toContain("{!previewMode && !scriptMode ? (");
+    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(
+      headerSource.indexOf("onClick={toggleProperties}"),
+    );
+    expect(headerSource.indexOf("{!previewMode ? (")).toBeLessThan(
+      headerSource.indexOf("onClick={openExport}"),
+    );
   });
 
   test("keeps desktop panel titlebars draggable without swallowing control input", () => {
@@ -413,16 +504,17 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/react-app/domains/session/sidebar/app-sidebar.tsx", import.meta.url),
       "utf8",
     );
-    const appStyles = readFileSync(
-      new URL("../src/app/index.css", import.meta.url),
-      "utf8",
-    );
+    const appStyles = readFileSync(new URL("../src/app/index.css", import.meta.url), "utf8");
 
-    expect(sidePanelSource).toMatch(/<div className="[^"\n]*\bpx-2\b[^"\n]*\bmac:titlebar-drag\b[^"\n]*"/);
+    expect(sidePanelSource).toMatch(
+      /<div className="[^"\n]*\bpx-2\b[^"\n]*\bmac:titlebar-drag\b[^"\n]*"/,
+    );
     expect(artifactPanelSource).toContain("ps-4 mac:titlebar-drag");
-    expect(sidebarSource).toContain('SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"');
-    expect(appStyles).toContain('[data-titlebar-no-drag]');
-    expect(appStyles).toContain("[role=\"tab\"]");
+    expect(sidebarSource).toContain(
+      'SidebarHeader className="gap-3 px-2 pb-3 pt-1 mac:titlebar-drag"',
+    );
+    expect(appStyles).toContain("[data-titlebar-no-drag]");
+    expect(appStyles).toContain('[role="tab"]');
     expect(appStyles).toContain("-webkit-app-region: no-drag;");
   });
 
@@ -434,6 +526,10 @@ describe("HyperFrames Video Studio", () => {
 
     expect(panelSource).toContain("title: string;");
     expect(panelSource).toContain('type: "ipollowork:studio-host-context"');
+    expect(panelSource).toContain("designSystem: appliedDesignSystemTheme");
+    expect(panelSource).toContain("designSystemThemes: DESIGN_SYSTEM_THEMES.map");
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-select-theme"');
+    expect(panelSource).toContain("openDesignSystem: features.designSystem");
     expect(panelSource).toContain("studioStartupTitleKey");
     expect(panelSource).toContain('t("video.failed_to_start")');
     expect(panelSource).not.toContain(">Video Studio<");
@@ -447,13 +543,18 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const studioHeaderSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
     expect(panelSource).not.toContain('<header className="flex h-11');
     expect(panelSource).toContain('event.data?.type !== "ipollowork:studio-host-action"');
-    expect(studioHeaderSource).toContain('className="hf-studio-header-utilities flex items-center gap-1"');
+    expect(studioHeaderSource).toContain(
+      'className="hf-studio-header-utilities flex items-center gap-1"',
+    );
     expect(studioHeaderSource).toContain('t("header.saveAsTemplate")');
     expect(studioHeaderSource).toContain(
       '<Save className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />',
@@ -478,8 +579,12 @@ describe("HyperFrames Video Studio", () => {
       new URL("../src/react-app/domains/session/video/video-voice-panel.tsx", import.meta.url),
       "utf8",
     ).replaceAll("\r\n", "\n");
-    const initialLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    let cancelled = false;\n    setLoading(true);");
-    const deferredLoadStart = voicePanelSource.indexOf("  React.useEffect(() => {\n    if (activeTab !== \"mine\"");
+    const initialLoadStart = voicePanelSource.indexOf(
+      "  React.useEffect(() => {\n    let cancelled = false;\n    setLoading(true);",
+    );
+    const deferredLoadStart = voicePanelSource.indexOf(
+      '  React.useEffect(() => {\n    if (activeTab !== "mine"',
+    );
     const initialLoad = voicePanelSource.slice(initialLoadStart, deferredLoadStart);
 
     expect(initialLoadStart).toBeGreaterThan(-1);
@@ -509,11 +614,19 @@ describe("HyperFrames Video Studio", () => {
     ).replaceAll("\r\n", "\n");
 
     expect(sessionPageSource).toContain("const rightWorkspaceExpanded = rightPanelExpanded");
-    expect(sessionPageSource).toContain('rightWorkspaceExpanded && "invisible pointer-events-none"');
+    expect(sessionPageSource).toContain(
+      'rightWorkspaceExpanded && "invisible pointer-events-none"',
+    );
     expect(sessionPageSource).toContain("onOpenSession={handleSidebarOpenSession}");
-    expect(sessionPageSource).toContain("onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}");
-    expect(sessionPageSource).toContain('left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"');
-    expect(sessionPageSource).toContain('rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)');
+    expect(sessionPageSource).toContain(
+      "onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}",
+    );
+    expect(sessionPageSource).toContain(
+      'left: shellConfig.sidebar && sidebarOpen ? `${effectiveLeftSidebarWidth}px` : "0"',
+    );
+    expect(sessionPageSource).toContain(
+      "rightPanelExpanded && (!shellConfig.sidebar || !sidebarOpen)",
+    );
     expect(sessionPageSource).toContain(
       "!rightWorkspaceExpanded &&\n      (showWorkspaceSetupEmptyState",
     );
@@ -527,11 +640,18 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    const restoreIndex = sessionPageSource.indexOf("if (rightPanelExpanded) setRightPanelExpanded(false)");
-    const focusIndex = sessionPageSource.indexOf('window.dispatchEvent(new Event("ipollowork:focusPrompt"))', restoreIndex);
+    const restoreIndex = sessionPageSource.indexOf(
+      "if (rightPanelExpanded) setRightPanelExpanded(false)",
+    );
+    const focusIndex = sessionPageSource.indexOf(
+      'window.dispatchEvent(new Event("ipollowork:focusPrompt"))',
+      restoreIndex,
+    );
     expect(restoreIndex).toBeGreaterThan(-1);
     expect(focusIndex).toBeGreaterThan(restoreIndex);
-    expect(sessionPageSource.slice(restoreIndex, focusIndex)).toContain("window.requestAnimationFrame");
+    expect(sessionPageSource.slice(restoreIndex, focusIndex)).toContain(
+      "window.requestAnimationFrame",
+    );
     expect(sessionPageSource).not.toContain('panel.resize("100%")');
   });
 
@@ -559,7 +679,9 @@ describe("HyperFrames Video Studio", () => {
       '(!sidePanelOpen || rightWorkspaceExpanded) && "pointer-events-none',
     );
     expect(sessionPageSource).not.toContain("disabled={!sidePanelOpen || rightWorkspaceExpanded}");
-    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
+    expect(sessionPageSource).not.toContain(
+      'rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"',
+    );
     expect(sessionPageSource).toContain(
       "if (event.button !== 0 || !sidePanelOpen || rightWorkspaceExpanded) return",
     );
@@ -595,20 +717,32 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const nativeToolbarSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewTextSelectionToolbar.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/nle/PreviewTextSelectionToolbar.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
     const nativeAiPromptSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/editor/domEditingAgentPrompt.ts", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/editor/domEditingAgentPrompt.ts",
+        import.meta.url,
+      ),
       "utf8",
     );
 
     const deleteIndex = electronSource.indexOf('<button type="button" data-action="delete"');
     const advancedIndex = electronSource.indexOf('data-action="advanced"');
     const aiIndex = electronSource.indexOf('data-action="ai"');
-    const nativeDeleteIndex = nativeToolbarSource.indexOf('aria-label={tx("Delete selected element")}');
-    const nativeAdvancedIndex = nativeToolbarSource.indexOf('aria-label={tx("Open Design properties")}');
-    const nativeAiIndex = nativeToolbarSource.indexOf('aria-label={tx("Ask AI about selected element")}');
+    const nativeDeleteIndex = nativeToolbarSource.indexOf(
+      'aria-label={tx("Delete selected element")}',
+    );
+    const nativeAdvancedIndex = nativeToolbarSource.indexOf(
+      'aria-label={tx("Open Design properties")}',
+    );
+    const nativeAiIndex = nativeToolbarSource.indexOf(
+      'aria-label={tx("Ask AI about selected element")}',
+    );
 
     expect(deleteIndex).toBeGreaterThan(-1);
     expect(aiIndex).toBeGreaterThan(advancedIndex);
@@ -617,7 +751,9 @@ describe("HyperFrames Video Studio", () => {
     expect(electronSource).toContain("deleteSelectedElement");
     expect(electronSource).toContain("ipollowork:hyperframes:ask-ai-selection");
     expect(electronSource).toContain("selectedAiPayload");
-    expect(electronSource).toContain("const hfId = element.getAttribute('data-hf-id') || undefined");
+    expect(electronSource).toContain(
+      "const hfId = element.getAttribute('data-hf-id') || undefined",
+    );
     expect(panelSource).toContain("onAskAi?: (context: DesignAiSelectionContext) => void");
     expect(panelSource).toContain("event.source !== studioFrameRef.current?.contentWindow");
     expect(panelSource).toContain('event.data?.type !== "ipollowork:hyperframes:ask-ai-selection"');
@@ -655,9 +791,10 @@ describe("HyperFrames Video Studio", () => {
       new URL("../../../vendor/hyperframes/packages/studio/src/App.tsx", import.meta.url),
       "utf8",
     );
-    const applyTheme = panelSource.match(
-      /const handleApplyDesignSystem = React\.useCallback\([\s\S]*?\n  \}, \[/,
-    )?.[0] ?? "";
+    const applyTheme =
+      panelSource.match(
+        /const handleApplyDesignSystem = React\.useCallback\([\s\S]*?\n  \}, \[/,
+      )?.[0] ?? "";
 
     expect(panelSource).toContain("ipollowork:studio-record-host-edit");
     expect(panelSource).toContain("ipollowork:studio-history-ready");
@@ -669,7 +806,9 @@ describe("HyperFrames Video Studio", () => {
     expect(panelSource).toContain("!studioHistoryReady");
     expect(studioSource).toContain("useIPolloWorkHostHistoryBridge({");
     expect(studioSource).toContain("loaded: editHistory.loaded");
-    expect(applyTheme).toContain("if (themedHtml === current.content && nextTokens === currentTokenCss)");
+    expect(applyTheme).toContain(
+      "if (themedHtml === current.content && nextTokens === currentTokenCss)",
+    );
     expect(applyTheme.indexOf("await recordStudioHostEdit")).toBeGreaterThan(
       applyTheme.indexOf("await client.writeWorkspaceFile"),
     );
@@ -681,7 +820,9 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(electronDevSource).toContain('const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html")');
+    expect(electronDevSource).toContain(
+      'const hyperframesStudioBuild = resolve(hyperframesRoot, "packages", "cli", "dist", "studio", "index.html")',
+    );
     expect(electronDevSource).toContain("newestBuildInputTime > studioBuildTime");
     expect(electronDevSource).toContain('runSync(bunCmd, ["run", "build:local-studio"]');
   });
@@ -716,15 +857,22 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const studioHeaderSource = readFileSync(
-      new URL("../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx", import.meta.url),
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/StudioHeader.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
 
     expect(tabStoreSource).toContain('type: "video"');
-    expect(tabStoreSource).toContain('tab.type === "artifact" || tab.type === "design" || tab.type === "video"');
-    expect(sessionPageSource).toContain('id: videoTabId');
+    expect(tabStoreSource).toContain(
+      'tab.type === "artifact" || tab.type === "design" || tab.type === "video"',
+    );
+    expect(sessionPageSource).toContain("id: videoTabId");
     expect(sessionPageSource).toContain('type: "video"');
-    expect(sessionPageSource).toContain('setSidePanelState(props.selectedSessionId ?? sessionId, "panel")');
+    expect(sessionPageSource).toContain(
+      'setSidePanelState(props.selectedSessionId ?? sessionId, "panel")',
+    );
     expect(sidePanelSource).toContain('activeTab?.type === "video"');
     expect(sidePanelSource).toContain("<VideoPanel");
     expect(sidePanelSource).toContain("title={activeTab.label}");
@@ -753,7 +901,10 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
     const workshopSource = readFileSync(
-      new URL("../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx", import.meta.url),
+      new URL(
+        "../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
     const serverClientSource = readFileSync(
@@ -762,12 +913,17 @@ describe("HyperFrames Video Studio", () => {
     );
     const selectedToolbarSource = workshopSource.slice(
       workshopSource.indexOf('data-testid="plugin-workshop-studio"'),
-      workshopSource.indexOf('<div className="relative min-h-0 flex-1', workshopSource.indexOf('data-testid="plugin-workshop-studio"')),
+      workshopSource.indexOf(
+        '<div className="relative min-h-0 flex-1',
+        workshopSource.indexOf('data-testid="plugin-workshop-studio"'),
+      ),
     );
 
     expect(sidebarSource).toContain("onOpenPluginWorkshop");
     expect(sessionPageSource).toContain("pluginWorkshopSystemInstruction");
-    expect(sessionPageSource).toContain('props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")');
+    expect(sessionPageSource).toContain(
+      'props.sidebar.onCreateTaskInWorkspace(props.selectedWorkspaceId, "work")',
+    );
     expect(sessionPageSource).toContain("creationBaselinePluginIds");
     expect(sessionPageSource).toContain("onClick: openPluginWorkshop");
     expect(sessionPageSource).not.toContain("openPluginWorkshopInCurrentSession");
@@ -775,7 +931,9 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain('type: "plugin-studio"');
     expect(sessionPageSource).toContain("autoOpenedPluginWorkshopSessionRef");
     expect(sessionPageSource).toContain("if (!props.selectedSessionKnown) return;");
-    expect(sessionPageSource).toContain('sessionPanelState.tabs.find((tab) => tab.type === "plugin-studio")');
+    expect(sessionPageSource).toContain(
+      'sessionPanelState.tabs.find((tab) => tab.type === "plugin-studio")',
+    );
     expect(sessionPageSource).toContain('setSidePanelState(sessionId, "panel")');
     expect(tabStoreSource).toContain('type: "plugin-studio"');
     expect(tabStoreSource).toContain('tab.type === "plugin-studio"');
@@ -791,7 +949,9 @@ describe("HyperFrames Video Studio", () => {
     expect(serverClientSource).toContain('options?.overwrite ? "?overwrite=true" : ""');
     expect(workshopSource).toContain("snapshotRequestGenerationRef.current += 1");
     expect(workshopSource).toContain("requestGeneration !== snapshotRequestGenerationRef.current");
-    expect(workshopSource).toContain('const previewRuntimeKey = snapshot ? `${snapshot.project.directoryId}:${snapshot.revision}` : ""');
+    expect(workshopSource).toContain(
+      'const previewRuntimeKey = snapshot ? `${snapshot.project.directoryId}:${snapshot.revision}` : ""',
+    );
     expect(workshopSource).toContain("key={previewRuntimeKey}");
     expect(workshopSource).toContain("validatePluginPackageUpload");
     expect(workshopSource).toContain("importPluginPackage");
@@ -818,41 +978,58 @@ describe("HyperFrames Video Studio", () => {
     expect(pluginWorkshopTabId("session-b")).toBe("plugin-workshop:session-b");
     expect(nextPluginWorkshopLabel(["插件工坊 1", "插件工坊 3"], "插件工坊")).toBe("插件工坊 2");
     expect(findNewPluginWorkshopProjectId(null, ["existing-plugin"])).toBeNull();
-    expect(findNewPluginWorkshopProjectId(null, ["session-plugin", "existing-plugin"], {
-      preferredIds: new Set(["session-plugin"]),
-    })).toBeNull();
-    expect(findNewPluginWorkshopProjectId(
-      new Set(["session-plugin", "existing-plugin"]),
-      ["session-plugin", "existing-plugin"],
-      { preferredIds: new Set(["session-plugin"]) },
-    )).toBeNull();
-    expect(findNewPluginWorkshopProjectId(new Set(["existing-plugin"]), ["new-plugin", "existing-plugin"]))
-      .toBe("new-plugin");
-    expect(findNewPluginWorkshopProjectId(
-      new Set(["existing-plugin"]),
-      ["plugin-a", "plugin-b", "existing-plugin"],
-      {
-        preferredIds: new Set(["plugin-b"]),
-        claimedIds: new Set(["plugin-a"]),
-        allowUnlinked: false,
-      },
-    )).toBe("plugin-b");
-    expect(findNewPluginWorkshopProjectId(
-      new Set(["existing-plugin"]),
-      ["plugin-a", "existing-plugin"],
-      { allowUnlinked: false },
-    )).toBeNull();
-    expect([...pluginWorkshopProjectIdsFromPaths([
-      "plugins/finance-board/ui/studio.html",
-      "C:\\workspace\\plugins\\research.tools\\skills\\SKILL.md",
-      "design/session/entry.html",
-    ])]).toEqual(["finance-board", "research.tools"]);
+    expect(
+      findNewPluginWorkshopProjectId(null, ["session-plugin", "existing-plugin"], {
+        preferredIds: new Set(["session-plugin"]),
+      }),
+    ).toBeNull();
+    expect(
+      findNewPluginWorkshopProjectId(
+        new Set(["session-plugin", "existing-plugin"]),
+        ["session-plugin", "existing-plugin"],
+        { preferredIds: new Set(["session-plugin"]) },
+      ),
+    ).toBeNull();
+    expect(
+      findNewPluginWorkshopProjectId(new Set(["existing-plugin"]), [
+        "new-plugin",
+        "existing-plugin",
+      ]),
+    ).toBe("new-plugin");
+    expect(
+      findNewPluginWorkshopProjectId(
+        new Set(["existing-plugin"]),
+        ["plugin-a", "plugin-b", "existing-plugin"],
+        {
+          preferredIds: new Set(["plugin-b"]),
+          claimedIds: new Set(["plugin-a"]),
+          allowUnlinked: false,
+        },
+      ),
+    ).toBe("plugin-b");
+    expect(
+      findNewPluginWorkshopProjectId(
+        new Set(["existing-plugin"]),
+        ["plugin-a", "existing-plugin"],
+        { allowUnlinked: false },
+      ),
+    ).toBeNull();
+    expect([
+      ...pluginWorkshopProjectIdsFromPaths([
+        "plugins/finance-board/ui/studio.html",
+        "C:\\workspace\\plugins\\research.tools\\skills\\SKILL.md",
+        "design/session/entry.html",
+      ]),
+    ]).toEqual(["finance-board", "research.tools"]);
   });
 
   test("scopes uninstalled plugin previews to the workshop conversation", () => {
     const instruction = pluginWorkshopSystemInstruction("finance-board");
     const workshopSource = readFileSync(
-      new URL("../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx", import.meta.url),
+      new URL(
+        "../src/react-app/domains/session/plugin-workshop/plugin-workshop.tsx",
+        import.meta.url,
+      ),
       "utf8",
     );
     const workspaceAppSource = readFileSync(
@@ -867,7 +1044,7 @@ describe("HyperFrames Video Studio", () => {
     expect(instruction).toContain("operation=list_tools");
     expect(instruction).toContain("operation=call_tool");
     expect(instruction).toContain("automatic execution target for every normal user message");
-    expect(instruction).toContain("The user does not need to say \"try the plugin\"");
+    expect(instruction).toContain('The user does not need to say "try the plugin"');
     expect(instruction).toContain("edit the selected project first");
     expect(instruction).toContain("developmentPreview.mode");
     expect(instruction).toContain("[hidden] { display: none !important; }");
@@ -877,20 +1054,27 @@ describe("HyperFrames Video Studio", () => {
     expect(workshopSource).toContain('t("plugin_workshop.not_installed")');
     expect(workshopSource).toContain('t("plugin_workshop.selected_hint")');
     expect(workspaceAppSource).toContain("developmentPreview: pluginContext.developmentPreview");
-    expect(workspaceAppSource).toContain('data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}');
+    expect(workspaceAppSource).toContain(
+      'data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}',
+    );
     expect(workspaceAppSource).toContain("sameWorkspaceAppRuntimeResource");
     expect(workspaceAppSource).toContain("developmentPreviewRef.current");
     expect(workspaceAppSource).toContain('sandbox="allow-scripts allow-same-origin"');
-    expect(workspaceAppSource).not.toContain('key={props.developmentPreview?.revision}');
+    expect(workspaceAppSource).not.toContain("key={props.developmentPreview?.revision}");
     expect(workshopSource).toContain("aiEditingRef.current ? 800 : 3_000");
     expect(workshopSource).not.toContain("[props.aiEditing, props.tab.pluginId, refreshSnapshot]");
-    expect(workspaceAppSource.indexOf("const connection = bridge.connect(transport);")).toBeLessThan(
+    expect(
+      workspaceAppSource.indexOf("const connection = bridge.connect(transport);"),
+    ).toBeLessThan(
       workspaceAppSource.indexOf("iframe.srcdoc = withContentSecurityPolicy(resource);"),
     );
   });
 
   test("refreshes the selected Plugin Workshop target without duplicating its instruction", () => {
-    const initial = mergePluginWorkshopInstruction("Keep this capability context.", "finance-board");
+    const initial = mergePluginWorkshopInstruction(
+      "Keep this capability context.",
+      "finance-board",
+    );
     const refreshed = mergePluginWorkshopInstruction(initial, "ai-data-insights");
 
     expect(refreshed).toContain("Keep this capability context.");
@@ -905,8 +1089,12 @@ describe("HyperFrames Video Studio", () => {
     expect(instruction).toContain("Project mode: CREATE_NEW");
     expect(instruction).toContain("No plugin is selected yet");
     expect(instruction).toContain("Treat every existing plugins/* directory as protected");
-    expect(instruction).toContain("Only a right-side selection changes this conversation to EDIT_SELECTED mode");
-    expect(instruction).toContain("automatically select only the newly-created directory and open its Studio");
+    expect(instruction).toContain(
+      "Only a right-side selection changes this conversation to EDIT_SELECTED mode",
+    );
+    expect(instruction).toContain(
+      "automatically select only the newly-created directory and open its Studio",
+    );
     expect(instruction).not.toContain("automatic execution target for every normal user message");
   });
 
@@ -916,7 +1104,9 @@ describe("HyperFrames Video Studio", () => {
     expect(instruction).toContain("Project mode: EDIT_SELECTED");
     expect(instruction).toContain("explicitly selected plugins/stock-analyst/");
     expect(instruction).toContain("only plugin directory you may edit or upgrade");
-    expect(instruction).toContain("automatically run one representative request through the new Studio version");
+    expect(instruction).toContain(
+      "automatically run one representative request through the new Studio version",
+    );
     expect(instruction).not.toContain("Project mode: CREATE_NEW");
   });
 
@@ -926,8 +1116,8 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     );
 
-    expect(sessionPageSource).toContain('sidebarVisuallyCollapsed && shellConfig.sidebar');
-    expect(sessionPageSource).toContain('ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]');
+    expect(sessionPageSource).toContain("sidebarVisuallyCollapsed && shellConfig.sidebar");
+    expect(sessionPageSource).toContain("ml-12 md:ml-10 mac:ml-28 mac:md:ml-[104px]");
   });
 
   test("preserves the right panel state without leaving a blank condensed gutter", () => {
@@ -946,9 +1136,15 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionPageSource).toContain("availableRightPanelWidth = Math.max(");
     expect(openLeftSidebar).not.toContain("closeRightPane");
     expect(openLeftSidebar).not.toContain("autoCollapsedSidePanelRef.current");
-    expect(sessionPageSource).not.toContain("if (sidePanelOpen) {\n      autoCollapsedSidePanelRef.current = effectiveSidePanelView;");
-    expect(sessionPageSource).toContain("if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;");
-    expect(sessionPageSource).toContain("restoredPanel &&\n      !userOpenedSidebarWhileNarrowRef.current &&\n      !sidePanelOpen");
+    expect(sessionPageSource).not.toContain(
+      "if (sidePanelOpen) {\n      autoCollapsedSidePanelRef.current = effectiveSidePanelView;",
+    );
+    expect(sessionPageSource).toContain(
+      "if (sidebarOpen && userOpenedSidebarWhileNarrowRef.current) return;",
+    );
+    expect(sessionPageSource).toContain(
+      "restoredPanel &&\n      !userOpenedSidebarWhileNarrowRef.current &&\n      !sidePanelOpen",
+    );
     expect(sessionPageSource).toContain("onClick={openLeftSidebar}");
   });
 
@@ -959,13 +1155,17 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(sessionPageSource).toContain("const SESSION_SHELL_TRANSITION_MS = 220");
-    expect(sessionPageSource).toContain('const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"');
+    expect(sessionPageSource).toContain(
+      'const SESSION_SHELL_TRANSITION_EASING = "cubic-bezier(0.22, 1, 0.36, 1)"',
+    );
     expect(sessionPageSource).toContain("const sessionShellTransition =");
     expect(sessionPageSource).toContain("rightPanelTransitionStyle");
-    expect(sessionPageSource).toContain("rightPanelResizing ? \"none\" : sessionShellTransition");
+    expect(sessionPageSource).toContain('rightPanelResizing ? "none" : sessionShellTransition');
     expect(sessionPageSource).toContain("transition-[width,min-width,opacity]");
     expect(sessionPageSource).toContain("**:data-[slot=sidebar-container]:duration-[220ms]");
-    expect(sessionPageSource).not.toContain('rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"');
+    expect(sessionPageSource).not.toContain(
+      'rightWorkspaceExpanded && "**:data-[slot=sidebar-gap]:!w-0"',
+    );
   });
 
   test("uses a low-contrast themed boundary beside Video Studio", () => {
@@ -975,7 +1175,7 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(sessionPageSource).toContain("border-r border-border/40 dark:border-white/[0.055]");
-    expect(sessionPageSource).not.toContain('border-[#EAEAEA]');
+    expect(sessionPageSource).not.toContain("border-[#EAEAEA]");
   });
 
   test("batches right-panel drag updates and cleans up the interaction", () => {
@@ -1003,17 +1203,27 @@ describe("HyperFrames Video Studio", () => {
       "utf8",
     ).replaceAll("\r\n", "\n");
 
-    expect(sessionPageSource).not.toContain("if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;");
-    expect(sessionPageSource).toContain("const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {\n    userOpenedSidebarWhileNarrowRef.current = false;");
-    expect(sessionPageSource).toContain("userOpenedSidebarWhileNarrowRef.current = false;\n    userOpenedSidePanelWhileNarrowRef.current = true;");
+    expect(sessionPageSource).not.toContain(
+      "if (panel) {\n      userOpenedSidebarWhileNarrowRef.current = false;",
+    );
+    expect(sessionPageSource).toContain(
+      "const toggleCurrentSidePanel = useCallback((panel: SidePanelItem) => {\n    userOpenedSidebarWhileNarrowRef.current = false;",
+    );
+    expect(sessionPageSource).toContain(
+      "userOpenedSidebarWhileNarrowRef.current = false;\n    userOpenedSidePanelWhileNarrowRef.current = true;",
+    );
   });
 
   test("opens the native Studio on a hydrated first frame", () => {
-    expect(hyperframesStudioUrl()).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1");
+    expect(hyperframesStudioUrl()).toBe(
+      "http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1",
+    );
   });
 
   test("passes the app locale through the Studio hash route", () => {
-    expect(hyperframesStudioUrl(3002, "video", "zh")).toBe("http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh");
+    expect(hyperframesStudioUrl(3002, "video", "zh")).toBe(
+      "http://localhost:3002/#project/video?v=1&t=0&tab=design&rc=1&tv=1&locale=zh",
+    );
   });
 
   test("cache-busts the Studio document when its iframe revision changes", () => {
@@ -1026,15 +1236,21 @@ describe("HyperFrames Video Studio", () => {
     expect(videoProjectId("ses/current video")).toBe("ses_current_video");
     expect(videoProjectDirectory("ses_current-video")).toBe("video/ses_current-video");
     expect(videoProjectDirectory("ses/current video")).toBe("video/ses_current_video");
-    expect(videoProjectPath("ses/current video", "/workspace/current/")).toBe("/workspace/current/video/ses_current_video");
+    expect(videoProjectPath("ses/current video", "/workspace/current/")).toBe(
+      "/workspace/current/video/ses_current_video",
+    );
     expect(videoProjectPath("ses/current video", "/")).toBe("/video/ses_current_video");
-    expect(videoProjectPath("ses/current video", "C:\\workspace\\current\\")).toBe("C:\\workspace\\current\\video\\ses_current_video");
+    expect(videoProjectPath("ses/current video", "C:\\workspace\\current\\")).toBe(
+      "C:\\workspace\\current\\video\\ses_current_video",
+    );
   });
 
   test("assigns a stable session-specific Studio port", () => {
     expect(hyperframesStudioPort("ses_video_a")).toBe(hyperframesStudioPort("ses_video_a"));
     expect(hyperframesStudioPort("ses_video_a")).not.toBe(hyperframesStudioPort("ses_video_b"));
-    expect(hyperframesStudioUrl(hyperframesStudioPort("ses_video_a"), videoProjectId("ses_video_a"))).toBe(
+    expect(
+      hyperframesStudioUrl(hyperframesStudioPort("ses_video_a"), videoProjectId("ses_video_a")),
+    ).toBe(
       `http://localhost:${hyperframesStudioPort("ses_video_a")}/#project/ses_video_a?v=1&t=0&tab=design&rc=1&tv=1`,
     );
   });
@@ -1047,12 +1263,16 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("treats Douyin publication and MP4 export as unfinished video delivery", () => {
-    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频，然后发布到抖音")).toBe("publish-douyin");
+    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频，然后发布到抖音")).toBe(
+      "publish-douyin",
+    );
     expect(videoDeliveryIntentForPrompt("请导出这个视频为 MP4")).toBe("export");
     expect(videoDeliveryIntentForPrompt("全程自动发布到抖音，不要手动导出")).toBe("publish-douyin");
     expect(videoDeliveryIntentForPrompt("只修改这个视频的标题，不要发布到抖音")).toBeNull();
     expect(videoDeliveryIntentForPrompt("只做一个可编辑视频")).toBeNull();
-    const contract = videoTaskSystemContext("ses_video", "/workspace", null, { hostExportOperationKey: "test-export-once" });
+    const contract = videoTaskSystemContext("ses_video", "/workspace", null, {
+      hostExportOperationKey: "test-export-once",
+    });
     expect(contract).toContain("The iPolloWork host owns the MP4 export");
     expect(contract).toContain("operationKey test-export-once");
     expect(contract).toContain("ipollowork_ipollowork_extension_call");
@@ -1068,7 +1288,9 @@ describe("HyperFrames Video Studio", () => {
     expect(sessionRouteSource).toContain("shouldInjectVideoTaskContext(");
     expect(sessionRouteSource).toContain("videoTaskSystemContext(");
     expect(sessionRouteSource).toContain("draft.capability?.instruction");
-    expect(sessionRouteSource).toContain("[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]");
+    expect(sessionRouteSource).toContain(
+      "[projectSystemContext, envSystemContext, ...videoSystemContexts, ...designSystemContexts, ...authoringSystemContexts, capabilitySystemContext, languageSystemContext]",
+    );
   });
 
   test("gives the agent the same session-scoped project as the Studio", () => {
@@ -1080,17 +1302,29 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("data-hf-studio-*");
     expect(contract).toContain("never regenerate from an earlier response or cached HTML snapshot");
     expect(contract).toContain("Never run npm/pnpm/yarn install");
-    expect(contract).toContain("Batch compatible HTML/CSS/JS changes into one complete edit or write");
-    expect(contract).toContain("use at most two read-only inspection calls before the first mutation or media action");
-    expect(contract).toContain("A plan, outline, proposed scene list, or sentence such as 'let me structure' is never task completion");
-    expect(contract).toContain("perform the requested edits in the same run");
-    expect(contract).toContain("Prefer a smaller complete valid result over an ambitious plan that is never applied");
+    expect(contract).toContain(
+      "Batch compatible HTML/CSS/JS changes into one complete edit or write",
+    );
+    expect(contract).toContain(
+      "Create/update the existing Studio STORYBOARD.md as the editable production blueprint",
+    );
+    expect(contract).toContain("record exact project-relative paths");
+    expect(contract).toContain("music_asset");
+    expect(contract).toContain("sound_effect_reference");
+    expect(contract).toContain("A plan alone is not completion of a requested finished video");
+    expect(contract).toContain("Continue through composition and narration in the same run; export only when requested");
+    expect(contract).toContain(
+      "Prefer a smaller complete valid result over an ambitious plan that is never applied",
+    );
     expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
     expect(contract).toContain("Never stop all Node processes");
     expect(contract).toContain("not an HTML/JSON response saved with a media extension");
-    expect(contract).toContain("Use `/media-use` to resolve BGM");
+    expect(contract).not.toContain("Use `/media-use`");
+    expect(contract).toContain("Use the host's existing authorized image/video, search/import and audio capabilities");
     expect(contract).toContain("verify its response type and local file signature");
-    expect(contract).toContain("never run `npx hyperframes check`");
+    expect(contract).toContain(
+      "Do not run `voiceover_timeline_validate`, `video_component_check`, HyperFrames check",
+    );
     expect(contract).toContain("never use legacy `.frame` millisecond timelines");
     expect(contract).toContain("A 1080×1920 portrait project stays 9:16");
     expect(contract).toContain("never rewrite it to 1920×1080");
@@ -1098,24 +1332,27 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
     expect(contract).toContain("Delivery requirements contract");
     expect(contract).toContain('data-ipw-caption="true"');
-    expect(contract).toContain("Default captions are transparent text overlays in the bottom safe area");
+    expect(contract).toContain(
+      "Default captions are transparent text overlays in the bottom safe area",
+    );
     expect(contract).toContain('data-ipw-caption-style="transparent-bottom"');
     expect(contract).toContain("position:absolute;inset:auto 5% 5%;height:auto");
     expect(contract).toContain('data-ipw-caption-text="true"');
     expect(contract).toContain("do not add padding-backed color, a pill, card, band, or backdrop");
     expect(contract).toContain("unless the user explicitly asks");
-    expect(contract).toContain('captionStyle: "transparent-bottom"');
-    expect(contract).toContain('captionStyle: "custom"');
     expect(contract).toContain('data-ipw-bgm="true"');
+    expect(contract).toContain('data-timeline-role="music"');
+    expect(contract).toContain('data-timeline-role="sfx"');
     expect(contract).toContain("animationReferences");
-    expect(contract).toContain("unresolved earlier requests");
-    expect(contract).toContain("If valid and no export or publication was requested, stop using tools and answer immediately");
-    expect(contract).toContain("do not follow it with browser/screenshot/eval calls");
-    expect(contract).toContain("manual tag counting, parser scripts, file rereads, or extra shell validation");
+    expect(contract).toContain(
+      "Carry an explicitly requested but still missing deliverable forward",
+    );
+    expect(contract).toContain(
+      "The iPolloWork client automatically runs the single aggregate delivery validator",
+    );
+    expect(contract).toContain("the client owns validation and one bounded repair continuation");
     expect(contract).toContain("at most 20 seconds");
     expect(contract).toContain("on timeout abandon it without retrying");
-    expect(contract).toContain("Never start either auxiliary operation after validation");
-    expect(contract).toContain("authoritative completion gate");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
     expect(contract).toContain("top-left/bottom-right placement");
     expect(contract).toContain("and local fallback");
@@ -1124,11 +1361,11 @@ describe("HyperFrames Video Studio", () => {
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const sessionId = "ses_auto_publish";
     const contract = videoTaskSystemContext(sessionId, "C:/workspace");
-    expect(contract).toContain('action=video_render_start');
-    expect(contract).toContain('media.video_render_status');
+    expect(contract).toContain("action=video_render_start");
+    expect(contract).toContain("media.video_render_status");
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
     expect(contract).toContain('operationKey:"ses_auto_publish:export-1"');
-    expect(contract).toContain('Do not search for render interfaces');
+    expect(contract).toContain("Do not search for render interfaces");
     expect(contract).toContain("never ask the user to click Export/Render");
     expect(contract).toContain("Never repeat POST just because a tool wait timed out");
     expect(contract).toContain("A failed/cancelled render must never be imported or published");
@@ -1155,12 +1392,16 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("gives video agents the selected Studio voice without forcing narration", () => {
-    const contract = videoTaskSystemContext("ses/current video", "/workspace/current", null, { includeVoiceover: true });
+    const contract = videoTaskSystemContext("ses/current video", "/workspace/current", null, {
+      includeVoiceover: true,
+    });
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
     expect(contract).toContain("ipollowork_extension_call");
     expect(contract).toContain("speech_synthesize_workspace_batch");
     expect(contract).toContain("built into the installed desktop application");
-    expect(contract).toContain("Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI");
+    expect(contract).toContain(
+      "Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI",
+    );
     expect(contract).toContain("never ask the user to run an auth/login command");
     expect(contract).toContain("ipollowork_extension_list_actions");
     expect(contract).toContain("do not replace it with user setup instructions or an external CLI");
@@ -1181,7 +1422,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("fix all reported errors before claiming completion");
     expect(contract).toContain("not complete when synthesis returns");
     expect(contract).toContain("Never use cross-session search/read to recover this task");
-    expect(contract).toContain("fix all reported issues together");
+    expect(contract).toContain("the client owns validation and one bounded repair continuation");
     expect(contract).toContain('data-ipw-voiceover="true"');
     expect(contract).toContain('data-ipw-narration-source="true"');
     expect(contract).toContain("existing headings, body copy, names, dates, metrics, labels");
@@ -1195,7 +1436,9 @@ describe("HyperFrames Video Studio", () => {
 
   test("loads the expensive voiceover contract only when the prompt or composition needs it", () => {
     const visualContract = videoTaskSystemContext("ses_video_a", "/workspace/current");
-    const voiceContract = videoTaskSystemContext("ses_video_a", "/workspace/current", null, { includeVoiceover: true });
+    const voiceContract = videoTaskSystemContext("ses_video_a", "/workspace/current", null, {
+      includeVoiceover: true,
+    });
     expect(visualContract).toContain("No new voiceover is required for this turn");
     expect(visualContract).toContain("Video Studio's voice panel");
     expect(visualContract).not.toContain("speech_synthesize_workspace_batch");
@@ -1203,8 +1446,14 @@ describe("HyperFrames Video Studio", () => {
     expect(visualContract.length).toBeLessThan(voiceContract.length);
     expect(videoPromptRequestsVoiceoverContext("video-voice-reference", "")).toBe(true);
     expect(videoPromptRequestsVoiceoverContext(undefined, "请给这个视频添加旁白")).toBe(true);
-    expect(videoPromptRequestsVoiceoverContext(undefined, "Make the second scene longer")).toBe(false);
-    expect(videoCompositionHasVoiceover('<audio data-ipw-voiceover="true" src="assets/voiceover-a.mp3"></audio>')).toBe(true);
+    expect(videoPromptRequestsVoiceoverContext(undefined, "Make the second scene longer")).toBe(
+      false,
+    );
+    expect(
+      videoCompositionHasVoiceover(
+        '<audio data-ipw-voiceover="true" src="assets/voiceover-a.mp3"></audio>',
+      ),
+    ).toBe(true);
     expect(videoCompositionHasVoiceover('<main data-composition-id="main"></main>')).toBe(false);
   });
 
@@ -1218,6 +1467,7 @@ describe("HyperFrames Video Studio", () => {
       voiceover: true,
       captions: true,
       bgm: true,
+      sfx: false,
       animationReferences: [],
       targetDurationSeconds: 120,
     });
@@ -1226,12 +1476,50 @@ describe("HyperFrames Video Studio", () => {
       deliveryRequirements: requirements,
     });
     expect(contract).toContain('"targetDurationSeconds":120');
-    expect(contract).toContain("preserve them exactly in the validator call");
-    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).voiceover).toBe(true);
-    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作视频，不要配音" }).voiceover).toBe(false);
-    expect(videoDeliveryRequirementsForPrompt({ promptText: "继续修改画面", voiceoverEnabled: false }).voiceover).toBe(false);
-    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频", voiceoverAvailable: false }).voiceover).toBe(false);
-    expect(videoDeliveryRequirementsForPrompt({ promptText: "请给视频添加旁白", voiceoverAvailable: false }).voiceover).toBe(false);
+    expect(contract).toContain(JSON.stringify(requirements));
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).voiceover,
+    ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).animationReferences,
+    ).toEqual(["spatial-camera-suite"]);
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "制作一个静态视频，不要动画" }).animationReferences,
+    ).toEqual([]);
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "制作视频，不要配音" }).voiceover).toBe(
+      false,
+    );
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "继续修改画面", voiceoverEnabled: false })
+        .voiceover,
+    ).toBe(false);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "制作一个产品介绍视频",
+        voiceoverAvailable: false,
+        voiceoverEnabled: false,
+      }).voiceover,
+    ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "继续修改画面",
+        voiceoverAvailable: false,
+        voiceoverEnabled: false,
+      }).voiceover,
+    ).toBe(false);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "请给视频添加旁白",
+        voiceoverAvailable: false,
+      }).voiceover,
+    ).toBe(true);
+    expect(
+      videoDeliveryRequirementsForPrompt({
+        promptText: "制作一个产品介绍视频",
+        voiceoverAvailable: true,
+        voiceoverEnabled: false,
+      }).voiceover,
+    ).toBe(false);
   });
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {
@@ -1240,7 +1528,88 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("update-element");
     expect(contract).toContain("freeform-patch");
     expect(contract).toContain("For a small local edit, patch only that element");
-    expect(contract).toContain("structural, multi-scene, or narrated edit");
+    expect(contract).toContain("do not impose a review gate unless the user requested it");
+  });
+
+  test("connects the editable shot plan to real media and purposeful motion", () => {
+    const contract = videoTaskSystemContext("ses_workflow", "/workspace/current");
+    expect(contract).toContain("asset_source` (auto | existing | generate | search");
+    expect(contract).toContain("asset_kind` (image | video");
+    expect(contract).toContain("asset_origin");
+    expect(contract).toContain("asset_reference` (exact local project media path)");
+    expect(contract).toContain("media/artifact_media_review with phase=plan, sourcePath=`video/ses_workflow/index.html`");
+    expect(contract).toContain("call phase=check with outcomes for every planned id");
+    expect(contract).toContain("original workspace-relative generationPath returned by the generator");
+    expect(contract).toContain("never add hidden dummy media to satisfy a check");
+    expect(contract).toContain("never the article page URL as media");
+    expect(contract).toContain("never presented as news footage");
+    expect(contract).toContain("observable Establish -> Develop -> Land");
+    expect(contract).toContain("component:spatial-camera-suite#<shotStyle>");
+    expect(contract).toContain("Do not add a wrapper camera to a component that already owns its camera");
+    expect(contract).toContain("the client owns validation and one bounded repair continuation");
+  });
+
+  test("requires requested sound effects without treating disabled audio as required", () => {
+    for (const promptText of [
+      "补上配乐和转场音效",
+      "Add background music and sound effects",
+      "BGM + SFX",
+    ]) {
+      expect(videoDeliveryRequirementsForPrompt({ promptText })).toMatchObject({
+        bgm: true,
+        sfx: true,
+      });
+    }
+    for (const promptText of [
+      "不要配乐，不要音效",
+      "without background music, no SFX",
+      "继续修改标题",
+    ]) {
+      expect(videoDeliveryRequirementsForPrompt({ promptText })).toMatchObject({
+        bgm: false,
+        sfx: false,
+      });
+    }
+    expect(
+      videoDeliveryRequirementsForPrompt({ promptText: "不要背景音乐，保留音效" }),
+    ).toMatchObject({ bgm: false, sfx: true });
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "加 BGM，改成不要 BGM" }).bgm).toBe(
+      false,
+    );
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "不要 BGM，还是加 BGM" }).bgm).toBe(
+      true,
+    );
+  });
+
+  test("requires music for new finished videos without adding it to planning or local edits", () => {
+    for (const promptText of [
+      "做一支 12 秒、3 个镜头的 iPolloWork 产品介绍短片，有中文旁白。直接完成视频并保留可编辑脚本。",
+      "制作一个产品介绍视频",
+      "制作一个产品介绍视频，不要外部图片或视频生成",
+      "Create a 20 second product explainer video with narration",
+    ]) {
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(requirements.bgm).toBe(true);
+      expect(videoTaskSystemContext("ses_music", "/workspace/current", null, { deliveryRequirements: requirements })).toContain('"bgm":true');
+    }
+    for (const promptText of [
+      "制作宣传片，不要背景音乐",
+      "制作宣传片，无背景音乐",
+      "制作宣传片，不需要配乐",
+      "Create a product video without any background music",
+      "Create a product video, don't add background music",
+      "做一个无声视频",
+      "制作一个无音乐产品视频",
+      "Make a music-free explainer video",
+      "Create a silent product video",
+      "Create a product video without music",
+      "制作宣传片，先给我脚本和配乐规划",
+      "Just plan the storyboard for a product video with music",
+      "改一下产品介绍视频的标题",
+      "Make the second scene longer",
+      "继续修改画面",
+    ]) expect(videoDeliveryRequirementsForPrompt({ promptText }).bgm).toBe(false);
+    expect(videoTaskSystemContext("ses_music", "/workspace/current")).toContain("Do not set `music_prompt: none` to override this requirement");
   });
 
   test("uses an imported video template as an adaptable visual and runtime seed", () => {
@@ -1253,9 +1622,13 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("source is template `Launch Film`");
     expect(contract).toContain("editable visual and runtime seed");
     expect(contract).toContain("let the content determine scene count, order, and timing");
-    expect(contract).toContain("quality and export guidance, not a requirement to retain sample structure");
+    expect(contract).toContain(
+      "quality and export guidance, not a requirement to retain sample structure",
+    );
     expect(contract).toContain("preserve the root composition contract");
-    expect(contract).toContain("At the start of every edit turn, re-read the current entry from disk");
+    expect(contract).toContain(
+      "At the start of every edit turn, re-read the current entry from disk",
+    );
     expect(contract).toContain("Replace inherited copy; Keep the visual language");
   });
 });

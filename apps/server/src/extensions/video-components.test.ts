@@ -40,6 +40,42 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("installs the shared spatial stage with all five seekable shot recipes", async () => {
+    const { root, project } = await fixture();
+    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(
+      import.meta.dir,
+      "../../../../vendor/hyperframes/registry/blocks",
+    );
+
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+      componentIds: ["spatial-camera-suite"],
+    });
+
+    expect(result.components).toHaveLength(1);
+    expect(result.components[0]?.componentId).toBe("spatial-camera-suite");
+    expect(result.components[0]?.motionContract).toMatchObject({
+      version: 2,
+      durationSeconds: 9,
+      timing: "measure-from-render",
+    });
+    expect(result.components[0]?.snippet).toContain('data-composition-src="compositions/spatial-camera-suite.html"');
+    expect(result.components[0]?.snippet).toContain('data-ipw-registry-component="spatial-camera-suite"');
+    expect(result.components[0]?.snippet).toContain('data-ipw-animation-reference="spatial-camera-suite"');
+    expect(result.components[0]?.snippet).toContain('data-ipw-timing-owner="host"');
+
+    const installed = await readFile(join(project, "compositions", "spatial-camera-suite.html"), "utf8");
+    expect(installed).toContain('data-ipw-native-duration="9"');
+    expect(installed).not.toContain('data-duration="9"');
+    for (const recipe of [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ]) expect(installed).toContain(recipe);
+  });
+
   test("installs selected components and returns a traceable native subcomposition snippet", async () => {
     const { root, project } = await fixture();
     const result = await installVideoComponents({ id: "workspace", path: root }, {
@@ -108,10 +144,56 @@ describe("Video Studio registry component integration", () => {
     expect(invalid.issues.map(issue => issue.code)).toContain("missing_component_decision");
   });
 
-  test("accepts a custom scene only when it records a specific reason", async () => {
+  test("validates installed ShotCraft recipes when the composition declares them", async () => {
+    const { root, project } = await fixture();
+    const registry = join(import.meta.dir, "../../../../vendor/hyperframes/registry/blocks");
+    const host = (shotStyle: string) => `<!doctype html><main data-composition-id="main">
+      <section id="hero" class="scene clip" data-ipw-scene data-composition-id="spatial-camera-suite-hero" data-composition-src="compositions/spatial-camera-suite.html" data-ipw-registry-component="spatial-camera-suite" data-ipw-timing-owner="host" data-motion-pattern="camera-journey" data-ipw-timing-source="visual-cue" data-ipw-beats='[{"start":0,"end":2,"intent":"Establish","focus":"Wide composition","action":"Reveal the scene","result":"The visual is established","targets":["#hero"],"animation":"component:spatial-camera-suite","motion":{"start":0,"end":2}},{"start":2,"end":6,"intent":"Develop","focus":"Featured image","action":"Travel toward the image","result":"The image becomes the focus","targets":["#hero"],"animation":"component:spatial-camera-suite","motion":{"start":2,"end":6}},{"start":6,"end":9,"intent":"Land","focus":"Full composition","action":"Return to the complete frame","result":"The composition resolves","targets":["#hero"],"animation":"component:spatial-camera-suite","motion":{"start":6,"end":9}}]' data-variable-values='{"title":"A real story","shotStyle":"${shotStyle}","imageUrl":"assets/source.jpg","items":"*Evidence::The original image remains visible"}' data-start="0" data-duration="9" data-track-index="0"><img src="assets/source.jpg" alt="Source image"></section>
+    </main>`;
+
+    await writeFile(join(project, "index.html"), host("depth-layer-moves"));
+    const withoutInstalledCamera = await checkVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+    });
+    expect(withoutInstalledCamera.valid).toBe(false);
+    expect(withoutInstalledCamera.issues.map(issue => issue.code)).toContain("missing_spatial_camera_component");
+
+    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = registry;
+    await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+      componentIds: ["spatial-camera-suite"],
+    });
+    for (const shotStyle of [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ]) {
+      await writeFile(join(project, "index.html"), host(shotStyle));
+      const withRealCamera = await checkVideoComponents({ id: "workspace", path: root }, {
+        sourcePath: "video/session-one/index.html",
+      });
+      expect(withRealCamera.valid).toBe(true);
+      expect(withRealCamera.scenes[0]).toMatchObject({
+        componentId: "spatial-camera-suite",
+        motionPattern: "camera-journey",
+      });
+    }
+
+    await writeFile(join(project, "index.html"), host("basic"));
+    const invalidRecipe = await checkVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+    });
+    expect(invalidRecipe.valid).toBe(false);
+    expect(invalidRecipe.issues.map(issue => issue.code)).toContain("invalid_spatial_camera_recipe");
+  });
+
+  test("accepts a justified custom scene with a logo without forcing a spatial camera", async () => {
     const { root, project } = await fixture();
     await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">
       <section id="map" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:requires a canal-specific geospatial path" data-motion-pattern="path-journey" data-ipw-timing-source="visual-cue" data-ipw-beats='[{"start":0,"end":12,"intent":"Travel along the canal","focus":"Canal route","action":"Grow the route through each stop","result":"Complete route remains visible","targets":["#map"],"animation":"custom:canal-route-growth","motion":{"start":0,"end":12}}]' data-start="0" data-duration="12" data-track-index="0"></section>
+      <img src="assets/logo.svg" alt="Brand logo">
     </main>`);
     expect(await checkVideoComponents({ id: "workspace", path: root }, { sourcePath: "video/session-one/index.html" })).toMatchObject({
       valid: true,
