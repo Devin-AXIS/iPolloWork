@@ -18,6 +18,7 @@ import { usePanelLayoutContext } from "../contexts/PanelLayoutContext";
 import { trackStudioEvent } from "../utils/studioTelemetry";
 import { Tooltip } from "./ui";
 import { useStudioI18n } from "../i18n";
+import { useViewMode } from "../contexts/ViewModeContext";
 
 export interface StudioHeaderProps {
   inspectorButtonActive: boolean;
@@ -52,6 +53,8 @@ export function StudioHeader({
   const { compositionLoading, refreshKey } = useStudioPlaybackContext();
   const { rightCollapsed, setRightCollapsed, setRightPanelTab } = usePanelLayoutContext();
   const { t } = useStudioI18n();
+  const { viewMode, setViewMode } = useViewMode();
+  const scriptMode = viewMode === "storyboard";
   const isRendering = renderQueue.isRendering;
   const [compositionTitle, setCompositionTitle] = useState(projectId);
   const [hostContext, setHostContext] = useState<StudioHostContext | null>(null);
@@ -128,6 +131,7 @@ export function StudioHeader({
   };
 
   const setPreviewMode = (nextPreviewMode: boolean) => {
+    if (!setViewMode("timeline")) return;
     if (nextPreviewMode && window.parent !== window) {
       window.parent.postMessage(
         { type: "ipollowork:video-studio-panel", projectId, panel: null },
@@ -170,10 +174,25 @@ export function StudioHeader({
         <button
           type="button"
           role="tab"
-          aria-selected={!previewMode}
+          aria-selected={scriptMode}
+          onClick={() => {
+            if (setViewMode("storyboard") && window.parent !== window) {
+              window.parent.postMessage({ type: "ipollowork:video-studio-panel", projectId, panel: null }, "*");
+            }
+          }}
+          className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${scriptMode
+            ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
+            : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"}`}
+        >
+          {t("header.storyboard")}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!scriptMode && !previewMode}
           onClick={() => setPreviewMode(false)}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
-            !previewMode
+            !scriptMode && !previewMode
               ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
               : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
@@ -183,10 +202,10 @@ export function StudioHeader({
         <button
           type="button"
           role="tab"
-          aria-selected={previewMode}
+          aria-selected={!scriptMode && previewMode}
           onClick={() => setPreviewMode(true)}
           className={`h-[26px] rounded-md px-3 text-xs transition-[background-color,color,box-shadow] ${
-            previewMode
+            !scriptMode && previewMode
               ? "bg-[var(--hf-panel-surface)] font-semibold text-[var(--hf-panel-text-0)] shadow-[0_1px_2px_rgba(0,0,0,0.24)]"
               : "font-medium text-[var(--hf-panel-text-3)] hover:text-[var(--hf-panel-text-1)]"
           }`}
@@ -196,7 +215,7 @@ export function StudioHeader({
       </div>
 
       <div className="hf-studio-header-actions flex flex-1 items-center justify-end gap-2">
-        {!previewMode ? (
+        {!previewMode && !scriptMode ? (
           <>
             {hostContext?.branding && hostContext.actions.askAi ? (
               <div className="flex items-center gap-1">

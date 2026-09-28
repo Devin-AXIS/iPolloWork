@@ -226,6 +226,7 @@ const extensionsExportArgsSchema = z.object({
 });
 
 const listMotionPresetsArgsSchema = z.object({
+  targetKind: z.enum(["text", "element"]).optional().describe("Target text for typographic motion or element for cards, media, diagrams, and other visual layers. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]).optional().describe("Optional phase filter."),
   intent: z.string().trim().min(1).optional().describe("Optional semantic intent, such as title reveal or warning."),
   tone: z.string().trim().min(1).optional().describe("Optional tone, such as modern, restrained, playful, or technology."),
@@ -233,15 +234,20 @@ const listMotionPresetsArgsSchema = z.object({
 
 const mutateMotionArgsSchema = z.object({
   operation: z.enum(["upsert", "remove"]).describe("Add/replace one phase, or remove it."),
-  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one leaf text element in the current video."),
+  targetSelector: z.string().trim().min(1).describe("Stable CSS selector for exactly one text or element target in the current video."),
+  targetKind: z.enum(["text", "element"]).optional().describe("Target kind used to compile the selected preset. Defaults to text."),
   phase: z.enum(["enter", "emphasis", "exit"]),
   presetId: z.string().trim().min(1).optional().describe("Stable preset id returned by list_motion_presets. Required for upsert."),
   start: z.number().finite().nonnegative().optional().describe("Timeline start in seconds. Omit to use the phase-aware default."),
+  end: z.number().finite().positive().optional().describe("Absolute timeline end in seconds for the complete effect window."),
   duration: z.number().finite().positive().optional().describe("Finite duration in seconds."),
   parameters: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).optional().describe("Only parameters declared by the selected preset."),
 }).superRefine((value, context) => {
   if (value.operation === "upsert" && !value.presetId) {
     context.addIssue({ code: z.ZodIssueCode.custom, path: ["presetId"], message: "presetId is required for upsert" });
+  }
+  if (value.start !== undefined && value.end !== undefined && value.end <= value.start) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ["end"], message: "end must be after start" });
   }
 });
 
@@ -312,7 +318,11 @@ Answer only from the returned search/read results. If multiple sessions match, a
 Never use these cross-session tools to recover the current task after an interruption/continuation, discover current project files, or infer what you were working on. Current-task continuity must come from the current transcript, current system context, and explicitly scoped current-project files.`;
 
 const IPOLLOWORK_MOTION_INSTRUCTION = `## Video motion presets
-For ordinary animation on an existing text element in the current Video Studio project, use list_motion_presets and mutate_motion. Generated captions use this exact same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child with mutate_motion instead of hand-writing a caption-specific approximation. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies when the user's request came from voice transcription. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
+For each shot, choose motion from its narrative action and target. Query list_motion_presets with the matching targetKind and phase, then narrow by intent or tone; do not enumerate or stack the whole catalog. Select only the effects that clarify this shot, usually one primary movement and its single incoming transition. Leave a shot still when movement adds no information.
+
+For a camera journey, prefer a mapped component's native camera timeline. The five spatial shot recipes graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, and steep-tilt-glide are implemented as shotStyle variants of the single reusable spatial-camera-suite stage; when one is requested, install that component once and set shotStyle to the exact ID. Its timeline owns the camera and depth planes. Use a shared camera.* preset through mutate_motion only when the component has no native camera movement and the scene has one clipped camera/world wrapper. Target that wrapper, never the clip lifecycle, captions, or fixed chrome. Check the wrapper geometry, source resolution, and viewport coverage before applying it. Do not stack camera transforms or claim reuse from a beat label alone.
+
+For ordinary text or element motion, use list_motion_presets and mutate_motion. Camera presets require targetKind="element" and an explicit matching semantic query. Generated captions use the same compiler: create a stable leaf text child marked data-ipw-caption-text="true", then target that child. Choose a stable preset id and a small parameter set; do not hand-write GSAP for an effect these tools support. Each target has at most one enter, emphasis, and exit preset. The same contract applies to voice-transcribed requests. Use custom GSAP only for an explicitly advanced effect outside the preset catalog.`;
 
 type iPolloWorkWorkspace = z.infer<typeof workspaceSchema>;
 type SessionInfo = z.infer<typeof sessionInfoSchema>;
@@ -758,12 +768,12 @@ export const iPolloWorkExtensionsPreview = async () => {
   },
   tool: {
     list_motion_presets: {
-      description: "List the product-owned semantic motion presets for a leaf text element in the current Video Studio session. Filter by phase, intent, or tone, then use the returned preset id with mutate_motion.",
+      description: "List the product-owned semantic motion presets for text or visual elements in the current Video Studio session. Filter by target kind, phase, intent, or tone, then use the returned preset id with mutate_motion.",
       args: listMotionPresetsArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = listMotionPresetsArgsSchema.parse(rawArgs);
         const session = requireVideoSession(context);
-        const query = new URLSearchParams({ targetKind: "text" });
+        const query = new URLSearchParams({ targetKind: args.targetKind ?? "text" });
         if (args.phase) query.set("phase", args.phase);
         if (args.intent) query.set("intent", args.intent);
         if (args.tone) query.set("tone", args.tone);
@@ -775,7 +785,7 @@ export const iPolloWorkExtensionsPreview = async () => {
       },
     },
     mutate_motion: {
-      description: "Add, replace, update, or remove one semantic motion phase on exactly one leaf text element in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
+      description: "Add, replace, update, or remove one semantic motion phase on exactly one text or element target in the current Video Studio session. This is the canonical path for UI, typed chat, and voice-transcribed animation requests.",
       args: mutateMotionArgsSchema.shape,
       async execute(rawArgs: unknown, context: OpenCodeContext) {
         const args = mutateMotionArgsSchema.parse(rawArgs);
@@ -788,7 +798,7 @@ export const iPolloWorkExtensionsPreview = async () => {
             body: {
               type: "mutate-motion",
               ...args,
-              targetKind: "text",
+              targetKind: args.targetKind ?? "text",
               elementId: args.targetSelector.startsWith("#") ? args.targetSelector.slice(1) : undefined,
             },
           },

@@ -81,6 +81,8 @@ function storedZip(files: Record<string, string | Buffer>): Uint8Array {
 }
 
 const bundledTemplatesRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "bundled-templates");
+const videoMotionPatternIds = ["progressive-build", "focus-transfer", "path-journey", "state-transformation", "data-accumulation", "asset-exploration", "montage", "camera-journey", "dialogue", "kinetic-type", "audio-reactive"];
+const videoMotionOverlayIds = ["montage", "camera-journey", "dialogue", "kinetic-type", "audio-reactive"];
 const pptxCompatibleTemplateIds = [
   "ipollowork.pptx-exhibition-curation",
   "ipollowork.pptx-film-treatment",
@@ -799,8 +801,12 @@ describe("template installations", () => {
             expect(await readFile(join(builtTemplatesRoot, file), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, file), "utf8"));
           }
         } else {
-          for (const file of ["catalog.md", "layout.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
+          for (const file of ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
             const library = `core-v1-video-${file}`;
+            expect(await readFile(join(builtTemplatesRoot, library), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, library), "utf8"));
+          }
+          for (const file of ["catalog", "component-map", ...videoMotionPatternIds]) {
+            const library = `core-v1-video-motion-${file}.md`;
             expect(await readFile(join(builtTemplatesRoot, library), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, library), "utf8"));
           }
         }
@@ -1035,8 +1041,11 @@ describe("template installations", () => {
         }
       } else if (category === "video") {
         expect(created.manifest.layoutLibrary).toBe("core-v1");
-        for (const file of ["catalog.md", "layout.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
+        for (const file of ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css", "statement-visual.html", "two-zone.html", "step-sequence.html", "evidence-wall.html", "relationship-map.html", "timeline.html", "checkpoint.html", "waterfall.html", "feature-orbit.html"]) {
           expect(existsSync(join(ws.path, "video", sessionId, "core-v1-video", file))).toBe(true);
+        }
+        for (const file of ["catalog", "component-map", ...videoMotionPatternIds]) {
+          expect(existsSync(join(ws.path, "video", sessionId, "core-v1-video", "motion", `${file}.md`))).toBe(true);
         }
       } else if (category === "site") {
         expect(created.manifest.layoutLibrary).toBe("core-v1");
@@ -1367,6 +1376,30 @@ test("authoring guides survive install, materialization and package export", asy
   }
 });
 
+test("video motion map covers every current Video Studio registry block exactly once", async () => {
+  const registryRoot = join(bundledTemplatesRoot, "../../../vendor/hyperframes/registry/blocks");
+  const expected: string[] = [];
+  for (const component of await readdir(registryRoot)) {
+    const manifestPath = join(registryRoot, component, "registry-item.json");
+    if (!existsSync(manifestPath)) continue;
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { visualComponent?: { surfaces?: string[] } };
+    if (manifest.visualComponent?.surfaces?.includes("video")) expected.push(component);
+  }
+  const componentMap = await readFile(join(bundledTemplatesRoot, "core-v1-video-motion-component-map.md"), "utf8");
+  const mapped = [...componentMap.matchAll(/^\| `([^`]+)` \| (?:opening|body|closing|overlay \/ any) \|/gm)].map((match) => match[1]);
+  expect(mapped.length).toBe(new Set(mapped).size);
+  expect(mapped.sort()).toEqual(expected.sort());
+  const overlaySection = componentMap.split("## Narrative capability overlays")[1] ?? "";
+  const overlayRows = [...overlaySection.matchAll(/^\| `([^`]+)` \| ([^|]+) \|/gm)];
+  expect(overlayRows.map(match => match[1])).toEqual(videoMotionOverlayIds);
+  const expectedComponents = new Set(expected);
+  for (const row of overlayRows) {
+    const candidates = [...(row[2] ?? "").matchAll(/`([^`]+)`/g)].map(match => match[1]);
+    expect(candidates.length).toBeGreaterThan(0);
+    expect(candidates.every(component => expectedComponents.has(component))).toBe(true);
+  }
+});
+
 test("shared layouts materialize by category without replacing template visual rules", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipw-layout-library-"));
   process.env.IPOLLOWORK_RUNTIME_DB = join(root, "runtime.sqlite");
@@ -1413,6 +1446,16 @@ test("shared layouts materialize by category without replacing template visual r
       const files = [...catalog.matchAll(/^\| `([^`]+\.html)`/gm)].map((match) => match[1]);
       expect(files.length).toBe(manifest.category === "site" ? 6 : 9);
       expect(await readFile(join(directory, library, "layout.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-layout.md`), "utf8"));
+      if (manifest.category === "video") {
+        expect(await readFile(join(directory, library, "acceptance.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-acceptance.md`), "utf8"));
+        expect(await readFile(join(directory, library, "motion-principles.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-motion-principles.md`), "utf8"));
+        const motionCatalog = await readFile(join(directory, library, "motion", "catalog.md"), "utf8");
+        const motionFiles = [...motionCatalog.matchAll(/^\| `([^`]+\.md)`/gm)].map((match) => match[1]);
+        expect(motionFiles).toEqual(videoMotionPatternIds.map((id) => `${id}.md`));
+        for (const file of motionFiles) {
+          expect(await readFile(join(directory, library, "motion", file), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-motion-${file}`), "utf8"));
+        }
+      }
       expect(await readFile(join(directory, library, "shared-contract.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-shared-contract.md`), "utf8"));
       expect(await readFile(join(directory, library, "shared.css"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-shared.css`), "utf8"));
       for (const file of files) {

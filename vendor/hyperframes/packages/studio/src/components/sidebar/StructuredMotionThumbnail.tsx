@@ -136,8 +136,41 @@ export function StructuredMotionThumbnail({
   }, [duration, parameters, presetId, targetKind]);
 
   return (
-    <span ref={targetRef} data-ipw-motion-thumbnail>
-      Make motion clear.
+    <span
+      ref={targetRef}
+      data-ipw-motion-thumbnail
+      style={
+        targetKind === "element"
+          ? {
+              display: "grid",
+              width: 172,
+              height: 80,
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 5,
+              padding: 6,
+              background: "var(--color-panel-bg, #e9eeef)",
+              borderRadius: 6,
+            }
+          : undefined
+      }
+    >
+      {targetKind === "element"
+        ? ["01", "02", "03", "04", "05", "06"].map((label) => (
+            <span
+              key={label}
+              style={{
+                display: "grid",
+                placeItems: "center",
+                borderRadius: 4,
+                background: label === "05" ? "#20bbc0" : "#203440",
+                color: "#fff",
+                fontSize: 12,
+              }}
+            >
+              {label}
+            </span>
+          ))
+        : "Make motion clear."}
     </span>
   );
 }

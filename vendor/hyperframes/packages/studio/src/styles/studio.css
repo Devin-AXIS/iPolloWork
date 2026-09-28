@@ -151,6 +151,47 @@
   --hf-header-primary-text: #ffffff;
 }
 
+.hf-script-table-scroll {
+  overscroll-behavior: contain;
+}
+
+/* A sized native scrollbar remains discoverable even on macOS overlay-scrollbar setups. */
+.hf-script-table-scroll::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.hf-script-table-scroll::-webkit-scrollbar-track,
+.hf-script-table-scroll::-webkit-scrollbar-corner {
+  background: var(--hf-workspace-bg);
+}
+
+.hf-script-table-scroll::-webkit-scrollbar-thumb {
+  border: 3px solid var(--hf-workspace-bg);
+  border-radius: 10px;
+  background: var(--hf-panel-text-3);
+}
+
+.hf-script-table th:not(:last-child),
+.hf-script-table tr[data-shot] > td:not(:last-child) {
+  border-right: 1px dashed var(--hf-workspace-hairline);
+}
+
+.hf-script-column-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin-inline: auto;
+  width: 2px;
+  background: transparent;
+}
+
+.hf-script-column-resize:hover::after,
+.hf-script-column-resize:focus-visible::after,
+.hf-script-column-resize:active::after {
+  background: #1fbac0;
+}
+
 .hf-timeline-toolbar-edit {
   overflow-x: auto;
   scrollbar-width: none;

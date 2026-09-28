@@ -233,6 +233,11 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("unintended blank midpoint/transition frame as a failed delivery");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Reuse that exact host-managed profile in every engine");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("never inspect, launch, or hand off to an operating-system social app");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-timing-owner=host");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-timing-source");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("data-ipw-beats");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Continue with a complete silent composition");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("estimated-reading");
     expect(system).toContain("On the footage/plugin path");
     expect(system).toContain("raw clip alone does not complete that task");
   });
@@ -294,6 +299,9 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("even when the plan does not yet include concrete dates or times");
     expect(system).toContain("list_motion_presets");
     expect(system).toContain("mutate_motion");
+    expect(system).toContain("do not enumerate or stack the whole catalog");
+    expect(system).toContain("prefer a mapped component's native camera timeline");
+    expect(system).toContain('Camera presets require targetKind="element"');
     expect(system).toContain("stale refs");
     expect(system).not.toContain("browser_url plus target_id");
   });
@@ -374,9 +382,21 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
   test("locks preset listing and mutation to the current Video Studio session", async () => {
     const fake = startFakeVideoStudio();
     const plugin = await iPolloWorkExtensionsPreview();
+    const system: string[] = [];
+    await plugin["experimental.chat.system.transform"]({}, { system });
+    const motionGuidance = system.find((entry) => entry.includes("## Video motion presets")) ?? "";
+    for (const recipe of [
+      "graze-face-tour",
+      "depth-layer-moves",
+      "spotlight-hero-card",
+      "runway-ground-skim",
+      "steep-tilt-glide",
+    ]) expect(motionGuidance).toContain(recipe);
+    expect(motionGuidance).toContain("spatial-camera-suite");
+    expect(motionGuidance).toContain("Do not stack camera transforms");
 
     const listed = JSON.parse(await plugin.tool.list_motion_presets.execute(
-      { phase: "enter", tone: "modern" },
+      { targetKind: "element", phase: "enter", tone: "modern" },
       { sessionID: fake.sessionID },
     ));
     expect(listed.presets[0].id).toBe("text.enter.rise");
@@ -385,22 +405,27 @@ describe("iPolloWorkExtensionsPreview semantic motion tools", () => {
       {
         operation: "upsert",
         targetSelector: "#headline",
+        targetKind: "element",
         phase: "enter",
         presetId: "text.enter.rise",
+        start: 3,
+        end: 4.2,
         parameters: { intensity: 0.8 },
       },
       { sessionID: fake.sessionID },
     ));
     expect(mutated.mutation).toMatchObject({
       type: "mutate-motion",
-      targetKind: "text",
+      targetKind: "element",
       elementId: "headline",
       presetId: "text.enter.rise",
+      start: 3,
+      end: 4.2,
     });
     expect(fake.requests).toEqual(expect.arrayContaining([
       expect.objectContaining({
         pathname: `/api/projects/${fake.projectId}/motion-presets`,
-        search: "?targetKind=text&phase=enter&tone=modern",
+        search: "?targetKind=element&phase=enter&tone=modern",
       }),
       expect.objectContaining({
         pathname: `/api/projects/${fake.projectId}/gsap-mutations/index.html`,

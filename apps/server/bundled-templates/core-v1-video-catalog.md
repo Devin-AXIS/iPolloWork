@@ -1,6 +1,6 @@
 # iPolloWork Video Layout Catalog · core-v1
 
-Read `../core-v1-index.md` and the video type rules first, then `layout.md` and `shared-contract.md`. These are scene-body references, not full projects or timed clips. Match the content relationship; local and new compositions remain valid.
+Read `../core-v1-index.md` and the video type rules first, then `motion-principles.md`, `motion/catalog.md`, `layout.md` and `shared-contract.md`. Read `acceptance.md` once before final validation. These are scene-body references, not full projects or timed clips. Match the content relationship and pair it with a temporal story pattern; local and new compositions remain valid.
 
 | File | Type | Relationship | Fits | Slots | Trial capacity | Variants | Verification |
 | --- | --- | --- | --- | --- | --- | --- | --- |

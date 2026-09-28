@@ -28,24 +28,12 @@ Initial generation does not inherit the template's sample count, narrative or br
 
 ## 3. Select and extend layouts
 
-Select structure by content relationship, then map it to the active visual language. The following are selection criteria, not a claim that every pattern is installed.
+Select structure by content relationship, then use [layout.md](layout.md) for the current core-v1 selection map, source fragments, slots, capacity and variants. Shared catalog, template-local patterns and new structures are all valid sources; catalog membership is preferred reuse rather than a whitelist.
 
-| Relationship | Consider | Check |
-| --- | --- | --- |
-| Statement, opening or chapter | A strong heading with one meaningful visual | Clear emphasis without decorative filler |
-| Comparing options | Aligned columns or a comparison table | Common dimensions; adjust proportions for uneven content |
-| Steps, development or stages | Process, timeline or phase structure | Clear order and connections, not unordered cards |
-| Data or evidence | Key metrics, charts, tables and sources | Units, definitions, period, axes and conclusion agree |
-| Case study or audience | Lead case with evidence, or suitable profile structure | A concrete subject, not generic copy with renamed people |
-| Principles, capabilities or summary | Peer items or a hierarchy | Genuine peer relationships; do not flatten a hierarchy |
-
-- Prefer suitable local or shared patterns. Read their real source and CSS dependencies rather than guessing from filenames.
-- Copy only selected structural fragments and local styles, bound to current theme tokens. Omit preview hosts, scripts, default palettes and fonts.
-- Replace content before adjusting columns, proportions, image/text areas and optional slots. If none fits, extend with the active typography, graphic and spacing language; do not replace the theme.
-- Repeating a pattern is useful for comparable cases or data. Avoid mechanical repetition without a content reason, but do not force adjacent pages to differ.
-- Maintain valid unique page/object identifiers and order, retaining recognized `data-ipw-slide` roots.
-- Shared catalog, local source and new layouts are all valid sources. A local pattern absent from the global catalog is not a violation. Give new structures meaningful `data-layout` IDs and describe their relationship, slots and capacity in the page plan. Global registration or `data-layout-origin="extension"` is not a prerequisite. Do not automatically add a one-off layout to the global library or call it verified.
-- Fixed-canvas extensions must not use viewport reflow or off-canvas clipping to conceal overflow. Adjust structure, remove empty slots or split pages. A negative local offset alone is not failure; inspect actual text/shape bounds and editable export behavior.
+- Read the real candidate source and CSS dependencies. Copy only the selected structural fragment and scoped styles, omitting preview hosts, scripts, sample themes and fonts.
+- Replace sample content first, then adjust columns, proportions, image/text areas and optional slots. Repeating a pattern is useful for comparable material; variation needs a content reason.
+- If no pattern fits, extend the active typography, graphic and spacing language. Give the new structure a meaningful `data-layout` ID, but do not register or claim it as a verified global layout automatically.
+- Preserve unique slide/object identifiers and recognized `data-ipw-slide` roots. Fixed-canvas extensions must resolve actual overflow through structure, space or page splitting rather than viewport reflow or hidden clipping.
 
 ## 4. Capacity and Chinese typography
 
@@ -58,22 +46,7 @@ Select structure by content relationship, then map it to the active visual langu
 
 ### Capacity planning and overflow handling
 
-For each selected pattern, identify the content relationship, real source, title/body areas, available line capacity with the current font, image ratio, allowed variants and overflow response. Use an existing catalog entry when available; otherwise measure the source and record findings in the current page plan. Do not invent verified limits or create a separate library for one generation task.
-
-Capacity depends on actual font, size, leading and space, not a universal Chinese-character count. Trial the longest title and densest page first. If a narrow-column title exceeds its planned lines, reallocate space or change structure; do not leave body text at a fixed start that collides with it. With no existing typography specification, a 1280×720 trial baseline is 40–56px headings, 24–30px body and supporting text at least 18px; scale proportionally for other canvases. These are starting points requiring visual review, not overrides of user/template standards or permission to shrink long copy.
-
-Existing Brand Narrative patterns provide these planning starting points, not multilingual hard limits:
-
-| Source | Suitable content and slots | Capacity response |
-| --- | --- | --- |
-| `.manifesto` | One statement, support paragraph and visual | Trial 2–3 title lines; widen or stack regions before support text collides |
-| `.tension` | Two sides compared on common dimensions | Short heading/evidence per side; adjust proportions, use a table or split for multiple dimensions |
-| `.audience-collage` | A few audience/person keywords and explanations | Scattered keywords cannot hold long narratives; use ordered image/text regions for longer descriptions |
-| `.positioning` | Two justified dimensions and positions | Short readable axis labels with separate explanation; do not force literary narrative into a positioning map |
-| `.voice-spectrum` | Peer principles and brief explanations | Check each real column width; reduce columns or split rather than shrinking all text |
-| `.expression` | Lead case and supporting content | Clear primary/secondary slots; review real image crops; move excess evidence to another page |
-
-Custom work uses the same capacity rules. Establish a coherent visual language before selecting structures; extend when none fits. Custom does not mean designing every page arbitrarily from scratch, and shared preview colors/fonts do not replace the chosen theme.
+Use the selected catalog/local source as the capacity owner. Trial the longest title and densest page first with the actual font, line height, slots and image ratio; capacity is not a universal character count. When no specification exists, a 1280×720 trial baseline is 40–56px headings, 24–30px body and supporting text at least 18px, scaled for other canvases and confirmed visually. Reallocate space, change structure or split pages when content exceeds the trial; do not invent verified limits or create a one-task library.
 
 ### Contrast and line-break review
 
@@ -87,9 +60,7 @@ Native editable PPT can contain `data-pptx-image` objects. Editability covers su
 
 - Retain a selected template's visual identity unless restyling is explicitly requested; a changed audience alone is not authorization.
 - Use current semantic tokens and preserve the `design-tokens.css` contract. Do not restore sample colors, add inline theme overrides or import another global theme.
-- Follow the shared asset-selection, authorization, model-choice, cost and failure rules. Do not require a model selection for every routine generation call.
-- Apply the shared visual-purpose decisions during page planning; no separate per-slide assessment report is required. Proactively supplement imagery that improves understanding or atmosphere, reuse adequate assets, and keep data/process/architecture diagrams editable. Pure decoration does not require generation. No fixed image quota applies; generated illustrations cannot replace real evidence.
-- Visual slots can contain images, editable charts or shapes. Sample geometry is not a fixed asset requirement. Use `data-pptx-image` when replacing a slot with an image and adjust its container/crop. Missing image slots or editable-output goals do not cancel a legitimate asset need.
+- Follow the shared media workflow once for the deck; do not add per-slide model-selection or assessment loops. Visual slots may contain images, editable charts or shapes, and sample geometry is not a fixed asset requirement. Use `data-pptx-image` for supported editable image objects.
 - Check resolution, crop, proportion and image/text relationships. HTML playback does not establish media support in the requested PPT format; verify actual export support before embedding.
 - Save files/assets in the current `design/<session-id>/` and reuse existing asset directories; do not create a parallel project.
 

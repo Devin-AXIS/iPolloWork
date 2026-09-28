@@ -45,7 +45,9 @@ describe("Video Studio animation reference handoff", () => {
     expect(voicePanelSource.match(/<VoiceAiButton/g)).toHaveLength(1);
     expect(voicePanelSource).toContain('data-testid="voice-selection-trigger"');
     expect(voicePanelSource.indexOf('data-testid="voice-subtabs"')).toBeGreaterThan(voicePanelSource.indexOf('data-testid="voice-picker"'));
-    expect(voicePanelSource).toContain('setActiveTab(activeVoice.source === "cloned" ? "mine" : "preset")');
+    expect(voicePanelSource).toContain('setActiveTab(selectionTarget ? targetVoiceIsCustom ? "mine" : "preset"');
+    expect(voicePanelSource).toContain('onVoiceSelected?.({ voiceId: voice.id, model: voice.model, name: voice.name, source: "cloned" })');
+    expect(voicePanelSource).toContain('data-testid="voice-inherit-project"');
     expect(voicePanelSource).toContain('const selectedVoiceReady = activeVoice?.source === "preset"');
     expect(voicePanelSource).not.toContain('activeTab === "mine" && canSynthesizeCustomVoice');
     expect(voicePanelSource).toContain("requestVideoVoiceover({");
@@ -54,7 +56,7 @@ describe("Video Studio animation reference handoff", () => {
     expect(surfaceSource).toContain("window.addEventListener(VIDEO_VOICEOVER_REQUEST");
     expect(surfaceSource).toContain("videoProjectEntryPath(request.videoSessionId)");
     expect(surfaceSource).toContain("Do not create or apply another template.");
-    expect(surfaceSource).toContain("requirements.voiceover=true");
+    expect(surfaceSource).toContain("the client will rerun its aggregate delivery validator");
   });
 
   test("localizes the complete voice panel instead of rendering Chinese copy in English", () => {

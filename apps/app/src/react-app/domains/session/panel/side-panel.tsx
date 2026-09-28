@@ -968,6 +968,7 @@ export function SidePanel({
             key={activeTab.id}
             title={activeTab.label}
             sessionId={activeTab.sessionId}
+            view={activeTab.view}
             workspaceRoot={workspaceRoot}
             client={client}
             workspaceId={workspaceId}

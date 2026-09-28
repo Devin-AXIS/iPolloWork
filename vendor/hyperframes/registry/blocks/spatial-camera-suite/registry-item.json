@@ -1,0 +1,108 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "spatial-camera-suite",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Spatial Camera Suite",
+  "description": "A theme-aware spatial interface stage with five seekable camera shot recipes: low graze, depth parallax, hero spotlight, runway drop, and steep glide.",
+  "tags": [
+    "component",
+    "media",
+    "camera",
+    "spatial",
+    "parallax",
+    "3d",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "visualComponent": {
+    "version": 1,
+    "category": "media",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "shotStyle",
+        "imageUrl",
+        "items"
+      ],
+      "instructions": "Use a scene-relevant spatial shotStyle. `items` is up to three pipe-separated `label::detail` pairs; prefix exactly one featured label with `*` for spotlight focus. Supply a project-local imageUrl only when real visual evidence is needed. All five shot styles are complete deterministic camera recipes inside one shared stage; do not add another camera transform to this scene."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 9,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "spatial-camera-suite.html",
+      "target": "compositions/spatial-camera-suite.html",
+      "type": "hyperframes:composition"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "Scene title",
+      "type": "string",
+      "default": "A clearer view, from every angle.",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "shotStyle",
+      "label": "Spatial shot recipe",
+      "type": "enum",
+      "default": "depth-layer-moves",
+      "options": [
+        {
+          "value": "graze-face-tour",
+          "label": "Graze Face Tour · 贴面掠游"
+        },
+        {
+          "value": "depth-layer-moves",
+          "label": "Depth Layer Moves · 景深层移"
+        },
+        {
+          "value": "spotlight-hero-card",
+          "label": "Spotlight Hero Card · 聚光主卡"
+        },
+        {
+          "value": "runway-ground-skim",
+          "label": "Runway Ground Skim · 跑道低掠"
+        },
+        {
+          "value": "steep-tilt-glide",
+          "label": "Steep Tilt Glide · 大倾角滑行"
+        }
+      ],
+      "update": "rebuild"
+    },
+    {
+      "id": "imageUrl",
+      "label": "Optional hero image URL",
+      "type": "string",
+      "default": "",
+      "maxLength": 2000,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Cards (label::detail | ...)",
+      "type": "string",
+      "default": "*Signal::See the pattern|Decision::Choose the next move|Action::Move with confidence",
+      "maxLength": 300,
+      "update": "live"
+    }
+  ]
+}

@@ -1350,8 +1350,19 @@ function appOwnedLayoutLibraryFiles(manifest: TemplateManifestV1): Array<{ sourc
     : manifest.category === "site"
       ? ["hero", "feature-grid", "step-sequence", "evidence-pair", "plan-comparison", "focused-cta"]
       : ["statement-visual", "two-zone", "step-sequence", "evidence-wall", "relationship-map", "timeline", "checkpoint", "waterfall", "feature-orbit"];
-  return ["catalog.md", "layout.md", "shared-contract.md", "shared.css", ...layouts.map((layout) => `${layout}.html`)]
+  const sharedFiles = manifest.category === "video"
+    ? ["acceptance.md", "catalog.md", "layout.md", "motion-principles.md", "shared-contract.md", "shared.css"]
+    : ["catalog.md", "layout.md", "shared-contract.md", "shared.css"];
+  const files = [...sharedFiles, ...layouts.map((layout) => `${layout}.html`)]
     .map((file) => ({ source: `${base}-${file}`, destination: `${base}/${file}` }));
+  if (manifest.category !== "video") return files;
+  const motionPatterns = ["progressive-build", "focus-transfer", "path-journey", "state-transformation", "data-accumulation", "asset-exploration", "montage", "camera-journey", "dialogue", "kinetic-type", "audio-reactive"];
+  return [
+    ...files,
+    { source: `${base}-motion-catalog.md`, destination: `${base}/motion/catalog.md` },
+    { source: `${base}-motion-component-map.md`, destination: `${base}/motion/component-map.md` },
+    ...motionPatterns.map((pattern) => ({ source: `${base}-motion-${pattern}.md`, destination: `${base}/motion/${pattern}.md` })),
+  ];
 }
 
 async function copyAppOwnedLayoutLibrary(directory: string, manifest: TemplateManifestV1) {

@@ -1,6 +1,6 @@
 # Core Video Layout Guide
 
-Read `../core-v1-index.md`, the video rules and `catalog.md`, then open only fitting HTML candidates. Public content/media policy remains in the shared guidelines; this guide owns video-specific layout mapping and motion considerations.
+Read `../core-v1-index.md`, the video rules, `motion-principles.md` and `catalog.md`, then open only fitting HTML candidates. Public content/media policy remains in the shared guidelines; this guide owns video-specific layout mapping and motion considerations.
 
 ## Sources and fit
 

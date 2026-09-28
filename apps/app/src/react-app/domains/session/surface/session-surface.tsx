@@ -84,7 +84,6 @@ import {
   type VideoVoiceAiReference,
 } from "../video/video-voice";
 import {
-  hasVideoDeliveryRequirements,
   unchangedVideoArtifactIssue,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
@@ -900,6 +899,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const pendingImageStudioRefreshRef = useRef<PendingImageStudioRefresh | null>(null);
   const artifactCompletionValidationInFlightRef = useRef(false);
   const artifactCompletionRequirementKeyRef = useRef<string | null>(null);
+  // A recovery turn must not create another recovery turn when the engine
+  // republishes the same incomplete artifact requirement. Keep the guard
+  // keyed to the original request/source, not to the transient pending object.
+  const deliveryRecoveryAttemptKeysRef = useRef<Set<string>>(new Set());
   const promptDispatchAbortRef = useRef<AbortController | null>(null);
   const activeClientUserMessageIdRef = useRef<string | null>(null);
   const hostVideoDeliverySignalKeyRef = useRef<string | null>(null);
@@ -935,7 +938,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       baselineFingerprint: requirement.baselineFingerprint,
       requestOrdinal: requirement.requestOrdinal,
       mustChange: true,
-      recoveryAttempted: false,
+      recoveryAttempted: deliveryRecoveryAttemptKeysRef.current.has(`${requirement.sourcePath}:${requirement.requestOrdinal}`),
     };
     runActivityObservedRef.current = false;
     setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
@@ -1589,34 +1592,32 @@ export function SessionSurface(props: SessionSurfaceProps) {
           voiceoverAvailable: voiceover.configured,
         });
         const mustChange = Boolean(voiceoverRequest);
-        if (hasVideoDeliveryRequirements(requirements) || promptVideoDeliveryIntent) {
-          const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
-            ? props.artifactContext.entryPath
-            : templateEntryPath || videoProjectEntryPath(props.sessionId);
-          pendingDelivery = {
-            sourcePath,
-            requirements,
-            baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
-            expectedVoice: voiceoverRequest?.settings,
-            requestOrdinal,
-            mustChange,
-            recoveryAttempted: false,
-            ...(promptVideoDeliveryIntent && clientUserMessageId ? {
-              hostExport: {
-                operationKey: videoHostExportOperationKey(props.sessionId, clientUserMessageId),
-                intent: promptVideoDeliveryIntent,
-                ready: false,
-                ...(promptVideoDeliveryIntent === "publish-douyin"
-                  ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
-                  : promptVideoDeliveryIntent === "publish-wechat-channels"
-                    ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
-                  : {}),
-              },
-            } : {}),
-          };
-          pendingVideoDeliveryRef.current = pendingDelivery;
-          setVideoDeliveryRevision((current) => current + 1);
-        }
+        const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
+          ? props.artifactContext.entryPath
+          : templateEntryPath || videoProjectEntryPath(props.sessionId);
+        pendingDelivery = {
+          sourcePath,
+          requirements,
+          baselineFingerprint: mustChange ? artifactContentFingerprint((await props.client.readWorkspaceFile(props.workspaceId, sourcePath)).content) : null,
+          expectedVoice: voiceoverRequest?.settings,
+          requestOrdinal,
+          mustChange,
+          recoveryAttempted: false,
+          ...(promptVideoDeliveryIntent && clientUserMessageId ? {
+            hostExport: {
+              operationKey: videoHostExportOperationKey(props.sessionId, clientUserMessageId),
+              intent: promptVideoDeliveryIntent,
+              ready: false,
+              ...(promptVideoDeliveryIntent === "publish-douyin"
+                ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
+                : promptVideoDeliveryIntent === "publish-wechat-channels"
+                  ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
+                : {}),
+            },
+          } : {}),
+        };
+        pendingVideoDeliveryRef.current = pendingDelivery;
+        setVideoDeliveryRevision((current) => current + 1);
       }
       const dispatchOutcome = await props.onSendDraft(
         nextDraft,
@@ -1643,7 +1644,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           targets: artifactCompletionTargets,
           assistantMessageBaseline: renderedMessages.length,
           requestOrdinal,
-          recoveryAttempted: false,
+          recoveryAttempted: artifactCompletionTargets.some((target) => deliveryRecoveryAttemptKeysRef.current.has(`${target.sourcePath}:${requestOrdinal}`)),
         };
       }
       const videoDeliveryTarget = typeof dispatchOutcome === "boolean" ? null : dispatchOutcome.videoDeliveryTarget;
@@ -1662,6 +1663,9 @@ export function SessionSurface(props: SessionSurfaceProps) {
           mustChange: videoDeliveryTarget.baselineFingerprint !== null,
           recoveryAttempted: false,
         };
+        delivery.sourcePath = videoDeliveryTarget.sourcePath;
+        delivery.baselineFingerprint = videoDeliveryTarget.baselineFingerprint;
+        delivery.mustChange = videoDeliveryTarget.baselineFingerprint !== null;
         delivery.hostExport = {
           operationKey: videoDeliveryTarget.operationKey,
           intent: videoDeliveryTarget.intent,
@@ -1740,10 +1744,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const text = t(request.updating ? "video.voice.update_action" : "video.voice.generate_action");
       const instruction = [
         `Edit only the existing video at ${sourcePath}. Do not create or apply another template.`,
-        `Generate narration for the entire video using the current scene content and these settings: ${JSON.stringify(request.settings)}.`,
-        "When selectionMode is auto, select a compatible voice for the scene language and content. Otherwise use the specified voiceId.",
+        `Generate narration for the entire video using the current scene content and these project-default settings: ${JSON.stringify(request.settings)}.`,
+        "Read the video's STORYBOARD.md and apply each frame's speaker, voiceover, voice_id and voice_model. A frame-level voice_id is higher priority than the project default; use its exact voice_id and voice_model. For voice_id=auto, match a voice to that frame's role and narration, then pass an explicit voice/model override on that scene item. Frames without an override inherit the project settings. Keep the role label and voice identity separate: speaker names the character, voice_id selects the sound.",
+        "When the project-level selectionMode is auto, select a compatible voice for scenes without a frame override. Otherwise use the specified project-default voiceId.",
         "Use media/speech_synthesize_workspace_batch. Preserve existing audio until every replacement is synthesized successfully; then apply the returned audioElementHtml (including voice metadata) and synchronized timing in one final source edit.",
-        "Preserve visuals, background music, and unrelated edits. Validate this exact sourcePath with media/voiceover_timeline_validate and requirements.voiceover=true before reporting completion.",
+        "Preserve visuals, background music, and unrelated edits. Save the repaired sourcePath and return; the client will rerun its aggregate delivery validator.",
       ].join("\n");
       void sendDraft({
         mode: "prompt", text, resolvedText: text,
@@ -1817,6 +1822,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }
       if (!pending.recoveryAttempted) {
         pending.recoveryAttempted = true;
+        for (const target of pending.targets) deliveryRecoveryAttemptKeysRef.current.add(`${target.sourcePath}:${pending.requestOrdinal}`);
         toast.warning(t("session.artifact_delivery_repairing"));
         const recoveryInstruction = artifactCompletionRecoveryInstruction(check);
         await sendDraft({
@@ -2051,17 +2057,26 @@ export function SessionSurface(props: SessionSurfaceProps) {
       const issueMessages = issues
         .map((issue) => [issue.code, issue.message].filter(Boolean).join(": "))
         .filter(Boolean);
+      const needsSpatialCameraRepair = issues.some(issue =>
+        issue.code === "missing_spatial_camera_component"
+        || issue.code === "invalid_spatial_camera_recipe"
+        || (issue.code === "required_animation_missing" && /spatial-camera-suite/i.test(issue.message ?? "")),
+      );
       if (!pending.recoveryAttempted) {
         pending.recoveryAttempted = true;
+        deliveryRecoveryAttemptKeysRef.current.add(`${pending.sourcePath}:${pending.requestOrdinal}`);
         toast.warning(t("session.video_delivery_repairing"));
         const recoveryInstruction = [
           "The preceding video run ended without satisfying the application's authoritative delivery validation.",
           `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
+          ...(needsSpatialCameraRepair ? [
+            "For the missing/invalid spatial-camera issue, install `spatial-camera-suite` through media/video_component_install and integrate its returned composition snippet into a focal scene. Set `shotStyle` to one exact supported recipe (graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, steep-tilt-glide), pass the real scene text and a project-local image/video asset path, and preserve the component's seekable camera/depth choreography. Do not satisfy this by adding metadata, ordinary 2D transforms, or a second camera wrapper. Then rerun the aggregate delivery check.",
+          ] : []),
           "Fix every issue below in one complete pass. For narration, use the saved voiceover.json and the built-in media workspace batch synthesis action; patch the returned audio, captions, scene timing, and root duration into index.html.",
           pending.hostExport
             ? "Save the corrected index.html and stop. The host will revalidate and automatically export the MP4; do not run a CLI or ask for manual export."
-            : "Run media/voiceover_timeline_validate with the exact same requirements after the edit, and finish only when it returns valid.",
+            : "Save the repaired composition and return once. The client will rerun the exact same aggregate validator; do not call validators or preview tools yourself.",
           ...issueMessages.map((issue) => `- ${issue}`),
         ].join("\n");
         await sendDraft({
