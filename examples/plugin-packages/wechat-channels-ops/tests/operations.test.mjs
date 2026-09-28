@@ -47,6 +47,21 @@ test('QR connection creates an isolated account and only visible home identity c
   assert.equal(saved.name, '扫码添加的账号'); assert.equal(saved.channelId, 'sph-visible-id');
   assert.equal(saved.status, 'verified'); assert.equal(saved.verifiedSessionId, context.sessionId);
 });
+test('publication browser targets the authenticated console and an observed login page expires stale identity', async t => {
+  const f = await fixture(t); await f.verify();
+  const target = await f.ops.action('browser-target', { accountId: f.account.id });
+  assert.equal(target.url, 'https://channels.weixin.qq.com/platform/');
+  assert.equal(target.profileId, `wechat-channels-ops:${f.account.browserProfileId}`);
+  await f.ops.action('observe-browser-session', {
+    browserProfileId: f.account.browserProfileId,
+    url: 'https://channels.weixin.qq.com/login.html',
+    tree: 'heading "登录视频号助手"',
+  }, context);
+  const expired = f.store.get('account', f.account.id);
+  assert.equal(expired.status, 'expired');
+  assert.equal(expired.verifiedAt, null);
+  assert.match(expired.connectionError, /重新扫码登录/);
+});
 test('draft persistence, revision stability, scheduled drafting idempotency and ownership', async t => {
   const f = await fixture(t), other = f.ops.saveAccount({ name: '另一个账号' }).account;
   const same = f.ops.saveDraft({ ...f.draft, id: f.draft.id }).draft; assert.equal(same.revision, 1);

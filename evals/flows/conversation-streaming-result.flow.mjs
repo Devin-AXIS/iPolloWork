@@ -92,6 +92,17 @@ async function mountFixture() {
         setStatus("ready");
         setRunOutcome("completed");
       };
+      window.__streamingAnswerProof.showCompletedWhilePostProcessing = () => {
+        setFinalizing(false);
+        setMessages([
+          { id: "proof-export-request", role: "user", parts: [{ type: "text", text: "生成视频并发布到视频号" }] },
+          commentary,
+          completedTool,
+          answer("视频源文件已生成，iPolloWork 应用正在导出 MP4。", "done"),
+        ]);
+        setStatus("submitted");
+        setRunOutcome("completed");
+      };
       window.__streamingAnswerProof.showGroupedCommands = () => {
         useSessionActivityStore.getState().clearError("proof", "proof");
         setStopAcknowledged(false);
@@ -865,11 +876,31 @@ export default {
       }),
     },
     {
+      name: "Post-processing remains in progress after the engine turn completes",
+      run: (ctx) => ctx.prove("A completed engine turn still shows in progress while the iPolloWork app exports the video", {
+        voiceover: vo[22],
+        action: async () => {
+          await ctx.eval("window.__streamingAnswerProof.showCompletedWhilePostProcessing()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column] button')?.textContent.includes('处理中')");
+        },
+        assert: async () => {
+          const state = await ctx.eval(`(() => {
+            const process = document.querySelector('#streaming-answer-proof [data-testid=assistant-process-column]');
+            const label = process?.querySelector('button')?.textContent ?? '';
+            return { label, result: document.querySelector('#streaming-answer-proof [data-assistant-result]')?.textContent ?? '' };
+          })()`);
+          ctx.assert(state.label.startsWith('处理中')
+            && state.result.includes('iPolloWork 应用正在导出 MP4'), JSON.stringify(state));
+        },
+        screenshot: { name: "completed-engine-post-processing", requireText: ["处理中", "iPolloWork 应用正在导出 MP4"] },
+      }),
+    },
+    {
       name: "Composer text matches conversation typography",
       run: async (ctx) => {
         let placeholderStyle;
         await ctx.prove("The composer uses the same 14px text and 1.5 line height for typed and placeholder text", {
-          voiceover: vo[22],
+          voiceover: vo[23],
           action: async () => {
             await ctx.eval("window.__streamingAnswerProof.cleanup()");
             await ctx.waitFor("Boolean(document.querySelector('[contenteditable=true][data-lexical-editor=true]')) && window.__ipolloworkControl.listActions().some(action => action.id === 'composer.set_text' && !action.disabled)");

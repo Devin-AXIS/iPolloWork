@@ -27,7 +27,7 @@
   }
   function badge(status, label) {
     const style = ['uncertain', 'blocked', 'submitting', 'reviewing', 'connecting'].includes(status) ? 'warning'
-      : ['failed', 'mismatch', 'conflict'].includes(status) ? 'danger' : ['succeeded', 'published', 'replied', 'verified'].includes(status) ? 'success' : 'neutral';
+      : ['failed', 'mismatch', 'conflict', 'expired'].includes(status) ? 'danger' : ['succeeded', 'published', 'replied', 'verified'].includes(status) ? 'success' : 'neutral';
     return node('span', `badge ${style}`, label || labels[status] || status);
   }
   function button(label, fn, className = '') { const el = node('button', className, label); el.type = 'button'; el.addEventListener('click', () => run(fn)); return el; }
@@ -152,6 +152,10 @@
       steps[0].classList.add('done'); steps[1].classList.add('active');
       title = '等待微信扫码确认'; description = '扫码窗口已打开。请使用微信扫码并在手机上确认，完成后这里会自动更新。';
       buttonLabel = '重新打开扫码窗口'; support = '登录完成后无需点击“已登录”，请保持运营台打开。';
+    } else if (account?.status === 'expired') {
+      steps[0].classList.add('done'); steps[1].classList.add('active');
+      title = '视频号登录已失效'; description = account.connectionError || '请重新扫码登录，已生成的视频和待发布任务会保留。';
+      buttonLabel = '重新扫码登录'; support = '完成一次登录后，同一账号会话会继续用于后续自动发布。';
     } else if (['mismatch', 'conflict'].includes(account?.status)) {
       steps[0].classList.add('done'); steps[1].classList.add('done'); steps[2].classList.add('active');
       title = '账号身份没有通过核验'; description = account.connectionError || '请重新扫码并确认登录了正确的视频号。';
@@ -164,7 +168,7 @@
     const list = $('#accounts-list'); list.replaceChildren();
     for (const account of state.accounts) {
       const card = node('article', `record${account.id === accountId ? ' selected' : ''}`), head = node('header');
-      const statusLabel = account.status === 'verified' ? '身份已核验' : account.status === 'connecting' ? '等待扫码' : ['mismatch','conflict'].includes(account.status) ? '连接需处理' : '待连接 · 未核验';
+      const statusLabel = account.status === 'verified' ? '身份已核验' : account.status === 'connecting' ? '等待扫码' : account.status === 'expired' ? '登录已失效' : ['mismatch','conflict'].includes(account.status) ? '连接需处理' : '待连接 · 未核验';
       head.append(node('strong', '', account.observedName || account.name), badge(account.status, statusLabel));
       card.append(head, node('p', '', account.channelId ? `视频号 ID：${account.channelId}` : '连接后核验实际视频号身份'),
         node('p', '', account.positioning || '补充账号定位，让后续文案更贴近你的表达。'));

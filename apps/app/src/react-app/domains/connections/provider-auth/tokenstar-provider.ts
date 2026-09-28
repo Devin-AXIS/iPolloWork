@@ -3,8 +3,6 @@ export const TOKENSTAR_PROVIDER = {
   name: "TokenStar",
   baseURL: "https://api.tokenstar.io/v1",
   fallbackModels: [
-    { id: "gpt-5.4", name: "GPT 5.4" },
-    { id: "gpt-5.4-mini", name: "GPT 5.4 Mini" },
     { id: "gpt-5.5", name: "GPT 5.5" },
     { id: "gpt-5.6-luna", name: "GPT 5.6 Luna" },
     { id: "gpt-5.6-sol", name: "GPT 5.6 Sol" },

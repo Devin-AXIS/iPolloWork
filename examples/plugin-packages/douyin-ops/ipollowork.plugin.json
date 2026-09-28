@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.2.13",
+    "version": "0.2.14",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -610,7 +610,7 @@
         {
           "id": "finish-browser-job",
           "title": "保存网页操作结果",
-          "description": "只记录实际页面证据；提交后不确定必须 outcome=uncertain，不可重发。",
+          "description": "只记录实际页面证据；内容管理出现匹配作品且显示审核中，表示平台已受理发布。提交后无法核对才使用 outcome=uncertain，不可重发。",
           "effect": "write",
           "inputSchema": {
             "type": "object",
@@ -652,6 +652,13 @@
                 "type": "string",
                 "minLength": 1,
                 "maxLength": 2000
+              },
+              "publicationStatus": {
+                "type": "string",
+                "enum": [
+                  "published",
+                  "under_review"
+                ]
               },
               "items": {
                 "type": "array",

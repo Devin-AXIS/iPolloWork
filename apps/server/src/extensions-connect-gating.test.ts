@@ -46,6 +46,7 @@ test("browser host scopes shared account tabs to the calling task", () => {
 test("engine MCP calls prefer native task metadata and otherwise use the host prompt context", () => {
   expect(engineMcpSessionId({ threadId: "thread-a" }, "latest-session")).toBe("thread-a");
   expect(engineMcpSessionId({ sessionID: "session-a" }, "latest-session")).toBe("session-a");
+  expect(engineMcpSessionId({ threadId: "agent/current" }, "latest-session")).toBe("latest-session");
   expect(engineMcpSessionId({}, "latest-session")).toBe("latest-session");
 });
 
@@ -57,6 +58,10 @@ test("direct engine calls inherit the active task only when the engine omitted i
   expect(engineCallContext({ workspaceId: "ws_1", sessionId: "session-native" }, "session-active")).toEqual({
     workspaceId: "ws_1",
     sessionId: "session-native",
+  });
+  expect(engineCallContext({ workspaceId: "ws_1", sessionId: "agent/current" }, "session-active")).toEqual({
+    workspaceId: "ws_1",
+    sessionId: "session-active",
   });
 });
 

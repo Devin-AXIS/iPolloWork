@@ -130,8 +130,6 @@ test("registers the engine-neutral catalog and forwards DSH session context", { 
   assert.deepEqual(
     (await priorityAdapter.listModels(OPENAI_CODEX_PRIORITY_PROVIDER_ID)).map((model) => model.id),
     [
-      "gpt-5.4-fast",
-      "gpt-5.4-mini-fast",
       "gpt-5.5-fast",
       "gpt-5.6-luna-fast",
       "gpt-5.6-sol-fast",
@@ -218,8 +216,8 @@ test("maps Fast aliases to the base Codex model with the priority service tier",
       },
     },
     getModels: () => [{
-      id: "gpt-5.4",
-      name: "GPT-5.4",
+      id: "gpt-5.5",
+      name: "GPT-5.5",
       provider: "openai-codex",
       api: /** @type {"openai-codex-responses"} */ ("openai-codex-responses"),
       baseUrl: "https://chatgpt.com/backend-api/codex",
@@ -241,8 +239,8 @@ test("maps Fast aliases to the base Codex model with the priority service tier",
   const alias = provider.getModels()[0];
   provider.streamSimple(alias, { messages: [] }, { reasoning: "high" });
 
-  assert.equal(alias.id, "gpt-5.4-fast");
-  assert.equal(request.model.id, "gpt-5.4");
+  assert.equal(alias.id, "gpt-5.5-fast");
+  assert.equal(request.model.id, "gpt-5.5");
   assert.equal(request.model.provider, "openai-codex");
   assert.equal(request.options.reasoningEffort, "high");
   assert.equal(request.options.serviceTier, "priority");

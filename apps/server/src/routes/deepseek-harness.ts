@@ -63,6 +63,7 @@ interface RegisterDeepSeekHarnessRoutesOptions {
   readJsonBody: ReadJsonBody;
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
+  rememberSessionContext: (workspaceId: string, sessionId: string) => void;
 }
 
 function ensureDeepSeekHarnessWorkspace(workspace: WorkspaceInfo): void {
@@ -112,7 +113,7 @@ function remapDeepSeekHarnessError(error: unknown): never {
 }
 
 export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRoutesOptions): void {
-  const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace } = options;
+  const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace, rememberSessionContext } = options;
 
   addRoute(routes, "GET", "/workspace/:id/engine/deepseek-harness/plugin-capabilities", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
@@ -138,6 +139,7 @@ export function registerDeepSeekHarnessRoutes(options: RegisterDeepSeekHarnessRo
       body.payload,
       parseEnginePluginPromptSelection(body.plugins),
     );
+    rememberSessionContext(workspace.id, body.payload.sessionId.trim());
     try {
       await runtime.forWorkspace(workspace).call("session.prompt", promptPayload);
       return Response.json({ ok: true });

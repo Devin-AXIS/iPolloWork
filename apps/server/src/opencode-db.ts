@@ -12,7 +12,7 @@ type SeedMessage = {
 
 const DEFAULT_AGENT = "ipollowork";
 const DEFAULT_PROVIDER = "openai";
-const DEFAULT_MODEL = "gpt-5.4";
+const DEFAULT_MODEL = "gpt-5.5";
 const IPOLLOWORK_DEV_DATA_DIRS = ["ipollowork-dev-data", "opencode-dev"];
 
 function truthy(value: string | undefined): boolean {

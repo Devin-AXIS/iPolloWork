@@ -782,7 +782,7 @@ test("recovers local Codex discovery after transient failures without redundant 
   }
 });
 
-test("uses an official DeepSeek Harness installation without offering another download", async () => {
+test("uses only a compatible official DeepSeek Harness installation", async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-dsh-official-test-"));
   const homeDir = path.join(temporaryRoot, "home");
   const appData = path.join(temporaryRoot, "app-data");
@@ -811,6 +811,8 @@ test("uses an official DeepSeek Harness installation without offering another do
     await mkdir(path.dirname(dshEntrypoint), { recursive: true });
     await writeFile(dshCommand, process.platform === "win32" ? "@echo off\r\n" : "#!/usr/bin/env node\n");
     await writeFile(dshEntrypoint, "#!/usr/bin/env node\n");
+    const dshManifest = path.resolve(path.dirname(dshEntrypoint), "..", "package.json");
+    await writeFile(dshManifest, JSON.stringify({ version: "4.5.5" }));
     const resolvedDshEntrypoint = await realpath(dshEntrypoint);
     const manager = createEnginePackageManager({
       app: {
@@ -828,6 +830,11 @@ test("uses an official DeepSeek Harness installation without offering another do
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
 
+    await manager.applyEnvironment();
+    assert.equal((await manager.list()).find((engine) => engine.id === "deepseek-harness")?.installed, false);
+    assert.equal(environment.IPOLLOWORK_DSH_CLI, undefined);
+
+    await writeFile(dshManifest, JSON.stringify({ version: "4.5.6" }));
     await manager.applyEnvironment();
     const dsh = (await manager.list()).find((engine) => engine.id === "deepseek-harness");
     assert.equal(dsh?.installed, true);
@@ -928,6 +935,10 @@ test("discovers official Codex and DeepSeek resources in macOS installation loca
     await mkdir(path.dirname(dshPath), { recursive: true });
     await writeFile(codexPath, "official-codex-runtime\n");
     await writeFile(dshPath, "#!/usr/bin/env node\n");
+    await writeFile(
+      path.resolve(path.dirname(dshPath), "..", "package.json"),
+      JSON.stringify({ version: "4.5.6" }),
+    );
     const resolvedCodexPath = await realpath(codexPath);
     const resolvedDshPath = await realpath(dshPath);
     const manager = createEnginePackageManager({

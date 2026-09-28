@@ -218,6 +218,10 @@ export class WorkspaceSessionRuntime {
     return this.#sessionContextHints.get(workspaceId) ?? null;
   }
 
+  rememberSessionContext(workspaceId: string, sessionId: string): void {
+    this.#rememberSessionContext(workspaceId, sessionId);
+  }
+
   #rememberSessionContext(workspaceId: string, sessionId: string): void {
     this.#sessionContextHints.delete(workspaceId);
     this.#sessionContextHints.set(workspaceId, sessionId);

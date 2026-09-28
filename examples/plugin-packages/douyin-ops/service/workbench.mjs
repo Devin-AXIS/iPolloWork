@@ -41,7 +41,11 @@ export default function createWorkbench(runtime) {
     'connect-browser', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job', 'comment-video'];
   return {
     actions: { 'open-workbench': ensureStarted, ...Object.fromEntries(names.map(name => [name, async (input, context) => {
-      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
+      // Finishing is authorized by the one-time execution token issued to the
+      // claimed browser job. Some engines do not preserve the host session
+      // metadata on the final tool call, so requiring sessionId here would
+      // strand an otherwise completed publication in "running".
+      if (['publish-draft', 'reply-comment', 'comment-video', 'verify-browser-account', 'claim-browser-job'].includes(name) && !context?.sessionId) throw new Error('请在当前项目会话或日程中执行');
       await ensureStarted();
       const response = await fetch(`${origin}/api/actions/${name}`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },

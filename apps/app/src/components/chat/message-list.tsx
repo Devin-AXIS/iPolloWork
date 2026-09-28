@@ -935,7 +935,10 @@ const UserMessage = React.memo(
                   </MessageContent>
                 ) : null}
                 {!isStreaming && (
-                  <MessageActions className={cn(MESSAGE_ACTIONS_CLASS_NAME, "pointer-events-none absolute right-0 top-full z-10 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100")}>
+                  <MessageActions
+                    className={cn(MESSAGE_ACTIONS_CLASS_NAME, "pointer-events-auto absolute right-0 top-full z-10 opacity-0 transition-opacity delay-100 duration-150 group-hover:delay-0 group-hover:opacity-100 group-focus-within:delay-0 group-focus-within:opacity-100")}
+                    data-testid="user-message-actions"
+                  >
                     <MessageTimestamp message={message} className="mr-1.5" />
                     <CopyMessageButton messages={[message]} />
                     {messageText ? (
@@ -1490,7 +1493,7 @@ function MessageGroup({
           <AssistantProcessDisclosure
             groups={processRenderGroups}
             isStreaming={liveProcess}
-            completed={runOutcome === "completed" && currentTurn}
+            completed={runOutcome === "completed" && currentTurn && !liveProcess}
             finalizing={finalizing && isLiveGroup}
             hasError={hasSessionError || runIncomplete}
             stopped={runOutcome === "stopped" && currentTurn}
@@ -1555,7 +1558,7 @@ function MessageGroup({
       {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
         <div
-          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "pointer-events-none absolute left-0 top-full z-10 flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-150 group-hover/message-group:pointer-events-auto group-hover/message-group:opacity-100 group-focus-within/message-group:pointer-events-auto group-focus-within/message-group:opacity-100")}
+          className={cn(ASSISTANT_COLUMN_CLASS_NAME, "pointer-events-auto absolute left-0 top-full z-10 flex flex-wrap items-center gap-2 opacity-0 transition-opacity delay-100 duration-150 group-hover/message-group:delay-0 group-hover/message-group:opacity-100 group-focus-within/message-group:delay-0 group-focus-within/message-group:opacity-100")}
           data-testid="assistant-message-actions"
         >
           <MessageActions className={MESSAGE_ACTIONS_CLASS_NAME}>
@@ -1617,7 +1620,10 @@ interface MessageListProps {
 export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {} }: MessageListProps) {
   const { sessionTitle, waitingLabel } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
-  const isStreaming = !stopAcknowledged && (runOutcome === "running" || (runOutcome === null && (status === "submitted" || status === "streaming" || status === "retrying")))
+  const isStreaming = !stopAcknowledged
+    && runOutcome !== "failed"
+    && runOutcome !== "stopped"
+    && (runOutcome === "running" || status === "submitted" || status === "streaming" || status === "retrying")
   const items = React.useMemo(() => groupMessages(messages), [messages])
   const supplementalArtifactFiles = React.useMemo(
     () => [...new Set([

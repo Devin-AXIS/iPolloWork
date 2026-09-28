@@ -53,6 +53,11 @@ test('native plugin entry launches once without installation, exposes matching a
   assert.equal(new URL(first.url).hostname, '127.0.0.1');
   assert.deepEqual(await bridge.actions['list-accounts'](), { accounts: [] });
   await assert.rejects(bridge.actions['publish-draft']({}, {}), /会话或日程/);
+  await assert.rejects(bridge.actions['finish-browser-job']({}, {}), error => {
+    assert.doesNotMatch(error.message, /会话或日程/);
+    assert.equal(error.code, 'douyin_invalid_input');
+    return true;
+  });
   const { account } = await bridge.actions['connect-browser']({});
   const draftInput = { accountId: account.id, title: '验证草稿', text: '仅测试本地保存，不发布', runKey: 'create-once' };
   await assert.rejects(bridge.actions['save-draft']({ ...draftInput, id: 'invented-session-id' }), error => {

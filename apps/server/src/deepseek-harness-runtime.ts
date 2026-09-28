@@ -321,9 +321,14 @@ export function deepSeekHarnessProviderCredentials(
   }
   const openAiCodexAccessToken = options.openAiCodexAccessToken?.trim();
   if (openAiCodexAccessToken) {
+    const openAiProfile = profiles.get(OPENAI_CODEX_AUTH_PROVIDER_ID);
     credentials.set(OPENAI_CODEX_PROVIDER_BRIDGE.providerId, {
       apiKey: openAiCodexAccessToken,
-      bridge: OPENAI_CODEX_PROVIDER_BRIDGE,
+      bridge: {
+        ...OPENAI_CODEX_PROVIDER_BRIDGE,
+        displayName: openAiProfile?.displayName || OPENAI_CODEX_PROVIDER_BRIDGE.displayName,
+        ...(openAiProfile?.models.length ? { models: openAiProfile.models } : {}),
+      },
     });
   }
   return credentials;

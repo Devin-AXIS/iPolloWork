@@ -411,6 +411,35 @@ describe("DeepSeek Harness provider credential sync", () => {
     });
   });
 
+  test("keeps DSH GPT choices synchronized with the shared Codex model profile", () => {
+    const records = [{
+      key: sharedProviderProfileEnvKey("openai"),
+      value: serializeSharedProviderProfile({
+        schemaVersion: 1,
+        providerId: "openai",
+        displayName: "OpenAI",
+        models: [
+          { id: "gpt-5.5", name: "GPT-5.5", contextWindow: 262_144 },
+          { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", maxTokens: 32_768 },
+        ],
+      }),
+    }];
+
+    expect(deepSeekHarnessProviderCredentials(records, {
+      openAiCodexAccessToken: "codex-access-token",
+    }).get("openai-codex")).toEqual({
+      apiKey: "codex-access-token",
+      bridge: {
+        providerId: "openai-codex",
+        displayName: "OpenAI",
+        models: [
+          { id: "gpt-5.5", name: "GPT-5.5", contextWindow: 262_144 },
+          { id: "gpt-5.6-sol", name: "GPT-5.6 Sol", maxTokens: 32_768 },
+        ],
+      },
+    });
+  });
+
   test("keeps only the current public OpenCode Zen models", () => {
     expect(openCodeZenPublicModels()).toEqual(OPENCODE_ZEN_PUBLIC_MODELS);
     expect([

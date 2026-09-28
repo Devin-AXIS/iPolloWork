@@ -707,6 +707,39 @@ describe("model runtime adapters", () => {
     })).toEqual([{ providerID: "openai", modelIDs: ["gpt-5.6-sol"] }]);
   });
 
+  test("removes retired GPT chat models below 5.5 from every selectable catalog", () => {
+    const catalog = {
+      all: [{
+        id: "openai",
+        name: "OpenAI",
+        source: "config" as const,
+        env: [],
+        models: Object.fromEntries([
+          "gpt-4o",
+          "gpt-5.3-codex-spark",
+          "gpt-5.4",
+          "gpt-5.5",
+          "openai/gpt-5.6-sol",
+          "gpt-image-2",
+          "o3",
+        ].map((id) => [id, { id, name: id, capabilities: {} }])),
+      }],
+      connected: ["openai"],
+      default: { openai: "gpt-5.3-codex-spark" },
+    };
+
+    expect(getChatModelCatalogEntries(catalog).map(({ modelId }) => modelId)).toEqual([
+      "gpt-5.5",
+      "openai/gpt-5.6-sol",
+      "gpt-image-2",
+      "o3",
+    ]);
+    expect(getSelectableChatModelSnapshot(catalog)).toEqual([{
+      providerID: "openai",
+      modelIDs: ["gpt-5.5", "openai/gpt-5.6-sol", "gpt-image-2", "o3"],
+    }]);
+  });
+
   test("shows OpenCode free models only in the OpenCode engine", () => {
     const model = { id: "mimo-v2.5-free", name: "MiMo Free", capabilities: {} };
     const catalog = {
@@ -2375,7 +2408,10 @@ describe("model runtime adapters", () => {
             {
               id: "openai-codex",
               name: "OpenAI Codex",
-              models: [{ id: "gpt-5.4", name: "GPT-5.4" }],
+              models: [
+                { id: "gpt-5.4", name: "GPT-5.4" },
+                { id: "gpt-5.5", name: "GPT-5.5" },
+              ],
             },
             {
               id: "openai-codex-priority",
@@ -2425,13 +2461,14 @@ describe("model runtime adapters", () => {
     expect(providers.all).toEqual([expect.objectContaining({
       id: "openai",
       models: expect.objectContaining({
-        "gpt-5": expect.any(Object),
-        "gpt-5.4": expect.any(Object),
-        "gpt-5.4-fast": expect.any(Object),
+        "gpt-5.5": expect.any(Object),
       }),
     })]);
+    expect(providers.all[0]?.models).not.toHaveProperty("gpt-5");
+    expect(providers.all[0]?.models).not.toHaveProperty("gpt-5.4");
+    expect(providers.all[0]?.models).not.toHaveProperty("gpt-5.4-fast");
     expect(providers.connected).toEqual(["openai"]);
-    expect(providers.default).toEqual({ openai: "gpt-5" });
+    expect(providers.default).toEqual({ openai: "gpt-5.5" });
   });
 
   test("distinguishes a pending directory from a model the active engine omitted", () => {

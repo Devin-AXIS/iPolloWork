@@ -10,6 +10,7 @@ import {
   isDeepSeekHarnessRpcClient,
 } from "@/app/lib/deepseek-harness-client";
 import type { ProviderListItem } from "@/app/types";
+import { isSupportedChatModelId } from "@/app/lib/model-behavior";
 import type {
   ModelRuntimeAdapter,
   ModelRuntimeConnection,
@@ -115,7 +116,7 @@ function connection(client: unknown): ModelRuntimeConnection {
         const routeConnected = connectedRoutes.has(group.id);
         const exposedModels = connectedAccountProviders.has(providerId) && !routeConnected
           ? []
-          : group.models;
+          : group.models.filter((model) => isSupportedChatModelId(model.id));
         const providerModels = Object.fromEntries(exposedModels.map((model) => {
           const efforts = model.reasoning?.efforts ?? [];
           return [model.id, {

@@ -140,8 +140,15 @@ export class BrowserOperations {
     let result = { evidence };
     if (input.outcome === 'succeeded') {
       if (writes.has(job.browserAction)) {
-        result.url = douyinUrl(input.resultUrl, 'video');
-        if (job.browserAction !== 'publish-draft' && job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');
+        if (job.browserAction === 'publish-draft') {
+          if (!['published', 'under_review'].includes(input.publicationStatus)) fail('请记录作品是已发布还是审核中');
+          result.publicationStatus = input.publicationStatus;
+          if (input.resultUrl) result.url = douyinUrl(input.resultUrl, 'video');
+          if (input.publicationStatus === 'published' && !result.url) fail('已发布作品必须提供实际作品链接');
+        } else {
+          result.url = douyinUrl(input.resultUrl, 'video');
+          if (job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');
+        }
       }
       else {
         if (!Array.isArray(input.items) || input.items.length > (job.payload.count ?? 20)) fail('网页读取结果不能超过任务要求的数量（最多 20 条）');

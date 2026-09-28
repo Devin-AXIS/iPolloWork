@@ -15,8 +15,10 @@ import {
   DEFAULT_ENGINE_ID,
   type BuiltInWorkspaceEngineId,
 } from "@ipollowork/types/workspace";
+import { isOpenCodeZenPublicModel } from "@ipollowork/types/opencode-zen-public-models";
 
 import { captureAnalyticsEvent, markTaskRunStart } from "@/app/lib/analytics";
+import { isSupportedChatModelId } from "@/app/lib/model-behavior";
 import { createClient } from "@/app/lib/opencode";
 import {
   PERSONAL_WORK_CONTEXT_ID,
@@ -141,8 +143,12 @@ import {
   videoProjectEntryPath,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
+  videoHostExportOperationKey,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
+import { publishHostVideoDelivery } from "@/react-app/domains/session/video/video-delivery-coordination";
+import { douyinPublicationCopyForPrompt } from "@/react-app/domains/session/video/douyin-publication";
+import { wechatChannelsPublicationCopyForPrompt } from "@/react-app/domains/session/video/wechat-channels-publication";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
 import { useDenAuth } from "@/react-app/domains/cloud/den-auth-provider";
 import { useActiveEnterpriseConnection } from "@/react-app/domains/enterprise/use-active-enterprise-connection";
@@ -1295,10 +1301,33 @@ export function SessionRoute() {
             )
           )
         ));
+        const deliveryRecovery = draft.capability?.id === "video-delivery-recovery"
+          || draft.capability?.id === "video-publish-continuation";
+        const reliableVideoOrchestration = deliveryRecovery
+          || ["publish-douyin", "publish-wechat-channels"].includes(videoDeliveryIntentForPrompt(text) ?? "");
+        if (
+          reliableVideoOrchestration
+          && activeEngineId === DEFAULT_ENGINE_ID
+          && effectiveModel?.providerID === "opencode"
+          && isOpenCodeZenPublicModel(effectiveModel.modelID)
+        ) {
+          const fallbackProvider = effectiveSelectableModels.find((provider) => (
+            provider.providerID === "openai" && provider.modelIDs.includes("gpt-5.5")
+          )) ?? effectiveSelectableModels.find((provider) => (
+            provider.providerID === "tokenstar" && provider.modelIDs.includes("gpt-5.5")
+          ));
+          if (fallbackProvider) {
+            effectiveModel = { providerID: fallbackProvider.providerID, modelID: "gpt-5.5" };
+            effectiveModelVariant = fallbackProvider.providerID === "tokenstar" ? "medium" : null;
+          }
+        }
         if (
           effectiveRuntimeProviderList
           && effectiveModel
-          && !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
+          && (
+            !isSupportedChatModelId(effectiveModel.modelID)
+            || !providerListExposesModel(effectiveRuntimeProviderList, effectiveModel)
+          )
         ) {
           effectiveModel = resolveEngineSelectableChatModel({
             providers: effectiveSelectableModels,
@@ -1676,8 +1705,8 @@ export function SessionRoute() {
           : isLegacyVideoTask
             ? [{ sessionId: targetSessionId, template: null }]
             : [];
-        const hostVideoOperationKey = activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent && videoTasks.length === 1
-          ? `ipw:${targetSessionId}:${crypto.randomUUID()}:export`
+        const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0
+          ? videoHostExportOperationKey(targetSessionId, dispatchOptions?.clientUserMessageId ?? crypto.randomUUID())
           : null;
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const voiceover = selectedWorkspaceEndpoint
@@ -1710,7 +1739,7 @@ export function SessionRoute() {
             {
               includeVoiceover: includeVoiceoverContext,
               deliveryRequirements: videoDeliveryRequirements,
-              hostManagedExport: activeEngineId === DEFAULT_ENGINE_ID && (draft.capability?.id === "video-publish-continuation" || draft.capability?.id === "video-delivery-recovery"),
+              hostManagedExport: draft.capability?.id === "video-publish-continuation" || draft.capability?.id === "video-delivery-recovery",
               hostExportOperationKey: hostVideoOperationKey ?? undefined,
             },
           );
@@ -1782,11 +1811,18 @@ export function SessionRoute() {
             }
           }
         }
+        const hostVideoTask = videoDeliveryIntent
+          ? videoTasks.at(-1) ?? null
+          : null;
+        const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
+        const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
+          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
+          : null;
         const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
           || parts.some(part => part.type === "text" && part.synthetic
             && part.text.includes("media/artifact_media_review phase=plan") && part.text.includes(entry));
         const completionTemplates = automaticTemplateInstruction
-          ? sessionTemplates
+          ? sessionTemplates.filter((template) => template.sessionId !== hostVideoTask?.template?.sessionId)
           : sessionTemplates.filter((template) => (
               (template.manifest.surface !== "video" || requiresMediaReview(template.state.entry))
               && explicitlyTargetedTemplateSessionIds.has(template.sessionId)
@@ -1807,13 +1843,6 @@ export function SessionRoute() {
               };
             }))
           : [];
-        const hostVideoTask = activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent && videoTasks.length === 1
-          ? videoTasks[0]
-          : null;
-        const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
-        const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
-          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
-          : null;
         const capabilityPromptPart = draft.capability
           ? [{
               type: "text" as const,
@@ -1913,6 +1942,22 @@ export function SessionRoute() {
           // accepted so title metadata never races the first message write.
           void conversation.rename(targetSessionId, pendingTitlePersist, selectedWorkspaceRoot || undefined)
             .catch((error) => console.warn("[session-title] Could not persist the first-prompt title", error));
+        }
+        if (hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey) {
+          publishHostVideoDelivery({
+            workspaceId: selectedWorkspaceEndpoint?.workspaceId ?? selectedWorkspaceId,
+            sessionId: effectiveSessionId,
+            sourcePath: hostVideoSourcePath,
+            baselineFingerprint: hostVideoBaseline,
+            operationKey: hostVideoOperationKey,
+            intent: videoDeliveryIntent,
+            promptText: videoPromptText,
+            ...(videoDeliveryIntent === "publish-douyin"
+              ? { publicationCopy: douyinPublicationCopyForPrompt(videoPromptText) }
+              : videoDeliveryIntent === "publish-wechat-channels"
+                ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(videoPromptText) }
+              : {}),
+          });
         }
         return {
           dispatched: true,

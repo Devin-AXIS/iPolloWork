@@ -29,7 +29,7 @@ export function templateTypeRulesInstruction(category: TemplateCategory): string
     return "For slides, including HTML, follow the iPolloWork Presentations workflow: read shared-guidelines.md, slides-ppt.md and layout.md before editing, and keep the HTML runtime or native PPTX contract.";
   }
   if (category === "video") {
-    return "Follow the ipollowork-video-studio Skill: read references/video.md once, then only the shared-guidelines.md sections it identifies. Keep the active Video surface contract and do not repeat unchanged rule, catalog, capability, or validation reads.";
+    return "Follow the active Video surface contract. Read references/video.md only when that exact file is already present inside the active project; if it is absent, continue from the injected contract and copied template. Never glob or search a parent directory, another project, a skill directory, or any workspace-external path for video guidance. Do not repeat unchanged rule, catalog, capability, or validation reads.";
   }
   return `Follow the ipollowork-design-studio Skill: before editing, read references/shared-guidelines.md, references/design.md and references/design-${category}.md relative to its current installed location. Apply the same type and asset rules to template application and custom generation; do not load unrelated type references.`;
 }

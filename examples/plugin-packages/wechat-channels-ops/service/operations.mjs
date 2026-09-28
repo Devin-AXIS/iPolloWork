@@ -45,7 +45,11 @@ export class Operations {
     const browserProfileId = text(input.browserProfileId, '浏览器环境', 36);
     const account = this.store.list('account', null, 50).find(item => item.browserProfileId === browserProfileId);
     if (!account) return { connected: false };
-    if (url.pathname === '/login.html' || url.pathname.startsWith('/platform/login')) return { connected: false, accountId: account.id };
+    if (url.pathname === '/login.html' || url.pathname.startsWith('/platform/login')) {
+      if (account.status === 'verified') this.store.put('account', { ...account, status: 'expired', verifiedAt: null,
+        verifiedSessionId: null, connectionError: '视频号登录已失效，请重新扫码登录', updatedAt: now() });
+      return { connected: false, accountId: account.id };
+    }
     if (!['/platform', '/platform/', '/platform/home'].includes(url.pathname)) return { connected: false };
     const tree = text(input.tree, '页面内容', 100_000);
     const entries = [...tree.matchAll(/\b(StaticText|heading)\s+("(?:[^"\\]|\\.)*")/g)].map(match => {
@@ -163,7 +167,7 @@ export class Operations {
       }
       case 'browser-target': {
         const account = record(this.store, 'account', input.accountId);
-        return { url: 'https://channels.weixin.qq.com/', browserProfileId: account.browserProfileId,
+        return { url: 'https://channels.weixin.qq.com/platform/', browserProfileId: account.browserProfileId,
           profileId: `wechat-channels-ops:${account.browserProfileId}`, accountId: account.id };
       }
       case 'claim-job': return this.jobs.claim(input, context);

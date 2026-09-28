@@ -231,6 +231,8 @@ describe("iPolloWorkExtensionsPreview UI control tools", () => {
     expect(system).toContain("editable HyperFrames HTML composition supported by Video Studio");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Treat any validation error, ok=false, zero/incorrect duration, empty samples");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("unintended blank midpoint/transition frame as a failed delivery");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Reuse that exact host-managed profile in every engine");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("never inspect, launch, or hand off to an operating-system social app");
     expect(system).toContain("On the footage/plugin path");
     expect(system).toContain("raw clip alone does not complete that task");
   });

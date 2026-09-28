@@ -191,9 +191,10 @@ export function engineMcpSessionId(metadata: unknown, fallback: string | null = 
   const record = isRecord(metadata) ? metadata : {};
   for (const key of ["threadId", "sessionId", "sessionID"] as const) {
     const value = typeof record[key] === "string" ? record[key].trim() : "";
-    if (value) return value;
+    if (/^[a-zA-Z0-9_-]{1,200}$/.test(value)) return value;
   }
-  return fallback?.trim() || "";
+  const fallbackValue = fallback?.trim() ?? "";
+  return /^[a-zA-Z0-9_-]{1,200}$/.test(fallbackValue) ? fallbackValue : "";
 }
 
 export function engineCallContext(
@@ -201,8 +202,10 @@ export function engineCallContext(
   fallbackSessionId: string | null,
 ): Record<string, unknown> {
   const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
-  if (sessionId || !fallbackSessionId?.trim()) return context;
-  return { ...context, sessionId: fallbackSessionId.trim() };
+  if (/^[a-zA-Z0-9_-]{1,200}$/.test(sessionId)) return context;
+  const fallbackValue = fallbackSessionId?.trim() ?? "";
+  if (!/^[a-zA-Z0-9_-]{1,200}$/.test(fallbackValue)) return context;
+  return { ...context, sessionId: fallbackValue };
 }
 
 async function executeUiControlAction(actionId: string, args: Record<string, unknown>): Promise<unknown> {

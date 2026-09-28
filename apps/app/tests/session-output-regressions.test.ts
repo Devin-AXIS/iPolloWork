@@ -672,14 +672,36 @@ describe("session output issue regressions", () => {
     expect(source).toContain("{!isStreaming ? (");
   });
 
-  test("keeps the assistant process in progress while shared session activity is still active", () => {
+  test("keeps hidden message actions pointer-interactive across the bubble edge", () => {
     const source = readFileSync(
-      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(source).toContain('if (liveStatus.type === "busy" || activityRunActive)');
-    expect(source).toContain("}, [activityRunActive, liveStatus, sending, stopAcknowledged]);");
+    expect(source).toContain('data-testid="user-message-actions"');
+    expect(source.match(/pointer-events-auto absolute/g)?.length).toBe(2);
+    expect(source.match(/transition-opacity delay-100 duration-150/g)?.length).toBe(2);
+    expect(source).not.toContain("pointer-events-none absolute right-0 top-full");
+    expect(source).not.toContain("pointer-events-none absolute left-0 top-full");
+  });
+
+  test("keeps the assistant process in progress while shared session activity is still active", () => {
+    const surfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+    const messageListSource = readFileSync(
+      new URL("../src/components/chat/message-list.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(surfaceSource).toContain('if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive)');
+    expect(surfaceSource).toContain("}, [activityRunActive, liveStatus, runOutcome, runSettled, sending, stopAcknowledged]);");
+    expect(messageListSource).toContain('runOutcome !== "failed"');
+    expect(messageListSource).toContain('runOutcome !== "stopped"');
+    expect(messageListSource).toContain('runOutcome === "running" || status === "submitted" || status === "streaming" || status === "retrying"');
+    expect(messageListSource).toContain('completed={runOutcome === "completed" && currentTurn && !liveProcess}');
+    expect(messageListSource).not.toContain('runOutcome === null && (status === "submitted"');
   });
 
   test("video and presentation sessions show only scoped openable outputs", () => {

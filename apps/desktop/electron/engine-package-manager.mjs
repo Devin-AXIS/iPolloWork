@@ -259,6 +259,16 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
   const resolveCandidate = async (candidate) => {
     const normalized = await normalizeOfficialRuntimePath(descriptor, candidate, platform);
     if (!normalized || !looksLikeOfficialRuntime(descriptor, normalized)) return null;
+    if (descriptor.id === DSH_ENGINE_ID) {
+      const manifest = await readJson(path.resolve(path.dirname(normalized), "..", "package.json"));
+      const installedVersion = normalizeVersion(manifest?.version);
+      if (installedVersion !== descriptor.version) {
+        console.warn(
+          `[engine-package] Ignoring incompatible DeepSeek Harness ${installedVersion}; iPolloWork requires ${descriptor.version}.`,
+        );
+        return null;
+      }
+    }
     return await probeRuntime(normalized) ? normalized : null;
   };
   const commandPath = commandOnPath(descriptor.command, {
