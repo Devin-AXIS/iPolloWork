@@ -13,7 +13,7 @@ describe("video script contract", () => {
       scene: "An idea card becomes a three-step plan; the focus moves to the first task.",
       durationSeconds: 5,
       voiceover: "One idea becomes the next clear step.",
-      camera: "component:spatial-camera-suite#depth-layer-moves",
+      camera: "fixed:progressive-build",
       assetSource: "code",
       status: "outline",
     });
