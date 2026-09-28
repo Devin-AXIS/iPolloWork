@@ -144,6 +144,23 @@ describe("Video Studio registry component integration", () => {
     expect(invalid.issues.map(issue => issue.code)).toContain("missing_component_decision");
   });
 
+  test("accepts browser-serialized JSON attributes", async () => {
+    const { root, project } = await fixture();
+    await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+      componentIds: ["milestone-timeline"],
+    });
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">
+      <section id="roadmap" class="scene clip" data-ipw-scene data-composition-id="milestone-timeline-roadmap" data-composition-src="compositions/milestone-timeline.html" data-ipw-registry-component="milestone-timeline" data-ipw-timing-owner="host" data-motion-pattern="path-journey" data-ipw-timing-source="voiceover" data-ipw-beats="[{&quot;start&quot;:0,&quot;end&quot;:4,&quot;intent&quot;:&quot;Frame the plan&quot;,&quot;focus&quot;:&quot;First milestone&quot;,&quot;action&quot;:&quot;Reveal the first step&quot;,&quot;result&quot;:&quot;First milestone remains visible&quot;,&quot;targets&quot;:[&quot;#roadmap&quot;],&quot;animation&quot;:&quot;component:milestone-timeline&quot;,&quot;motion&quot;:{&quot;start&quot;:0,&quot;end&quot;:4}},{&quot;start&quot;:4,&quot;end&quot;:9,&quot;intent&quot;:&quot;Complete the route&quot;,&quot;focus&quot;:&quot;Full timeline&quot;,&quot;action&quot;:&quot;Advance through remaining steps&quot;,&quot;result&quot;:&quot;Complete timeline holds&quot;,&quot;targets&quot;:[&quot;#roadmap&quot;],&quot;animation&quot;:&quot;component:milestone-timeline&quot;,&quot;motion&quot;:{&quot;start&quot;:4,&quot;end&quot;:9}}]" data-variable-values="{&quot;title&quot;:&quot;90 days&quot;}" data-start="0" data-duration="9" data-track-index="0"></section>
+    </main>`);
+
+    const result = await checkVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+    });
+    expect(result.issues.map(issue => issue.code)).not.toContain("invalid_scene_beats");
+    expect(result.issues.map(issue => issue.code)).not.toContain("invalid_component_values");
+  });
+
   test("validates installed ShotCraft recipes when the composition declares them", async () => {
     const { root, project } = await fixture();
     const registry = join(import.meta.dir, "../../../../vendor/hyperframes/registry/blocks");

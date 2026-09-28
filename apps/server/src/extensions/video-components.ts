@@ -187,7 +187,23 @@ function componentSnippet(componentId: string, target: string, motionContract: M
 function attribute(tag: string, name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
   const match = new RegExp(`\\b${escaped}\\s*=\\s*(["'])(.*?)\\1`, "isu").exec(tag);
-  return match?.[2]?.trim() ?? "";
+  return (match?.[2] ?? "").replace(
+    /&(?:quot|apos|amp|lt|gt|#(\d+)|#x([\da-f]+));/giu,
+    (entity, decimal: string | undefined, hexadecimal: string | undefined) => {
+      const codePoint = decimal
+        ? Number.parseInt(decimal, 10)
+        : hexadecimal ? Number.parseInt(hexadecimal, 16) : null;
+      if (codePoint !== null) return codePoint <= 0x10ffff ? String.fromCodePoint(codePoint) : entity;
+      switch (entity.toLowerCase()) {
+        case "&quot;": return '"';
+        case "&apos;": return "'";
+        case "&amp;": return "&";
+        case "&lt;": return "<";
+        case "&gt;": return ">";
+        default: return entity;
+      }
+    },
+  ).trim();
 }
 
 function normalizeInstalledComposition(html: string): string {
@@ -270,7 +286,7 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
   return {
     sourcePath: source.relativePath,
     components: [...installed.values()],
-    instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, add the supported incoming transition, duration, and intent metadata. The client runs the aggregate delivery validator after the turn.",
+    instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, add the supported incoming transition, duration, and one exact intent value: continue, topic-change, time-change, location-change, compare, reveal, or closure. The client runs the aggregate delivery validator after the turn.",
   };
 }
 
@@ -600,7 +616,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       }
     }
     if (!videoTransitionIntentSchema.safeParse(current.transitionIntent).success) {
-      issues.push({ code: "invalid_scene_transition_intent", sceneId: current.sceneId, message: `${current.sceneId} must explain the transition with a supported data-ipw-transition-intent.` });
+      issues.push({ code: "invalid_scene_transition_intent", sceneId: current.sceneId, message: `${current.sceneId} must use one supported data-ipw-transition-intent: continue, topic-change, time-change, location-change, compare, reveal, or closure.` });
     }
   }
   if (sceneTags.length === 0) issues.push({ code: "missing_video_scenes", message: "No data-ipw-scene elements were found in the video composition." });

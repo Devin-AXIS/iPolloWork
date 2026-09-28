@@ -3246,7 +3246,7 @@ export default {
   "session.run_ended_incomplete": "引擎在没有生成完整助手消息时就回到了“就绪”。这个任务尚未完成；请发送“继续”从现有文件接着执行，已经完成的修改不会回滚。",
   "session.artifact_delivery_repairing": "首轮没有交付全部请求结果，正在自动继续生成缺失的产物和结果卡片。",
   "session.artifact_delivery_failed": "自动续跑后仍有请求的产物没有完成。",
-  "session.video_delivery_repairing": "首轮生成遗漏了必需的视频内容，正在自动继续补齐媒体和时长。",
+  "session.video_delivery_repairing": "检测到视频交付问题，正在进行一次自动修复。",
   "session.video_delivery_validated": "视频媒体与时长已通过交付校验。",
   "session.video_delivery_failed": "自动补全后视频交付仍不完整。",
   "session.support_docs": "打开文档",

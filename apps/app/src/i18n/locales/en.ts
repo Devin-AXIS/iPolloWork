@@ -2486,7 +2486,7 @@ export default {
   "session.run_ended_incomplete": "The engine returned to Ready without a completed assistant message. This task did not finish. Send Continue to resume from the existing files; completed edits will not be rolled back.",
   "session.artifact_delivery_repairing": "The first pass did not deliver every requested output. iPolloWork is continuing automatically to create the missing results and cards.",
   "session.artifact_delivery_failed": "Some requested outputs are still missing after the automatic continuation.",
-  "session.video_delivery_repairing": "The first pass missed required video deliverables. iPolloWork is continuing automatically to finish the media and timing.",
+  "session.video_delivery_repairing": "Video delivery issues were detected. iPolloWork is running one automatic repair pass.",
   "session.video_delivery_validated": "Video media and timing passed delivery validation.",
   "session.video_delivery_failed": "Video delivery is still incomplete after the automatic repair.",
   "session.revert_failed": "Could not revert the conversation. Try again once the current run finishes.",

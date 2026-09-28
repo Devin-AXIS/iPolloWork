@@ -88,6 +88,8 @@ describe("artifact completion", () => {
     expect(surfaceSource).toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
     expect(surfaceSource).toContain('const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery"');
     expect(surfaceSource).toContain('nextDraft.capability?.id === "video-delivery-recovery"');
+    expect(surfaceSource).toContain('capability: { id: "video-delivery-recovery", instruction: recoveryInstruction }');
+    expect(surfaceSource).not.toContain('pending.requirements.voiceover ? "video-voice-reference" : "video-delivery-recovery"');
     expect(surfaceSource).toContain("pendingVideoDeliveryRef.current = pendingDelivery");
     expect(surfaceSource).not.toContain("hasVideoDeliveryRequirements(requirements)");
     expect(surfaceSource).toContain("const promptVideoDeliveryIntent = videoDeliveryIntentForPrompt(promptText)");

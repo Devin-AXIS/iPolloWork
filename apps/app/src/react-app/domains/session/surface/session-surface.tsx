@@ -2085,7 +2085,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           attachments: [],
           text: "Continue the unfinished video delivery.",
           resolvedText: "Continue the unfinished video delivery.",
-          capability: { id: pending.requirements.voiceover ? "video-voice-reference" : "video-delivery-recovery", instruction: recoveryInstruction },
+          capability: { id: "video-delivery-recovery", instruction: recoveryInstruction },
         }, []);
         return;
       }
