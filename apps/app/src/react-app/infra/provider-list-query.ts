@@ -25,6 +25,7 @@ import {
   modelRuntimeAdapters,
   type ModelRuntimeResolution,
 } from "../domains/connections/provider-auth/provider-engine-adapter";
+import { isSupportedChatModelId } from "../../app/lib/model-behavior";
 import type { SelectableChatModelSnapshot } from "./preferred-chat-model";
 
 export const PROVIDER_LIST_STALE_MS = 5 * 60 * 1000;
@@ -463,7 +464,9 @@ export function getChatModelCatalogEntries(
   return getSelectableChatProviderItems(value)
     .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
     .flatMap((provider) => (
-    Object.entries(provider.models).map(([modelId, model]) => ({ provider, modelId, model }))
+    Object.entries(provider.models)
+      .filter(([modelId]) => isSupportedChatModelId(modelId))
+      .map(([modelId, model]) => ({ provider, modelId, model }))
   ));
 }
 
@@ -500,8 +503,9 @@ export function getSelectableChatModelSnapshot(
     .filter((provider) => chatProviderVisibleForEngine(provider.id, engineId))
     .map((provider) => ({
     providerID: provider.id,
-    modelIDs: Object.keys(provider.models ?? {}),
-  }));
+    modelIDs: Object.keys(provider.models ?? {}).filter(isSupportedChatModelId),
+  }))
+    .filter((provider) => provider.modelIDs.length > 0);
 }
 
 export type RunnableChatModelEntry = {

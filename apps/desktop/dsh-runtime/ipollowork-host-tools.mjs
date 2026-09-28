@@ -7,8 +7,6 @@ export const OPENAI_CODEX_PRIORITY_CREDENTIAL_REF = "OPENAI_CODEX_API_KEY";
 const PRIORITY_SERVICE_TIER = "priority";
 
 const OPENAI_CODEX_PRIORITY_MODEL_IDS = new Set([
-  "gpt-5.4",
-  "gpt-5.4-mini",
   "gpt-5.5",
   "gpt-5.6-luna",
   "gpt-5.6-sol",

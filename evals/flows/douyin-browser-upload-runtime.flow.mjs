@@ -99,7 +99,7 @@ export default {
       const video = await latestRenderedVideo(dsh.path);
       ctx.assert(video, "The DSH project has no rendered MP4 to test");
       const fixture = await uploadFixture();
-      let tabId;
+      let tabId, publication;
       const call = async (name, args) => {
         const response = await fetch(`${serverInfo.baseUrl}/engine-tools/call`, {
           method: "POST", headers: { ...headers, "content-type": "application/json" },
@@ -107,13 +107,56 @@ export default {
         });
         return { status: response.status, body: await response.json() };
       };
+      const extensionCall = async (action, args = {}) => {
+        const response = await fetch(`${serverInfo.baseUrl}/experimental/extensions/call`, {
+          method: "POST", headers: { ...headers, "content-type": "application/json" },
+          body: JSON.stringify({
+            extensionId: "douyin-ops", action, args,
+            context: { workspaceId: dsh.id, sessionId: video.sessionId, directory: dsh.path },
+          }),
+        });
+        const body = await response.json();
+        ctx.assert(response.ok && body.ok, `${action} failed: ${JSON.stringify(body)}`);
+        return body.result;
+      };
       try {
-        await ctx.prove("DSH uploads its MP4 through the host browser without a manual file picker", {
-          voiceover: "DSH 已生成的视频由宿主直接交给网页上传控件，过程中不会弹出 Windows 文件选择框。",
+        await ctx.prove("DSH reuses the verified Douyin account and uploads through its host-managed browser profile", {
+          voiceover: "DSH 与另外两个引擎共用抖音运营台里已经核验的账号；宿主直接用这个账号的浏览器环境上传视频，不会寻找系统抖音软件或弹出文件选择框。",
           action: async () => {
             await ctx.navigateHash(`/workspace/${dsh.id}/session/${video.sessionId}`);
             await ctx.waitFor(`window.location.hash.includes(${JSON.stringify(video.sessionId)})`);
-            const opened = await call("ipollowork_browser_open_url", { url: fixture.url });
+            const state = await extensionCall("studio-state");
+            ctx.assert(state.accounts?.length === 1, `Expected one selected Douyin account: ${JSON.stringify(state.accounts)}`);
+            const account = state.accounts[0];
+            ctx.assert(account.browserProfileId && account.webIdentity && account.webVerifiedAt, `Douyin account is not browser-verified: ${JSON.stringify(account)}`);
+            const imported = await extensionCall("import-media", { sourcePath: relative(dsh.path, video.path) });
+            const operationKey = `fraimz-dsh-shared-account-${Date.now()}`;
+            const saved = await extensionCall("save-draft", {
+              accountId: account.id,
+              assetId: imported.asset.id,
+              title: "DSH 共用账号验收",
+              text: "DSH 共用抖音账号与宿主浏览器上传验收。本次不会提交真实发布。#iPolloWork",
+              runKey: `${operationKey}:draft`,
+            });
+            const prepared = await extensionCall("publish-draft", {
+              accountId: account.id,
+              draftId: saved.draft.id,
+              operationKey: `${operationKey}:publish`,
+            });
+            ctx.assert(prepared.browserTask?.jobId === prepared.job?.id, `Expected browser fallback task: ${JSON.stringify(prepared)}`);
+            const claimed = await extensionCall("claim-browser-job", {
+              jobId: prepared.job.id,
+              actualProfileId: `douyin-ops:${account.browserProfileId}`,
+              actualAccount: account.webIdentity,
+            });
+            ctx.assert(claimed.account?.id === account.id, "The claimed browser job changed the selected Douyin account");
+            ctx.assert(claimed.profileId === `douyin-ops:${account.browserProfileId}`, "The claimed browser job changed the account profile");
+            publication = { account, job: prepared.job, claimed };
+            const opened = await call("ipollowork_browser_open_url", {
+              url: fixture.url,
+              profileId: claimed.profileId,
+              taskId: prepared.job.id,
+            });
             ctx.assert(opened.status === 200 && opened.body.tabId, JSON.stringify(opened));
             tabId = opened.body.tabId;
             await ctx.waitFor(`Array.from(document.querySelectorAll('button[aria-label^="Select tab:"][aria-selected="true"]')).some(button => button.closest('[id]')?.id === ${JSON.stringify(tabId)})`, {
@@ -126,19 +169,28 @@ export default {
             ctx.assert(ref, "Upload button is missing from the browser snapshot");
             const uploaded = await call("ipollowork_browser_act", {
               tabId, snapshotId: observed.body.snapshotId,
-              actions: [{ type: "upload", ref, expectedName: "上传视频", filePaths: [relative(dsh.path, video.path)] }],
+              actions: [{
+                type: "upload", ref, expectedName: "上传视频",
+                filePaths: [claimed.mediaPath], extensionId: claimed.extensionId,
+              }],
             });
             ctx.assert(uploaded.status === 200 && uploaded.body.results?.[0]?.type === "upload", JSON.stringify(uploaded));
             let final;
-            const expected = `已选择 ${video.path.split(/[\\/]/).at(-1)} ${video.size} bytes`;
+            const expected = `已选择 ${claimed.mediaPath.split(/[\\/]/).at(-1)} ${video.size} bytes`;
             for (let attempt = 0; attempt < 20; attempt += 1) {
               final = await call("ipollowork_browser_snapshot", { tabId });
               ctx.assert(final.status === 200, JSON.stringify(final));
               if (final.body.tree.includes(expected)) break;
               await new Promise((resolve) => setTimeout(resolve, 150));
             }
-            ctx.uploadProof = { video, final: final.body, expected };
-            ctx.output("DSH browser upload", JSON.stringify({ file: relative(dsh.path, video.path), size: video.size, result: uploaded.body.results[0] }, null, 2));
+            ctx.uploadProof = { video, final: final.body, expected, account, profileId: claimed.profileId };
+            ctx.output("DSH shared-account browser upload", JSON.stringify({
+              account: { id: account.id, nickname: account.nickname, webIdentity: account.webIdentity },
+              profileId: claimed.profileId,
+              pluginMedia: claimed.mediaPath,
+              size: video.size,
+              result: uploaded.body.results[0],
+            }, null, 2));
             ctx.output("Browser upload confirmation", final.body.tree.split("\n").filter((line) => /选择|\.mp4|上传/.test(line)).join("\n"));
           },
           assert: async () => {
@@ -146,25 +198,36 @@ export default {
             const installed = await fetch(`${serverInfo.baseUrl}/workspace/${dsh.id}/plugin-packages`, { headers })
               .then((response) => response.json());
             const version = installed.items?.find((item) => item.pluginId === "douyin-ops")?.version;
-            ctx.assert(version === "0.2.13", `Expected the updated Douyin plugin, got ${version}`);
+            ctx.assert(version === "0.2.14", `Expected the updated Douyin plugin, got ${version}`);
+            ctx.assert(ctx.uploadProof.profileId.startsWith("douyin-ops:"), "DSH did not use the Douyin account profile");
             ctx.output("Installed Douyin plugin", version);
             await ctx.eval(`(() => {
               const panel = document.createElement("section");
               panel.id = "douyin-upload-proof";
               panel.style.cssText = "position:fixed;inset:18% 23%;z-index:2147483647;padding:32px;border-radius:20px;background:#101827;color:white;font:20px system-ui;box-shadow:0 20px 70px #0005";
               const heading = document.createElement("h1");
-              heading.textContent = "DSH 上传验收";
+              heading.textContent = "DSH 共用抖音账号验收";
               const detail = document.createElement("p");
               detail.textContent = ${JSON.stringify(ctx.uploadProof.expected)};
+              const account = document.createElement("p");
+              account.textContent = ${JSON.stringify(`账号：${ctx.uploadProof.account.nickname} · 抖音号 ${ctx.uploadProof.account.webIdentity}`)};
               const plugin = document.createElement("p");
-              plugin.textContent = "抖音运营台 0.2.13 · 宿主直接上传，无需手动选文件";
-              panel.append(heading, detail, plugin);
+              plugin.textContent = "抖音运营台 0.2.14 · 同一账号资料 · 宿主浏览器直接上传";
+              panel.append(heading, detail, account, plugin);
               document.body.append(panel);
             })()`);
           },
-          screenshot: { name: "dsh-video-uploaded", requireText: ["DSH 上传验收", `${video.size} bytes`, "抖音运营台 0.2.13"], hashIncludes: `/workspace/${dsh.id}/session/` },
+          screenshot: { name: "dsh-video-uploaded", requireText: ["DSH 共用抖音账号验收", `${video.size} bytes`, "账号：", "同一账号资料"], hashIncludes: `/workspace/${dsh.id}/session/` },
         });
       } finally {
+        if (publication) await extensionCall("finish-browser-job", {
+          jobId: publication.job.id,
+          executionToken: publication.claimed.executionToken,
+          actualProfileId: publication.claimed.profileId,
+          actualAccount: publication.account.webIdentity,
+          outcome: "failed",
+          evidence: "自动验收仅验证同一账号资料与宿主浏览器上传；未打开抖音发布页，也未提交发布。",
+        }).catch(() => {});
         await ctx.eval('document.getElementById("douyin-upload-proof")?.remove()').catch(() => {});
         if (tabId) await ctx.eval(`window.__IPOLLOWORK_ELECTRON__.browser.closeTab(${JSON.stringify(tabId)})`, { awaitPromise: true }).catch(() => {});
         await fixture.close();

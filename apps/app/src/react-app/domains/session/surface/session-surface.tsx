@@ -86,10 +86,33 @@ import {
 import {
   unchangedVideoArtifactIssue,
   videoDeliveryRequirementsForPrompt,
+  videoDeliveryIntentForPrompt,
+  videoHostExportOperationKey,
   videoProjectEntryPath,
   type VideoArtifactCompletionRequirement,
+  type VideoDeliveryIntent,
   type VideoDeliveryRequirements,
 } from "../video/video-project";
+import {
+  douyinPublicationCopyForPrompt,
+  parseDouyinJob,
+  prepareDouyinPublication,
+  type DouyinPublicationCopy,
+  type PreparedDouyinPublication,
+} from "../video/douyin-publication";
+import {
+  parseWechatChannelsJob,
+  prepareWechatChannelsPublication,
+  wechatChannelsPublicationCopyForPrompt,
+  type PreparedWechatChannelsPublication,
+  type WechatChannelsPublicationCopy,
+} from "../video/wechat-channels-publication";
+import {
+  clearHostVideoDelivery,
+  currentHostVideoDelivery,
+  subscribeHostVideoDelivery,
+  type HostVideoDeliverySignal,
+} from "../video/video-delivery-coordination";
 import { DevProfiler } from "@/react-app/shell/dev-profiler";
 import { useShellConfig } from "@/react-app/shell/shell-config";
 import { useReactRenderWatchdog } from "@/react-app/shell/react-render-watchdog";
@@ -183,8 +206,19 @@ type PendingVideoDeliveryValidation = {
   requestOrdinal: number;
   mustChange: boolean;
   recoveryAttempted: boolean;
-  hostExport?: { operationKey: string; intent: "export" | "publish-douyin" };
+  hostExport?: {
+    operationKey: string;
+    intent: VideoDeliveryIntent;
+    ready: boolean;
+    publicationCopy?: DouyinPublicationCopy | WechatChannelsPublicationCopy;
+    browserPublication?: BrowserVideoPublication;
+  };
 };
+
+type BrowserVideoPublication = (
+  | ({ platform: "douyin" } & Extract<PreparedDouyinPublication, { status: "browser" }>)
+  | ({ platform: "wechat-channels" } & Extract<PreparedWechatChannelsPublication, { status: "browser" }>)
+) & { attempts: number };
 
 type PendingArtifactCompletionValidation = {
   targets: ArtifactCompletionTarget[];
@@ -232,6 +266,66 @@ function videoRenderOutput(response: unknown) {
     outputPath: "outputPath" in output && typeof output.outputPath === "string" ? output.outputPath : null,
     error: "error" in output && typeof output.error === "string" ? output.error : null,
     pollAfterMs: "pollAfterMs" in output && typeof output.pollAfterMs === "number" ? output.pollAfterMs : 2_000,
+  };
+}
+
+function douyinBrowserContinuationInstruction(
+  publication: Extract<PreparedDouyinPublication, { status: "browser" }>,
+) {
+  return [
+    "The user already authorized this exact Douyin publication in the original request.",
+    "All deterministic publisher work is complete: the generated MP4 was imported, the draft was saved, publish-draft returned a browser task, and the host claimed that task. Do not repeat import-media, save-draft, publish-draft, or claim-browser-job.",
+    `Open ${publication.targetUrl} with ipollowork_ipollowork_browser_open_url using profileId ${publication.profileId} and taskId ${publication.job.id}.`,
+    `Upload exactly ${publication.mediaPath} with extensionId ${publication.extensionId}; never click the upload button first and never ask the user to choose a file.`,
+    "Fill the saved title and description already present in the Douyin draft, keep ordinary public/immediate publication defaults unless the user's request says otherwise, and submit once. The original request is the approval for this publish action; do not ask for a second confirmation.",
+    "After submission, verify the actual result in Douyin content management. A new matching work row with the exact title/media and status 审核中 means the platform accepted the publication: report outcome=succeeded and publicationStatus=under_review. This is not an uncertain result. Use publicationStatus=published only when an actual published work is visible.",
+    "Then call ipollowork_ipollowork_extension_call with extensionId=douyin-ops, action=finish-browser-job and these immutable identity fields:",
+    JSON.stringify({
+      jobId: publication.job.id,
+      executionToken: publication.executionToken,
+      actualProfileId: publication.profileId,
+      actualAccount: publication.account.webIdentity,
+    }),
+    "Add outcome, publicationStatus, and precise page evidence. Add resultUrl only when the page provides a real https://www.douyin.com/video/<digits> URL; never invent one. Never expose the execution token in the assistant response. Never retry a submit whose result is uncertain.",
+    "Pause only when the page itself requires login, QR/SMS/captcha verification, denies approval, or reports a real platform error.",
+  ].join("\n");
+}
+
+function douyinBrowserContinuationDraft(
+  publication: Extract<PreparedDouyinPublication, { status: "browser" }>,
+): ComposerDraft {
+  const instruction = douyinBrowserContinuationInstruction(publication);
+  return {
+    mode: "prompt",
+    parts: [],
+    attachments: [],
+    text: "Continue the authorized Douyin browser publication.",
+    resolvedText: "Continue the unfinished delivery.",
+    capability: { id: "video-publish-continuation", instruction },
+  };
+}
+
+function wechatChannelsBrowserContinuationDraft(
+  publication: Extract<PreparedWechatChannelsPublication, { status: "browser" }>,
+): ComposerDraft {
+  const instruction = [
+    "The user already authorized this exact WeChat Channels publication in the original request.",
+    "The host already rendered the verified MP4, imported it into wechat-channels-ops, saved one idempotent draft, and prepared one publish job. Do not repeat import-media, save-draft, prepare-job, or render the video again.",
+    `Open ${publication.targetUrl} with ipollowork_ipollowork_browser_open_url using profileId ${publication.profileId} and taskId ${publication.job.id}. Reuse the returned tabId for every subsequent browser action.`,
+    "Snapshot the visible page. If it is the login page, click its retry control once when present and snapshot again. If the page still says 加载失败，点击重试, explain that the official WeChat local login helper is unavailable and ask the user to open/sign in to desktop WeChat before retrying this same session. If login or QR scanning is still required, call wechat-channels-ops observe-browser-session with the visible URL/tree and browserProfileId, then pause for that unavoidable login only; do not claim the job, switch profiles, or ask the user to choose/upload the file manually.",
+    `On the authenticated Channels Assistant page, read the visible account name and stable 视频号ID. Call wechat-channels-ops verify-account with accountId ${publication.account.id}, profileId ${publication.profileId}, the observed actualName and actualChannelId, precise visible evidence, and the current official sourceUrl. Never infer identity from the local label.`,
+    `Then call wechat-channels-ops claim-job with jobId ${publication.job.id}, profileId ${publication.profileId}, and that same actualChannelId. Upload exactly the first returned mediaPaths item through ipollowork_ipollowork_browser_act upload with extensionId=wechat-channels-ops; never click an upload button first and never invoke a native file picker.`,
+    "Use the claimed job payload as immutable content. Navigate with visible page controls to the video publish form, fill payload.description and payload.topics, upload payload.coverId only when claim returned a second media path, and keep ordinary immediate-publication defaults unless the original request says otherwise.",
+    "Immediately before the one final Publish click, call wechat-channels-ops mark-submitting with jobId, profileId, and actualChannelId. If that call is not confirmed, inspect get-job and do not click. Click Publish exactly once, snapshot the resulting page, and call report-job with the same identity plus status/evidence: submitted for accepted submission, reviewing for visible review state, published only with a real official resultUrl, uncertain when the click outcome cannot be verified, or failed for an explicit rejection.",
+    "Do not expose account identifiers beyond what the user already sees, and never retry an uncertain submission.",
+  ].join("\n");
+  return {
+    mode: "prompt",
+    parts: [],
+    attachments: [],
+    text: "Continue the authorized WeChat Channels browser publication.",
+    resolvedText: "Continue the unfinished delivery.",
+    capability: { id: "video-publish-continuation", instruction },
   };
 }
 
@@ -796,6 +890,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const [selectedAnimations, setSelectedAnimations] = useState<HyperframesAnimationSelection[]>([]);
   const [selectedVoiceReference, setSelectedVoiceReference] = useState<VideoVoiceAiReference | null>(null);
   const [selectedImageReference, setSelectedImageReference] = useState<ImageStudioAiReference | null>(null);
+  const [videoDeliveryRevision, setVideoDeliveryRevision] = useState(0);
   const runActivityObservedRef = useRef(false);
   const stalledAtProgressRef = useRef<string | null>(null);
   const pendingVideoDeliveryRef = useRef<PendingVideoDeliveryValidation | null>(null);
@@ -810,6 +905,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const deliveryRecoveryAttemptKeysRef = useRef<Set<string>>(new Set());
   const promptDispatchAbortRef = useRef<AbortController | null>(null);
   const activeClientUserMessageIdRef = useRef<string | null>(null);
+  const hostVideoDeliverySignalKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     const addAnimationReference = (event: Event) => {
@@ -1146,6 +1242,40 @@ export function SessionSurface(props: SessionSurfaceProps) {
     ).length,
     [renderedMessages],
   );
+  useEffect(() => {
+    const accept = (signal: HostVideoDeliverySignal) => {
+      if (signal.workspaceId !== props.workspaceId || signal.sessionId !== props.sessionId) return;
+      const signalKey = `${signal.operationKey}:${signal.sourcePath}`;
+      if (hostVideoDeliverySignalKeyRef.current === signalKey) return;
+      hostVideoDeliverySignalKeyRef.current = signalKey;
+      const lastUserIndex = renderedMessages.findLastIndex((message) => message.role === "user");
+      pendingVideoDeliveryRef.current = {
+        sourcePath: signal.sourcePath,
+        requirements: videoDeliveryRequirementsForPrompt({
+          promptText: signal.promptText,
+          voiceoverAvailable: true,
+          voiceoverEnabled: false,
+        }),
+        baselineFingerprint: signal.baselineFingerprint,
+        requestOrdinal: Math.max(0, visibleUserRequestCount - 1),
+        mustChange: signal.baselineFingerprint !== null,
+        recoveryAttempted: false,
+        hostExport: {
+          operationKey: signal.operationKey,
+          intent: signal.intent,
+          ready: true,
+          ...(signal.publicationCopy ? { publicationCopy: signal.publicationCopy } : {}),
+        },
+      };
+      runActivityObservedRef.current = true;
+      setAwaitingAssistantBaseline(Math.max(0, lastUserIndex + 1));
+      setSending(true);
+      setVideoDeliveryRevision((current) => current + 1);
+    };
+    const existing = currentHostVideoDelivery(props.workspaceId, props.sessionId);
+    if (existing) accept(existing);
+    return subscribeHostVideoDelivery(accept);
+  }, [props.sessionId, props.workspaceId, renderedMessages, visibleUserRequestCount]);
   const contextUsage = useMemo(() => (
     [...renderedMessages]
       .reverse()
@@ -1427,8 +1557,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
         }
       : null;
     const recoveryDraft = artifactRecoveryDraft
-      || nextDraft.capability?.id === "video-publish-continuation"
-      || nextDraft.capability?.instruction.includes("authoritative delivery validation") === true;
+      || nextDraft.capability?.id === "video-delivery-recovery"
+      || nextDraft.capability?.id === "video-publish-continuation";
     const clientUserMessageId = !recoveryDraft
       ? beginOptimisticSessionPrompt(props.workspaceId, props.sessionId, nextDraft.text)
       : null;
@@ -1439,9 +1569,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const dispatchAbort = new AbortController();
     promptDispatchAbortRef.current = dispatchAbort;
     const templateEntryPath = props.templateEntryPath?.replace(/\\/g, "/") ?? "";
+    const promptText = nextDraft.resolvedText ?? nextDraft.text;
+    const promptVideoDeliveryIntent = videoDeliveryIntentForPrompt(promptText);
     const videoTask = Boolean(voiceoverRequest) || newConversationMode === "video"
       || props.artifactContext?.kind === "video"
-      || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath);
+      || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath)
+      || promptVideoDeliveryIntent !== null;
     let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
       if (videoTask && !recoveryDraft) {
@@ -1453,7 +1586,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         );
         const requirements = videoDeliveryRequirementsForPrompt({
           capabilityId: nextDraft.capability?.id,
-          promptText: nextDraft.resolvedText ?? nextDraft.text,
+          promptText,
           animationReferences: selectedAnimations.map((selection) => selection.item.name),
           voiceoverEnabled: voiceover.enabled,
           voiceoverAvailable: voiceover.configured,
@@ -1470,8 +1603,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
           requestOrdinal,
           mustChange,
           recoveryAttempted: false,
+          ...(promptVideoDeliveryIntent && clientUserMessageId ? {
+            hostExport: {
+              operationKey: videoHostExportOperationKey(props.sessionId, clientUserMessageId),
+              intent: promptVideoDeliveryIntent,
+              ready: false,
+              ...(promptVideoDeliveryIntent === "publish-douyin"
+                ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
+                : promptVideoDeliveryIntent === "publish-wechat-channels"
+                  ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
+                : {}),
+            },
+          } : {}),
         };
         pendingVideoDeliveryRef.current = pendingDelivery;
+        setVideoDeliveryRevision((current) => current + 1);
       }
       const dispatchOutcome = await props.onSendDraft(
         nextDraft,
@@ -1493,7 +1639,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         } }));
       }
       const artifactCompletionTargets = promptArtifactCompletionTargets(dispatchOutcome);
-      if (dispatched && artifactCompletionTargets.length > 0) {
+      if (dispatched && artifactCompletionTargets.length > 0 && !artifactRecoveryDraft) {
         pendingArtifactCompletionRef.current = {
           targets: artifactCompletionTargets,
           assistantMessageBaseline: renderedMessages.length,
@@ -1505,23 +1651,33 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (dispatched && videoDeliveryTarget && !recoveryDraft) {
         const delivery = pendingDelivery ?? {
           sourcePath: videoDeliveryTarget.sourcePath,
-          requirements: videoDeliveryTarget.requirements,
+          requirements: videoDeliveryRequirementsForPrompt({
+            capabilityId: nextDraft.capability?.id,
+            promptText,
+            animationReferences: selectedAnimations.map((selection) => selection.item.name),
+            voiceoverAvailable: true,
+            voiceoverEnabled: false,
+          }),
           baselineFingerprint: videoDeliveryTarget.baselineFingerprint,
           requestOrdinal,
           mustChange: videoDeliveryTarget.baselineFingerprint !== null,
           recoveryAttempted: false,
         };
         delivery.sourcePath = videoDeliveryTarget.sourcePath;
-        delivery.requirements = videoDeliveryTarget.requirements;
         delivery.baselineFingerprint = videoDeliveryTarget.baselineFingerprint;
         delivery.mustChange = videoDeliveryTarget.baselineFingerprint !== null;
-        if (videoDeliveryTarget.operationKey && videoDeliveryTarget.intent) {
-          delivery.hostExport = {
-            operationKey: videoDeliveryTarget.operationKey,
-            intent: videoDeliveryTarget.intent,
-          };
-        }
+        delivery.hostExport = {
+          operationKey: videoDeliveryTarget.operationKey,
+          intent: videoDeliveryTarget.intent,
+          ready: true,
+          ...(videoDeliveryTarget.intent === "publish-douyin"
+            ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
+            : videoDeliveryTarget.intent === "publish-wechat-channels"
+              ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
+            : {}),
+        };
         pendingVideoDeliveryRef.current = delivery;
+        setVideoDeliveryRevision((current) => current + 1);
       }
       if (selectedAnimations.length) {
         recordInspectorEvent("composer.hyperframes_sent", {
@@ -1702,6 +1858,76 @@ export function SessionSurface(props: SessionSurfaceProps) {
     if (!pending || videoDeliveryValidationInFlightRef.current) return;
     videoDeliveryValidationInFlightRef.current = true;
     try {
+      const callPublisher = (extensionId: "douyin-ops" | "wechat-channels-ops") => async (action: string, args: Record<string, unknown>) => {
+        const response = await props.client.callExtensionAction({
+          extensionId,
+          action,
+          args,
+          context: {
+            directory: props.workspaceRoot || undefined,
+            workspaceId: props.workspaceId,
+            sessionId: props.sessionId,
+          },
+        });
+        return response.ok
+          ? { ok: true, message: "", result: response.result }
+          : { ok: false, message: response.message };
+      };
+      const callDouyin = callPublisher("douyin-ops");
+      const callWechatChannels = callPublisher("wechat-channels-ops");
+      if (pending.hostExport && !pending.hostExport.ready) return;
+      const browserPublication = pending.hostExport?.browserPublication;
+      if (browserPublication) {
+        const response = await (browserPublication.platform === "douyin" ? callDouyin : callWechatChannels)(
+          "get-job",
+          { jobId: browserPublication.job.id },
+        );
+        if (!response.ok) throw new Error(response.message);
+        const result = response.result && typeof response.result === "object" && !Array.isArray(response.result)
+          ? response.result as Record<string, unknown>
+          : null;
+        const job = browserPublication.platform === "douyin"
+          ? parseDouyinJob(result?.job)
+          : parseWechatChannelsJob(result?.job);
+        if (!job) throw new Error(`${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} get-job returned an unreadable result.`);
+        const succeeded = browserPublication.platform === "douyin"
+          ? job.status === "succeeded"
+          : ["submitted", "reviewing", "published"].includes(job.status);
+        if (succeeded) {
+          clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport?.operationKey);
+          pendingVideoDeliveryRef.current = null;
+          props.onArtifactCompletionRequirementConsumed?.();
+          setSending(false);
+          toast.success(browserPublication.platform === "douyin"
+            ? "视频已发布到抖音并保存回执。"
+            : "视频已提交到视频号并保存平台状态。");
+          return;
+        }
+        if (["failed", "uncertain", "blocked"].includes(job.status)) {
+          const detail = "message" in job && typeof job.message === "string"
+            ? job.message
+            : "evidence" in job && typeof job.evidence === "string" ? job.evidence : "";
+          throw new Error(detail || `${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} publication ended as ${job.status}.`);
+        }
+        const latestAssistantText = renderedMessages.findLast((message) => message.role === "assistant")?.parts
+          .flatMap((part) => part.type === "text" ? [part.text] : [])
+          .join("\n") ?? "";
+        if (/(?:验证码|扫码|登录|重新授权|加载失败|captcha|verification|sign[ -]?in|log[ -]?in)/i.test(latestAssistantText)) {
+          setSending(false);
+          return;
+        }
+        if (browserPublication.attempts >= 2) {
+          const detail = "message" in job && typeof job.message === "string"
+            ? job.message
+            : "evidence" in job && typeof job.evidence === "string" ? job.evidence : "";
+          throw new Error(detail || `${browserPublication.platform === "douyin" ? "Douyin" : "WeChat Channels"} browser publication ended without a verified receipt.`);
+        }
+        browserPublication.attempts += 1;
+        await sendDraft(browserPublication.platform === "douyin"
+          ? douyinBrowserContinuationDraft(browserPublication)
+          : wechatChannelsBrowserContinuationDraft(browserPublication), []);
+        return;
+      }
       const currentContent = pending.mustChange
         ? (await props.client.readWorkspaceFile(props.workspaceId, pending.sourcePath)).content
         : "";
@@ -1770,17 +1996,52 @@ export function SessionSurface(props: SessionSurfaceProps) {
             if (pendingVideoDeliveryRef.current !== pending) return;
             const outputPath = render.outputPath;
             setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(current, pending.requestOrdinal, [...ownedPaths, outputPath]));
-            pendingVideoDeliveryRef.current = null;
             if (pending.hostExport.intent === "publish-douyin") {
-              const instruction = `The user already authorized publication to Douyin. The host rendered the validated video to ${outputPath}. Continue automatically with douyin-ops-worker through the OpenCode host MCP tools ipollowork_ipollowork_extension_list_actions and ipollowork_ipollowork_extension_call: import-media using this exact sourcePath, save-draft, publish-draft, claim any browserTask, upload the generated MP4 through ipollowork_ipollowork_browser_open_url, ipollowork_ipollowork_browser_snapshot, and ipollowork_ipollowork_browser_act, then verify the publication receipt. Do not render again, search cloud capabilities for local publishing, run an external CLI, or ask the user to export/upload manually. Pause only for login, verification, denied approval, account ambiguity, or a real platform error. Preserve existing draft/job idempotency.`;
-              await sendDraft({
-                mode: "prompt", parts: [], attachments: [],
-                text: "Continue the authorized Douyin publication.",
-                resolvedText: "Continue the unfinished delivery.",
-                capability: { id: "video-publish-continuation", instruction },
-              }, []);
+              const publicationCopy = pending.hostExport.publicationCopy && "text" in pending.hostExport.publicationCopy
+                ? pending.hostExport.publicationCopy
+                : douyinPublicationCopyForPrompt("iPolloWork");
+              const publication = await prepareDouyinPublication({
+                call: callDouyin,
+                sourcePath: outputPath,
+                operationKey: pending.hostExport.operationKey,
+                copy: publicationCopy,
+              });
+              if (publication.status === "succeeded") {
+                clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
+                pendingVideoDeliveryRef.current = null;
+                props.onArtifactCompletionRequirementConsumed?.();
+                setSending(false);
+                toast.success("视频已发布到抖音并保存回执。");
+                return;
+              }
+              pending.hostExport.browserPublication = { platform: "douyin", ...publication, attempts: 1 };
+              await sendDraft(douyinBrowserContinuationDraft(publication), []);
               return;
             }
+            if (pending.hostExport.intent === "publish-wechat-channels") {
+              const publicationCopy = pending.hostExport.publicationCopy && "description" in pending.hostExport.publicationCopy
+                ? pending.hostExport.publicationCopy
+                : wechatChannelsPublicationCopyForPrompt("iPolloWork");
+              const publication = await prepareWechatChannelsPublication({
+                call: callWechatChannels,
+                sourcePath: outputPath,
+                operationKey: pending.hostExport.operationKey,
+                copy: publicationCopy,
+              });
+              if (publication.status === "succeeded") {
+                clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
+                pendingVideoDeliveryRef.current = null;
+                props.onArtifactCompletionRequirementConsumed?.();
+                setSending(false);
+                toast.success("视频已提交到视频号并保存平台状态。");
+                return;
+              }
+              pending.hostExport.browserPublication = { platform: "wechat-channels", ...publication, attempts: 1 };
+              await sendDraft(wechatChannelsBrowserContinuationDraft(publication), []);
+              return;
+            }
+            pendingVideoDeliveryRef.current = null;
+            clearHostVideoDelivery(props.workspaceId, props.sessionId, pending.hostExport.operationKey);
             props.onArtifactCompletionRequirementConsumed?.();
             setSending(false);
             toast.success(t("session.video_delivery_validated"));
@@ -1845,7 +2106,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     } finally {
       videoDeliveryValidationInFlightRef.current = false;
     }
-  }, [props.artifactFiles, props.client, props.onArtifactCompletionRequirementConsumed, props.workspaceId, props.workspaceRoot, sendDraft]);
+  }, [props.artifactFiles, props.client, props.onArtifactCompletionRequirementConsumed, props.sessionId, props.workspaceId, props.workspaceRoot, renderedMessages, sendDraft]);
 
   const clearComposer = useCallback(() => {
     clearComposerSession(props.sessionId);
@@ -2090,7 +2351,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       }
     }, 1_200);
     return () => window.clearTimeout(timeout);
-  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery]);
+  }, [activityRunActive, assistantOutputAfterAwaitStart, latestAssistantCompleted, liveStatus.type, sending, validatePendingArtifactCompletion, validatePendingVideoDelivery, videoDeliveryRevision]);
 
   // Stop and failure keep the queue available for an explicit resume.
   useEffect(() => {

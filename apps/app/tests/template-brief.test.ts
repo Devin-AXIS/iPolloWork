@@ -81,10 +81,12 @@ describe("template brief", () => {
         expect(prompt).toContain("iPolloWork Presentations workflow");
         expect(prompt).not.toContain("design-slides.md");
       } else if (category === "video") {
-        expect(prompt).toContain("ipollowork-video-studio");
-        expect(prompt).toContain("read references/video.md once");
-        expect(prompt).toContain("only the shared-guidelines.md sections it identifies");
+        expect(prompt).toContain("active Video surface contract");
+        expect(prompt).toContain("references/video.md only when that exact file is already present");
+        expect(prompt).toContain("Never glob or search a parent directory");
         expect(prompt).toContain("core-v1-video/catalog.md");
+        expect(prompt).toContain("Use exact reads, not discovery globs");
+        expect(prompt).toContain("workspace-external directory");
         expect(prompt).not.toContain("design-video.md");
       } else {
         expect(prompt).toContain(`references/design-${category}.md`);

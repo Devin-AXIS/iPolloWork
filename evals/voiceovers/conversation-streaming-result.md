@@ -44,4 +44,6 @@
 
 22. OpenCode text and command summaries append in arrival order without moving earlier text or creating a premature result area. When the run completes, its process folds and the final answer remains visible.
 
-23. Returning to the conversation input, two typed lines and the placeholder use 14-pixel text with the same one-and-a-half line spacing as ordinary conversation text.
+23. After the model finishes generating the video source, the process still says it is in progress while the iPolloWork app exports the MP4, instead of reporting the task as complete too early.
+
+24. Returning to the conversation input, two typed lines and the placeholder use 14-pixel text with the same one-and-a-half line spacing as ordinary conversation text.

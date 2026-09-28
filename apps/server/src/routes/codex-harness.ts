@@ -127,6 +127,7 @@ interface RegisterCodexHarnessRoutesOptions {
   readJsonBody: ReadJsonBody;
   requireClientScope: (ctx: RequestContext, required: TokenScope) => void;
   resolveWorkspace: (config: ServerConfig, id: string) => Promise<WorkspaceInfo>;
+  rememberSessionContext: (workspaceId: string, sessionId: string) => void;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -227,7 +228,7 @@ async function providerList(runtime: ReturnType<CodexHarnessRuntimePool["forWork
 }
 
 export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOptions): void {
-  const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace } = options;
+  const { routes, config, runtime, readJsonBody, requireClientScope, resolveWorkspace, rememberSessionContext } = options;
 
   addRoute(routes, "GET", "/workspace/:id/engine/codex-harness/plugin-capabilities", "client", async (ctx) => {
     const workspace = await resolveWorkspace(config, ctx.params.id);
@@ -280,6 +281,7 @@ export function registerCodexHarnessRoutes(options: RegisterCodexHarnessRoutesOp
       const effectiveThreadId = typeof resumedThread?.id === "string" && resumedThread.id.trim()
         ? resumedThread.id.trim()
         : body.payload.threadId;
+      rememberSessionContext(workspace.id, effectiveThreadId);
       const started = await workspaceRuntime.call<{ turn?: Record<string, unknown> }>("turn/start", {
         threadId: effectiveThreadId,
         ...codexHarnessTurnAccessPolicy(body.payload.accessMode, workspace.path),

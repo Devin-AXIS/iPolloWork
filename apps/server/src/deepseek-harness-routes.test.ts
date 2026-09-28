@@ -93,6 +93,66 @@ afterEach(async () => {
 });
 
 describe("DeepSeek Harness plugin prompt routes", () => {
+  test("binds host media tools to the active DSH task when agent metadata is unavailable", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-dsh-media-context-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    const config = serverConfig(workspaceRoot);
+    await mkdir(join(workspaceRoot, "video", "session-1"), { recursive: true });
+    await writeFile(join(workspaceRoot, "video", "session-1", "index.html"), "<!doctype html><main></main>", "utf8");
+    await writeFile(join(workspaceRoot, "video", "session-1", "brief.json"), "{}\n", "utf8");
+    const call = spyOn(DeepSeekHarnessRuntime.prototype, "call").mockResolvedValue({});
+    const server = await startServer(config);
+    const headers = {
+      authorization: `Bearer ${config.token}`,
+      "content-type": "application/json",
+    };
+
+    try {
+      const prompt = await fetch(`http://127.0.0.1:${server.port}/workspace/ws_dsh/engine/deepseek-harness/prompt`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ payload: {
+          sessionId: "session-1",
+          mode: "queue",
+          content: [{ type: "text", text: "Create the video" }],
+        } }),
+      });
+      expect(prompt.status).toBe(200);
+
+      const review = await fetch(`http://127.0.0.1:${server.port}/engine-tools/call`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          name: "ipollowork_extension_call",
+          args: {
+            extensionId: "media",
+            action: "artifact_media_review",
+            args: {
+              phase: "plan",
+              sourcePath: "video/session-1/index.html",
+              needs: [],
+              exemption: "local-edit",
+              reason: "No additional generated media is required.",
+            },
+          },
+          context: {
+            workspaceId: "ws_dsh",
+            directory: workspaceRoot,
+            sessionId: "agent/current",
+          },
+        }),
+      });
+      expect(review.status).toBe(200);
+      expect(await review.json()).toMatchObject({
+        ok: true,
+        result: { plan: { sourcePath: "video/session-1/index.html" } },
+      });
+    } finally {
+      await server.stop();
+      call.mockRestore();
+    }
+  });
+
   test("cancels a running DSH prompt without waiting for the prompt response", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-dsh-cancel-workspace-");
     process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");

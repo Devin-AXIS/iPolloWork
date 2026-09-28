@@ -92,7 +92,7 @@ describe.skipIf(!betterSqliteAvailable)("seedOpencodeSessionMessages", () => {
     const decoded = rows.map((row) => JSON.parse(row.data) as Record<string, unknown>);
     expect(decoded[0]?.role).toBe("assistant");
     expect(decoded[0]?.parentID).toBe(rows[0]?.id);
-    expect(decoded[0]?.modelID).toBe("gpt-5.4");
+    expect(decoded[0]?.modelID).toBe("gpt-5.5");
     expect(decoded[0]?.providerID).toBe("openai");
     expect(decoded[1]?.role).toBe("user");
     expect(decoded[1]?.summary).toEqual({ diffs: [] });

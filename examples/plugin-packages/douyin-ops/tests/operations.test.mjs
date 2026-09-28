@@ -305,6 +305,22 @@ test('browser publishing locks draft and queued browser writes block API writes'
   assert.throws(() => f.ops.beginJob(account.id, 'reply', 'another', {}), /正在执行/);
 });
 
+test('browser publishing treats a matching work under review as an accepted submission without inventing a URL', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.importMedia({ sourcePath: 'video.mp4' });
+  const { draft } = f.ops.saveDraft({ accountId: account.id, title: '审核中作品', text: '已确认文案', assetId: asset.id });
+  const { job } = await f.ops.action('publish-draft', { accountId: account.id, draftId: draft.id, operationKey: 'under-review-publish' });
+  const claim = await f.ops.action('claim-browser-job', { jobId: job.id, ...identity });
+  const receipt = { jobId: job.id, ...identity, executionToken: claim.executionToken, outcome: 'succeeded', evidence: '内容管理显示同标题新作品，状态为审核中。' };
+  await assert.rejects(f.ops.action('finish-browser-job', receipt), /已发布还是审核中/);
+  const finished = await f.ops.action('finish-browser-job', { ...receipt, publicationStatus: 'under_review' });
+  assert.equal(finished.job.status, 'succeeded');
+  assert.equal(finished.job.result.publicationStatus, 'under_review');
+  assert.equal(finished.job.result.url, undefined);
+  assert.equal(f.store.get('draft', draft.id).status, 'succeeded');
+});
+
 test('browser links route data without pretending to be API IDs, and read counts are enforced', async t => {
   const f = await fixture(t), { account } = await f.connect();
   const link = 'https://www.douyin.com/video/1234567890';

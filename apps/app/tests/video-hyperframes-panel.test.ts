@@ -8,6 +8,7 @@ import {
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
+  videoHostExportOperationKey,
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
@@ -1262,21 +1263,23 @@ describe("HyperFrames Video Studio", () => {
     expect(shouldInjectVideoTaskContext(null, "work")).toBe(false);
   });
 
-  test("treats Douyin publication and MP4 export as unfinished video delivery", () => {
-    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频，然后发布到抖音")).toBe(
-      "publish-douyin",
-    );
+  test("treats social publication and MP4 export as unfinished video delivery", () => {
+    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频，然后发布到抖音")).toBe("publish-douyin");
+    expect(videoDeliveryIntentForPrompt("给我做一个介绍 iPolloWork 的短视频并发布到微信视频号")).toBe("publish-wechat-channels");
+    expect(videoDeliveryIntentForPrompt("Create this video and publish it to WeChat Channels")).toBe("publish-wechat-channels");
     expect(videoDeliveryIntentForPrompt("请导出这个视频为 MP4")).toBe("export");
     expect(videoDeliveryIntentForPrompt("全程自动发布到抖音，不要手动导出")).toBe("publish-douyin");
     expect(videoDeliveryIntentForPrompt("只修改这个视频的标题，不要发布到抖音")).toBeNull();
+    expect(videoDeliveryIntentForPrompt("只生成视频，不要发布到视频号")).toBeNull();
     expect(videoDeliveryIntentForPrompt("只做一个可编辑视频")).toBeNull();
-    const contract = videoTaskSystemContext("ses_video", "/workspace", null, {
-      hostExportOperationKey: "test-export-once",
-    });
-    expect(contract).toContain("The iPolloWork host owns the MP4 export");
+    const contract = videoTaskSystemContext("ses_video", "/workspace", null, { hostExportOperationKey: "test-export-once" });
+    expect(contract).toContain("The iPolloWork app owns the MP4 export");
+    expect(contract).toContain("Never call it the host");
+    expect(contract).not.toContain("The iPolloWork host");
     expect(contract).toContain("operationKey test-export-once");
     expect(contract).toContain("ipollowork_ipollowork_extension_call");
     expect(contract).not.toContain("Export directly with ipollowork_extension_call");
+    expect(videoHostExportOperationKey("ses_video", "client:request-1")).toBe("ipw:ses_video:client-request-1:export");
   });
 
   test("injects the Video Studio contract before animation guidance", () => {
@@ -1348,9 +1351,9 @@ describe("HyperFrames Video Studio", () => {
       "Carry an explicitly requested but still missing deliverable forward",
     );
     expect(contract).toContain(
-      "The iPolloWork client automatically runs the single aggregate delivery validator",
+      "The iPolloWork app automatically runs the single aggregate delivery validator",
     );
-    expect(contract).toContain("the client owns validation and one bounded repair continuation");
+    expect(contract).toContain("the app owns validation and one bounded repair continuation");
     expect(contract).toContain("at most 20 seconds");
     expect(contract).toContain("on timeout abandon it without retrying");
     expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
@@ -1361,8 +1364,12 @@ describe("HyperFrames Video Studio", () => {
   test("continues explicit publication through the session-owned render API without manual export", () => {
     const sessionId = "ses_auto_publish";
     const contract = videoTaskSystemContext(sessionId, "C:/workspace");
-    expect(contract).toContain("action=video_render_start");
-    expect(contract).toContain("media.video_render_status");
+    const surfaceSource = readFileSync(
+      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
+      "utf8",
+    );
+    expect(contract).toContain('action=video_render_start');
+    expect(contract).toContain('media.video_render_status');
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
     expect(contract).toContain('operationKey:"ses_auto_publish:export-1"');
     expect(contract).toContain("Do not search for render interfaces");
@@ -1373,6 +1380,10 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("import-media -> save-draft -> publish-draft");
     expect(contract).toContain("never re-submit an uncertain publication");
     expect(contract).not.toContain("If valid, stop using tools and answer immediately");
+    expect(surfaceSource).toContain("publicationStatus=under_review");
+    expect(surfaceSource).toContain("审核中 means the platform accepted the publication");
+    expect(surfaceSource).toContain("This is not an uncertain result");
+    expect(surfaceSource).toContain("Add resultUrl only when the page provides a real");
   });
 
   test("surfaces a silent provider stall without automatically replaying tools", () => {
@@ -1422,7 +1433,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("fix all reported errors before claiming completion");
     expect(contract).toContain("not complete when synthesis returns");
     expect(contract).toContain("Never use cross-session search/read to recover this task");
-    expect(contract).toContain("the client owns validation and one bounded repair continuation");
+    expect(contract).toContain("the app owns validation and one bounded repair continuation");
     expect(contract).toContain('data-ipw-voiceover="true"');
     expect(contract).toContain('data-ipw-narration-source="true"');
     expect(contract).toContain("existing headings, body copy, names, dates, metrics, labels");
@@ -1546,7 +1557,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("observable Establish -> Develop -> Land");
     expect(contract).toContain("component:spatial-camera-suite#<shotStyle>");
     expect(contract).toContain("Do not add a wrapper camera to a component that already owns its camera");
-    expect(contract).toContain("the client owns validation and one bounded repair continuation");
+    expect(contract).toContain("the app owns validation and one bounded repair continuation");
   });
 
   test("requires requested sound effects without treating disabled audio as required", () => {
@@ -1630,5 +1641,19 @@ describe("HyperFrames Video Studio", () => {
       "At the start of every edit turn, re-read the current entry from disk",
     );
     expect(contract).toContain("Replace inherited copy; Keep the visual language");
+  });
+
+  test("does not leave the project to search for missing template guidance", () => {
+    const contract = videoTaskSystemContext("ses_video_a", "/workspace/current", {
+      id: "personal.launch-film",
+      title: "Launch Film",
+      entry: "index.html",
+      applyChecklist: [],
+      layoutLibrary: "core-v1",
+      authoringGuide: "references/video.md",
+    });
+    expect(contract).toContain("only if that exact project-local file exists");
+    expect(contract).toContain("never glob or search a parent directory");
+    expect(contract).toContain("workspace-external path");
   });
 });

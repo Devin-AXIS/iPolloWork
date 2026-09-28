@@ -75,12 +75,34 @@ describe("artifact completion", () => {
     expect(routeSource).toContain("baselineFingerprint: artifactContentFingerprint(source.content)");
     expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.has(template.sessionId)");
     expect(routeSource).toContain('template.manifest.surface !== "video"');
+    expect(routeSource).toContain("template.sessionId !== hostVideoTask?.template?.sessionId");
+    expect(routeSource).toContain("publishHostVideoDelivery({");
+    expect(routeSource).toContain("sessionId: effectiveSessionId");
+    expect(routeSource).toContain("const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0");
+    expect(routeSource).toContain("const hostVideoTask = videoDeliveryIntent");
+    expect(routeSource).not.toContain("activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent");
     expect(surfaceSource).toContain("validatePendingArtifactCompletion");
     expect(surfaceSource).toContain("pending.requestOrdinal");
     expect(surfaceSource).toContain("artifactPathIsWithinDirectory(path, directory)");
     expect(surfaceSource).toContain("artifactCompletionRecoveryInstruction(check)");
     expect(surfaceSource).toContain("if (pendingArtifactCompletionRef.current || pendingVideoDeliveryRef.current) return;");
     expect(surfaceSource).toContain('const artifactRecoveryDraft = nextDraft.capability?.id === "artifact-delivery-recovery"');
+    expect(surfaceSource).toContain('nextDraft.capability?.id === "video-delivery-recovery"');
+    expect(surfaceSource).toContain("pendingVideoDeliveryRef.current = pendingDelivery");
+    expect(surfaceSource).not.toContain("hasVideoDeliveryRequirements(requirements)");
+    expect(surfaceSource).toContain("const promptVideoDeliveryIntent = videoDeliveryIntentForPrompt(promptText)");
+    expect(surfaceSource).not.toContain("props.engineId === DEFAULT_ENGINE_ID");
+    expect(surfaceSource).toContain("videoHostExportOperationKey(props.sessionId, clientUserMessageId)");
+    expect(surfaceSource).toContain("ready: false");
+    expect(surfaceSource).toContain("ready: true");
+    expect(surfaceSource).toContain("if (pending.hostExport && !pending.hostExport.ready) return;");
+    expect(surfaceSource).toContain("videoDeliveryRevision");
+    expect(surfaceSource).toContain("currentHostVideoDelivery(props.workspaceId, props.sessionId)");
+    expect(surfaceSource).toContain("subscribeHostVideoDelivery(accept)");
+    expect(surfaceSource.indexOf("videoHostExportOperationKey(props.sessionId, clientUserMessageId)")).toBeLessThan(
+      surfaceSource.indexOf("const dispatchOutcome = await props.onSendDraft"),
+    );
+    expect(surfaceSource).toContain("artifactCompletionTargets.length > 0 && !artifactRecoveryDraft");
     expect(surfaceSource).toContain("if (!artifactRecoveryDraft) pendingArtifactCompletionRef.current = null;");
   });
 });

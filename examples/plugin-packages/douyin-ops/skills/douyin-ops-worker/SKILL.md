@@ -51,10 +51,10 @@ description: 面向普通用户的抖音运营：网页登录、多账号、草�
    - comment-video：打开 targetUrl，读视频内容；先点击“留下你的精彩评论吧”等激活入口，重新 snapshot 后定位实际 combobox/textbox，再 fill payload.content。不要把占位文本当作已可编辑输入框。检查账号与文本后用可见发送按钮提交；发送是无文字图标时可对当前编辑器使用 press Enter（带该编辑器 ref 和 expectedName），随后读取结果。仅填写或按回车都不能单独算成功，未确认新增评论时记 uncertain，不再点击另一种发送方式。
    - reply-comment：打开 targetUrl，按 payload.targetAuthor 和 targetComment 精确定位原评论，再点该评论的回复；匹配不唯一则停止并说明，不能随便选或发成顶层评论。
 6. 遵循宿主当前审批设置及用户原有授权。用户点击发送/发布即授权这条锁定内容，无需重复询问；搜索或起草不等于授权发送。提交只执行一次。
-7. `finish-browser-job(jobId,executionToken,actualProfileId,actualAccount,outcome,evidence,resultUrl?,items?)` 回写：
+7. `finish-browser-job(jobId,executionToken,actualProfileId,actualAccount,outcome,evidence,publicationStatus?,resultUrl?,items?)` 回写：
    - 读取成功：items 数组，最多20条，每条 title 必填，可包含 item_id/comment_id/nickname/content/link/statistics。仅页面确认无结果时传空数组；evidence 写明读取页面和范围。
-   - 写入成功：必须实际看到新增评论、发布成功及对应作品记录，传实际 `/video/<id>` resultUrl 与具体 evidence。填写完输入框、点击按钮、接收任务都不是成功证据。
-   - 明确未提交且失败：failed，写具体原因。提交过但无法确认（包括发布后拿不到真实作品链接）：uncertain，严禁重发。
+   - 写入成功：必须实际看到新增评论、发布成功或内容管理中的对应作品记录。发布作品已进入“审核中”时传 `publicationStatus=under_review`、具体 evidence，并记为 succeeded；审核中暂无公开链接是正常平台状态，不是 uncertain。页面确认已公开发布时传 `publicationStatus=published` 和实际 `/video/<id>` resultUrl。评论成功仍必须传目标作品 resultUrl。填写完输入框、点击按钮、接收任务都不是成功证据。
+   - 明确未提交且失败：failed，写具体原因。提交过但内容管理也无法核对是否出现对应作品：uncertain，严禁重发。
    - 登录或验证码阻塞发生在领取前则保留 pending，让用户登录后从记录“继续交给 AI 执行”；领取后没有提交的用 failed，有可能已提交的用 uncertain。
 8. 调用 get-job 验证已保存，再报告实际结果。运营台自动同步并请求切回插件页面；搜索结果回到搜索卡片，评论结果回到评论页，数据和证据保存在记录。所有插件派发给当前会话的指令都经过宿主队列；领取提示上一任务正在执行时保留 pending，不抢占或新建重复任务。页面意外被关闭时可重新 open-workbench 查看已保存结果。
 

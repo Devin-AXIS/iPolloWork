@@ -11,8 +11,8 @@ description: 在 iPolloWork 当前会话中管理微信视频号本地草稿、�
 
 1. 用户可直接在账号管理弹窗点击「扫码添加账号」。connect-account 会创建账号专属 browserProfileId，ui/open-link 打开 `https://channels.weixin.qq.com/login.html`；扫码进入 `/platform/home` 后，宿主调用 observe-browser-session，从可见昵称和「视频号ID」自动完成绑定。登录页、其他路径、缺少稳定 ID 或昵称都不会标记成功。
 2. list-accounts 选择用户指定账号。名称仅为本地标签，unverified/connecting 不是已登录。save-account 只用于编辑本地名称、定位、受众和风格，不得手工伪造已核验状态。
-3. browser-target 返回 url、browserProfileId 和 profileId。使用宿主 ipollowork_browser_open_url，传 **profileId 完整值**（wechat-channels-ops:UUID），后续一直使用该环境及返回的 tabId。ui/open-link 使用单独的 browserProfileId 字段，由宿主加前缀。
-4. 用 ipollowork_browser_snapshot 检查视频号助手可见页面。需要扫码时请用户完成；不代替用户扫码，不读取 Cookie、Local Storage、隐藏接口或其他账号环境。自动识别未完成时，登录后从页面读取实际账号名称和稳定视频号 ID，再调用 verify-account 回写；绑定后的 ID 不可替换。
+3. browser-target 直接返回已登录后台 `/platform/`、browserProfileId 和 profileId，避免从站点根路径误落到登录页。使用宿主 ipollowork_browser_open_url，传 **profileId 完整值**（wechat-channels-ops:UUID），后续一直使用该环境及返回的 tabId。ui/open-link 使用单独的 browserProfileId 字段，由宿主加前缀。
+4. 用 ipollowork_browser_snapshot 检查视频号助手可见页面。若仍跳转到登录页，调用 observe-browser-session 记录会话失效；重试登录控件一次后仍需扫码时请用户完成。若页面持续显示「加载失败，点击重试」，说明视频号官方本地登录助手不可用，应提示用户先打开并登录桌面微信，再复用同一账号会话重试；不要换浏览器环境或重复建账号。不代替用户扫码，不读取 Cookie、Local Storage、隐藏接口或其他账号环境。登录后从页面读取实际账号名称和稳定视频号 ID，再调用 verify-account 回写；绑定后的 ID 不可替换。
 
 ## 草稿与素材
 

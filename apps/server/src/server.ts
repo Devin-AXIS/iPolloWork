@@ -1644,6 +1644,7 @@ function createRoutes(
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
+    rememberSessionContext: (workspaceId, sessionId) => sessionRuntime.rememberSessionContext(workspaceId, sessionId),
   });
 
   registerCodexHarnessRoutes({
@@ -1653,6 +1654,7 @@ function createRoutes(
     readJsonBody,
     requireClientScope,
     resolveWorkspace,
+    rememberSessionContext: (workspaceId, sessionId) => sessionRuntime.rememberSessionContext(workspaceId, sessionId),
   });
 
   registerPluginWorkshopRoutes({

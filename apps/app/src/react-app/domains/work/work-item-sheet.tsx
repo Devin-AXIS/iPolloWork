@@ -12,6 +12,7 @@ import {
 import type { ProjectAgent, ProjectAgentModel } from "@ipollowork/types/project-workspace";
 
 import type { ProviderListItem } from "@/app/types";
+import { isSupportedChatModelId } from "@/app/lib/model-behavior";
 import { Button } from "@/components/ui/button";
 import {
   Collapsible,
@@ -380,9 +381,13 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
   const invalidRange = value.startAt !== null && value.dueAt !== null && value.dueAt < value.startAt;
   const invalidAutomation = value.automation?.enabled === true && value.startAt === null;
   const connectedProviders = new Set(props.connectedProviderIds);
-  const modelProviders = props.providers.filter((provider) => (
-    connectedProviders.has(provider.id) && Object.keys(provider.models).length > 0
-  ));
+  const modelProviders = props.providers.flatMap((provider) => {
+    if (!connectedProviders.has(provider.id)) return [];
+    const models = Object.fromEntries(
+      Object.entries(provider.models).filter(([modelId]) => isSupportedChatModelId(modelId)),
+    );
+    return Object.keys(models).length > 0 ? [{ ...provider, models }] : [];
+  });
   const selectedAutomationModel = value.automation?.model;
   const selectedAutomationModelAvailable = !selectedAutomationModel || modelProviders.some((provider) => (
     provider.id === selectedAutomationModel.providerId && selectedAutomationModel.modelId in provider.models
