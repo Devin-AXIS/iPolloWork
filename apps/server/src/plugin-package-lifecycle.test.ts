@@ -1233,7 +1233,7 @@ describe("plugin package lifecycle", () => {
     })).toEqual([]);
   });
 
-  test("registers OAuth MCP resources through the scoped proxy for DeepSeek Harness", async () => {
+  test("stores OAuth MCP resources behind the scoped proxy without injecting them before authorization", async () => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-mcp-workspace-");
     const packageRoot = await createRoot("ipollowork-plugin-dsh-mcp-package-");
@@ -1263,8 +1263,9 @@ describe("plugin package lifecycle", () => {
 
     const patch = await buildDeepSeekHarnessPatch(config, config.workspaces[0]!);
     expect(JSON.stringify(patch)).toContain('"transport":"streamable-http"');
-    expect(JSON.stringify(patch)).toContain('"serverName":"acme"');
-    expect(JSON.stringify(patch)).toContain('"Authorization":"Bearer ');
+    expect(JSON.stringify(patch)).not.toContain('"serverName":"acme"');
+    expect(JSON.stringify(patch)).not.toContain(runtimeMcp?.url);
+    expect(JSON.stringify(patch)).not.toContain("https://mcp.acme.example/mcp");
 
     await lifecycle.setPluginPackageEnabled({
       serverConfig: config,
