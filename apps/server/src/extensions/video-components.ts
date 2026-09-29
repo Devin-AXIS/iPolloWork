@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs";
-import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema } from "@ipollowork/types/hyperframes";
+import sharp from "sharp";
+import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
 import { resolveWorkspaceFile } from "./storage.js";
@@ -76,10 +79,51 @@ export const videoComponentInstallInput = z.object({
   sourcePath: videoSourcePathSchema,
   componentIds: z.array(componentIdSchema).min(1).max(12),
   instances: z.array(hyperframesVideoInstanceSchema).min(1).max(48).optional(),
+  motionStyle: z.enum(["restrained", "balanced", "energetic"]).default("balanced"),
+  mount: z.boolean().default(false),
 }).strict();
+
+const motionStyles = {
+  restrained: { distance: 10, emphasisScale: 1.006, durationFactor: 1.15, ease: "power1.out", resolveEase: "power1.inOut" },
+  balanced: { distance: 16, emphasisScale: 1.012, durationFactor: 1, ease: "power2.out", resolveEase: "power2.inOut" },
+  energetic: { distance: 24, emphasisScale: 1.02, durationFactor: .85, ease: "power3.out", resolveEase: "power2.inOut" },
+};
+
+async function resolveNarrationCues(workspace: Workspace, projectRelative: string,
+  narration: NonNullable<z.infer<typeof hyperframesVideoInstanceSchema>["narration"]>, eventIds: string[], duration: number) {
+  const path = resolveWorkspaceFile(workspace.path, narration.timingSourcePath);
+  if (!path.relativePath.startsWith(`${projectRelative}/assets/`)) throw new ApiError(400, "invalid_video_recipe_alignment", "Timing must belong to this video project.");
+  const timing = z.object({ alignment: z.literal("provider"), words: z.array(z.object({
+    text: z.string(), beginIndex: z.number().int().nonnegative(), endIndex: z.number().int().positive(),
+    startSeconds: z.number().nonnegative(), endSeconds: z.number().positive(),
+  })).min(1).max(10000) }).parse(JSON.parse(await readFile(path.absolutePath, "utf8")));
+  const significant = (value: string) => value.replace(/[\s\p{P}\p{S}]/gu, "");
+  if (significant(timing.words.map(word => word.text).join("")) !== significant(narration.text)
+    || timing.words.some((word, index) => significant(narration.text.slice(word.beginIndex, word.endIndex)) !== significant(word.text)
+      || word.endSeconds > duration || word.endSeconds <= word.startSeconds
+      || (index > 0 && (word.startSeconds < timing.words[index - 1]!.endSeconds || word.beginIndex < timing.words[index - 1]!.endIndex)))) {
+    throw new ApiError(400, "invalid_video_recipe_alignment", "Timing must cover the exact narration in order and within scene boundaries.");
+  }
+  if (Object.keys(narration.bindings).length !== eventIds.length || eventIds.some(id => !narration.bindings[id])) {
+    throw new ApiError(400, "invalid_video_recipe_alignment", "Bind every active semantic event to an exact spoken phrase.");
+  }
+  const cues: Record<string, number> = {};
+  for (const id of eventIds) {
+    const binding = narration.bindings[id]!;
+    const matches: number[] = [];
+    for (let index = narration.text.indexOf(binding.phrase); index >= 0; index = narration.text.indexOf(binding.phrase, index + binding.phrase.length)) matches.push(index);
+    const index = matches[(binding.occurrence ?? 1) - 1];
+    if (index === undefined || (!binding.occurrence && matches.length !== 1)) throw new ApiError(400, "invalid_video_recipe_alignment", "Spoken phrase missing or ambiguous; specify occurrence rather than guessing.");
+    const word = timing.words.find(word => word.beginIndex <= index && word.endIndex > index);
+    if (!word) throw new ApiError(400, "invalid_video_recipe_alignment", "The spoken phrase has no measured word anchor.");
+    cues[id] = Math.round(word.startSeconds * 30) / 30;
+  }
+  return cues;
+}
 
 export const videoComponentCheckInput = z.object({
   sourcePath: videoSourcePathSchema,
+  recipesOnly: z.boolean().optional(),
 }).strict();
 
 type Workspace = { id: string; path: string };
@@ -103,13 +147,14 @@ async function resolveRecipeInstance(
   projectRelative: string,
   instance: z.infer<typeof hyperframesVideoInstanceSchema>,
   manifest: z.infer<typeof registryManifestSchema>,
+  motionStyle: keyof typeof motionStyles = "balanced",
 ) {
   const recipe = manifest.motionRecipe;
   if (!recipe) throw new ApiError(400, "video_recipe_unavailable", `${instance.componentId} has no authored semantic recipe; use the existing manual composition path.`);
   const variables = z.array(hyperframesEffectVariableSchema).parse(manifest.variables);
   const values: Record<string, string | number | boolean> = {};
   for (const key of Object.keys(instance.values)) {
-    if (key === "motionCueTimes" || !variables.some(variable => variable.id === key)) {
+    if (key === "motionCueTimes" || key === "motionStyle" || !variables.some(variable => variable.id === key)) {
       throw new ApiError(400, "invalid_video_recipe_values", `Unknown or reserved recipe variable: ${key}`);
     }
   }
@@ -131,6 +176,17 @@ async function resolveRecipeInstance(
       const asset = resolveWorkspaceFile(workspace.path, `${projectRelative}/${value}`);
       const file = await stat(asset.absolutePath).catch(() => null);
       if (!file?.isFile() || file.size === 0) throw new ApiError(400, "video_recipe_asset_missing", `Missing or empty recipe asset: ${value}`);
+    }
+  }
+  if (values.captureLayout !== undefined) {
+    let capture;
+    try { capture = hyperframesPageCaptureSchema.parse(JSON.parse(String(values.captureLayout))); }
+    catch { throw new ApiError(400, "invalid_video_capture_layout", "Provide bounded, unique screenshot regions in CSS-page coordinates, with valid hero and foreground IDs."); }
+    if (typeof values.mediaUrl !== "string") throw new ApiError(400, "invalid_video_recipe_asset", "Page-space recipes need an existing screenshot mediaUrl.");
+    const source = resolveWorkspaceFile(workspace.path, `${projectRelative}/${values.mediaUrl}`);
+    const image = await sharp(source.absolutePath).metadata().catch(() => null);
+    if (!image || image.width !== Math.round(capture.width * capture.pixelRatio) || image.height !== Math.round(capture.height * capture.pixelRatio)) {
+      throw new ApiError(400, "video_capture_dimensions_mismatch", "Screenshot pixel dimensions must match captureLayout CSS width/height multiplied by pixelRatio. Recapture or correct measured geometry; do not guess crop positions.");
     }
   }
   for (const [key, limit] of Object.entries(recipe.textLimits ?? {})) {
@@ -159,6 +215,18 @@ async function resolveRecipeInstance(
     }
     itemCount = count;
   }
+  // These numeric families have different measurement domains, not just different skins.
+  if (["metric-signal", "gauge-scorecard", "benchmark-scorecard", "conversion-funnel", "cohort-retention", "sparkline-grid"].includes(instance.componentId)) {
+    const rows = String(values.items).split("|").map(item => item.split("::")[1]!.split(",").map(Number));
+    const series = instance.componentId === "cohort-retention" || instance.componentId === "sparkline-grid";
+    const percent = ["gauge-scorecard", "benchmark-scorecard", "cohort-retention"].includes(instance.componentId);
+    const malformed = rows.some(row => row.length !== (series ? 3 : 1) || row.some(value => !Number.isFinite(value) || value < 0 || (percent && value > 100)));
+    const invalidRetention = instance.componentId === "cohort-retention" && rows.some(row => row.some((value, index) => index > 0 && value > row[index - 1]!));
+    const invalidFunnel = instance.componentId === "conversion-funnel" && (rows[0]![0] === 0 || rows.some((row, index) => index > 0 && row[0]! > rows[index - 1]![0]!));
+    if (malformed || invalidRetention || invalidFunnel || (series && String(values.items).split("|").some(item => !/^\d+(?:\.\d+)?,\d+(?:\.\d+)?,\d+(?:\.\d+)?$/.test(item.split("::")[1]!)))) {
+      throw new ApiError(400, "invalid_video_recipe_data", recipe.usage.inputRules.items);
+    }
+  }
   for (const key of ["highlight", "focus", "active", "activeStep", "focusLine"]) {
     const value = values[key];
     if (typeof value === "number" && (!Number.isInteger(value) || (itemCount !== undefined && value > itemCount))) {
@@ -169,6 +237,10 @@ async function resolveRecipeInstance(
     throw new ApiError(400, "invalid_video_recipe_options", "A comparison matrix requires exactly two named alternatives.");
   }
   const activeEvents = recipe.events.filter(event => itemCount === undefined || !event.id.startsWith("step-") || Number(event.id.slice(5)) <= itemCount);
+  if (instance.narration) {
+    if (instance.timingSource !== "voiceover" || instance.cueTimes) throw new ApiError(400, "invalid_video_recipe_alignment", "Measured narration bindings cannot be mixed with manual cueTimes.");
+    instance = { ...instance, cueTimes: await resolveNarrationCues(workspace, projectRelative, instance.narration, activeEvents.map(event => event.id), instance.duration) };
+  }
   for (const key of Object.keys(instance.cueTimes ?? {})) {
     if (!activeEvents.some(event => event.id === key)) throw new ApiError(400, "invalid_video_recipe_cues", `Unknown or unused semantic event: ${key}`);
   }
@@ -177,7 +249,7 @@ async function resolveRecipeInstance(
     const defaultTime = event.id === "resolve" && previous && !instance.cueTimes
       ? Math.min(event.time, previous.time + previous.duration + MAX_STILL_SECONDS)
       : event.time;
-    return { ...event, time: instance.cueTimes?.[event.id] ?? defaultTime };
+    return { ...event, duration: event.duration * motionStyles[motionStyle].durationFactor, time: instance.cueTimes?.[event.id] ?? defaultTime };
   });
   const last = events.at(-1);
   if (!last || last.time + last.duration > instance.duration - recipe.minHoldSeconds
@@ -192,6 +264,7 @@ async function resolveRecipeInstance(
   }
   const cueTimes = Object.fromEntries(events.map(event => [event.id, event.time]));
   values.motionCueTimes = JSON.stringify(cueTimes);
+  values.motionStyle = JSON.stringify(motionStyles[motionStyle]);
   const beats = [{
     start: 0, end: events[0]!.time, intent: "Establish the scene", focus: "Context",
     action: "Orient before semantic development", result: "Readable context",
@@ -302,10 +375,10 @@ function componentSnippet(componentId: string, target: string, motionContract: M
   return `<section id="<scene-id>" class="scene clip" data-ipw-scene data-composition-id="${componentId}-<scene-id>" data-composition-src="${target}" data-ipw-registry-component="${componentId}"${animationReference} data-ipw-timing-owner="host" data-motion-pattern="<selected-pattern>" data-ipw-timing-source="<voiceover|estimated-reading|visual-cue|music|media>" data-ipw-beats='[{"start":0,"end":${duration},"intent":"<spoken-or-silent-intent>","focus":"<visual-focus>","action":"<visual-action>","result":"<land-state>","targets":["#<scene-id>"],"animation":"component:${componentId}","motion":{"start":0,"end":${duration}}}]' data-ipw-motion-contract='${JSON.stringify(motionContract)}' data-variable-values='{}' data-start="<seconds>" data-duration="${duration}" data-track-index="<track>"></section>`;
 }
 
-function attribute(tag: string, name: string): string {
+export function attribute(tag: string, name: string): string {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const match = new RegExp(`\\b${escaped}\\s*=\\s*(["'])(.*?)\\1`, "isu").exec(tag);
-  return (match?.[2] ?? "").replace(
+  const match = new RegExp(`(?:^|\\s)${escaped}\\s*=\\s*(?:(["'])(.*?)\\1|([^\\s"'=<>\u0060]+))`, "isu").exec(tag);
+  return (match?.[2] ?? match?.[3] ?? "").replace(
     /&(?:quot|apos|amp|lt|gt|#(\d+)|#x([\da-f]+));/giu,
     (entity, decimal: string | undefined, hexadecimal: string | undefined) => {
       const codePoint = decimal
@@ -324,7 +397,25 @@ function attribute(tag: string, name: string): string {
   ).trim();
 }
 
-function normalizeInstalledComposition(html: string): string {
+function normalizeInstalledComposition(html: string, includeMotionStyle = true): string {
+  if (includeMotionStyle && html.includes('data-ipw-motion-recipe="1"')) {
+    const declarationsTag = openingTags(html).find(tag => attribute(tag, "data-composition-variables"));
+    if (declarationsTag) {
+      const declarations = z.array(hyperframesEffectVariableSchema).parse(JSON.parse(attribute(declarationsTag, "data-composition-variables")));
+      declarations.push(hyperframesEffectVariableSchema.parse({ id: "motionStyle", label: "Whole-video motion style", type: "string", default: JSON.stringify(motionStyles.balanced), update: "reload" }));
+      html = html.replace(declarationsTag, tag => tag.replace(/data-composition-variables=(["']).*?\1/s, `data-composition-variables="${htmlAttribute(JSON.stringify(declarations))}"`));
+    }
+    html = html.replace(/(<script data-ipw-motion-recipe="1">)([\s\S]*?)(<\/script>)/g, (_match, open: string, script: string, close: string) => {
+      // Source-preserving adapters already own their profile; rewriting numeric
+      // prefixes would corrupt authored coordinates such as x:1240.
+      if (script.includes("const motionStyle=")) return open + script + close;
+      return open + script
+      .replace(/const (cues|times)=JSON.parse/, `const motionStyle=JSON.parse(String(values.motionStyle??'${JSON.stringify(motionStyles.balanced)}'));\n  recipe.events.forEach(event=>event.duration*=motionStyle.durationFactor);\n  const $1=JSON.parse`)
+      .replaceAll('y:16', 'y:motionStyle.distance').replaceAll('y:18', 'y:motionStyle.distance').replaceAll('y:24', 'y:motionStyle.distance*1.5').replaceAll('x:12', 'x:motionStyle.distance*.75')
+      .replace(/ease:"power[123]\.out"/g, 'ease:motionStyle.ease').replaceAll('ease:"power2.inOut"', 'ease:motionStyle.resolveEase')
+      .replaceAll('scale:1.012', 'scale:motionStyle.emphasisScale') + close;
+    });
+  }
   const rootTag = openingTags(html).find(tag => attribute(tag, "data-composition-id"));
   if (!rootTag) return html;
   return html.replace(rootTag, tag => {
@@ -338,7 +429,7 @@ function normalizeInstalledComposition(html: string): string {
   });
 }
 
-function openingTags(html: string): string[] {
+export function openingTags(html: string): string[] {
   // A quoted JSON/default/code value may legitimately contain > or =>.
   return html.match(/<[a-z](?:[^"'<>]|"[^"]*"|'[^']*')*>/giu) ?? [];
 }
@@ -349,6 +440,19 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
   const sourceFile = await stat(source.absolutePath).catch(() => null);
   if (!sourceFile?.isFile()) throw new ApiError(404, "video_source_not_found", "The active video index.html does not exist");
   const projectRelative = posix.dirname(source.relativePath);
+  const originalHtml = await readFile(source.absolutePath, "utf8");
+  const compositionRoot = openingTags(originalHtml).find(tag => attribute(tag, "data-composition-id"));
+  if (!compositionRoot) throw new ApiError(400, "video_root_missing", "Create the root composition before selecting recipes.");
+  if (input.mount && !input.instances) throw new ApiError(400, "video_instances_required", "Automatic mounting needs fully resolved instances.");
+  // Only explicit empty slots may be filled; never replace an authored scene.
+  for (const instance of input.mount ? input.instances ?? [] : []) {
+    const slots = openingTags(originalHtml).filter(tag => attribute(tag, "id") === instance.sceneId);
+    const slot = slots[0];
+    if (slots.length !== 1 || !slot || !/^<section\b/iu.test(slot) || attribute(slot, "data-composition-src")
+      || sceneMarkup(originalHtml, slot).slice(slot.length).trim() !== "</section>") {
+      throw new ApiError(409, "video_mount_slot_conflict", `Prepare one empty section with id=${instance.sceneId}; authored content is preserved.`);
+    }
+  }
   const root = registryRoot();
   const manifests = new Map<string, Awaited<ReturnType<typeof readRegistryComponent>>>();
   const readComponent = async (componentId: string) => {
@@ -359,15 +463,25 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     return component;
   };
   const installed = new Map<string, InstalledComponent>();
+  // Resolve every requested ID before writing any component. A reference is not a port.
+  for (const componentId of input.componentIds) {
+    if (existsSync(resolve(root, componentId, "registry-item.json"))) continue;
+    const name = componentId.replace(/^shotcraft-(?:reference-)?/, "");
+    const references = existsSync(resolve(root, "..", "shotcraft-references.json")) ? await queryVideoRecipeCatalog({ query: name }) : { cards: [] };
+    const card = references.cards.find(card => card.name === name || card.styles.some(style => style.key === name));
+    if (card) throw new ApiError(400, "video_recipe_reference_only", `${componentId} is a Shotcraft reference, not an installable component. Use only video_recipe_catalog componentIds; if none fit, disclose the library gap instead of redrawing it.`);
+    throw new ApiError(404, "video_component_not_found", `Video component ${componentId} is not available in the bundled registry`);
+  }
   const instanceIds = new Set<string>();
   const resolvedInstances = [];
   for (const instance of input.instances ?? []) {
+    if (instance.timingSource === "voiceover" && !instance.narration) throw new ApiError(400, "video_recipe_alignment_required", "Narrated recipe instances need exact phrase bindings and a validated timing sidecar; manual cueTimes are not precise speech alignment.");
     if (!input.componentIds.includes(instance.componentId) || instanceIds.has(instance.sceneId)) {
       throw new ApiError(400, "invalid_video_recipe_instance", "Every instance needs a unique sceneId and a selected componentId");
     }
     instanceIds.add(instance.sceneId);
     const { manifest } = await readComponent(instance.componentId);
-    resolvedInstances.push(await resolveRecipeInstance(workspace, projectRelative, instance, manifest));
+    resolvedInstances.push(await resolveRecipeInstance(workspace, projectRelative, instance, manifest, input.motionStyle));
   }
 
   const install = async (componentId: string, requested: boolean): Promise<void> => {
@@ -399,6 +513,12 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
         if (file.type === "hyperframes:composition") {
           const copied = await readFile(destination.absolutePath, "utf8");
           await writeFile(destination.absolutePath, normalizeInstalledComposition(copied));
+        }
+      } else if (manifest.motionRecipe && file.type === "hyperframes:composition") {
+        // Upgrade only byte-identical old bundled copies; never overwrite user edits.
+        const bundled = await readFile(sourceAbsolute, "utf8");
+        if (await readFile(destination.absolutePath, "utf8") === normalizeInstalledComposition(bundled, false)) {
+          await writeFile(destination.absolutePath, normalizeInstalledComposition(bundled));
         }
       }
       if (file.type === "hyperframes:composition") {
@@ -433,9 +553,11 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     const component = installed.get(instance.componentId)!;
     const target = attribute(component.snippet, "data-composition-src");
     const copied = resolveWorkspaceFile(workspace.path, `${projectRelative}/${target}`);
-    if (!(await readFile(copied.absolutePath, "utf8")).includes('data-ipw-motion-recipe="1"')) {
+    const copiedHtml = await readFile(copied.absolutePath, "utf8");
+    if (!copiedHtml.includes('data-ipw-motion-recipe="1"')) {
       throw new ApiError(409, "video_recipe_copy_outdated", "The existing project component is not recipe-enabled. Preserve its edits; explicitly migrate it or instantiate in a new project.");
     }
+    if (!copiedHtml.includes("const motionStyle=")) throw new ApiError(409, "video_recipe_style_outdated", "Preserve the existing edited component; explicitly migrate its motion-style runtime or install into a new project.");
     const attrs = {
       id: instance.sceneId, class: "scene clip", "data-ipw-scene": "true",
       "data-composition-id": `${instance.componentId}-${instance.sceneId}`,
@@ -448,6 +570,8 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
       "data-ipw-transition-in": instance.transition,
       "data-ipw-transition-duration": String(instance.transitionDuration),
       "data-ipw-transition-intent": instance.transitionIntent,
+      "data-ipw-motion-style": input.motionStyle,
+      ...(instance.narration ? { "data-ipw-narration-binding": JSON.stringify(instance.narration) } : {}),
     };
     instances.push({
       sceneId: instance.sceneId,
@@ -455,10 +579,33 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
       cueTimes: resolved.cueTimes,
     });
   }
+  if (await readFile(source.absolutePath, "utf8") !== originalHtml) throw new ApiError(409, "video_source_changed", "The composition changed during installation; retry against its latest saved source.");
+  let updatedHtml = originalHtml;
+  if (input.mount) {
+    for (const instance of instances) {
+      const slot = openingTags(updatedHtml).find(tag => attribute(tag, "id") === instance.sceneId)!;
+      updatedHtml = updatedHtml.replace(sceneMarkup(updatedHtml, slot), instance.snippet);
+    }
+  }
+  const previousSelection = attribute(compositionRoot, "data-ipw-selected-components");
+  const selected = z.array(componentIdSchema).max(48).parse(previousSelection ? JSON.parse(previousSelection) : []);
+  const selection = [...new Set([...selected, ...input.componentIds])];
+  const updatedRoot = compositionRoot.replace(/\sdata-ipw-selected-components\s*=\s*(["']).*?\1/giu, "")
+    .replace(/>$/u, ` data-ipw-selected-components="${htmlAttribute(JSON.stringify(selection))}">`);
+  updatedHtml = updatedHtml.replace(compositionRoot, updatedRoot);
+  const stagedPath = `${source.absolutePath}.${randomUUID()}.mount`;
+  try {
+    await writeFile(stagedPath, updatedHtml, { flag: "wx" });
+    if (await readFile(source.absolutePath, "utf8") !== originalHtml) throw new ApiError(409, "video_source_changed", "The composition changed during installation; retry against its latest saved source.");
+    await rename(stagedPath, source.absolutePath);
+  } finally {
+    await rm(stagedPath, { force: true });
+  }
   return {
     sourcePath: source.relativePath,
     components: [...installed.values()],
     instances,
+    mounted: input.mount,
     instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, add the supported incoming transition, duration, and one exact intent value: continue, topic-change, time-change, location-change, compare, reveal, or closure. The client runs the aggregate delivery validator after the turn.",
   };
 }
@@ -609,6 +756,21 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const tags = openingTags(html);
   const sceneTags = tags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
   const issues: Array<{ code: string; sceneId?: string; message: string }> = [];
+  const selection = attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-selected-components");
+  const recipesOnly = input.recipesOnly === true || attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-recipe-policy") === "recipes-only";
+  if (selection) {
+    try {
+      for (const componentId of z.array(componentIdSchema).max(48).parse(JSON.parse(selection))) {
+        if (!sceneTags.some(tag => attribute(tag, "data-ipw-registry-component") === componentId && attribute(tag, "data-composition-src"))) {
+          issues.push({ code: "selected_recipe_not_mounted", message: `Selected recipe ${componentId} is not mounted. Mount its real instance; do not replace it with custom graphics or delete the selection to pass.` });
+        }
+      }
+    } catch {
+      issues.push({ code: "invalid_recipe_selection", message: "The root recipe selection must be a bounded list of registry IDs." });
+    }
+  }
+  const styles = new Set(sceneTags.map(tag => attribute(tag, "data-ipw-motion-style")).filter(Boolean));
+  if (styles.size > 1) issues.push({ code: "mixed_video_motion_styles", message: "Choose one whole-video motion style; do not independently restyle every scene." });
   const repairPlan: Repair[] = [];
   const scenes = [];
   const compositionIds = new Set<string>();
@@ -631,6 +793,9 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
     const customDecision = attribute(tag, "data-ipw-component-decision");
     const motionPattern = attribute(tag, "data-motion-pattern");
     const compositionSource = attribute(tag, "data-composition-src");
+    if (recipesOnly && (!componentId || !compositionSource || customDecision)) {
+      issues.push({ code: "recipe_only_scene_required", sceneId, message: `${sceneId} must mount an authored recipe. The user disallowed custom graphics; split or select another recipe instead.` });
+    }
     const variableValues = attribute(tag, "data-variable-values");
     const timingOwner = attribute(tag, "data-ipw-timing-owner");
     const timingSource = attribute(tag, "data-ipw-timing-source");
@@ -712,14 +877,18 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
             try {
               const { manifest } = await readRegistryComponent(registryRoot(), componentId);
               if (manifest.motionRecipe) {
+                if (attribute(tag, "data-ipw-motion-style") && timingSource === "voiceover" && !attribute(tag, "data-ipw-narration-binding")) throw new Error("Narrated recipe is missing measured phrase bindings.");
                 const values = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).parse(JSON.parse(variableValues));
                 const cueTimes = z.record(z.string(), z.number().nonnegative()).parse(JSON.parse(String(values.motionCueTimes ?? "{}")));
                 const instance = hyperframesVideoInstanceSchema.parse({
                   sceneId, componentId, start, duration, timingSource,
-                  values: Object.fromEntries(Object.entries(values).filter(([key]) => key !== "motionCueTimes")),
-                  cueTimes,
+                  values: Object.fromEntries(Object.entries(values).filter(([key]) => key !== "motionCueTimes" && key !== "motionStyle")),
+                  ...(attribute(tag, "data-ipw-narration-binding") ? { narration: JSON.parse(attribute(tag, "data-ipw-narration-binding")) } : { cueTimes }),
                 });
-                const resolved = await resolveRecipeInstance(workspace, projectRelative, instance, manifest);
+                const style = videoComponentInstallInput.shape.motionStyle.parse(attribute(tag, "data-ipw-motion-style") || undefined);
+                const resolved = await resolveRecipeInstance(workspace, projectRelative, instance, manifest, style);
+                if (JSON.stringify(resolved.cueTimes) !== JSON.stringify(cueTimes)) throw new Error("Mounted cue times no longer match measured narration bindings.");
+                if (values.motionStyle !== undefined && values.motionStyle !== resolved.values.motionStyle) throw new Error("Mounted motion parameters differ from the declared whole-video style.");
                 nativeDuration = resolved.beats.at(-1)!.motion.end;
                 semanticRecipeValidated = true;
               }
@@ -727,6 +896,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
               issues.push({ code: "invalid_semantic_recipe_instance", sceneId, message: error instanceof Error ? error.message : "Invalid semantic recipe values or cues" });
             }
           }
+          if (recipesOnly && !semanticRecipeValidated) issues.push({ code: "recipe_only_scene_required", sceneId, message: `${sceneId} needs a validated authored recipe, not just a registry component label.` });
           if (!rootTag || attribute(rootTag, "data-ipw-timing-owner") !== "host") {
             issues.push({ code: "component_timing_not_host_owned", sceneId, message: `${sceneId} uses an older component copy whose internal root can end before the parent scene. Reinstall ${componentId}.` });
           }
@@ -778,6 +948,17 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       }
     } else if (!customDecision.startsWith("custom:")) {
       issues.push({ code: "missing_component_decision", sceneId, message: `${sceneId} must use an installed registry component or record data-ipw-component-decision="custom:<specific reason>".` });
+    } else if (timingSource === "voiceover") {
+      try {
+        const narration = hyperframesVideoInstanceSchema.shape.narration.unwrap().parse(JSON.parse(attribute(tag, "data-ipw-narration-binding")));
+        const active = beatMap.beats.filter(beat => !beat.animation.startsWith("hold:"));
+        const ids = active.map(beat => beat.animation);
+        if (new Set(ids).size !== ids.length || duration === null) throw new Error("Custom events need unique animation references and a valid scene duration.");
+        const cues = await resolveNarrationCues(workspace, projectRelative, narration, ids, duration);
+        if (active.some(beat => Math.abs(beat.motion.start - cues[beat.animation]!) > 1 / 30 + 0.001)) throw new Error("Custom motion windows must start at their measured spoken phrase (within one frame).");
+      } catch (error) {
+        issues.push({ code: "invalid_custom_narration_binding", sceneId, message: error instanceof Error ? error.message : "Custom narrated scenes need validated phrase bindings." });
+      }
     }
     scenes.push({ sceneId, componentId: componentId || null, customDecision: customDecision || null, motionPattern: motionPattern || null, compositionSource: compositionSource || null, compositionId: compositionId || null, timingSource: timingSource || null, transition: transition || null, transitionDuration, transitionIntent: transitionIntent || null });
   }

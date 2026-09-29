@@ -46,6 +46,11 @@
       "path": "media-hero.html",
       "target": "compositions/media-hero.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/media-hero.recipe.md",
+      "type": "hyperframes:asset"
     }
   ],
   "variables": [
@@ -145,9 +150,9 @@
       },
       "fallback": {
         "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
-        "missingInput": "Reuse or obtain a scoped authorized image; if unavailable use an honest editable diagram, not fake imagery.",
+        "missingInput": "Reuse or obtain a scoped authorized image; if unavailable choose another validated recipe or report the missing asset, never fake imagery or unapproved custom graphics.",
         "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
-        "inapplicable": "Choose a component whose narrative job fits, or author a finite seek-safe custom scene. Recipe reuse is a default, not a requirement to force-fit content."
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
       },
       "example": {
         "values": {

@@ -1,0 +1,35 @@
+<!-- TextOnPath -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="TextOnPath"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="TextOnPath" data-start="0" data-duration="5" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bar:'#c2c2c0',ink:'#2f2f2f'}; const P0={x:200,y:820},P1={x:760,y:810},P2={x:1240,y:660},P3={x:1500,y:320};
+    const bez=t=>{const u=1-t;return{x:u*u*u*P0.x+3*u*u*t*P1.x+3*u*t*t*P2.x+t*t*t*P3.x,y:u*u*u*P0.y+3*u*u*t*P1.y+3*u*t*t*P2.y+t*t*t*P3.y};};
+    const tangent=t=>{const u=1-t,dx=3*u*u*(P1.x-P0.x)+6*u*t*(P2.x-P1.x)+3*t*t*(P3.x-P2.x),dy=3*u*u*(P1.y-P0.y)+6*u*t*(P2.y-P1.y)+3*t*t*(P3.y-P2.y);return Math.atan2(dy,dx)*180/Math.PI;};
+    const TEXT='GROWTH ALL THE WAY',N=TEXT.length,CHAR_W=46,FINAL_Y=300,FINAL_X0=960-(N*CHAR_W)/2,TOTAL=150;
+    const outQuad=t=>t*(2-t), outCubic=t=>1-Math.pow(1-t,3), inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outQuad')t=outQuad(t);else if(e==='outCubic')t=outCubic(t);else if(e==='inOutCubic')t=inOutCubic(t);return va+(vb-va)*t;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), evolve=clamp(frame,0,82,0,1,'outQuad');
+      const path=`<svg width="1920" height="1080" style="position:absolute;inset:0"><path d="M ${P0.x} ${P0.y} C ${P1.x} ${P1.y}, ${P2.x} ${P2.y}, ${P3.x} ${P3.y}" fill="none" stroke="${G.bar}" stroke-width="3" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1-evolve}"/></svg>`;
+      const chars=TEXT.split('').map((ch,i)=>{if(ch===' ')return '';const tEnd=0.12+0.82*(i/(N-1)),start=i*2;
+        const t=clamp(frame,start,start+45,0,tEnd,'outCubic'),pOn=bez(t),ang=tangent(t),settle=clamp(frame,start+53,start+65,0,1,'inOutCubic');
+        const x=pOn.x+(FINAL_X0+i*CHAR_W-pOn.x)*settle,y=pOn.y+(FINAL_Y-pOn.y)*settle,angF=ang*(1-settle),op=clamp(frame,start,start+8,0,1);
+        return `<div style="position:absolute;left:${x}px;top:${y}px;opacity:${op};transform:translate(-50%,-50%) rotate(${angF}deg);font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:64px;color:${G.ink}">${ch}</div>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:${G.ink}">TEXT ON PATH</div>${path}${chars}`;
+    }},0);
+    window.__timelines['TextOnPath']=tl;
+  </script>
+</body>
+</html>

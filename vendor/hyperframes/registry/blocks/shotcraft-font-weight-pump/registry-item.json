@@ -1,0 +1,184 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-font-weight-pump",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "字重节拍强调",
+  "description": "用五次已标定的节拍或语义强调改变同一短词的字重。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/type-rhythm-sync/FontWeightPump/index.html",
+    "rules": "references/shots/typography/type-rhythm-sync.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "aa45a1e59d7db8d20779d44733a5df912dba6fae1fd65e1b84d1d8db0082ebb8",
+    "adaptation": "Retains converted GSAP/frame functions. Modified: escaped real content, measured stage cues, Chinese geometry, clamped character settling, readable final hold; real screenshots replace demo skeletons. Does not certify pixel parity.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/type-rhythm-sync.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title"
+      ],
+      "instructions": "用五次已标定的节拍或语义强调改变同一短词的字重。 没有实测音乐或旁白锚点时不能宣称卡点；不持续震动解释文字。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 4.333333333333333,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-font-weight-pump.html",
+      "target": "compositions/shotcraft-font-weight-pump.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-font-weight-pump.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "title",
+      "type": "string",
+      "default": "关注瓶颈",
+      "maxLength": 8,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "实测语义时间",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 8
+      }
+    },
+    "usage": {
+      "useWhen": [
+        "用五次已标定的节拍或语义强调改变同一短词的字重。"
+      ],
+      "avoidWhen": [
+        "没有实测音乐或旁白锚点时不能宣称卡点；不持续震动解释文字。",
+        "文字动效不是图表或执行证明；不要为了使用特效改写事实。"
+      ],
+      "inputRules": {
+        "title": "提供真实title，最多1行，每行8字，不使用演示默认内容。"
+      },
+      "readingOrder": [
+        "建立共同主题",
+        "第一次强调",
+        "第二次强调",
+        "第三次强调",
+        "第四次强调",
+        "第五次强调",
+        "停留在完整可读的落定状态"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白或音乐中与“第一次强调”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-2": "绑定实测旁白或音乐中与“第二次强调”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-3": "绑定实测旁白或音乐中与“第三次强调”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-4": "绑定实测旁白或音乐中与“第四次强调”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-5": "绑定实测旁白或音乐中与“第五次强调”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"
+      },
+      "fallback": {
+        "overflow": "按语义拆镜或换配方；禁止截断和缩到不可读。",
+        "missingInput": "补真实内容与素材；不要使用源码里的演示文案或模拟 UI。",
+        "timingMismatch": "按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。",
+        "inapplicable": "优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"
+      },
+      "example": {
+        "values": {
+          "title": "关注瓶颈"
+        },
+        "narration": "关注瓶颈"
+      },
+      "acceptance": [
+        "各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。",
+        "真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。",
+        "实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。",
+        "不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"
+      ]
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 0.5333330000000001,
+        "action": "第一次强调"
+      },
+      {
+        "id": "phase-2",
+        "target": ".sc-content *",
+        "time": 1.1833330000000002,
+        "duration": 0.5333330000000001,
+        "action": "第二次强调"
+      },
+      {
+        "id": "phase-3",
+        "target": ".sc-content *",
+        "time": 1.7166660000000002,
+        "duration": 0.533334,
+        "action": "第三次强调"
+      },
+      {
+        "id": "phase-4",
+        "target": ".sc-content *",
+        "time": 2.25,
+        "duration": 0.5333330000000003,
+        "action": "第四次强调"
+      },
+      {
+        "id": "phase-5",
+        "target": ".sc-content *",
+        "time": 2.7833330000000003,
+        "duration": 0.5333329999999998,
+        "action": "第五次强调"
+      }
+    ]
+  }
+}

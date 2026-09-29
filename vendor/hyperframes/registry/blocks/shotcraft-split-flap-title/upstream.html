@@ -1,0 +1,40 @@
+<!-- split-flap-title SplitFlapFlip -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="SplitFlapFlip"] { width: 1920px; height: 1080px; background: #ececea; overflow: hidden; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="SplitFlapFlip" data-start="0" data-duration="4.6667" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const TEXT='SHIP FASTER', CHARSET='ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&', START=22, STAGGER=4, FLIP=5, NFLIP=3, CELL_W=118, CELL_H=156, TOTAL=140;
+    const FLAP_BG='#262624', FLAP_INK='#f4f4f2';
+    const rnd=a=>{const x=Math.sin(a*127.3)*43758.5453;return x-Math.floor(x);};
+    const garble=(i,k)=>CHARSET[Math.floor(rnd(i*7.13+k*3.71+1)*CHARSET.length)];
+    const inQuad=t=>t*t, outQuad=t=>t*(2-t);
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='inQuad')t=inQuad(t);else if(e==='outQuad')t=outQuad(t);return va+(vb-va)*t;};
+    const half=(ch,part)=>`<div style="position:absolute;left:0;top:${part==='top'?0:CELL_H/2}px;width:${CELL_W}px;height:${CELL_H/2}px;overflow:hidden;background:${FLAP_BG};border-radius:${part==='top'?'10px 10px 0 0':'0 0 10px 10px'}"><div style="position:absolute;left:0;top:${part==='top'?0:-CELL_H/2}px;width:${CELL_W}px;height:${CELL_H}px;display:flex;align-items:center;justify-content:center;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:100px;color:${FLAP_INK}">${ch}</div></div>`;
+    const flapCell=(target,i,frame)=>{const seq=[garble(i,0),garble(i,1),garble(i,2),target],local=frame-(START+i*STAGGER),done=local>=NFLIP*FLIP;
+      const clickY=done?clamp(local,15,22,0,0,'outQuad')+(local>=15&&local<17?6*(local-15)/2:0):0;
+      let topCh=seq[0],bottomCh=seq[0],flap='';
+      if(done){topCh=target;bottomCh=target;} else if(local>0){const k=Math.min(NFLIP-1,Math.floor(local/FLIP)),from=seq[k],to=seq[k+1],p=inQuad((local-k*FLIP)/FLIP);
+        topCh=to;bottomCh=from; if(p<0.5){const deg=p*2*90;flap=`<div style="position:absolute;inset:0;transform:rotateX(${-deg}deg);transform-origin:center ${CELL_H/2}px;backface-visibility:hidden;filter:brightness(${1-p*2*0.45});z-index:2">${half(from,'top')}</div>`;}
+        else {const deg=90-(p-0.5)*2*90;flap=`<div style="position:absolute;inset:0;transform:rotateX(${deg}deg);transform-origin:center ${CELL_H/2}px;backface-visibility:hidden;filter:brightness(${0.55+(p-0.5)*2*0.45});z-index:2">${half(to,'bottom')}</div>`;}}
+      return `<div style="position:relative;width:${CELL_W}px;height:${CELL_H}px;transform:translateY(${done?clamp(local,15,22,0,0):0}px);perspective:420px;border-radius:10px;box-shadow:0 6px 18px rgba(0,0,0,0.3)">${half(topCh,'top')}${half(bottomCh,'bottom')}${flap}<div style="position:absolute;left:0;top:${CELL_H/2-2}px;width:${CELL_W}px;height:4px;background:#141412;z-index:3"></div></div>`;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0}; let li=0;
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))); li=0;
+      const cells=TEXT.split('').map((ch,idx)=>ch===' '?`<div style="width:52px"></div>`:flapCell(ch,li++,frame)).join('');
+      comp.innerHTML=`<div style="position:absolute;inset:0;opacity:0.3;filter:saturate(0.8);background:#ececea"></div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center"><div style="display:flex;gap:12px;align-items:center">${cells}</div></div>`;
+    }},0);
+    window.__timelines['SplitFlapFlip']=tl;
+  </script>
+</body>
+</html>

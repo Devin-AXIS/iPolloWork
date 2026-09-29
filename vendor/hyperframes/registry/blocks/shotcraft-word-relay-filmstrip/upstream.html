@@ -1,0 +1,38 @@
+<!-- word-relay-filmstrip -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="WordRelayFilmstrip"] { width: 1920px; height: 1080px; background: #faf8f3; position: relative; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="WordRelayFilmstrip" data-start="0" data-duration="4.6667" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const CARD_W=940,CARD_H=530,GAP=105,STEP=CARD_H+GAP,SWITCHES=[14,62,108],SW_DUR=16,WORDS=['researches','builds','codes'],TOTAL=140;
+    const cardShell=(y,i)=>`<div style="position:absolute;top:${y}px;left:106px;width:${CARD_W}px;height:${CARD_H}px;border-radius:12px;overflow:hidden;box-shadow:0 12px 40px rgba(30,26,20,0.14);border:1px solid rgba(0,0,0,0.06);background:${i%2?'#101318':'#ffffff'}"><div style="padding:40px">${Array.from({length:8}).map((_,j)=>`<div style="height:10px;width:${40+((j*17+i*7)%50)}%;background:${i%2?'#41454e':'#d3d6db'};border-radius:3px;margin-bottom:14px"></div>`).join('')}</div></div>`;
+    const clamp=(f,a,b,va,vb)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));return va+(vb-va)*t;};
+    const smooth=x=>x*x*(3-2*x), inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      let stepF=0; SWITCHES.forEach(s=>{const p=clamp(frame,s,s+SW_DUR,0,1);stepF+=inOutCubic(p);});
+      const scroll=stepF*STEP, total=6*STEP; let cards='';
+      for(let rep=-1;rep<2;rep++)for(let i=0;i<6;i++){const y=275+i*STEP+rep*total-scroll;if(y>1200||y<-CARD_H-120)continue;cards+=cardShell(y,i);}
+      const wordNodes=WORDS.map((w,i)=>{const sIn=SWITCHES[i],sOut=i+1<SWITCHES.length?SWITCHES[i+1]:null;
+        const pIn=clamp(frame,sIn+7,sIn+SW_DUR,0,1); if(i===0?frame<sIn:pIn<=0)return '';
+        const pInEff=i===0?clamp(frame,sIn,sIn+12,0,1):pIn;
+        const grey=sOut?clamp(frame,sOut-14,sOut-2,0,1):0, pOut=sOut?clamp(frame,sOut,sOut+8,1,0):1;
+        const op=smooth(pInEff)*smooth(pOut); if(op<=0)return '';
+        const mix=smooth(grey), ch=Math.round(0x19+(0x9d-0x19)*mix);
+        return `<div style="position:absolute;right:0;top:0;font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;white-space:nowrap;color:rgb(${ch},${Math.round(0x19+(0x98-0x19)*mix)},${Math.round(0x19+(0x8e-0x19)*mix)});opacity:${op}">${w}</div>`;}).join('');
+      comp.innerHTML=cards+`<div style="position:absolute;right:210px;top:402px"><div style="font-family:'Didot','Bodoni 72',Georgia,serif;font-weight:400;font-size:116px;line-height:1.18;text-align:right;color:#191919">Computer</div><div style="position:relative;height:140px">${wordNodes}</div></div>`;
+    }},0);
+    window.__timelines['WordRelayFilmstrip']=tl;
+  </script>
+</body>
+</html>

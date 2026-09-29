@@ -1,0 +1,179 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-glitch-cycle",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "状态乱码锁定轮播",
+  "description": "逐项说明同一任务的四个状态，最后锁定完成态。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/glitch-cycle/index.html",
+    "rules": "references/shots/typography/glitch-cycle.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "2f376929766b04e9bcb493681129340fb8799b1664a42e15edd8944161ab06ad",
+    "adaptation": "Retains converted GSAP/frame functions. Modified: escaped real content, measured stage cues, Chinese geometry, clamped character settling, readable final hold; real screenshots replace demo skeletons. Does not certify pixel parity.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/glitch-cycle.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "words"
+      ],
+      "instructions": "逐项说明同一任务的四个状态，最后锁定完成态。 不展示真实运行日志；不用乱码承载关键数据或长段文字。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 7.266666666666667,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-glitch-cycle.html",
+      "target": "compositions/shotcraft-glitch-cycle.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-glitch-cycle.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "words",
+      "label": "words",
+      "type": "string",
+      "default": "准备素材|检查输入|生成画面|制作完成",
+      "maxLength": 23,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "实测语义时间",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "words",
+      "separator": "|",
+      "maxItems": 4,
+      "minItems": 4,
+      "fieldSeparator": "::",
+      "fieldsPerItem": 1,
+      "maxFieldLength": 5
+    },
+    "textLimits": {},
+    "usage": {
+      "useWhen": [
+        "逐项说明同一任务的四个状态，最后锁定完成态。"
+      ],
+      "avoidWhen": [
+        "不展示真实运行日志；不用乱码承载关键数据或长段文字。",
+        "文字动效不是图表或执行证明；不要为了使用特效改写事实。"
+      ],
+      "inputRules": {
+        "words": "恰好4项，用 | 分隔；每项最多5字，不能含 ::；按真实叙事顺序提供。"
+      },
+      "readingOrder": [
+        "建立共同主题",
+        "建立第一个状态",
+        "切换第二个状态",
+        "切换第三个状态",
+        "锁定最后的状态",
+        "停留在完整可读的落定状态"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白或音乐中与“建立第一个状态”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-2": "绑定实测旁白或音乐中与“切换第二个状态”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-3": "绑定实测旁白或音乐中与“切换第三个状态”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。",
+        "phase-4": "绑定实测旁白或音乐中与“锁定最后的状态”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"
+      },
+      "fallback": {
+        "overflow": "按语义拆镜或换配方；禁止截断和缩到不可读。",
+        "missingInput": "补真实内容与素材；不要使用源码里的演示文案或模拟 UI。",
+        "timingMismatch": "按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。",
+        "inapplicable": "优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"
+      },
+      "example": {
+        "values": {
+          "words": "准备素材|检查输入|生成画面|制作完成"
+        },
+        "narration": "准备素材，检查输入，生成画面，制作完成"
+      },
+      "acceptance": [
+        "各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。",
+        "真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。",
+        "实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。",
+        "不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"
+      ]
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 1.4,
+        "action": "建立第一个状态"
+      },
+      {
+        "id": "phase-2",
+        "target": ".sc-content *",
+        "time": 2.05,
+        "duration": 1.4,
+        "action": "切换第二个状态"
+      },
+      {
+        "id": "phase-3",
+        "target": ".sc-content *",
+        "time": 3.4499999999999997,
+        "duration": 1.4000000000000004,
+        "action": "切换第三个状态"
+      },
+      {
+        "id": "phase-4",
+        "target": ".sc-content *",
+        "time": 4.85,
+        "duration": 1.3999999999999995,
+        "action": "锁定最后的状态"
+      }
+    ]
+  }
+}

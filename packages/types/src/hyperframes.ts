@@ -26,6 +26,27 @@ export { hyperframesStudioPort, videoProjectDirectory, videoProjectId } from "./
 
 export const hyperframesEffectVariableUpdateSchema = z.enum(["live", "rebuild", "reload"]);
 
+/** CSS-page geometry for real screenshot crops; pixel ratio describes the image bytes. */
+export const hyperframesPageCaptureSchema = z.object({
+  width: z.number().positive().max(8192), height: z.number().positive().max(16384),
+  pixelRatio: z.number().min(1).max(4),
+  regions: z.array(z.object({
+    id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    x: z.number().nonnegative(), y: z.number().nonnegative(),
+    width: z.number().positive(), height: z.number().positive(),
+  }).strict()).min(6).max(8),
+  heroId: z.string(), foregroundIds: z.array(z.string()).length(2),
+}).strict().superRefine((capture, context) => {
+  const ids = new Set(capture.regions.map(region => region.id));
+  if (ids.size !== capture.regions.length || !ids.has(capture.heroId)
+    || new Set(capture.foregroundIds).size !== 2 || capture.foregroundIds.some(id => !ids.has(id))) {
+    context.addIssue({ code: "custom", message: "Capture regions need unique IDs and existing hero/foreground references." });
+  }
+  if (capture.regions.some(region => region.x + region.width > capture.width || region.y + region.height > capture.height)) {
+    context.addIssue({ code: "custom", message: "Capture rectangles must stay inside the CSS-page dimensions." });
+  }
+});
+
 /** Authored semantic cues, not fabricated speech alignment. Times are scene-relative seconds. */
 export const hyperframesMotionRecipeSchema = z.object({
   version: z.literal(1),
@@ -84,6 +105,11 @@ export const hyperframesVideoInstanceSchema = z.object({
   track: z.number().int().nonnegative().default(0),
   values: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])),
   cueTimes: z.record(z.string(), z.number().nonnegative()).optional(),
+  narration: z.object({
+    timingSourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/assets\/[^/]+\.timings\.json$/),
+    text: z.string().min(1).max(10000),
+    bindings: z.record(z.string(), z.object({ phrase: z.string().min(1), occurrence: z.number().int().positive().optional() }).strict()),
+  }).strict().optional(),
   timingSource: z.enum(["voiceover", "estimated-reading", "visual-cue", "music", "media"]),
   transition: z.enum(["cut", "preset:element.enter.fade", "preset:element.enter.slide", "preset:element.enter.scale"]).default("cut"),
   transitionDuration: z.number().nonnegative().default(0),

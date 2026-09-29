@@ -1,6 +1,7 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { hyperframesCatalogItemSchema, hyperframesMotionRecipeSchema } from "../../../packages/types/src/hyperframes.ts";
 
 type Category =
   | "scene"
@@ -108,11 +109,12 @@ function define(
 }
 
 /**
- * Canonical batch manifest for 62 generated scenes in the 149-component catalog.
+ * Canonical manifest for 63 generated scenes in the 149-component catalog.
  * Screenshot Zoom, Device Carousel, and Spatial Camera Suite own their specialized camera choreography. Every entry
  * records its closest neighbor and a concrete visual/semantic distinction.
  */
 export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
+  define(4, "metric-signal", "Metric Signal", "data", "stack", "Compare nonnegative values on a shared zero baseline.", "measured quantities", "numeric bar growth", "analytical", "animated-bar-chart", "Retains exact values and a shared scale rather than decorative KPI bars.", "周一::120|周二::180|周三::90|周四::150", "示例数据 · 单位：次 · 零基线共享尺度"),
   define(
     1,
     "agenda-opener",
@@ -1048,6 +1050,370 @@ export const VISUAL_COMPONENT_EXPANSION: ComponentDefinition[] = [
   ),
 ];
 
+
+/** Executable native families. Numeric geometry and serial connectors have specialized renderers. */
+const NATIVE_RECIPE_CONTENT: Record<string, { title: string; items: string; note: string; mode: "build" | "focus" | "compare" | "type" | "bars" | "gauge" | "funnel" | "series" | "matrix" | "flow" | "cycle" }> = {
+  "metric-signal": { title: "同一口径下的请求量", items: "周一::120|周二::180|周三::90|周四::150", note: "示例数据 · 单位：次 · 零基线共享尺度", mode: "bars" },
+  "gauge-scorecard": { title: "同一量表的四项得分", items: "清晰度::92|完整性::84|一致性::89|可读性::95", note: "示例评分 · 满分100 · 非客观质量证明", mode: "gauge" },
+  "benchmark-scorecard": { title: "相对同一目标的完成度", items: "准备::92|交付::84|复核::89|归档::95", note: "示例数据 · 各项完成百分比 · 目标100%", mode: "gauge" },
+  "conversion-funnel": { title: "同一批用户逐步转化", items: "访问::1000|注册::340|试用::120|购买::38", note: "示例数据 · 同一批用户 · 宽度相对初始人数", mode: "funnel" },
+  "cohort-retention": { title: "同口径的三期留存", items: "一月组::92,81,74|二月组::94,84,77|三月组::91,86,79|四月组::96,89,82", note: "示例数据 · 第1/2/3期 · 百分比 · 同一口径", mode: "matrix" },
+  "sparkline-grid": { title: "四组数据的变化轨迹", items: "组一::12,18,14|组二::8,16,20|组三::20,12,8|组四::10,15,19", note: "示例数据 · 同一单位 · 三期 · 共享零基线", mode: "series" },
+  "process-handoff-map": { title: "每次交接传递什么", items: "需求交设计::目标与约束|设计交开发::规格与素材|开发交审阅::实现与证据|审阅交发布::决定与版本", note: "箭头表示交接顺序，不代表已完成", mode: "flow" },
+  "deployment-pipeline": { title: "变更如何经过发布门槛", items: "提交::确定源代码版本|构建::产生可追溯产物|测试::验证用户操作|发布::部署已验证版本", note: "概念流程 · 不是实时部署状态", mode: "flow" },
+  "feedback-loop": { title: "结果如何回到下一次行动", items: "观察::读取结果信号|调整::修改当前行动|执行::产生新的结果|复核::把结果带回观察", note: "概念反馈闭环 · 不模拟增益或振荡", mode: "cycle" },
+  "agenda-opener": { title: "今天要弄清的四件事", items: "问题::哪里出了偏差|机制::变化如何传递|证据::哪些现象支持它|应用::怎样判断下一步", note: "按理解顺序建立路线", mode: "build" },
+  "narrative-hook": { title: "忙碌为何没有带来进展", items: "现象::任务越来越多|矛盾::结果没有改善|转折::先看协作方式|问题::哪里可以减少等待", note: "引出问题，不先堆结论", mode: "focus" },
+  "chapter-countdown": { title: "判断之前的三个问题", items: "目标::究竟想改变什么|反馈::能看见什么信号|行动::调整是否足够及时", note: "编号表示阅读顺序，不是假倒计时", mode: "build" },
+  "speaker-intro": { title: "从不同视角理解问题", items: "研究者::解释机制与证据|实践者::说明具体操作|学习者::提出仍然不懂的地方", note: "示例角色，不冒充真实人物", mode: "focus" },
+  "feature-spotlight-stack": { title: "把审阅集中到同一处", items: "上下文::先看到任务背景|批注::指出具体修改位置|确认::保留最终决定", note: "讲功能，不用空卡冒充产品截图", mode: "focus" },
+  "definition-highlight": { title: "反馈不是评价", items: "反馈::结果重新影响输入|评价::表达好坏判断|区别::机制与态度不是一回事", note: "先定义，再澄清边界", mode: "type" },
+  "faq-stack": { title: "反馈回路的常见问题", items: "正反馈好吗::正指变化被放大|负反馈坏吗::负指偏差被减小|都会稳定吗::延迟也会引起振荡", note: "按问题逐一回答", mode: "focus" },
+  "expert-panel": { title: "同一个决策的三种视角", items: "研究视角::先核对证据来源|业务视角::确认实际约束|使用视角::检查操作是否清楚", note: "视角示例，不虚构专家背书", mode: "focus" },
+  "founder-story": { title: "从一次失败到一个选择", items: "起点::反复等待审阅|困难::信息散落在多处|尝试::把背景和反馈放一起|选择::先解决最常见的阻塞", note: "示例叙事，不代表真实人物履历", mode: "build" },
+  "brand-manifesto": { title: "让协作有清楚的依据", items: "先理解::保留任务背景|再行动::让过程可见|后复核::用证据确认结果", note: "价值主张对应具体行动", mode: "type" },
+  "kinetic-keyword": { title: "反馈回路的三个动词", items: "观察::先读取变化信号|调整::再改变当前行动|复核::最后检查新的结果", note: "动词推进，不把每个字都做花字", mode: "type" },
+  "quote-pullout": { title: "一句话里的重点", items: "原句::先看机制再评好坏|重点::正负不是价值判断|解释::它描述变化的方向", note: "示例句，真实引用需补作者与出处", mode: "type" },
+  "customer-quote-wall": { title: "把反馈按问题归类", items: "定位::找不到当前进度|理解::不知道结果意味着什么|行动::不清楚下一步该做什么", note: "合成测试反馈，不冒充真实客户证言", mode: "focus" },
+  "source-citation-card": { title: "结论背后需要什么来源", items: "结论::延迟可能引起振荡|依据::带延迟的温控模型|边界::模型不能代替所有现实情况", note: "示例论证，正式发布需可追溯引用", mode: "build" },
+  "team-spotlight": { title: "一次审阅需要怎样配合", items: "作者::提供背景和初稿|审阅者::说明问题与依据|负责人::确认最终取舍", note: "角色依次聚焦，关系保持可见", mode: "focus" },
+  "brand-system-board": { title: "同一品牌的一套表达", items: "文字::让标题与解释分工|颜色::只强调当前重点|动效::在信息改变时推进", note: "表达原则，不冒充完整品牌规范", mode: "build" },
+  "partner-logo-feature": { title: "合作关系如何形成价值", items: "内容方::提供可靠信息|工具方::完成处理与呈现|使用方::确认内容是否有效", note: "角色示例；标志展示应选真实素材配方", mode: "focus" },
+  "creator-profile-card": { title: "让创作者介绍更具体", items: "方向::关注知识讲解|方法::先举例再解释|作品::展示可核验的案例", note: "示例档案，不虚构身份或成绩", mode: "focus" },
+  "feature-adoption-ladder": { title: "从看懂到真正使用", items: "认识::知道它解决什么|尝试::完成一次小任务|复用::找到稳定的使用场景|习惯::纳入原来的工作流程", note: "阶段不是转化率或用户数量", mode: "build" },
+  "release-highlights": { title: "这次更新改变了什么", items: "编辑::信息位置更清楚|保存::修改状态更明确|验证::交付前检查实际效果", note: "示例更新，发布时替换为真实变更", mode: "focus" },
+  "product-comparison-stage": { title: "两种协作方式的差别", items: "分散处理::背景在多个窗口|集中处理::背景与结果在同一处|分散处理::审阅时重新找资料|集中处理::直接核对相关内容", note: "比较具体体验，不虚构性能数字", mode: "compare" },
+  "section-marker": { title: "接下来，看机制", items: "现象::先确认发生了什么|机制::再理解为什么变化|应用::最后判断如何应对", note: "节标签服务阅读，不抢过渡镜头", mode: "type" },
+};
+
+const NATIVE_RECIPE_FIT: Record<string, { useWhen: string; avoidWhen: string; items: string; readingOrder: string[]; acceptance: string }> = {
+  "metric-signal": { useWhen: "比较2–4个同单位、同统计口径的非负数量。", avoidWhen: "混合单位、负数、双轴和分布不能使用；不推断因果或增长率。", items: "标签::非负数；条长按所有输入最大值共享归一化，保留零值和原始数。", readingOrder: ["交代单位与统计口径", "随旁白逐项展示数量", "保留共享基线比较差距"], acceptance: "条长比等于输入数值比；最大值与零值均不造假。" },
+  "gauge-scorecard": { useWhen: "展示同一0–100量表下的2–4项评分。", avoidWhen: "没有量表依据的主观好坏判断、原始数量、负数或超过100的评分。", items: "标签::0到100的得分；填充相对固定满分100，不按当前最大分放大。", readingOrder: ["说明量表和评分来源", "逐项填充到实际得分", "比较相同满分下的差距"], acceptance: "92分只能填充92%，不能因为它是最大值而变成满格。" },
+  "benchmark-scorecard": { useWhen: "展示相对各自明确目标、同口径归一化后的完成百分比。", avoidWhen: "原始单位不同而未归一化，目标不明，或超额完成超过100%。", items: "标签::0到100的完成百分比；原始目标与归一化口径必须在旁白或注释说明。", readingOrder: ["交代目标与完成口径", "逐项展示距100%的差距", "落到未完成部分"], acceptance: "固定100%基准可见，未完成区间保留；不能宣称这些数值证明质量通过。" },
+  "conversion-funnel": { useWhen: "同一批对象依次经过2–4个有明确条件的转化阶段。", avoidWhen: "跨批次拼接、人数回升、第一阶段为0、不同单位或阶段之间没有包含关系。", items: "阶段::非负人数，首项大于0，后项不得大于前项；宽度相对首项而非固定减宽。", readingOrder: ["明确初始人群", "逐阶段显示剩余人数", "保留全漏斗解释损失发生在哪"], acceptance: "每段宽度严格对应人数/初始人数；0人不能画成非零转化。" },
+  "cohort-retention": { useWhen: "2–4个可比队列，各有同口径的三期留存百分比。", avoidWhen: "不是同口径队列、缺期、原始人数或绝对计数；不用于滚动活跃率。", items: "队列::第1期百分比,第2期百分比,第3期百分比；每数0–100且依次不增。", readingOrder: ["说明队列与三期定义", "逐行呈现完整三期", "对照相同列解释留存差别"], acceptance: "三个独立格子显示输入百分比；色阶固定0–100，不按每行极值改色。" },
+  "sparkline-grid": { useWhen: "2–4组同单位、同采样间隔的数据，各有三个非负观测值。", avoidWhen: "不同单位、负值、缺期；不能推断插值期间发生过什么或把曲线当物理模拟。", items: "组名::第1期值,第2期值,第3期值；全组共享最大值与零基线。", readingOrder: ["说明单位和三期定义", "按旁白绘制各组折线", "保留共同尺度比较方向"], acceptance: "折线端点来自真实三个输入，零基线和共享尺度一致；无装饰性随机波形。" },
+  "process-handoff-map": { useWhen: "2–4次连续交接，每次说明交给谁以及传递内容。", avoidWhen: "分支、并行、循环或双向协议；这些需独立关系配方。", items: "交接双方::传递的实际内容；按真实交接顺序提供。", readingOrder: ["说明交接目标", "每次交接同步亮起连接箭头与内容", "保留整条交接链复核遗漏"], acceptance: "连接线依附相邻节点边界且不穿过文字；旁白说到交接时对应箭头出现。" },
+  "deployment-pipeline": { useWhen: "解释2–4个串行工程门槛及每步产物，不冒充实时运行。", avoidWhen: "并行任务、失败回退和实际通过状态；没证据不能标成已通过。", items: "门槛名::验收条件或产物；不要用模拟成功状态替代条件。", readingOrder: ["建立工程目标", "依次连通门槛与产物", "保留完整安全发布路径"], acceptance: "节点与连接同步推进，文字清楚说明条件；不伪造运行状态。" },
+  "feedback-loop": { useWhen: "说明2–4步首尾相接的概念反馈循环。", avoidWhen: "需要展示正负增益、延迟振荡、分支或真实控制系统的物理变化。", items: "循环阶段::阶段作用；最后阶段必须逻辑上返回第一阶段。", readingOrder: ["建立观察对象", "逐步连通行动与结果", "沿返回箭头回到第一阶段"], acceptance: "最后有明确可见的返回路径；循环不是几张无关系的淡入卡。" },
+  "agenda-opener": {
+    "useWhen": "预告本片将回答的2–4个问题，给观众一条理解路线。",
+    "avoidWhen": "不是结论总结或操作教程；操作顺序用 product-steps，结论回顾用 summary-resolve。",
+    "items": "每项是一个将被实际回答的问题或章节，按理解依赖排序，不按文档页码。",
+    "readingOrder": [
+      "先明确主题",
+      "逐一展示待回答的问题",
+      "保留完整路线，进入第一个问题"
+    ],
+    "acceptance": "问题顺序与后续内容一致；每个问题都在片中得到回应。"
+  },
+  "narrative-hook": {
+    "useWhen": "用现象、矛盾和待解问题建立观看动机。",
+    "avoidWhen": "不适合直接解释机制或罗列证据；单一提问用 question-opener，因果说明用 cause-effect-chain。",
+    "items": "各项组成同一矛盾的推进，不编造悬念或把相关现象写成因果。",
+    "readingOrder": [
+      "建立可核验的现象",
+      "指出现象与预期的冲突",
+      "把注意力落到一个待解问题"
+    ],
+    "acceptance": "观众能说出冲突和待解问题，而不是只记住入场特效。"
+  },
+  "chapter-countdown": {
+    "useWhen": "依次提出判断前必须检查的2–4个条件或问题。",
+    "avoidWhen": "不是计时器，不呈现倒计时或时间流逝；带日期的进程用 milestone-timeline。",
+    "items": "编号表示阅读顺序；每项是不同检查条件，不虚构截止时间。",
+    "readingOrder": [
+      "说明判断任务",
+      "按顺序检查条件",
+      "保留全部条件作为判断依据"
+    ],
+    "acceptance": "编号与检查顺序一致；画面和旁白均不声称真实倒计时。"
+  },
+  "speaker-intro": {
+    "useWhen": "用文字说明讲述者或参与角色与本片问题的关联。",
+    "avoidWhen": "不展示人物头像或数字人；多人职责配合用 team-spotlight，多视角论证用 expert-panel。",
+    "items": "使用可核验姓名与职责，匿名示例明确标注；不伪造资质或专家身份。",
+    "readingOrder": [
+      "说明介绍对象",
+      "聚焦其角色与相关经历",
+      "说明为什么由其讲这个问题"
+    ],
+    "acceptance": "身份、职责和资格有依据；不把示例角色当真实人物背书。"
+  },
+  "feature-spotlight-stack": {
+    "useWhen": "逐一解释产品功能在同一任务中解决什么具体问题。",
+    "avoidWhen": "不是操作演示或界面截图；真实画面用 media-hero，步骤用 product-steps。",
+    "items": "每项写真实功能及用户收益，不使用不存在的功能或未测量的性能提升。",
+    "readingOrder": [
+      "建立用户任务",
+      "逐项聚焦功能与作用",
+      "回到任务得到的结果"
+    ],
+    "acceptance": "每项能对应真实功能；文字说明不被宣称为真实产品演示。"
+  },
+  "definition-highlight": {
+    "useWhen": "澄清一个术语的定义、相邻概念与边界。",
+    "avoidWhen": "不适合完整过程、公式推导或连续模拟；机制用 cause-effect-chain，分层关系用 concept-layers。",
+    "items": "各项服务同一个术语；定义不循环解释，例子和例外不能冒充定义。",
+    "readingOrder": [
+      "提出术语",
+      "解释定义和易混淆概念",
+      "落到区别或适用边界"
+    ],
+    "acceptance": "观众能区分该术语与邻近概念，而不仅看到多个关键词。"
+  },
+  "faq-stack": {
+    "useWhen": "逐个回答围绕同一主题的独立常见问题。",
+    "avoidWhen": "不把强依赖的步骤拆成问答；学习路径用 learning-path，连续因果用 cause-effect-chain。",
+    "items": "每项 label 是一个问题，detail 是直接回答；保留条件，不承诺无依据的确定性。",
+    "readingOrder": [
+      "呈现当前问题",
+      "聚焦直接回答",
+      "回看问题与答案的对应关系"
+    ],
+    "acceptance": "问题出现时对应答案可读；答案实际回答问题，不重复标题。"
+  },
+  "expert-panel": {
+    "useWhen": "比较同一问题的不同专业视角和约束。",
+    "avoidWhen": "不是专家头像面板或真实访谈；意见不等于证据，单一指标比较用 comparison-matrix。",
+    "items": "每项是视角及依据，真实引用注明来源；无真实专家时用视角名称，不编造姓名或背书。",
+    "readingOrder": [
+      "明确共同问题",
+      "逐项读取不同视角",
+      "保留观点差异和共同约束"
+    ],
+    "acceptance": "各视角有不同依据；不以多张观点卡制造专家共识。"
+  },
+  "founder-story": {
+    "useWhen": "讲清一个真实经历中的起点、阻碍、尝试与选择。",
+    "avoidWhen": "不是人物肖像或档案素材；单纯日期进程用 milestone-timeline，价值宣言用 brand-manifesto。",
+    "items": "同一人物或团队的一条经历；事件与选择必须有依据，不能补写虚构成功转折。",
+    "readingOrder": [
+      "建立起点",
+      "推进阻碍与尝试",
+      "落到有依据的选择"
+    ],
+    "acceptance": "选择由前面的经历解释；示例故事不被包装成真实履历。"
+  },
+  "brand-manifesto": {
+    "useWhen": "用少量原则及具体行动表达品牌立场。",
+    "avoidWhen": "不是品牌规范、产品功能说明或业绩证据；系统原则用 brand-system-board，功能用 feature-spotlight-stack。",
+    "items": "每项原则对应可理解的行动，不使用空泛口号或无法兑现的保证。",
+    "readingOrder": [
+      "提出核心立场",
+      "逐项解释原则如何行动",
+      "收束为一致主张"
+    ],
+    "acceptance": "每条价值观有对应行动；没有无依据的唯一、领先或保证性宣称。"
+  },
+  "kinetic-keyword": {
+    "useWhen": "把同一概念压缩成2–4个短关键词或动作词，依次强调。",
+    "avoidWhen": "不是单词级字幕或单个全屏大词；逐词短句填色用 shotcraft-karaoke-fill，定义解释用 definition-highlight。",
+    "items": "每项为短关键词和简短解释；顺序必须有意义，不把长段旁白切成花字。",
+    "readingOrder": [
+      "建立主题",
+      "按语义顺序强调关键词",
+      "保留完整短词组关系"
+    ],
+    "acceptance": "被强调的词对应当前发声内容；文字动效不替代机制表达。"
+  },
+  "quote-pullout": {
+    "useWhen": "从一条有来源的原句中提炼重点并给出解释。",
+    "avoidWhen": "不是多人证言墙或原始证据；反馈归类用 customer-quote-wall，论证来源用 source-citation-card。",
+    "items": "保留原句意思和条件，注明作者或出处；示例句明确标注，不编造引文。",
+    "readingOrder": [
+      "展示原句",
+      "聚焦原句中的重点",
+      "给出与原意一致的解释"
+    ],
+    "acceptance": "提炼不改变原句含义；观众能区分引文与作者解释。"
+  },
+  "customer-quote-wall": {
+    "useWhen": "将可追溯的用户反馈按同一问题归类并逐项聚焦。",
+    "avoidWhen": "不适合证明统计比例或满意度；量化证据用 evidence-stack，单条引文用 quote-pullout。",
+    "items": "每项是反馈主题及忠实摘要；匿名或合成测试内容注明，不伪造客户身份或样本代表性。",
+    "readingOrder": [
+      "明确反馈议题",
+      "逐项查看反馈主题",
+      "保留共同问题与差异"
+    ],
+    "acceptance": "摘要有原反馈依据；个别反馈未被包装成全体用户结论。"
+  },
+  "source-citation-card": {
+    "useWhen": "按结论、依据、边界解释一个可追溯论证。",
+    "avoidWhen": "不是自动生成参考文献或数字图表；核心量化证据用 evidence-stack，多数值比较用 bar-chart-race。",
+    "items": "各项围绕同一结论，note 保留来源或限定；来源过长时拆镜，不删除可追溯信息。",
+    "readingOrder": [
+      "明确结论",
+      "展示支持依据",
+      "读到来源和适用边界"
+    ],
+    "acceptance": "依据支持所述结论；限定条件在最终画面保留，不被动效隐藏。"
+  },
+  "team-spotlight": {
+    "useWhen": "说明同一任务中不同角色的职责与配合。",
+    "avoidWhen": "不是人物肖像轮播或流程连线图；单人介绍用 speaker-intro，交接流程用 swimlane-workflow。",
+    "items": "每项为真实角色和职责，必要时注明示例；不虚构成员身份或用职位替代具体责任。",
+    "readingOrder": [
+      "建立共同任务",
+      "逐个聚焦角色职责",
+      "回看角色如何共同承担任务"
+    ],
+    "acceptance": "职责可区分且不遗漏必要责任；文字卡不冒充人物素材或交接动画。"
+  },
+  "brand-system-board": {
+    "useWhen": "说明品牌文字、颜色、动效等表达原则如何保持一致。",
+    "avoidWhen": "不是色板、字体试样或完整品牌规范渲染；品牌立场用 brand-manifesto，真实规范截图用 media-hero。",
+    "items": "每项是一个设计维度及可执行原则，不声称文本卡已经展示真实字体、色值或标志。",
+    "readingOrder": [
+      "说明统一表达目标",
+      "解释各维度原则",
+      "保留系统之间的一致关系"
+    ],
+    "acceptance": "观众看到的是明确原则；未渲染的视觉样本不被宣称为已展示。"
+  },
+  "partner-logo-feature": {
+    "useWhen": "用文字说明合作方或合作角色的分工与价值。",
+    "avoidWhen": "本实现不渲染合作方标志或资产；标志展示需真实素材配方，不将文字卡称为 logo 墙。",
+    "items": "每项为已确认的合作方名称或明确标注的示例角色；detail 说明贡献，不暗示未授权合作。",
+    "readingOrder": [
+      "建立合作任务",
+      "逐项说明参与方贡献",
+      "回看共同结果"
+    ],
+    "acceptance": "合作关系可核验；画面只声称文字分工说明，不声称展示品牌标志。"
+  },
+  "creator-profile-card": {
+    "useWhen": "用创作方向、方法和可核验作品介绍一个创作者。",
+    "avoidWhen": "不是头像、平台主页或粉丝数据展示；讲述者角色用 speaker-intro，经历故事用 founder-story。",
+    "items": "各项属于同一创作者，作品与成就需可核验；匿名样例标注，不填演示身份。",
+    "readingOrder": [
+      "建立创作者方向",
+      "解释方法",
+      "落到可核验作品"
+    ],
+    "acceptance": "介绍说明其实际创作特色；未显示的头像、作品画面或指标不被声称已展示。"
+  },
+  "feature-adoption-ladder": {
+    "useWhen": "说明同一功能从认识、尝试到稳定使用的阶段变化。",
+    "avoidWhen": "不是转化漏斗、用户数量或增长图；真实操作用 product-steps，学习前置关系用 learning-path。",
+    "items": "每项为阶段及可观察行为；没有量化数据时不写转化率，阶段不保证所有用户都会完成。",
+    "readingOrder": [
+      "说明使用目标",
+      "按阶段展示行为变化",
+      "回看稳定使用的条件"
+    ],
+    "acceptance": "相邻阶段有行为差异；阶段卡不被解释成测量的转化统计。"
+  },
+  "release-highlights": {
+    "useWhen": "聚焦一次真实发布中2–4项对用户有影响的变更。",
+    "avoidWhen": "不是未来路线图或完整操作教程；具体操作用 product-steps，跨时间发布进程用 milestone-timeline。",
+    "items": "每项是已交付变更和用户影响；计划中或实验性内容明确标注，不能写成已完成。",
+    "readingOrder": [
+      "说明发布范围",
+      "逐项聚焦真实变化",
+      "回顾本次用户得到什么"
+    ],
+    "acceptance": "每项对应实际发布状态；动画未暗示未经验证的性能或质量提升。"
+  },
+  "product-comparison-stage": {
+    "useWhen": "按同一体验维度交替比较两种方式或状态。",
+    "avoidWhen": "不是数据矩阵或多个产品排名；多维精确数值用 comparison-matrix，同一对象前后变化用 before-after-contrast。",
+    "items": "仅2项或4项；每对依次为 A、B 在同一维度的描述，4项时顺序 A1、B1、A2、B2；条件与措辞公平。",
+    "readingOrder": [
+      "建立两个比较对象",
+      "按同一维度读取 A 与 B",
+      "保留差异与适用条件"
+    ],
+    "acceptance": "每对内容比较同一维度；不出现无配对第三项或虚构优劣。"
+  },
+  "section-marker": {
+    "useWhen": "用全画面文字卡说明接下来要进入哪个理解阶段。",
+    "avoidWhen": "本实现不是角落的小节标签；不能覆盖主体充当小标记，开场路线用 agenda-opener。",
+    "items": "每项是接下来真实展开的小节或理解阶段；标题标明当前转折，不加入新证据。",
+    "readingOrder": [
+      "提示即将切换阶段",
+      "展示新阶段的阅读方向",
+      "落到下一幕实际内容"
+    ],
+    "acceptance": "章节提示与下一幕一致；全画面卡有阅读时间，不被当成角落叠加标签。"
+  }
+};
+
+function nativeRecipe(definition: ComponentDefinition) {
+  const content = NATIVE_RECIPE_CONTENT[definition.name];
+  if (!content) return undefined;
+  const fit = NATIVE_RECIPE_FIT[definition.name];
+  if (!fit) throw new Error(`Missing narrative fit rules for ${definition.name}`);
+  const labels = content.items.split("|").map(item => item.split("::")[0]);
+  const actions = Array.from({ length: 4 }, (_, index) => `Explain supplied item ${index + 1} in narration order`);
+  const events = actions.map((action, index) => ({ id: `step-${index + 1}`, target: `.vc-item:nth-child(${index + 1})`, time: [1.2, 2.6, 4.1, 5.5][index], duration: .5, action }));
+  events.push({ id: "resolve", target: ".vc-item", time: 6.6, duration: .55, action: "Restore the complete readable relationship" });
+  const quantitative = ["bars", "gauge", "funnel", "series", "matrix"].includes(content.mode);
+  const connected = content.mode === "flow" || content.mode === "cycle";
+  return {
+    version: 1, pattern: content.mode === "compare" ? "state-transformation" : content.mode === "type" ? "kinetic-type" : content.mode === "focus" ? "focus-transfer" : "progressive-build",
+    minHoldSeconds: .7,
+    capacity: { variable: "items", separator: "|", minItems: 2, maxItems: 4, fieldSeparator: "::", fieldsPerItem: 2, maxFieldLength: 24, ...(["bars", "gauge", "funnel"].includes(content.mode) ? { numericField: 1 } : {}) },
+    textLimits: { title: { maxLines: 1, maxLineLength: 24 }, note: { maxLines: 1, maxLineLength: 40 } },
+    events,
+    usage: {
+      useWhen: [fit.useWhen],
+      avoidWhen: [fit.avoidWhen, quantitative ? "No fabricated or independently rescaled data; supply provenance and a common measurement basis." : connected ? "Only the stated serial topology; no arbitrary branching, spatial or physical simulation." : "This is a text-led treatment: not a measured chart, real screenshot, spatial camera or continuous simulation."],
+      inputRules: { title: "One content-specific heading, at most 24 characters.", items: "2–4 label::detail entries separated by |; each field at most 24 characters. " + fit.items, highlight: "A real integer pointing to an existing item; it marks the final emphasis, not an inferred metric.", note: "One qualifier or source note, at most 40 characters. Retain uncertainty and evidence limitations." },
+      readingOrder: fit.readingOrder,
+      cueBindings: Object.fromEntries(events.map(event => [event.id, event.id === "resolve" ? "Bind to the concluding phrase that resolves the shown relationship." : "Bind to the exact measured phrase introducing this item, never its text-length estimate."])),
+      fallback: { overflow: "Split at a semantic boundary or choose a suitable recipe; never truncate or shrink text.", missingInput: "Report the missing real content or evidence; do not substitute demo defaults.", timingMismatch: "Bind every active event to measured narration while preserving order, nonoverlap and a readable final hold.", inapplicable: "Choose another proven native recipe. Under recipes-only policy report the capability gap; do not create custom graphics." },
+      example: { values: { title: content.title, items: content.items, highlight: 1, note: content.note }, narration: labels.join("，") + "，最后把它们放回同一个问题中理解。" },
+      acceptance: [fit.acceptance, "Every active phrase changes its real visible target; forward and reverse seek reproduce the same state.", "Chinese content fits at minimum and maximum capacity without cropped or overlapping labels.", quantitative ? "Numeric geometry uses actual input values and the documented shared scale, not decorative bars." : connected ? "Connections carry the declared relationship and remain attached to their nodes." : "This text-led treatment communicates its declared purpose, without pretending to render charts, real media or physical simulations."],
+    },
+  };
+}
+
+function renderNativeMotion(definition: ComponentDefinition): string {
+  const recipe = nativeRecipe(definition), content = NATIVE_RECIPE_CONTENT[definition.name];
+  if (!recipe || !content) return "";
+  return `<script data-ipw-motion-recipe="1">
+(function(){
+ const root=document.getElementById(${JSON.stringify(definition.name)}),id=root.dataset.compositionId,values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+ const recipe=${JSON.stringify(recipe)};
+ const cues=JSON.parse(String(values.motionCueTimes??"{}")),events=recipe.events.filter(event=>root.querySelector(event.target));
+ window.__timelines[id]?.kill();
+ const tl=gsap.timeline({paused:true}),items=[...root.querySelectorAll(".vc-item")];
+ tl.set(root.querySelectorAll("*"),{clearProps:"transform,opacity,clipPath"},0);
+ tl.set(root.querySelectorAll("*"),{x:0,y:0,xPercent:0,yPercent:0,scale:1,rotation:0,rotationY:0,opacity:1,clipPath:"none"},0);
+ tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);
+ tl.set(items,{opacity:.18},0);
+ const steps=events.filter(event=>event.id!=="resolve");
+ steps.forEach((event,index)=>{
+   const at=cues[event.id]??event.time,target=root.querySelectorAll(event.target);
+   ${content.mode === "focus" ? 'if(index>0)tl.to(root.querySelectorAll(steps[index-1].target),{opacity:.45,scale:1,duration:.2},at);tl.fromTo(target,{opacity:.18,scale:1},{opacity:1,scale:1.02,duration:event.duration,ease:"power2.out"},at);' : content.mode === "compare" ? 'tl.fromTo(target,{x:index%2?28:-28,opacity:.18},{x:0,opacity:1,duration:event.duration,ease:"power2.out"},at);' : content.mode === "type" ? 'tl.fromTo(target,{clipPath:"inset(0 0 100% 0)",opacity:.18},{clipPath:"inset(0 0 0% 0)",opacity:1,duration:event.duration,ease:"power3.out"},at);' : 'tl.fromTo(target,{clipPath:"inset(0 100% 0 0)",opacity:.18},{clipPath:"inset(0 0% 0 0)",opacity:1,duration:event.duration,ease:"power2.out"},at);'}
+ });
+ const resolve=events.find(event=>event.id==="resolve");
+ tl.to(items,{opacity:1,scale:1.012,duration:resolve.duration,ease:"power2.inOut"},cues.resolve??resolve.time);
+ tl.to({}, {duration:Math.max(${definition.duration},...events.map(event=>(cues[event.id]??event.time)+event.duration))},0);
+ window.__timelines[id]=tl;tl.seek(0);
+})();</script>`;
+}
+
+export async function auditNativeRecipeCoverage() {
+  const entries = [];
+  for (const entry of await readdir(blocksRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const raw: unknown = JSON.parse(await readFile(join(blocksRoot, entry.name, "registry-item.json"), "utf8"));
+    if (!raw || typeof raw !== "object" || !("visualComponent" in raw) || "upstream" in raw) continue;
+    const definition = VISUAL_COMPONENT_EXPANSION.find(value => value.name === entry.name);
+    const ready = "motionRecipe" in raw;
+    const reason = ready ? "Executable semantic contract; rendering acceptance is verified separately."
+      : definition?.category === "data" ? "Needs real numeric binding and quantitative geometry; decorative bars are not data recipes."
+      : definition?.category === "diagrams" ? "Needs measured nodes, connectors and state/path progression, not a card reveal."
+      : definition?.category === "media" ? "Needs validated real assets, crops and camera/clip windows, not placeholder cards."
+      : "Needs component-specific semantic events, validated input capacity and Chinese render acceptance; not counted as a recipe.";
+    entries.push({ name: entry.name, status: ready ? "recipe" : "component-only", reason });
+  }
+  return { nativeComponents: entries.length, nativeRecipes: entries.filter(entry => entry.status === "recipe").length, componentOnly: entries.filter(entry => entry.status === "component-only").length, entries };
+}
+
 const CATEGORY_LABELS: Record<Category, string> = {
   scene: "Story Scene",
   product: "Product",
@@ -1107,6 +1473,8 @@ function renderMotion(layout: Layout): string {
 }
 
 function renderHtml(definition: ComponentDefinition): string {
+  const content = NATIVE_RECIPE_CONTENT[definition.name];
+  if (content && !["build", "focus", "compare", "type"].includes(content.mode)) return renderMeasuredHtml(definition);
   const declarations = variableDeclarations.map((variable) => ({
     ...variable,
     default:
@@ -1118,6 +1486,7 @@ function renderHtml(definition: ComponentDefinition): string {
             ? definition.note
             : variable.default,
   }));
+  if (nativeRecipe(definition)) declarations.push({ id: "motionCueTimes", label: "Semantic cue times", type: "string", default: "{}", maxLength: 2048 });
   const defaults = Object.fromEntries(
     declarations.map((variable) => [variable.id, variable.default]),
   );
@@ -1151,7 +1520,7 @@ function renderHtml(definition: ComponentDefinition): string {
       [data-layout="dashboard"] .vc-items,[data-layout="matrix"] .vc-items{grid-template-columns:repeat(4,1fr);align-items:stretch}[data-layout="dashboard"] .vc-item,[data-layout="matrix"] .vc-item{padding-top:58px}[data-layout="dashboard"] .vc-label,[data-layout="matrix"] .vc-label{font-size:44px}[data-layout="dashboard"] .vc-bar,[data-layout="matrix"] .vc-bar{height:170px;top:auto}[data-layout="dashboard"] .vc-bar:after,[data-layout="matrix"] .vc-bar:after{width:100%;height:var(--progress,65%);margin-top:calc(170px - var(--progress,65%))}
       [data-layout="columns"] .vc-items,[data-layout="funnel"] .vc-items,[data-layout="steps"] .vc-items{display:flex;align-items:flex-end;gap:22px;padding:20px 0}[data-layout="columns"] .vc-item,[data-layout="steps"] .vc-item{flex:1;height:calc(42% + var(--i) * 11%)}[data-layout="funnel"] .vc-items{flex-direction:column;align-items:center;justify-content:center}[data-layout="funnel"] .vc-item{width:calc(100% - (var(--i) - 1) * 190px);min-height:120px;padding:22px 34px}[data-layout="funnel"] .vc-meta{position:absolute;right:34px;top:20px}
       [data-layout="cards"] .vc-items,[data-layout="carousel"] .vc-items{display:flex;align-items:center;gap:24px;padding:60px 0}[data-layout="cards"] .vc-item,[data-layout="carousel"] .vc-item{flex:1;height:430px}[data-layout="cards"] .vc-item:nth-child(even),[data-layout="carousel"] .vc-item:nth-child(even){margin-top:90px}
-    </style>
+${nativeRecipe(definition) ? '      .vc-title{line-height:1.4;font-size:60px}.vc-note{font-size:24px;line-height:1.4}.vc-label{font-size:30px!important;line-height:1.4}.vc-meta{font-size:23px!important;line-height:1.4!important}[data-layout="stack"] .vc-item{flex:1;min-height:0;padding:12px 32px}[data-layout="stack"] .vc-index{margin-bottom:6px}[data-layout="stack"] .vc-meta{margin-top:6px}[data-layout="social"] .vc-item{padding:12px 32px}[data-layout="social"] .vc-index{margin-bottom:6px}[data-layout="social"] .vc-meta{margin-top:6px}.vc-bar{display:none}[data-layout="stack"] .vc-meta{position:static;text-align:left;max-width:none}[data-layout="profile"] .vc-item:first-child .vc-label{font-size:42px!important}[data-layout="editorial"] .vc-item{padding:24px}[data-layout="editorial"] .vc-label{font-size:32px!important}\n' : ''}    </style>
   </head>
   <body>
     <main id="${definition.name}" class="vc-root" data-composition-id="${definition.name}" data-width="1920" data-height="1080" data-start="0" data-duration="${definition.duration}" data-layout="${definition.layout}" data-ipw-ai-slot="highlight">
@@ -1177,12 +1546,84 @@ function renderHtml(definition: ComponentDefinition): string {
         window.__timelines[id]=tl;tl.seek(0);
       })();
     </script>
-  </body>
+${nativeRecipe(definition) ? `    ${renderNativeMotion(definition)}\n` : ""}  </body>
 </html>
 `;
 }
 
+/** Quantitative geometry and serial connectors are distinct from text-card animation. */
+function renderMeasuredHtml(definition: ComponentDefinition): string {
+  const content = NATIVE_RECIPE_CONTENT[definition.name];
+  const recipe = nativeRecipe(definition);
+  if (!content || !recipe) throw new Error(`Missing executable contract: ${definition.name}`);
+  const defaults = { title: content.title, items: content.items, note: content.note, highlight: 1, motionCueTimes: "{}" };
+  const declarations = [...variableDeclarations.map(variable => ({ ...variable, default: defaults[variable.id === "title" ? "title" : variable.id === "items" ? "items" : variable.id === "note" ? "note" : "highlight"] })), { id: "motionCueTimes", label: "Semantic cue times", type: "string", default: "{}", maxLength: 2048 }];
+  return `<!doctype html><html lang="zh" data-composition-variables='${JSON.stringify(declarations).replaceAll("&", "&amp;").replaceAll("'", "&#39;")}'><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=1920,height=1080"><title>${definition.title}</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden}
+.vc-root{width:1920px;height:1080px;padding:86px 112px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#172126);font-family:var(--ipw-font-body,Inter,sans-serif);--primary:var(--ipw-color-primary,#20bbc0);--border:var(--ipw-color-border,#d7dde1);--surface:var(--ipw-color-surface,#fff)}
+h1{font-size:60px;line-height:1.4;margin:0}.vc-note{font-size:24px;line-height:1.4;color:var(--ipw-color-muted,#647078);margin:14px 0 0}.vc-axis{font-size:24px;line-height:1.4;margin:22px 0;color:var(--ipw-color-muted,#647078)}
+.vc-items{display:flex;flex-direction:column;gap:24px;height:580px}.vc-item{position:relative;display:grid;grid-template-columns:340px 1fr 240px;align-items:center;gap:24px;flex:1;min-height:0}.vc-label,.vc-meta{font-size:30px;line-height:1.4;overflow-wrap:anywhere}.vc-meta{text-align:right;font-variant-numeric:tabular-nums}
+.vc-track{height:48px;background:var(--border);position:relative;border-left:2px solid currentColor}.vc-fill{height:100%;background:var(--primary);transform-origin:left center}.vc-item.is-active .vc-fill{background:var(--ipw-color-accent,#ef6846)}
+[data-mode="funnel"] .vc-fill{margin:auto}[data-mode="funnel"] .vc-track{border-left:0;background:transparent}
+.vc-cells{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}.vc-cell{height:90px;display:flex;align-items:center;justify-content:center;font-size:30px;line-height:1.4;background:color-mix(in srgb,var(--primary) var(--value),var(--surface));border:1px solid var(--border)}
+.vc-chart{width:100%;height:100px;overflow:visible}.vc-line{fill:none;stroke:var(--primary);stroke-width:5}.vc-baseline{stroke:var(--border);stroke-width:2}.vc-point{fill:var(--primary)}
+[data-mode="flow"] .vc-items,[data-mode="cycle"] .vc-items{position:relative;flex-direction:row;align-items:center;gap:60px;height:500px}
+[data-mode="flow"] .vc-item,[data-mode="cycle"] .vc-item{display:flex;flex-direction:column;align-items:stretch;justify-content:center;gap:16px;flex:1;height:300px;border:2px solid var(--border);border-radius:16px;padding:24px;background:var(--surface)}
+[data-mode="flow"] .vc-meta,[data-mode="cycle"] .vc-meta{text-align:left;font-size:26px}
+.vc-link{position:absolute;left:-62px;top:50%;width:60px;height:3px;background:var(--primary);transform-origin:left}.vc-link:after{content:"";position:absolute;right:0;top:-7px;border-left:12px solid var(--primary);border-top:8px solid transparent;border-bottom:8px solid transparent}
+.vc-return{position:absolute;left:0;top:0;pointer-events:none;display:block;width:100%;height:500px;overflow:visible}.vc-return path{fill:none;stroke:var(--primary);stroke-width:4}.vc-return text{font-size:24px;fill:currentColor}
+</style></head><body>
+<main id="${definition.name}" class="vc-root" data-composition-id="${definition.name}" data-width="1920" data-height="1080" data-duration="${definition.duration}" data-mode="${content.mode}"><header class="vc-header"><h1></h1><p class="vc-note"></p></header><p class="vc-axis"></p><div class="vc-items"></div></main>
+<script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>
+<script data-ipw-motion-recipe="1">
+(function(){
+ const root=document.getElementById(${JSON.stringify(definition.name)}),id=root.dataset.compositionId,values={...${JSON.stringify(defaults)},...(window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{})};
+ const recipe=${JSON.stringify(recipe)};
+ const cues=JSON.parse(String(values.motionCueTimes??"{}"));
+ const mode=${JSON.stringify(content.mode)},rows=String(values.items).split("|").map(item=>{const [label,detail]=item.split("::");return{label,detail,numbers:detail.split(",").map(Number)}});
+ const connected=mode==="flow"||mode==="cycle",maximum=Math.max(...rows.flatMap(row=>row.numbers)),scale=mode==="gauge"||mode==="matrix"?100:mode==="funnel"?rows[0].numbers[0]:maximum;
+ root.querySelector("h1").textContent=values.title;root.querySelector(".vc-note").textContent=values.note;
+ root.querySelector(".vc-axis").textContent=connected?"箭头表示关系与阅读顺序":mode==="matrix"?"各列从左至右：第1期 / 第2期 / 第3期 · 固定0–100%色阶":mode==="series"?"第1期 → 第2期 → 第3期 · 共享零基线与最大值 "+scale:"0 → "+scale+(mode==="gauge"?" · 固定满分/目标":" · 共享基准");
+ root.dataset.scale=String(scale);
+ const container=root.querySelector(".vc-items");
+ function element(tag,className,text){const node=document.createElement(tag);node.className=className;if(text!==undefined)node.textContent=text;return node}
+ function svgElement(tag,attributes){const node=document.createElementNS("http://www.w3.org/2000/svg",tag);Object.entries(attributes).forEach(([key,value])=>node.setAttribute(key,String(value)));return node}
+ rows.forEach((row,index)=>{
+   const item=element("article","vc-item"+(index+1===Number(values.highlight)?" is-active":"")),label=element("strong","vc-label",row.label);item.append(label);
+   if(connected){item.append(element("span","vc-meta",row.detail));if(index>0)item.append(element("i","vc-link"));}
+   else if(mode==="matrix"){
+     const cells=element("div","vc-cells");row.numbers.forEach(value=>{const cell=element("span","vc-cell",value+"%");cell.style.setProperty("--value",value+"%");cells.append(cell)});item.append(cells,element("span","vc-meta","三期留存"));
+   }else if(mode==="series"){
+     const chart=svgElement("svg",{class:"vc-chart",viewBox:"0 0 900 100",preserveAspectRatio:"none"});chart.append(svgElement("path",{class:"vc-baseline",d:"M0 100H900"}));
+     const points=row.numbers.map((value,i)=>[i*450,100-(scale===0?0:value/scale)*90]);const path=svgElement("path",{class:"vc-line",d:points.map(([x,y],i)=>(i?"L":"M")+x+" "+y).join(" ")});chart.append(path);points.forEach(([cx,cy])=>chart.append(svgElement("circle",{class:"vc-point",cx,cy,r:5})));item.append(chart,element("span","vc-meta",row.numbers.join(" → ")));
+   }else{
+     const track=element("div","vc-track"),fill=element("div","vc-fill");fill.style.width=(scale===0?0:row.numbers[0]/scale*100)+"%";fill.dataset.value=String(row.numbers[0]);track.append(fill);item.append(track,element("span","vc-meta",row.detail+(mode==="gauge"?" / 100":"")));
+   }container.append(item);
+ });
+ if(mode==="cycle"){
+   const back=svgElement("svg",{class:"vc-return",viewBox:"0 0 1696 500"});const width=(1696-(rows.length-1)*60)/rows.length,left=width/2,right=1696-width/2;
+   back.append(svgElement("path",{class:"vc-back",d:"M"+right+" 400V462H"+left+"V400l-8 14m8-14 8 14"}));const text=svgElement("text",{x:848,y:494,"text-anchor":"middle"});text.textContent="结果返回下一轮观察";back.append(text);container.append(back);
+ }
+ window.__timelines=window.__timelines||{};window.__timelines[id]?.kill();const tl=gsap.timeline({paused:true}),items=[...root.querySelectorAll(".vc-item")];
+ tl.set(root.querySelectorAll("*"),{x:0,y:0,scale:1,opacity:1},0);tl.fromTo(root.querySelector(".vc-header"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);tl.set(items,{opacity:.18},0);
+ const events=recipe.events.filter(event=>root.querySelector(event.target));
+ events.filter(event=>event.id!=="resolve").forEach(event=>{
+   const target=root.querySelector(event.target),at=cues[event.id]??event.time;tl.to(target,{opacity:.85,duration:event.duration,ease:"power2.out"},at);
+   const fill=target.querySelector(".vc-fill"),link=target.querySelector(".vc-link"),path=target.querySelector(".vc-line");
+   if(fill||link)tl.fromTo(fill||link,{scaleX:0},{scaleX:1,duration:event.duration,ease:"power2.out"},at);
+   if(path){const length=path.getTotalLength();tl.set(path,{strokeDasharray:length,strokeDashoffset:length},0);tl.to(path,{strokeDashoffset:0,duration:event.duration,ease:"power2.out"},at);}
+   if(mode==="matrix")tl.fromTo(target.querySelectorAll(".vc-cell"),{scaleY:0},{scaleY:1,transformOrigin:"bottom",duration:event.duration,ease:"power2.out"},at);
+ });
+ const resolve=events.find(event=>event.id==="resolve");tl.to(items,{opacity:1,duration:resolve.duration,ease:"power2.inOut"},cues.resolve??resolve.time);
+ const back=root.querySelector(".vc-back");if(back){const length=back.getTotalLength();tl.set(back,{strokeDasharray:length,strokeDashoffset:length},0);tl.to(back,{strokeDashoffset:0,duration:resolve.duration,ease:"power2.out"},cues.resolve??resolve.time);}
+ tl.to({}, {duration:Math.max(${definition.duration},...events.map(event=>(cues[event.id]??event.time)+event.duration))},0);window.__timelines[id]=tl;tl.seek(0);
+})();</script></body></html>`;
+}
+
 function renderManifest(definition: ComponentDefinition): string {
+  const content = NATIVE_RECIPE_CONTENT[definition.name];
   const item = {
     $schema: "https://hyperframes.heygen.com/schema/registry-item.json",
     name: definition.name,
@@ -1211,7 +1652,7 @@ function renderManifest(definition: ComponentDefinition): string {
       } : {}),
       ai: {
         slots: parameters,
-        instructions: `AI may rewrite the title, supporting note, and up to four ${definition.subject}. Keep pipe separators between items and preserve the ${definition.layout} layout.`,
+        instructions: NATIVE_RECIPE_FIT[definition.name]?.useWhen ?? `AI may rewrite the title, supporting note, and up to four ${definition.subject}. Keep pipe separators between items and preserve the ${definition.layout} layout.`,
       },
     },
     dimensions: { width: 1920, height: 1080 },
@@ -1223,13 +1664,14 @@ function renderManifest(definition: ComponentDefinition): string {
         target: `compositions/${definition.name}.html`,
         type: "hyperframes:composition",
       },
+      ...(Object.hasOwn(NATIVE_RECIPE_CONTENT, definition.name) ? [{ path: "recipe.md", target: `compositions/${definition.name}.recipe.md`, type: "hyperframes:asset" }] : []),
     ],
     variables: [
       {
         id: "title",
         label: "Title",
         type: "string",
-        default: definition.title,
+        default: content?.title ?? definition.title,
         maxLength: 76,
         update: "live",
       },
@@ -1237,7 +1679,7 @@ function renderManifest(definition: ComponentDefinition): string {
         id: "items",
         label: "Items (label::detail | ...)",
         type: "string",
-        default: definition.items,
+        default: content?.items ?? definition.items,
         maxLength: 280,
         update: "live",
       },
@@ -1255,13 +1697,14 @@ function renderManifest(definition: ComponentDefinition): string {
         id: "note",
         label: "Supporting note",
         type: "string",
-        default: definition.note,
+        default: content?.note ?? definition.note,
         maxLength: 100,
         update: "live",
       },
     ],
   };
-  return `${JSON.stringify(item, null, 2)}\n`;
+  const recipe = nativeRecipe(definition);
+  return `${JSON.stringify(recipe ? { ...item, motionRecipe: recipe, variables: [...item.variables, { id: "motionCueTimes", label: "Semantic cue times", type: "string", default: "{}", maxLength: 2048, update: "reload" }] } : item, null, 2)}\n`;
 }
 
 function generatedFiles(limitWave = 4): Map<string, string> {
@@ -1338,8 +1781,8 @@ async function countVisualComponents(): Promise<number> {
 }
 
 function assertManifest(): void {
-  if (VISUAL_COMPONENT_EXPANSION.length !== 62) {
-    throw new Error(`Expected 62 expansion components, found ${VISUAL_COMPONENT_EXPANSION.length}`);
+  if (VISUAL_COMPONENT_EXPANSION.length !== 63) {
+    throw new Error(`Expected 63 owned components, found ${VISUAL_COMPONENT_EXPANSION.length}`);
   }
   const names = new Set<string>();
   for (const definition of VISUAL_COMPONENT_EXPANSION) {
@@ -1357,18 +1800,116 @@ function assertManifest(): void {
 async function generate(limitWave: number): Promise<void> {
   assertManifest();
   for (const [path, content] of generatedFiles(limitWave)) {
+    const name = path.split("/").at(-2);
+    if (!Object.hasOwn(NATIVE_RECIPE_CONTENT, name ?? "")) {
+      const manifest = JSON.parse(await readFile(join(dirname(path), "registry-item.json"), "utf8"));
+      if (manifest.motionRecipe) continue; // Preserve hand-authored recipes and their repaired layouts.
+    }
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, content);
   }
   await updateRegistryIndex(true, limitWave);
+  await recipeCards(true);
   console.log(`Generated visual component waves 1-${limitWave}.`);
 }
 
+
+const recipeCardManifestSchema = hyperframesCatalogItemSchema.pick({
+  name: true, title: true, description: true, duration: true, variables: true,
+  engine: true, dimensions: true, source: true, preview: true,
+}).extend({ motionRecipe: hyperframesMotionRecipeSchema }).strip();
+
+function cardSourceField(value: unknown, key: string): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const field = Object.entries<unknown>(value).find(([name]) => name === key)?.[1];
+  return typeof field === "string" ? field : undefined;
+}
+
+function renderRecipeCard(raw: unknown): string {
+  const manifest = recipeCardManifestSchema.parse(raw), recipe = manifest.motionRecipe, usage = recipe.usage;
+  const list = (values: string[]) => values.map(value => "- " + value).join("\n");
+  const upstream = raw && typeof raw === "object" && "upstream" in raw ? raw.upstream : undefined;
+  const lines = [
+    "<!-- Generated by visual-component-catalog.ts recipe-cards-generate. Edit the owning manifest/generator, not this file. -->",
+    "# " + manifest.title, "", "Component ID: " + manifest.name, "",
+    "## Purpose and selection", "", list(usage.useWhen), "", "Do not use:", "", list(usage.avoidWhen), "",
+    "## Supported inputs", "",
+    ...Object.entries(usage.inputRules).map(([key, rule]) => "- " + key + ": " + rule), "",
+    ...(recipe.capacity ? ["Capacity contract:", "", "~~~json", JSON.stringify(recipe.capacity, null, 2), "~~~", ""] : []),
+    ...(recipe.textLimits ? ["Text limits:", "", "~~~json", JSON.stringify(recipe.textLimits, null, 2), "~~~", ""] : []),
+    "Editable variable contract (demo defaults are not user content; apply both variable limits and the stricter recipe text/capacity limits above):", "", "~~~json", JSON.stringify(manifest.variables, null, 2), "~~~", "",
+    "## Reading order and motion", "", list(usage.readingOrder), "",
+    "Pattern: " + recipe.pattern + ". Native default duration: " + manifest.duration + "s. Minimum final readable hold: " + recipe.minHoldSeconds + "s.", "",
+    ...recipe.events.flatMap(event => ["### " + event.id, "", "- Target: " + event.target, "- Visible action: " + event.action,
+      "- Authored start: " + event.time + "s; action duration: " + event.duration + "s.", "- Narration cue: " + usage.cueBindings[event.id], ""]),
+    "These are authored event defaults, not measured speech alignment. Rebind active events to actual narration at project FPS; omitted capacity items must not acquire phantom cues. Preserve source easing, internal timing ratios and landing geometry. Source implementation is authoritative for curves not declared in the manifest; this card does not invent calibrated parameter ranges.", "",
+    "## Sequence and adjacent handoff", "",
+    "Choose the sequence by the audience task using the Video Studio Sequence templates, then verify this card's use/avoid rules for its assigned slot. Sequence membership is not proof of fit or a new rendering capability.", "",
+    "- Entry reading state: " + usage.readingOrder[0],
+    "- Landing reading state: " + usage.readingOrder.at(-1),
+    "- Handoff: identify the outgoing result and next subject in the existing storyboard narrative. Preserve only labels, comparison anchors or direction actually supported by the paired recipes. Use a direct cut when the semantic connection is enough; unsupported object morphs/camera paths require a different pairing or a disclosed gap.",
+    "- Budget: reserve readable Land time first; an incoming transition lives inside the next shot's Establish window. Do not duplicate narration or reset a developed object merely to replay an entrance.", "",
+    "## Known failure modes and recovery", "",
+    ...Object.entries(usage.fallback).map(([key, rule]) => "- " + key + ": " + rule), "",
+    "Under recipes-only policy, missing capability means another validated recipe, a meaningful split or an explicit gap; not custom graphics disguised as reuse.", "",
+    "## Example", "", "~~~json", JSON.stringify(usage.example.values, null, 2), "~~~", "", "Narration: " + usage.example.narration, "",
+    "Example media, identities and quotations are demonstration inputs, not factual evidence or supplied assets.", "",
+    "## Acceptance and verification status", "", list(usage.acceptance), "",
+    "Executable recipe contract exists. Card generation verifies documentation consistency only; it does not certify this shot's factual content, ordinary-speed rhythm, audible synchronization or exported pixels. Run the existing frame/playback/audio acceptance on real project inputs and report observed evidence separately.", "",
+    "## Implementation, references and preview", "",
+    "- Local implementation: [" + manifest.name + ".html](" + manifest.name + ".html)",
+    "- Rule source: registry-item.json in the owning registry directory; this card is its generated view, not an independent rule source.",
+  ];
+  if (manifest.source?.url) lines.push("- Source: " + manifest.source.url);
+  for (const key of ["repository", "revision", "implementation", "rules", "adaptation", "referenceGallery"]) {
+    const field = cardSourceField(upstream, key);
+    if (field) lines.push("- Upstream " + key + ": " + field);
+  }
+  if (upstream) {
+    lines.push("- Registry-only vendored reference: upstream-card.md (not copied into the project).");
+    const repository = cardSourceField(upstream, "repository"), revision = cardSourceField(upstream, "revision");
+    if (repository && revision) lines.push("- License: " + repository + "/blob/" + revision + "/LICENSE");
+  }
+  const preview = manifest.preview?.video;
+  lines.push(preview ? "- Registered preview: " + preview : "- No local video preview registered in this manifest. For imports, resolve the exact variant preview through media/video_recipe_catalog; do not claim an audition or pixel parity from an available URL.");
+  return lines.join("\n") + "\n";
+}
+
+async function recipeCards(write: boolean): Promise<void> {
+  let count = 0;
+  for (const entry of await readdir(blocksRoot, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const directory = join(blocksRoot, entry.name), path = join(directory, "registry-item.json");
+    const raw: unknown = JSON.parse(await readFile(path, "utf8"));
+    if (!raw || typeof raw !== "object" || !("motionRecipe" in raw)) continue;
+    const manifest = recipeCardManifestSchema.parse(raw);
+    if (manifest.name !== entry.name || !("files" in raw) || !Array.isArray(raw.files)) throw Error("Invalid recipe card owner " + entry.name);
+    const file = { path: "recipe.md", target: "compositions/" + entry.name + ".recipe.md", type: "hyperframes:asset" };
+    const existing = raw.files.filter(item => item && typeof item === "object" && "path" in item && item.path === file.path);
+    if (write) {
+      raw.files = [...raw.files.filter(item => !existing.includes(item)), file];
+      await writeFile(path, JSON.stringify(raw, null, 2) + "\n");
+    } else if (existing.length !== 1 || JSON.stringify(existing[0]) !== JSON.stringify(file)) {
+      throw Error("Recipe documentation entry missing or stale: " + entry.name);
+    }
+    const expected = renderRecipeCard(raw), destination = join(directory, "recipe.md");
+    if (write) await writeFile(destination, expected);
+    else if (await readFile(destination, "utf8") !== expected) throw Error("Recipe documentation stale: " + entry.name);
+    count++;
+  }
+  if (count !== 81) throw Error("Expected 81 executable recipe cards, found " + count);
+  console.log((write ? "Generated" : "Checked") + " " + count + " recipe cards from their owning manifests.");
+}
+
 async function check(): Promise<void> {
+  await recipeCards(false);
   assertManifest();
   const mismatches: string[] = [];
   for (const [path, expected] of generatedFiles()) {
     try {
+      const name = path.split("/").at(-2);
+      const manifest = JSON.parse(await readFile(join(dirname(path), "registry-item.json"), "utf8"));
+      if (manifest.motionRecipe && !Object.hasOwn(NATIVE_RECIPE_CONTENT, name ?? "")) continue;
       if ((await readFile(path, "utf8")) !== expected) mismatches.push(path);
     } catch {
       mismatches.push(path);
@@ -1376,15 +1917,205 @@ async function check(): Promise<void> {
   }
   if (!(await updateRegistryIndex(false))) mismatches.push(registryIndexPath);
   const total = await countVisualComponents();
-  if (total !== 149) mismatches.push(`visual-component-count:${total}`);
+  if (total !== 179) mismatches.push(`visual-component-count:${total}`);
   if (mismatches.length > 0) {
     throw new Error(`Visual component catalog is stale:\n${mismatches.join("\n")}`);
   }
-  console.log("Visual component catalog is current: 149 components.");
+  console.log("Visual component catalog is current: 149 native components and 30 Shotcraft imports.");
+}
+
+// References are deliberately not registry blocks: indexing a card does not port it.
+async function importShotcraftReferences(): Promise<void> {
+  const repository = "Vincentwei1021/video-shotcraft";
+  const revision = "5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab";
+  const fork = "louiseliu/hyperFrames-video-shotcraft";
+  const forkRevision = "1df77f1ab080323558f70a5fb880fad0f88f87fc";
+  const raw = async (repo: string, ref: string, path: string): Promise<string> => {
+    const response = await fetch(`https://raw.githubusercontent.com/${repo}/${ref}/${path}`);
+    if (!response.ok) throw new Error(`${path}: ${response.status}`);
+    return response.text();
+  };
+  const tree: { tree: { path: string }[] } = JSON.parse(await (await fetch(`https://api.github.com/repos/${repository}/git/trees/${revision}?recursive=1`)).text());
+  const forkTree: { tree: { path: string }[] } = JSON.parse(await (await fetch(`https://api.github.com/repos/${fork}/git/trees/${forkRevision}?recursive=1`)).text());
+  type Style = { key: string; label: string; description: string; use?: string; media?: { url: string }; implementationStatus?: string };
+  type Card = { name: string; summary: string; use: string; duration: string; energy: string; intention: string; source: string; category: string; tags: string[]; styles: Style[] };
+  const library: { cards: Card[]; stats: { cardCount: number; styleCount: number } } = JSON.parse(await raw(repository, revision, "gallery/api/library.json"));
+  if (library.cards.length !== 157 || library.cards.reduce((sum, card) => sum + card.styles.length, 0) !== 214) throw new Error("Pinned Shotcraft inventory changed");
+  const demoSources = tree.tree.filter(file => /^(?:demos|assets\/lib|template\/src)\/.*\.tsx$/.test(file.path)).map(file => file.path);
+  const forkPaths = new Set(forkTree.tree.map(file => file.path));
+  const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
+  // Aliases reviewed against each card's reference-implementation section; not fuzzy matches.
+  const sourceAliases: Record<string, string> = {
+    "panel-to-canvas": "PanelToCanvasMaterialize", "diagram-cascade": "DiagramCascadeBuild",
+    "oscilloscope-stream": "OscilloscopeStreamV2", "unit-dot-swarm-regroup": "UnitDotSwarmRegroupV2", "axis-rescale-shock": "AxisRescaleShockV2",
+    "dialogue-duet": "CursorDialogueDuet", "cast-ensemble": "CursorCastEnsemble",
+    "multiplane": "MultiplaneReal", "dolly-zoom": "DollyZoomReal", "cursor-performance": "CursorPerformancePunchIn",
+    "spotlight-sweep": "SpotlightSweepReveal", "sheen-sweep": "SheenSweepRetry",
+    "misregistration-hit": "RisoMisregistrationHit", "beat-pump": "RisoBeatPump",
+    "flash-cut": "FlashCut", "shot-transitions-4": "DarkTunnelTransition", "shot-transitions-5": "FocusHandoffTransition",
+    "shot-transitions-6": "BlackCardTransition", "whip-pan": "WhipPanReal", "mask-wipe": "MaskWipeReal",
+    "speed-ramp": "SpeedRampReal", "freeze-annotate": "FreezeAnnotateReal", "drift-assembly": "LetterformDriftAssembly",
+    "tracking-expand": "TrackingExpandReveal", "error-retype": "TypewriterErrorRetype",
+    "icon-flip-bloom": "IconFlipBloomLogo", "input-morph-assemble": "InputMorphsIntoLogo",
+  };
+  const sources = new Map<string, string>();
+  const converted = new Map<string, string>();
+  const cards = [];
+  // A small worker batch bounds GitHub traffic; generated output remains deterministic.
+  for (let offset = 0; offset < library.cards.length; offset += 8) {
+    cards.push(...await Promise.all(library.cards.slice(offset, offset + 8).map(async card => {
+      const rules = await raw(repository, revision, card.source);
+      const references = [...rules.matchAll(/(?:demos|assets\/lib|template\/src)\/[A-Za-z0-9_./-]+/g)].map(match => match[0]);
+      const candidates = demoSources.filter(path => references.some(reference => reference.endsWith(".tsx") ? path === reference : path.startsWith(reference.endsWith("/") ? reference : `${reference}/`)));
+      const implementations = await Promise.all(candidates.map(async path => {
+        let text = sources.get(path);
+        if (text === undefined) { text = await raw(repository, revision, path); sources.set(path, text); }
+        const dependencies = [...text.matchAll(/(?:from\s*|import\s*)["']([^"']+)["']/g)].map(match => match[1]);
+        const htmlPath = path.replace(/\.tsx$/, "/index.html");
+        const singlePath = `${path.slice(0, path.lastIndexOf("/"))}/index.html`;
+        const pathInFork = forkPaths.has(htmlPath) ? htmlPath : candidates.length === 1 && forkPaths.has(singlePath) ? singlePath : null;
+        let conversionStatus = "missing";
+        if (pathInFork) {
+          let html = converted.get(pathInFork);
+          if (html === undefined) { html = await raw(fork, forkRevision, pathInFork); converted.set(pathInFork, html); }
+          conversionStatus = html.includes("TODO: Port animation logic") ? "placeholder" : /\btl\.(?:to|from|fromTo|set|add|call)\s*\(/.test(html) ? "authored-unverified" : "no-timeline";
+        }
+        return { path, url: `https://github.com/${repository}/blob/${revision}/${path}`, dependencies,
+          conversion: { status: conversionStatus, path: pathInFork, url: pathInFork ? `https://github.com/${fork}/blob/${forkRevision}/${pathInFork}` : null } };
+      }));
+      const styles = await Promise.all(card.styles.map(async style => {
+        const matching = implementations.filter(item => normalize(item.path.split("/").at(-1)!.replace(/\.tsx$/, "")) === normalize(sourceAliases[style.key] ?? style.key));
+        const demos = matching.filter(item => item.path.startsWith("demos/"));
+        const implementation = matching.length === 1 ? matching[0] : demos.length === 1 ? demos[0] : card.styles.length === 1 && implementations.length === 1 ? implementations[0] : null;
+        const previewUrl = style.media ? new URL(style.media.url, "https://vincentwei1021.github.io/video-shotcraft/").href : null;
+        const previewStatus = previewUrl ? (await fetch(previewUrl, { method: "HEAD" })).status : null;
+        return { key: style.key, label: style.label, description: style.description, use: style.use ?? card.use,
+          upstreamStatus: style.implementationStatus ?? "preview-available",
+          previewUrl, previewStatus, previewRevision: "live-gallery-not-pinned",
+          implementationPath: implementation?.path ?? null,
+          implementationPaths: implementation ? [implementation.path] : implementations.map(item => item.path),
+          sourceResolution: implementation ? "resolved" : "read-card-to-resolve",
+          conversion: implementation?.conversion ?? { status: "source-unresolved", path: null, url: null } };
+      }));
+      return { name: card.name, summary: card.summary, use: card.use, duration: card.duration, energy: card.energy,
+        intention: card.intention, category: card.category, tags: card.tags, sourcePath: card.source,
+        sourceUrl: `https://github.com/${repository}/blob/${revision}/${card.source}`, rules, implementations, styles };
+    })));
+  }
+  const license = await raw(repository, revision, "LICENSE");
+  const output = { schemaVersion: 1, repository: `https://github.com/${repository}`, revision,
+    conversionRepository: `https://github.com/${fork}`, conversionRevision: forkRevision,
+    license: "Apache-2.0", licenseFile: "shotcraft-reference-LICENSE.txt", stats: { cardCount: cards.length, styleCount: 214 },
+    methodology: { sourceUrl: `https://github.com/${repository}/blob/${revision}/references/pipeline.md`, rules: await raw(repository, revision, "references/pipeline.md") }, cards };
+  await writeFile(resolve(dirname(registryIndexPath), "shotcraft-references.json"), JSON.stringify(output, null, 2) + "\n");
+  await writeFile(resolve(dirname(registryIndexPath), "shotcraft-reference-LICENSE.txt"), license);
+  console.log(`Indexed ${cards.length} Shotcraft cards and 214 preview variants; no runtime blocks created.`);
+}
+
+async function importShotcraftCameras(): Promise<void> {
+  const revision = "5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab";
+  const repository = "https://github.com/Vincentwei1021/video-shotcraft";
+  const raw = async (path: string) => {
+    const response = await fetch("https://raw.githubusercontent.com/Vincentwei1021/video-shotcraft/" + revision + "/" + path);
+    if (!response.ok) throw new Error(path + ": " + response.status);
+    return response.text();
+  };
+  const rulesPath = "references/shots/camera/depth-layer-moves.md";
+  const rules = await raw(rulesPath), license = await raw("LICENSE");
+  const captureLayout = JSON.stringify({ width: 1920, height: 1080, pixelRatio: 1,
+    regions: Array.from({ length: 6 }, (_, i) => ({ id: "region-" + i, x: 50 + i * 280, y: 300, width: 240, height: 240 })),
+    heroId: "region-3", foregroundIds: ["region-0", "region-5"] });
+  // Shared page-space construction, emitted into both self-contained registry compositions.
+  const pageSpace = String.raw`
+ const capture=JSON.parse(String(values.captureLayout));
+ const source=new Image();source.src=String(values.mediaUrl);await source.decode();
+ if(source.naturalWidth!==Math.round(capture.width*capture.pixelRatio)||source.naturalHeight!==Math.round(capture.height*capture.pixelRatio))throw Error('Screenshot dimensions differ from captureLayout');
+ const layer=className=>{const element=document.createElement('div');element.className='sc-layer '+className;root.append(element);return element;};
+ const page=(parent,width,top,opacity)=>{const image=source.cloneNode();Object.assign(image.style,{position:'absolute',left:'0px',top:Math.max(top,1080-capture.height*width/capture.width)+'px',width:width+'px',opacity:String(opacity)});parent.append(image);};
+ const crop=(parent,region,width,x,y,className)=>{const scale=width/region.width,box=document.createElement('div');box.className='sc-crop '+className;box.dataset.captureRegion=region.id;Object.assign(box.style,{left:x+'px',top:y+'px',width:width+'px',height:region.height*scale+'px'});const image=source.cloneNode();Object.assign(image.style,{position:'absolute',width:capture.width*scale+'px',left:-region.x*scale+'px',top:-region.y*scale+'px'});box.append(image);parent.append(box);return box;};
+ const region=id=>{const item=capture.regions.find(item=>item.id===id);if(!item)throw Error('Missing capture region '+id);return item;};
+ const cubic=(x1,y1,x2,y2,t)=>{const coordinate=(a,b,p)=>3*(1-p)*(1-p)*p*a+3*(1-p)*p*p*b+p*p*p;let low=0,high=1;for(let i=0;i<24;i++){const p=(low+high)/2;if(coordinate(x1,x2,p)<t)low=p;else high=p;}return t<=0?0:t>=1?1:coordinate(y1,y2,(low+high)/2);};
+ `;
+  for (const spec of [
+    { id: "shotcraft-multiplane", title: "真实页面多层视差", source: "MultiplaneReal", seconds: 115 / 30, key: "multiplane",
+      use: "展示真实页面、图像或空间层次，沿同一方向探索真实内容。",
+      avoid: "不用于必须固定对照的公式、代码或精确数值；前景不可遮挡主阅读对象。" },
+    { id: "shotcraft-dolly-zoom", title: "主体固定背景变焦", source: "DollyZoomReal", seconds: 95 / 30, key: "dolly-zoom",
+      use: "在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。",
+      avoid: "不用于日常连续阅读或每幕重复；全片最多一次，不给主体增加运镜或模糊。" },
+  ]) {
+    const implementation = "demos/camera/depth-layer-moves/" + spec.source + ".tsx";
+    const upstream = await raw(implementation);
+    const variables = [
+      { id: "title", label: "Short scene heading", type: "string", default: spec.title, maxLength: 12, update: "reload" },
+      { id: "mediaUrl", label: "Real captured screenshot", type: "string", default: "assets/evidence.svg", maxLength: 2000, update: "reload" },
+      { id: "captureLayout", label: "Measured CSS-page crop geometry", type: "string", default: captureLayout, maxLength: 4096, update: "reload" },
+      { id: "motionCueTimes", label: "Measured semantic cues", type: "string", default: "{}", maxLength: 2048, update: "reload" },
+    ];
+    const recipe = { version: 1, pattern: "state-transformation", minHoldSeconds: .7,
+      textLimits: { title: { maxLines: 1, maxLineLength: 12 } },
+      events: [{ id: "camera", target: ".sc-layer", time: .65, duration: spec.seconds, action: spec.use }],
+      usage: { useWhen: [spec.use], avoidWhen: [spec.avoid],
+        inputRules: { title: "单行最多12字；不遮盖素材中的必要信息。", mediaUrl: "已有项目内真实页面截图；禁止用演示卡片或手绘假界面替代。",
+          captureLayout: "JSON: width/height 是截图的 CSS 页面尺寸，pixelRatio 是像素倍率；regions 是6–8个实测 {id,x,y,width,height} 区域，heroId 与两个 foregroundIds 引用已有区域。图片像素尺寸必须一致。先核对裁切，过密或无适合主体时换配方，不猜坐标。" },
+        readingOrder: ["建立真实页面和层次", spec.use, "保留主体和最终可读画面"],
+        cueBindings: { camera: "绑定开始探索/强调主体的实测旁白短语；内部时值比例和各层运动关系不变。" },
+        fallback: { overflow: "拆镜或选择合适配方，不缩小文字。", missingInput: "先取得真实截图和实测区域；素材不可用则报告缺口。",
+          timingMismatch: "绑定实测短语并整体重排；过长旁白拆镜，不让相机漫无目的持续移动。", inapplicable: "换合适的已验证配方；仅配方模式下禁止自绘替代。" },
+        example: { values: { title: spec.title, mediaUrl: "assets/evidence.svg", captureLayout }, narration: spec.use },
+        acceptance: ["真实页面裁切与实测坐标一致，原图解码成功，高清主阅读层不模糊。",
+          spec.key === "multiplane" ? "各层沿同一 drive 移动，系数保持0.35/0.7/1.4，中景无模糊。" : "主体屏幕矩形保持固定；背景从1放大到2.25，模糊从0增加到3.5。",
+          "保持原曲线和动效关系，正反向拖动恢复同一画面；这不是像素完全相同的Remotion渲染。"] } };
+    const motion = spec.key === "multiplane" ? String.raw`
+ const background=layer('sc-background'),middle=layer('sc-middle'),foreground=layer('sc-foreground');
+ background.style.cssText='opacity:.85;filter:blur(2px) saturate(.92)';foreground.style.filter='blur(3px)';page(background,2100,-300,1);
+ capture.regions.slice(0,6).forEach((item,k)=>crop(middle,item,420,200+k*480,330+(k%2)*40,'sc-card'));
+ crop(foreground,region(capture.foregroundIds[0]),700,900,150,'sc-front');crop(foreground,region(capture.foregroundIds[1]),380,2100,700,'sc-front');
+ const apply=progress=>{const drive=progress*1000;background.style.transform='translateX('+(-drive*.35)+'px) scale(1.05)';middle.style.transform='translateX('+(-drive*.7)+'px)';foreground.style.transform='translateX('+(-drive*1.4)+'px)';root.dataset.ipwPageProgress=String(progress);};
+ const ease=t=>cubic(.35,0,.25,1,t);
+ ` : String.raw`
+ const background=layer('sc-background');background.style.transformOrigin='960px 540px';page(background,1920,-400,.55);
+ const xs=[180,1280,240,1220,700,760,60,1500],ys=[140,120,700,720,60,840,420,430];
+ capture.regions.filter(item=>item.id!==capture.heroId).slice(0,8).forEach((item,k)=>{const card=crop(background,item,320,xs[k],ys[k],'sc-card');card.style.opacity='.9';});
+ const subject=region(capture.heroId),hero=crop(root,subject,520,700,540-subject.height*520/subject.width/2,'sc-hero');
+ const apply=progress=>{background.style.transform='scale('+(1+progress*1.25)+')';background.style.filter='blur('+(progress*3.5)+'px) saturate(.9)';hero.style.boxShadow='0 '+(12+progress*16)+'px '+(40+progress*28)+'px rgba(31,28,23,'+(.16+progress*.1)+')';root.dataset.ipwPageProgress=String(progress);};
+ const ease=t=>cubic(.4,0,.3,1,t);
+ `;
+    const html = '<!doctype html>\n<html lang="zh" data-composition-variables=\'' + JSON.stringify(variables) + '\'><head><meta charset="utf-8"><title>' + spec.title + '</title><style>html,body{margin:0;width:1920px;height:1080px;overflow:hidden}*{box-sizing:border-box}.sc-root{position:relative;width:1920px;height:1080px;overflow:hidden;background:var(--ipw-color-bg,#efece6);color:var(--ipw-color-text,#191919);font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}.sc-layer{position:absolute;inset:0}.sc-crop{position:absolute;overflow:hidden;border-radius:12px;box-shadow:0 8px 28px rgba(31,28,23,.14)}.sc-hero{border-radius:14px}.sc-front{border-radius:22px}.sc-context{position:absolute;left:120px;top:72px;z-index:5;margin:0;padding:12px 20px;font-size:48px;line-height:1.4;background:var(--ipw-color-bg,#efece6);border-radius:8px}</style></head>\n<body><main id="' + spec.id + '" class="sc-root" data-composition-id="' + spec.id + '" data-width="1920" data-height="1080" data-duration="5.2"><h1 class="sc-context" data-ipw-variable="title"></h1></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script>\n<!-- Derived from ' + repository + ' ' + revision + ' ' + implementation + '. Copyright 2026 WeiYihao. Apache-2.0. Modified: measured screenshot crops, content, narration cues, page extent clamp, theme and hold. See LICENSE. -->\n<script data-ipw-motion-recipe="1">\n(async function(){await document.fonts.ready;const root=document.getElementById(' + JSON.stringify(spec.id) + '),id=root.dataset.compositionId;const values={...' + JSON.stringify(recipe.usage.example.values) + ',...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[id]??{})};const recipe=' + JSON.stringify(recipe) + ';\n const cues=JSON.parse(String(values.motionCueTimes??"{}"));\n root.querySelector("[data-ipw-variable=title]").textContent=String(values.title);\n' + pageSpace + motion + '\n const state={progress:0},event=recipe.events[0],tl=gsap.timeline({paused:true});apply(0);tl.fromTo(state,{progress:0},{progress:1,duration:event.duration,ease,onUpdate:()=>apply(state.progress)},cues.camera??event.time);tl.to({}, {duration:5.2},0);window.__timelines=window.__timelines||{};window.__timelines[id]=tl;tl.seek(0,false);})();\n</script></body></html>\n';
+    const manifest = { $schema: "https://hyperframes.heygen.com/schema/registry-item.json", name: spec.id, version: "1.0.0", type: "hyperframes:block", title: spec.title, description: spec.use,
+      tags: ["component", "shotcraft", "media", "camera", "theme"], author: "WeiYihao; iPolloWork integration", license: "Apache-2.0",
+      upstream: { repository, revision, implementation, rules: rulesPath, license: "Apache-2.0", upstreamSha256: (await import("node:crypto")).createHash("sha256").update(upstream).digest("hex"),
+        adaptation: "Preserves original bezier curves, layered motion coefficients and fixed-subject geometry. Adapted: real screenshot regions instead of hardcoded demo textures, page extent clamp, content variables, theme, measured phrase cues and final hold. Not pixel-identical Remotion rendering." },
+      source: { provider: "video-shotcraft", label: "Video Shotcraft · Apache-2.0", url: repository + "/blob/" + revision + "/" + rulesPath },
+      visualComponent: { version: 1, category: "media", surfaces: ["video"], themeMode: "inherit", ai: { slots: ["title", "mediaUrl", "captureLayout"], instructions: spec.use + " " + spec.avoid } },
+      dimensions: { width: 1920, height: 1080 }, duration: 5.2, engine: { name: "gsap", version: "3.13.0", seekable: true },
+      files: [{ path: spec.id + ".html", target: "compositions/" + spec.id + ".html", type: "hyperframes:composition" }, { path: "LICENSE", target: "compositions/licenses/video-shotcraft-LICENSE.txt", type: "hyperframes:asset" }], variables, motionRecipe: recipe };
+    const directory = resolve(dirname(registryIndexPath), "blocks", spec.id);await mkdir(directory, { recursive: true });
+    for (const [name, content] of [[spec.id + ".html", html], ["registry-item.json", JSON.stringify(manifest, null, 2) + "\n"], ["upstream.tsx", upstream], ["upstream-card.md", rules], ["LICENSE", license]]) await writeFile(join(directory, name), content);
+  }
+  const index = JSON.parse(await readFile(registryIndexPath, "utf8"));
+  for (const name of ["shotcraft-multiplane", "shotcraft-dolly-zoom"]) if (!index.items.some((item: { name: string }) => item.name === name)) index.items.push({ name, type: "hyperframes:block" });
+  await writeFile(registryIndexPath, JSON.stringify(index, null, 2) + "\n");
+  console.log("Generated two source-preserving Shotcraft page-space recipes.");
 }
 
 const command = process.argv[2] ?? "check";
-if (command === "generate") {
+if (command === "shotcraft-camera-import") {
+  await importShotcraftCameras();
+} else if (command === "shotcraft-reference-import") {
+  await importShotcraftReferences();
+} else if (command === "recipes-audit") {
+  console.log(JSON.stringify(await auditNativeRecipeCoverage(), null, 2));
+} else if (command === "recipe-cards-generate") {
+  await recipeCards(true);
+} else if (command === "recipes-generate") {
+  for (const [path, content] of generatedFiles()) {
+    if (!Object.hasOwn(NATIVE_RECIPE_CONTENT, path.split("/").at(-2) ?? "")) continue;
+    await writeFile(path, content);
+  }
+  await recipeCards(true);
+  console.log(JSON.stringify(await auditNativeRecipeCoverage(), null, 2));
+} else if (command === "generate") {
   const limitWave = Math.max(1, Math.min(4, Number(process.argv[3] ?? 4) || 4));
   await generate(limitWave);
 } else if (command === "check") {

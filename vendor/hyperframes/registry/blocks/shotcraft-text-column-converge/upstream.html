@@ -1,0 +1,35 @@
+<!-- text-column-converge -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="TextColumnConverge"] { width: 1920px; height: 1080px; background: #050506; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="TextColumnConverge" data-start="0" data-duration="5.2667" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const STEPS=[{word:'LAUNCHER DESIGN',dur:16},{word:'COMPACT MODE',dur:12},{word:'HOTKEY RECORDER',dur:9},{word:'HOTKEY TYPES',dur:8},{word:'VOICE FEATURES',dur:7},{word:'SETTINGS DESIGN',dur:8},{word:'AI CHAT',dur:10},{word:'FILE SEARCH',dur:12},{word:'RAYCAST',dur:999}];
+    const START=8,NEW_LEFT=618,WORD_RIGHT=1302,FS=42,LSP=3,ADV=0.6*FS+LSP,LINE_W=11*ADV,MERGED_LEFT=960-LINE_W/2,MERGED_RIGHT=960+LINE_W/2,CONVERGE_DUR=36,CONVERGE_DELAY=10,SUB_DELAY=18,TOTAL=158;
+    const inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='inOutCubic')t=inOutCubic(t);return va+(vb-va)*t;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const f=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), t=f-START; if(t<0){comp.innerHTML='';return;}
+      let acc=0,idx=0,stepStart=0; for(let i=0;i<STEPS.length;i++){if(t>=acc){idx=i;stepStart=acc;}acc+=STEPS[i].dur;}
+      const cur=STEPS[idx],isLast=idx===STEPS.length-1,local=t-stepStart,cvT=isLast?local-CONVERGE_DELAY:-1,cv=cvT>=0?clamp(cvT,0,CONVERGE_DUR,0,1,'inOutCubic'):0;
+      const newLeft=NEW_LEFT+(MERGED_LEFT-NEW_LEFT)*cv,wordRight=WORD_RIGHT+(MERGED_RIGHT-WORD_RIGHT)*cv,converged=cv>=1;
+      const subT=converged?cvT-CONVERGE_DUR-SUB_DELAY:-1,subOp=subT>=0?clamp(subT,0,4,0,1):0;
+      const font=`font-family:'SF Mono',Menlo,monospace;font-weight:500;font-size:${FS}px;letter-spacing:3px;color:#f2f2f4;white-space:nowrap;line-height:1`;
+      comp.innerHTML=`<div style="position:absolute;left:${newLeft}px;top:519px;${font}">NEW</div>
+        <div style="position:absolute;right:${1920-wordRight}px;top:519px;${font}">${cur.word}</div>
+        <div style="${font};font-style:italic;color:#d8d8dc;position:absolute;left:${MERGED_LEFT}px;top:${519+FS+14}px;opacity:${subOp}">COMING 2026</div>`;
+    }},0);
+    window.__timelines['TextColumnConverge']=tl;
+  </script>
+</body>
+</html>
