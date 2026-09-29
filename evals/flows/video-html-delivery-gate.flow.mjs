@@ -9,6 +9,37 @@ export default {
   kind: "internal",
   requiresApp: false,
   steps: [{
+    name: "Verify video workspace routing and bounded narration recovery",
+    run: async (ctx) => {
+      const cases = [
+        ["apps/server/src/extensions/video-render.test.ts", "project fingerprint", "修改外部组件、样式、素材或脚本会使旧验收失效"],
+        ["apps/server/src/extensions/video-render.test.ts", "output mix review", "实际输出缺音轨或静音不能通过技术验收，非静音不冒充音画同步通过"],
+        ["apps/server/src/extensions/video-render.test.ts", "runtime acceptance failures", "验收保留真实PNG关键帧，表达和听觉同步仍明确待验证"],
+        ["apps/server/src/extensions/video-components.test.ts", "mounts selected recipes", "真实配方安全挂载，选而不用失败，保留原有内容"],
+        ["apps/server/src/extensions/video-components.test.ts", "custom narrated scenes", "自定义场景缺少词锚或动作提前时验收失败"],
+        ["apps/server/src/mcp.engine-sync.e2e.test.ts", "rebinds the host bridge", "任务开始前绑定当前工作区，绑定失败不启动生成"],
+        ["apps/server/src/mcp.engine-sync.e2e.test.ts", "startup sync pushes", "所有工作区都有正确的内置媒体 MCP 地址"],
+        ["apps/server/src/extensions/media-center.test.ts", "rejects a missing bound video project", "工程不存在时拒绝请求付费配音"],
+        ["apps/server/src/extensions/media-center.test.ts", "preserves successful batch audio", "批量失败后保留音频，并在原路径续跑时复用"],
+      ];
+      if (process.env.IPOLLOWORK_ROUTING_PROOF_OPENCODE_BIN) cases.push([
+        "apps/server/src/mcp.engine-sync.e2e.test.ts", "real OpenCode", "真实 OpenCode 工作区连接隔离及重绑定",
+      ]);
+      for (const [file, pattern, claim] of cases) {
+        await ctx.prove(claim, {
+          voiceover: `${claim}。这是隔离服务和文件回执验证，不调用付费模型，不是整片视觉验收。`,
+          assert: async () => {
+            const result = await exec(process.env.BUN_BINARY || "bun", ["test", file, "-t", pattern], {
+              cwd: fileURLToPath(new URL("../../", import.meta.url)), timeout: 60_000,
+            });
+            const output = result.stdout + result.stderr;
+            ctx.output(claim, output);
+            ctx.assert(/1 pass/.test(output) && /0 fail/.test(output), `${claim}: observable service/file assertions passed`);
+          },
+        });
+      }
+    },
+  }, {
     name: "Reuse the editable Studio storyboard before media production",
     run: async (ctx) => {
       await ctx.prove("The native storyboard preserves asset, camera and soundtrack decisions when narration is edited", {

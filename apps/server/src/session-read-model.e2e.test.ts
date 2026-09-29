@@ -145,6 +145,7 @@ function startMockOpencode(input?: { invalidList?: boolean; invalidStatus?: bool
         return Response.json({ ok: true });
       }
 
+      if (url.pathname === "/mcp" && request.method === "POST") return Response.json({});
       if (url.pathname === "/session/ses_created/prompt_async" && request.method === "POST") {
         if (input?.promptAsyncNoContent) {
           return new Response(null, { status: 204 });

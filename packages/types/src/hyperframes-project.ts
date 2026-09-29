@@ -8,6 +8,7 @@ export type VideoDeliveryRequirements = {
   captionStyle?: "transparent-bottom" | "custom";
   bgm: boolean;
   sfx: boolean;
+  recipesOnly?: boolean;
   animationReferences: string[];
   targetDurationSeconds?: number;
 };

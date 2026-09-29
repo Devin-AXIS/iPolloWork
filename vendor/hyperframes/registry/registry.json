@@ -1250,6 +1250,126 @@
     {
       "name": "interface-state-board",
       "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-card-stack",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-tracking-expand",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-marker-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-blur-slide",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-brace-expand",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-outline-word-fill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-letter-drop",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-scramble-decode",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-karaoke-fill",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-multiplane",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-dolly-zoom",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-glitch-cycle",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-gradient-word-sweep",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-lead-word-zoom-assemble",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-pill-chip-slot-cycle-handled",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-pill-slot-cycle",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-scramble",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-split-flap-title",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-text-column-converge",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-title-demote-to-label",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-split-text-stagger",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-drift-assembly",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-text-on-path",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-font-weight-pump",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-terminal-typewriter",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-error-retype",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-typing-code-block",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-vertical-word-roll-blur-cycle",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-word-relay-filmstrip",
+      "type": "hyperframes:block"
+    },
+    {
+      "name": "shotcraft-word-relay-geometry",
+      "type": "hyperframes:block"
     }
   ]
 }

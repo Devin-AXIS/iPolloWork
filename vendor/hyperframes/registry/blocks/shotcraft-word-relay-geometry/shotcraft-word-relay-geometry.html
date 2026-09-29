@@ -1,0 +1,51 @@
+<!-- word-relay-geometry -->
+<!doctype html>
+<html>
+<head><script type="application/json" data-composition-variables="[{&quot;id&quot;:&quot;words&quot;,&quot;label&quot;:&quot;words&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;看见|理解|行动&quot;,&quot;maxLength&quot;:17,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;motionCueTimes&quot;,&quot;label&quot;:&quot;实测语义时间&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;{}&quot;,&quot;maxLength&quot;:2048,&quot;update&quot;:&quot;reload&quot;}]"></script>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="shotcraft-word-relay-geometry"] { background: #07080c; overflow: hidden; }
+    .design-stage { position:absolute;left:0;top:0;width:480px;height:270px;overflow:hidden;transform:scale(4);transform-origin:top left; }
+    #root { position:absolute;inset:0; }
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-word-relay-geometry"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
+</head>
+<body>
+  <div data-ipw-source-ranges="[[0,1.92,&quot;圆形衬托首词&quot;],[1.92,3.84,&quot;切换并填充第二个词&quot;],[3.84,6,&quot;最后一个词锁定为白字&quot;]]" data-composition-id="shotcraft-word-relay-geometry" data-start="0" data-duration="7.666666666666667" data-fps="30" data-width="1920" data-height="1080"><div class="sc-content">
+    <div class="design-stage"><div id="root"></div></div>
+  </div>
+  </div><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script data-ipw-motion-recipe="1">
+(async function(){await document.fonts.ready;const host=document.querySelector('[data-composition-id="shotcraft-word-relay-geometry"]');const values={...{"words":"看见|理解|行动"},...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[host.dataset.compositionId]??{})};const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');const measure=(text,font)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;return ctx.measureText(text).width;};
+    window.__timelines = window.__timelines || {};
+    const E={outCubic:t=>1-Math.pow(1-t,3),inQuad:t=>t*t,inOutCubic:t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2,outQuad:t=>t*(2-t)};
+    const lerp=(t,a,b)=>a+(b-a)*t; const seg=(t,t0,t1,e=t=>t)=>e(Math.min(1,Math.max(0,(t-t0)/(t1-t0))));
+    const rand=s=>{const x=Math.sin(s*127.1+311.7)*43758.5453;return x-Math.floor(x);};
+    const CIRC_R=78, PARTS=Array.from({length:20},(_,i)=>({size:1+rand(i*3)*1.4,x:rand(i)*100,ph:rand(i+40),sp:0.5+rand(i+80)*0.8}));
+    const SLOTS=[{label:String(values.words).split('|')[0],geom:[{x:0,r:CIRC_R+22,dash:true}],t0:0,t1:0.36},{label:String(values.words).split('|')[1],geom:[{x:-110,r:62,d:0},{x:0,r:62,d:0.06},{x:110,r:62,d:0.12}],t0:0.32,t1:0.68},{label:String(values.words).split('|')[2],geom:[],t0:0.64,t1:1}];
+    const root=document.getElementById('root'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:6,ease:'none',onUpdate:()=>{
+      const t=state.t;
+      const parts=PARTS.map((p,i)=>{const y=(1-((t*p.sp+p.ph)%1))*110-5,op=0.12+0.18*Math.sin((t*3+p.ph)*Math.PI*2)**2;
+        return `<div style="position:absolute;width:${p.size}px;height:${p.size}px;border-radius:50%;background:#fff;left:${p.x}%;top:${y}%;opacity:${op}"></div>`;}).join('');
+      const slots=SLOTS.map(({label,geom,t0,t1},i)=>{const isLast=i===SLOTS.length-1,tin=seg(t,t0,t0+0.07,E.outCubic),tout=isLast?0:seg(t,t1-0.05,t1,E.inQuad),alive=tin>0&&tout<1;
+        if(!alive) return ''; const fillp=seg(t,t0+0.06,t0+0.18,E.inOutCubic),sh=seg(t,t0+0.05,t0+0.2,E.outQuad),sweep=seg(t,t0+0.08,t0+0.26,E.inOutCubic),white=seg(t,t0+0.27,t0+0.34,E.outQuad);
+        let svg=''; geom.forEach((g,k)=>{if(g.dash){const grow=seg(t,t0+0.01,t0+0.14,E.outCubic);
+          svg+=`<circle cx="${g.x}" cy="0" r="${g.r}" fill="none" stroke="#565e78" stroke-width="1.1" stroke-dasharray="5 7" opacity="${grow*(1-tout)}" transform="rotate(${-90+t*30}) scale(${lerp(grow,0.4,1)})"/>`;}
+          else{const trim=seg(t,t0+0.02+(g.d||0),t0+0.14+(g.d||0),E.outCubic)-seg(t,t1-0.06,t1,E.inQuad)*(isLast?0:1);
+          svg+=`<circle cx="${g.x}" cy="0" r="${g.r}" fill="none" stroke="#565e78" stroke-width="1.1" pathLength="1" stroke-dasharray="1" stroke-dashoffset="${1-Math.max(0,trim)}" transform="rotate(-90)"/>`;}});
+        const word=isLast?`<div style="color:transparent;-webkit-text-stroke:1px #6a7186;opacity:${1-sh}">${escape(label)}</div>
+          <div style="position:absolute;inset:0;color:#fff;opacity:${white};text-shadow:0 0 ${white*18}px rgba(255,255,255,.3)">${escape(label)}</div>
+          <div style="position:absolute;inset:0;color:transparent;background-image:linear-gradient(100deg,#585f72 0%,#8d95aa 38%,#ffffff 50%,#8d95aa 62%,#585f72 100%);background-size:280% 100%;-webkit-background-clip:text;background-clip:text;opacity:${sh*(1-white)};background-position:${lerp(sweep,100,0)}% 0">${escape(label)}</div>`
+          :`<div style="color:transparent;-webkit-text-stroke:1px #6a7186;opacity:${1-fillp*0.75}">${escape(label)}</div><div style="position:absolute;inset:0;color:#fff;clip-path:inset(-20% ${(1-fillp)*100}% -20% 0)">${escape(label)}</div>`;
+        return `<div style="position:absolute;inset:0;opacity:${tin*(1-tout)}"><svg viewBox="-240 -135 480 270" style="position:absolute;inset:0;width:100%;height:100%">${svg}</svg>
+          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-52%) scale(${lerp(tout,1,0.86)});font-family:-apple-system,'Helvetica Neue',sans-serif;font-size:56px;font-weight:800;line-height:1.3;white-space:nowrap">${word}</div></div>`;}).join('');
+      root.innerHTML=parts+slots;
+    }},0);
+    window.__timelines['shotcraft-word-relay-geometry']=tl;
+  
+const motionStyle=JSON.parse(String(values.motionStyle??'{"durationFactor":1}'));
+const recipe={"version":1,"pattern":"kinetic-type","minHoldSeconds":0.7,"capacity":{"variable":"words","separator":"|","maxItems":3,"minItems":3,"fieldSeparator":"::","fieldsPerItem":1,"maxFieldLength":5},"textLimits":{},"usage":{"useWhen":["三个短关键词依次接力，以装饰圆形和填色形成强调层级。"],"avoidWhen":["几何形状不是测量、关系图或真实指标；不把三个词当完整解释。","文字动效不是图表或执行证明；不要为了使用特效改写事实。"],"inputRules":{"words":"恰好3项，用 | 分隔；每项最多5字，不能含 ::；按真实叙事顺序提供。"},"readingOrder":["建立共同主题","圆形衬托首词","切换并填充第二个词","最后一个词锁定为白字","停留在完整可读的落定状态"],"cueBindings":{"phase-1":"绑定实测旁白或音乐中与“圆形衬托首词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-2":"绑定实测旁白或音乐中与“切换并填充第二个词”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-3":"绑定实测旁白或音乐中与“最后一个词锁定为白字”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"},"fallback":{"overflow":"按语义拆镜或换配方；禁止截断和缩到不可读。","missingInput":"补真实内容与素材；不要使用源码里的演示文案或模拟 UI。","timingMismatch":"按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。","inapplicable":"优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"},"example":{"values":{"words":"看见|理解|行动"},"narration":"看见，理解，行动"},"acceptance":["各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。","真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。","实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。","不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"]},"events":[{"id":"phase-1","target":".sc-content *","time":0.65,"duration":1.92,"action":"圆形衬托首词"},{"id":"phase-2","target":".sc-content *","time":2.57,"duration":1.92,"action":"切换并填充第二个词"},{"id":"phase-3","target":".sc-content *","time":4.49,"duration":2.16,"action":"最后一个词锁定为白字"}]},ranges=[[0,1.92,"圆形衬托首词"],[1.92,3.84,"切换并填充第二个词"],[3.84,6,"最后一个词锁定为白字"]],cues=JSON.parse(String(values.motionCueTimes??'{}')),native=window.__timelines[host.dataset.compositionId];host.__sourceTimeline=native;const stateClock={time:0};const clockEnd=Math.max(7.666666666666667,...recipe.events.map(event=>(cues[event.id]??event.time)+event.duration*motionStyle.durationFactor+4));const master=gsap.timeline({paused:true});const render=()=>{let sourceTime=0;for(let i=0;i<recipe.events.length;i++){const event=recipe.events[i],start=cues[event.id]??event.time,length=event.duration*motionStyle.durationFactor,[from,to]=ranges[i];if(stateClock.time<start)break;sourceTime=from+(to-from)*Math.min(1,(stateClock.time-start)/length);}native.render(Math.max(0.000001,sourceTime),false,true);host.dataset.ipwSourceTime=String(sourceTime);};master.to(stateClock,{time:clockEnd,duration:clockEnd,ease:'none',onUpdate:render},0);window.__timelines[host.dataset.compositionId]=master;render();})();
+</script>
+</body>
+</html>

@@ -1,0 +1,34 @@
+<!-- LetterformDriftAssembly -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="LetterformDriftAssembly"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="LetterformDriftAssembly" data-start="0" data-duration="5" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const h=n=>{const s=Math.sin(n*127.3)*43758.5453;return s-Math.floor(s);};
+    const WORD='ASSEMBLE',TRAVEL=45,STAG=3,TOTAL=150; const outCubic=t=>1-Math.pow(1-t,3), inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);else if(e==='inOutCubic')t=inOutCubic(t);return va+(vb-va)*t;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      const breath=frame<92?clamp(frame,80,92,1,1.04,'inOutCubic'):clamp(frame,92,104,1.04,1,'inOutCubic');
+      const chars=WORD.split('').map((c,i)=>{const start=i*STAG,lock=start+TRAVEL,p=clamp(frame,start,lock,0,1,'outCubic');
+        const ang=h(i+1)*Math.PI*2,mag=260+h(i+101)*100,dx=Math.cos(ang)*mag*(1-p),dy=Math.sin(ang)*mag*(1-p),blur=8*(1-p),op=0.35+0.65*p;
+        const pulse=frame<=lock||frame>=lock+8?0:frame<lock+4?(frame-lock)/4:(lock+8-frame)/4;
+        const shade=Math.round(47*(1-pulse)),color=`rgb(${shade},${shade},${shade})`,strokeW=3*pulse;
+        return `<span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:140px;letter-spacing:8px;color:${color};display:inline-block;transform:translate(${dx}px,${dy}px);opacity:${op};filter:${blur>0.01?`blur(${blur}px)`:'none'};-webkit-text-stroke:${strokeW>0.01?`${strokeW}px #000`:'0'}">${c}</span>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:#2f2f2f">LETTERFORM DRIFT ASSEMBLY</div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;transform:scale(${breath})">${chars}</div>`;
+    }},0);
+    window.__timelines['LetterformDriftAssembly']=tl;
+  </script>
+</body>
+</html>

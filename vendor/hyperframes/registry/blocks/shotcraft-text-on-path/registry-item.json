@@ -1,0 +1,163 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-text-on-path",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "字符沿路径归位",
+  "description": "短标题字符沿一条曲线行进，再回到水平基线。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/type-assembly-moves/TextOnPath/index.html",
+    "rules": "references/shots/typography/type-assembly-moves.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "d5d199f4611e726a690da166859c3c33c41ca08531dd8f96d5e3a63c6c784c42",
+    "adaptation": "Retains converted GSAP/frame functions. Modified: escaped real content, measured stage cues, Chinese geometry, clamped character settling, readable final hold; real screenshots replace demo skeletons. Does not certify pixel parity.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/type-assembly-moves.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "label"
+      ],
+      "instructions": "短标题字符沿一条曲线行进，再回到水平基线。 路径只是文字入场，不代表增长曲线、地理线路或真实轨迹。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 5.066666666666666,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-text-on-path.html",
+      "target": "compositions/shotcraft-text-on-path.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-text-on-path.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "title",
+      "label": "title",
+      "type": "string",
+      "default": "找到下一步",
+      "maxLength": 12,
+      "update": "reload"
+    },
+    {
+      "id": "label",
+      "label": "label",
+      "type": "string",
+      "default": "沿线理解",
+      "maxLength": 16,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "实测语义时间",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 12
+      },
+      "label": {
+        "maxLines": 1,
+        "maxLineLength": 16
+      }
+    },
+    "usage": {
+      "useWhen": [
+        "短标题字符沿一条曲线行进，再回到水平基线。"
+      ],
+      "avoidWhen": [
+        "路径只是文字入场，不代表增长曲线、地理线路或真实轨迹。",
+        "文字动效不是图表或执行证明；不要为了使用特效改写事实。"
+      ],
+      "inputRules": {
+        "title": "提供真实title，最多1行，每行12字，不使用演示默认内容。",
+        "label": "提供真实label，最多1行，每行16字，不使用演示默认内容。"
+      },
+      "readingOrder": [
+        "建立共同主题",
+        "字符沿曲线进入并归位为水平标题",
+        "停留在完整可读的落定状态"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白或音乐中与“字符沿曲线进入并归位为水平标题”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"
+      },
+      "fallback": {
+        "overflow": "按语义拆镜或换配方；禁止截断和缩到不可读。",
+        "missingInput": "补真实内容与素材；不要使用源码里的演示文案或模拟 UI。",
+        "timingMismatch": "按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。",
+        "inapplicable": "优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"
+      },
+      "example": {
+        "values": {
+          "title": "找到下一步",
+          "label": "沿线理解"
+        },
+        "narration": "找到下一步。沿线理解"
+      },
+      "acceptance": [
+        "各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。",
+        "真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。",
+        "实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。",
+        "不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"
+      ]
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 3.4,
+        "action": "字符沿曲线进入并归位为水平标题"
+      }
+    ]
+  }
+}

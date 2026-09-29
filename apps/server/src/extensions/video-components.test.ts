@@ -1,11 +1,12 @@
+import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { attribute, checkVideoComponents, installVideoComponents } from "./video-components.js";
 import { z } from "zod";
-import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema } from "@ipollowork/types/hyperframes";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
 const recipeManifestSchema = z.object({
   name: z.string(), duration: z.number(),
@@ -59,14 +60,203 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
-  test("all twenty authored recipes expose complete rules and instantiate Chinese examples", async () => {
+  test("rejects reference-only card IDs before writing even the valid selections", async () => {
+    const { root, project } = await recipeFixture("question-opener");
+    const original = await readFile(join(project, "index.html"), "utf8");
+    const error = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["question-opener", "depth-layer-moves"],
+    }).catch((error: unknown) => error);
+    expect(error).toMatchObject({ code: "video_recipe_reference_only" });
+    expect(await readFile(join(project, "index.html"), "utf8")).toBe(original);
+    expect(await readdir(project)).toEqual(["index.html"]);
+  });
+  test("imported Shotcraft recipes retain pinned source, rules and installed license", async () => {
+    for (const name of ["shotcraft-card-stack", "shotcraft-tracking-expand", "shotcraft-marker-title", "shotcraft-multiplane", "shotcraft-dolly-zoom"]) {
+      const { root, project, registry, manifest, instance } = await recipeFixture(name);
+      const source = z.object({ upstream: z.object({ revision: z.string(), upstreamSha256: z.string() }), license: z.literal("Apache-2.0") }).parse(JSON.parse(await readFile(join(registry, name, "registry-item.json"), "utf8")));
+      expect(source.upstream.revision).toBe("5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab");
+      expect(createHash("sha256").update(await readFile(join(registry, name, "upstream.tsx"))).digest("hex")).toBe(source.upstream.upstreamSha256);
+      expect((await readFile(join(registry, name, "upstream-card.md"), "utf8")).length).toBeGreaterThan(400);
+      await mkdir(join(project, "assets"), { recursive: true });
+      await writeFile(join(project, "assets", "evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"/>');
+      await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [instance] });
+      expect(await readFile(join(project, "compositions/licenses/video-shotcraft-LICENSE.txt"), "utf8")).toContain("Apache License");
+      const variable = manifest.variables.find(value => value.id === "title" || value.id === "keyword");
+      expect(variable?.type).toBe("string");
+      if (!variable || variable.type !== "string" || !variable.maxLength) throw Error("Missing bounded text input");
+      await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [{ ...instance, values: { ...instance.values, [variable.id]: "字".repeat(variable.maxLength + 1) } }] })).rejects.toMatchObject({ code: "invalid_video_recipe_values" });
+    }
+  });
+  test("converted HyperFrames recipes retain original source and enforce bounded real content", async () => {
+    for (const slug of ["blur-slide", "brace-expand", "outline-word-fill", "letter-drop", "scramble-decode", "karaoke-fill", "glitch-cycle", "gradient-word-sweep", "lead-word-zoom-assemble", "pill-chip-slot-cycle-handled", "pill-slot-cycle", "scramble", "split-flap-title", "text-column-converge", "title-demote-to-label", "split-text-stagger", "drift-assembly", "text-on-path", "font-weight-pump", "terminal-typewriter", "error-retype", "typing-code-block", "vertical-word-roll-blur-cycle", "word-relay-filmstrip", "word-relay-geometry"]) {
+      const name = `shotcraft-${slug}`;
+      const { root, project, registry, manifest, instance } = await recipeFixture(name);
+      const source = z.object({ upstream: z.object({ revision: z.string(), upstreamSha256: z.string() }) }).parse(JSON.parse(await readFile(join(registry, name, "registry-item.json"), "utf8")));
+      expect(source.upstream.revision).toBe("1df77f1ab080323558f70a5fb880fad0f88f87fc");
+      const original = await readFile(join(registry, name, "upstream.html"), "utf8");
+      expect(createHash("sha256").update(original).digest("hex")).toBe(source.upstream.upstreamSha256);
+      expect(original).not.toContain("TODO: Port animation logic");
+      await mkdir(join(project, "assets"), { recursive: true });
+      await writeFile(join(project, "assets/evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"/>');
+      const installed = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [instance] });
+      expect(installed.instances).toHaveLength(1);
+      expect(await readFile(join(project, "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt"), "utf8")).toContain("Apache License");
+      if (slug === "text-on-path") {
+        const mounted = await readFile(join(project, "compositions", name + ".html"), "utf8");
+        expect(mounted).toContain("P2={x:1240,y:660}");
+        expect(mounted).not.toContain("motionStyle.distance*.7540");
+      }
+      if (manifest.motionRecipe.events[0]?.id === "phase-1") {
+        let start = .8, offset = 0;
+        const words = manifest.motionRecipe.events.map((event, index) => {
+          const text = `阶段${index + 1}`;
+          const word = { text, beginIndex: offset, endIndex: offset + text.length, startSeconds: start, endSeconds: start + .1 };
+          offset += text.length;
+          start = Math.ceil((start + event.duration + .1) * 30) / 30;
+          return word;
+        });
+        await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words }));
+        const narration = { timingSourcePath: "video/session-one/assets/voice.timings.json", text: words.map(word => word.text).join(""), bindings: Object.fromEntries(manifest.motionRecipe.events.map((event, index) => [event.id, { phrase: words[index]!.text }])) };
+        const aligned = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [{ ...instance, duration: Math.max(manifest.duration, start + 1), timingSource: "voiceover", narration }] });
+        expect(aligned.instances[0]!.cueTimes).toEqual(Object.fromEntries(manifest.motionRecipe.events.map((event, index) => [event.id, Math.round(words[index]!.startSeconds * 30) / 30])));
+        await writeFile(join(project, "index.html"), `<main data-composition-id="main">${aligned.instances[0]!.snippet}</main>`);
+        expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", recipesOnly: true })).valid).toBe(true);
+      }
+      const variable = manifest.variables.find(value => value.id !== "motionCueTimes");
+      if (!variable || variable.type !== "string" || !variable.maxLength) throw Error("Missing bounded content variable");
+      await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [name], instances: [{ ...instance, values: { ...instance.values, [variable.id]: "字".repeat(variable.maxLength + 1) } }] })).rejects.toMatchObject({ code: "invalid_video_recipe_values" });
+    }
+  });
+  test("camera recipes reject mismatched screenshot dimensions before writing", async () => {
+    for (const componentId of ["shotcraft-multiplane", "shotcraft-dolly-zoom"]) {
+      const { root, project, instance } = await recipeFixture(componentId);
+      await mkdir(join(project, "assets"), { recursive: true });
+      await writeFile(join(project, "assets/evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"/>');
+      const original = await readFile(join(project, "index.html"), "utf8");
+      const capture = hyperframesPageCaptureSchema.parse(JSON.parse(String(instance.values.captureLayout)));
+      for (const [layout, code] of [
+        [{ ...capture, width: 1921 }, "video_capture_dimensions_mismatch"],
+        [{ ...capture, heroId: "absent" }, "invalid_video_capture_layout"],
+        [{ ...capture, foregroundIds: ["region-0", "region-0"] }, "invalid_video_capture_layout"],
+        [{ ...capture, regions: capture.regions.map(region => ({ ...region, x: 1920 })) }, "invalid_video_capture_layout"],
+      ]) {
+        await expect(installVideoComponents({ id: "test", path: root }, {
+          sourcePath: "video/session-one/index.html", componentIds: [componentId],
+          instances: [{ ...instance, values: { ...instance.values, captureLayout: JSON.stringify(layout) } }],
+        })).rejects.toMatchObject({ code });
+        expect(await readFile(join(project, "index.html"), "utf8")).toBe(original);
+        expect((await readdir(project)).sort()).toEqual(["assets", "index.html"]);
+      }
+    }
+  });
+  test("custom narrated scenes reject missing or shifted phrase bindings", async () => {
+    const { root, project } = await fixture();
+    await mkdir(join(project, "assets"), { recursive: true });
+    await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words: [{ text: "加热", beginIndex: 0, endIndex: 2, startSeconds: 1, endSeconds: 1.5 }] }));
+    const narration = { timingSourcePath: "video/session-one/assets/voice.timings.json", text: "加热", bindings: { "custom:heat": { phrase: "加热" } } };
+    const save = async (motionStart: number, binding: unknown) => {
+      const beats = [{ start: 0, end: 3, intent: "加热", focus: "暖气", action: "启动", result: "升温", targets: ["#heat"], animation: "custom:heat", motion: { start: motionStart, end: 2 } }];
+      await writeFile(join(project, "index.html"), `<main data-composition-id="main"><section data-hf-id="editor-id" id="heat" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:continuous physical simulation" data-motion-pattern="progressive-build" data-ipw-timing-source="voiceover" data-ipw-beats='${JSON.stringify(beats)}' ${binding ? `data-ipw-narration-binding='${JSON.stringify(binding)}'` : ""} data-start="0" data-duration="3" data-track-index="0"></section></main>`);
+      return checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" });
+    };
+    expect((await save(1, undefined)).issues.map(issue => issue.code)).toContain("invalid_custom_narration_binding");
+    expect((await save(0, narration)).issues.map(issue => issue.code)).toContain("invalid_custom_narration_binding");
+    expect((await save(1, narration)).valid).toBe(true);
+    expect((await save(1, { ...narration, text: "停止" })).valid).toBe(false);
+  });
+  test("mounts selected recipes into empty slots and rejects unused selection without overwriting authored scenes", async () => {
+    const { root, project, instance } = await recipeFixture("question-opener");
+    expect(attribute('<section data-hf-id="editor-id" id="evidence">', "id")).toBe("evidence");
+    expect(attribute('<main data-composition-id=main>', "data-composition-id")).toBe("main");
+    const original = '<main data-composition-id="main"><section data-hf-id="editor-id" id="evidence"></section><p>Preserved</p></main>';
+    await writeFile(join(project, "index.html"), original);
+    const selected = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId] });
+    expect(selected.mounted).toBe(false);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues.map(issue => issue.code)).toContain("selected_recipe_not_mounted");
+    const mounted = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance], mount: true });
+    expect(mounted.mounted).toBe(true);
+    const html = await readFile(join(project, "index.html"), "utf8");
+    expect(html).toContain(mounted.instances[0]!.snippet);
+    expect(html).toContain('<p>Preserved</p>');
+    expect((html.match(/data-ipw-selected-components=/g) ?? [])).toHaveLength(1);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", recipesOnly: true })).valid).toBe(true);
+    await writeFile(join(project, "index.html"), html.replace('data-ipw-registry-component="question-opener"', 'data-ipw-component-decision="custom:diagram"'));
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", recipesOnly: true })).issues.map(issue => issue.code)).toContain("recipe_only_scene_required");
+    await writeFile(join(project, "index.html"), html.replace('data-composition-id="main"', 'data-composition-id="main" data-ipw-recipe-policy="recipes-only"'));
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
+    await writeFile(join(project, "index.html"), html.replace('data-composition-id="main"', 'data-composition-id="main" data-ipw-recipe-policy="recipes-only"').replace('data-ipw-registry-component="question-opener"', 'data-ipw-component-decision="custom:diagram"'));
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues.map(issue => issue.code)).toContain("recipe_only_scene_required");
+    await writeFile(join(project, "index.html"), html);
+    await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance], mount: true })).rejects.toMatchObject({ code: "video_mount_slot_conflict" });
+    expect(await readFile(join(project, "index.html"), "utf8")).toBe(html);
+  });
+  test("compiles exact spoken phrases to frame cues and rechecks mounted alignment", async () => {
+    const { root, project, manifest, instance } = await recipeFixture("question-opener");
+    const events = manifest.motionRecipe.events;
+    let offset = 0;
+    const words = events.map((event, index) => {
+      const text = `关键词${index + 1}`;
+      const word = { text, beginIndex: offset, endIndex: offset + text.length, startSeconds: event.time + .007, endSeconds: event.time + .2 };
+      offset += text.length;
+      return word;
+    });
+    await mkdir(join(project, "assets"), { recursive: true });
+    await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words }));
+    const narration = { timingSourcePath: "video/session-one/assets/voice.timings.json", text: words.map(word => word.text).join(""), bindings: Object.fromEntries(events.map((event, index) => [event.id, { phrase: words[index]!.text }])) };
+    const result = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], motionStyle: "restrained", instances: [{ ...instance, timingSource: "voiceover", narration }] });
+    expect(result.instances[0]!.cueTimes).toEqual(Object.fromEntries(events.map(event => [event.id, Math.round((event.time + .007) * 30) / 30])));
+    const source = await readFile(join(project, "compositions/question-opener.html"), "utf8");
+    expect(source).toContain("y:motionStyle.distance");
+    expect(source).toContain("event.duration*=motionStyle.durationFactor");
+    await writeFile(join(project, "index.html"), `<main>${result.instances[0]!.snippet}</main>`);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
+    await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, timingSource: "voiceover", narration: { ...narration, bindings: Object.fromEntries(events.map(event => [event.id, { phrase: "关键词" }])) } }] })).rejects.toThrow("ambiguous");
+    await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, timingSource: "voiceover" }] })).rejects.toMatchObject({ code: "video_recipe_alignment_required" });
+    await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "unavailable", words: [] }));
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(false);
+  });
+  test("numeric recipes reject invalid domains instead of inventing chart geometry", async () => {
+    for (const [name, items] of [
+      ["gauge-scorecard", "甲::101|乙::80"],
+      ["benchmark-scorecard", "甲::90|乙::120"],
+      ["conversion-funnel", "访问::100|购买::200"],
+      ["conversion-funnel", "访问::0|购买::0"],
+      ["cohort-retention", "甲::80,90,70|乙::70,60,50"],
+      ["cohort-retention", "甲::90,80|乙::70,60,50"],
+      ["sparkline-grid", "甲::10,,20|乙::20,30,40"],
+      ["sparkline-grid", "甲::10,-5,20|乙::20,30,40"],
+      ["metric-signal", "甲::-5|乙::10"],
+    ]) {
+      const fixture = await recipeFixture(name);
+      const values = { ...fixture.manifest.motionRecipe.usage.example.values, items };
+      await expect(installVideoComponents({ id: "test", path: fixture.root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [name],
+        instances: [{ ...fixture.instance, values }],
+      })).rejects.toThrow();
+    }
+    for (const [name, items] of [
+      ["metric-signal", "甲::0|乙::0"],
+      ["gauge-scorecard", "甲::0|乙::100"],
+      ["conversion-funnel", "访问::100|购买::0"],
+      ["sparkline-grid", "甲::0,0,0|乙::0,0,0"],
+    ]) {
+      const fixture = await recipeFixture(name);
+      const values = { ...fixture.manifest.motionRecipe.usage.example.values, items };
+      const installed = await installVideoComponents({ id: "test", path: fixture.root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [name], instances: [{ ...fixture.instance, values }],
+      });
+      expect(installed.instances).toHaveLength(1);
+    }
+  });
+  test("all authored and source-attributed recipes expose complete rules and instantiate Chinese examples", async () => {
     const base = await recipeFixture();
     const names = [];
     for (const name of await readdir(base.registry)) {
       const raw = JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8"));
       if (raw.motionRecipe) names.push(name);
     }
-    expect(names).toHaveLength(20);
+    expect(names).toHaveLength(81);
     await mkdir(join(base.project, "assets"), { recursive: true });
     await writeFile(join(base.project, "assets", "evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="#245b66"/></svg>');
     for (const name of names) {
@@ -77,11 +267,20 @@ describe("Video Studio registry component integration", () => {
       expect(Object.keys(manifest.motionRecipe.usage.cueBindings).sort()).toEqual(manifest.motionRecipe.events.map(event => event.id).sort());
       const html = await readFile(join(base.registry, name, name + ".html"), "utf8");
       expect(html).toContain('data-ipw-motion-recipe="1"');
+      const embedded = html.match(/^ const recipe=(\{.*\});$/m);
+      if (embedded?.[1]) {
+        const recipe = z.object({ usage: hyperframesMotionRecipeSchema.shape.usage.optional() }).parse(JSON.parse(embedded[1]));
+        if (recipe.usage) expect({ name, usage: recipe.usage }).toEqual({ name, usage: manifest.motionRecipe.usage });
+      }
+
       const result = await installVideoComponents({ id: "test", path: base.root }, {
         sourcePath: "video/session-one/index.html", componentIds: [name],
         instances: [{ sceneId: "evidence", componentId: name, start: 0, duration: manifest.duration, values, timingSource: "visual-cue" }],
       });
       expect(result.instances).toHaveLength(1);
+      const documentation = `compositions/${name}.recipe.md`;
+      expect(result.components.find(component => component.componentId === name)?.written).toContain(`video/session-one/${documentation}`);
+      expect(await readFile(join(base.project, documentation), "utf8")).toBe(await readFile(join(base.registry, name, "recipe.md"), "utf8"));
       const snippet = result.instances[0]!.snippet;
       expect(snippet).not.toContain("<scene-id>");
       expect(snippet).not.toContain("<seconds>");
@@ -92,13 +291,27 @@ describe("Video Studio registry component integration", () => {
     }
   });
 
+  test("preserves an edited project recipe card on repeated installation", async () => {
+    const { root, project } = await recipeFixture("definition-highlight");
+    const input = { sourcePath: "video/session-one/index.html", componentIds: ["definition-highlight"] };
+    await installVideoComponents({ id: "test", path: root }, input);
+    const path = join(project, "compositions/definition-highlight.recipe.md");
+    const edited = (await readFile(path, "utf8")) + "\nProject-specific review note.\n";
+    await writeFile(path, edited);
+    await installVideoComponents({ id: "test", path: root }, input);
+    expect(await readFile(path, "utf8")).toBe(edited);
+  });
+
   test("capacity endpoints instantiate without truncation and reject malformed input", async () => {
-    const base = await recipeFixture();
-    for (const name of await readdir(base.registry)) {
-      const raw = JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8"));
+    const catalog = await recipeFixture();
+    for (const name of await readdir(catalog.registry)) {
+      const raw = JSON.parse(await readFile(join(catalog.registry, name, "registry-item.json"), "utf8"));
       if (!raw.motionRecipe) continue;
       const manifest = recipeManifestSchema.parse(raw), capacity = manifest.motionRecipe.capacity;
       if (!capacity) continue;
+      const base = await recipeFixture(name);
+      await mkdir(join(base.project, "assets"), { recursive: true });
+      await writeFile(join(base.project, "assets/evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"/>');
       const example = manifest.motionRecipe.usage.example.values;
       const separator = capacity.separator.replaceAll("\\n", "\n");
       const first = String(example[capacity.variable]).replaceAll("\\n", "\n").split(separator)[0];

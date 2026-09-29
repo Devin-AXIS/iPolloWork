@@ -270,6 +270,9 @@ function videoRenderOutput(response: unknown) {
       && "valid" in output.pixelReview && typeof output.pixelReview.valid === "boolean"
       ? {
           valid: output.pixelReview.valid,
+          issues: "issues" in output.pixelReview && Array.isArray(output.pixelReview.issues)
+            ? output.pixelReview.issues.flatMap((issue) => issue && typeof issue === "object" && "code" in issue && typeof issue.code === "string" && "sceneId" in issue && typeof issue.sceneId === "string" ? [`${issue.sceneId}: ${issue.code}`] : [])
+            : [],
           blankSceneIds: "blankSceneIds" in output.pixelReview && Array.isArray(output.pixelReview.blankSceneIds)
             ? output.pixelReview.blankSceneIds.filter((value): value is string => typeof value === "string")
             : [],
@@ -869,6 +872,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   const setQueuePaused = useComposerStateStore((state) => state.setQueuePaused);
   const moveQueuedDraftToComposer = useComposerStateStore((state) => state.moveQueuedDraftToComposer);
   const [error, setError] = useState<SessionError | null>(null);
+  const [videoDeliveryNotice, setVideoDeliveryNotice] = useState<{ draft: boolean; message: string } | null>(null);
   const [sending, setSending] = useState(false);
   const [stopAcknowledged, setStopAcknowledged] = useState(false);
   const [stoppedImageMessageIds, setStoppedImageMessageIds] = useState<Set<string>>(() => new Set());
@@ -1048,6 +1052,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
   useEffect(() => {
     hydratedKeyRef.current = null;
     setError(null);
+    setVideoDeliveryNotice(null);
     setSending(false);
     setStopAcknowledged(false);
     activeClientUserMessageIdRef.current = null;
@@ -1866,6 +1871,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const pending = pendingVideoDeliveryRef.current;
     if (!pending || videoDeliveryValidationInFlightRef.current) return;
     videoDeliveryValidationInFlightRef.current = true;
+    setVideoDeliveryNotice({ draft: true, message: "视频草稿 · 正在验收实际动画、音画同步和排版，尚未完成交付。" });
     try {
       const callPublisher = (extensionId: "douyin-ops" | "wechat-channels-ops") => async (action: string, args: Record<string, unknown>) => {
         const response = await props.client.callExtensionAction({
@@ -1983,7 +1989,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           if (!pending.hostExport) {
             const args = {
               sourcePath: pending.sourcePath,
-              operationKey: `ipw:${props.sessionId}:pixel-review:${pending.requestOrdinal}`,
+              operationKey: `ipw:${props.sessionId}:pixel-review:${pending.requestOrdinal}:${pending.recoveryAttempted ? "repair" : "initial"}`,
               reviewOnly: true,
             };
             const renderCall = async (action: "video_render_start" | "video_render_status") => {
@@ -2004,12 +2010,12 @@ export function SessionSurface(props: SessionSurfaceProps) {
               await new Promise((resolve) => window.setTimeout(resolve, Math.max(500, Math.min(render.pollAfterMs, 5_000))));
               render = await renderCall("video_render_status");
             }
-            if (render.status === "failed") throw new Error(render.error || "Video pixel review render failed.");
+            if (render.status === "failed" && !render.pixelReview) throw new Error(render.error || "Video pixel review render failed.");
             if (!render.pixelReview) throw new Error("Video render completed without establish/develop/land pixel samples.");
             if (!render.pixelReview.valid) {
               issues = [{
-                code: "rendered_scene_blank",
-                message: `Rendered pixel samples are visually blank in: ${render.pixelReview.blankSceneIds.join(", ")}.`,
+                code: "rendered_motion_health_failed",
+                message: `Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}. Repair the sampled defect; do not add decorative loops or claim semantic approval.`,
               }];
             }
           }
@@ -2036,9 +2042,10 @@ export function SessionSurface(props: SessionSurfaceProps) {
             if (render.status === "failed") throw new Error(render.error || "Video export failed.");
             if (!render.outputPath) throw new Error("Video export completed without an MP4 path.");
             if (!render.pixelReview) throw new Error("Video export completed without establish/develop/land pixel samples.");
-            if (!render.pixelReview.valid) throw new Error(`Rendered pixel samples are visually blank in: ${render.pixelReview.blankSceneIds.join(", ")}.`);
+            if (!render.pixelReview.valid) throw new Error(`Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}.`);
             if (pendingVideoDeliveryRef.current !== pending) return;
             const outputPath = render.outputPath;
+            setVideoDeliveryNotice({ draft: false, message: "视频已通过技术验收 · 画面表达与审美效果仍需审片确认。" });
             setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(current, pending.requestOrdinal, [...ownedPaths, outputPath]));
             if (pending.hostExport.intent === "publish-douyin") {
               const publicationCopy = pending.hostExport.publicationCopy && "text" in pending.hostExport.publicationCopy
@@ -2092,6 +2099,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
             return;
           }
           if (issues.length === 0) {
+            setVideoDeliveryNotice({ draft: false, message: "视频已通过技术验收 · 画面表达与审美效果仍需审片确认。" });
             pendingVideoDeliveryRef.current = null;
             props.onArtifactCompletionRequirementConsumed?.();
             setSending(false);
@@ -2109,11 +2117,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
         || (issue.code === "required_animation_missing" && /spatial-camera-suite/i.test(issue.message ?? "")),
       );
       if (!pending.recoveryAttempted) {
+        setVideoDeliveryNotice({ draft: true, message: "视频草稿 · 验收未通过，正在修复；不会作为完成品交付。" });
         pending.recoveryAttempted = true;
         deliveryRecoveryAttemptKeysRef.current.add(`${pending.sourcePath}:${pending.requestOrdinal}`);
         toast.warning(t("session.video_delivery_repairing"));
         const recoveryInstruction = [
           "The preceding video run ended without satisfying the application's authoritative delivery validation.",
+          "The video remains an unfinished draft until the application accepts it. For selected_recipe_not_mounted, instantiate and mount the selected real component; never remove selection metadata or relabel the scene as custom to bypass the failure. For invalid_custom_narration_binding, reuse existing project audio and timings, bind actual timeline events to the exact spoken phrases, and repair their motion windows together. Do not synthesize replacement audio when the existing audio/text are unchanged, or claim completion after only adding metadata.",
           `Continue editing only ${pending.sourcePath} now. Do not merely plan, summarize, or explain.`,
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
           ...(needsSpatialCameraRepair ? [
@@ -2140,9 +2150,11 @@ export function SessionSurface(props: SessionSurfaceProps) {
         kind: "generic",
         message: `${t("session.video_delivery_failed")} ${issueMessages.slice(0, 3).join(" ")}`.trim(),
       });
+      setVideoDeliveryNotice({ draft: true, message: `视频草稿 · 验收未通过：${issueMessages.slice(0, 3).join("；")}` });
       setSending(false);
     } catch (validationError) {
       if (pendingVideoDeliveryRef.current === pending) {
+        setVideoDeliveryNotice({ draft: true, message: `视频草稿 · 未完成交付：${validationError instanceof Error ? validationError.message : t("session.video_delivery_failed")}` });
         setError({
           kind: "generic",
           message: validationError instanceof Error ? validationError.message : t("session.video_delivery_failed"),
@@ -3190,12 +3202,14 @@ export function SessionSurface(props: SessionSurfaceProps) {
                         stoppedImageMessageIds={stoppedImageMessageIds}
                         stopAcknowledged={stopAcknowledged}
                         runOutcome={runOutcome}
+                        deliveryIncomplete={videoDeliveryNotice?.draft === true}
                         finalizing={finalizingRun}
                         runStartedAt={runStartedAt}
                         runEndedAt={runEndedAt}
                         runTimings={runTimings}
                       />
                       <VideoJobStatus jobs={studioArtifacts.data?.pages[0]?.videoJobs} />
+                      {videoDeliveryNotice && <div role="status" className="mx-auto my-3 w-full max-w-[720px] rounded-lg border border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">{videoDeliveryNotice.message}</div>}
                     </MessageListProvider>
                   </EnvironmentVariableProvider>
                 </OpenTargetProvider>

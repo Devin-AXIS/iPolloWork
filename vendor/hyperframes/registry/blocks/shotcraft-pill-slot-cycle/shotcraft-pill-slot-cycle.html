@@ -1,0 +1,47 @@
+<!-- pill-slot-cycle -->
+<!doctype html>
+<html>
+<head><script type="application/json" data-composition-variables="[{&quot;id&quot;:&quot;prefix&quot;,&quot;label&quot;:&quot;prefix&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;用来&quot;,&quot;maxLength&quot;:5,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;words&quot;,&quot;label&quot;:&quot;words&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;提出问题|寻找依据|整理资料|形成初稿|检查结果|完成交付&quot;,&quot;maxLength&quot;:53,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;result&quot;,&quot;label&quot;:&quot;result&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;完成这件事&quot;,&quot;maxLength&quot;:7,&quot;update&quot;:&quot;reload&quot;},{&quot;id&quot;:&quot;motionCueTimes&quot;,&quot;label&quot;:&quot;实测语义时间&quot;,&quot;type&quot;:&quot;string&quot;,&quot;default&quot;:&quot;{}&quot;,&quot;maxLength&quot;:2048,&quot;update&quot;:&quot;reload&quot;}]"></script>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="shotcraft-pill-slot-cycle"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden}[data-composition-id="shotcraft-pill-slot-cycle"]{position:relative;width:1920px;height:1080px}.sc-content{position:absolute;inset:0;font-family:var(--ipw-font-display,-apple-system,"PingFang SC",sans-serif)}</style>
+</head>
+<body>
+  <div data-ipw-source-ranges="[[0,0.4,&quot;建立共同句式&quot;],[0.4,4.6,&quot;轮播六项功能&quot;],[4.6,5.066667,&quot;落定范围说明&quot;]]" data-composition-id="shotcraft-pill-slot-cycle" data-start="0" data-duration="6.733333333333333" data-fps="30" data-width="1920" data-height="1080"><div class="sc-content" id="comp"></div>
+  </div><script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script data-ipw-motion-recipe="1">
+(async function(){await document.fonts.ready;const host=document.querySelector('[data-composition-id="shotcraft-pill-slot-cycle"]');const values={...{"prefix":"用来","words":"提出问题|寻找依据|整理资料|形成初稿|检查结果|完成交付","result":"完成这件事"},...(window.__hyperframes?.getVariables?.()??{}),...(window.__hfVariablesByComp?.[host.dataset.compositionId]??{})};const escape=value=>String(value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#39;');const measure=(text,font)=>{const canvas=document.createElement('canvas'),ctx=canvas.getContext('2d');ctx.font=font;return ctx.measureText(text).width;};
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',ink:'#2f2f2f',line:'#dcdcda',card:'#ffffff',border:'#d8d8d6'};
+    const PILLS=String(values.words).split('|').map(label=>({label,icon:'•'}));
+    const BEAT=21,INTRO=12,CYCLES=PILLS.length,SWAP=8,TOTAL=INTRO+CYCLES*BEAT+14;
+    const outCubic=t=>1-Math.pow(1-t,3), inCubic=t=>t*t*t, back14=t=>{const s=1.4;return 1+(s+1)*Math.pow(t-1,3)+s*Math.pow(t-1,2);};
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);else if(e==='inCubic')t=inCubic(t);else if(e==='back')t=back14(t);return va+(vb-va)*t;};
+    const pill=(label,icon,style='')=>`<div style="display:inline-flex;align-items:center;gap:16px;padding:18px 36px;border-radius:999px;background:${G.card};border:2px solid ${G.border};box-shadow:0 4px 16px rgba(0,0,0,0.06);font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:44px;color:${G.ink};white-space:nowrap;${style}"><span style="width:52px;height:52px;border-radius:26px;background:${G.line};display:flex;align-items:center;justify-content:center;font-size:28px">${icon}</span>${escape(label)}</div>`;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), stemT=clamp(frame,0,INTRO,0,1,'outCubic');
+      const cycleStart=INTRO,cycleEnd=cycleStart+CYCLES*BEAT,isFinale=frame>=cycleEnd,finT=isFinale?clamp(frame,cycleEnd,cycleEnd+14,0,1,'back'):0;
+      let slot='';
+      if(!isFinale&&frame-cycleStart>=0){const rel=frame-cycleStart,idx=Math.min(Math.floor(rel/BEAT),CYCLES-1),beatFrame=rel-idx*BEAT;
+        const incoming=PILLS[idx],outgoing=idx>0?PILLS[idx-1]:null;
+        const inT=clamp(beatFrame,0,SWAP,0,1,'outCubic'),inY=120*(1-inT),inBlur=14*(1-inT);
+        const outT=clamp(beatFrame,0,SWAP-1,0,1,'inCubic'),outY=-130*outT;
+        slot=`<div style="position:relative;display:inline-block">${pill(incoming.label,incoming.icon,'visibility:hidden')}
+          ${outgoing&&outT<1?`<div style="position:absolute;left:0;top:0;transform:translateY(${outY}px);opacity:${1-outT};filter:blur(${outT*10}px)">${pill(outgoing.label,outgoing.icon)}</div>`:''}
+          <div style="position:absolute;left:0;top:0;transform:translateY(${inY}px);opacity:${idx===0?inT:Math.min(1,inT*1.6)};filter:blur(${inBlur}px)">${pill(incoming.label,incoming.icon)}</div></div>`;}
+      else if(isFinale){const lastOutT=clamp(frame,cycleEnd,cycleEnd+7,0,1,'inCubic');
+        slot=`<div style="position:relative;display:inline-block">${lastOutT<1?`<div style="position:absolute;left:0;top:0;transform:translateY(${-130*lastOutT}px);opacity:${1-lastOutT}">${pill(PILLS[CYCLES-1].label,PILLS[CYCLES-1].icon)}</div>`:''}
+          <span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:96px;color:${G.ink};letter-spacing:-1px;transform:translateY(${(1-finT)*80}px);opacity:${finT};display:inline-block">${escape(String(values.result))}</span></div>`;}
+      comp.innerHTML=`<div style="position:absolute;left:300px;top:540px;transform:translateY(calc(-50% + ${(1-stemT)*50}px));display:flex;align-items:center;gap:36px;opacity:${stemT}">
+        <span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:96px;color:${G.ink};letter-spacing:-1px;white-space:nowrap">${escape(String(values.prefix))}</span>${slot}</div>`;
+    }},0);
+    window.__timelines['shotcraft-pill-slot-cycle']=tl;
+  
+const motionStyle=JSON.parse(String(values.motionStyle??'{"durationFactor":1}'));
+const recipe={"version":1,"pattern":"kinetic-type","minHoldSeconds":0.7,"capacity":{"variable":"words","separator":"|","maxItems":6,"minItems":6,"fieldSeparator":"::","fieldsPerItem":1,"maxFieldLength":8},"textLimits":{"prefix":{"maxLines":1,"maxLineLength":5},"result":{"maxLines":1,"maxLineLength":7}},"usage":{"useWhen":["在固定句式下依次展示六项功能，再收束成一句范围说明。"],"avoidWhen":["不是流程、能力评分或已经执行的功能证明。","文字动效不是图表或执行证明；不要为了使用特效改写事实。"],"inputRules":{"prefix":"提供真实prefix，最多1行，每行5字，不使用演示默认内容。","words":"恰好6项，用 | 分隔；每项最多8字，不能含 ::；按真实叙事顺序提供。","result":"提供真实result，最多1行，每行7字，不使用演示默认内容。"},"readingOrder":["建立共同主题","建立共同句式","轮播六项功能","落定范围说明","停留在完整可读的落定状态"],"cueBindings":{"phase-1":"绑定实测旁白或音乐中与“建立共同句式”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-2":"绑定实测旁白或音乐中与“轮播六项功能”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。","phase-3":"绑定实测旁白或音乐中与“落定范围说明”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"},"fallback":{"overflow":"按语义拆镜或换配方；禁止截断和缩到不可读。","missingInput":"补真实内容与素材；不要使用源码里的演示文案或模拟 UI。","timingMismatch":"按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。","inapplicable":"优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"},"example":{"values":{"prefix":"用来","words":"提出问题|寻找依据|整理资料|形成初稿|检查结果|完成交付","result":"完成这件事"},"narration":"用来。提出问题，寻找依据，整理资料，形成初稿，检查结果，完成交付。完成这件事"},"acceptance":["各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。","真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。","实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。","不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"]},"events":[{"id":"phase-1","target":".sc-content *","time":0.65,"duration":0.4,"action":"建立共同句式"},{"id":"phase-2","target":".sc-content *","time":1.05,"duration":4.199999999999999,"action":"轮播六项功能"},{"id":"phase-3","target":".sc-content *","time":5.249999999999999,"duration":0.46666700000000017,"action":"落定范围说明"}]},ranges=[[0,0.4,"建立共同句式"],[0.4,4.6,"轮播六项功能"],[4.6,5.066667,"落定范围说明"]],cues=JSON.parse(String(values.motionCueTimes??'{}')),native=window.__timelines[host.dataset.compositionId];host.__sourceTimeline=native;const stateClock={time:0};const clockEnd=Math.max(6.733333333333333,...recipe.events.map(event=>(cues[event.id]??event.time)+event.duration*motionStyle.durationFactor+4));const master=gsap.timeline({paused:true});const render=()=>{let sourceTime=0;for(let i=0;i<recipe.events.length;i++){const event=recipe.events[i],start=cues[event.id]??event.time,length=event.duration*motionStyle.durationFactor,[from,to]=ranges[i];if(stateClock.time<start)break;sourceTime=from+(to-from)*Math.min(1,(stateClock.time-start)/length);}native.render(Math.max(0.000001,sourceTime),false,true);host.dataset.ipwSourceTime=String(sourceTime);};master.to(stateClock,{time:clockEnd,duration:clockEnd,ease:'none',onUpdate:render},0);window.__timelines[host.dataset.compositionId]=master;render();})();
+</script>
+</body>
+</html>

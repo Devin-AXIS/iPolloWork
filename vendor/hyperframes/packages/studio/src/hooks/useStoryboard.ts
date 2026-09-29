@@ -10,6 +10,8 @@ import { buildProjectApiPath } from "../utils/projectRouting";
 export interface StoryboardFrameView extends StoryboardFrame {
   /** Whether `src` resolves to an existing file inside the project. */
   srcExists: boolean;
+  /** Source-inspected mount, not a render acceptance verdict. */
+  recipeMount?: { componentId: string; source: string };
 }
 
 /** The companion narration script (SCRIPT.md), when present alongside the storyboard. */

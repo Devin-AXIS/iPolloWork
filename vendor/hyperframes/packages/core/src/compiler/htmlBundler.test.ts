@@ -5,6 +5,18 @@ import { join } from "node:path";
 import { expect, it } from "vitest";
 import { bundleToSingleHtml } from "./htmlBundler.js";
 
+it("inlines versioned SVG assets without corrupting base64 and preserves fragment references", async () => {
+  const project = await mkdtemp(join(tmpdir(), "hf-versioned-svg-"));
+  try {
+    await writeFile(join(project, "logo.svg"), '<svg xmlns="http://www.w3.org/2000/svg"><path id="mark" d="M0 0h10v10z"/></svg>');
+    await writeFile(join(project, "index.html"), '<html><body><main data-composition-id="root"><img src="logo.svg?v=2"><img src="logo.svg?v=3#mark"></main></body></html>');
+    const html = await bundleToSingleHtml(project);
+    expect(html).toContain("data:image/svg+xml;base64,");
+    expect(html).not.toContain("?v=");
+    expect(html).toContain("#mark");
+  } finally { await rm(project, { recursive: true, force: true }); }
+});
+
 it("bundles a shared local animation library once across root and nested compositions", async () => {
   const project = await mkdtemp(join(tmpdir(), "hf-shared-animation-"));
   try {

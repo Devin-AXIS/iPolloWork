@@ -1,0 +1,29 @@
+<!-- KaraokeFillSync -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="KaraokeFillSync"] { width: 1920px; height: 1080px; background: #ececea; overflow: hidden; display: flex; flex-direction: column; justify-content: center; padding-left: 240px; box-sizing: border-box; font-family: Helvetica, Arial, sans-serif; font-size: 130px; font-weight: 800; letter-spacing: 2px; line-height: 1.45; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="KaraokeFillSync" data-start="0" data-duration="5" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={line:'#dcdcda',ink:'#2f2f2f'};
+    const LINES=[[{text:'SHIP',start:20,end:38},{text:'FASTER',start:42,end:75}],[{text:'BREAK',start:85,end:103},{text:'NOTHING',start:107,end:130}]];
+    const TOTAL=150; const comp=document.getElementById('comp');
+    const wordHtml=(w,frame)=>{const p=Math.max(0,Math.min(1,(frame-w.start)/(w.end-w.start)));const active=frame>=w.start&&frame<w.end;
+      return `<span style="position:relative;display:inline-block"><span style="color:${G.line}">${w.text}</span><span style="position:absolute;inset:0;color:${G.ink};clip-path:inset(0 ${(1-p)*100}% 0 0)">${w.text}</span>${active?`<span style="position:absolute;left:0;bottom:-14px;width:${p*100}%;height:8px;background:${G.ink}"></span>`:''}</span>`;};
+    const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      comp.innerHTML=LINES.map(words=>`<div style="display:flex;gap:48px">${words.map(w=>wordHtml(w,frame)).join('')}</div>`).join('');
+    }},0);
+    window.__timelines['KaraokeFillSync']=tl;
+  </script>
+</body>
+</html>

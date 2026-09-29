@@ -453,6 +453,13 @@ export function StoryboardTable({
         <tbody className="bg-[var(--hf-panel-bg)]">
           {manifest.frames.map((frame) => {
             const diskFrame = data.frames.find((item) => item.src === frame.src && item.srcExists);
+            const recipeId = frame.extra.recipe?.trim() || frame.camera?.match(/(?:^|\s)component:([a-z0-9-]+)/)?.[1] || "";
+            const customReason = frame.extra.custom_reason?.trim() || "";
+            const recipeTitle = componentSections.flatMap(section => section.items).find(item => item.name === recipeId)?.title || recipeId;
+            const recipeEvidence = data.frames.find(item => frame.extra.scene_id
+              ? item.extra.scene_id === frame.extra.scene_id
+              : Boolean(frame.src && item.src === frame.src))?.recipeMount;
+            const recipeMounted = Boolean(recipeId && recipeEvidence?.componentId === recipeId && !customReason);
             // Older drafts used `search`; surface those as the current AI-source
             // decision while preserving the original value until the user changes it.
             const assetSource = frame.assetSource === "search" || frame.assetSource === "auto"
@@ -599,6 +606,12 @@ export function StoryboardTable({
                     />
                   </td>
                   <td className="px-3 py-3"><div className="space-y-2">
+                    <div data-testid={`storyboard-recipe-${frame.index}`} className="space-y-1 rounded-lg border border-[var(--hf-workspace-border)] px-2.5 py-2 text-xs">
+                      <div className="text-[10px] text-[var(--hf-panel-text-3)]">{tx("Recipe")}</div>
+                      <div className="font-medium break-words">{customReason ? tx("Custom graphics") : recipeTitle || tx("Not selected")}</div>
+                      {recipeId && !customReason && <><div className="break-all text-[10px] text-[var(--hf-panel-text-3)]">{recipeId}</div><div className="text-[var(--hf-panel-text-2)]">{tx(recipeMounted ? "Mounted in source" : "Planned recipe")}</div></>}
+                      {customReason && <p className="whitespace-pre-wrap break-words text-[var(--hf-panel-text-2)]">{customReason}</p>}
+                    </div>
                     <button type="button" data-testid={`storyboard-picture-picker-${frame.index}`} aria-haspopup="dialog" aria-controls="storyboard-shot-settings"
                       onClick={() => openSettings(frame.index, "picture")} className="hf-script-edit inline-flex w-full items-center justify-between gap-2 rounded-lg border border-[var(--hf-workspace-border)] px-2.5 py-2 text-left text-xs hover:bg-[var(--hf-panel-hover)] focus-visible:ring-2 focus-visible:ring-studio-accent">
                       <span>{tx(assetSource === "code" ? "No external media" : assetSource === "existing" ? "Use project media" : assetSource === "generate" ? "Generate visual media" : "AI chooses the source")}</span><Pencil size={12} className="shrink-0" />

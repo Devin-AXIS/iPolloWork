@@ -1,12 +1,14 @@
 import { createHash } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile, realpath, rm, stat } from "node:fs/promises";
-import { dirname, relative, sep } from "node:path";
+import { mkdir, readFile, writeFile, realpath, readdir, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { dirname, relative, sep, join } from "node:path";
 import { z } from "zod";
 import { hyperframesStudioPort } from "@ipollowork/types/hyperframes";
 import { ApiError } from "../errors.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import { resolveWorkspaceFile } from "./storage.js";
+import { attribute, openingTags } from "./video-components.js";
 
 export const videoRenderInput = z.object({
   sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
@@ -18,7 +20,12 @@ const pixelReviewSchema = z.object({
   valid: z.boolean(),
   sampledFrameCount: z.number(),
   blankSceneIds: z.array(z.string()),
+  issues: z.array(z.object({ sceneId: z.string(), code: z.string(), time: z.number() })).optional(),
+  scope: z.literal("rendered-motion-health-not-semantic-approval").optional(),
   scenes: z.array(z.object({ sceneId: z.string(), sampleTimes: z.array(z.number()), contrast: z.array(z.number()), change: z.array(z.number()) })),
+  runtimeReview: z.object({ valid: z.boolean(), scope: z.literal("runtime-timing-and-layout-not-semantic-approval"), sampledFrameCount: z.number().positive(), issues: z.array(z.object({ sceneId: z.string(), code: z.string(), time: z.number(), detail: z.string() })) }).optional(),
+  evidence: z.object({ videoPath: z.string(), frames: z.array(z.object({ sceneId: z.string(), frame: z.number(), path: z.string() })), resolution: z.enum(["draft", "export"]), expression: z.literal("unverified"), audibleSync: z.literal("unverified") }).optional(),
+  audioReview: z.object({ valid: z.boolean(), scope: z.literal("decoded-mix-health-not-audible-sync-approval"), required: z.boolean(), peakDb: z.number().nullable(), issues: z.array(z.string()), warnings: z.array(z.string()) }).optional(),
 });
 const receiptSchema = z.object({
   status: z.enum(["preparing", "rendering", "complete", "failed"]),
@@ -26,9 +33,79 @@ const receiptSchema = z.object({
   progress: z.number().optional(), stage: z.string().optional(), error: z.string().optional(),
   outputPath: z.string().optional(), size: z.number().optional(),
   pixelReview: pixelReviewSchema.optional(),
+  sourceHash: z.string().optional(),
 });
 type Receipt = z.infer<typeof receiptSchema>;
 const preparing = new Set<string>();
+
+/** Snapshot the bounded project, including nested composition/media dependencies, not its generated renders. */
+export async function videoProjectFingerprint(directory: string) {
+  const root = await realpath(directory), hash = createHash("sha256");
+  let files = 0, bytes = 0;
+  const visit = async (path: string, depth: number) => {
+    if (depth > 12) throw new Error("Video project exceeds dependency depth limit");
+    for (const entry of (await readdir(path, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) {
+      if ([".git", ".DS_Store", "renders", "node_modules"].includes(entry.name)) continue;
+      const absolute = join(path, entry.name), actual = await realpath(absolute);
+      if (!actual.startsWith(root + sep)) throw new Error("Video dependency escapes project");
+      if (entry.isSymbolicLink()) throw new Error("Video dependency symlinks require a project-local copy");
+      if (entry.isDirectory()) await visit(absolute, depth + 1);
+      else if (entry.isFile()) {
+        bytes += (await stat(absolute)).size;
+        if (++files > 2048 || bytes > 512 * 1024 * 1024) throw new Error("Video dependency snapshot exceeds 2048 files or 512MB");
+        hash.update(JSON.stringify(relative(root, absolute))).update("\0");
+        const content = createHash("sha256");
+        for await (const chunk of createReadStream(absolute)) content.update(chunk);
+        hash.update(content.digest());
+      }
+    }
+  };
+  await visit(root, 0);
+  return hash.digest("hex");
+}
+
+/** Decode the actual output mix. Silence/peak checks cannot prove speech recognition or perceptual synchronization. */
+export async function reviewRenderedAudio(videoPath: string, html: string) {
+  const markup = html.replace(/<!--[\s\S]*?-->|<(script|style|template)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, "");
+  // A timeline-owned fade may legitimately start at zero; inspect its decoded track anyway.
+  const required = openingTags(markup).some(tag => /^<audio\b/i.test(tag) && !/\bmuted(?:\s|=|>)/i.test(tag));
+  if (!required) return { valid: true, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb: null, issues: [], warnings: [] };
+  const result = await new Promise<{ error: Error | null; log: string }>(resolve => {
+    execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", ["-hide_banner", "-nostats", "-i", videoPath, "-map", "0:a:0", "-af", "volumedetect", "-f", "null", "-"],
+      { timeout: 120000, maxBuffer: 1024 * 1024 }, (error, _stdout, stderr) => resolve({ error, log: stderr }));
+  });
+  const peak = /max_volume:\s*(-?[\d.]+|-inf)\s*dB/.exec(result.log)?.[1];
+  const peakDb = peak && peak !== "-inf" ? Number(peak) : null;
+  const issues = result.error || !peak ? ["required-output-audio-unavailable"] : peakDb === null || peakDb < -60 ? ["required-output-audio-silent"] : [];
+  const warnings = peakDb !== null && peakDb >= -.1 ? ["output-peak-near-full-scale-check-clipping"] : [];
+  return { valid: issues.length === 0, scope: "decoded-mix-health-not-audible-sync-approval", required, peakDb, issues, warnings };
+}
+
+async function saveReviewFrames(videoPath: string, html: string, root: string) {
+  const directory = `${videoPath}.review`;
+  await mkdir(directory, { recursive: true });
+  if (!(await realpath(directory)).startsWith(root + sep)) throw new Error("Review evidence escaped workspace");
+  const selected = renderedSceneWindows(html).flatMap(scene => {
+    const action = scene.motion[0];
+    const times = [action ? scene.start + (action.start + action.end) / 2 : scene.start + scene.duration * .5,
+      ...scene.motion.map(event => scene.start + Math.min(event.end, event.start + 1 / 30)),
+      scene.start + scene.duration - 1 / 30,
+      ...(scene.transitionDuration ? [Math.max(0, scene.start - 1 / 30), scene.start + scene.transitionDuration / 2] : [])];
+    return times.map(time => ({ sceneId: scene.sceneId, frame: Math.max(0, Math.round(time * 30)) }));
+  });
+  const numbers = [...new Set(selected.map(sample => sample.frame))].sort((a, b) => a - b);
+  if (!numbers.length || numbers.length > 768) throw new Error("Review requires 1–768 evidence frames");
+  await new Promise<void>((resolve, reject) => {
+    execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", ["-n", "-v", "error", "-i", videoPath, "-vf", `select='${numbers.map(frame => `eq(n\\,${frame})`).join("+")}'`, "-vsync", "0", "-start_number", "0", join(directory, "frame-%03d.png")],
+      { timeout: 120000, maxBuffer: 1024 * 1024 }, error => error ? reject(error) : resolve());
+  });
+  const paths = await Promise.all(numbers.map(async (_frame, index) => {
+    const path = join(directory, `frame-${String(index).padStart(3, "0")}.png`);
+    if (!(await realpath(path)).startsWith(root + sep) || !(await stat(path)).size) throw new Error("Review frame missing or escaped workspace");
+    return relative(root, path).replaceAll(sep, "/");
+  }));
+  return selected.map(sample => ({ ...sample, path: paths[numbers.indexOf(sample.frame)]! }));
+}
 
 async function studioJson(url: string, body?: unknown) {
   const response = await fetch(url, {
@@ -41,13 +118,16 @@ async function studioJson(url: string, body?: unknown) {
 }
 
 export function renderedSceneWindows(html: string) {
-  return Array.from(html.matchAll(/<[^>]+\b(?:class=["'][^"']*\bscene\b[^"']*["']|data-scene(?:=["'][^"']*["'])?(?=\s|\/?>))[^>]*>/gi)).flatMap((match, index) => {
-    const tag = match[0];
+  return openingTags(html).filter(tag => attribute(tag, "class").split(/\s+/).includes("scene") || /\sdata-scene(?:\s*=|\s|\/?>)/i.test(tag)).flatMap((tag, index) => {
     const start = Number(/\bdata-start=["']([^"']+)["']/i.exec(tag)?.[1]);
     const duration = Number(/\bdata-duration=["']([^"']+)["']/i.exec(tag)?.[1]);
     if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return [];
-    const sceneId = /\bid=["']([^"']+)["']/i.exec(tag)?.[1]?.trim() || `scene-${index + 1}`;
-    return [{ sceneId, start, duration }];
+    const sceneId = attribute(tag, "id").trim() || `scene-${index + 1}`;
+    let rawBeats: unknown = [];
+    try { rawBeats = JSON.parse(attribute(tag, "data-ipw-beats") || "[]"); } catch { /* Structure gate reports malformed metadata. */ }
+    const beats = z.array(z.object({ animation: z.string(), motion: z.object({ start: z.number().nonnegative(), end: z.number().positive() }) })).max(12).safeParse(rawBeats);
+    const motion = beats.success ? beats.data.filter(beat => !beat.animation.startsWith("hold:") && beat.motion.end > beat.motion.start && beat.motion.end <= duration).map(beat => beat.motion) : [];
+    return [{ sceneId, start, duration, motion, transitionDuration: Number(attribute(tag, "data-ipw-transition-duration")) || 0 }];
   });
 }
 
@@ -57,25 +137,30 @@ function extractRawReviewFrames(videoPath: string, frameNumbers: number[]) {
     execFile(process.env.HYPERFRAMES_FFMPEG_PATH?.trim() || "ffmpeg", [
       "-v", "error", "-i", videoPath, "-vf", `select='${select}',scale=96:54,format=rgb24`,
       "-vsync", "0", "-f", "rawvideo", "pipe:1",
-    ], { encoding: "buffer", maxBuffer: 8 * 1024 * 1024 }, (error, stdout) => {
+    ], { encoding: "buffer", maxBuffer: 32 * 1024 * 1024, timeout: 120000 }, (error, stdout) => {
       if (error) reject(error);
       else resolve(stdout);
     });
   });
 }
 
-async function reviewRenderedPixels(videoPath: string, html: string) {
+export async function reviewRenderedPixels(videoPath: string, html: string): Promise<z.infer<typeof pixelReviewSchema>> {
   const scenes = renderedSceneWindows(html);
-  const requests = scenes.flatMap((scene) => [0.15, 0.5, 0.85].map((position) => ({
+  if (scenes.length > 48) throw new Error("Pixel review supports at most 48 scenes per render.");
+  const requests = scenes.flatMap((scene) => [0.15, 0.5, 0.85, ...scene.motion.flatMap(window => [
+    Math.max(0, window.start - 1 / 30) / scene.duration, (window.start + window.end) / 2 / scene.duration, Math.min(scene.duration - 1 / 30, window.end) / scene.duration,
+  ]), ...(scene.transitionDuration > 0 ? [1 / 30 / scene.duration, scene.transitionDuration / 2 / scene.duration, (scene.transitionDuration + 1 / 30) / scene.duration] : [])].map((position) => ({
     sceneId: scene.sceneId,
     time: Math.max(0, scene.start + scene.duration * position),
   })));
   if (!requests.length) throw new Error("Pixel review could not find timed scenes in the saved composition.");
-  const frameNumbers = requests.map((request) => Math.max(0, Math.round(request.time * 30)));
+  const frameNumbers = [...new Set(requests.map((request) => Math.max(0, Math.round(request.time * 30))))].sort((a, b) => a - b);
+  const frameIndices = new Map(frameNumbers.map((number, index) => [number, index]));
   const raw = await extractRawReviewFrames(videoPath, frameNumbers);
   const frameBytes = 96 * 54 * 3;
-  if (raw.byteLength !== requests.length * frameBytes) throw new Error(`Pixel review expected ${requests.length} frames but decoded ${Math.floor(raw.byteLength / frameBytes)}.`);
-  const metrics = requests.map((request, index) => {
+  if (raw.byteLength !== frameNumbers.length * frameBytes) throw new Error(`Pixel review expected ${frameNumbers.length} frames but decoded ${Math.floor(raw.byteLength / frameBytes)}.`);
+  const metrics = requests.map((request) => {
+    const index = frameIndices.get(Math.max(0, Math.round(request.time * 30)))!;
     const frame = raw.subarray(index * frameBytes, (index + 1) * frameBytes);
     let sum = 0;
     let sumSquares = 0;
@@ -89,7 +174,7 @@ async function reviewRenderedPixels(videoPath: string, html: string) {
     return { ...request, contrast: Math.sqrt(Math.max(0, sumSquares / count - mean * mean)), frame };
   });
   const reviewedScenes = scenes.map((scene) => {
-    const samples = metrics.filter((metric) => metric.sceneId === scene.sceneId);
+    const samples = metrics.filter((metric) => metric.sceneId === scene.sceneId).sort((a, b) => a.time - b.time);
     const change = samples.slice(1).map((sample, index) => {
       const previous = samples[index]!.frame;
       let difference = 0;
@@ -104,7 +189,23 @@ async function reviewRenderedPixels(videoPath: string, html: string) {
     };
   });
   const blankSceneIds = reviewedScenes.filter((scene) => scene.contrast.every((contrast) => contrast < 1.5)).map((scene) => scene.sceneId);
-  return { valid: blankSceneIds.length === 0, sampledFrameCount: requests.length, blankSceneIds, scenes: reviewedScenes };
+  const issues = scenes.flatMap(scene => {
+    const samples = metrics.filter(metric => metric.sceneId === scene.sceneId);
+    const motionIssues = scene.motion.flatMap((window, index) => {
+      const before = samples[3 + index * 3]!;
+      const differences = [samples[4 + index * 3]!, samples[5 + index * 3]!].map(sample => {
+        let difference = 0;
+        for (let offset = 0; offset < before.frame.length; offset++) difference += Math.abs(before.frame[offset]! - sample.frame[offset]!);
+        return difference / before.frame.length / 255;
+      });
+      return differences.every(difference => difference < .0005) ? [{ sceneId: scene.sceneId, code: "declared-motion-not-visible", time: scene.start + window.start }] : [];
+    });
+    const transitionSamples = scene.transitionDuration > 0 ? samples.slice(-3) : [];
+    const transitionIssues = transitionSamples.length && transitionSamples.some(sample => sample.contrast < 1.5)
+      ? [{ sceneId: scene.sceneId, code: "blank-transition-sample", time: scene.start }] : [];
+    return [...motionIssues, ...transitionIssues];
+  });
+  return { valid: blankSceneIds.length === 0 && issues.length === 0, scope: "rendered-motion-health-not-semantic-approval", sampledFrameCount: frameNumbers.length, blankSceneIds, issues, scenes: reviewedScenes };
 }
 
 /** Owns the durable export receipt; Studio remains the only render engine. */
@@ -122,6 +223,21 @@ export async function videoRenderAction(workspace: { id: string; path: string },
   const receiptPath = `${renders}/.export-${createHash("sha256").update(input.operationKey).digest("hex")}.json`;
   const base = `http://127.0.0.1:${hyperframesStudioPort(project)}/api`;
   const save = (receipt: Receipt) => writeFile(receiptPath, JSON.stringify(receipt), "utf8");
+  const review = async (output: string, sourceHash?: string) => {
+    const html = await readFile(actual, "utf8");
+    if (!sourceHash || await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed (including dependencies) during rendering; this output cannot pass delivery review.");
+    const response = await fetch(`${base}/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) }).catch(error => { throw new Error(`Video runtime inspection unavailable; delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`); });
+    if (!response.ok) throw new Error(`Video runtime inspection unavailable (HTTP ${response.status}); delivery remains a draft.`);
+    const runtimeReview = pixelReviewSchema.shape.runtimeReview.unwrap().parse(await response.json());
+    const pixels = await reviewRenderedPixels(output, html);
+    const audioReview = await reviewRenderedAudio(output, html);
+    const frames = await saveReviewFrames(output, html, root);
+    if (await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed during review; retry acceptance of the saved draft.");
+    const issues = [...pixels.issues ?? [], ...runtimeReview.issues, ...audioReview.issues.map(code => ({ sceneId: "mix", code, time: 0 }))];
+    return { ...pixelReviewSchema.parse({ ...pixels, valid: pixels.valid && runtimeReview.valid && audioReview.valid, runtimeReview, audioReview,
+      evidence: { videoPath: relative(root, output).replaceAll(sep, "/"), frames, resolution: input.reviewOnly ? "draft" : "export", expression: "unverified", audibleSync: "unverified" },
+      issues }), issues };
+  };
   let receipt: Receipt;
   try {
     if (!(await realpath(receiptPath)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Export receipt escapes workspace");
@@ -147,18 +263,23 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (!ready || typeof ready !== "object" || !("ok" in ready) || ready.ok !== true) {
           throw new Error(`Cannot start bundled Studio: ${JSON.stringify(ready)}`);
         }
+        const sourceHash = await videoProjectFingerprint(directory);
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, {
           format: "mp4",
           quality: input.reviewOnly ? "draft" : "high",
           fps: 30,
           ...(input.reviewOnly ? { captureSize: { width: 640, height: 360 } } : {}),
         }));
-        await save({ ...initial, ...job, status: "rendering", stage: "Rendering MP4" });
+        await save({ ...initial, ...job, sourceHash, status: "rendering", stage: "Rendering MP4" });
       } catch (error) {
         await save({ ...initial, status: "failed", error: error instanceof Error ? error.message : String(error) });
       } finally { preparing.delete(receiptPath); }
     })().catch(error => console.error("[video-render] receipt persistence failed", error instanceof Error ? error.message : String(error)));
     return { ...receipt, operationKey: input.operationKey, pollAfterMs: 2000 };
+  }
+  if (receipt.status === "complete" && (input.review || input.reviewOnly) && (!receipt.pixelReview?.evidence || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
+    receipt = { ...receipt, status: "failed", outputPath: undefined, error: "The saved source changed or this older export has no runtime acceptance evidence; review the current draft again." };
+    await save(receipt);
   }
   if (receipt.status === "preparing" && !preparing.has(receiptPath)) {
     receipt = { ...receipt, status: "failed", error: "Export preparation was interrupted by a service restart. No automatic duplicate was submitted." };
@@ -174,9 +295,8 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
         const size = (await stat(output)).size;
         if (!size) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await reviewRenderedPixels(output, await readFile(actual, "utf8")) : undefined;
-        if (input.reviewOnly) await rm(output, { force: true });
-        receipt = { ...receipt, status: "complete", progress: 100, ...(!input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
+        const pixelReview = input.review || input.reviewOnly ? await review(output, receipt.sourceHash) : undefined;
+        receipt = { ...receipt, status: pixelReview?.valid === false ? "failed" : "complete", progress: 100, ...(pixelReview?.valid === false ? { error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
         await save(receipt);
         await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
         return { ...receipt, operationKey: input.operationKey };
@@ -201,9 +321,8 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
         const size = (await stat(output)).size;
         if (size === 0) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await reviewRenderedPixels(output, await readFile(actual, "utf8")) : undefined;
-        if (input.reviewOnly) await rm(output, { force: true });
-        receipt = { ...receipt, ...(!input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
+        const pixelReview = input.review || input.reviewOnly ? await review(output, receipt.sourceHash) : undefined;
+        receipt = { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
       }
       if (Date.now() - receipt.startedAt > 1800000 && receipt.status === "rendering") throw new Error("Export exceeded the 30-minute limit; check the existing Studio job before retrying.");
     } catch (error) {

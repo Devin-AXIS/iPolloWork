@@ -181,6 +181,7 @@ export class WorkspaceSessionRuntime {
   readonly #unwrapOpencodeResult: UnwrapOpencodeResult;
   readonly #deepseekHarness: DeepSeekHarnessRuntimePool;
   readonly #codexHarness: CodexHarnessRuntimePool;
+  readonly #prepareOpencodePrompt?: (workspace: WorkspaceInfo) => Promise<void>;
   readonly #freshCodexThreads = new Map<string, WorkspaceSessionModel>();
   readonly #sessionContextHints = new Map<string, string>();
 
@@ -193,12 +194,14 @@ export class WorkspaceSessionRuntime {
     unwrapOpencodeResult: UnwrapOpencodeResult;
     deepseekHarness: DeepSeekHarnessRuntimePool;
     codexHarness: CodexHarnessRuntimePool;
+    prepareOpencodePrompt?: (workspace: WorkspaceInfo) => Promise<void>;
   }) {
     this.#config = input.config;
     this.#createWorkspaceOpencodeClient = input.createWorkspaceOpencodeClient;
     this.#unwrapOpencodeResult = input.unwrapOpencodeResult;
     this.#deepseekHarness = input.deepseekHarness;
     this.#codexHarness = input.codexHarness;
+    this.#prepareOpencodePrompt = input.prepareOpencodePrompt;
   }
 
   #codexThreadKey(workspaceId: string, threadId: string): string {
@@ -380,6 +383,7 @@ export class WorkspaceSessionRuntime {
       return effectiveSessionId;
     }
 
+    await this.#prepareOpencodePrompt?.(workspace);
     const opencode = this.#createWorkspaceOpencodeClient(this.#config, workspace);
     this.#rememberSessionContext(workspace.id, sessionId);
     this.#unwrapOpencodeResult(

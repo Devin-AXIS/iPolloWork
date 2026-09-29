@@ -92,6 +92,7 @@ describe("ipollowork runtime config file", () => {
       type: "remote",
       url: "http://127.0.0.1:0/engine-tools/mcp?workspaceId=ws_1",
       headers: { Authorization: "Bearer owt_test_token" },
+      timeout: 300_000,
     });
     const providers = parsed.provider as Record<string, Record<string, unknown>>;
     const openCode = providers.opencode;

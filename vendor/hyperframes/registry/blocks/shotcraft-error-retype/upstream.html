@@ -1,0 +1,30 @@
+<!-- TypewriterErrorRetype -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="TypewriterErrorRetype"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="TypewriterErrorRetype" data-start="0" data-duration="5.3333" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={ink:'#2f2f2f'}; const TEXT1='just a dashboard',KEEP=5,DEL=TEXT1.length-KEEP,TEXT2='your command center';
+    const T1=2,PAUSE_START=T1+(TEXT1.length-1)*2,DS=PAUSE_START+16,RS=68,TYPE2_END=RS+(TEXT2.length-1)*1.5,CURSOR_OFF=115,CHAR_W=58,TOTAL=160;
+    const cursorOn=f=>{if(f>=CURSOR_OFF)return false;if(f>=TYPE2_END)return Math.floor((f-TYPE2_END)/5)%2===0;if(f>=DS)return true;if(f>=PAUSE_START)return Math.floor((f-PAUSE_START)/4)%2===0;return true;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const f=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      const n1=f<T1?0:Math.min(TEXT1.length,Math.floor((f-T1)/2)+1), removed=f<DS?0:Math.min(DEL,Math.floor((f-DS)/1.5)+1), n2=f<RS?0:Math.min(TEXT2.length,Math.floor((f-RS)/1.5)+1);
+      const shown=TEXT1.slice(0,Math.max(KEEP,n1-removed)).slice(0,n1)+TEXT2.slice(0,n2);
+      const chars=shown.split('').map(c=>`<span style="display:inline-block;width:${CHAR_W}px;text-align:center;font-family:'Courier New',Courier,monospace;font-size:96px;font-weight:700;color:${G.ink};line-height:1.1">${c===' '?'&nbsp;':c}</span>`).join('');
+      comp.innerHTML=`<div style="position:absolute;left:264px;top:490px;display:flex;align-items:center">${chars}${cursorOn(f)?`<span style="display:inline-block;width:7px;height:100px;margin-left:4px;background:${G.ink}"></span>`:''}</div>`;
+    }},0);
+    window.__timelines['TypewriterErrorRetype']=tl;
+  </script>
+</body>
+</html>

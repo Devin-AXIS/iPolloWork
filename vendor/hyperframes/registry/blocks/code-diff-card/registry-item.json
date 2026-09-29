@@ -47,6 +47,11 @@
       "path": "code-diff-card.html",
       "target": "compositions/code-diff-card.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/code-diff-card.recipe.md",
+      "type": "hyperframes:asset"
     }
   ],
   "variables": [
@@ -163,9 +168,9 @@
       },
       "fallback": {
         "overflow": "Split at a real explanation boundary; use a walkthrough for larger code, never silently truncate lines.",
-        "missingInput": "Resolve the actual required input; if unavailable use an honest custom treatment or report the missing content, not demo defaults.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
         "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
-        "inapplicable": "Choose a component whose narrative job fits, or author a finite seek-safe custom scene. Recipe reuse is a default, not a requirement to force-fit content."
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
       },
       "example": {
         "values": {
