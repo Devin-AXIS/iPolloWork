@@ -281,6 +281,13 @@ describe("plugin package manifest", () => {
     const videoAcceptance = await Bun.file(new URL(`${source}video-acceptance.md`, root)).text();
     expect(video).toContain("video-acceptance.md` as the single owner");
     expect(video).toContain("Shortlist at most three scene bodies");
+    expect(video).toContain("point ID → source heading/page/paragraph → frame(s)");
+    expect(video).toContain("matching viewpoints and scales");
+    expect(video).toContain("agent semantic self-review");
+    expect(video).toContain("one concrete query per distinct visual need");
+    expect(video).toContain("Each supplied reference must have an explicit role");
+    expect(video).toContain("A visual hold is not an inserted audio pause");
+    expect(video).toContain("relative energy and information density");
     expect(video).toContain("Submit independent assets as one bounded batch or in parallel");
     expect(videoMotionPrinciples).toContain("Establish, Develop, and Land states");
     expect(videoMotionPrinciples).toContain("Spoken intent | Time range | Visual focus | Visual action | Result or hold");

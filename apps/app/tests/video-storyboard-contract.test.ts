@@ -1,9 +1,40 @@
 import { describe, expect, test } from "bun:test";
+import { ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../../server/src/engine-host-tools";
 import { parseStoryboard } from "../../../vendor/hyperframes/packages/core/src/storyboard/parseStoryboard";
+import { setFrameField, setFrameVoiceover, setStoryboardGlobal } from "../../../vendor/hyperframes/packages/core/src/storyboard/editStoryboard";
 import { VIDEO_STORYBOARD_EXAMPLE, videoProjectIdFromStoryboardPath } from "../src/react-app/domains/session/video/video-storyboard";
 import { videoTaskSystemContext, hyperframesStudioUrl } from "../src/react-app/domains/session/video/video-project";
 
 describe("video script contract", () => {
+  test("production instructions do not override the client-owned gate or invite audio probing", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const text of ["client-owned final gate", "do not independently run validators", "speech_synthesize_workspace_batch", "one corrected retry", "raw TTS URLs"]) {
+      expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain(text);
+    }
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).not.toContain("Before reporting an editable video complete, run its supplied HyperFrames check");
+    expect(context).toContain("Do not add your own validation or review render");
+  });
+  test("draft planning is bounded without weakening approval, coverage or measured timing", () => {
+    for (const requireStoryboardReview of [true, false]) {
+      const context = videoTaskSystemContext("ses_example", undefined, undefined, { requireStoryboardReview, includeVoiceover: true });
+      for (const requirement of [
+        "one rough narration-duration estimate per shot",
+        "single counting calculation",
+        "Approximate targets are not strict caps",
+        "before media capability discovery or production",
+        "do not calculate per-word, per-phrase or frame-accurate timestamps before synthesis",
+        "one post-save review",
+        "reopen only affected shots",
+        "Preserve required facts and explicit user caps",
+        "never character-proportional word timestamps",
+        "not a runtime timeout",
+        "reuse the storyboard's rough narration estimate before synthesis",
+        "calculate it once only if absent or spoken text changed",
+      ]) expect(context).toContain(requirement);
+      if (requireStoryboardReview) expect(context).toContain("and STOP");
+    }
+  });
+
   test("the actual agent example parses into editable globals and frame fields", () => {
     const result = parseStoryboard(VIDEO_STORYBOARD_EXAMPLE);
     expect(result.warnings).toEqual([]);
@@ -20,12 +51,104 @@ describe("video script contract", () => {
     expect(videoTaskSystemContext("ses_example")).toContain(VIDEO_STORYBOARD_EXAMPLE.trimEnd());
   });
 
+  test("coverage and shot-fit notes remain native editable frame narrative", () => {
+    const result = parseStoryboard(VIDEO_STORYBOARD_EXAMPLE);
+    expect(result.warnings).toEqual([]);
+    expect(result.frames[0]?.narrative).toContain("Coverage: C1 (brief:");
+    expect(result.frames[0]?.narrative).toContain("Shot fit:");
+    expect(result.frames[0]?.narrative).toContain("spatial fly-through would interrupt reading");
+    expect(result.frames[0]?.narrative).toContain("4–5s hold the first action");
+    expect(result.frames[0]?.narrative).toContain("Beat binding:");
+    expect(result.frames[0]?.narrative).toContain("Continuity:");
+    expect(result.frames[0]?.narrative).toContain("Rhythm:");
+    expect(result.frames[0]?.voiceover).not.toContain("Narration:");
+    const edited = setStoryboardGlobal(
+      setFrameField(setFrameVoiceover(VIDEO_STORYBOARD_EXAMPLE, 1, "Begin with the first task."), 1, "duration", "6s"),
+      "visual_style",
+      "Quiet, readable task cards",
+    );
+    const saved = parseStoryboard(edited);
+    expect(saved.warnings).toEqual([]);
+    expect(saved.frames[0]?.narrative).toBe(result.frames[0]?.narrative);
+    expect(saved.frames[0]?.voiceover).toBe("Begin with the first task.");
+    expect(saved.frames[0]?.durationSeconds).toBe(6);
+  });
+
+  test("generation requires source coverage and motivated shot selection before approval", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const requirement of [
+      "point ID → source heading/page/paragraph → frame(s)",
+      "never invent source anchors",
+      "meaningful parentheses/qualifiers",
+      "user choice, not silent deletion",
+      "audience takeaway → visible evidence/change",
+      "matching viewpoints and scales",
+      "Decide readable holds before motion",
+      "re-read the source and saved storyboard",
+      "agent semantic self-review, not a deterministic parser",
+    ]) expect(context).toContain(requirement);
+  });
+
   test("only canonical project scripts route to Studio", () => {
     expect(videoProjectIdFromStoryboardPath("video/ses_example-artifact-video/STORYBOARD.md")).toBe("ses_example-artifact-video");
     expect(videoProjectIdFromStoryboardPath(".\\video\\ses_example\\STORYBOARD.md")).toBe("ses_example");
     for (const path of ["STORYBOARD.md", "docs/STORYBOARD.md", "video/../STORYBOARD.md", "video/ses_example/notes/STORYBOARD.md", "/other/video/ses_example/STORYBOARD.md"]) {
       expect(videoProjectIdFromStoryboardPath(path)).toBeNull();
     }
+  });
+
+  test("visual needs and search queries stay bound to semantic narration beats", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const requirement of [
+      "exact spoken phrase",
+      "Keep beats in spoken order",
+      "one concrete query per distinct visual need",
+      "date/location when factual",
+      "exclusion criteria",
+      "no fixed keyword quota",
+      "source relevance, provenance and license",
+      "editable graphics instead of loosely related B-roll",
+    ]) expect(context).toContain(requirement);
+  });
+
+  test("generated briefs and reference roles preserve continuity without assuming a provider", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const requirement of [
+      "subject/identity + environment + action/change",
+      "model's actual capabilities and duration limits",
+      "Each supplied reference must have an explicit role",
+      "what to preserve and what may change",
+      "Resolve conflicting references from user priorities",
+      "location geometry, palette and screen direction",
+      "invent @reference syntax",
+    ]) expect(context).toContain(requirement);
+  });
+
+  test("pause direction is not spoken text or a fabricated audio capability", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const requirement of [
+      "pronunciation of names/abbreviations/numbers",
+      "Keep stage directions and pause markers out of voiceover spoken text",
+      "do not invent pauseSeconds or SSML support",
+      "A visual hold is not an inserted audio pause",
+      "real provider word timings and measured audio",
+      "not evenly divided word timestamps",
+      "unsupported, disclose the gap",
+      "after narration edits",
+    ]) expect(context).toContain(requirement);
+  });
+
+  test("genre-led rhythm uses existing recipes without enforcing a promotional template", () => {
+    const context = videoTaskSystemContext("ses_example");
+    for (const requirement of [
+      "relative energy and information density",
+      "dependency order and reading time",
+      "quiet stories need not end in a sales CTA",
+      "entry state, focal subject, content change, resolved state",
+      "existing temporal-pattern/component map",
+      "once-per-preset quotas",
+      "real measured audio cues",
+    ]) expect(context).toContain(requirement);
   });
 
   test("finished-video instructions resolve and synchronize the soundtrack and content revisions", () => {
