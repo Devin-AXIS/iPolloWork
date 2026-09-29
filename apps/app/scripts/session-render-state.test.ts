@@ -45,6 +45,32 @@ function snapshotWithText(text: string, sessionId = "ses_test"): ConversationSna
 }
 
 describe("reconcileTranscriptMessages", () => {
+  it("matches provider parts by identity and removes stale duplicate streaming parts", () => {
+    const part = (id: string, text: string, state: "done" | "streaming"): UIMessage["parts"][number] => ({
+      type: "text", text, state, providerMetadata: { ipollowork: { partId: id } },
+    });
+    const snapshot: UIMessage = { id: "msg", role: "assistant", parts: [
+      { type: "step-start" }, part("reason", "Context", "done"), part("answer", "Saved.", "done"),
+    ] };
+    const current: UIMessage = { id: "msg", role: "assistant", parts: [
+      { type: "step-start" }, part("reason", "Context", "done"),
+      part("answer", "Saved.Saved.Saved.", "streaming"),
+      part("answer", "Saved.Saved.Saved.", "streaming"), part("new", "Next", "streaming"),
+    ] };
+    const merged = reconcileTranscriptMessages({ currentMessages: [current], snapshotMessages: [snapshot] });
+    expect(merged[0]?.parts).toEqual([...snapshot.parts, part("new", "Next", "streaming")]);
+    expect(reconcileTranscriptMessages({ currentMessages: merged, snapshotMessages: [snapshot] })).toEqual(merged);
+  });
+
+  it("preserves a genuinely newer keyed delta when a streaming snapshot lags", () => {
+    const part = (text: string): UIMessage["parts"][number] => ({
+      type: "text", text, state: "streaming", providerMetadata: { ipollowork: { partId: "answer" } },
+    });
+    expect(reconcileTranscriptMessages({
+      currentMessages: [{ id: "msg", role: "assistant", parts: [part("Hello world")] }],
+      snapshotMessages: [{ id: "msg", role: "assistant", parts: [part("Hello")] }],
+    })[0]?.parts).toEqual([part("Hello world")]);
+  });
   it("hydrates an empty transcript cache from the snapshot", () => {
     const snapshot = [uiMessage("msg_user", "user", "hello")];
 

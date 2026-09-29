@@ -25,6 +25,7 @@ function applyOpenCodeEvent(
 import {
   describeConversationSessionError,
   describeOpencodeSessionError,
+  mapOpencodePartToUIParts,
 } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
   parseDynamicToolUIPart,
@@ -38,6 +39,16 @@ afterEach(() => {
     recordsByWorkspaceId: {},
     statusesByWorkspaceId: {},
   });
+});
+
+test("OpenCode text parts remain streaming until the provider records their end", () => {
+  const part: Extract<Part, { type: "text" }> = {
+    id: "text", sessionID: "session-a", messageID: "msg-a", type: "text",
+    text: "正在制作", time: { start: 1 },
+  };
+  expect(mapOpencodePartToUIParts(part)[0]).toMatchObject({ state: "streaming" });
+  expect(mapOpencodePartToUIParts({ ...part, time: { start: 1, end: 2 } })[0])
+    .toMatchObject({ state: "done" });
 });
 
 function writeToolPart(

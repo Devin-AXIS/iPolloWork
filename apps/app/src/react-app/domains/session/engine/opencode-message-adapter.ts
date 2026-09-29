@@ -234,7 +234,7 @@ export function mapOpencodePartToUIParts(part: Part): UIMessage["parts"] {
     return [{
       type: "text",
       text: getTextPartValue(part),
-      state: "done",
+      state: part.time && !part.time.end ? "streaming" : "done",
       providerMetadata: { ipollowork: { partId: part.id } },
     }];
   }
@@ -242,7 +242,7 @@ export function mapOpencodePartToUIParts(part: Part): UIMessage["parts"] {
     return [{
       type: "reasoning",
       text: getTextPartValue(part),
-      state: "done",
+      state: part.time && !part.time.end ? "streaming" : "done",
       providerMetadata: { ipollowork: { partId: part.id } },
     }];
   }

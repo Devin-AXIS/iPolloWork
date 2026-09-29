@@ -10,6 +10,7 @@ import {
   useSessionActivityStore,
 } from "../status/session-activity-store";
 import { notifyDesktopEvent } from "../../../shell/desktop-notifications";
+import { getPartMetadataId } from "./message-merge";
 import type {
   ConversationEvent,
   ConversationEngineConnection,
@@ -597,24 +598,6 @@ export function seedQuestionState(
         : [];
     return [...seeded, ...liveAfterSnapshot].sort(sortQuestions);
   });
-}
-
-function getPartMetadataId(part: UIMessage["parts"][number]) {
-  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
-    const partId = part.data && typeof part.data === "object" && "partId" in part.data
-      ? (part.data as { partId?: unknown }).partId
-      : null;
-    return typeof partId === "string" ? partId : null;
-  }
-  if (part.type === "dynamic-tool") {
-    const metadata = part.callProviderMetadata?.ipollowork;
-    if (!metadata || typeof metadata !== "object") return null;
-    return "partId" in metadata ? (metadata as { partId?: string }).partId ?? null : null;
-  }
-  if (part.type !== "text" && part.type !== "reasoning" && part.type !== "file" && part.type !== "source-url" && part.type !== "source-document") return null;
-  const metadata = part.providerMetadata?.ipollowork;
-  if (!metadata || typeof metadata !== "object") return null;
-  return "partId" in metadata ? (metadata as { partId?: string }).partId ?? null : null;
 }
 
 function upsertMessage(messages: UIMessage[], next: UIMessage) {
