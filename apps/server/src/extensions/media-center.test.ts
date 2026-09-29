@@ -502,6 +502,19 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("rejects stringified delivery requirements instead of silently skipping requested audio", async () => {
+    const workspace = await workspaceConfig();
+    for (const requirements of [
+      '{"voiceover":true}',
+      { voiceover: "true" }, { bgm: "false" }, { captions: "true" }, { sfx: "false" },
+      { targetDurationSeconds: "300" }, { animationReferences: "" },
+    ]) {
+      await expect(callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+        { sourcePath: "video.html", requirements }, { directory: workspace.root }))
+        .rejects.toMatchObject({ code: "invalid_video_delivery_requirements" });
+    }
+  });
+
   test("includes scene beat and component timing checks in the final video gate", async () => {
     const workspace = await workspaceConfig();
     const project = join(workspace.root, "video", "session-one");

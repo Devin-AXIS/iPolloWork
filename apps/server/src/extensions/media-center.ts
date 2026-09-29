@@ -2076,6 +2076,9 @@ export async function callMediaExtensionAction(
   }
 
   if (action === "voiceover_timeline_validate") {
+    if (isRecord(args) && args.requirements !== undefined && !isRecord(args.requirements)) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements must be a JSON object.");
+    }
     const workspace = workspaceForContext(config, context);
     const source = resolveWorkspaceFile(workspace.path, requireString(args, "sourcePath"));
     if (extname(source.absolutePath).toLowerCase() !== ".html") {
@@ -2086,6 +2089,20 @@ export async function callMediaExtensionAction(
     const mediaAssets = await listWorkspaceAssets(workspace.path, assetsDirectory, (path) => /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(path));
     const voiceoverAssets = mediaAssets.filter(isVoiceoverAssetPath);
     const requirementInput = readRecord(args, "requirements");
+    // Do not silently disable requested deliverables when a model stringifies JSON.
+    for (const key of ["voiceover", "captions", "bgm", "sfx"]) {
+      if (requirementInput[key] !== undefined && typeof requirementInput[key] !== "boolean") {
+        throw new ApiError(400, "invalid_video_delivery_requirements", `requirements.${key} must be a JSON boolean, not a string.`);
+      }
+    }
+    if (requirementInput.targetDurationSeconds !== undefined
+      && (typeof requirementInput.targetDurationSeconds !== "number" || !Number.isFinite(requirementInput.targetDurationSeconds) || requirementInput.targetDurationSeconds <= 0)) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements.targetDurationSeconds must be a positive JSON number.");
+    }
+    if (requirementInput.animationReferences !== undefined
+      && (!Array.isArray(requirementInput.animationReferences) || !requirementInput.animationReferences.every(item => typeof item === "string"))) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements.animationReferences must be a JSON array of strings.");
+    }
     const originalHtml = await readFile(source.absolutePath, "utf8");
     const html = repairVideoTimelineRegistry(originalHtml);
     if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
