@@ -15,8 +15,8 @@
     "build": "node ./scripts/electron-build.mjs",
     "build:electron": "node ./scripts/electron-build.mjs",
     "icons": "node ./scripts/generate-icons.mjs",
-    "package:electron": "pnpm run package:engine-runtimes && pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
-    "package:electron:dir": "pnpm run package:engine-runtimes && pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
+    "package:electron": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --publish never",
+    "package:electron:dir": "pnpm run build:electron && pnpm exec electron-builder --config electron-builder.yml --dir --publish never",
     "package:mac:release": "node ./scripts/package-mac-release.mjs",
     "package:windows": "cross-env IPOLLOWORK_WINDOWS_INSTALLER=1 node ./scripts/package-windows.mjs",
     "electron": "pnpm exec electron ./electron/main.mjs",
@@ -24,12 +24,11 @@
     "typecheck:electron": "pnpm --dir ../server exec tsc -p ../desktop/tsconfig.electron.json --noEmit",
     "prepare:sidecar": "node ./scripts/prepare-sidecar.mjs",
     "package:engine-runtimes": "node ./scripts/package-engine-runtime.mjs --all --clean",
+    "package:video-resources": "node ./scripts/package-video-resources.mjs",
     "test": "node --test electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/browser-panel.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs",
     "coverage": "node --test --experimental-test-coverage electron/brand-icon-windows.test.mjs electron/browser-runtime.test.mjs electron/browser-panel.test.mjs electron/desktop-auth-window.test.mjs electron/desktop-protocol.test.mjs electron/dev-cloud-default.test.mjs electron/dsh-host-tools.test.mjs electron/engine-package-manager.test.mjs electron/hyperframes-runtime-packaging.test.mjs electron/open-external.test.mjs electron/relaunch-policy.test.mjs electron/runtime.test.mjs electron/runtime-ca.test.mjs electron/stdio-safety.test.mjs electron/system-font-catalog.test.mjs electron/updater.test.mjs electron/remote-workspace.test.mjs electron/workspace-store.test.mjs electron/sidecar-packaging.test.mjs"
   },
   "dependencies": {
-    "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@modelcontextprotocol/sdk": "1.29.0",
     "@opencode-ai/sdk": "^1.18.31",
     "better-sqlite3": "^11.10.0",
@@ -46,6 +45,8 @@
   },
   "devDependencies": {
     "@electron/asar": "^3.4.1",
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "@ffprobe-installer/ffprobe": "^2.1.2",
     "@ipollowork/types": "workspace:*",
     "@opencode-ai/plugin": "1.18.31",
     "electron": "^35.0.0",

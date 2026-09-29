@@ -447,8 +447,10 @@ export type DesktopCommandMap = {
   engineDoctor: { args: [projectDir?: string]; result: EngineDoctorResult };
   engineInstall: { args: []; result: unknown };
   enginePackagesList: { args: []; result: EnginePackageInfo[] };
-  enginePackageInstall: { args: [engineId: string]; result: EnginePackageInfo };
+  enginePackageInstall: { args: [engineId: string, cloudBaseUrl?: string]; result: EnginePackageInfo };
   enginePackageUninstall: { args: [engineId: string]; result: EnginePackageInfo };
+  videoResourceInfo: { args: []; result: EnginePackageInfo };
+  videoResourceInstall: { args: [cloudBaseUrl: string]; result: EnginePackageInfo };
   orchestratorStatus: { args: []; result: unknown };
   orchestratorWorkspaceActivate: { args: [input?: Record<string, unknown>]; result: unknown };
   orchestratorInstanceDispose: { args: [instanceId: string]; result: unknown };

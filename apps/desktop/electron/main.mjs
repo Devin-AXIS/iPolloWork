@@ -22,6 +22,7 @@ import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./me
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
 import { createEnginePackageManager } from "./engine-package-manager.mjs";
+import { createVideoResourceManager } from "./video-resource-manager.mjs";
 import { registerUpdaterIpc } from "./updater.mjs";
 import {
   checkComputerUsePermissions,
@@ -219,6 +220,7 @@ function desktopRepoRoot() {
 
 function resolveLocalHyperframesCli() {
   const candidates = [
+    process.env.HYPERFRAMES_CLI_PATH,
     path.resolve(desktopRepoRoot(), "vendor", "hyperframes", "packages", "cli", "bin", "hyperframes.mjs"),
     process.resourcesPath
       ? path.join(process.resourcesPath, "hyperframes", "packages", "cli", "bin", "hyperframes.mjs")
@@ -271,15 +273,11 @@ function findFirstRunnablePath(candidates) {
   return null;
 }
 
-function asarUnpackedPath(candidate) {
-  if (!candidate || !candidate.includes("app.asar")) return null;
-  return candidate.replace(/app\.asar(?=([\\/]|$))/, "app.asar.unpacked");
-}
-
 function resolveBundledFfBinary(name) {
   const extension = process.platform === "win32" ? ".exe" : "";
   const executable = `${name}${extension}`;
-  const hyperframesRoot = resolveLocalHyperframesRoot();
+  let hyperframesRoot;
+  try { hyperframesRoot = resolveLocalHyperframesRoot(); } catch { return null; }
   const packageName = name === "ffprobe" ? "ffprobe-static" : "ffmpeg-static";
   const packageGlobPrefix = name === "ffprobe" ? "ffprobe-static@" : "ffmpeg-static@";
   const nodeModulesRoot = path.join(hyperframesRoot, "node_modules");
@@ -297,37 +295,6 @@ function resolveBundledFfBinary(name) {
     bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", process.platform, process.arch, executable) : null,
     bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", executable) : null,
   ]);
-}
-
-function resolveInstallerFfBinary(name) {
-  const packageName = name === "ffprobe" ? "@ffprobe-installer/ffprobe" : "@ffmpeg-installer/ffmpeg";
-  const platformPackageName = name === "ffprobe" ? "@ffprobe-installer" : "@ffmpeg-installer";
-  const platformPackageDir = process.platform === "win32" ? "win32-x64" : null;
-  const executable = process.platform === "win32" ? `${name}.exe` : name;
-  try {
-    const installer = require(packageName);
-    const installerPath = typeof installer?.path === "string" ? installer.path : "";
-    const unpackedInstallerPath = asarUnpackedPath(installerPath);
-    const resourcesNodeModules = process.resourcesPath
-      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
-      : null;
-    return findFirstRunnablePath([
-      unpackedInstallerPath,
-      installerPath,
-      resourcesNodeModules && platformPackageDir
-        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
-        : null,
-    ]);
-  } catch {
-    const resourcesNodeModules = process.resourcesPath
-      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
-      : null;
-    return findFirstRunnablePath([
-      resourcesNodeModules && platformPackageDir
-        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
-        : null,
-    ]);
-  }
 }
 
 function resolveSystemFfBinary(name) {
@@ -352,7 +319,7 @@ function resolveSystemFfBinary(name) {
 
 function resolveFfBinary(name) {
   if (resolvedFfBinaries.has(name)) return resolvedFfBinaries.get(name);
-  const resolved = resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
+  const resolved = resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
   resolvedFfBinaries.set(name, resolved);
   return resolved;
 }
@@ -616,6 +583,9 @@ function stopAllDesktopChildProcesses() {
 }
 
 async function startHyperframesPreview(event, options = {}) {
+  if (app.isPackaged && !await videoResourceManager.currentPaths()) {
+    throw new Error("请先在设置中下载 HyperFrames 视频组件，再打开视频工作台。");
+  }
   const sessionId = String(options.sessionId ?? "").trim();
   if (!sessionId) throw new Error("sessionId is required.");
   const port = Number(options.port);
@@ -1741,6 +1711,10 @@ const enginePackageManager = createEnginePackageManager({
     });
   },
 });
+const videoResourceManager = createVideoResourceManager({
+  app,
+  fetch: electronNet.fetch.bind(electronNet),
+});
 
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
@@ -2435,11 +2409,13 @@ const desktopCommandHandlers = {
       return enginePackageManager.list();
   },
   "enginePackageInstall": async (event, ...args) => {
-      return enginePackageManager.install(String(args[0] ?? "").trim());
+      return enginePackageManager.install(String(args[0] ?? "").trim(), String(args[1] ?? "").trim());
   },
   "enginePackageUninstall": async (event, ...args) => {
       return enginePackageManager.uninstall(String(args[0] ?? "").trim());
   },
+  "videoResourceInfo": async () => videoResourceManager.info(),
+  "videoResourceInstall": async (_event, ...args) => videoResourceManager.install(String(args[0] ?? "").trim() || DEFAULT_DEN_BASE_URL),
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
   },
@@ -4327,6 +4303,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
     await enginePackageManager.applyEnvironment();
+    await videoResourceManager.applyEnvironment();
     try {
       process.env.HYPERFRAMES_CLI_PATH ||= resolveLocalHyperframesCli();
     } catch {

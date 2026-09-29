@@ -17,6 +17,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { compareVersions } from "./updater.mjs";
+import { fetchDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
 
 const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
@@ -358,19 +359,24 @@ function parseExpectedSha256(value) {
 }
 
 async function assertArchiveEntriesSafe(archivePath) {
+  const safeName = (entry) => {
+    const name = entry.replaceAll("\\", "/");
+    return !name.startsWith("/") && !/^[A-Za-z]:\//.test(name) && !name.split("/").includes("..");
+  };
   const { stdout } = await run("tar", ["-tzf", archivePath]);
   const entries = stdout.split(/\r?\n/).map((entry) => entry.trim()).filter(Boolean);
   if (entries.length === 0) throw new Error("Engine package archive is empty.");
   for (const entry of entries) {
-    const normalized = entry.replaceAll("\\", "/");
-    if (
-      normalized.startsWith("/")
-      || /^[A-Za-z]:\//.test(normalized)
-      || normalized.split("/").includes("..")
-    ) {
+    if (!safeName(entry)) {
       throw new Error(`Engine package contains an unsafe path: ${entry}`);
     }
   }
+  const { stdout: verbose } = await run("tar", ["-tvzf", archivePath]);
+  if (verbose.split(/\r?\n/).filter(Boolean).some((entry) => {
+    if (["-", "d"].includes(entry[0])) return false;
+    const target = entry[0] === "h" ? entry.match(/ link to (.+)$/)?.[1] : null;
+    return !target || !safeName(target);
+  })) throw new Error("Engine package contains a link or special file.");
 }
 
 async function writeResponseBody(response, targetPath, onProgress) {
@@ -887,7 +893,36 @@ export function createEnginePackageManager(options) {
     throw new Error(`Engine package download failed from all sources. ${failures.join(" | ")}`);
   }
 
-  async function installFromRelease(descriptor, stagingRoot, temporaryRoot) {
+  async function installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl) {
+    if (options.app.isPackaged || environment.IPOLLOWORK_DESKTOP_RESOURCE_TEST_CLOUD === "1") {
+      const manifest = await fetchDesktopResourceManifest({
+        baseUrl: cloudBaseUrl || options.cloudBaseUrl || "http://i.ipollo.ai",
+        appVersion: normalizeVersion(options.app.getVersion()),
+        platform,
+        arch: architecture,
+        fetch: options.fetch,
+        trustedKeys: options.trustedResourceKeys,
+      });
+      const resource = manifest.resources.find((item) => item.id === descriptor.id);
+      if (!resource || resource.version !== descriptor.version) {
+        throw new Error(`Cloud resource ${descriptor.id} does not match the required engine version ${descriptor.version}.`);
+      }
+      const archivePath = path.join(temporaryRoot, resource.fileName);
+      setOperation(descriptor.id, { status: "downloading", downloadedBytes: 0, totalBytes: resource.sizeBytes });
+      await fetchEnginePackage(resource.url, {}, async (response) => {
+        const { downloaded } = await writeResponseBody(response, archivePath, (downloadedBytes) => {
+          setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes: resource.sizeBytes });
+        });
+        if (downloaded !== resource.sizeBytes) throw new Error("Cloud resource download size mismatch.");
+      });
+      setOperation(descriptor.id, { status: "verifying" });
+      if (await sha256File(archivePath) !== resource.sha256) throw new Error("Cloud resource checksum verification failed.");
+      await assertArchiveEntriesSafe(archivePath);
+      setOperation(descriptor.id, { status: "installing" });
+      await mkdir(stagingRoot, { recursive: true });
+      await run("tar", ["-xzf", archivePath, "-C", stagingRoot]);
+      return;
+    }
     const name = assetName(descriptor);
     const archivePath = path.join(temporaryRoot, name);
     const configuredSourceDirectory = environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR?.trim();
@@ -922,7 +957,7 @@ export function createEnginePackageManager(options) {
     await run("tar", ["-xzf", archivePath, "-C", stagingRoot]);
   }
 
-  async function performInstall(engineId) {
+  async function performInstall(engineId, cloudBaseUrl) {
     const descriptor = descriptorFor(engineId);
     const operation = operations.get(descriptor.id);
     if (operation && operation.status !== "failed") return infoFor(descriptor);
@@ -952,7 +987,7 @@ export function createEnginePackageManager(options) {
       const usedDevelopmentSource = !options.app.isPackaged
         ? await installFromDevelopmentSource(descriptor, stagingRoot)
         : false;
-      if (!usedDevelopmentSource) await installFromRelease(descriptor, stagingRoot, temporaryRoot);
+      if (!usedDevelopmentSource) await installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl);
       const stagedCli = path.join(stagingRoot, descriptor.cliRelativePath);
       if (!await pathExists(stagedCli)) throw new Error("Engine package does not contain the expected runtime executable.");
       const installedBytes = await directorySize(stagingRoot);
@@ -982,11 +1017,11 @@ export function createEnginePackageManager(options) {
     }
   }
 
-  function install(engineId) {
+  function install(engineId, cloudBaseUrl) {
     const descriptor = descriptorFor(engineId);
     const existing = inFlight.get(descriptor.id);
     if (existing) return existing;
-    const pending = performInstall(descriptor.id).finally(() => inFlight.delete(descriptor.id));
+    const pending = performInstall(descriptor.id, cloudBaseUrl).finally(() => inFlight.delete(descriptor.id));
     inFlight.set(descriptor.id, pending);
     return pending;
   }

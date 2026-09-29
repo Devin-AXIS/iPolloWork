@@ -239,6 +239,7 @@ function registryRoot(): string | null {
   const here = dirname(fileURLToPath(import.meta.url));
   const resourcesPath = typeof process.resourcesPath === "string" ? process.resourcesPath : "";
   const candidates = [
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT?.trim() ?? "",
     resolve(here, "..", "..", "..", "vendor", "hyperframes", "registry"),
     resolve(here, "..", "..", "..", "..", "vendor", "hyperframes", "registry"),
     resourcesPath ? resolve(resourcesPath, "hyperframes", "registry") : "",

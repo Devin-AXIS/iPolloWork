@@ -12,6 +12,9 @@ directories:
 files:
   - electron/**/*
   - server/**/*
+  # Template installation copies real directories from extraResources.
+  # Exclude the staged copy from app.asar to avoid shipping it twice.
+  - "!server/dist/bundled-templates/**"
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
@@ -77,6 +80,11 @@ extraResources:
   # recursively copy an ASAR directory on macOS, so keep these assets real.
   - from: ../server/dist/bundled-templates
     to: server/dist/bundled-templates
+    filter:
+      - "**/*"
+      # These generated archives duplicate the directories and are not used
+      # by the bundled-template loader.
+      - "!**/*.ipwp"
   - from: ../app/dist
     to: app-dist
   - from: server/dist/opencode-plugins
@@ -93,16 +101,6 @@ extraResources:
       - "**/*.md"
       - "**/*.mdx"
       - "docs.json"
-  - from: hyperframes-runtime
-    to: hyperframes
-    filter:
-      - "**/*"
-      - "!**/*.map"
-      - "!node_modules/.bun/**/node_modules/.bin/**"
-  - from: ../../vendor/hyperframes/registry
-    to: hyperframes/registry
-    filter:
-      - "**/*"
 asar: true
 asarUnpack:
   - "**/node_modules/sharp/**/*"
@@ -134,14 +132,6 @@ mac:
   extendInfo:
     NSMicrophoneUsageDescription: iPolloWork uses the microphone when you start Voice Mode so you can speak commands to your agent.
   extraResources:
-    # Optional engine archives contain third-party native executables. Keep
-    # them as verified Release downloads so Apple notarizes only the app. The
-    # signed app still carries their checksums, avoiding a GitHub API lookup
-    # before a direct or mirrored download can start.
-    - from: dist-engine-packs
-      to: engine-packs
-      filter:
-        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/icons/mac
       to: icons/mac
       filter:
@@ -168,11 +158,6 @@ mac:
 linux:
   icon: resources/icons/icon.png
   extraResources:
-    - from: dist-engine-packs
-      to: engine-packs
-      filter:
-        - "ipollowork-engine-*.tar.gz"
-        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/sidecars
       to: sidecars
       filter:
@@ -191,11 +176,6 @@ linux:
 win:
   icon: resources/icons/windows/icon.ico
   extraResources:
-    - from: dist-engine-packs
-      to: engine-packs
-      filter:
-        - "ipollowork-engine-*.tar.gz"
-        - "ipollowork-engine-*.tar.gz.sha256"
     - from: resources/icons
       to: icons
       filter:
