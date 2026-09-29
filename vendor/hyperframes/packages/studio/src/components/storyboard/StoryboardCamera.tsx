@@ -68,10 +68,11 @@ export function StoryboardCamera({
         onChange={(event) => update(event.target.value ? [spatialCameraValue(event.target.value)] : [])}
         className="w-full rounded-md border border-[var(--hf-workspace-border)] bg-[var(--hf-workspace-bg)] px-2 py-1.5 text-[11px] text-[var(--hf-panel-text-2)] disabled:opacity-50"
       >
-        <option value="">{tx("AI / basic camera movement")}</option>
+        <option value="">{tx(plan.note ? "Custom camera direction" : "AI / basic camera movement")}</option>
         {spatialRecipes.map((recipe) => <option key={recipe.value} value={recipe.value}>{recipe.label}</option>)}
       </select>
 
+      {plan.note && <p className="text-xs leading-5 text-[var(--hf-panel-text-2)]">{plan.note}</p>}
     </div>
   );
 }

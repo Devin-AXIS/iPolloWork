@@ -174,7 +174,48 @@
 
 .hf-script-table th:not(:last-child),
 .hf-script-table tr[data-shot] > td:not(:last-child) {
-  border-right: 1px dashed var(--hf-workspace-hairline);
+  border-right: 1px solid var(--hf-workspace-hairline);
+}
+
+.hf-script-overview button,
+.hf-script-global button {
+  border-radius: 8px;
+}
+
+.hf-script-overview button {
+  min-height: 34px;
+  padding-inline: 12px;
+  white-space: nowrap;
+}
+
+.hf-script-overview .hf-script-generate {
+  background: var(--hf-panel-text-1);
+  color: var(--hf-panel-bg);
+  border: 1px solid var(--hf-panel-text-1);
+  box-shadow: none;
+}
+
+.hf-script-overview .hf-script-generate:enabled:hover {
+  background: var(--hf-panel-text-2);
+}
+
+.hf-script-global textarea {
+  margin-top: 10px;
+  border: 1px solid var(--hf-workspace-border);
+  border-radius: 8px;
+  background: var(--hf-workspace-surface);
+  padding: 8px 10px;
+}
+
+.hf-script-overview .hf-script-save {
+  background: var(--hf-panel-bg);
+  color: var(--hf-panel-text-1);
+  border-color: var(--hf-workspace-border);
+}
+
+.hf-script-overview .hf-script-save:enabled:hover {
+  background: var(--hf-panel-hover);
+  color: var(--hf-panel-text-0);
 }
 
 .hf-script-column-resize::after {
@@ -2453,4 +2494,23 @@ html[data-ipollowork-theme="light"] .hf-preview-text-toolbar {
   .hf-animation-template-card * {
     animation: none !important;
   }
+}
+
+.hf-script-table button,
+.hf-script-settings-dialog select,
+.hf-script-edit { border-radius: 8px; }
+.hf-script-settings-dialog textarea,
+.hf-script-settings-dialog input {
+  border-color: var(--hf-workspace-border);
+  background: var(--hf-workspace-bg);
+  border-radius: 8px;
+}
+.hf-script-settings-dialog footer button:last-child {
+  background: var(--hf-panel-text-0);
+  color: var(--hf-workspace-surface);
+}
+.hf-script-settings-dialog footer button:first-child {
+  color: var(--hf-panel-text-1);
+  border-color: var(--hf-workspace-border);
+  box-shadow: none;
 }

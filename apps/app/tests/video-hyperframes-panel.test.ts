@@ -354,7 +354,7 @@ describe("HyperFrames Video Studio", () => {
     );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
     expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
-    expect(voiceSource).toContain("width={embedded ? embeddedWidth : undefined}");
+    expect(voiceSource).toContain("width={inDialog ? undefined : embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain("top-[90px]");
     expect(voiceSource).toContain("top-[148px]");
     expect(panelSource).not.toContain("top-[82px]");

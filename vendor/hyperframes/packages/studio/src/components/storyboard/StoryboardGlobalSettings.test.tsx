@@ -115,11 +115,11 @@ describe("StoryboardGlobalSettings interactions", () => {
   });
 
   it("keeps an optional music direction editable while AI chooses the track", () => {
-    const prompt = container.querySelector<HTMLInputElement>(
+    const prompt = container.querySelector<HTMLTextAreaElement>(
       '[aria-label="Whole-video music prompt"]',
     );
     if (!prompt) throw new Error("Music prompt missing");
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
     if (!setter) throw new Error("Native input setter is unavailable");
     flushSync(() => {
       setter.call(prompt, "Quiet strings and a restrained pulse");

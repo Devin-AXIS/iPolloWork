@@ -157,7 +157,7 @@ describe("video voiceover settings", () => {
     expect(preview).toContain("await audio.play()");
     expect(preview).not.toContain("saveSettings(");
     expect(source).toContain('<audio ref={audioRef} controls hidden={!previewUrl}');
-    const picker = source.slice(source.indexOf('<PopoverContent data-testid="voice-picker"'), source.indexOf("</PopoverContent>", source.indexOf("</Tabs>")));
+    const picker = source.slice(source.indexOf("const voiceOptions ="), source.indexOf("return (", source.indexOf("const voiceOptions =")));
     expect(picker).toContain('role="alert"');
     expect(picker).toContain("audioRef.current?.play().catch");
   });

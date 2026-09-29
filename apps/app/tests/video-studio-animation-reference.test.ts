@@ -44,7 +44,10 @@ describe("Video Studio animation reference handoff", () => {
   test("the voice picker groups both libraries without changing the generation action", () => {
     expect(voicePanelSource.match(/<VoiceAiButton/g)).toHaveLength(1);
     expect(voicePanelSource).toContain('data-testid="voice-selection-trigger"');
-    expect(voicePanelSource.indexOf('data-testid="voice-subtabs"')).toBeGreaterThan(voicePanelSource.indexOf('data-testid="voice-picker"'));
+    const options = voicePanelSource.slice(voicePanelSource.indexOf("const voiceOptions ="), voicePanelSource.indexOf("return (", voicePanelSource.indexOf("const voiceOptions =")));
+    expect(options).toContain('data-testid="voice-subtabs"');
+    expect(voicePanelSource).toContain('selectionTarget ? <div data-testid="voice-picker"');
+    expect(voicePanelSource).toContain("{voiceOptions}");
     expect(voicePanelSource).toContain('setActiveTab(selectionTarget ? targetVoiceIsCustom ? "mine" : "preset"');
     expect(voicePanelSource).toContain('onVoiceSelected?.({ voiceId: voice.id, model: voice.model, name: voice.name, source: "cloned" })');
     expect(voicePanelSource).toContain('data-testid="voice-inherit-project"');

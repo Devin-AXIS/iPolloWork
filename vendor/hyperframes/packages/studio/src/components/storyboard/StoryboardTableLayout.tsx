@@ -3,12 +3,10 @@ import { useStudioI18n } from "../../i18n";
 
 const COLUMNS = [
   { label: "#", width: 56, min: 48, max: 96 },
-  { label: "Picture & scene", width: 300, min: 180, max: 900 },
-  { label: "Narration", width: 260, min: 180, max: 900 },
-  { label: "Camera & animation", width: 220, min: 160, max: 720 },
-  { label: "Materials", width: 260, min: 200, max: 720 },
-  { label: "Sound effects", width: 220, min: 160, max: 720 },
-  { label: "Duration", width: 112, min: 96, max: 240 },
+  { label: "Picture & scene", width: 340, min: 180, max: 900 },
+  { label: "Narration", width: 300, min: 180, max: 900 },
+  { label: "Duration", width: 100, min: 80, max: 240 },
+  { label: "Shot settings", width: 150, min: 100, max: 240 },
   { label: "Actions", width: 48, min: 48, max: 48 },
 ];
 

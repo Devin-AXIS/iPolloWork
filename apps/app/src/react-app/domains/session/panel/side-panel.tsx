@@ -968,6 +968,14 @@ export function SidePanel({
             key={activeTab.id}
             title={activeTab.label}
             sessionId={activeTab.sessionId}
+            onGenerateVideo={onSendWorkspaceAppMessage ? async () => {
+              const result = await onSendWorkspaceAppMessage({
+                text: `确认这份脚本并继续生成视频。请读取 video/${activeTab.sessionId}/STORYBOARD.md，使用保存后的分镜、旁白和选定素材完成视频合成、校验与 MP4 导出。`,
+                modelContext: null,
+                sourceTabId: activeTab.id,
+              });
+              return typeof result === "boolean" ? result : result.accepted;
+            } : undefined}
             view={activeTab.view}
             workspaceRoot={workspaceRoot}
             client={client}

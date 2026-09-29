@@ -68,6 +68,7 @@ type VideoVoicePanelProps = {
   }) => void;
   embedded?: boolean;
   embeddedWidth?: number;
+  inDialog?: boolean;
 };
 
 type CustomVoice = {
@@ -165,7 +166,7 @@ async function readAudioDuration(file: File): Promise<number> {
   }
 }
 
-export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, selectionTarget = null, onVoiceSelected, embedded = false, embeddedWidth = 400 }: VideoVoicePanelProps) {
+export function VideoVoicePanel({ sessionId, conversationId = sessionId, generating = false, workspaceRoot, client, workspaceId, previewRequest, onClose, selectionTarget = null, onVoiceSelected, embedded = false, embeddedWidth = 400, inDialog = false }: VideoVoicePanelProps) {
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const voicePickerAnchorRef = React.useRef<HTMLDivElement>(null);
   const previewGenerationRef = React.useRef(0);
@@ -327,7 +328,6 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
         name: presetVoiceLabel(voiceId),
         source: "preset",
       });
-      onClose();
       return;
     }
     setMessage("");
@@ -347,7 +347,6 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
         name: t("video.voice.auto_role"),
         source: "preset",
       });
-      onClose();
       return;
     }
     if (activeVoice?.source === "preset" && activeVoice.selectionMode === "auto") {
@@ -374,7 +373,6 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
   const useProjectVoice = React.useCallback(() => {
     if (!selectionTarget) return;
     onVoiceSelected?.({ voiceId: "", model: "", name: "", source: "preset" });
-    onClose();
   }, [onClose, onVoiceSelected, selectionTarget]);
 
   const updateSettings = React.useCallback(async (changes: Partial<VideoVoiceoverSettings>) => {
@@ -397,7 +395,6 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     }
     if (selectionTarget) {
       onVoiceSelected?.({ voiceId: voice.id, model: voice.model, name: voice.name, source: "cloned" });
-      onClose();
       return;
     }
     try {
@@ -578,64 +575,14 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     void previewVoice();
   }, [loading, previewRequest, previewVoice]);
 
-  return (
-    <StudioInspectorPanel
-      ariaLabel={t("video.voice.panel_label")}
-      className={embedded
-        ? "absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover"
-        : "absolute inset-y-0 right-0 z-20 h-auto w-[22rem] max-w-[calc(100%-2rem)] bg-popover/95 shadow-2xl backdrop-blur-xl"}
-      width={embedded ? embeddedWidth : undefined}
-      embedded={embedded}
-      testId="video-voice-panel"
-      bodyClassName="video-settings-typography p-4 text-xs font-normal text-foreground"
-      header={!embedded ? <StudioInspectorHeader
-        title={t("video.voice.title")}
-        description={t("video.voice.subtitle")}
-        icon={<AudioLines />}
-        actions={<Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!mediaReady || !activeVoice?.enabled || activeVoice.selectionMode === "auto" || previewing} aria-label={t("video.voice.preview_current")}>
-          {previewing ? <Loader2 className="animate-spin" /> : <Play />}
-        </Button>}
-        closeLabel={t("video.voice.close_settings")}
-        onClose={onClose}
-      /> : undefined}
-    >
-          {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
-          {!loading && selectionTarget ? <div data-testid="voice-selection-target" className="mb-4 rounded-lg bg-muted/45 px-3 py-2.5">
-            <p className="text-xs font-medium">{t("video.voice.select_for_frame", { frame: selectionTarget.frameIndex })}</p>
-            <p className="mt-1 truncate text-[11px] text-muted-foreground">{selectionTarget.speaker || t("video.voice.this_role")}</p>
-          </div> : null}
-          {!loading && !selectionTarget && activeVoice ? <div className="mb-6 flex min-h-8 items-center justify-between gap-3">
-            <p className="min-w-0 text-[13px] font-medium text-foreground">{t("video.voice.enabled_title")}</p>
-            <Switch checked={mediaReady && activeVoice.enabled} disabled={!mediaReady || busy} onCheckedChange={(checked) => void updateSettings({ enabled: checked })} aria-label={t("video.voice.enabled_title")} />
-          </div> : null}
-          {!loading && !mediaReady ? <div data-testid="voice-authorization-empty" className={`flex flex-col items-center gap-3 rounded-lg bg-muted/45 px-4 text-center ${selectionTarget ? "mb-4 py-3" : "py-8"}`}>
-            <KeyRound aria-hidden="true" className="size-6 text-muted-foreground" />
-            <div className="space-y-1"><p className="text-xs font-medium">{t("video.voice.configure_title")}</p><p className="text-[11px] leading-5 text-muted-foreground">{t("video.voice.configure_description")}</p></div>
-            <Button className="h-[34px] rounded-lg text-xs" render={<Link to={workspaceId ? workspaceSettingsRoute(workspaceId, "authorizations") : globalSettingsRoute("authorizations")} />}>{t("video.voice.open_authorizations")}</Button>
-          </div> : null}
-          {!loading && (selectionTarget || (mediaReady && activeVoice && (activeVoice.enabled || hasApplied))) ? <fieldset disabled={selectionTarget ? cloning : busy || cloning} className="min-w-0 space-y-6">
-            <div className="space-y-2">
-              <h3 data-testid="voice-label" className="text-ui-control font-semibold">{selectionTarget ? t("video.voice.voice_for_role") : t("video.voice.voice_label")}</h3>
-              <div ref={voicePickerAnchorRef} className="relative">
-              {!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? <div data-testid="voice-selected-preview" className="absolute left-1 top-1/2 z-10 -translate-y-1/2">
-                <VoicePreviewButton label={activeVoiceLabel} previewing={previewingVoiceId === activeVoice.voiceId} disabled={previewing} onPreview={() => void previewVoice()} />
-              </div> : null}
-              <Popover open={voicePickerOpen} onOpenChange={(open) => {
-                setVoicePickerOpen(open);
-                if (open) setActiveTab(selectionTarget ? targetVoiceIsCustom ? "mine" : "preset" : activeVoice?.source === "cloned" ? "mine" : "preset");
-              }}>
-                <PopoverTrigger render={<button type="button" data-testid="voice-selection-trigger" aria-label={`${t("video.voice.preset_tab")} / ${t("video.voice.my_voices_tab")}`} className={voiceFieldClassName + ` flex items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? "pl-9" : ""}`} />}>
-                  <span className="min-w-0 truncate">{selectionTarget ? targetVoiceLabel : activeVoice?.source === "cloned" ? activeVoiceLabel : activeVoice?.selectionMode === "auto" ? hasApplied && appliedIds.length && !needsUpdate ? appliedLabel : t("video.voice.auto_title") : activeVoiceLabel}</span>
-                  <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
-                </PopoverTrigger>
-                <PopoverContent data-testid="voice-picker" anchor={voicePickerAnchorRef} align="start" className={voiceMenuClassName + " w-(--anchor-width) gap-2 overflow-hidden"}>
+  const voiceOptions = (<>
                   <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value === "mine" ? "mine" : "preset")} className="min-h-0 gap-2">
                     <TabsList data-testid="voice-subtabs" className="grid w-full grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1 group-data-horizontal/tabs:h-[34px]">
                       <TabsTrigger value="preset" className="h-full rounded-md border-0 px-2 py-0 text-ui-control font-medium shadow-none data-active:shadow-none">{t("video.voice.preset_tab")}</TabsTrigger>
                       <TabsTrigger value="mine" className="h-full rounded-md border-0 px-2 py-0 text-ui-control font-medium shadow-none data-active:shadow-none">{t("video.voice.my_voices_tab")}</TabsTrigger>
                     </TabsList>
                     <TabsContent value="preset" className="min-h-0 space-y-2">
-                      <PopoverTitle className="sr-only">{t("video.voice.official_presets")}</PopoverTitle>
+                      <h4 className="sr-only">{t("video.voice.official_presets")}</h4>
                       {selectionTarget ? <button type="button" data-testid="voice-inherit-project" aria-pressed={!targetVoiceId} onClick={useProjectVoice} className={`flex h-10 w-full items-center gap-2 rounded-lg px-2 text-left text-xs hover:bg-foreground/10 ${!targetVoiceId ? "bg-foreground/10" : ""}`}>
                         <span className="min-w-0 flex-1">{t("video.voice.inherit_project")}</span>
                         {!targetVoiceId ? <Check aria-hidden="true" className="size-3.5 text-primary" /> : null}
@@ -648,7 +595,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                       <div className="flex shrink-0 items-center gap-2" data-testid="voice-search-toolbar">
                         <div className="relative min-w-0 flex-1">
                           <Search aria-hidden="true" className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                          <Input value={voiceQuery} onChange={(event) => setVoiceQuery(event.currentTarget.value)} aria-label={t("video.voice.search_placeholder")} placeholder={t("video.voice.search_placeholder")} className="h-[34px] border-0 bg-muted/60 pl-8 text-xs shadow-none" />
+                          <Input value={voiceQuery} onChange={(event) => setVoiceQuery(event.currentTarget.value)} aria-label={t("video.voice.search_placeholder")} placeholder={t("video.voice.search_placeholder")} className="pl-8" />
                         </div>
                         <Popover>
                           <PopoverTrigger render={<Button variant="ghost" size="icon" aria-label={t("video.voice.filters")} className={`relative size-[34px] shrink-0 rounded-lg bg-muted/60 ${filterCount ? "text-primary" : "text-muted-foreground"}`} />}>
@@ -656,14 +603,14 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                             {filterCount ? <span className="absolute -right-1 -top-1 grid size-3.5 place-items-center rounded-full bg-primary text-[9px] text-primary-foreground">{filterCount}</span> : null}
                           </PopoverTrigger>
                           <PopoverContent align="end" className={voiceMenuClassName + " w-64 gap-3"}>
-                            <div className="flex items-center justify-between"><PopoverTitle className="text-xs font-medium">{t("video.voice.filters")}</PopoverTitle><Button variant="ghost" size="sm" className="h-auto px-1 py-0.5 text-[11px]" disabled={!filterCount} onClick={() => { setLanguageFilter("all"); setGenderFilter("all"); setAgeFilter("all"); }}>{t("common.reset")}</Button></div>
+                            <div className="flex items-center justify-between"><h4 className="text-xs font-medium">{t("video.voice.filters")}</h4><Button variant="ghost" size="sm" className="h-auto px-1 py-0.5 text-[11px]" disabled={!filterCount} onClick={() => { setLanguageFilter("all"); setGenderFilter("all"); setAgeFilter("all"); }}>{t("common.reset")}</Button></div>
                             <VoiceFilter value={languageFilter} options={BAILIAN_VOICE_LANGUAGES} label="language" onChange={(value) => setLanguageFilter(BAILIAN_VOICE_LANGUAGES.find((option) => option === value) ?? "all")} />
                             <VoiceFilter value={genderFilter} options={BAILIAN_VOICE_GENDERS} label="gender" onChange={(value) => setGenderFilter(BAILIAN_VOICE_GENDERS.find((option) => option === value) ?? "all")} />
                             <VoiceFilter value={ageFilter} options={BAILIAN_VOICE_AGES} label="age" onChange={(value) => setAgeFilter(BAILIAN_VOICE_AGES.find((option) => option === value) ?? "all")} />
                           </PopoverContent>
                         </Popover>
                       </div>
-                      <div aria-label={t("video.voice.official_presets")} className="min-h-0 max-h-60 space-y-0.5 overflow-y-auto">
+                      <div aria-label={t("video.voice.official_presets")} className={selectionTarget ? "space-y-0.5" : "min-h-0 max-h-60 space-y-0.5 overflow-y-auto"}>
                         {filteredPresetVoices.map((voice) => {
                           const selected = selectionTarget ? targetVoiceId === voice.id : activeVoice?.selectionMode === "manual" && activeVoice.source === "preset" && activeVoice.voiceId === voice.id;
                           return <div key={voice.id} className={`flex h-12 items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-foreground/10 ${selected ? "bg-foreground/10" : ""}`}>
@@ -682,7 +629,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                       {loadingMineData ? <p className="flex items-center gap-2 text-[11px] text-muted-foreground" role="status"><Loader2 className="size-3.5 animate-spin" />{t("video.voice.loading_my_voices")}</p> : null}
                       {customVoices.length ? <>
                   <div className="flex items-center justify-between gap-2 px-2 py-1">
-                    <PopoverTitle className="text-ui-control font-medium">{t("video.voice.my_voices_tab")}<span className="ml-1.5 text-ui-caption font-normal text-muted-foreground">{customVoices.length}</span></PopoverTitle>
+                    <h4 className="text-ui-control font-medium">{t("video.voice.my_voices_tab")}<span className="ml-1.5 text-ui-caption font-normal text-muted-foreground">{customVoices.length}</span></h4>
                     <Button variant="ghost" size="icon-xs" onClick={() => void loadMineData()} disabled={loadingMineData} aria-label={t("video.voice.refresh_my_voices")}>{loadingMineData ? <Loader2 className="animate-spin" /> : <RefreshCw />}</Button>
                   </div>
                   <div className="min-h-0 max-h-60 space-y-0.5 overflow-y-auto">{customVoices.map((voice) => {
@@ -707,8 +654,66 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                     void audioRef.current?.play().catch((error: unknown) => setMessage(readableError(error)));
                   }}><Play className="size-3.5" />{t("video.voice.preview")}</Button> : null}
                   {message ? <p role="alert" className="rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-destructive">{message}</p> : null}
+
+  </>);
+
+  return (
+    <StudioInspectorPanel
+      ariaLabel={t("video.voice.panel_label")}
+      className={inDialog ? "min-h-0 w-full flex-1 border-0 bg-popover" : embedded
+        ? "absolute bottom-0 right-0 top-[148px] z-20 h-auto min-w-0 max-w-full bg-popover"
+        : "absolute inset-y-0 right-0 z-20 h-auto w-[22rem] max-w-[calc(100%-2rem)] bg-popover/95 shadow-2xl backdrop-blur-xl"}
+      width={inDialog ? undefined : embedded ? embeddedWidth : undefined}
+      embedded={embedded}
+      testId="video-voice-panel"
+      bodyClassName="video-settings-typography p-5 text-xs font-normal text-foreground"
+      header={!embedded ? <StudioInspectorHeader
+        title={t("video.voice.title")}
+        description={t("video.voice.subtitle")}
+        icon={<AudioLines />}
+        actions={<Button variant="ghost" size="icon-xs" onClick={() => void previewVoice()} disabled={!mediaReady || !activeVoice?.enabled || activeVoice.selectionMode === "auto" || previewing} aria-label={t("video.voice.preview_current")}>
+          {previewing ? <Loader2 className="animate-spin" /> : <Play />}
+        </Button>}
+        closeLabel={t("video.voice.close_settings")}
+        onClose={onClose}
+      /> : undefined}
+    >
+          {loading ? <div className="grid min-h-40 place-items-center text-xs text-muted-foreground"><Loader2 className="mr-2 inline size-4 animate-spin" />{t("video.voice.loading_config")}</div> : null}
+          {!loading && selectionTarget && !inDialog ? <div data-testid="voice-selection-target" className="mb-4 rounded-lg bg-muted/45 px-3 py-2.5">
+            <p className="text-xs font-medium">{t("video.voice.select_for_frame", { frame: selectionTarget.frameIndex })}</p>
+            <p className="mt-1 truncate text-[11px] text-muted-foreground">{selectionTarget.speaker || t("video.voice.this_role")}</p>
+          </div> : null}
+          {!loading && !selectionTarget && activeVoice ? <div className="mb-6 flex min-h-8 items-center justify-between gap-3">
+            <p className="min-w-0 text-[13px] font-medium text-foreground">{t("video.voice.enabled_title")}</p>
+            <Switch checked={mediaReady && activeVoice.enabled} disabled={!mediaReady || busy} onCheckedChange={(checked) => void updateSettings({ enabled: checked })} aria-label={t("video.voice.enabled_title")} />
+          </div> : null}
+          {!loading && !mediaReady ? <div data-testid="voice-authorization-empty" className={`flex flex-col items-center gap-3 rounded-lg bg-muted/45 px-4 text-center ${selectionTarget ? "mb-4 py-3" : "py-8"}`}>
+            <KeyRound aria-hidden="true" className="size-6 text-muted-foreground" />
+            <div className="space-y-1"><p className="text-xs font-medium">{t("video.voice.configure_title")}</p><p className="text-[11px] leading-5 text-muted-foreground">{t("video.voice.configure_description")}</p></div>
+            <Button className="h-[34px] rounded-lg text-xs" render={<Link to={workspaceId ? workspaceSettingsRoute(workspaceId, "authorizations") : globalSettingsRoute("authorizations")} />}>{t("video.voice.open_authorizations")}</Button>
+          </div> : null}
+          {!loading && (selectionTarget || (mediaReady && activeVoice && (activeVoice.enabled || hasApplied))) ? <fieldset disabled={selectionTarget ? cloning : busy || cloning} className="min-w-0 space-y-6">
+            <div className="space-y-2">
+              {!inDialog && <h3 data-testid="voice-label" className="text-ui-control font-semibold">{selectionTarget ? t("video.voice.voice_for_role") : t("video.voice.voice_label")}</h3>}
+              <div ref={voicePickerAnchorRef} className="relative">
+              {!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? <div data-testid="voice-selected-preview" className="absolute left-1 top-1/2 z-10 -translate-y-1/2">
+                <VoicePreviewButton label={activeVoiceLabel} previewing={previewingVoiceId === activeVoice.voiceId} disabled={previewing} onPreview={() => void previewVoice()} />
+              </div> : null}
+              {selectionTarget ? <div data-testid="voice-picker" className="space-y-3">{voiceOptions}</div> : <>
+              <Popover open={voicePickerOpen} onOpenChange={(open) => {
+                setVoicePickerOpen(open);
+                if (open) setActiveTab(selectionTarget ? targetVoiceIsCustom ? "mine" : "preset" : activeVoice?.source === "cloned" ? "mine" : "preset");
+              }}>
+                <PopoverTrigger render={<button type="button" data-testid="voice-selection-trigger" aria-label={`${t("video.voice.preset_tab")} / ${t("video.voice.my_voices_tab")}`} className={voiceFieldClassName + ` flex items-center justify-between gap-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${!selectionTarget && activeVoice?.selectionMode === "manual" && selectedVoiceReady ? "pl-9" : ""}`} />}>
+                  <span className="min-w-0 truncate">{selectionTarget ? targetVoiceLabel : activeVoice?.source === "cloned" ? activeVoiceLabel : activeVoice?.selectionMode === "auto" ? hasApplied && appliedIds.length && !needsUpdate ? appliedLabel : t("video.voice.auto_title") : activeVoiceLabel}</span>
+                  <ChevronDown aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground" />
+                </PopoverTrigger>
+                <PopoverContent data-testid="voice-picker" anchor={voicePickerAnchorRef} align="start" className={voiceMenuClassName + " w-(--anchor-width) gap-2 overflow-hidden"}>
+                  {voiceOptions}
                 </PopoverContent>
               </Popover>
+              </>}
+
               </div>
               {!selectionTarget && hasApplied ? <p data-testid="voice-applied" role="status" className={`text-xs leading-5 ${appliedIds.length ? "font-medium text-[#087C82] dark:text-[#6CDBE0]" : "text-warning"}`}>{appliedIds.length ? t("video.voice.applied_label", { label: appliedLabel }) : t("video.voice.applied_unknown")}</p> : null}
             </div>
@@ -731,7 +736,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                 if (!cloneFile) { setCloneError(t("video.voice.clone_sample_required")); return; }
                 void cloneVoice(cloneFile, cloneName);
               }}>
-                <div className="flex flex-col gap-1.5"><label htmlFor={cloneNameId} className="text-ui-control font-medium leading-5">{t("video.voice.clone_name")}</label><Input id={cloneNameId} autoFocus aria-required="true" maxLength={80} disabled={cloning} value={cloneName} onChange={event => { setCloneName(event.target.value); setCloneError(""); }} placeholder={t("video.voice.clone_name_placeholder")} className="h-[34px] border-0 bg-muted/60 text-ui-control shadow-none" /></div>
+                <div className="flex flex-col gap-1.5"><label htmlFor={cloneNameId} className="text-ui-control font-medium leading-5">{t("video.voice.clone_name")}</label><Input id={cloneNameId} autoFocus aria-required="true" maxLength={80} disabled={cloning} value={cloneName} onChange={event => { setCloneName(event.target.value); setCloneError(""); }} placeholder={t("video.voice.clone_name_placeholder")} className="w-full" /></div>
                 {cloneOpen ? <VideoVoiceSample file={cloneFile} disabled={cloning} onFile={file => { setCloneFile(file); if (file) setCloneError(""); }} onError={setCloneError} onBusy={setSampleBusy} /> : null}
                 {cloning ? <p data-testid="voice-clone-progress" role="status" className="flex items-center gap-2 text-ui-caption text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{t(`video.voice.clone_stage_${cloneStage}`)}</p> : null}
                 {cloneError ? <p role="alert" className="text-ui-caption text-destructive">{cloneError}</p> : null}
@@ -744,7 +749,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
             setMessage(audioRef.current?.error?.message || t("video.voice.error.generic"));
             setPreviewingVoiceId(null);
           }} />
-          {message && !voicePickerOpen ? <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-muted-foreground" role="alert">{message}</p> : null}
+          {message && !voicePickerOpen && !selectionTarget ? <p className="mt-3 rounded-lg bg-muted px-2.5 py-2 text-[11px] leading-4 text-muted-foreground" role="alert">{message}</p> : null}
     </StudioInspectorPanel>
   );
 }
@@ -756,7 +761,7 @@ function VoiceAiButton({ disabled, busy, label, onClick }: { disabled: boolean; 
 }
 
 function VoiceFilter({ value, options, label, onChange }: { value: string; options: readonly string[]; label: string; onChange: (value: string) => void }) {
-  return <div className="flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{t(`video.voice.filter.${label}`)}</span><Select value={value} onValueChange={(next) => { if (next) onChange(next); }}><SelectTrigger className="h-[34px] data-[size=default]:h-[34px] w-32 border-0 bg-muted/60 px-2 text-xs" aria-label={t(`video.voice.filter.${label}`)}><SelectValue>{t(`video.voice.filter_value.${value}`)}</SelectValue></SelectTrigger><SelectContent align="start" className={voiceMenuClassName}>{options.map((option) => <SelectItem key={option} value={option}>{t(`video.voice.filter_value.${option}`)}</SelectItem>)}</SelectContent></Select></div>;
+  return <div className="flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{t(`video.voice.filter.${label}`)}</span><Select value={value} onValueChange={(next) => { if (next) onChange(next); }}><SelectTrigger className="w-32" aria-label={t(`video.voice.filter.${label}`)}><SelectValue>{t(`video.voice.filter_value.${value}`)}</SelectValue></SelectTrigger><SelectContent align="start" className={voiceMenuClassName}>{options.map((option) => <SelectItem key={option} value={option}>{t(`video.voice.filter_value.${option}`)}</SelectItem>)}</SelectContent></Select></div>;
 }
 
 function VoicePreviewButton({ label, previewing, disabled, onPreview }: { label: string; previewing: boolean; disabled: boolean; onPreview: () => void }) {
@@ -768,8 +773,8 @@ function VoicePreviewButton({ label, previewing, disabled, onPreview }: { label:
   </Tooltip>;
 }
 
-const voiceMenuClassName = "video-settings-typography max-h-(--available-height) max-w-(--available-width) rounded-lg bg-popover p-1.5 text-xs [&_[role=option]]:min-h-[34px] [&_[role=option]]:px-2 [&_[role=option]]:py-1.5 [&_[role=option]]:text-xs [&_[role=option]]:font-normal [&_[role=option][data-selected]]:bg-foreground/10 [&_[data-slot=select-item]>span:last-child]:text-primary";
-const voiceFieldClassName = "h-[34px] data-[size=default]:h-[34px] w-full min-w-0 rounded-lg border-0 bg-muted/45 px-3 text-xs font-normal text-foreground shadow-none [&_svg]:size-3.5";
+const voiceMenuClassName = "max-h-(--available-height) max-w-(--available-width)";
+const voiceFieldClassName = "w-full min-w-0";
 const voiceParameterRowClassName = "grid grid-cols-[minmax(0,1fr)_minmax(0,1.8fr)] items-center gap-3";
 
 function VoiceControls({ settings, onChange }: { settings: VideoVoiceoverSettings; onChange: (changes: Partial<VideoVoiceoverSettings>) => void }) {
