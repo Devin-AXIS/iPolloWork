@@ -79,6 +79,25 @@ describe("StoryboardTable interactions", () => {
   let container: HTMLDivElement;
   let root: Root;
 
+  it("shows recipe plans, source mounts and custom reasons without trusting Markdown status", async () => {
+    const plan = source + '- recipe: "feedback-loop"\n- scene_id: "opening"\n- recipe_status: "mounted"\n';
+    const parsed = parseStoryboard(plan);
+    const data = { ...response(), source: plan, ...parsed, frames: parsed.frames.map(frame => ({ ...frame, srcExists: false })) };
+    await act(async () => root.render(<StoryboardTable projectId="project-1" data={data} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Planned recipe");
+    const mounted = { ...data, frames: data.frames.map(frame => ({ ...frame, recipeMount: { componentId: "feedback-loop", source: "compositions/feedback-loop.html" } })) };
+    await act(async () => root.render(<StoryboardTable projectId="project-1" data={mounted} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Mounted in source");
+    const mismatch = { ...mounted, frames: mounted.frames.map(frame => ({ ...frame, recipeMount: { componentId: "question-opener", source: "compositions/question-opener.html" } })) };
+    await act(async () => root.render(<StoryboardTable projectId="project-1" data={mismatch} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Planned recipe");
+    const custom = plan + '- custom_reason: "Existing recipes cannot preserve the branching condition"\n';
+    const customParsed = parseStoryboard(custom);
+    await act(async () => root.render(<StoryboardTable projectId="project-1" data={{ ...mounted, source: custom, ...customParsed, frames: customParsed.frames.map(frame => ({ ...frame, srcExists: false })) }} onSaved={vi.fn()} />));
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Custom graphics");
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("branching condition");
+  });
+
   beforeEach(() => {
     mocks.writeProjectFile.mockClear();
     mocks.uploadProjectFiles.mockReset().mockResolvedValue(["media/imported.png"]);

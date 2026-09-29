@@ -43,6 +43,11 @@ Keep these credits.
 `;
 
 describe("editable storyboard", () => {
+  it("preserves recipe records across edits and normalizes quoted identifiers", () => {
+    const plan = setFrameField(setFrameField(setFrameField(source, 1, "recipe", "feedback-loop", { quote: true }), 1, "scene_id", "intro", { quote: true }), 1, "custom_reason", "No suitable branching recipe", { quote: true });
+    const moved = moveStoryboardFrame(plan, 1, 2);
+    expect(parseStoryboard(moved).frames[1]?.extra).toMatchObject({ recipe: "feedback-loop", scene_id: "intro", custom_reason: "No suitable branching recipe" });
+  });
   it("round-trips all production fields without replacing narrative or unknown metadata", () => {
     let next = setFrameTitle(source, 1, "New intro");
     for (const [key, value] of Object.entries({

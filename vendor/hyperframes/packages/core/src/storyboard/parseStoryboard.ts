@@ -393,6 +393,9 @@ const META_SETTERS = new Map<string, MetaSetter>([
   ["voice_id", (frame, value) => { frame.voiceId = stripQuotes(value); }],
   ["voice_model", (frame, value) => { frame.voiceModel = stripQuotes(value); }],
   ["voice_name", (frame, value) => { frame.voiceName = stripQuotes(value); }],
+  ["recipe", (frame, value) => { frame.extra.recipe = stripQuotes(value); }],
+  ["scene_id", (frame, value) => { frame.extra.scene_id = stripQuotes(value); }],
+  ["custom_reason", (frame, value) => { frame.extra.custom_reason = stripQuotes(value); }],
   [
     "src",
     (frame, value) => {

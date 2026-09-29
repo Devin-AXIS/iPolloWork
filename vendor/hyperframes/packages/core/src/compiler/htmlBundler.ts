@@ -307,7 +307,9 @@ function maybeInlineRelativeAssetUrl(urlValue: string, projectDir: string): stri
   const content = safeReadFileBuffer(filePath);
   if (content == null) return null;
   const dataUrl = `data:${mimeType};base64,${content.toString("base64")}`;
-  return appendSuffixToUrl(dataUrl, suffix);
+  // Cache-busting queries are not valid base64 payload. Preserve only SVG fragments.
+  const hashIndex = suffix.indexOf("#");
+  return hashIndex >= 0 ? appendSuffixToUrl(dataUrl, suffix.slice(hashIndex)) : dataUrl;
 }
 
 function isExternalSvgFragmentUse(el: Element, attr: string, urlValue: string): boolean {

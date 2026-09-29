@@ -1470,6 +1470,16 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("parses requested media and final duration into an explicit delivery gate", () => {
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "生成视频，优先配方，实在不行说明原因再定制" }).recipesOnly).toBeUndefined();
+    const recipeRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成一个概念讲解视频" });
+    expect(recipeRequirements.recipesOnly).toBeUndefined();
+    const recipeFirst = videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: recipeRequirements });
+    expect(recipeFirst).toContain("without another approval round");
+    expect(recipeFirst).toContain("considered recipes");
+    expect(recipeFirst).toContain("try another recipe");
+    const strictRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成视频，禁止定制图形，只用真实配方" });
+    expect(strictRequirements.recipesOnly).toBe(true);
+    expect(videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: strictRequirements })).toContain("independently of HTML metadata");
     expect(requestedVideoDurationSeconds("最终视频总时长两分钟左右")).toBe(120);
     expect(requestedVideoDurationSeconds("make it about 90 seconds")).toBe(90);
     const requirements = videoDeliveryRequirementsForPrompt({
