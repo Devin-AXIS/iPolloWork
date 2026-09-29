@@ -14,6 +14,14 @@ Use this index after selecting the scene's narrative job. It maps every registry
 
 ## Executable motion routing
 
+### Authored semantic recipes
+
+Twenty registry components expose executable `motionRecipe`: `bar-chart-race`, `brand-headline`, `checklist-reveal`, `code-walkthrough`, `comparison-matrix`, `formula-breakdown`, `learning-path`, `media-hero`, `milestone-timeline`, `next-step-outro`, `product-steps`, `swimlane-workflow`, `cause-effect-chain`, `concept-layers`, `myth-fact-reveal`, `evidence-stack`, `question-opener`, `before-after-contrast`, `code-diff-card`, `summary-resolve`. This is authored choreography, not blanket visual acceptance of the remaining catalog.
+
+Choose by the catalog's compact `recipeSummary.useWhen` and `avoidWhen`, then read only the chosen manifest or installation result once. Its `motionRecipe.usage` defines input rules, reading order, narration-to-event bindings, four failure fallbacks, a Chinese example and render acceptance. Examples demonstrate structure, not verified claims or mandatory scripts. Do not inject every recipe's full rules into the prompt. If the structure is inapplicable, choose another recipe or a justified custom scene. Supply optional `instances` to `video_component_install`: stable sceneId, selected componentId, start, duration, timingSource, and every real content variable. The host returns placeholder-free `instances[].snippet`; mount it unchanged. It does not overwrite index.html or existing edited components. Event IDs bind through `cueTimes` to measured scene-relative narration cues; the host serializes them into the existing variable protocol as motionCueTimes. Without measured audio, retain authored defaults and an honest visual/estimated timing source, never fabricate word alignment.
+
+Keep events ordered with their authored action durations and final readable hold. Split oversized content instead of relying on a component's slicing behavior. A longer host must have meaningful events throughout, not a frozen extension. Missing local media, excess capacity, unknown values/events and conflicting cue windows are rejected. Pixel quality, audio alignment and source accuracy still require the existing real-render acceptance checks.
+
 The component table chooses the scene body. It does not prove that motion covers a longer host scene. Bind every beat to one of these executable references and preserve the matching metadata in the saved HTML.
 
 | Beat job | Animation reference | Typical preset choices |

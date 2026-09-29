@@ -2,6 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { listHyperframesCatalog, normalizeHyperframesCatalogItem } from "./hyperframes-catalog.js";
 
 describe("HyperFrames catalog parameters", () => {
+  test("exposes concise selection rules for twenty recipes without loading full usage", async () => {
+    const recipes = (await listHyperframesCatalog()).filter(item => item.recipeSummary);
+    expect(recipes).toHaveLength(20);
+    for (const item of recipes) {
+      expect(item.recipeSummary?.useWhen.length).toBeGreaterThan(0);
+      expect(item.recipeSummary?.avoidWhen.length).toBeGreaterThan(0);
+      expect(item).not.toHaveProperty("motionRecipe");
+      expect(item.recipeSummary).not.toHaveProperty("example");
+    }
+  });
+
   test("normalizes legacy block params into composition variables", () => {
     const item = normalizeHyperframesCatalogItem({
       name: "legacy-effect",

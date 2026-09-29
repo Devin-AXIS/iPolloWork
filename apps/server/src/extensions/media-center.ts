@@ -889,6 +889,22 @@ export const MEDIA_EXTENSION_ACTIONS = [
       properties: {
         sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
         componentIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, description: "Registry component IDs selected from core-v1-video/motion/component-map.md." },
+        instances: { type: "array", minItems: 1, maxItems: 48, description: "Optional ready-to-mount semantic recipe scenes. Select by recipeSummary.useWhen/avoidWhen, then read only the selected manifest's variables and motionRecipe.usage (inputRules, readingOrder, cueBindings, fallback, acceptance). Each instance supplies sceneId, componentId, start, duration, timingSource, values (all real content variables), optional cueTimes (event IDs to measured scene-relative seconds), track, transition, transitionDuration and transitionIntent. The host validates capacity, assets and ordered cues, then returns escaped placeholder-free instances[].snippet without overwriting index.html.", items: {
+          type: "object",
+          properties: {
+            sceneId: { type: "string" }, componentId: { type: "string" },
+            start: { type: "number", minimum: 0 }, duration: { type: "number", exclusiveMinimum: 0, maximum: 120 },
+            track: { type: "integer", minimum: 0 },
+            values: { type: "object", additionalProperties: { type: ["string", "number", "boolean"] } },
+            cueTimes: { type: "object", additionalProperties: { type: "number", minimum: 0 } },
+            timingSource: { type: "string", enum: ["voiceover", "estimated-reading", "visual-cue", "music", "media"] },
+            transition: { type: "string", enum: ["cut", "preset:element.enter.fade", "preset:element.enter.slide", "preset:element.enter.scale"] },
+            transitionDuration: { type: "number", minimum: 0 },
+            transitionIntent: { type: "string", enum: ["continue", "topic-change", "time-change", "location-change", "compare", "reveal", "closure"] },
+          },
+          required: ["sceneId", "componentId", "start", "duration", "timingSource", "values"],
+          additionalProperties: false,
+        } },
       },
       required: ["sourcePath", "componentIds"],
       additionalProperties: false,

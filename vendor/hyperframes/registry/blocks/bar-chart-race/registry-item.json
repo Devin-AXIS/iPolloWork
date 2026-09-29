@@ -1,17 +1,207 @@
 {
   "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
-  "name": "bar-chart-race", "version": "1.0.0", "type": "hyperframes:block", "title": "Bar Chart Race",
+  "name": "bar-chart-race",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "Bar Chart Race",
   "description": "A ranked, theme-linked horizontal bar race with a clear period and source.",
-  "tags": ["component", "data", "chart", "ranking", "theme"], "author": "iPolloWork", "license": "Apache-2.0",
-  "source": { "provider": "HyperFrames", "label": "Bar Chart Race", "url": "https://www.hyperframes.dev/catalog/blocks/bar-chart-race" },
-  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "items", "period", "source"], "instructions": "AI may replace or reorder the ranked values while keeping five or fewer readable bars and one highlighted leader." } },
-  "dimensions": { "width": 1920, "height": 1080 }, "duration": 10,
-  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
-  "files": [{ "path": "bar-chart-race.html", "target": "compositions/bar-chart-race.html", "type": "hyperframes:composition" }],
+  "tags": [
+    "component",
+    "data",
+    "chart",
+    "ranking",
+    "theme"
+  ],
+  "author": "iPolloWork",
+  "license": "Apache-2.0",
+  "source": {
+    "provider": "HyperFrames",
+    "label": "Bar Chart Race",
+    "url": "https://www.hyperframes.dev/catalog/blocks/bar-chart-race"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "items",
+        "period",
+        "source"
+      ],
+      "instructions": "AI may replace or reorder the ranked values while keeping five or fewer readable bars and one highlighted leader."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 10,
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "bar-chart-race.html",
+      "target": "compositions/bar-chart-race.html",
+      "type": "hyperframes:composition"
+    }
+  ],
   "variables": [
-    { "id": "title", "label": "Title", "type": "string", "default": "Category leaders", "maxLength": 64, "update": "live" },
-    { "id": "items", "label": "Ranked data", "description": "Comma-separated Name:Value pairs.", "type": "string", "default": "Atlas:96,Nova:82,Orbit:71,Field:58,Base:44", "maxLength": 140, "update": "live" },
-    { "id": "period", "label": "Period", "type": "string", "default": "Q4 · 2026", "maxLength": 28, "update": "live" },
-    { "id": "source", "label": "Source", "type": "string", "default": "Source · Product analytics", "maxLength": 64, "update": "live" }
-  ]
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Category leaders",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "items",
+      "label": "Ranked data",
+      "description": "Comma-separated Name:Value pairs.",
+      "type": "string",
+      "default": "Atlas:96,Nova:82,Orbit:71,Field:58,Base:44",
+      "maxLength": 140,
+      "update": "live"
+    },
+    {
+      "id": "period",
+      "label": "Period",
+      "type": "string",
+      "default": "Q4 · 2026",
+      "maxLength": 28,
+      "update": "live"
+    },
+    {
+      "id": "source",
+      "label": "Source",
+      "type": "string",
+      "default": "Source · Product analytics",
+      "maxLength": 64,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "data-accumulation",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "items",
+      "separator": ",",
+      "maxItems": 5,
+      "minItems": 2,
+      "fieldSeparator": ":",
+      "fieldsPerItem": 2,
+      "maxFieldLength": 24,
+      "numericField": 1
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".row:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.65,
+        "action": "Reveal the real value and grow its bar"
+      },
+      {
+        "id": "step-2",
+        "target": ".row:nth-child(2)",
+        "time": 2.775,
+        "duration": 0.65,
+        "action": "Reveal the real value and grow its bar"
+      },
+      {
+        "id": "step-3",
+        "target": ".row:nth-child(3)",
+        "time": 4.35,
+        "duration": 0.65,
+        "action": "Reveal the real value and grow its bar"
+      },
+      {
+        "id": "step-4",
+        "target": ".row:nth-child(4)",
+        "time": 5.925,
+        "duration": 0.65,
+        "action": "Reveal the real value and grow its bar"
+      },
+      {
+        "id": "step-5",
+        "target": ".row:nth-child(5)",
+        "time": 7.5,
+        "duration": 0.65,
+        "action": "Reveal the real value and grow its bar"
+      },
+      {
+        "id": "resolve",
+        "target": ".row",
+        "time": 8.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable result"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Compare 2–5 non-negative measured values sharing one unit and period."
+      ],
+      "avoidWhen": [
+        "Do not use for time-series racing, mixed units, negative values or unverified rankings."
+      ],
+      "inputRules": {
+        "title": "Supply real title within the declared character limit. Do not substitute demo text.",
+        "items": "Supply 2–5 entries separated by \",\", each with exactly 2 nonempty fields separated by \":\". Keep each field within 24 characters. Values must be finite and non-negative, sharing a unit; keep input order consistent with the intended ranking.",
+        "period": "Supply real period within the declared character limit. Do not substitute demo text.",
+        "source": "Supply real source within the declared character limit. Do not substitute demo text."
+      },
+      "readingOrder": [
+        "Read the metric and period",
+        "Reveal each measured value",
+        "Compare lengths and hold the full ranking"
+      ],
+      "cueBindings": {
+        "step-1": "When narration reaches items 1, reveal the real value and grow its bar. Do not infer a word timestamp from character count.",
+        "step-2": "When narration reaches items 2, reveal the real value and grow its bar. Do not infer a word timestamp from character count.",
+        "step-3": "When narration reaches items 3, reveal the real value and grow its bar. Do not infer a word timestamp from character count.",
+        "step-4": "When narration reaches items 4, reveal the real value and grow its bar. Do not infer a word timestamp from character count.",
+        "step-5": "When narration reaches items 5, reveal the real value and grow its bar. Do not infer a word timestamp from character count.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input; if unavailable use an honest custom treatment or report the missing content, not demo defaults.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose a component whose narrative job fits, or author a finite seek-safe custom scene. Recipe reuse is a default, not a requirement to force-fit content."
+      },
+      "example": {
+        "values": {
+          "title": "夜校开放前后：晚间到访人数",
+          "items": "开放前:24,开放后:82,周末:96",
+          "period": "同一周 · 人次",
+          "source": "演示数据，不代表真实统计"
+        },
+        "narration": "同一周内，开放前有二十四人次，开放后八十二人次，周末九十六人次。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Read the metric and period → Reveal each measured value → Compare lengths and hold the full ranking. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ]
+    }
+  }
 }
