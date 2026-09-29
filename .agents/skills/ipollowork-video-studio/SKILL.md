@@ -23,7 +23,7 @@ Read [references/video.md](references/video.md) once per task. For initial gener
 3. For targeted and follow-up edits, preserve unrelated user-authored scenes and media. Keep the root duration and every scene, clip, transition, audio, and animation timestamp consistent after structural changes.
 4. Use the shared `--ipw-*` design tokens when the project provides them.
 5. Save changes to the exact session-owned `index.html` and keep referenced assets inside the same project.
-6. Follow the single plan → compose → batch-check → consolidated-repair flow in `references/video.md`. Do not repeat capability discovery, rule reads, catalog scans or unchanged validation.
+6. For initial generation or structural reordering, use the Sequence templates section in `references/video.md` to select a fitting structure, assign executable recipe slots and plan adjacent handoffs before transitions. Follow the recipe-selection method and single plan → compose → batch-check → consolidated-repair flow in `references/video.md`. Record fit and tradeoffs in the existing script; review delivered recipe fit through `references/video-acceptance.md`. Do not repeat capability discovery, rule reads, catalog scans or unchanged validation.
 
 If the active session provides stricter timing, template, media, or validation instructions, those instructions take precedence.
 
