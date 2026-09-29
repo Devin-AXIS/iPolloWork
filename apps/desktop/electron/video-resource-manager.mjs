@@ -103,6 +103,7 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
     return paths;
   }
 
+  /** @returns {Promise<import("@ipollowork/types/desktop-ipc").EnginePackageInfo>} */
   async function info() {
     const paths = await currentPaths();
     return {
