@@ -101,6 +101,16 @@ extraResources:
       - "**/*.md"
       - "**/*.mdx"
       - "docs.json"
+  - from: hyperframes-runtime
+    to: hyperframes
+    filter:
+      - "**/*"
+      - "!**/*.map"
+      - "!node_modules/.bun/**/node_modules/.bin/**"
+  - from: ../../vendor/hyperframes/registry
+    to: hyperframes/registry
+    filter:
+      - "**/*"
 asar: true
 asarUnpack:
   - "**/node_modules/sharp/**/*"

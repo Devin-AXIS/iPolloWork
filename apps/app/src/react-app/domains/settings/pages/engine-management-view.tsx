@@ -133,7 +133,7 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
     <LayoutStack>
       <div className="overflow-hidden rounded-2xl border border-dls-border bg-dls-card/75 shadow-[var(--dls-card-shadow)] backdrop-blur-xl">
         {[...packages, ...(videoResource ? [videoResource] : [])].map((engine, index) => {
-          const isVideo = engine.id === "hyperframes-runtime";
+          const isVideo = engine.id === "video-codecs";
           const busy = actionEngineId === engine.id || (isVideo && installingVideo)
             || ["downloading", "verifying", "installing", "uninstalling"].includes(engine.status);
           const sourceNotice = externalSourceNotice(engine);
@@ -184,7 +184,7 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                       {sourceNotice}
                     </p>
                   ) : null}
-                  {isVideo ? <p className="mt-2 text-xs leading-5 text-dls-secondary">包含 HyperFrames 运行时、组件库、FFmpeg 和 FFprobe，下载并校验完成后可使用视频工作台。</p> : null}
+                  {isVideo ? <p className="mt-2 text-xs leading-5 text-dls-secondary">HyperFrames 运行时和组件库已随软件安装；这里只下载并校验 FFmpeg 与 FFprobe，完成后即可使用视频工作台。</p> : null}
                   {busy ? <EngineProgress engine={engine} /> : null}
                   {engine.error ? <p className="mt-2 text-xs leading-5 text-red-11">{engine.error}</p> : null}
                 </div>

@@ -5,7 +5,7 @@ import test from "node:test";
 import { fetchDesktopResourceManifest, verifyDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
 
 const target = { appVersion: "0.50.13", platform: "windows", arch: "x64" };
-const ids = ["codex-harness", "deepseek-harness", "hyperframes-runtime", "hyperframes-registry", "ffmpeg", "ffprobe"];
+const ids = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
 const { privateKey, publicKey } = generateKeyPairSync("ed25519");
 const keys = { test: publicKey.export({ type: "spki", format: "pem" }).toString() };
 
@@ -21,7 +21,6 @@ function signedManifest() {
       sizeBytes: 10,
       sha256: "a".repeat(64),
       url: `https://example.com/api/v1/desktop/resources/${id}/download`,
-      ...(id === "hyperframes-runtime" ? { requires: ["hyperframes-registry", "ffmpeg", "ffprobe"] } : {}),
     })),
   };
   const payload = Buffer.from(JSON.stringify(manifest));
@@ -39,7 +38,7 @@ function signedManifest() {
 
 test("accepts the exact signed cloud resource manifest", () => {
   const response = signedManifest();
-  assert.equal(verifyDesktopResourceManifest(response, target, keys).resources.length, 6);
+  assert.equal(verifyDesktopResourceManifest(response, target, keys).resources.length, 4);
 });
 
 test("rejects changed metadata, unknown keys and incomplete releases", () => {
@@ -74,5 +73,5 @@ test("requests the exact app, platform and architecture from the selected cloud 
   assert.equal(requestedUrl.searchParams.get("appVersion"), target.appVersion);
   assert.equal(requestedUrl.searchParams.get("platform"), target.platform);
   assert.equal(requestedUrl.searchParams.get("arch"), target.arch);
-  assert.equal(result.resources.length, 6);
+  assert.equal(result.resources.length, 4);
 });

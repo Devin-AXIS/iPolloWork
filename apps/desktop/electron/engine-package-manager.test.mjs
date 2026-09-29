@@ -60,7 +60,7 @@ async function createDshArchiveFixture(temporaryRoot, { platform, architecture, 
 }
 
 function signedCloudResponse(origin, archive, name, checksum, privateKey) {
-  const ids = ["codex-harness", "deepseek-harness", "hyperframes-runtime", "hyperframes-registry", "ffmpeg", "ffprobe"];
+  const ids = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
   const manifest = {
     schemaVersion: 1,
     appVersion: "0.50.13",
@@ -74,7 +74,6 @@ function signedCloudResponse(origin, archive, name, checksum, privateKey) {
       sizeBytes: archive.length,
       sha256: checksum,
       url: `${origin}/${id}.tar.gz`,
-      ...(id === "hyperframes-runtime" ? { requires: ["hyperframes-registry", "ffmpeg", "ffprobe"] } : {}),
     })),
   };
   const payload = Buffer.from(JSON.stringify(manifest));

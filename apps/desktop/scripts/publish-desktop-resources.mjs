@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import { readdir, stat } from "node:fs/promises";
 import path from "node:path";
 
-const IDS = ["codex-harness", "deepseek-harness", "hyperframes-runtime", "hyperframes-registry", "ffmpeg", "ffprobe"];
+const IDS = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
 
 function argument(name) {
   const index = process.argv.indexOf(name);
@@ -14,9 +14,7 @@ function argument(name) {
 function artifactName(fileName) {
   const engine = /^ipollowork-engine-(codex-harness|deepseek-harness)-(windows|macos|linux)-(x64|arm64)-([0-9A-Za-z._+-]+)\.tar\.gz$/.exec(fileName);
   if (engine) return { id: engine[1], platform: engine[2], arch: engine[3], version: engine[4] };
-  const registry = /^ipollowork-hyperframes-registry-([0-9A-Za-z._+-]+)\.tar\.gz$/.exec(fileName);
-  if (registry) return { id: "hyperframes-registry", platform: null, arch: null, version: registry[1] };
-  const video = /^ipollowork-(hyperframes-runtime|ffmpeg|ffprobe)-(windows|macos|linux)-(x64|arm64)-([0-9A-Za-z._+-]+)\.tar\.gz$/.exec(fileName);
+  const video = /^ipollowork-(ffmpeg|ffprobe)-(windows|macos|linux)-(x64|arm64)-([0-9A-Za-z._+-]+)\.tar\.gz$/.exec(fileName);
   if (video) return { id: video[1], platform: video[2], arch: video[3], version: video[4] };
   throw new Error(`Unexpected resource archive: ${fileName}`);
 }
@@ -57,7 +55,7 @@ const artifacts = await Promise.all(files.map(async (fileName) => {
   return { ...artifact, fileName, file, sizeBytes, sha256: await sha256File(file) };
 }));
 if (new Set(artifacts.map((item) => item.id)).size !== IDS.length || IDS.some((id) => !artifacts.some((item) => item.id === id))) {
-  throw new Error("The upload batch must contain each of the six resources exactly once.");
+  throw new Error("The upload batch must contain each of the four resources exactly once.");
 }
 const target = { appVersion, platform, arch };
 for (const item of artifacts) {

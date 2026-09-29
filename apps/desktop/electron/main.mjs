@@ -584,7 +584,7 @@ function stopAllDesktopChildProcesses() {
 
 async function startHyperframesPreview(event, options = {}) {
   if (app.isPackaged && !await videoResourceManager.currentPaths()) {
-    throw new Error("请先在设置中下载 HyperFrames 视频组件，再打开视频工作台。");
+    throw new Error("请先在设置中下载 FFmpeg / FFprobe 视频编解码组件，再打开视频工作台。");
   }
   const sessionId = String(options.sessionId ?? "").trim();
   if (!sessionId) throw new Error("sessionId is required.");

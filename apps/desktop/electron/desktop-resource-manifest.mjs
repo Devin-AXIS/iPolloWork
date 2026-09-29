@@ -6,8 +6,7 @@ MCowBQYDK2VwAyEAWgeeGJmtpUEWcCoCKiY+ktZyMXls74DGK9VC5Zc5TCU=
 -----END PUBLIC KEY-----`;
 
 const RESOURCE_IDS = new Set([
-  "codex-harness", "deepseek-harness", "hyperframes-runtime",
-  "hyperframes-registry", "ffmpeg", "ffprobe",
+  "codex-harness", "deepseek-harness", "ffmpeg", "ffprobe",
 ]);
 
 export function desktopResourcePlatform(platform) {
@@ -61,10 +60,6 @@ export function verifyDesktopResourceManifest(response, target, trustedKeys = {
       throw new Error(`Cloud resource ${resource.id} has an unsafe download URL.`);
     }
   }
-  const runtime = manifest.resources.find((resource) => resource.id === "hyperframes-runtime");
-  if ([...(runtime.requires ?? [])].sort().join(",") !== ["ffmpeg", "ffprobe", "hyperframes-registry"].sort().join(",")) {
-    throw new Error("Cloud resource manifest is missing video dependencies.");
-  }
   return manifest;
 }
 
@@ -78,7 +73,7 @@ export async function fetchDesktopResourceManifest({ baseUrl, appVersion, platfo
   const url = new URL("/api/v1/desktop/resources", origin);
   url.search = new URLSearchParams(target).toString();
   const response = await fetch(url.toString(), { headers: { Accept: "application/json" } });
-  if (!response.ok) throw new Error(`Cloud resource manifest returned HTTP ${response.status}. Ask the cloud administrator to publish all six resources for ${appVersion}/${target.platform}/${arch}.`);
+  if (!response.ok) throw new Error(`Cloud resource manifest returned HTTP ${response.status}. Ask the cloud administrator to publish all four resources for ${appVersion}/${target.platform}/${arch}.`);
   const contentType = response.headers.get("content-type") ?? "";
   if (!contentType.includes("application/json")) throw new Error("Cloud resource manifest returned a non-JSON response.");
   return verifyDesktopResourceManifest(await response.json(), target, trustedKeys);

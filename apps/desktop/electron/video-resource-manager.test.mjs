@@ -9,20 +9,17 @@ import test from "node:test";
 
 import { createVideoResourceManager } from "./video-resource-manager.mjs";
 
-const ids = ["codex-harness", "deepseek-harness", "hyperframes-runtime", "hyperframes-registry", "ffmpeg", "ffprobe"];
+const ids = ["codex-harness", "deepseek-harness", "ffmpeg", "ffprobe"];
 
 async function fixtureArchive(root, id) {
   const source = path.join(root, `${id}-source`);
   const files = {
-    "hyperframes-runtime": "packages/cli/bin/hyperframes.mjs",
-    "hyperframes-registry": "registry.json",
     ffmpeg: "ffmpeg.exe",
     ffprobe: "ffprobe.exe",
   };
   const relative = files[id] ?? "package.json";
   await mkdir(path.join(source, path.dirname(relative)), { recursive: true });
-  if (id === "hyperframes-registry") await mkdir(path.join(source, "blocks"));
-  await writeFile(path.join(source, relative), id === "hyperframes-registry" ? "{}" : `fixture ${id}`);
+  await writeFile(path.join(source, relative), `fixture ${id}`);
   const archive = path.join(root, `${id}.tar.gz`);
   const result = spawnSync("tar", ["-czf", archive, "-C", source, "."], { encoding: "utf8" });
   assert.equal(result.status, 0, result.stderr);
@@ -30,7 +27,7 @@ async function fixtureArchive(root, id) {
   return { bytes, sha256: createHash("sha256").update(bytes).digest("hex") };
 }
 
-test("installs all four signed cloud video resources after a real HTTP download and reuses them offline", async () => {
+test("installs signed FFmpeg and FFprobe resources after a real HTTP download and reuses them offline", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-video-resource-test-"));
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
   const archives = new Map();
@@ -53,7 +50,6 @@ test("installs all four signed cloud video resources after a real HTTP download 
           sizeBytes: archives.get(id).bytes.length,
           sha256: archives.get(id).sha256,
           url: `${origin}/${id}.tar.gz`,
-          ...(id === "hyperframes-runtime" ? { requires: ["hyperframes-registry", "ffmpeg", "ffprobe"] } : {}),
         })),
       };
       const payload = Buffer.from(JSON.stringify(manifest));
@@ -90,12 +86,13 @@ test("installs all four signed cloud video resources after a real HTTP download 
     });
     assert.equal((await manager.info()).status, "not-installed");
     assert.equal((await manager.install(origin)).status, "ready");
-    assert.equal(requestCount, 5);
-    assert.match(env.HYPERFRAMES_CLI_PATH, /hyperframes\.mjs$/);
+    assert.equal(requestCount, 3);
     assert.match(env.HYPERFRAMES_FFMPEG_PATH, /ffmpeg\.exe$/);
-    assert.match(env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, /blocks$/);
+    assert.match(env.HYPERFRAMES_FFPROBE_PATH, /ffprobe\.exe$/);
+    assert.equal(env.HYPERFRAMES_CLI_PATH, undefined);
+    assert.equal(env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, undefined);
     assert.equal((await manager.install(origin)).status, "ready");
-    assert.equal(requestCount, 5);
+    assert.equal(requestCount, 3);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(root, { recursive: true, force: true });

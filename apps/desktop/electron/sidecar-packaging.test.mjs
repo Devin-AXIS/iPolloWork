@@ -27,7 +27,7 @@ it("ships the shared reference Skill independently of Video", async () => {
   assert.match(await readFile(new URL(resource.path, packageRoot), "utf8"), /^name: ipollowork-reference-analyzer$/m);
 });
 
-it("ships Harness CLIs as verified engine packages with platform-safe bundling", async () => {
+it("publishes Harness CLIs as verified cloud packages without bundling their archives", async () => {
   const [builderConfig, mainSource, managerSource, packageSource, windowsPackageSource, macPackageSource, releaseWorkflow, desktopBuildWorkflow, stdioRuntimeSource, buildSource, devSource, codexPrepareSource, codexRuntimeManifest, workspaceConfig, osxSignPatch] = await Promise.all([
     readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"),
     readFile(new URL("./main.mjs", import.meta.url), "utf8"),
@@ -54,10 +54,9 @@ it("ships Harness CLIs as verified engine packages with platform-safe bundling",
   const macConfig = builderConfig.match(/\r?\nmac:\r?\n[\s\S]*?\r?\nlinux:\r?\n/)?.[0] ?? "";
   const linuxConfig = builderConfig.match(/\r?\nlinux:\r?\n[\s\S]*?\r?\nwin:\r?\n/)?.[0] ?? "";
   const windowsConfig = builderConfig.match(/\r?\nwin:\r?\n[\s\S]*$/)?.[0] ?? "";
-  assert.match(macConfig, /from: dist-engine-packs\s+to: engine-packs[\s\S]*ipollowork-engine-\*\.tar\.gz\.sha256/);
-  assert.doesNotMatch(macConfig, /^\s+- "ipollowork-engine-\*\.tar\.gz"\s*$/m);
-  assert.match(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
-  assert.match(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  assert.doesNotMatch(macConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  assert.doesNotMatch(linuxConfig, /from: dist-engine-packs\s+to: engine-packs/);
+  assert.doesNotMatch(windowsConfig, /from: dist-engine-packs\s+to: engine-packs/);
   assert.match(mainSource, /createEnginePackageManager/);
   assert.match(mainSource, /app\.getAppPath\(\).*server.*dist.*constants\.json/);
   assert.match(mainSource, /resourcesPath: process\.resourcesPath/);

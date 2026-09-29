@@ -9,8 +9,8 @@ import { Readable, Transform } from "node:stream";
 
 import { fetchDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
 
-const VIDEO_IDS = ["hyperframes-runtime", "hyperframes-registry", "ffmpeg", "ffprobe"];
-const VIDEO_ID = "hyperframes-runtime";
+const VIDEO_IDS = ["ffmpeg", "ffprobe"];
+const VIDEO_ID = "video-codecs";
 
 function runTar(args) {
   return new Promise((resolve, reject) => {
@@ -78,26 +78,20 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
   async function currentPaths() {
     let record;
     try { record = JSON.parse(await readFile(marker, "utf8")); } catch { return null; }
-    if (!/^[a-f0-9]{64}$/.test(record?.runtimeSha256 ?? "")) return null;
-    const directory = path.join(root, record.runtimeSha256);
+    if (!/^[a-f0-9]{64}$/.test(record?.mediaSha256 ?? "")) return null;
+    const directory = path.join(root, record.mediaSha256);
     const executable = platform === "win32" ? ".exe" : "";
     const paths = {
-      cli: path.join(directory, VIDEO_ID, "packages", "cli", "bin", "hyperframes.mjs"),
-      registry: path.join(directory, "hyperframes-registry"),
       ffmpeg: path.join(directory, "ffmpeg", `ffmpeg${executable}`),
       ffprobe: path.join(directory, "ffprobe", `ffprobe${executable}`),
     };
-    if (!Object.values(paths).every(existsSync)
-      || !existsSync(path.join(paths.registry, "registry.json"))) return null;
+    if (!Object.values(paths).every(existsSync)) return null;
     return paths;
   }
 
   async function applyEnvironment() {
     const paths = await currentPaths();
     if (!paths) return null;
-    env.HYPERFRAMES_CLI_PATH = paths.cli;
-    env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = path.join(paths.registry, "blocks");
-    env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = paths.registry;
     env.HYPERFRAMES_FFMPEG_PATH = paths.ffmpeg;
     env.HYPERFRAMES_FFPROBE_PATH = paths.ffprobe;
     return paths;
@@ -108,7 +102,7 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
     const paths = await currentPaths();
     return {
       id: VIDEO_ID,
-      name: "HyperFrames 视频组件",
+      name: "FFmpeg / FFprobe 视频编解码组件",
       version: app.getVersion(),
       status: operation?.status ?? (paths ? "ready" : "not-installed"),
       source: paths ? "downloaded" : "none",
@@ -137,7 +131,7 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
         trustedKeys,
       });
       const resources = VIDEO_IDS.map((id) => manifest.resources.find((item) => item.id === id));
-      if (resources.some((item) => !item)) throw new Error("Cloud resource manifest is missing video components.");
+      if (resources.some((item) => !item)) throw new Error("Cloud resource manifest is missing FFmpeg or FFprobe.");
       const totalBytes = resources.reduce((sum, item) => sum + item.sizeBytes, 0);
       let completedBytes = 0;
       operation.totalBytes = totalBytes;
@@ -157,19 +151,19 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
       }
       const executable = platform === "win32" ? ".exe" : "";
       for (const expected of [
-        path.join(staging, VIDEO_ID, "packages", "cli", "bin", "hyperframes.mjs"),
-        path.join(staging, "hyperframes-registry", "registry.json"),
         path.join(staging, "ffmpeg", `ffmpeg${executable}`),
         path.join(staging, "ffprobe", `ffprobe${executable}`),
       ]) {
         if (!(await stat(expected).catch(() => null))?.isFile()) throw new Error(`Cloud video resource is missing ${path.basename(expected)}.`);
       }
-      const runtimeSha256 = resources[0].sha256;
+      const mediaSha256 = createHash("sha256")
+        .update(resources.map((item) => `${item.id}:${item.sha256}`).join("|"))
+        .digest("hex");
       await mkdir(root, { recursive: true });
-      const destination = path.join(root, runtimeSha256);
+      const destination = path.join(root, mediaSha256);
       if (!existsSync(destination)) await rename(staging, destination);
       const nextMarker = path.join(root, `current-${process.pid}.json`);
-      await writeFile(nextMarker, JSON.stringify({ runtimeSha256, versions: Object.fromEntries(resources.map((item) => [item.id, item.version])) }));
+      await writeFile(nextMarker, JSON.stringify({ mediaSha256, versions: Object.fromEntries(resources.map((item) => [item.id, item.version])) }));
       await rename(nextMarker, marker);
       operation = null;
       await applyEnvironment();

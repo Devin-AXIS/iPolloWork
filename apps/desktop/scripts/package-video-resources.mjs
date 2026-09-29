@@ -9,9 +9,6 @@ import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const repoRoot = path.resolve(desktopRoot, "../..");
-const runtimeRoot = path.join(desktopRoot, "hyperframes-runtime");
-const registryRoot = path.join(repoRoot, "vendor", "hyperframes", "registry");
 const license = path.join(desktopRoot, "resources", "licenses", "GPL-3.0.txt");
 const outputIndex = process.argv.indexOf("--outdir");
 const outputRoot = path.resolve(outputIndex < 0 ? path.join(desktopRoot, "dist-video-packs") : process.argv[outputIndex + 1]);
@@ -34,27 +31,8 @@ async function record(archive) {
 }
 
 if (!["x64", "arm64"].includes(arch)) throw new Error(`Unsupported resource architecture: ${arch}`);
-if (!existsSync(path.join(runtimeRoot, "packages", "cli", "bin", "hyperframes.mjs"))) {
-  const result = spawnSync(process.execPath, [path.join(desktopRoot, "scripts", "prepare-hyperframes-runtime.mjs")], { stdio: "inherit" });
-  if (result.status !== 0) throw new Error("Could not prepare the HyperFrames runtime.");
-}
-for (const required of [
-  path.join(runtimeRoot, "packages", "cli", "bin", "hyperframes.mjs"),
-  path.join(runtimeRoot, "LICENSE"),
-  path.join(registryRoot, "registry.json"),
-  path.join(repoRoot, "vendor", "hyperframes", "LICENSE"),
-  license,
-]) {
-  if (!existsSync(required)) throw new Error(`Missing video resource input: ${required}`);
-}
+if (!existsSync(license)) throw new Error(`Missing video resource license: ${license}`);
 await mkdir(outputRoot, { recursive: true });
-const version = JSON.parse(readFileSync(path.join(runtimeRoot, "packages", "cli", "package.json"), "utf8")).version;
-const runtimeArchive = pack(`ipollowork-hyperframes-runtime-${platform}-${arch}-${version}.tar.gz`, runtimeRoot, ["package.json", "LICENSE", "packages", "node_modules"]);
-await record(runtimeArchive);
-const registryArchive = pack(`ipollowork-hyperframes-registry-${version}.tar.gz`, registryRoot, [
-  "registry.json", "blocks", "components", "-C", path.join(repoRoot, "vendor", "hyperframes"), "LICENSE",
-]);
-await record(registryArchive);
 
 for (const id of ["ffmpeg", "ffprobe"]) {
   const installer = require(id === "ffmpeg" ? "@ffmpeg-installer/ffmpeg" : "@ffprobe-installer/ffprobe");
