@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
 import { resolveWorkspaceFile } from "./storage.js";
@@ -59,6 +60,7 @@ const registryManifestSchema = z.object({
   registryDependencies: z.array(componentIdSchema).optional(),
   visualComponent: z.object({ surfaces: z.array(z.string()) }).passthrough().optional(),
   variables: z.array(z.object({ id: z.string().min(1) }).passthrough()).optional(),
+  motionRecipe: hyperframesMotionRecipeSchema.optional(),
 }).passthrough();
 
 const MAX_STILL_SECONDS = 4;
@@ -73,6 +75,7 @@ const SPATIAL_CAMERA_RECIPES = new Set([
 export const videoComponentInstallInput = z.object({
   sourcePath: videoSourcePathSchema,
   componentIds: z.array(componentIdSchema).min(1).max(12),
+  instances: z.array(hyperframesVideoInstanceSchema).min(1).max(48).optional(),
 }).strict();
 
 export const videoComponentCheckInput = z.object({
@@ -86,7 +89,122 @@ type InstalledComponent = {
   written: string[];
   snippet: string;
   motionContract: MotionContract;
+  motionRecipe?: z.infer<typeof hyperframesMotionRecipeSchema>;
+  variables?: z.infer<typeof registryManifestSchema>["variables"];
 };
+
+function htmlAttribute(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+/** Resolve all inputs before copying files; never silently truncate user content. */
+async function resolveRecipeInstance(
+  workspace: Workspace,
+  projectRelative: string,
+  instance: z.infer<typeof hyperframesVideoInstanceSchema>,
+  manifest: z.infer<typeof registryManifestSchema>,
+) {
+  const recipe = manifest.motionRecipe;
+  if (!recipe) throw new ApiError(400, "video_recipe_unavailable", `${instance.componentId} has no authored semantic recipe; use the existing manual composition path.`);
+  const variables = z.array(hyperframesEffectVariableSchema).parse(manifest.variables);
+  const values: Record<string, string | number | boolean> = {};
+  for (const key of Object.keys(instance.values)) {
+    if (key === "motionCueTimes" || !variables.some(variable => variable.id === key)) {
+      throw new ApiError(400, "invalid_video_recipe_values", `Unknown or reserved recipe variable: ${key}`);
+    }
+  }
+  for (const variable of variables) {
+    if (variable.id === "motionCueTimes") continue;
+    const value = instance.values[variable.id];
+    const valid = variable.type === "number"
+      ? typeof value === "number" && (variable.min === undefined || value >= variable.min) && (variable.max === undefined || value <= variable.max)
+      : variable.type === "boolean"
+      ? typeof value === "boolean"
+      : typeof value === "string" && value.trim().length > 0
+        && (variable.type !== "string" || variable.maxLength === undefined || value.length <= variable.maxLength)
+        && (variable.type !== "enum" || variable.options.some(option => option.value === value))
+        && (variable.type !== "color" || /^#[a-f0-9]{6}$/iu.test(value));
+    if (!valid || value === undefined) throw new ApiError(400, "invalid_video_recipe_values", `Supply a valid ${variable.id} for ${instance.componentId}; content is never replaced by demo defaults.`);
+    values[variable.id] = value;
+    if (variable.id === "mediaUrl") {
+      if (typeof value !== "string" || !value.startsWith("assets/") || posix.normalize(value) !== value || value.includes("\\")) throw new ApiError(400, "invalid_video_recipe_asset", "Recipe media must be an existing project-relative assets/ file");
+      const asset = resolveWorkspaceFile(workspace.path, `${projectRelative}/${value}`);
+      const file = await stat(asset.absolutePath).catch(() => null);
+      if (!file?.isFile() || file.size === 0) throw new ApiError(400, "video_recipe_asset_missing", `Missing or empty recipe asset: ${value}`);
+    }
+  }
+  for (const [key, limit] of Object.entries(recipe.textLimits ?? {})) {
+    const text = values[key];
+    const lines = typeof text === "string" ? text.replaceAll("\\n", "\n").split("\n") : [];
+    if (!lines.length || lines.length > limit.maxLines || lines.some(line => line.length > limit.maxLineLength)) {
+      throw new ApiError(400, "video_recipe_text_overflow", `${key} exceeds ${limit.maxLines} lines or ${limit.maxLineLength} characters per line. ${recipe.usage.fallback.overflow}`);
+    }
+  }
+  let itemCount: number | undefined;
+  if (recipe.capacity) {
+    const capacity = recipe.capacity;
+    const raw = String(values[capacity.variable]).replaceAll("\\n", "\n");
+    const parts = raw.split(capacity.separator.replaceAll("\\n", "\n"));
+    const count = capacity.variable === "code" ? parts.length : parts.filter(part => part.trim()).length;
+    if (count < recipe.capacity.minItems || count > recipe.capacity.maxItems) throw new ApiError(400, "video_recipe_capacity_exceeded", `${instance.componentId} supports ${recipe.capacity.minItems}–${recipe.capacity.maxItems} items; ${recipe.usage.fallback.overflow}`);
+    if (capacity.fieldSeparator) {
+      for (const item of parts.filter(part => part.trim())) {
+        const fields = item.split(capacity.fieldSeparator).map(field => field.trim());
+        const numeric = capacity.numericField;
+        if (fields.length !== capacity.fieldsPerItem || fields.some(field => !field || (capacity.maxFieldLength !== undefined && field.length > capacity.maxFieldLength))
+          || (numeric !== undefined && (!/^\d+(?:\.\d+)?$/.test(fields[numeric] ?? "") || !Number.isFinite(Number(fields[numeric]))))) {
+          throw new ApiError(400, "invalid_video_recipe_item", `Malformed ${recipe.capacity.variable}: ${recipe.usage.inputRules[recipe.capacity.variable]}`);
+        }
+      }
+    }
+    itemCount = count;
+  }
+  for (const key of ["highlight", "focus", "active", "activeStep", "focusLine"]) {
+    const value = values[key];
+    if (typeof value === "number" && (!Number.isInteger(value) || (itemCount !== undefined && value > itemCount))) {
+      throw new ApiError(400, "invalid_video_recipe_focus", "Focus must identify an existing item; do not clamp missing content.");
+    }
+  }
+  if (instance.componentId === "comparison-matrix" && String(values.options).split("|").filter(value => value.trim()).length !== 2) {
+    throw new ApiError(400, "invalid_video_recipe_options", "A comparison matrix requires exactly two named alternatives.");
+  }
+  const activeEvents = recipe.events.filter(event => itemCount === undefined || !event.id.startsWith("step-") || Number(event.id.slice(5)) <= itemCount);
+  for (const key of Object.keys(instance.cueTimes ?? {})) {
+    if (!activeEvents.some(event => event.id === key)) throw new ApiError(400, "invalid_video_recipe_cues", `Unknown or unused semantic event: ${key}`);
+  }
+  const events = activeEvents.map((event, index) => {
+    const previous = activeEvents[index - 1];
+    const defaultTime = event.id === "resolve" && previous && !instance.cueTimes
+      ? Math.min(event.time, previous.time + previous.duration + MAX_STILL_SECONDS)
+      : event.time;
+    return { ...event, time: instance.cueTimes?.[event.id] ?? defaultTime };
+  });
+  const last = events.at(-1);
+  if (!last || last.time + last.duration > instance.duration - recipe.minHoldSeconds
+    || instance.duration - last.time - last.duration > MAX_STILL_SECONDS
+    || events[0]!.time < .65
+    || events.some((event, index) => index > 0 && (event.time < events[index - 1]!.time + events[index - 1]!.duration
+      || event.time - events[index - 1]!.time - events[index - 1]!.duration > MAX_STILL_SECONDS))) {
+    throw new ApiError(400, "invalid_video_recipe_cues", "Semantic events must be ordered, non-overlapping, and leave the authored readable final hold. Bind measured cues or split the scene; do not stretch narration.");
+  }
+  if (instance.transition !== "cut" || instance.transitionDuration !== 0) {
+    throw new ApiError(400, "invalid_video_recipe_transition", "Instantiate with a zero-duration cut; apply an incoming preset through mutate_motion afterward instead of declaring an unimplemented transition");
+  }
+  const cueTimes = Object.fromEntries(events.map(event => [event.id, event.time]));
+  values.motionCueTimes = JSON.stringify(cueTimes);
+  const beats = [{
+    start: 0, end: events[0]!.time, intent: "Establish the scene", focus: "Context",
+    action: "Orient before semantic development", result: "Readable context",
+    targets: ["[data-composition-id]"], animation: `component:${instance.componentId}`,
+    motion: { start: 0, end: .65 },
+  }, ...events.map((event, index) => ({
+    start: event.time, end: events[index + 1]?.time ?? instance.duration,
+    intent: event.action, focus: event.target, action: event.action, result: index === events.length - 1 ? "Resolved readable result" : "Evidence remains visible",
+    targets: [event.target], animation: `component:${instance.componentId}`,
+    motion: { start: event.time, end: event.time + event.duration },
+  }))];
+  return { instance, values, beats, recipe, cueTimes };
+}
 
 type MotionContract = {
   version: 2;
@@ -207,7 +325,8 @@ function attribute(tag: string, name: string): string {
 }
 
 function normalizeInstalledComposition(html: string): string {
-  const rootTag = /<[a-z][^>]*\bdata-composition-id\s*=\s*(["']).*?\1[^>]*>/iu;
+  const rootTag = openingTags(html).find(tag => attribute(tag, "data-composition-id"));
+  if (!rootTag) return html;
   return html.replace(rootTag, tag => {
     const duration = attribute(tag, "data-duration");
     let normalized = tag.replace(/\sdata-(?:start|end|duration|track-index)\s*=\s*(["']).*?\1/giu, "");
@@ -219,6 +338,11 @@ function normalizeInstalledComposition(html: string): string {
   });
 }
 
+function openingTags(html: string): string[] {
+  // A quoted JSON/default/code value may legitimately contain > or =>.
+  return html.match(/<[a-z](?:[^"'<>]|"[^"]*"|'[^']*')*>/giu) ?? [];
+}
+
 export async function installVideoComponents(workspace: Workspace, raw: unknown) {
   const input = videoComponentInstallInput.parse(raw);
   const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
@@ -226,11 +350,29 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
   if (!sourceFile?.isFile()) throw new ApiError(404, "video_source_not_found", "The active video index.html does not exist");
   const projectRelative = posix.dirname(source.relativePath);
   const root = registryRoot();
+  const manifests = new Map<string, Awaited<ReturnType<typeof readRegistryComponent>>>();
+  const readComponent = async (componentId: string) => {
+    const cached = manifests.get(componentId);
+    if (cached) return cached;
+    const component = await readRegistryComponent(root, componentId);
+    manifests.set(componentId, component);
+    return component;
+  };
   const installed = new Map<string, InstalledComponent>();
+  const instanceIds = new Set<string>();
+  const resolvedInstances = [];
+  for (const instance of input.instances ?? []) {
+    if (!input.componentIds.includes(instance.componentId) || instanceIds.has(instance.sceneId)) {
+      throw new ApiError(400, "invalid_video_recipe_instance", "Every instance needs a unique sceneId and a selected componentId");
+    }
+    instanceIds.add(instance.sceneId);
+    const { manifest } = await readComponent(instance.componentId);
+    resolvedInstances.push(await resolveRecipeInstance(workspace, projectRelative, instance, manifest));
+  }
 
   const install = async (componentId: string, requested: boolean): Promise<void> => {
     if (installed.has(componentId)) return;
-    const { directory, manifest } = await readRegistryComponent(root, componentId).catch((error: unknown) => {
+    const { directory, manifest } = await readComponent(componentId).catch((error: unknown) => {
       if (error instanceof ApiError) throw error;
       throw new ApiError(404, "video_component_not_found", `Video component ${componentId} is not available in the bundled registry`);
     });
@@ -279,13 +421,44 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
       written,
       snippet: componentSnippet(componentId, primaryTarget, motionContract),
       motionContract,
+      ...(manifest.motionRecipe ? { motionRecipe: manifest.motionRecipe } : {}),
+      ...(manifest.variables ? { variables: manifest.variables } : {}),
     });
   };
 
   for (const componentId of [...new Set(input.componentIds)]) await install(componentId, true);
+  const instances = [];
+  for (const resolved of resolvedInstances) {
+    const { instance, values, beats, recipe } = resolved;
+    const component = installed.get(instance.componentId)!;
+    const target = attribute(component.snippet, "data-composition-src");
+    const copied = resolveWorkspaceFile(workspace.path, `${projectRelative}/${target}`);
+    if (!(await readFile(copied.absolutePath, "utf8")).includes('data-ipw-motion-recipe="1"')) {
+      throw new ApiError(409, "video_recipe_copy_outdated", "The existing project component is not recipe-enabled. Preserve its edits; explicitly migrate it or instantiate in a new project.");
+    }
+    const attrs = {
+      id: instance.sceneId, class: "scene clip", "data-ipw-scene": "true",
+      "data-composition-id": `${instance.componentId}-${instance.sceneId}`,
+      "data-composition-src": target, "data-ipw-registry-component": instance.componentId,
+      "data-ipw-timing-owner": "host", "data-motion-pattern": recipe.pattern,
+      "data-ipw-timing-source": instance.timingSource,
+      "data-start": String(instance.start), "data-duration": String(instance.duration),
+      "data-track-index": String(instance.track),
+      "data-variable-values": JSON.stringify(values), "data-ipw-beats": JSON.stringify(beats),
+      "data-ipw-transition-in": instance.transition,
+      "data-ipw-transition-duration": String(instance.transitionDuration),
+      "data-ipw-transition-intent": instance.transitionIntent,
+    };
+    instances.push({
+      sceneId: instance.sceneId,
+      snippet: `<section ${Object.entries(attrs).map(([key, value]) => `${key}="${htmlAttribute(value)}"`).join(" ")}></section>`,
+      cueTimes: resolved.cueTimes,
+    });
+  }
   return {
     sourcePath: source.relativePath,
     components: [...installed.values()],
+    instances,
     instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, add the supported incoming transition, duration, and one exact intent value: continue, topic-change, time-change, location-change, compare, reveal, or closure. The client runs the aggregate delivery validator after the turn.",
   };
 }
@@ -433,8 +606,8 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const source = resolveWorkspaceFile(workspace.path, input.sourcePath);
   const html = await readFile(source.absolutePath, "utf8");
   const projectRelative = posix.dirname(source.relativePath);
-  const openingTags = html.match(/<[^/!][^>]*>/gu) ?? [];
-  const sceneTags = openingTags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
+  const tags = openingTags(html);
+  const sceneTags = tags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
   const issues: Array<{ code: string; sceneId?: string; message: string }> = [];
   const repairPlan: Repair[] = [];
   const scenes = [];
@@ -442,7 +615,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const timedScenes: Array<{ sceneId: string; start: number; end: number; transition: string; transitionDuration: number | null; transitionIntent: string }> = [];
   let hasSpatialCameraRecipe = false;
 
-  for (const tag of openingTags) {
+  for (const tag of tags) {
     const classes = classTokens(tag);
     if (classes.has("scene") && classes.has("clip") && !/\bdata-ipw-scene(?:\s|=|>)/iu.test(tag)) {
       const sceneId = attribute(tag, "id") || "unnamed-scene";
@@ -532,15 +705,35 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         } else {
           componentInstalled = true;
           const componentHtml = await readFile(installed.absolutePath, "utf8");
-          const rootTag = componentHtml.match(/<[a-z][^>]*\bdata-composition-id\s*=\s*(["']).*?\1[^>]*>/iu)?.[0] ?? "";
-          const nativeDuration = numberAttribute(rootTag, "data-ipw-native-duration");
+          const rootTag = openingTags(componentHtml).find(tag => attribute(tag, "data-composition-id")) ?? "";
+          let nativeDuration = numberAttribute(rootTag, "data-ipw-native-duration");
+          let semanticRecipeValidated = false;
+          if (componentHtml.includes('data-ipw-motion-recipe="1"') && start !== null && duration !== null) {
+            try {
+              const { manifest } = await readRegistryComponent(registryRoot(), componentId);
+              if (manifest.motionRecipe) {
+                const values = z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])).parse(JSON.parse(variableValues));
+                const cueTimes = z.record(z.string(), z.number().nonnegative()).parse(JSON.parse(String(values.motionCueTimes ?? "{}")));
+                const instance = hyperframesVideoInstanceSchema.parse({
+                  sceneId, componentId, start, duration, timingSource,
+                  values: Object.fromEntries(Object.entries(values).filter(([key]) => key !== "motionCueTimes")),
+                  cueTimes,
+                });
+                const resolved = await resolveRecipeInstance(workspace, projectRelative, instance, manifest);
+                nativeDuration = resolved.beats.at(-1)!.motion.end;
+                semanticRecipeValidated = true;
+              }
+            } catch (error) {
+              issues.push({ code: "invalid_semantic_recipe_instance", sceneId, message: error instanceof Error ? error.message : "Invalid semantic recipe values or cues" });
+            }
+          }
           if (!rootTag || attribute(rootTag, "data-ipw-timing-owner") !== "host") {
             issues.push({ code: "component_timing_not_host_owned", sceneId, message: `${sceneId} uses an older component copy whose internal root can end before the parent scene. Reinstall ${componentId}.` });
           }
           if (["data-start", "data-end", "data-duration", "data-track-index"].some(name => attribute(rootTag, name))) {
             issues.push({ code: "component_has_internal_clip_timing", sceneId, message: `${sceneId} component source must not carry an independent clip window.` });
           }
-          if (nativeDuration !== null && duration !== null && duration - nativeDuration > 2) {
+          if (!semanticRecipeValidated && nativeDuration !== null && duration !== null && duration - nativeDuration > 2) {
             const laterMotion = beatMap.beats.some(beat => beat.start >= nativeDuration - 0.05 && !beat.animation.startsWith("hold:") && !beat.animation.startsWith("component:"));
             if (!laterMotion) {
               issues.push({ code: "component_motion_ends_too_early", sceneId, message: `${sceneId} lasts ${duration}s but ${componentId} resolves at ${nativeDuration}s. Add a later preset/custom beat or shorten the scene; a long implicit hold is not accepted.` });

@@ -10,6 +10,15 @@ function source(path: string) {
 }
 
 describe("ordinary dialog close behavior", () => {
+  test("renders portalled selects and popovers above dialog content and backdrop", () => {
+    const dialog = readFileSync(join(appSourceRoot, "components/ui/dialog.tsx"), "utf8");
+    const select = readFileSync(join(appSourceRoot, "components/ui/select.tsx"), "utf8");
+    const popover = readFileSync(join(appSourceRoot, "components/ui/popover.tsx"), "utf8");
+    expect(dialog).toContain("z-[80]");
+    expect(select).toContain('cn("isolate z-[90]", positionerClassName)');
+    expect(popover).toContain('className="isolate z-[90] outline-none"');
+  });
+
   test("keeps close controls available while background work continues", () => {
     const pluginImport = source("domains/settings/plugin-package-import-modal.tsx");
     const environment = source("domains/settings/pages/environment-view.tsx");

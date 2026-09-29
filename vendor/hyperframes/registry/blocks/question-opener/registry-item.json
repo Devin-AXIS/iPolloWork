@@ -81,6 +81,89 @@
       "default": "01 / OPEN",
       "maxLength": 24,
       "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
     }
-  ]
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "events": [
+      {
+        "id": "question",
+        "target": ".question-title",
+        "time": 1.2,
+        "duration": 0.7,
+        "action": "Reveal one answerable question"
+      },
+      {
+        "id": "context",
+        "target": ".question-context",
+        "time": 3.1,
+        "duration": 0.65,
+        "action": "Reveal why the question matters"
+      },
+      {
+        "id": "resolve",
+        "target": ".question",
+        "time": 6.6,
+        "duration": 0.55,
+        "action": "Settle the question before answering"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Open with one answerable question and enough context to explain why it matters."
+      ],
+      "avoidWhen": [
+        "Do not use multiple unrelated questions, misleading suspense or a conclusion disguised as a question."
+      ],
+      "inputRules": {
+        "eyebrow": "Supply real eyebrow within the declared character limit. Do not substitute demo text.",
+        "question": "Supply real question within the declared character limit. Do not substitute demo text.",
+        "context": "Supply real context within the declared character limit. Do not substitute demo text.",
+        "chapter": "Supply real chapter within the declared character limit. Do not substitute demo text."
+      },
+      "readingOrder": [
+        "Identify the topic",
+        "Read one question",
+        "Read its context",
+        "Hold the question before the answer"
+      ],
+      "cueBindings": {
+        "question": "When the corresponding narration clause begins: Reveal one answerable question. Use an actual measured scene-relative cue when available.",
+        "context": "When the corresponding narration clause begins: Reveal why the question matters. Use an actual measured scene-relative cue when available.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input; if unavailable use an honest custom treatment or report the missing content, not demo defaults.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose a component whose narrative job fits, or author a finite seek-safe custom scene. Recipe reuse is a default, not a requirement to force-fit content."
+      },
+      "example": {
+        "values": {
+          "eyebrow": "运河边的夜校",
+          "question": "晚上，居民还能去哪里坐一会儿？",
+          "context": "从附近公共空间的开放时间说起。",
+          "chapter": "01 / 问题"
+        },
+        "narration": "晚上，居民还能去哪里坐一会儿？我们先看附近公共空间的开放时间。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify the topic → Read one question → Read its context → Hold the question before the answer. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ]
+    }
+  }
 }

@@ -40,7 +40,17 @@ const LEGACY_COSYVOICE_V3_PRESET_MIGRATIONS: Record<string, string> = {
 
 type JsonRecord = Record<string, unknown>;
 
-const voiceoverAudioCache = new Map<string, Buffer>();
+type VoiceoverWordTiming = {
+  text: string;
+  beginIndex: number;
+  endIndex: number;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+type CachedVoiceover = { audio: Buffer; wordTimings: VoiceoverWordTiming[] };
+
+const voiceoverAudioCache = new Map<string, CachedVoiceover>();
 let voiceoverAudioCacheBytes = 0;
 
 function voiceoverAudioCacheKey(input: {
@@ -79,20 +89,20 @@ function voiceoverAudioCacheKey(input: {
 }
 
 function readCachedVoiceoverAudio(key: string) {
-  const audio = voiceoverAudioCache.get(key);
-  if (!audio) return null;
+  const cached = voiceoverAudioCache.get(key);
+  if (!cached) return null;
   voiceoverAudioCache.delete(key);
-  voiceoverAudioCache.set(key, audio);
-  return audio;
+  voiceoverAudioCache.set(key, cached);
+  return cached;
 }
 
-function cacheVoiceoverAudio(key: string, audio: Buffer) {
-  if (audio.byteLength > MAX_VOICEOVER_AUDIO_CACHE_BYTES) return;
+function cacheVoiceoverAudio(key: string, cached: CachedVoiceover) {
+  if (cached.audio.byteLength > MAX_VOICEOVER_AUDIO_CACHE_BYTES) return;
   const existing = voiceoverAudioCache.get(key);
-  if (existing) voiceoverAudioCacheBytes -= existing.byteLength;
+  if (existing) voiceoverAudioCacheBytes -= existing.audio.byteLength;
   voiceoverAudioCache.delete(key);
-  voiceoverAudioCache.set(key, audio);
-  voiceoverAudioCacheBytes += audio.byteLength;
+  voiceoverAudioCache.set(key, cached);
+  voiceoverAudioCacheBytes += cached.audio.byteLength;
   while (
     voiceoverAudioCache.size > MAX_VOICEOVER_AUDIO_CACHE_ENTRIES
     || voiceoverAudioCacheBytes > MAX_VOICEOVER_AUDIO_CACHE_BYTES
@@ -100,7 +110,7 @@ function cacheVoiceoverAudio(key: string, audio: Buffer) {
     const oldest = voiceoverAudioCache.entries().next().value;
     if (!oldest) break;
     voiceoverAudioCache.delete(oldest[0]);
-    voiceoverAudioCacheBytes -= oldest[1].byteLength;
+    voiceoverAudioCacheBytes -= oldest[1].audio.byteLength;
   }
 }
 
@@ -474,9 +484,12 @@ export function avatarTimelineContext(html: string) {
   return { content: visibleTextFromHtml(source).slice(0, 4000), clips };
 }
 
-// Read only the two delivery scalars using the canonical storyboard's first-colon
-// and paired-quote rules; this is not a second scene/script parser.
-async function readStoryboardMusicPlan(path: string) {
+type StoryboardDeliveryFrame = { durationSeconds: number; voiceover: string };
+type StoryboardDeliveryPlan = { music: { prompt: string; asset: string }; frames: StoryboardDeliveryFrame[] };
+
+// Read only delivery-owned fields using the canonical storyboard's first-colon
+// and paired-quote rules; authoring remains owned by the shared storyboard parser.
+async function readStoryboardDeliveryPlan(path: string): Promise<StoryboardDeliveryPlan | undefined> {
   const file = await open(path, "r").catch((error: unknown) => {
     if (isRecord(error) && error.code === "ENOENT") return null;
     throw error;
@@ -488,14 +501,31 @@ async function readStoryboardMusicPlan(path: string) {
     const lines = buffer.subarray(0, bytesRead).toString("utf8").trimStart().split(/\r?\n/);
     const end = lines.findIndex((line, index) => index > 0 && line.trim() === "---");
     if (lines[0]?.trim() !== "---" || end < 0) throw new ApiError(400, "invalid_storyboard_music_plan", "STORYBOARD.md needs a closed frontmatter block within its first 256 KiB and an explicit music_prompt decision.");
-    const plan = { prompt: "", asset: "" };
+    const plan: StoryboardDeliveryPlan = { music: { prompt: "", asset: "" }, frames: [] };
     for (const line of lines.slice(1, end)) {
       const colon = line.indexOf(":");
       const key = line.slice(0, colon).trim().toLowerCase().replace(/_/g, "");
       if (colon < 0 || (key !== "musicprompt" && key !== "musicasset")) continue;
       const value = line.slice(colon + 1).trim();
-      plan[key === "musicprompt" ? "prompt" : "asset"] = /^("[\s\S]*"|'[\s\S]*')$/.test(value) ? value.slice(1, -1) : value;
+      plan.music[key === "musicprompt" ? "prompt" : "asset"] = /^("[\s\S]*"|'[\s\S]*')$/.test(value) ? value.slice(1, -1) : value;
     }
+    let frame: Partial<StoryboardDeliveryFrame> | null = null;
+    for (const line of lines.slice(end + 1)) {
+      if (/^##\s+Frame\s+\d+\b/i.test(line.trim())) {
+        if (frame?.durationSeconds != null) plan.frames.push({ durationSeconds: frame.durationSeconds, voiceover: frame.voiceover ?? "" });
+        frame = {};
+        continue;
+      }
+      if (!frame) continue;
+      const match = /^\s*-\s*(duration|voiceover)\s*:\s*(.*)$/i.exec(line);
+      if (!match) continue;
+      const value = match[2]!.trim().replace(/^("([\s\S]*)"|'([\s\S]*)')$/, "$2$3");
+      if (match[1]!.toLowerCase() === "duration") {
+        const duration = /^(\d+(?:\.\d+)?)\s*s(?:ec(?:ond)?s?)?$/i.exec(value);
+        if (duration) frame.durationSeconds = Number(duration[1]);
+      } else frame.voiceover = value;
+    }
+    if (frame?.durationSeconds != null) plan.frames.push({ durationSeconds: frame.durationSeconds, voiceover: frame.voiceover ?? "" });
     return plan;
   } finally { await file.close(); }
 }
@@ -504,6 +534,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];
   musicPlan?: { prompt: string; asset: string };
+  storyboardFrames?: StoryboardDeliveryFrame[];
   requirements?: Partial<VideoDeliveryRequirements>;
 } = {}) {
   const epsilon = 0.001;
@@ -582,6 +613,37 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       start: finiteTimelineNumber(node, "data-start"),
       duration: finiteTimelineNumber(node, "data-duration"),
     }));
+  const storyboardFrames = options.storyboardFrames;
+  if (storyboardFrames) {
+    if (storyboardFrames.length !== orderedScenes.length) {
+      issues.push({
+        code: "storyboard_scene_count_mismatch",
+        message: `STORYBOARD.md defines ${storyboardFrames.length} frames, but index.html contains ${orderedScenes.length} timed scenes. Rebuild the composition from the current storyboard.`,
+      });
+    }
+    const orderedVoiceovers = [...voiceovers]
+      .filter((voiceover): voiceover is typeof voiceover & { start: number } => voiceover.start != null)
+      .sort((left, right) => left.start - right.start);
+    for (let index = 0; index < Math.min(storyboardFrames.length, orderedScenes.length); index += 1) {
+      const frame = storyboardFrames[index]!;
+      const scene = orderedScenes[index]!;
+      if (Math.abs(frame.durationSeconds - scene.duration) > 0.05) {
+        issues.push({
+          code: "storyboard_scene_duration_mismatch",
+          message: `Storyboard frame ${index + 1} is ${frame.durationSeconds} seconds, but its rendered scene is ${scene.duration} seconds.`,
+          ...(scene.id ? { sceneId: scene.id } : {}),
+        });
+      }
+      const voiceover = orderedVoiceovers[index];
+      if (frame.voiceover && (!voiceover || normalizeSceneText(decodeHtmlText(voiceover.sceneText)) !== normalizeSceneText(frame.voiceover))) {
+        issues.push({
+          code: "storyboard_voiceover_mismatch",
+          message: `Storyboard frame ${index + 1} narration does not match the synthesized narration metadata in index.html.`,
+          ...(scene.id ? { sceneId: scene.id } : {}),
+        });
+      }
+    }
+  }
   const captions = nodes.filter((node) => node.attributes.get("data-ipw-caption") === "true");
   const bgmNodes = nodes.filter((node) => node.tagName === "audio"
     && (node.attributes.has("data-timeline-role")
@@ -827,6 +889,22 @@ export const MEDIA_EXTENSION_ACTIONS = [
       properties: {
         sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
         componentIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, description: "Registry component IDs selected from core-v1-video/motion/component-map.md." },
+        instances: { type: "array", minItems: 1, maxItems: 48, description: "Optional ready-to-mount semantic recipe scenes. Select by recipeSummary.useWhen/avoidWhen, then read only the selected manifest's variables and motionRecipe.usage (inputRules, readingOrder, cueBindings, fallback, acceptance). Each instance supplies sceneId, componentId, start, duration, timingSource, values (all real content variables), optional cueTimes (event IDs to measured scene-relative seconds), track, transition, transitionDuration and transitionIntent. The host validates capacity, assets and ordered cues, then returns escaped placeholder-free instances[].snippet without overwriting index.html.", items: {
+          type: "object",
+          properties: {
+            sceneId: { type: "string" }, componentId: { type: "string" },
+            start: { type: "number", minimum: 0 }, duration: { type: "number", exclusiveMinimum: 0, maximum: 120 },
+            track: { type: "integer", minimum: 0 },
+            values: { type: "object", additionalProperties: { type: ["string", "number", "boolean"] } },
+            cueTimes: { type: "object", additionalProperties: { type: "number", minimum: 0 } },
+            timingSource: { type: "string", enum: ["voiceover", "estimated-reading", "visual-cue", "music", "media"] },
+            transition: { type: "string", enum: ["cut", "preset:element.enter.fade", "preset:element.enter.slide", "preset:element.enter.scale"] },
+            transitionDuration: { type: "number", minimum: 0 },
+            transitionIntent: { type: "string", enum: ["continue", "topic-change", "time-change", "location-change", "compare", "reveal", "closure"] },
+          },
+          required: ["sceneId", "componentId", "start", "duration", "timingSource", "values"],
+          additionalProperties: false,
+        } },
       },
       required: ["sourcePath", "componentIds"],
       additionalProperties: false,
@@ -855,6 +933,8 @@ export const MEDIA_EXTENSION_ACTIONS = [
       properties: {
         sourcePath: { type: "string", description: "Exact current composition path: video/<project-id>/index.html, relative to this workspace." },
         operationKey: { type: "string", description: "Stable key for this export attempt, reused for start/status/continuation. Use a new key only for a new explicitly requested export or after resolving an error." },
+        review: { type: "boolean", description: "When true, sample real rendered pixels at establish, develop, and land positions for every timed scene." },
+        reviewOnly: { type: "boolean", description: "Render a smaller draft for pixel review and remove its temporary MP4 after sampling." },
       },
       required: ["sourcePath", "operationKey"], additionalProperties: false,
     },
@@ -892,7 +972,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize_workspace_file",
     title: "Synthesize speech to a workspace file",
-    description: "Built-in iPolloWork CosyVoice action. Create an MP3 voiceover without an external CLI, save it atomically inside the active workspace, and return its measured frame duration for video synchronization.",
+    description: "Built-in iPolloWork CosyVoice action. Create an MP3 voiceover without an external CLI, save provider word timings beside it, and return measured timing for video synchronization.",
     inputSchema: {
       type: "object",
       properties: {
@@ -919,7 +999,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "speech_synthesize_workspace_batch",
     title: "Synthesize scene voiceovers to workspace files",
-    description: "Built-in iPolloWork CosyVoice action. Without installing an external CLI, create a bounded batch of scene MP3 voiceovers, synthesize up to three scenes concurrently, and return ordered non-overlapping timeline allocations.",
+    description: "Built-in iPolloWork CosyVoice action. Without installing an external CLI, create a bounded batch of scene MP3 voiceovers and provider word-timing sidecars, synthesize up to three scenes concurrently, and return ordered non-overlapping timeline allocations.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1361,6 +1441,68 @@ async function downloadSynthesizedAudio(url: string): Promise<Buffer> {
   }
 }
 
+function wordTimingsFromProviderPayload(payload: unknown): VoiceoverWordTiming[] {
+  if (!isRecord(payload) || !isRecord(payload.output) || !isRecord(payload.output.sentence) || !Array.isArray(payload.output.sentence.words)) return [];
+  return payload.output.sentence.words.flatMap((word) => {
+    if (!isRecord(word)) return [];
+    const text = readStringField(word, "text");
+    const beginIndex = readOptionalNumber(word, "begin_index");
+    const endIndex = readOptionalNumber(word, "end_index");
+    const beginTime = readOptionalNumber(word, "begin_time");
+    const endTime = readOptionalNumber(word, "end_time");
+    if (!text || beginIndex === undefined || endIndex === undefined || beginTime === undefined || endTime === undefined) return [];
+    return [{ text, beginIndex, endIndex, startSeconds: roundVoiceoverTime(beginTime / 1_000), endSeconds: roundVoiceoverTime(endTime / 1_000) }];
+  });
+}
+
+async function requestStreamingVoiceover(input: {
+  apiKey: string;
+  url: string;
+  body: JsonRecord;
+}): Promise<CachedVoiceover> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), BAILIAN_REQUEST_TIMEOUT_MS);
+  let response: Response;
+  try {
+    response = await providerFetch(input.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${input.apiKey}`, "Content-Type": "application/json", "X-DashScope-SSE": "enable" },
+      body: JSON.stringify(input.body),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new ApiError(504, "bailian_timeout", "Alibaba Model Studio did not respond before the request timed out.");
+    if (isApiError(error)) throw error;
+    throw new ApiError(502, "bailian_unreachable", "Could not reach Alibaba Model Studio. Check the network and try again.");
+  } finally {
+    clearTimeout(timeout);
+  }
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/event-stream")) {
+    const payload: unknown = await response.json().catch(() => null);
+    if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", providerMessage(payload) || `Alibaba Model Studio request failed (HTTP ${response.status}).`);
+    return { audio: await downloadSynthesizedAudio(synthesizedAudioUrl(payload)), wordTimings: wordTimingsFromProviderPayload(payload) };
+  }
+  const stream = await response.text();
+  if (!response.ok) throw new ApiError(response.status, "bailian_request_failed", `Alibaba Model Studio request failed (HTTP ${response.status}).`);
+  const payloads = stream.split(/\r?\n\r?\n/).flatMap((event) => {
+    const data = event.split(/\r?\n/).filter((line) => line.startsWith("data:")).map((line) => line.slice(5).trim()).join("");
+    if (!data || data === "[DONE]") return [];
+    try { return [JSON.parse(data) as unknown]; } catch { return []; }
+  });
+  const wordTimings = payloads.flatMap(wordTimingsFromProviderPayload);
+  const chunks = payloads.flatMap((payload) => {
+    if (!isRecord(payload) || !isRecord(payload.output) || !isRecord(payload.output.audio)) return [];
+    const data = readStringField(payload.output.audio, "data");
+    return data ? [Buffer.from(data, "base64")] : [];
+  });
+  const audio = chunks.length
+    ? Buffer.concat(chunks)
+    : await downloadSynthesizedAudio(synthesizedAudioUrl(payloads.at(-1)));
+  if (!audio.byteLength || audio.byteLength > MAX_SYNTHESIZED_AUDIO_BYTES) throw new ApiError(502, "bailian_audio_invalid", "Alibaba Model Studio returned invalid streaming audio.");
+  return { audio, wordTimings };
+}
+
 function mp3DurationSeconds(bytes: Uint8Array): number {
   let offset = 0;
   if (bytes.length >= 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
@@ -1423,10 +1565,12 @@ type SynthesizedWorkspaceVoiceover = {
   scene: WorkspaceVoiceoverSceneInput;
   sourcePath: string;
   absolutePath: string;
+  timingSourcePath: string;
   durationSeconds: number;
   bytes: number;
   model: string;
   voice: string;
+  wordTimings: VoiceoverWordTiming[];
 };
 
 function workspaceVoiceoverSceneInput(value: unknown): WorkspaceVoiceoverSceneInput {
@@ -1512,38 +1656,51 @@ async function synthesizeWorkspaceVoiceover(input: {
     sampleRate: input.sampleRate,
     ...input.controls,
   });
-  let audio = readCachedVoiceoverAudio(cacheKey);
-  if (!audio) {
-    const providerResponse = await requestProviderJson({
+  let synthesized = readCachedVoiceoverAudio(cacheKey);
+  if (!synthesized) {
+    synthesized = await requestStreamingVoiceover({
       apiKey: input.apiKey,
       url: endpoint(input.baseUrl, "/api/v1/services/audio/tts/SpeechSynthesizer"),
       body: {
         model: input.model,
         input: speechSynthesisInput(input.scene.text, input.voice, "mp3", input.sampleRate, input.controls),
+        parameters: { word_timestamp_enabled: true },
       },
     });
-    audio = await downloadSynthesizedAudio(synthesizedAudioUrl(providerResponse));
-    cacheVoiceoverAudio(cacheKey, audio);
+    cacheVoiceoverAudio(cacheKey, synthesized);
   }
+  const audio = synthesized.audio;
   const workspace = workspaceForContext(input.config, input.context);
   const destination = resolveWorkspaceFile(workspace.path, input.scene.outputPath);
+  const timingDestination = resolveWorkspaceFile(workspace.path, input.scene.outputPath.replace(/\.mp3$/i, ".timings.json"));
   const temporaryPath = `${destination.absolutePath}.${randomUUID()}.tmp`;
+  const temporaryTimingPath = `${timingDestination.absolutePath}.${randomUUID()}.tmp`;
+  let timingLinked = false;
   await mkdir(dirname(destination.absolutePath), { recursive: true });
   try {
     await writeFile(temporaryPath, audio, { flag: "wx" });
+    await writeFile(temporaryTimingPath, `${JSON.stringify({ alignment: synthesized.wordTimings.length ? "provider" : "unavailable", words: synthesized.wordTimings }, null, 2)}\n`, { flag: "wx" });
+    await link(temporaryTimingPath, timingDestination.absolutePath);
+    timingLinked = true;
     await link(temporaryPath, destination.absolutePath);
+  } catch (error) {
+    if (timingLinked) await rm(timingDestination.absolutePath, { force: true });
+    throw error;
   } finally {
     await rm(temporaryPath, { force: true });
+    await rm(temporaryTimingPath, { force: true });
   }
   return {
     scene: input.scene,
     controls: input.controls,
     sourcePath: destination.relativePath,
     absolutePath: destination.absolutePath,
+    timingSourcePath: timingDestination.relativePath,
     durationSeconds: mp3DurationSeconds(audio),
     bytes: audio.byteLength,
     model: input.model,
     voice: input.voice,
+    wordTimings: synthesized.wordTimings,
   };
 }
 
@@ -1567,6 +1724,7 @@ function workspaceVoiceoverResult(
   const audioElementSourcePath = relativeHtmlMediaSource(compositionPath, synthesized.sourcePath);
   return {
     sourcePath: synthesized.sourcePath,
+    timingSourcePath: synthesized.timingSourcePath,
     durationSeconds: synthesized.durationSeconds,
     bytes: synthesized.bytes,
     sceneId: scene.sceneId,
@@ -1595,6 +1753,8 @@ function workspaceVoiceoverResult(
       keepSceneVisibleUntilSeconds: timing.endSeconds,
     },
     model: synthesized.model,
+    wordTimings: synthesized.wordTimings,
+    wordTimingAlignment: synthesized.wordTimings.length ? "provider" : "unavailable",
     ...(synthesized.voice ? { voice: synthesized.voice } : {}),
   };
 }
@@ -1932,6 +2092,9 @@ export async function callMediaExtensionAction(
   }
 
   if (action === "voiceover_timeline_validate") {
+    if (isRecord(args) && args.requirements !== undefined && !isRecord(args.requirements)) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements must be a JSON object.");
+    }
     const workspace = workspaceForContext(config, context);
     const source = resolveWorkspaceFile(workspace.path, requireString(args, "sourcePath"));
     if (extname(source.absolutePath).toLowerCase() !== ".html") {
@@ -1942,12 +2105,28 @@ export async function callMediaExtensionAction(
     const mediaAssets = await listWorkspaceAssets(workspace.path, assetsDirectory, (path) => /\.(?:mp3|wav|m4a|aac|ogg|flac)$/i.test(path));
     const voiceoverAssets = mediaAssets.filter(isVoiceoverAssetPath);
     const requirementInput = readRecord(args, "requirements");
+    // Do not silently disable requested deliverables when a model stringifies JSON.
+    for (const key of ["voiceover", "captions", "bgm", "sfx"]) {
+      if (requirementInput[key] !== undefined && typeof requirementInput[key] !== "boolean") {
+        throw new ApiError(400, "invalid_video_delivery_requirements", `requirements.${key} must be a JSON boolean, not a string.`);
+      }
+    }
+    if (requirementInput.targetDurationSeconds !== undefined
+      && (typeof requirementInput.targetDurationSeconds !== "number" || !Number.isFinite(requirementInput.targetDurationSeconds) || requirementInput.targetDurationSeconds <= 0)) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements.targetDurationSeconds must be a positive JSON number.");
+    }
+    if (requirementInput.animationReferences !== undefined
+      && (!Array.isArray(requirementInput.animationReferences) || !requirementInput.animationReferences.every(item => typeof item === "string"))) {
+      throw new ApiError(400, "invalid_video_delivery_requirements", "requirements.animationReferences must be a JSON array of strings.");
+    }
     const originalHtml = await readFile(source.absolutePath, "utf8");
     const html = repairVideoTimelineRegistry(originalHtml);
     if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
+    const storyboardPlan = await readStoryboardDeliveryPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath);
     const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
-      musicPlan: await readStoryboardMusicPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath),
+      musicPlan: storyboardPlan?.music,
+      storyboardFrames: storyboardPlan?.frames,
       mediaAssets: mediaAssets.map((path) => posix.relative(sourceDirectory, path)),
       requirements: {
         voiceover: readOptionalBoolean(requirementInput, "voiceover") === true,
@@ -2110,7 +2289,10 @@ export async function callMediaExtensionAction(
           return synthesized;
         });
       } catch (error) {
-        await Promise.all(created.map((item) => rm(item.absolutePath, { force: true })));
+        await Promise.all(created.flatMap((item) => [
+          rm(item.absolutePath, { force: true }),
+          rm(resolveWorkspaceFile(workspace.path, item.timingSourcePath).absolutePath, { force: true }),
+        ]));
         throw error;
       }
       let cumulativeShiftSeconds = 0;

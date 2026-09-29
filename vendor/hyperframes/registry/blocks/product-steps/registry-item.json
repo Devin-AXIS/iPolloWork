@@ -83,7 +83,110 @@
       "max": 4,
       "step": 1,
       "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
     }
-  ]
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "steps",
+      "separator": "|",
+      "maxItems": 4,
+      "minItems": 1
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".steps-list .vc-item:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-2",
+        "target": ".steps-list .vc-item:nth-child(2)",
+        "time": 2.967,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-3",
+        "target": ".steps-list .vc-item:nth-child(3)",
+        "time": 4.733,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-4",
+        "target": ".steps-list .vc-item:nth-child(4)",
+        "time": 6.5,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "resolve",
+        "target": ".steps-list .vc-item",
+        "time": 7.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable result"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Demonstrate 1–4 ordered actions leading to one practical outcome."
+      ],
+      "avoidWhen": [
+        "Do not substitute abstract benefits for executable steps or invent features absent from the product."
+      ],
+      "inputRules": {
+        "title": "Supply real title within the declared character limit. Do not substitute demo text.",
+        "steps": "Supply 1–4 ordered entries separated by \"|\". Preserve all required content.",
+        "outcome": "Supply real outcome within the declared character limit. Do not substitute demo text.",
+        "activeStep": "Use a real in-range integer; a focus index must point to an existing item."
+      },
+      "readingOrder": [
+        "Identify the outcome",
+        "Advance one real step at a time",
+        "Read the completed sequence"
+      ],
+      "cueBindings": {
+        "step-1": "When narration reaches steps 1, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-2": "When narration reaches steps 2, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-3": "When narration reaches steps 3, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-4": "When narration reaches steps 4, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input; if unavailable use an honest custom treatment or report the missing content, not demo defaults.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose a component whose narrative job fits, or author a finite seek-safe custom scene. Recipe reuse is a default, not a requirement to force-fit content."
+      },
+      "example": {
+        "values": {
+          "title": "如何预约一节夜校课程",
+          "steps": "查看课程|选择场次|核对信息|提交预约",
+          "outcome": "以实际预约确认通知为准",
+          "activeStep": 3
+        },
+        "narration": "查看课程，选择场次，核对信息，再提交预约。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify the outcome → Advance one real step at a time → Read the completed sequence. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ]
+    }
+  }
 }
-

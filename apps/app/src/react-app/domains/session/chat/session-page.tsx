@@ -3854,13 +3854,14 @@ export function SessionPage(props: SessionPageProps) {
     sourceTabId?: string;
   }) => {
     const source = input.sourceTabId ? sessionPanelState.tabs.find(tab => tab.id === input.sourceTabId) : activePanelTab;
-    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio")) return false;
+    if (!props.selectedSessionId || (source?.type !== "workspace-app" && source?.type !== "plugin-studio" && source?.type !== "video")) return false;
     const context = source.type === "workspace-app"
       ? [
           workspaceAppCapabilityInstruction(source.label),
           input.modelContext ? `Current workbench context:\n${JSON.stringify(input.modelContext, null, 2)}` : null,
         ].filter(Boolean).join("\n\n")
-      : pluginWorkshopSystemInstruction(source.pluginId);
+      : source.type === "plugin-studio" ? pluginWorkshopSystemInstruction(source.pluginId)
+      : `Use the current video project video/${source.sessionId}/ and its saved STORYBOARD.md. The user approved this script and requested video production.`;
     useComposerStateStore.getState().appendQueuedDraft(props.selectedSessionId, {
       mode: "prompt",
       parts: [{ type: "text", text: input.text }],
@@ -3870,7 +3871,7 @@ export function SessionPage(props: SessionPageProps) {
       capability: {
         id: source.type === "workspace-app"
           ? `workspace-app:${source.surface.pluginId}:${source.surface.resource.id}`
-          : "plugin-workshop",
+          : source.type === "plugin-studio" ? "plugin-workshop" : "video",
         instruction: context,
       },
     });

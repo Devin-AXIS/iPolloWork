@@ -50,6 +50,8 @@ export function useDialogBehavior({
     (first ?? container)?.focus();
 
     const onKeyDown = (e: KeyboardEvent) => {
+      const activeDialog = document.activeElement?.closest('[role="dialog"]');
+      if (activeDialog && activeDialog !== containerRef.current) return;
       if (e.key === "Escape") {
         e.stopPropagation();
         requestClose();

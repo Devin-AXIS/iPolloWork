@@ -12,6 +12,7 @@ import {
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
+  videoPromptRequiresStoryboardReview,
   videoPromptRequestsVoiceoverContext,
   requestedVideoDurationSeconds,
   videoTaskSystemContext,
@@ -353,7 +354,7 @@ describe("HyperFrames Video Studio", () => {
     );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
     expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
-    expect(voiceSource).toContain("width={embedded ? embeddedWidth : undefined}");
+    expect(voiceSource).toContain("width={inDialog ? undefined : embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain("top-[90px]");
     expect(voiceSource).toContain("top-[148px]");
     expect(panelSource).not.toContain("top-[82px]");
@@ -1493,7 +1494,7 @@ describe("HyperFrames Video Studio", () => {
     ).toBe(true);
     expect(
       videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).animationReferences,
-    ).toEqual(["spatial-camera-suite"]);
+    ).toEqual([]);
     expect(
       videoDeliveryRequirementsForPrompt({ promptText: "制作一个静态视频，不要动画" }).animationReferences,
     ).toEqual([]);
@@ -1539,7 +1540,19 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("update-element");
     expect(contract).toContain("freeform-patch");
     expect(contract).toContain("For a small local edit, patch only that element");
-    expect(contract).toContain("do not impose a review gate unless the user requested it");
+    expect(contract).toContain("ordinary finished-video work does not pause automatically");
+  });
+
+  test("defaults reference and instructional videos to an explicit storyboard review gate", () => {
+    expect(videoPromptRequiresStoryboardReview({ promptText: "根据这份 PDF 做一个技术讲解视频" })).toBe(true);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "做一个产品视频", hasReferenceAttachments: true })).toBe(true);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "根据课件直接生成成片，无需确认脚本" })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "脚本确认，继续生成" })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "继续修改技术讲解视频的第三幕", hasReferenceAttachments: true })).toBe(false);
+    const contract = videoTaskSystemContext("ses_review", "/workspace/current", null, { requireStoryboardReview: true });
+    expect(contract).toContain("Script approval gate");
+    expect(contract).toContain("create or update only `/workspace/current/video/ses_review/STORYBOARD.md`");
+    expect(contract).toContain("Do not source or generate media");
   });
 
   test("connects the editable shot plan to real media and purposeful motion", () => {
@@ -1555,7 +1568,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("never the article page URL as media");
     expect(contract).toContain("never presented as news footage");
     expect(contract).toContain("observable Establish -> Develop -> Land");
-    expect(contract).toContain("component:spatial-camera-suite#<shotStyle>");
+    expect(contract).toContain("use `spatial-camera-suite` only when traversing real spatial layers");
     expect(contract).toContain("Do not add a wrapper camera to a component that already owns its camera");
     expect(contract).toContain("the app owns validation and one bounded repair continuation");
   });

@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"Category leaders","maxLength":64,"update":"live"},{"id":"items","label":"Ranked data","description":"Comma-separated Name:Value pairs.","type":"string","default":"Atlas:96,Nova:82,Orbit:71,Field:58,Base:44","maxLength":140,"update":"live"},{"id":"period","label":"Period","type":"string","default":"Q4 · 2026","maxLength":28,"update":"live"},{"id":"source","label":"Source","type":"string","default":"Source · Product analytics","maxLength":64,"update":"live"},{"id":"motionCueTimes","label":"Semantic cue times","type":"string","default":"{}","maxLength":2048,"update":"reload","description":"JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."}]'>
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=1920,height=1080"/>
 <title>Bar Chart Race</title>
-<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#bar-chart-race{width:1920px;height:1080px;padding:108px 150px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}header{display:flex;align-items:end;justify-content:space-between}h1{margin:0;font-size:82px;letter-spacing:-.07em}.period{padding:15px 20px;border-radius:999px;background:color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 14%,transparent);color:var(--ipw-color-primary,#20bbc0);font:800 20px/1 var(--ipw-font-body,Inter,sans-serif)}.race{margin-top:72px;display:grid;gap:22px}.row{display:grid;grid-template-columns:190px 1fr 90px;align-items:center;gap:22px}.name,.value{font:760 24px/1 var(--ipw-font-body,Inter,sans-serif)}.value{text-align:right}.track{height:76px;border-radius:18px;background:color-mix(in srgb,var(--ipw-color-border,#d8dde3) 58%,transparent);overflow:hidden}.bar{height:100%;border-radius:18px;background:var(--ipw-color-secondary,#9be1de);transform-origin:left}.row:first-child .bar{background:var(--ipw-color-primary,#20bbc0)}.source{margin-top:50px;color:var(--ipw-color-muted,#68717c);font:700 16px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.08em}</style>
+<style>*{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#bar-chart-race{width:1920px;height:1080px;padding:108px 150px;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,sans-serif)}header{display:flex;align-items:end;justify-content:space-between}h1{margin:0;font-size:82px;letter-spacing:-.07em}.period{padding:15px 20px;border-radius:999px;background:color-mix(in srgb,var(--ipw-color-primary,#20bbc0) 14%,transparent);color:var(--ipw-color-primary,#20bbc0);font:800 20px/1 var(--ipw-font-body,Inter,sans-serif)}.race{margin-top:72px;display:grid;gap:22px}.row{display:grid;grid-template-columns:190px 1fr 90px;align-items:center;gap:22px}.name,.value{font:760 24px/1 var(--ipw-font-body,Inter,sans-serif)}.value{text-align:right}.track{height:76px;border-radius:18px;background:color-mix(in srgb,var(--ipw-color-border,#d8dde3) 58%,transparent);overflow:hidden}.bar{height:100%;border-radius:18px;background:var(--ipw-color-secondary,#9be1de);transform-origin:left}.row:first-child .bar{background:var(--ipw-color-primary,#20bbc0)}.source{margin-top:50px;color:var(--ipw-color-muted,#68717c);font:700 16px/1 var(--ipw-font-body,Inter,sans-serif);letter-spacing:.08em}[data-composition-id] .source{line-height:1.5}</style>
 </head>
 <body>
 <main id="bar-chart-race" data-composition-id="bar-chart-race" data-width="1920" data-height="1080" data-start="0" data-duration="10">
@@ -28,7 +28,35 @@
 </div>
 </div>
 <div class="value">
-</div>`;row.querySelector(".name").textContent=item.name;row.querySelector(".value").textContent=String(item.value);row.querySelector(".bar").style.width=`${Math.max(8,item.value/max*100)}%`;race.append(row)});const tl=gsap.timeline({paused:true});tl.from(root.querySelectorAll("header>*"),{y:24,opacity:0,stagger:.1,duration:.5,ease:"power3.out"}).from(root.querySelectorAll(".row"),{y:18,opacity:0,stagger:.1,duration:.38},.18).from(root.querySelectorAll(".bar"),{scaleX:0,stagger:.1,duration:.9,ease:"power3.out"},.25).from(root.querySelector(".source"),{opacity:0,y:10,duration:.35},.9);window.__timelines["bar-chart-race"]=tl;tl.seek(0)})();</script>
-<script>window.__timelines["bar-chart-race"]?.fromTo("#bar-chart-race .period",{x:-8},{x:0,duration:9.2,ease:"none"},0);</script>
+</div>`;row.querySelector(".name").textContent=item.name;row.querySelector(".value").textContent=String(item.value);row.querySelector(".bar").style.width=`${Math.max(8,item.value/max*100)}%`;race.append(row)});})();</script>
+
+
+<script data-ipw-motion-recipe="1">
+(function(){
+const root=document.querySelector("[data-composition-id]"),id=root.dataset.compositionId;
+const values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+const recipe={"version":1,"pattern":"data-accumulation","minHoldSeconds":0.7,"capacity":{"variable":"items","separator":",","maxItems":5},"events":[{"id":"step-1","target":".row:nth-child(1)","time":1.2,"duration":0.65,"action":"Reveal the real value and grow its bar"},{"id":"step-2","target":".row:nth-child(2)","time":2.775,"duration":0.65,"action":"Reveal the real value and grow its bar"},{"id":"step-3","target":".row:nth-child(3)","time":4.35,"duration":0.65,"action":"Reveal the real value and grow its bar"},{"id":"step-4","target":".row:nth-child(4)","time":5.925,"duration":0.65,"action":"Reveal the real value and grow its bar"},{"id":"step-5","target":".row:nth-child(5)","time":7.5,"duration":0.65,"action":"Reveal the real value and grow its bar"},{"id":"resolve","target":".row","time":8.6,"duration":0.55,"action":"Restore the complete readable result"}]};
+const times=JSON.parse(String(values.motionCueTimes??"{}"));
+const cue=event=>times[event.id]??event.time;
+window.__timelines[id]?.kill();
+const tl=gsap.timeline({paused:true});
+tl.set(root.querySelectorAll("*"),{clearProps:"transform,opacity,clipPath"},0);
+const items=[...root.querySelectorAll(".row")];
+tl.fromTo(root.querySelectorAll("header,.source"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power3.out"},0);
+tl.set(items,{opacity:.18,y:18},0);
+items.forEach((item,index)=>{
+  const event=recipe.events[index]; if(!event||event.id==="resolve")return;
+  const time=cue(event);
+  tl.to(item,{opacity:1,y:0,duration:event.duration,ease:"power3.out"},time);
+  const bar=item.querySelector(".bar");tl.fromTo(bar,{scaleX:0},{scaleX:1,duration:.65,ease:"power3.out"},time);
+  if(index>0)tl.to(items[index-1],{opacity:.58,duration:.25,ease:"power2.out"},time);
+});
+const resolved=recipe.events.at(-1);
+tl.to(items,{opacity:1,y:0,x:0,duration:resolved.duration,ease:"power2.out"},cue(resolved));
+
+tl.set(root,{visibility:"visible"},10);
+window.__timelines[id]=tl;tl.seek(0);
+})();
+</script>
 </body>
 </html>

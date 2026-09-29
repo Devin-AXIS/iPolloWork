@@ -1,9 +1,28 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { z } from "zod";
+import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema } from "@ipollowork/types/hyperframes";
+
+const recipeManifestSchema = z.object({
+  name: z.string(), duration: z.number(),
+  variables: z.array(hyperframesEffectVariableSchema),
+  motionRecipe: hyperframesMotionRecipeSchema,
+});
+
+async function recipeFixture(componentId = "comparison-matrix") {
+  const { root, project } = await fixture();
+  const registry = join(import.meta.dir, "../../../../vendor/hyperframes/registry/blocks");
+  process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = registry;
+  const manifest = recipeManifestSchema.parse(JSON.parse(await readFile(join(registry, componentId, "registry-item.json"), "utf8")));
+  const values = Object.fromEntries(manifest.variables.filter(variable => variable.id !== "motionCueTimes").map(variable => [variable.id, variable.default]));
+  return { root, project, registry, manifest, instance: {
+    sceneId: "evidence", componentId, start: 0, duration: manifest.duration, values, timingSource: "visual-cue",
+  } };
+}
 
 const roots: string[] = [];
 const originalRegistryRoot = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
@@ -40,6 +59,144 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("all twenty authored recipes expose complete rules and instantiate Chinese examples", async () => {
+    const base = await recipeFixture();
+    const names = [];
+    for (const name of await readdir(base.registry)) {
+      const raw = JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8"));
+      if (raw.motionRecipe) names.push(name);
+    }
+    expect(names).toHaveLength(20);
+    await mkdir(join(base.project, "assets"), { recursive: true });
+    await writeFile(join(base.project, "assets", "evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="#245b66"/></svg>');
+    for (const name of names) {
+      const manifest = recipeManifestSchema.parse(JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8")));
+      const values = manifest.motionRecipe.usage.example.values;
+      expect(Object.keys(values).sort()).toEqual(manifest.variables.filter(variable => variable.id !== "motionCueTimes").map(variable => variable.id).sort());
+      expect(Object.keys(manifest.motionRecipe.usage.inputRules).sort()).toEqual(Object.keys(values).sort());
+      expect(Object.keys(manifest.motionRecipe.usage.cueBindings).sort()).toEqual(manifest.motionRecipe.events.map(event => event.id).sort());
+      const html = await readFile(join(base.registry, name, name + ".html"), "utf8");
+      expect(html).toContain('data-ipw-motion-recipe="1"');
+      const result = await installVideoComponents({ id: "test", path: base.root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [name],
+        instances: [{ sceneId: "evidence", componentId: name, start: 0, duration: manifest.duration, values, timingSource: "visual-cue" }],
+      });
+      expect(result.instances).toHaveLength(1);
+      const snippet = result.instances[0]!.snippet;
+      expect(snippet).not.toContain("<scene-id>");
+      expect(snippet).not.toContain("<seconds>");
+      expect(snippet).toContain("motionCueTimes");
+      await writeFile(join(base.project, "index.html"), `<main data-composition-id="main">${snippet}</main>`);
+      const checked = await checkVideoComponents({ id: "test", path: base.root }, { sourcePath: "video/session-one/index.html" });
+      expect({ name, issues: checked.issues }).toEqual({ name, issues: [] });
+    }
+  });
+
+  test("capacity endpoints instantiate without truncation and reject malformed input", async () => {
+    const base = await recipeFixture();
+    for (const name of await readdir(base.registry)) {
+      const raw = JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8"));
+      if (!raw.motionRecipe) continue;
+      const manifest = recipeManifestSchema.parse(raw), capacity = manifest.motionRecipe.capacity;
+      if (!capacity) continue;
+      const example = manifest.motionRecipe.usage.example.values;
+      const separator = capacity.separator.replaceAll("\\n", "\n");
+      const first = String(example[capacity.variable]).replaceAll("\\n", "\n").split(separator)[0];
+      for (const count of new Set([capacity.minItems, capacity.maxItems])) {
+        const values = { ...example, [capacity.variable]: Array(count).fill(first).join(separator) };
+        for (const key of ["highlight", "activeStep", "focusLine"]) if (key in values) values[key] = 1;
+        const result = await installVideoComponents({ id: "test", path: base.root }, {
+          sourcePath: "video/session-one/index.html", componentIds: [name],
+          instances: [{ sceneId: "boundary", componentId: name, start: 0, duration: manifest.duration, values, timingSource: "visual-cue" }],
+        });
+        expect(result.instances).toHaveLength(1);
+        expect(result.instances[0]!.snippet).toContain(JSON.stringify(values[capacity.variable]).slice(1, -1));
+      }
+    }
+    for (const [name, changes] of [
+      ["comparison-matrix", { rows: "需求|仅有一列" }],
+      ["comparison-matrix", { options: "甲|乙|丙" }],
+      ["bar-chart-race", { items: "甲:NaN,乙:2" }],
+      ["bar-chart-race", { items: "甲:-1,乙:2" }],
+      ["code-walkthrough", { code: "x".repeat(65) }],
+      ["code-diff-card", { before: Array(5).fill("const x = 1").join("\n") }],
+      ["concept-layers", { highlight: 1.5 }],
+      ["concept-layers", { highlight: 4, items: "输入::材料|输出::结果" }],
+      ["myth-fact-reveal", { items: "误区::描述|事实::描述" }],
+    ] satisfies Array<[string, Record<string, string | number>]>) {
+      const { root, instance } = await recipeFixture(name);
+      await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: [name],
+        instances: [{ ...instance, values: { ...instance.values, ...changes } }],
+      })).rejects.toThrow();
+    }
+  });
+
+  test("validates input before copying and rejects capacity, unknown values, conflicting cues and duplicate identity", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const run = (instances: unknown[]) => installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["comparison-matrix"], instances,
+    });
+    for (const invalid of [
+      { ...instance, values: {} },
+      { ...instance, values: { ...instance.values, winner: "invented" } },
+      { ...instance, values: { ...instance.values, unknown: "ignored?" } },
+      { ...instance, values: { ...instance.values, rows: "A|1|2;B|1|2;C|1|2;D|1|2;E|1|2" } },
+      { ...instance, cueTimes: { "step-2": .2 } },
+      { ...instance, cueTimes: { invented: 3 } },
+      { ...instance, duration: 40 },
+    ]) await expect(run([invalid])).rejects.toThrow();
+    await expect(run([instance, instance])).rejects.toThrow("unique sceneId");
+    expect(await readdir(project)).toEqual(["index.html"]);
+  });
+
+  test("escapes content, binds measured semantic cues and preserves an existing edited copy", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["comparison-matrix"],
+      instances: [{ ...instance, values: { ...instance.values, title: '证据 <script> & "quoted"' }, cueTimes: { "step-2": 3.4 } }],
+    });
+    expect(result.instances[0]?.snippet).toContain("&lt;script&gt;");
+    expect(result.instances[0]?.snippet).not.toContain("<script>");
+    expect(result.instances[0]?.cueTimes["step-2"]).toBe(3.4);
+    const path = join(project, "compositions", "comparison-matrix.html");
+    await writeFile(path, "<main>User-owned older composition</main>");
+    await expect(installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["comparison-matrix"], instances: [instance],
+    })).rejects.toThrow("Preserve its edits");
+    expect(await readFile(path, "utf8")).toBe("<main>User-owned older composition</main>");
+  });
+
+  test("media recipes reject missing assets and attempts to escape their project", async () => {
+    const { root, instance } = await recipeFixture("media-hero");
+    for (const mediaUrl of ["assets/missing.png", "assets/../../other/file.png", "https://example.com/a.png"]) {
+      await expect(installVideoComponents({ id: "test", path: root }, {
+        sourcePath: "video/session-one/index.html", componentIds: ["media-hero"],
+        instances: [{ ...instance, values: { ...instance.values, mediaUrl } }],
+      })).rejects.toThrow();
+    }
+  });
+
+  test("measured cues can extend a recipe without misreporting its native default as the motion end", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["comparison-matrix"],
+      instances: [{ ...instance, duration: 14, cueTimes: { "step-4": 9.2, resolve: 12.5 } }],
+    });
+    await writeFile(join(project, "index.html"), `<main>${result.instances[0]!.snippet}</main>`);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues).toEqual([]);
+  });
+
+  test("accepts a validated readable final hold without applying the legacy two-second cutoff", async () => {
+    const { root, project, instance } = await recipeFixture();
+    const result = await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["comparison-matrix"],
+      instances: [{ ...instance, duration: instance.duration + 2 }],
+    });
+    await writeFile(join(project, "index.html"), `<main>${result.instances[0]!.snippet}</main>`);
+    expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues).toEqual([]);
+  });
+
   test("installs the shared spatial stage with all five seekable shot recipes", async () => {
     const { root, project } = await fixture();
     process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(
@@ -117,6 +274,20 @@ describe("Video Studio registry component integration", () => {
       timing: "measure-from-render",
     });
     expect(await readFile(join(project, "compositions", "milestone-timeline.html"), "utf8")).toContain(".steps");
+  });
+
+  test("host timing normalization preserves quoted arrow functions and JSON defaults", async () => {
+    const { root, project } = await fixture();
+    const defaults = JSON.stringify({ code: "items.map(item => item.value)" });
+    await writeFile(join(root, "registry", "milestone-timeline", "milestone-timeline.html"),
+      `<main data-composition-id="milestone-timeline" data-duration="9" data-defaults='${defaults}'><h1>Code</h1></main>`);
+    await installVideoComponents({ id: "test", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: ["milestone-timeline"],
+    });
+    const installed = await readFile(join(project, "compositions", "milestone-timeline.html"), "utf8");
+    expect(installed).toContain(`data-defaults='${defaults}'`);
+    expect(installed).toContain('data-ipw-native-duration="9"');
+    expect(installed).not.toContain('data-duration="9"');
   });
 
   test("accepts real component reuse and rejects untracked custom imitation", async () => {

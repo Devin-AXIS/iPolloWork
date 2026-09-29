@@ -6,6 +6,7 @@ import {
   hyperframesCatalogItemSchema,
   hyperframesEffectEngineSchema,
   hyperframesEffectVariableSchema,
+  hyperframesMotionRecipeSchema,
   type HyperframesCatalogItem,
   type HyperframesEffectEngine,
   type HyperframesEffectVariable,
@@ -58,6 +59,7 @@ const registryItemSchema = z.object({
   variables: z.array(z.unknown()).optional(),
   params: z.array(z.unknown()).optional(),
   agentPrompt: z.string().optional(),
+  motionRecipe: z.unknown().optional(),
 }).passthrough();
 
 function resolveCategory(tags: string[]): string {
@@ -205,6 +207,7 @@ export function normalizeHyperframesCatalogItem(
   const category = resolveCategory(tags);
   const engineResult = hyperframesEffectEngineSchema.safeParse(raw.engine);
   const sourceResult = catalogSourceSchema.safeParse(raw.source);
+  const recipeResult = hyperframesMotionRecipeSchema.safeParse(raw.motionRecipe);
   const explicitEngine = engineResult.success ? engineResult.data : undefined;
   const engine = explicitEngine
     ? {
@@ -230,6 +233,11 @@ export function normalizeHyperframesCatalogItem(
       ? sourceResult.data
       : { provider: "hyperframes", label: "HyperFrames" },
     variables: normalizeVariables(raw),
+    recipeSummary: recipeResult.success ? {
+      pattern: recipeResult.data.pattern,
+      useWhen: recipeResult.data.usage.useWhen,
+      avoidWhen: recipeResult.data.usage.avoidWhen,
+    } : undefined,
     agentPrompt: raw.agentPrompt,
   });
   return item.success ? item.data : null;

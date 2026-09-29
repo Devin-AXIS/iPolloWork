@@ -129,26 +129,29 @@ export function StoryboardGlobalSettings({
   return (
     <section
       aria-label={tx("Whole-video settings")}
-      className="mx-5 mb-3 min-w-0 shrink-0 rounded-lg border border-[var(--hf-workspace-border)] bg-[var(--hf-workspace-surface)]"
+      className="hf-script-global mx-5 mb-4 min-w-0 shrink-0 overflow-hidden rounded-lg border border-[var(--hf-workspace-border)] bg-[var(--hf-panel-bg)]"
     >
       <button
         type="button"
         aria-expanded={expanded}
         aria-controls="storyboard-global-settings-body"
         onClick={() => setExpanded((value) => !value)}
-        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-[var(--hf-panel-hover)]"
+        className="hf-script-global-toggle flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-[var(--hf-panel-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-studio-accent"
       >
         <span>
-          <span className="block text-[11px] font-medium text-[var(--hf-panel-text-1)]">{tx("Whole-video direction")}</span>
+          <span className="block text-xs font-semibold text-[var(--hf-panel-text-1)]">{tx("Whole-video direction")}</span>
+        </span>
+        <span className="ml-auto truncate text-[11px] text-[var(--hf-panel-text-2)]">
+          {tx(selectedTheme === AI_THEME ? "Automatic theme" : "Custom theme")} · {tx(musicDisabled ? "No music" : musicAsset ? "Choose from project assets" : "AI chooses from the script")}
         </span>
         <ChevronDown size={14} className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`} />
       </button>
-      {expanded && <div id="storyboard-global-settings-body" className="grid max-h-[40%] min-h-0 grid-cols-1 gap-3 overflow-y-auto px-3 py-2.5 sm:grid-cols-2 lg:grid-cols-3">
+      {expanded && <div id="storyboard-global-settings-body" className="grid min-h-0 grid-cols-1 gap-5 border-t border-[var(--hf-workspace-hairline)] p-4 sm:grid-cols-2 lg:grid-cols-3">
       <div className="min-w-0">
-        <span className="px-2 text-[11px] text-[var(--hf-panel-text-3)]">
+        <span className="block mb-2 text-xs font-medium text-[var(--hf-panel-text-1)]">
           {tx("Video design theme")}
         </span>
-        <div role="group" aria-label={tx("Theme selection mode")} className="mt-1 flex gap-1 px-1">
+        <div role="group" aria-label={tx("Theme selection mode")} className="flex flex-wrap gap-2">
           {([
             ["ai", "Let AI choose a suitable theme"],
             ["manual", "Choose a theme"],
@@ -164,13 +167,13 @@ export function StoryboardGlobalSettings({
                   if (mode === "ai") selectTheme(AI_THEME);
                   else setManualThemeOpen(true);
                 }}
-                className={`rounded-full border px-2.5 py-1.5 text-[11px] transition-colors ${
+                className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-studio-accent disabled:opacity-50 ${
                   selected
                     ? "border-studio-accent bg-studio-accent/10 text-[var(--hf-panel-text-0)]"
                     : "border-[var(--hf-workspace-border)] text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
                 }`}
               >
-                {mode === "ai" ? <Sparkles size={12} className="mr-1 inline" /> : null}
+                {mode === "ai" ? <Sparkles size={12} className="shrink-0" /> : null}
                 {tx(label)}
               </button>
             );
@@ -182,7 +185,7 @@ export function StoryboardGlobalSettings({
             value={themeRequest?.theme ?? (isKnownTheme || hasCustomTheme ? selectedTheme : "")}
             disabled={disabled || themeRequest !== null || themeOptions.length === 0}
             onChange={(event) => selectTheme(event.target.value)}
-            className="mt-1 w-full min-w-0 rounded-full border border-[var(--hf-workspace-border)] bg-[var(--hf-workspace-bg)] px-3 py-2 text-xs text-[var(--hf-panel-text-1)] outline-none focus:border-studio-accent disabled:opacity-60"
+            className="mt-3 w-full min-w-0 rounded-lg border border-[var(--hf-workspace-border)] bg-[var(--hf-workspace-bg)] px-3 py-2 text-xs text-[var(--hf-panel-text-1)] outline-none focus:border-studio-accent disabled:opacity-60"
           >
             <option value="" disabled>{tx("Select an installed theme")}</option>
             {hasCustomTheme && (
@@ -210,10 +213,24 @@ export function StoryboardGlobalSettings({
       </div>
 
       <div className="min-w-0">
-        <span className="px-2 text-[11px] text-[var(--hf-panel-text-3)]">
+        <span className="block mb-2 text-xs font-medium text-[var(--hf-panel-text-1)]">
+          {tx("Whole-video visual style")}
+        </span>
+        <StoryboardPlanField
+          multiline rows={3}
+          label={tx("Whole-video visual style")}
+          placeholder={tx("Describe the overall visual style")}
+          value={globals.visualStyle ?? ""}
+          disabled={disabled}
+          onChange={onVisualStyleChange}
+        />
+      </div>
+
+      <div className="min-w-0">
+        <span className="block mb-2 text-xs font-medium text-[var(--hf-panel-text-1)]">
           {tx("Whole-video music")}
         </span>
-        <div role="group" aria-label={tx("Music direction mode")} className="mt-1 flex gap-1 px-1">
+        <div role="group" aria-label={tx("Music direction mode")} className="flex flex-wrap gap-2">
           {(
             [
               ["auto", "AI chooses from the script"],
@@ -227,23 +244,23 @@ export function StoryboardGlobalSettings({
               aria-pressed={musicMode === mode}
               disabled={disabled}
               onClick={() => selectMusicMode(mode)}
-              className={`rounded-full border px-2.5 py-1.5 text-[11px] transition-colors ${
+              className={`inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg border px-3 py-1.5 text-xs transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-studio-accent disabled:opacity-50 ${
                 musicMode === mode
                   ? "border-studio-accent bg-studio-accent/10 text-[var(--hf-panel-text-0)]"
                   : "border-[var(--hf-workspace-border)] text-[var(--hf-panel-text-3)] hover:bg-[var(--hf-panel-hover)]"
               }`}
             >
               {mode === "auto" ? (
-                <Sparkles size={12} className="mr-1 inline" />
+                <Sparkles size={12} className="shrink-0" />
               ) : (
-                <Music2 size={12} className="mr-1 inline" />
+                <Music2 size={12} className="shrink-0" />
               )}
               {tx(label)}
             </button>
           ))}
         </div>
         {musicMode !== "none" && (
-          <p className="px-2 pt-1 text-[10px] text-[var(--hf-panel-text-3)]">
+          <p className="mt-2 text-[11px] leading-5 text-[var(--hf-panel-text-3)]">
             {tx(musicAsset.trim() ? "Music selected — preview or replace below" : "Music pending — a real track must be prepared before video generation")}
           </p>
         )}
@@ -261,25 +278,13 @@ export function StoryboardGlobalSettings({
           />
         )}
         {musicMode !== "none" && <StoryboardPlanField
+          multiline rows={2}
           label={tx("Whole-video music prompt")}
           placeholder={tx("Optional music direction for the AI")}
           value={musicPrompt}
           disabled={disabled}
           onChange={onMusicChange}
         />}
-      </div>
-
-      <div className="min-w-0">
-        <span className="px-2 text-[11px] text-[var(--hf-panel-text-3)]">
-          {tx("Whole-video visual style")}
-        </span>
-        <StoryboardPlanField
-          label={tx("Whole-video visual style")}
-          placeholder={tx("Describe the overall visual style")}
-          value={globals.visualStyle ?? ""}
-          disabled={disabled}
-          onChange={onVisualStyleChange}
-        />
       </div>
       </div>}
     </section>
