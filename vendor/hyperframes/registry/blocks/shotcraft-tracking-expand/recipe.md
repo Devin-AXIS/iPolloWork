@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-tracking-expand
 
+## Narrative intent
+
+用平静的字距展开引入短概念，再补解释，让观众获得可读的章节起点。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Quiet concept or chapter opening with a short title; keep the camera still.

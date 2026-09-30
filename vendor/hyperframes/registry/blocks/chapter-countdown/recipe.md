@@ -3,6 +3,12 @@
 
 Component ID: chapter-countdown
 
+## Narrative intent
+
+按判断顺序提出必要条件，让观众知道做决定前还要检查什么。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 依次提出判断前必须检查的2–4个条件或问题。

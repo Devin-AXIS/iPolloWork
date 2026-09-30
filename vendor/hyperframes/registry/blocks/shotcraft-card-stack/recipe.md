@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-card-stack
 
+## Narrative intent
+
+把八张真实图像由堆叠展开，让观众先感到数量，再看见内容差异。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Establish a collection of exactly eight real images or page slices; quantity first, diversity second.

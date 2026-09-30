@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-brace-expand
 
+## Narrative intent
+
+用括号框定短概念的讨论范围，让观众知道随后展开的是哪一部分。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用括号打开一个短概念的范围或章节主题。

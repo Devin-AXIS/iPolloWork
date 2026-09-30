@@ -3,6 +3,12 @@
 
 Component ID: benchmark-scorecard
 
+## Narrative intent
+
+把各项完成度对准明确目标，让观众看到距离目标还有多少，而非仅比较谁更大。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 展示相对各自明确目标、同口径归一化后的完成百分比。

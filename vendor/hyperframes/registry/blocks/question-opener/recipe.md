@@ -3,6 +3,12 @@
 
 Component ID: question-opener
 
+## Narrative intent
+
+用一个可回答的问题和必要背景开场，让观众知道后续内容要解决什么。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Open with one answerable question and enough context to explain why it matters.

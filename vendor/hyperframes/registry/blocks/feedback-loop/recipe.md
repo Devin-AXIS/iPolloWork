@@ -3,13 +3,19 @@
 
 Component ID: feedback-loop
 
+## Narrative intent
+
+从观察经行动到结果回传形成可见闭环，让观众理解下一次行动为何会改变。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
-- 说明2–4步首尾相接的概念反馈循环。
+- 说明2–4步首尾相接的概念反馈循环；恒温器等控制原理可合并为比较、执行、测量、回传四步，目标值放在标题或注释。
 
 Do not use:
 
-- 需要展示正负增益、延迟振荡、分支或真实控制系统的物理变化。
+- 需要模拟真实物理温度变化、增益、延迟振荡或分支，而非解释概念回路。
 - Only the stated serial topology; no arbitrary branching, spatial or physical simulation.
 
 ## Supported inputs

@@ -1095,7 +1095,7 @@ const NATIVE_RECIPE_FIT: Record<string, { useWhen: string; avoidWhen: string; it
   "sparkline-grid": { useWhen: "2–4组同单位、同采样间隔的数据，各有三个非负观测值。", avoidWhen: "不同单位、负值、缺期；不能推断插值期间发生过什么或把曲线当物理模拟。", items: "组名::第1期值,第2期值,第3期值；全组共享最大值与零基线。", readingOrder: ["说明单位和三期定义", "按旁白绘制各组折线", "保留共同尺度比较方向"], acceptance: "折线端点来自真实三个输入，零基线和共享尺度一致；无装饰性随机波形。" },
   "process-handoff-map": { useWhen: "2–4次连续交接，每次说明交给谁以及传递内容。", avoidWhen: "分支、并行、循环或双向协议；这些需独立关系配方。", items: "交接双方::传递的实际内容；按真实交接顺序提供。", readingOrder: ["说明交接目标", "每次交接同步亮起连接箭头与内容", "保留整条交接链复核遗漏"], acceptance: "连接线依附相邻节点边界且不穿过文字；旁白说到交接时对应箭头出现。" },
   "deployment-pipeline": { useWhen: "解释2–4个串行工程门槛及每步产物，不冒充实时运行。", avoidWhen: "并行任务、失败回退和实际通过状态；没证据不能标成已通过。", items: "门槛名::验收条件或产物；不要用模拟成功状态替代条件。", readingOrder: ["建立工程目标", "依次连通门槛与产物", "保留完整安全发布路径"], acceptance: "节点与连接同步推进，文字清楚说明条件；不伪造运行状态。" },
-  "feedback-loop": { useWhen: "说明2–4步首尾相接的概念反馈循环。", avoidWhen: "需要展示正负增益、延迟振荡、分支或真实控制系统的物理变化。", items: "循环阶段::阶段作用；最后阶段必须逻辑上返回第一阶段。", readingOrder: ["建立观察对象", "逐步连通行动与结果", "沿返回箭头回到第一阶段"], acceptance: "最后有明确可见的返回路径；循环不是几张无关系的淡入卡。" },
+  "feedback-loop": { useWhen: "说明2–4步首尾相接的概念反馈循环；恒温器等控制原理可合并为比较、执行、测量、回传四步，目标值放在标题或注释。", avoidWhen: "需要模拟真实物理温度变化、增益、延迟振荡或分支，而非解释概念回路。", items: "循环阶段::阶段作用；最后阶段必须逻辑上返回第一阶段。", readingOrder: ["建立观察对象", "逐步连通行动与结果", "沿返回箭头回到第一阶段"], acceptance: "最后有明确可见的返回路径；循环不是几张无关系的淡入卡。" },
   "agenda-opener": {
     "useWhen": "预告本片将回答的2–4个问题，给观众一条理解路线。",
     "avoidWhen": "不是结论总结或操作教程；操作顺序用 product-steps，结论回顾用 summary-resolve。",
@@ -1340,6 +1340,92 @@ const NATIVE_RECIPE_FIT: Record<string, { useWhen: string; avoidWhen: string; it
   }
 };
 
+// The audience outcome is authored per executable recipe, including purely typographic treatments.
+// A movement name or generic render-health check is not a narrative reason to select a recipe.
+const RECIPE_INTENTS: Record<string, string> = {
+  "agenda-opener": "把将回答的问题排成理解路线，让观众知道接下来为何依次观看这些内容。",
+  "bar-chart-race": "把同口径数值映射成可比较的长度，让观众看出真实大小差距与排序。",
+  "before-after-contrast": "并置同一对象的前后状态，让观众看清变化发生在哪里，而非误以为是两个对象。",
+  "benchmark-scorecard": "把各项完成度对准明确目标，让观众看到距离目标还有多少，而非仅比较谁更大。",
+  "brand-headline": "先给出品牌承诺及其支撑信息，让观众理解本片的表达立场。",
+  "brand-manifesto": "把品牌原则接到具体行动，让观众理解立场如何兑现，而非只记住口号。",
+  "brand-system-board": "把各表达维度的原则放在同一系统中，让观众理解它们如何保持一致。",
+  "cause-effect-chain": "逐段显露有依据的因果连接，让观众能复述原因如何导致结果。",
+  "chapter-countdown": "按判断顺序提出必要条件，让观众知道做决定前还要检查什么。",
+  "checklist-reveal": "逐项呈现可执行的检查动作，让观众最后得到一张可复核的清单。",
+  "code-diff-card": "在同一代码位置对照修改前后，让观众看出哪一行变化带来什么影响。",
+  "code-walkthrough": "沿真实代码的阅读顺序聚焦关键行，让观众理解整体片段怎样工作。",
+  "cohort-retention": "把同口径队列与时期排成矩阵，让观众比较留存如何随时间变化。",
+  "comparison-matrix": "让两个选项始终按相同标准对齐，使观众基于条件而非视觉强调作比较。",
+  "concept-layers": "自基础到应用逐层建立依赖，让观众理解上层为何需要下层。",
+  "conversion-funnel": "按真实包含关系收窄各阶段人数，让观众定位损失发生在哪一步。",
+  "creator-profile-card": "把创作方向、方法与作品连成证据链，让观众理解创作者的实际特色。",
+  "customer-quote-wall": "把可追溯反馈按同一问题聚合，让观众看到共同点与分歧而非虚构共识。",
+  "definition-highlight": "从定义推进到相邻概念和边界，让观众能正确区分这个术语。",
+  "deployment-pipeline": "逐道呈现发布门槛及产物，让观众理解安全发布的依赖顺序。",
+  "evidence-stack": "让主张、数值和来源同时可见，使观众能判断证据是否真的支持结论。",
+  "expert-panel": "把不同专业视角对准同一问题，让观众理解其约束与分歧而非误认为一致结论。",
+  "faq-stack": "使每个问题紧接可读的直接回答，让观众逐项解除独立疑问。",
+  "feature-adoption-ladder": "从认识到稳定使用逐级呈现行为变化，让观众理解采纳需要哪些条件。",
+  "feature-spotlight-stack": "把功能与同一用户任务中的具体作用配对，让观众理解它解决哪一步。",
+  "feedback-loop": "从观察经行动到结果回传形成可见闭环，让观众理解下一次行动为何会改变。",
+  "formula-breakdown": "拆开公式中的输入与关系再合成结果，让观众明白计算的含义而非只记住式子。",
+  "founder-story": "沿真实经历中的阻碍与选择推进，让观众理解最后决定的来由。",
+  "gauge-scorecard": "把多项评分固定在同一满分标尺上，让观众看清各项距满分的真实差距。",
+  "kinetic-keyword": "按语义顺序强调少量关键词，让观众抓住同一概念的几个关键动作。",
+  "learning-path": "按前置关系展开学习阶段，让观众知道下一步应建立在什么能力之上。",
+  "media-hero": "沿真实素材的可见细节引导视线，让观众亲眼核对旁白所指的对象。",
+  "metric-signal": "用共享零基线呈现数值，让观众比较数量而不受独立缩放误导。",
+  "milestone-timeline": "沿真实时间顺序连接三个节点，让观众理解事件怎样走到当前状态。",
+  "myth-fact-reveal": "先呈现常见误解再揭示证据与边界，让观众修正原有判断。",
+  "narrative-hook": "用真实现象与预期冲突提出待解问题，让观众产生有依据的观看动机。",
+  "next-step-outro": "把结论接到少量可执行动作，让观众知道离开视频后该做什么。",
+  "partner-logo-feature": "用文字说明参与方各自贡献，让观众理解合作分工而不误认有标志素材。",
+  "process-handoff-map": "让每次交接的双方、内容与方向同步出现，使观众追踪责任如何传递。",
+  "product-comparison-stage": "在相同体验维度间交替对照两种方式，让观众理解差异及适用条件。",
+  "product-steps": "把有顺序的操作逐一连到结果，让观众知道实际完成任务的路径。",
+  "question-opener": "用一个可回答的问题和必要背景开场，让观众知道后续内容要解决什么。",
+  "quote-pullout": "从有出处的原句提取重点并解释，让观众区分原话与作者解读。",
+  "release-highlights": "逐项呈现已发布变化及用户影响，让观众知道这次更新具体改变了什么。",
+  "section-marker": "用短暂全画面章节提示建立下一段方向，让观众意识到理解任务正在切换。",
+  "shotcraft-blur-slide": "让短标题由模糊落到清晰，标示一个观点终于明确，而非承担事实证明。",
+  "shotcraft-brace-expand": "用括号框定短概念的讨论范围，让观众知道随后展开的是哪一部分。",
+  "shotcraft-card-stack": "把八张真实图像由堆叠展开，让观众先感到数量，再看见内容差异。",
+  "shotcraft-dolly-zoom": "在真实素材中固定主体并扩张背景，让观众感到该主体的重要性与环境关系。",
+  "shotcraft-drift-assembly": "让分散字符归拢成可读标题，传达多个线索正在汇成一个主题。",
+  "shotcraft-error-retype": "先呈现不准确表述再删除改写，让观众看见认识如何被纠正。",
+  "shotcraft-font-weight-pump": "按实测语义或音乐节拍改变同一短词字重，让观众感到这一次强调。",
+  "shotcraft-glitch-cycle": "在四个状态间推进并锁定最终状态，让观众看清同一任务的阶段变化。",
+  "shotcraft-gradient-word-sweep": "只给当前关键词一次渐变强调，让观众识别本段的核心概念。",
+  "shotcraft-karaoke-fill": "按实际发声顺序填亮短句词组，让观众听到与看到的是同一段语言。",
+  "shotcraft-lead-word-zoom-assemble": "先放大句首概念再退回完整标题，让观众由核心词走向完整论点。",
+  "shotcraft-letter-drop": "让短标题字符轻快落位，为轻松内容建立语气，再停住供观众阅读。",
+  "shotcraft-marker-title": "像手工批注一样划出短标题的一个重点词，让观众先读到真正的焦点。",
+  "shotcraft-multiplane": "沿真实素材的空间层次推进视线，让观众理解前后景与主体的相对位置。",
+  "shotcraft-outline-word-fill": "将当前关键词由轮廓填实，让观众在说到它时完成一次语义聚焦。",
+  "shotcraft-pill-chip-slot-cycle-handled": "在固定句式中轮换四项真实职责，让观众理解同一主体覆盖的不同工作。",
+  "shotcraft-pill-slot-cycle": "在固定句式中逐项替换六个功能，让观众理解范围，最后回到完整概括。",
+  "shotcraft-scramble": "把未知短词逐步锁定为清晰标题，让观众经历一次有意义的揭晓。",
+  "shotcraft-scramble-decode": "由乱码解码出真实标题，让观众从未知进入明确主题，关键事实只在落定后阅读。",
+  "shotcraft-split-flap-title": "用机械翻牌揭示短标题，给新章节一个清楚的转折信号。",
+  "shotcraft-split-text-stagger": "让短标题按字符错峰入场并落定，提示章节开始而不遮盖后续内容。",
+  "shotcraft-terminal-typewriter": "先呈现真实命令再接对应截图，让观众理解命令与实际结果的联系。",
+  "shotcraft-text-column-converge": "让多个短主题轮换后汇成最后的标题，使观众感到话题正在收束。",
+  "shotcraft-text-on-path": "让短标题沿曲线进入再回到基线，为方向变化作提示而不把轨迹当数据。",
+  "shotcraft-title-demote-to-label": "把真实页面的章节标题降为阅读标签，让观众保持位置感并进入具体内容。",
+  "shotcraft-tracking-expand": "用平静的字距展开引入短概念，再补解释，让观众获得可读的章节起点。",
+  "shotcraft-typing-code-block": "按真实代码的阅读顺序逐行或逐字呈现，让观众跟上代码结构。",
+  "shotcraft-vertical-word-roll-blur-cycle": "在固定前缀下轮换短词并停在末项，让观众理解同一问题的几种方向。",
+  "shotcraft-word-relay-filmstrip": "让同一真实页面与三个关联动词接力同步，让观众把动作映射到素材变化。",
+  "shotcraft-word-relay-geometry": "以三个关键词的接力形成强调层级，让观众按正确顺序读出短概念。",
+  "source-citation-card": "从主张推进到依据与来源边界，让观众知道结论凭什么成立、适用于何处。",
+  "sparkline-grid": "用共同尺度连接各组三期观测值，让观众比较已发生的方向而不臆测中间过程。",
+  "speaker-intro": "把讲述者的真实身份与问题关联起来，让观众知道此人为何参与叙述。",
+  "summary-resolve": "把已解释的要点收束到一个有依据的判断，让观众带走清楚的结论。",
+  "swimlane-workflow": "在角色泳道中逐一呈现动作与交接，让观众看清谁在何时负责哪一步。",
+  "team-spotlight": "逐个说明同一任务中的角色职责，再回到协作关系，让观众理解如何分工。",
+};
+
 function nativeRecipe(definition: ComponentDefinition) {
   const content = NATIVE_RECIPE_CONTENT[definition.name];
   if (!content) return undefined;
@@ -1358,6 +1444,7 @@ function nativeRecipe(definition: ComponentDefinition) {
     textLimits: { title: { maxLines: 1, maxLineLength: 24 }, note: { maxLines: 1, maxLineLength: 40 } },
     events,
     usage: {
+      intent: RECIPE_INTENTS[definition.name],
       useWhen: [fit.useWhen],
       avoidWhen: [fit.avoidWhen, quantitative ? "No fabricated or independently rescaled data; supply provenance and a common measurement basis." : connected ? "Only the stated serial topology; no arbitrary branching, spatial or physical simulation." : "This is a text-led treatment: not a measured chart, real screenshot, spatial camera or continuous simulation."],
       inputRules: { title: "One content-specific heading, at most 24 characters.", items: "2–4 label::detail entries separated by |; each field at most 24 characters. " + fit.items, highlight: "A real integer pointing to an existing item; it marks the final emphasis, not an inferred metric.", note: "One qualifier or source note, at most 40 characters. Retain uncertainty and evidence limitations." },
@@ -1832,6 +1919,8 @@ function renderRecipeCard(raw: unknown): string {
   const lines = [
     "<!-- Generated by visual-component-catalog.ts recipe-cards-generate. Edit the owning manifest/generator, not this file. -->",
     "# " + manifest.title, "", "Component ID: " + manifest.name, "",
+    "## Narrative intent", "", usage.intent, "",
+    "Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.", "",
     "## Purpose and selection", "", list(usage.useWhen), "", "Do not use:", "", list(usage.avoidWhen), "",
     "## Supported inputs", "",
     ...Object.entries(usage.inputRules).map(([key, rule]) => "- " + key + ": " + rule), "",
@@ -1876,12 +1965,19 @@ function renderRecipeCard(raw: unknown): string {
 }
 
 async function recipeCards(write: boolean): Promise<void> {
+  if (Object.keys(RECIPE_INTENTS).length !== 81) throw Error("Every executable recipe needs an authored narrative intent.");
   let count = 0;
   for (const entry of await readdir(blocksRoot, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const directory = join(blocksRoot, entry.name), path = join(directory, "registry-item.json");
     const raw: unknown = JSON.parse(await readFile(path, "utf8"));
     if (!raw || typeof raw !== "object" || !("motionRecipe" in raw)) continue;
+    const recipe = raw.motionRecipe;
+    if (!recipe || typeof recipe !== "object" || !("usage" in recipe) || !recipe.usage || typeof recipe.usage !== "object") throw Error("Invalid recipe usage " + entry.name);
+    const intent = RECIPE_INTENTS[entry.name];
+    if (!intent) throw Error("Missing narrative intent " + entry.name);
+    if (write) Object.assign(recipe.usage, { intent });
+    else if (!("intent" in recipe.usage) || recipe.usage.intent !== intent) throw Error("Narrative intent stale: " + entry.name);
     const manifest = recipeCardManifestSchema.parse(raw);
     if (manifest.name !== entry.name || !("files" in raw) || !Array.isArray(raw.files)) throw Error("Invalid recipe card owner " + entry.name);
     const file = { path: "recipe.md", target: "compositions/" + entry.name + ".recipe.md", type: "hyperframes:asset" };
@@ -1924,7 +2020,7 @@ async function check(): Promise<void> {
   console.log("Visual component catalog is current: 149 native components and 30 Shotcraft imports.");
 }
 
-// References are deliberately not registry blocks: indexing a card does not port it.
+// Refresh metadata only for reviewed local ports; never restore the unported reference archive.
 async function importShotcraftReferences(): Promise<void> {
   const repository = "Vincentwei1021/video-shotcraft";
   const revision = "5ddbf521038b0a7accfb6dc1e0a9eb29c67277ab";
@@ -1941,6 +2037,12 @@ async function importShotcraftReferences(): Promise<void> {
   type Card = { name: string; summary: string; use: string; duration: string; energy: string; intention: string; source: string; category: string; tags: string[]; styles: Style[] };
   const library: { cards: Card[]; stats: { cardCount: number; styleCount: number } } = JSON.parse(await raw(repository, revision, "gallery/api/library.json"));
   if (library.cards.length !== 157 || library.cards.reduce((sum, card) => sum + card.styles.length, 0) !== 214) throw new Error("Pinned Shotcraft inventory changed");
+  const catalogPath = resolve(dirname(registryIndexPath), "shotcraft-references.json");
+  const installedCatalog: { cards: { name: string; styles: { key: string }[] }[] } = JSON.parse(await readFile(catalogPath, "utf8"));
+  const allowed = new Map(installedCatalog.cards.map(card => [card.name, new Set(card.styles.map(style => style.key))]));
+  const installedCards = library.cards.filter(card => allowed.has(card.name)).map(card => ({
+    ...card, styles: card.styles.filter(style => allowed.get(card.name)?.has(style.key)),
+  }));
   const demoSources = tree.tree.filter(file => /^(?:demos|assets\/lib|template\/src)\/.*\.tsx$/.test(file.path)).map(file => file.path);
   const forkPaths = new Set(forkTree.tree.map(file => file.path));
   const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -1962,8 +2064,8 @@ async function importShotcraftReferences(): Promise<void> {
   const converted = new Map<string, string>();
   const cards = [];
   // A small worker batch bounds GitHub traffic; generated output remains deterministic.
-  for (let offset = 0; offset < library.cards.length; offset += 8) {
-    cards.push(...await Promise.all(library.cards.slice(offset, offset + 8).map(async card => {
+  for (let offset = 0; offset < installedCards.length; offset += 8) {
+    cards.push(...await Promise.all(installedCards.slice(offset, offset + 8).map(async card => {
       const rules = await raw(repository, revision, card.source);
       const references = [...rules.matchAll(/(?:demos|assets\/lib|template\/src)\/[A-Za-z0-9_./-]+/g)].map(match => match[0]);
       const candidates = demoSources.filter(path => references.some(reference => reference.endsWith(".tsx") ? path === reference : path.startsWith(reference.endsWith("/") ? reference : `${reference}/`)));
@@ -2005,11 +2107,11 @@ async function importShotcraftReferences(): Promise<void> {
   const license = await raw(repository, revision, "LICENSE");
   const output = { schemaVersion: 1, repository: `https://github.com/${repository}`, revision,
     conversionRepository: `https://github.com/${fork}`, conversionRevision: forkRevision,
-    license: "Apache-2.0", licenseFile: "shotcraft-reference-LICENSE.txt", stats: { cardCount: cards.length, styleCount: 214 },
+    license: "Apache-2.0", licenseFile: "shotcraft-reference-LICENSE.txt", stats: { cardCount: cards.length, styleCount: cards.reduce((sum, card) => sum + card.styles.length, 0) },
     methodology: { sourceUrl: `https://github.com/${repository}/blob/${revision}/references/pipeline.md`, rules: await raw(repository, revision, "references/pipeline.md") }, cards };
-  await writeFile(resolve(dirname(registryIndexPath), "shotcraft-references.json"), JSON.stringify(output, null, 2) + "\n");
+  await writeFile(catalogPath, JSON.stringify(output, null, 2) + "\n");
   await writeFile(resolve(dirname(registryIndexPath), "shotcraft-reference-LICENSE.txt"), license);
-  console.log(`Indexed ${cards.length} Shotcraft cards and 214 preview variants; no runtime blocks created.`);
+  console.log(`Refreshed ${output.stats.cardCount} installable Shotcraft cards and ${output.stats.styleCount} preview variants; unported entries remain excluded.`);
 }
 
 async function importShotcraftCameras(): Promise<void> {
@@ -2055,7 +2157,7 @@ async function importShotcraftCameras(): Promise<void> {
     const recipe = { version: 1, pattern: "state-transformation", minHoldSeconds: .7,
       textLimits: { title: { maxLines: 1, maxLineLength: 12 } },
       events: [{ id: "camera", target: ".sc-layer", time: .65, duration: spec.seconds, action: spec.use }],
-      usage: { useWhen: [spec.use], avoidWhen: [spec.avoid],
+      usage: { intent: RECIPE_INTENTS[spec.id], useWhen: [spec.use], avoidWhen: [spec.avoid],
         inputRules: { title: "单行最多12字；不遮盖素材中的必要信息。", mediaUrl: "已有项目内真实页面截图；禁止用演示卡片或手绘假界面替代。",
           captureLayout: "JSON: width/height 是截图的 CSS 页面尺寸，pixelRatio 是像素倍率；regions 是6–8个实测 {id,x,y,width,height} 区域，heroId 与两个 foregroundIds 引用已有区域。图片像素尺寸必须一致。先核对裁切，过密或无适合主体时换配方，不猜坐标。" },
         readingOrder: ["建立真实页面和层次", spec.use, "保留主体和最终可读画面"],

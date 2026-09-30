@@ -3,6 +3,12 @@
 
 Component ID: section-marker
 
+## Narrative intent
+
+用短暂全画面章节提示建立下一段方向，让观众意识到理解任务正在切换。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用全画面文字卡说明接下来要进入哪个理解阶段。

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-multiplane
 
+## Narrative intent
+
+沿真实素材的空间层次推进视线，让观众理解前后景与主体的相对位置。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 展示真实页面、图像或空间层次，沿同一方向探索真实内容。

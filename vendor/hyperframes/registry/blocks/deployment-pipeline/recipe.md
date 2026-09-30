@@ -3,6 +3,12 @@
 
 Component ID: deployment-pipeline
 
+## Narrative intent
+
+逐道呈现发布门槛及产物，让观众理解安全发布的依赖顺序。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 解释2–4个串行工程门槛及每步产物，不冒充实时运行。

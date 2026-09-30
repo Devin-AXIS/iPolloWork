@@ -147,7 +147,8 @@
         "Every action changes the real target and reverse seeking restores the same picture.",
         "Use actual content, measured fonts and validated project-local media.",
         "Preserve original movement functions, geometry and ordering; the final state remains readable."
-      ]
+      ],
+      "intent": "把八张真实图像由堆叠展开，让观众先感到数量，再看见内容差异。"
     }
   },
   "source": {

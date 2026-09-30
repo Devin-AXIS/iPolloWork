@@ -3,6 +3,12 @@
 
 Component ID: process-handoff-map
 
+## Narrative intent
+
+让每次交接的双方、内容与方向同步出现，使观众追踪责任如何传递。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 2–4次连续交接，每次说明交给谁以及传递内容。

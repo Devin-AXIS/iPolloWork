@@ -3,6 +3,12 @@
 
 Component ID: metric-signal
 
+## Narrative intent
+
+用共享零基线呈现数值，让观众比较数量而不受独立缩放误导。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 比较2–4个同单位、同统计口径的非负数量。

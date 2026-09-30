@@ -3,6 +3,12 @@
 
 Component ID: learning-path
 
+## Narrative intent
+
+按前置关系展开学习阶段，让观众知道下一步应建立在什么能力之上。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain 1–4 ordered learning stages and the outcome of each.

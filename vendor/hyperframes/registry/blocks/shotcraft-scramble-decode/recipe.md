@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-scramble-decode
 
+## Narrative intent
+
+由乱码解码出真实标题，让观众从未知进入明确主题，关键事实只在落定后阅读。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 让短标题由乱码锁定成真实文字，表达谜题揭示或从未知到明确的主题。

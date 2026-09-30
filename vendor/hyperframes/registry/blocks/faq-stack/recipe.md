@@ -3,6 +3,12 @@
 
 Component ID: faq-stack
 
+## Narrative intent
+
+使每个问题紧接可读的直接回答，让观众逐项解除独立疑问。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 逐个回答围绕同一主题的独立常见问题。

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-pill-chip-slot-cycle-handled
 
+## Narrative intent
+
+在固定句式中轮换四项真实职责，让观众理解同一主体覆盖的不同工作。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 同一固定语句中轮播四个具体职责，说明覆盖范围。

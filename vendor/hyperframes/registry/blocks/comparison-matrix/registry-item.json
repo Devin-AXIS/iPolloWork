@@ -206,7 +206,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify both options → Compare one common criterion at a time → Read the full matrix. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "让两个选项始终按相同标准对齐，使观众基于条件而非视觉强调作比较。"
     }
   }
 }

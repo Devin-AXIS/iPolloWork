@@ -3,6 +3,12 @@
 
 Component ID: definition-highlight
 
+## Narrative intent
+
+从定义推进到相邻概念和边界，让观众能正确区分这个术语。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 澄清一个术语的定义、相邻概念与边界。

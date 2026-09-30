@@ -3,6 +3,12 @@
 
 Component ID: bar-chart-race
 
+## Narrative intent
+
+把同口径数值映射成可比较的长度，让观众看出真实大小差距与排序。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Compare 2–5 non-negative measured values sharing one unit and period.

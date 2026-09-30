@@ -3,6 +3,12 @@
 
 Component ID: sparkline-grid
 
+## Narrative intent
+
+用共同尺度连接各组三期观测值，让观众比较已发生的方向而不臆测中间过程。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 2–4组同单位、同采样间隔的数据，各有三个非负观测值。

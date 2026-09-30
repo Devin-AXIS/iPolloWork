@@ -3,6 +3,12 @@
 
 Component ID: customer-quote-wall
 
+## Narrative intent
+
+把可追溯反馈按同一问题聚合，让观众看到共同点与分歧而非虚构共识。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 将可追溯的用户反馈按同一问题归类并逐项聚焦。

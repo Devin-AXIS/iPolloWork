@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-split-text-stagger
 
+## Narrative intent
+
+让短标题按字符错峰入场并落定，提示章节开始而不遮盖后续内容。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 一个短标题按字符错峰上升并落定，适合章节入场。

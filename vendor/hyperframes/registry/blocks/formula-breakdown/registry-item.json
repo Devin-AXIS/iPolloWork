@@ -192,7 +192,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Read the formula → Explain the inputs → Recombine the result. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "拆开公式中的输入与关系再合成结果，让观众明白计算的含义而非只记住式子。"
     }
   }
 }

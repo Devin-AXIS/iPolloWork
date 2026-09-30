@@ -3,6 +3,12 @@
 
 Component ID: release-highlights
 
+## Narrative intent
+
+逐项呈现已发布变化及用户影响，让观众知道这次更新具体改变了什么。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 聚焦一次真实发布中2–4项对用户有影响的变更。

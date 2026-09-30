@@ -3,6 +3,12 @@
 
 Component ID: checklist-reveal
 
+## Narrative intent
+
+逐项呈现可执行的检查动作，让观众最后得到一张可复核的清单。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Show a short set of observable checks or practical tasks.

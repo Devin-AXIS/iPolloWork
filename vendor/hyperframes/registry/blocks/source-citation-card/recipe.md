@@ -3,6 +3,12 @@
 
 Component ID: source-citation-card
 
+## Narrative intent
+
+从主张推进到依据与来源边界，让观众知道结论凭什么成立、适用于何处。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 按结论、依据、边界解释一个可追溯论证。

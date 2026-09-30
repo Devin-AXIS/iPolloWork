@@ -3,6 +3,12 @@
 
 Component ID: before-after-contrast
 
+## Narrative intent
+
+并置同一对象的前后状态，让观众看清变化发生在哪里，而非误以为是两个对象。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Compare two states of the same subject on the same criterion.

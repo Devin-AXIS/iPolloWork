@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-text-column-converge
 
+## Narrative intent
+
+让多个短主题轮换后汇成最后的标题，使观众感到话题正在收束。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 在同一前缀下切换九个短主题，最后与末项汇合成标题。

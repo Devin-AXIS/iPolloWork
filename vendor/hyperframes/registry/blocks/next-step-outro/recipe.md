@@ -3,6 +3,12 @@
 
 Component ID: next-step-outro
 
+## Narrative intent
+
+把结论接到少量可执行动作，让观众知道离开视频后该做什么。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Close with one destination supported by a short sequence of next actions.

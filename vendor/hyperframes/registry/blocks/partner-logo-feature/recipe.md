@@ -3,6 +3,12 @@
 
 Component ID: partner-logo-feature
 
+## Narrative intent
+
+用文字说明参与方各自贡献，让观众理解合作分工而不误认有标志素材。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用文字说明合作方或合作角色的分工与价值。

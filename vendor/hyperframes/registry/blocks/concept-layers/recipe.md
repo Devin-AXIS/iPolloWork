@@ -3,6 +3,12 @@
 
 Component ID: concept-layers
 
+## Narrative intent
+
+自基础到应用逐层建立依赖，让观众理解上层为何需要下层。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain 2–4 dependent conceptual levels from foundation to application.

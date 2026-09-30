@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-title-demote-to-label
 
+## Narrative intent
+
+把真实页面的章节标题降为阅读标签，让观众保持位置感并进入具体内容。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 在真实页面素材上演示两个章节标题从主体降为阅读标签。

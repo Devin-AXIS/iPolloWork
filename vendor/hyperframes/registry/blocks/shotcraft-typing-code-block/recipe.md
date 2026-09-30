@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-typing-code-block
 
+## Narrative intent
+
+按真实代码的阅读顺序逐行或逐字呈现，让观众跟上代码结构。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用同一段真实代码对比逐行呈现与逐字输入，最多四行。

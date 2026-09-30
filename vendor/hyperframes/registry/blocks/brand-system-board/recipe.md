@@ -3,6 +3,12 @@
 
 Component ID: brand-system-board
 
+## Narrative intent
+
+把各表达维度的原则放在同一系统中，让观众理解它们如何保持一致。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 说明品牌文字、颜色、动效等表达原则如何保持一致。

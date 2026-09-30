@@ -64,6 +64,7 @@ export const hyperframesMotionRecipeSchema = z.object({
     maxLines: z.number().int().positive(), maxLineLength: z.number().int().positive(),
   }).strict()).optional(),
   usage: z.object({
+    intent: z.string().min(12).max(240).optional(),
     useWhen: z.array(z.string().min(1).max(240)).min(1).max(4),
     avoidWhen: z.array(z.string().min(1).max(240)).min(1).max(4),
     inputRules: z.record(z.string(), z.string().min(1).max(240)),
@@ -216,6 +217,7 @@ export const hyperframesCatalogItemSchema = z.object({
   variables: z.array(hyperframesEffectVariableSchema).default([]),
   recipeSummary: z.object({
     pattern: hyperframesMotionRecipeSchema.shape.pattern,
+    intent: hyperframesMotionRecipeSchema.shape.usage.shape.intent,
     useWhen: hyperframesMotionRecipeSchema.shape.usage.shape.useWhen,
     avoidWhen: hyperframesMotionRecipeSchema.shape.usage.shape.avoidWhen,
   }).strict().optional(),

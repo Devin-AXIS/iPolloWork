@@ -175,7 +175,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Read the claim → Read the measured figure → Read its scope and source → Hold claim and evidence together. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "让主张、数值和来源同时可见，使观众能判断证据是否真的支持结论。"
     }
   }
 }

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-karaoke-fill
 
+## Narrative intent
+
+按实际发声顺序填亮短句词组，让观众听到与看到的是同一段语言。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用四个短词组的依次填色强调一条已实测对齐的短句。

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-vertical-word-roll-blur-cycle
 
+## Narrative intent
+
+在固定前缀下轮换短词并停在末项，让观众理解同一问题的几种方向。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 在共同前缀下依次聚焦四个短词，最后保留末项。

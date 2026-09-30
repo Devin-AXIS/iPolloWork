@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-font-weight-pump
 
+## Narrative intent
+
+按实测语义或音乐节拍改变同一短词字重，让观众感到这一次强调。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用五次已标定的节拍或语义强调改变同一短词的字重。

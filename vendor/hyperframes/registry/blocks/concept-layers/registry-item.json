@@ -192,7 +192,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the foundation → Add each dependent level → Read the complete hierarchy. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "自基础到应用逐层建立依赖，让观众理解上层为何需要下层。"
     }
   }
 }

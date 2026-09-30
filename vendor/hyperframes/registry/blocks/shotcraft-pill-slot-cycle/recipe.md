@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-pill-slot-cycle
 
+## Narrative intent
+
+在固定句式中逐项替换六个功能，让观众理解范围，最后回到完整概括。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 在固定句式下依次展示六项功能，再收束成一句范围说明。

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-split-flap-title
 
+## Narrative intent
+
+用机械翻牌揭示短标题，给新章节一个清楚的转折信号。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用机械翻牌揭晓一个短标题或章节词。

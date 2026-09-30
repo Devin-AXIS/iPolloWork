@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-outline-word-fill
 
+## Narrative intent
+
+将当前关键词由轮廓填实，让观众在说到它时完成一次语义聚焦。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 把一个短关键词从轮廓填充为明确强调。
