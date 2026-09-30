@@ -1703,13 +1703,19 @@ describe("plugin package lifecycle", () => {
       const list = await fetch(base + path, { headers });
       expect(list.status).toBe(200);
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.16" }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.19" }),
       ]) });
       const ui = await fetch(`${base}${path}/labelu-data-annotation/ui/workbench`, { headers });
       expect(ui.status).toBe(200);
       expect(await ui.json()).toMatchObject({
         html: expect.stringContaining('title="数据标注平台"'),
         resource: { ui: { csp: { frameDomains: ["http://127.0.0.1:*"] } } },
+      });
+      const gigLinkUi = await fetch(`${base}${path}/labelu-data-annotation/ui/gig-link`, { headers });
+      expect(gigLinkUi.status).toBe(200);
+      expect(await gigLinkUi.json()).toMatchObject({
+        html: expect.stringContaining('title="零工汇任务列表"'),
+        resource: { id: "gig-link", ui: { csp: { frameDomains: ["https://giglink.koocoding.com"] } } },
       });
       const open = await fetch(`${base}/experimental/extensions/call`, {
         method: "POST", headers,
@@ -1757,7 +1763,7 @@ describe("plugin package lifecycle", () => {
     try {
       const list = await fetch(`http://127.0.0.1:${restarted.port}${path}`, { headers });
       expect(await list.json()).toMatchObject({ items: expect.arrayContaining([
-        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.16", disabledResourceIds: [] }),
+        expect.objectContaining({ pluginId: "labelu-data-annotation", enabled: true, version: "0.4.19", disabledResourceIds: [] }),
       ]) });
       const project = await fetch(`http://127.0.0.1:${restarted.port}/experimental/extensions/call`, {
         method: "POST", headers,
@@ -1810,7 +1816,7 @@ describe("plugin package lifecycle", () => {
       expect(response.status, JSON.stringify(body)).toBe(200);
       const { items } = body;
       expect(items.find((item: { pluginId: string }) => item.pluginId === "labelu-data-annotation"))
-        .toMatchObject({ version: "0.4.16", previousVersion: "0.3.1", enabled: true });
+        .toMatchObject({ version: "0.4.19", previousVersion: "0.3.1", enabled: true });
       expect(items.find((item: { pluginId: string }) => item.pluginId === "signed-research"))
         .toMatchObject({ version: "1.0.0", enabled: true });
     } finally {
@@ -1850,7 +1856,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "video-agent", version: "0.3.4", installedVersion: "0.3.4", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.0", installedVersion: "1.0.0", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
-          { pluginId: "labelu-data-annotation", version: "0.4.16", installedVersion: "0.4.16", updateAvailable: false },
+          { pluginId: "labelu-data-annotation", version: "0.4.19", installedVersion: "0.4.19", updateAvailable: false },
         ],
       });
 

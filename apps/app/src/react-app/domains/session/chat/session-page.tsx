@@ -3321,33 +3321,37 @@ export function SessionPage(props: SessionPageProps) {
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
   }, [openWorkspaceApp, workspaceApps, props.runtimeWorkspaceId, props.selectedSessionId]);
-  const dataAnnotationOpening = useRef(false);
-  const openDataAnnotation = useCallback(() => {
+  const labeluSurfaceOpening = useRef(new Set<string>());
+  const openLabeluSurface = useCallback((resourceId: "workbench" | "gig-link") => {
     const client = props.ipolloworkServerClient;
     const workspaceId = props.runtimeWorkspaceId;
-    if (!client || !workspaceId || dataAnnotationOpening.current) return;
-    dataAnnotationOpening.current = true;
+    if (!client || !workspaceId || labeluSurfaceOpening.current.has(resourceId)) return;
+    labeluSurfaceOpening.current.add(resourceId);
+    const openingMessage = resourceId === "gig-link" ? t("gig_link.opening") : t("data_annotation.opening");
+    const unavailableMessage = resourceId === "gig-link" ? t("gig_link.unavailable") : t("data_annotation.unavailable");
     let openingNotice: string | number | undefined;
     void (async () => {
-      let surface = workspaceApps.find((entry) => entry.pluginId === "labelu-data-annotation");
+      let surface = workspaceApps.find((entry) => entry.pluginId === "labelu-data-annotation" && entry.resource.id === resourceId);
       if (!surface) {
-        openingNotice = toast.info(t("data_annotation.opening"), { id: `data-annotation-opening:${workspaceId}`, duration: Infinity });
+        openingNotice = toast.info(openingMessage, { id: `${resourceId}-opening:${workspaceId}`, duration: Infinity });
         const { items } = await client.listPluginPackages(workspaceId);
         surface = resolveInstalledPluginContributions(items).workspaceApps
-          .find((entry) => entry.pluginId === "labelu-data-annotation");
+          .find((entry) => entry.pluginId === "labelu-data-annotation" && entry.resource.id === resourceId);
       }
-      if (!surface) throw new Error(t("data_annotation.unavailable"));
+      if (!surface) throw new Error(unavailableMessage);
       openWorkspaceApp(surface);
       setTemplateMarketOpen(false);
       setMainWorkspaceView(null);
       prioritizeRightPanel();
     })().catch((error: unknown) => {
-      toast.error(error instanceof Error ? error.message : t("data_annotation.unavailable"));
+      toast.error(error instanceof Error ? error.message : unavailableMessage);
     }).finally(() => {
       if (openingNotice !== undefined) toast.dismiss(openingNotice);
-      dataAnnotationOpening.current = false;
+      labeluSurfaceOpening.current.delete(resourceId);
     });
   }, [openWorkspaceApp, prioritizeRightPanel, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
+  const openDataAnnotation = useCallback(() => openLabeluSurface("workbench"), [openLabeluSurface]);
+  const openGigLink = useCallback(() => openLabeluSurface("gig-link"), [openLabeluSurface]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
     let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
@@ -4512,7 +4516,7 @@ export function SessionPage(props: SessionPageProps) {
               : activePanelTab?.type === "plugin-studio"
                 ? "plugin-workshop"
                 : activePanelTab?.type === "workspace-app" && activePanelTab.surface.pluginId === "labelu-data-annotation"
-                  ? "data-annotation"
+                  ? activePanelTab.surface.resource.id === "gig-link" ? "gig-link" : "data-annotation"
                   : null}
           onOpenAccount={openCloudAccount}
           onOpenSettings={props.onOpenSettings}
@@ -4526,6 +4530,8 @@ export function SessionPage(props: SessionPageProps) {
           onOpenPluginWorkshop={openPluginWorkshop}
           onOpenDataAnnotation={openDataAnnotation}
           dataAnnotationDisabled={!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedWorkspaceId}
+          onOpenGigLink={openGigLink}
+          gigLinkDisabled={!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedWorkspaceId}
           onSignIn={openCloudSignIn}
           onOpenSessionSearch={props.sidebar.onOpenSessionSearch ? handleSidebarOpenSessionSearch : undefined}
           onStartResize={startLeftSidebarResize}

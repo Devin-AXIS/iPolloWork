@@ -1842,7 +1842,7 @@ describe("model runtime adapters", () => {
     });
   });
 
-  test("connects the DSH DeepSeek route as a callable shared OpenCode provider", async () => {
+  test("connects fixed compatible provider presets as callable shared OpenCode providers", async () => {
     const { calls, client } = createOpenCodeProviderClient();
     const runtimePatches: unknown[] = [];
     const mirroredCredentials: Array<{ key: string; value: string }> = [];
@@ -1966,6 +1966,77 @@ describe("model runtime adapters", () => {
       baseURL: "https://api.deepseek.com",
     });
     expect(connectedIds).toContain("deepseek-official");
+
+    await store.openProviderAuthModal({ preferredProviderId: "model2api" });
+    expect(store.getSnapshot()).toMatchObject({
+      providerAuthPreferredProviderId: "model2api",
+      providerAuthMethods: {
+        model2api: [{ type: "api", label: expect.any(String) }],
+      },
+    });
+
+    await store.submitProviderApiKey("model2api", "model2api-secret");
+
+    expect(runtimePatches.at(-1)).toEqual({
+      opencode: {
+        provider: {
+          model2api: {
+            npm: "@ai-sdk/openai-compatible",
+            name: "Model2API",
+            options: { baseURL: "https://api.model2api.com/v1" },
+            models: {
+              "deepseek-v4-flash": {
+                name: "DeepSeek-V4-Flash",
+                attachment: true,
+                reasoning: true,
+                tool_call: true,
+                limit: { context: 1_000_000, output: 393_200 },
+                modalities: { input: ["text", "image"], output: ["text"] },
+              },
+              "deepseek-v4-pro": {
+                name: "DeepSeek-V4-Pro",
+                attachment: false,
+                reasoning: true,
+                tool_call: false,
+                limit: { context: 1_000_000, output: 393_200 },
+                modalities: { input: ["text"], output: ["text"] },
+              },
+            },
+          },
+        },
+      },
+    });
+    expect(calls).toContainEqual({
+      name: "set",
+      value: {
+        providerID: "model2api",
+        auth: { type: "api", key: "model2api-secret" },
+      },
+    });
+    expect(mirroredCredentials[2]).toEqual({
+      key: sharedProviderCredentialEnvKey("model2api"),
+      value: "model2api-secret",
+    });
+    expect(mirroredCredentials[3]?.key).toBe(sharedProviderProfileEnvKey("model2api"));
+    expect(parseSharedProviderProfile(mirroredCredentials[3]?.value ?? "")).toMatchObject({
+      providerId: "model2api",
+      displayName: "Model2API",
+      api: "openai-completions",
+      baseURL: "https://api.model2api.com/v1",
+      models: [
+        {
+          id: "deepseek-v4-flash",
+          contextWindow: 1_000_000,
+          maxTokens: 393_200,
+        },
+        {
+          id: "deepseek-v4-pro",
+          contextWindow: 1_000_000,
+          maxTokens: 393_200,
+        },
+      ],
+    });
+    expect(connectedIds).toContain("model2api");
   });
 
   test("connects the OrcaRouter compatible provider preset as a callable shared OpenCode provider", async () => {

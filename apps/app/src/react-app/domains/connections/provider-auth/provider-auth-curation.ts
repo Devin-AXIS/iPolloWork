@@ -36,6 +36,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   qwen: "Qwen",
   tokenstar: "TokenStar",
   "deepseek-official": "DeepSeek",
+  model2api: "Model2API",
 };
 
 const RECOMMENDED_PROVIDER_IDS = [
@@ -49,6 +50,7 @@ const RECOMMENDED_PROVIDER_IDS = [
   "stepfun",
   "deepseek",
   "deepseek-official",
+  "model2api",
   "zhipuai",
   "mistral",
   "cohere",

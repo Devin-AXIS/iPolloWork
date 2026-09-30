@@ -43,6 +43,7 @@ const SHARED_PROVIDER_RUNTIME_ROUTES: Readonly<Record<string, SharedProviderRunt
   minimax: { api: "anthropic-messages", baseURL: "https://api.minimax.io/anthropic" },
   "minimax-cn": { api: "anthropic-messages", baseURL: "https://api.minimaxi.com/anthropic" },
   mistral: { api: "openai-completions", baseURL: "https://api.mistral.ai/v1" },
+  model2api: { api: "openai-completions", baseURL: "https://api.model2api.com/v1" },
   moonshotai: { api: "openai-completions", baseURL: "https://api.moonshot.ai/v1" },
   "moonshotai-cn": { api: "openai-completions", baseURL: "https://api.moonshot.cn/v1" },
   nvidia: { api: "openai-completions", baseURL: "https://integrate.api.nvidia.com/v1" },

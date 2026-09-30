@@ -103,6 +103,11 @@ describe("plugin package manifest", () => {
       paths: ["/login", "/new/home"],
       observeAction: "observe-browser-session",
       loginUi: { path: "/login", whenText: "短信登录", selector: "div:has(button.beer-login-btn) > img" },
+      sessionRecovery: {
+        loginPath: "/login.html",
+        authenticatedPath: "/platform/",
+        cookieNames: ["token", "user_id"],
+      },
       avatarSelector: "img.user_avatar",
     };
     const manifest = {
@@ -121,6 +126,9 @@ describe("plugin package manifest", () => {
       { paths: ["login"] },
       { observeAction: "../observe" },
       { loginUi: { ...browserSession.loginUi, selector: "" } },
+      { sessionRecovery: { ...browserSession.sessionRecovery, loginPath: "login.html" } },
+      { sessionRecovery: { ...browserSession.sessionRecovery, cookieNames: [] } },
+      { sessionRecovery: { ...browserSession.sessionRecovery, cookieNames: ["token", "invalid cookie"] } },
     ]) {
       expect(validatePluginPackageManifest({
         ...manifest,
@@ -133,6 +141,11 @@ describe("plugin package manifest", () => {
     const { validatePluginPackageManifest } = await import("./plugin-package-manifest.js");
     const manifest = await Bun.file(new URL("../../../examples/plugin-packages/labelu-data-annotation/ipollowork.plugin.json", import.meta.url)).json();
     expect(validatePluginPackageManifest(manifest).success).toBe(true);
+    expect(manifest.authorization).toBeUndefined();
+    expect(manifest.resources.find((resource: { id?: string }) => resource.id === "gig-link")?.ui?.csp?.frameDomains)
+      .toEqual(["https://giglink.koocoding.com"]);
+    expect(manifest.resources.flatMap((resource: { actions?: Array<{ id: string }> }) => resource.actions ?? []).map((action: { id: string }) => action.id))
+      .not.toContain("open-gig-link");
     for (const domain of ["http://example.com:*", "http://127.0.0.1.evil.test:*", "http://*:*", "javascript:alert(1)"]) {
       manifest.resources[0].ui.csp.frameDomains = [domain];
       expect(validatePluginPackageManifest(manifest).success).toBe(false);

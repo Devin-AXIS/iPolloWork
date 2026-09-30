@@ -258,6 +258,30 @@ const DEEPSEEK_OFFICIAL_PROVIDER = {
   models: Object.fromEntries(deepSeekOfficialModels().map(({ id, ...profile }) => [id, profile])),
 } as const;
 
+const MODEL2API_PROVIDER = {
+  providerId: "model2api",
+  name: "Model2API",
+  baseURL: "https://api.model2api.com/v1",
+  models: {
+    "deepseek-v4-flash": {
+      name: "DeepSeek-V4-Flash",
+      attachment: true,
+      reasoning: true,
+      tool_call: true,
+      limit: { context: 1_000_000, output: 393_200 },
+      modalities: { input: ["text", "image"], output: ["text"] },
+    },
+    "deepseek-v4-pro": {
+      name: "DeepSeek-V4-Pro",
+      attachment: false,
+      reasoning: true,
+      tool_call: false,
+      limit: { context: 1_000_000, output: 393_200 },
+      modalities: { input: ["text"], output: ["text"] },
+    },
+  },
+} as const;
+
 function catalogSharedProviderProfile(
   providers: readonly ProviderListItem[],
   providerId: string,
@@ -312,13 +336,20 @@ type CompatibleProviderPreset = {
   providerId: string;
   name: string;
   baseURL: string;
+  description?: string;
   models(modelIds?: string[]): CompatibleProviderProfile["models"];
 };
 
 const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
   {
     ...DEEPSEEK_OFFICIAL_PROVIDER,
+    description: "Connect DeepSeek once and use it from every supported agent engine.",
     models: () => DEEPSEEK_OFFICIAL_PROVIDER.models,
+  },
+  {
+    ...MODEL2API_PROVIDER,
+    description: "Connect Model2API with an API key and use its DeepSeek models from every supported agent engine.",
+    models: () => MODEL2API_PROVIDER.models,
   },
   {
     providerId: QWEN3_CODER_PROVIDER.providerId,
@@ -332,6 +363,7 @@ const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
     providerId: TOKENSTAR_PROVIDER.providerId,
     name: TOKENSTAR_PROVIDER.name,
     baseURL: TOKENSTAR_PROVIDER.baseURL,
+    description: "Connect TokenStar with an API key and choose the models to expose.",
     models: (modelIds) => tokenStarRuntimeModels([
       ...new Set(
         (modelIds?.length ? modelIds : TOKENSTAR_PROVIDER.fallbackModels.map((model) => model.id))
@@ -344,6 +376,7 @@ const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
     providerId: ORCAROUTER_PROVIDER.providerId,
     name: ORCAROUTER_PROVIDER.name,
     baseURL: ORCAROUTER_PROVIDER.baseURL,
+    description: "Connect OrcaRouter with an API key and use it from every supported agent engine.",
     models: (modelIds) => orcarouterRuntimeModels([
       ...new Set(
         (modelIds?.length ? modelIds : ORCAROUTER_PROVIDER.fallbackModels.map((model) => model.id))
@@ -1677,77 +1710,20 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
       merged[id] = [...existing, { type: "api", label: t("providers.api_key_label") }];
     }
 
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !isDesktopProviderBlocked({
-        providerId: DEEPSEEK_OFFICIAL_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[DEEPSEEK_OFFICIAL_PROVIDER.providerId] ?? [];
-      if (!existing.some((method) => method.type === "api")) {
-        merged[DEEPSEEK_OFFICIAL_PROVIDER.providerId] = [
+    if (getProviderEngineAdapter().capabilities.customProviders) {
+      for (const preset of COMPATIBLE_PROVIDER_PRESETS) {
+        if (isDesktopProviderBlocked({
+          providerId: preset.providerId,
+          checkRestriction: options.checkDesktopAppRestriction,
+        })) continue;
+        const existing = merged[preset.providerId] ?? [];
+        if (existing.some((method) => method.type === "api")) continue;
+        merged[preset.providerId] = [
           ...existing,
           {
             type: "api",
             label: t("providers.api_key_label"),
-            description: "Connect DeepSeek once and use it from every supported agent engine.",
-          },
-        ];
-      }
-    }
-
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !isDesktopProviderBlocked({
-        providerId: QWEN3_CODER_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[QWEN3_CODER_PROVIDER.providerId] ?? [];
-      if (!existing.some((method) => method.type === "api")) {
-        merged[QWEN3_CODER_PROVIDER.providerId] = [
-          ...existing,
-          { type: "api", label: t("providers.api_key_label") },
-        ];
-      }
-    }
-
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !isDesktopProviderBlocked({
-        providerId: TOKENSTAR_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[TOKENSTAR_PROVIDER.providerId] ?? [];
-      if (!existing.some((method) => method.type === "api")) {
-        merged[TOKENSTAR_PROVIDER.providerId] = [
-          ...existing,
-          {
-            type: "api",
-            label: t("providers.api_key_label"),
-            description: "Connect TokenStar with an API key and choose the models to expose.",
-          },
-        ];
-      }
-    }
-
-    if (
-      getProviderEngineAdapter().capabilities.customProviders &&
-      !isDesktopProviderBlocked({
-        providerId: ORCAROUTER_PROVIDER.providerId,
-        checkRestriction: options.checkDesktopAppRestriction,
-      })
-    ) {
-      const existing = merged[ORCAROUTER_PROVIDER.providerId] ?? [];
-      if (!existing.some((method) => method.type === "api")) {
-        merged[ORCAROUTER_PROVIDER.providerId] = [
-          ...existing,
-          {
-            type: "api",
-            label: t("providers.api_key_label"),
-            description: "Connect OrcaRouter with an API key and use it from every supported agent engine.",
+            ...(preset.description ? { description: preset.description } : {}),
           },
         ];
       }

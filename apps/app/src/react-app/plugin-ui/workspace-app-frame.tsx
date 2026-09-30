@@ -1205,7 +1205,7 @@ function McpWorkspaceAppFrame(props: WorkspaceAppFrameProps) {
           inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1",
         )}
         sandbox={props.surface.pluginId === "labelu-data-annotation"
-          ? "allow-scripts allow-same-origin allow-downloads"
+          ? "allow-scripts allow-same-origin allow-downloads allow-forms"
           : "allow-scripts allow-same-origin"}
         allow={buildAllowAttribute(resource.resource.ui.permissions)}
         data-development-preview={props.developmentPreview ? "plugin-workshop" : undefined}

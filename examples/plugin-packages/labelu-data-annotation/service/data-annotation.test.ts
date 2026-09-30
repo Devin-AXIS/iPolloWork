@@ -12,9 +12,24 @@ const ONE_PIXEL_PNG = Buffer.from(
   "base64",
 );
 
+function pluginRuntime(version: string) {
+  return {
+    plugin: { id: "labelu-data-annotation", version },
+  };
+}
+
+test("ships Gig Link as a direct built-in page without an authorization action", async () => {
+  const page = await readFile(new URL("../ui/gig-link.html", import.meta.url), "utf8");
+  assert.match(page, /https:\/\/giglink\.koocoding\.com/);
+  assert.match(page, /gig-link:authorize/);
+  assert.match(page, /parentOrigin/);
+  assert.match(page, /new URL\(document\.referrer\)\.origin/);
+  assert.doesNotMatch(page, /tools\/call|open-gig-link|授权中心/);
+});
+
 test("review roles, version-bound decisions, JSON exports and local legacy records survive relaunch", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-review-"));
-  let service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+  let service = await createDataAnnotationService(pluginRuntime("0.4.19"));
   try {
     let launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
     const call = async (path: string, method = "GET", body?: unknown, projectId?: string, session = launch) => {
@@ -113,7 +128,7 @@ test("review roles, version-bound decisions, JSON exports and local legacy recor
     assert.equal(video.review.status, "pending", "a description-only change revokes review approval");
     assert.equal((await call("/api/project-export", "GET", undefined, video.id)).status, 409);
     await service.dispose();
-    service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+    service = await createDataAnnotationService(pluginRuntime("0.4.19"));
     launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
     assert.deepEqual(await (await call("/api/role")).json(), { role: "annotator" });
     assert.equal((await record(await call("/api/project", "GET", undefined, project.id))).review.status, "approved");
@@ -138,7 +153,7 @@ const TEXT_DOCX = Buffer.from("UEsDBBQAAAAIAPZVMF3UV5DVpAAAANMAAAARAAAAd29yZC9kb
 
 test("imports Word and Chinese TXT, preserves paragraphs, and rejects invalid input without saving projects", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-documents-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.3.0"));
   try {
     const launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
     const extract = (name: string, bytes: Buffer, authenticated = true) => fetch(
@@ -221,7 +236,7 @@ type CreatedProject = {
 
 test("extracts text-layer PDFs without creating a project and rejects unusable PDFs", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-pdf-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.3.0"));
 
   try {
     const opened = await service.actions["open-workbench"]({}, { directory: root }) as OpenedWorkbench;
@@ -271,7 +286,7 @@ test("ships a runnable PDF worker and text assets with the built service", async
     default: typeof createDataAnnotationService;
   };
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-built-pdf-"));
-  const service = await builtModule.default({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  const service = await builtModule.default(pluginRuntime("0.3.0"));
 
   try {
     const opened = await service.actions["open-workbench"]({}, { directory: root }) as OpenedWorkbench;
@@ -291,7 +306,7 @@ test("ships a runnable PDF worker and text assets with the built service", async
 
 test("opens a multimodal workbench and reads shared saved records", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-plugin-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.2.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.2.0"));
 
   try {
 
@@ -464,7 +479,7 @@ test("opens a multimodal workbench and reads shared saved records", async () => 
 
 test("deletes only selected records across modalities and legacy copies, with authenticated and idempotent requests", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-delete-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.3.0"));
   try {
     const launch = new URL((await service.actions["open-workbench"]({}, { directory: root })).url);
     const base = join(root, ".ipollowork", "plugins", "labelu-data-annotation");
@@ -529,7 +544,7 @@ test("lists legacy image tasks as resumable projects without modifying them", as
     updateSource: "user",
   }, null, 2)}\n`, "utf8");
 
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.2.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.2.0"));
   try {
     const listed = await service.actions["list-projects"]({ limit: 10 }, { directory: root }) as Array<{
       id: string;
@@ -556,7 +571,7 @@ test("lists legacy image tasks as resumable projects without modifying them", as
 
 test("lists categorized training templates and creates ready-to-use projects without uploads", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-training-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.3.0" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.3.0"));
 
   try {
     const opened = await service.actions["open-workbench"]({}, { directory: root }) as OpenedWorkbench;
@@ -652,7 +667,7 @@ test("lists categorized training templates and creates ready-to-use projects wit
 test("host actions share UI persistence, revision checks, review and export without changing workbench role", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-labelu-actions-"));
   const other = await mkdtemp(join(tmpdir(), "ipollowork-labelu-isolation-"));
-  const service = await createDataAnnotationService({ plugin: { id: "labelu-data-annotation", version: "0.4.16" } });
+  const service = await createDataAnnotationService(pluginRuntime("0.4.19"));
   const ctx = { directory: root };
   try {
     const manifest = JSON.parse(await readFile(new URL("../ipollowork.plugin.json", import.meta.url), "utf8"));

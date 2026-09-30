@@ -184,6 +184,7 @@ describe("shared AI provider preferences", () => {
     const cases = [
       ["openai", "openai-responses", "https://api.openai.com/v1"],
       ["deepseek-official", "openai-completions", "https://api.deepseek.com"],
+      ["model2api", "openai-completions", "https://api.model2api.com/v1"],
       ["alibaba-cn", "openai-completions", "https://dashscope.aliyuncs.com/compatible-mode/v1"],
       ["anthropic", "anthropic-messages", "https://api.anthropic.com"],
       ["kimi-for-coding", "anthropic-messages", "https://api.kimi.com/coding"],

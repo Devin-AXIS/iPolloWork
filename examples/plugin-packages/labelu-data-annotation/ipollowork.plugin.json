@@ -14,7 +14,7 @@
     "prompt": "通过数据标注工作台或主软件 MCP 扩展通道操作当前工作区的标注项目。先用 ipollowork_extension_list_actions 查看接口，再用 ipollowork_extension_call（extensionId: labelu-data-annotation）调用。打开工作台优先用左侧数据标注入口，不向用户展示带令牌地址。读取使用 list-projects/get-project；用户要求创建、修改、审核、导出或删除时使用对应动作，参数与边界见插件 Skill。修改前读取最新 revision，冲突时重新读取，不盲目覆盖。仅在用户明确要求时审核或删除。工作台首页切换本机角色，详情页沿用所选角色；接口调用不更改界面角色。"
   },
   "package": {
-    "version": "0.4.16",
+    "version": "0.4.19",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -27,7 +27,7 @@
   "permissions": [
     {
       "id": "network",
-      "reason": "仅在本机 127.0.0.1 启动数据标注实训页面和标注接口。"
+      "reason": "在本机 127.0.0.1 启动数据标注页面和接口，并直接嵌入内置零工汇任务页面。"
     },
     {
       "id": "workspace-read",
@@ -38,10 +38,6 @@
       "reason": "将标注结果保存到当前工作区的插件专属目录。"
     }
   ],
-  "authorization": {
-    "required": false,
-    "methods": []
-  },
   "localization": {
     "defaultLocale": "zh",
     "translations": {
@@ -76,11 +72,15 @@
           "workbench": {
             "label": "Data Annotation",
             "description": "Open the data annotation platform directly in the right-side console."
+          },
+          "gig-link": {
+            "label": "Gig Link",
+            "description": "Open the Gig Link task list directly in the right-side panel."
           }
         },
         "permissions": {
           "network": {
-            "reason": "Start the data annotation workbench and annotation API only on the local 127.0.0.1 interface."
+            "reason": "Start the data annotation workbench and API on local 127.0.0.1 and directly embed the bundled Gig Link task page."
           },
           "workspace-read": {
             "reason": "Load images and annotations uploaded and saved by the user in the plugin workbench."
@@ -107,6 +107,24 @@
         "csp": {
           "frameDomains": [
             "http://127.0.0.1:*"
+          ]
+        }
+      }
+    },
+    {
+      "type": "ui",
+      "id": "gig-link",
+      "label": "零工汇",
+      "description": "在右侧属性栏打开零工汇任务列表。",
+      "path": "ui/gig-link.html",
+      "required": true,
+      "ui": {
+        "uri": "ui://labelu-data-annotation/gig-link",
+        "mimeType": "text/html;profile=mcp-app",
+        "prefersBorder": false,
+        "csp": {
+          "frameDomains": [
+            "https://giglink.koocoding.com"
           ]
         }
       }
@@ -471,6 +489,12 @@
       "label": "数据标注",
       "description": "图片、视频、音频和文字标注",
       "action": "open-workbench"
+    },
+    {
+      "type": "workspace-app",
+      "ref": "gig-link",
+      "label": "零工汇",
+      "description": "打开合作机构任务列表"
     }
   ]
 }

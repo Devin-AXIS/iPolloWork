@@ -4,6 +4,7 @@ import {
   AlertCircle,
   Archive,
   ArchiveRestore,
+  BriefcaseBusiness,
   CalendarDays,
   ChevronDown,
   ChevronRight,
@@ -462,7 +463,7 @@ export type AppSidebarProps = {
     name: string | null;
     email: string | null;
   };
-  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | "data-annotation" | null;
+  activePrimaryItem?: "template-market" | "schedule" | "extensions" | "plugin-workshop" | "data-annotation" | "gig-link" | null;
   onOpenAccount: () => void;
   onOpenSettings: (route?: string) => void;
   onOpenHelp: () => void;
@@ -472,6 +473,8 @@ export type AppSidebarProps = {
   onOpenPluginWorkshop: () => void;
   onOpenDataAnnotation?: () => void;
   dataAnnotationDisabled?: boolean;
+  onOpenGigLink?: () => void;
+  gigLinkDisabled?: boolean;
   onSignIn: () => void;
   /** Opens the cross-session message search dialog (Cmd/Ctrl+Shift+F). */
   onOpenSessionSearch?: () => void;
@@ -864,6 +867,20 @@ export function AppSidebar(props: AppSidebarProps) {
                   <Tags className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
                 </span>
                 <span className="flex-1 truncate">{t("data_annotation.title")}</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                onClick={props.onOpenGigLink}
+                disabled={!props.onOpenGigLink || props.gigLinkDisabled}
+                isActive={props.activePrimaryItem === "gig-link"}
+                className={primarySidebarActionClass}
+                data-testid="sidebar-gig-link"
+              >
+                <span className="grid size-4 shrink-0 place-items-center" aria-hidden="true" data-sidebar-primary-icon>
+                  <BriefcaseBusiness className="size-4" strokeWidth={SIDEBAR_ICON_STROKE_WIDTH} />
+                </span>
+                <span className="flex-1 truncate">{t("gig_link.title")}</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>

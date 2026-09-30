@@ -22,6 +22,7 @@ const apiMethods: Record<string, ProviderAuthMethod[]> = {
   mistral: [{ type: "api", label: "API key" }],
   "moonshotai-cn": [{ type: "api", label: "API key" }],
   modelscope: [{ type: "api", label: "API key" }],
+  model2api: [{ type: "api", label: "API key" }],
   "ollama-cloud": [{ type: "api", label: "API key" }],
   openai: [{ type: "api", label: "API key" }],
   openrouter: [{ type: "api", label: "API key" }],
@@ -45,6 +46,7 @@ const providers: ProviderAuthProvider[] = [
   { id: "mistral", name: "Mistral", env: ["API_KEY"] },
   { id: "moonshotai-cn", name: "Moonshot AI (China)", env: ["API_KEY"] },
   { id: "modelscope", name: "ModelScope", env: ["API_KEY"] },
+  { id: "model2api", name: "model2api", env: ["MODEL2API_API_KEY"] },
   { id: "ollama-cloud", name: "Ollama Cloud", env: ["API_KEY"] },
   { id: "openai", name: "OpenAI", env: ["OPENAI_API_KEY"] },
   { id: "openrouter", name: "OpenRouter", env: ["API_KEY"] },
@@ -75,6 +77,7 @@ describe("provider auth curation", () => {
       "minimax-cn",
       "stepfun",
       "deepseek-official",
+      "model2api",
       "mistral",
       "github-copilot",
     ]);
@@ -133,6 +136,10 @@ describe("provider auth curation", () => {
 
   test("labels the canonical DeepSeek provider", () => {
     expect(formatProviderAuthName("deepseek-official", "DeepSeek Official")).toBe("DeepSeek");
+  });
+
+  test("preserves the Model2API brand capitalization", () => {
+    expect(formatProviderAuthName("model2api", "model2api")).toBe("Model2API");
   });
 
   test("collapses the legacy DeepSeek provider into deepseek-official", () => {
