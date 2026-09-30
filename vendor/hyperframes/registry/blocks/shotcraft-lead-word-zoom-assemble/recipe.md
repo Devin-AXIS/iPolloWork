@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-lead-word-zoom-assemble
 
+## Narrative intent
+
+先放大句首概念再退回完整标题，让观众由核心词走向完整论点。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 先强调句首概念，再退镜组装三段短标题和解释。

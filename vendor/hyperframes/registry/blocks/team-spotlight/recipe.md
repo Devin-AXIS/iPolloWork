@@ -3,6 +3,12 @@
 
 Component ID: team-spotlight
 
+## Narrative intent
+
+逐个说明同一任务中的角色职责，再回到协作关系，让观众理解如何分工。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 说明同一任务中不同角色的职责与配合。

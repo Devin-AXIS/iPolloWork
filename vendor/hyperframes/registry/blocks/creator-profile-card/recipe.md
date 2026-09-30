@@ -3,6 +3,12 @@
 
 Component ID: creator-profile-card
 
+## Narrative intent
+
+把创作方向、方法与作品连成证据链，让观众理解创作者的实际特色。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用创作方向、方法和可核验作品介绍一个创作者。

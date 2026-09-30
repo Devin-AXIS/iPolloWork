@@ -3,6 +3,12 @@
 
 Component ID: brand-headline
 
+## Narrative intent
+
+先给出品牌承诺及其支撑信息，让观众理解本片的表达立场。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Open with one concise brand promise and one supporting statement.

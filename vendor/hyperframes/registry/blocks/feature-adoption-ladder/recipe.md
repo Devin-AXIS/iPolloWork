@@ -3,6 +3,12 @@
 
 Component ID: feature-adoption-ladder
 
+## Narrative intent
+
+从认识到稳定使用逐级呈现行为变化，让观众理解采纳需要哪些条件。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 说明同一功能从认识、尝试到稳定使用的阶段变化。

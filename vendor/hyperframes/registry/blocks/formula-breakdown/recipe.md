@@ -3,6 +3,12 @@
 
 Component ID: formula-breakdown
 
+## Narrative intent
+
+拆开公式中的输入与关系再合成结果，让观众明白计算的含义而非只记住式子。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain one short formula and its inputs with an explicit outcome.

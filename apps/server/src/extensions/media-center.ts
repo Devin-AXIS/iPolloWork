@@ -813,7 +813,10 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
     const fileName = asset.split("/").pop() ?? asset;
     return !referencedSources.has(asset) && !referencedSources.has(`assets/${fileName}`) && !referencedSources.has(fileName);
   });
-  if (orphanAssets.length > 0) {
+  // Earlier immutable synthesis revisions are harmless once the finished
+  // timeline references its chosen audio. No attached voiceover is still a
+  // delivery failure even when generated files are present.
+  if (orphanAssets.length > 0 && referencedSources.size === 0) {
     issues.push({
       code: "voiceover_assets_unreferenced",
       message: `Voiceover assets are present but not attached to the HyperFrames timeline: ${orphanAssets.slice(0, 5).join(", ")}${orphanAssets.length > 5 ? ", ..." : ""}.`,
@@ -877,15 +880,14 @@ export const MEDIA_EXTENSION_ACTIONS = [
     extensionId: MEDIA_EXTENSION_ID,
     action: "video_recipe_catalog",
     title: "Select video shot recipes",
-    description: "Search all 157 pinned Shotcraft reference cards and 214 preview variants offline. Returns suitability, energy, duration, source/preview and verified local componentIds. Reference-only is NOT executable. Pass up to three cardIds to read full rules, limits, known pitfalls, exact sources or unresolved candidates and dependency imports. Use executableOnly to shortlist ports; never install a reference card name.",
+    description: "Search all locally installable video recipes offline by narrative need or semantic pattern. recipes lists native and Shotcraft ports with exact componentId, narrative intent, useWhen and avoidWhen; recipeCategories gives available pattern counts. Choose by the audience outcome, not by visual effect alone. Imported Shotcraft cards also expose source/preview and full rules via up to three cardIds. Unported reference cards and previews are not bundled. Install only returned componentIds.",
     inputSchema: {
       type: "object",
       properties: {
         query: { type: "string", maxLength: 200 }, category: { type: "string", maxLength: 64 },
         cardIds: { type: "array", minItems: 1, maxItems: 3, items: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" } },
         offset: { type: "integer", minimum: 0 }, limit: { type: "integer", minimum: 1, maximum: 20 },
-        executableOnly: { type: "boolean" },
-        includeMethodology: { type: "boolean", description: "Read the pinned original production-methodology source for comparison. Active iPolloWork video.md and the user approval gate remain authoritative." },
+        includeMethodology: { type: "boolean", description: "Read the pinned production-methodology source for comparison. Active iPolloWork video.md and explicit user script-review requests remain authoritative." },
       },
       additionalProperties: false,
     },
@@ -916,7 +918,7 @@ export const MEDIA_EXTENSION_ACTIONS = [
         componentIds: { type: "array", minItems: 1, maxItems: 12, items: { type: "string", pattern: "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, description: "Registry component IDs selected from core-v1-video/motion/component-map.md." },
         motionStyle: { type: "string", enum: ["restrained", "balanced", "energetic"], description: "Choose one style for the whole video, not a different style per scene. The server compiles distance, emphasis scale, easing and event duration into installed recipes. Defaults to balanced." },
         mount: { type: "boolean", description: "Use true with complete instances to atomically fill matching empty section slots in index.html. Existing authored scenes and mounted hosts are never overwritten. Selection is recorded on the root even for preparation-only installs; selected but unmounted recipes fail delivery." },
-        instances: { type: "array", minItems: 1, maxItems: 48, description: "Optional ready-to-mount semantic recipe scenes. Select by recipeSummary.useWhen/avoidWhen, then read only the selected manifest's variables and motionRecipe.usage (inputRules, readingOrder, cueBindings, fallback, acceptance). Each instance supplies sceneId, componentId, start, duration, timingSource, values (all real content variables), optional cueTimes (event IDs to measured scene-relative seconds), track, transition, transitionDuration and transitionIntent. The host validates capacity, assets and ordered cues, then returns escaped placeholder-free instances[].snippet without overwriting index.html.", items: {
+        instances: { type: "array", minItems: 1, maxItems: 48, description: "Optional ready-to-mount semantic recipe scenes. Select by recipeSummary.intent/useWhen/avoidWhen, then read only the selected manifest's variables and motionRecipe.usage (intent, inputRules, readingOrder, cueBindings, fallback, acceptance). Each instance supplies sceneId, componentId, start, duration, timingSource, values (all real content variables), optional cueTimes (event IDs to measured scene-relative seconds), track, transition, transitionDuration and transitionIntent. The host validates capacity, assets and ordered cues, then returns escaped placeholder-free instances[].snippet without overwriting index.html.", items: {
           type: "object",
           properties: {
             sceneId: { type: "string" }, componentId: { type: "string" },

@@ -75,8 +75,8 @@ export default {
         });
         const failures = [];
         let referenceEvidence;
-        await ctx.prove("Full Shotcraft selection separates reference cards from executable ports", {
-          voiceover: "现有媒体工具查询全量目录，读取所选卡的规则和源码关联。未迁移卡不能安装；这验证检索与拦截，不代表全部卡已转换或整片生成通过。",
+        await ctx.prove("Curated Shotcraft selection exposes only installable ports", {
+          voiceover: "媒体工具只查询本地可安装的配方与变体。已删除未迁移的参考目录；无效配方无法写入项目。",
           action: async () => {
             const selectionScript = `
               import {callMediaExtensionAction} from './apps/server/src/extensions/media-center.ts';
@@ -85,7 +85,7 @@ export default {
               import {join} from 'node:path';
               const config={workspaces:[]}, auth={read:async()=>({})};
               const camera=await callMediaExtensionAction(config,auth,'video_recipe_catalog',{category:'camera'},{});
-              const detail=await callMediaExtensionAction(config,auth,'video_recipe_catalog',{cardIds:['type-entrance-moves','shot-transitions'],includeMethodology:true},{});
+              const detail=await callMediaExtensionAction(config,auth,'video_recipe_catalog',{cardIds:['type-entrance-moves','depth-layer-moves'],includeMethodology:true},{});
               const project=join(process.env.RECIPE_PROOF_ROOT,'video/proof'), before=await readFile(join(project,'index.html'),'utf8'), files=JSON.stringify((await readdir(project,{recursive:true})).sort());
               const error=await installVideoComponents({id:'proof',name:'Proof',path:process.env.RECIPE_PROOF_ROOT},{sourcePath:'video/proof/index.html',componentIds:['question-opener','cursor-flyover']}).catch(error=>error);
               console.log(JSON.stringify({camera:camera.result.output,detail:detail.result.output,blocked:error.code,blockedMessage:error.message,unchanged:before===await readFile(join(project,'index.html'),'utf8')&&files===JSON.stringify((await readdir(project,{recursive:true})).sort())}));`;
@@ -96,18 +96,19 @@ export default {
             await page.setContent('<html><head><style>body{margin:48px;background:#f6f5f1;color:#172c36;font:24px sans-serif}h1{font-size:42px}article{border-bottom:1px solid #ccc;padding:14px 0}small{display:block;color:#566}pre{white-space:pre-wrap;font-size:18px}summary{cursor:pointer}</style></head><body><h1>Shotcraft reference selection</h1><main></main></body></html>');
             await page.evaluate(evidence => {
               const heading=document.createElement('p');heading.textContent=`${evidence.camera.stats.cardCount} cards · ${evidence.camera.stats.styleCount} variants · ${evidence.camera.stats.localRecipeCount} executable ports`;document.querySelector('main').append(heading);
-              for(const card of evidence.camera.cards.slice(0,5)){const row=document.createElement('article');row.textContent=card.name+' — '+card.summary;const status=document.createElement('small');status.textContent=card.styles.map(style=>style.key+': '+style.migrationStatus+' / '+style.conversion.status).join(' · ');row.append(status);document.querySelector('main').append(row);}
+              for(const card of evidence.camera.cards.slice(0,5)){const row=document.createElement('article');row.textContent=card.name+' — '+card.summary;const status=document.createElement('small');status.textContent=card.styles.map(style=>style.key+': '+style.migrationStatus).join(' · ');row.append(status);document.querySelector('main').append(row);}
               const detail=document.createElement('details');detail.innerHTML='<summary>Selected card rules and exact source</summary>';const rules=document.createElement('pre');rules.textContent=evidence.detail.cards[0].rules;detail.append(rules);document.querySelector('main').append(detail);
               const result=document.createElement('p');result.textContent='Unported install: '+evidence.blocked+' · project unchanged: '+evidence.unchanged;document.querySelector('main').append(result);
             }, referenceEvidence);
             await page.click('summary');
           },
           assert: async () => {
-            ctx.assert(referenceEvidence.camera.stats.cardCount === 157 && referenceEvidence.camera.stats.styleCount === 214 && referenceEvidence.camera.stats.executableVariantCount === 30, "Real media action reports complete references and exactly thirty executable migrated variants");
+            ctx.assert(referenceEvidence.camera.stats.cardCount === 23 && referenceEvidence.camera.stats.styleCount === 30 && referenceEvidence.camera.categories.join(',') === 'camera,typography,ui-entrance', "Real media action reports only three executable Shotcraft categories and thirty migrated variants");
+            ctx.assert(referenceEvidence.camera.stats.availableRecipeCount === 81 && referenceEvidence.camera.recipeCategories.length === 8 && referenceEvidence.camera.recipeCategories.reduce((sum, category) => sum + category.count, 0) === 81, "All eighty-one native and imported recipes appear in eight semantic categories");
             ctx.assert(referenceEvidence.detail.cards.every(card => card.rules.includes('## 参考实现') && card.implementations.length), "Full selected rules and precise source associations are reachable");
-            ctx.assert(referenceEvidence.blocked === 'video_recipe_reference_only' && referenceEvidence.unchanged, "An unavailable treatment cannot write even the valid selections in the same request: " + JSON.stringify({code:referenceEvidence.blocked,message:referenceEvidence.blockedMessage,unchanged:referenceEvidence.unchanged}));
+            ctx.assert(referenceEvidence.blocked === 'video_component_not_found' && referenceEvidence.unchanged, "An unavailable treatment cannot write even the valid selections in the same request: " + JSON.stringify({code:referenceEvidence.blocked,message:referenceEvidence.blockedMessage,unchanged:referenceEvidence.unchanged}));
             ctx.assert(await page.$eval('details', element => element.open), "Selected full rules remain readable when expanded");
-            ctx.output("Reference catalog and guarded installation", JSON.stringify({stats:referenceEvidence.camera.stats,blocked:referenceEvidence.blocked,unchanged:referenceEvidence.unchanged}));
+            ctx.output("Executable catalog and guarded installation", JSON.stringify({stats:referenceEvidence.camera.stats,blocked:referenceEvidence.blocked,unchanged:referenceEvidence.unchanged}));
           },
           screenshot: { name: "shotcraft-reference-selection", targetId: target.id },
         });
@@ -396,7 +397,7 @@ export default {
         await mkdir(join(fixture, "compositions"));
         await copyFile(join(repo, "vendor/hyperframes/registry/blocks/question-opener/question-opener.html"), join(fixture, "compositions/question-opener.html"));
         await writeFile(join(fixture, "index.html"), '<main data-composition-id="main"><section id="opening" data-ipw-scene data-ipw-registry-component="question-opener" data-ipw-timing-owner="host" data-composition-id="question-opener" data-composition-src="compositions/question-opener.html"></section></main>');
-        await writeFile(join(fixture, "STORYBOARD.md"), '# Recipe proof\n\n## Frame 1 — 开场问题\n- recipe: "question-opener"\n- scene_id: "opening"\n- duration: 8s\n\n## Frame 2 — 待生成镜头\n- recipe: "feedback-loop"\n- scene_id: "planned"\n- recipe_status: mounted\n- duration: 8s\n\n## Frame 3 — 定制例外\n- scene_id: "custom"\n- custom_reason: "已比较现有回路配方，无法保留三路条件分支；仅补充分支连接图。"\n- duration: 8s\n');
+        await writeFile(join(fixture, "STORYBOARD.md"), '# Recipe proof\n\n## Frame 1 — 开场问题\n- recipe: "question-opener"\n- recipe_intent: "让观众先看到待回答的问题，再进入解释。"\n- scene_id: "opening"\n- duration: 8s\n\n## Frame 2 — 待生成镜头\n- recipe: "feedback-loop"\n- recipe_intent: "让观众看清结果如何返回并改变下一次行动。"\n- scene_id: "planned"\n- recipe_status: mounted\n- duration: 8s\n\n## Frame 3 — 定制例外\n- scene_id: "custom"\n- custom_reason: "已比较现有回路配方，无法保留三路条件分支；仅补充分支连接图。"\n- duration: 8s\n');
         const puppeteer = requireStudio("puppeteer-core");
         browser = await puppeteer.launch({ executablePath: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", headless: true, defaultViewport: { width: 1600, height: 1100 }, args: ["--no-sandbox"] });
         const page = (await browser.pages())[0];
@@ -411,8 +412,8 @@ export default {
           action: async () => { await page.reload({ waitUntil: "networkidle0" }); await page.waitForSelector('[data-testid="storyboard-recipe-3"]'); },
           assert: async () => {
             const rows = await page.$$eval('[data-testid^="storyboard-recipe-"]', elements => elements.map(element => element.textContent));
-            ctx.assert(rows[0].includes("question-opener") && rows[0].includes("已挂载"), "Real existing recipe source matches its exact scene");
-            ctx.assert(rows[1].includes("feedback-loop") && rows[1].includes("计划使用") && !rows[1].includes("已挂载"), "Markdown mounted status cannot fabricate a mount");
+            ctx.assert(rows[0].includes("question-opener") && rows[0].includes("已挂载") && rows[0].includes("先看到待回答的问题"), "Real existing recipe source matches its exact scene and shows its audience intent");
+            ctx.assert(rows[1].includes("feedback-loop") && rows[1].includes("计划使用") && !rows[1].includes("已挂载") && rows[1].includes("结果如何返回"), "Markdown mounted status cannot fabricate a mount; planned intent stays visible");
             ctx.assert(rows[2].includes("定制图形") && rows[2].includes("三路条件分支"), "Custom reason remains visible after reload");
             ctx.output("Recipe records", JSON.stringify(rows));
           },

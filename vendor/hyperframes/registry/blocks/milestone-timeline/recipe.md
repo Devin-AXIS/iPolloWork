@@ -3,6 +3,12 @@
 
 Component ID: milestone-timeline
 
+## Narrative intent
+
+沿真实时间顺序连接三个节点，让观众理解事件怎样走到当前状态。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Show exactly three genuine ordered milestones with short labels.

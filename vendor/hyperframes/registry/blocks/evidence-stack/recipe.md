@@ -3,6 +3,12 @@
 
 Component ID: evidence-stack
 
+## Narrative intent
+
+让主张、数值和来源同时可见，使观众能判断证据是否真的支持结论。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Attach one measured figure and its source to one bounded claim.

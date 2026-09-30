@@ -5,7 +5,6 @@ import { dirname, posix, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import sharp from "sharp";
-import { queryVideoRecipeCatalog } from "../hyperframes-catalog.js";
 import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
@@ -50,6 +49,15 @@ const videoTransitionPresets = new Set([
   "preset:transition.lens-focus",
   "preset:transition.split-wipe",
 ]);
+const customTransitionId = /^custom:[a-z][a-z0-9-]*$/u;
+const customTransitionHandoffSchema = z.object({
+  fromSceneId: z.string().min(1),
+  outgoingResult: z.string().trim().min(8),
+  incomingSubject: z.string().trim().min(8),
+  continuity: z.string().trim().min(8),
+  visualAction: z.string().trim().min(8),
+  target: z.string().trim().min(1),
+}).strict();
 const registryFileSchema = z.object({
   path: z.string().min(1),
   target: z.string().min(1),
@@ -88,6 +96,12 @@ const motionStyles = {
   balanced: { distance: 16, emphasisScale: 1.012, durationFactor: 1, ease: "power2.out", resolveEase: "power2.inOut" },
   energetic: { distance: 24, emphasisScale: 1.02, durationFactor: .85, ease: "power3.out", resolveEase: "power2.inOut" },
 };
+
+const customRecipeEvidenceSchema = z.object({
+  candidates: z.array(z.object({ componentId: componentIdSchema, limitation: z.string().trim().min(20).max(500) }).strict()).min(1).max(3),
+  splitOrCombine: z.string().trim().min(20).max(500),
+  minimalScope: z.string().trim().min(20).max(500),
+}).strict();
 
 async function resolveNarrationCues(workspace: Workspace, projectRelative: string,
   narration: NonNullable<z.infer<typeof hyperframesVideoInstanceSchema>["narration"]>, eventIds: string[], duration: number) {
@@ -254,10 +268,9 @@ async function resolveRecipeInstance(
   const last = events.at(-1);
   if (!last || last.time + last.duration > instance.duration - recipe.minHoldSeconds
     || instance.duration - last.time - last.duration > MAX_STILL_SECONDS
-    || events[0]!.time < .65
     || events.some((event, index) => index > 0 && (event.time < events[index - 1]!.time + events[index - 1]!.duration
       || event.time - events[index - 1]!.time - events[index - 1]!.duration > MAX_STILL_SECONDS))) {
-    throw new ApiError(400, "invalid_video_recipe_cues", "Semantic events must be ordered, non-overlapping, and leave the authored readable final hold. Bind measured cues or split the scene; do not stretch narration.");
+    throw new ApiError(400, "invalid_video_recipe_cues", `The measured cues for ${instance.componentId} do not fit this scene: ${events.map(event => `${event.id}@${event.time.toFixed(2)}s`).join(", ")}. Keep events ordered without overlap, leave ${recipe.minHoldSeconds}s for the final result, and avoid gaps over ${MAX_STILL_SECONDS}s. Split at a spoken boundary or choose another recipe; a cue failure is not a reason to draw a custom scene.`);
   }
   if (instance.transition !== "cut" || instance.transitionDuration !== 0) {
     throw new ApiError(400, "invalid_video_recipe_transition", "Instantiate with a zero-duration cut; apply an incoming preset through mutate_motion afterward instead of declaring an unimplemented transition");
@@ -265,12 +278,13 @@ async function resolveRecipeInstance(
   const cueTimes = Object.fromEntries(events.map(event => [event.id, event.time]));
   values.motionCueTimes = JSON.stringify(cueTimes);
   values.motionStyle = JSON.stringify(motionStyles[motionStyle]);
-  const beats = [{
+  const establish = events[0]!.time > 0 ? [{
     start: 0, end: events[0]!.time, intent: "Establish the scene", focus: "Context",
     action: "Orient before semantic development", result: "Readable context",
     targets: ["[data-composition-id]"], animation: `component:${instance.componentId}`,
-    motion: { start: 0, end: .65 },
-  }, ...events.map((event, index) => ({
+    motion: { start: 0, end: Math.min(.65, events[0]!.time) },
+  }] : [];
+  const beats = [...establish, ...events.map((event, index) => ({
     start: event.time, end: events[index + 1]?.time ?? instance.duration,
     intent: event.action, focus: event.target, action: event.action, result: index === events.length - 1 ? "Resolved readable result" : "Evidence remains visible",
     targets: [event.target], animation: `component:${instance.componentId}`,
@@ -463,13 +477,9 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     return component;
   };
   const installed = new Map<string, InstalledComponent>();
-  // Resolve every requested ID before writing any component. A reference is not a port.
+  // Resolve every requested ID before writing any component.
   for (const componentId of input.componentIds) {
     if (existsSync(resolve(root, componentId, "registry-item.json"))) continue;
-    const name = componentId.replace(/^shotcraft-(?:reference-)?/, "");
-    const references = existsSync(resolve(root, "..", "shotcraft-references.json")) ? await queryVideoRecipeCatalog({ query: name }) : { cards: [] };
-    const card = references.cards.find(card => card.name === name || card.styles.some(style => style.key === name));
-    if (card) throw new ApiError(400, "video_recipe_reference_only", `${componentId} is a Shotcraft reference, not an installable component. Use only video_recipe_catalog componentIds; if none fit, disclose the library gap instead of redrawing it.`);
     throw new ApiError(404, "video_component_not_found", `Video component ${componentId} is not available in the bundled registry`);
   }
   const instanceIds = new Set<string>();
@@ -590,8 +600,9 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
   const previousSelection = attribute(compositionRoot, "data-ipw-selected-components");
   const selected = z.array(componentIdSchema).max(48).parse(previousSelection ? JSON.parse(previousSelection) : []);
   const selection = [...new Set([...selected, ...input.componentIds])];
+  const recipePolicy = attribute(compositionRoot, "data-ipw-recipe-policy");
   const updatedRoot = compositionRoot.replace(/\sdata-ipw-selected-components\s*=\s*(["']).*?\1/giu, "")
-    .replace(/>$/u, ` data-ipw-selected-components="${htmlAttribute(JSON.stringify(selection))}">`);
+    .replace(/>$/u, `${recipePolicy ? "" : ' data-ipw-recipe-policy="recipe-first"'} data-ipw-selected-components="${htmlAttribute(JSON.stringify(selection))}">`);
   updatedHtml = updatedHtml.replace(compositionRoot, updatedRoot);
   const stagedPath = `${source.absolutePath}.${randomUUID()}.mount`;
   try {
@@ -606,7 +617,7 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     components: [...installed.values()],
     instances,
     mounted: input.mount,
-    instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, add the supported incoming transition, duration, and one exact intent value: continue, topic-change, time-change, location-change, compare, reveal, or closure. The client runs the aggregate delivery validator after the turn.",
+    instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Keep the root data-ipw-selected-components and set data-ipw-recipe-policy=\"recipe-first\" unless the user requested recipes-only; the component check also infers recipe-first from a nonempty selection. A custom scene needs real candidate limitations, why splitting/combining fails, and minimal scope in data-ipw-custom-recipe-evidence; cue or installation failures are not custom exceptions. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, describe the outgoing result and incoming subject, then choose a cut, applied preset, or seek-safe authored custom transition; record its duration and exact intent: continue, topic-change, time-change, location-change, compare, reveal, or closure. An authored custom transition needs matching handoff JSON, animation reference and timed incoming beat, plus rendered seam review. The client runs the aggregate delivery validator after the turn.",
   };
 }
 
@@ -656,9 +667,9 @@ function validateBeatMap(tag: string, sceneId: string, duration: number | null) 
 }
 
 function hasAnimationReference(sceneTag: string, animation: string): boolean {
-  if (!animation.startsWith("preset:")) return true;
-  const presetId = animation.slice("preset:".length);
-  return sceneTag.includes(`data-ipw-animation-reference="${presetId}"`) || sceneTag.includes(`data-ipw-animation-reference='${presetId}'`);
+  if (!animation.startsWith("preset:") && !animation.startsWith("custom:")) return true;
+  const referenceId = animation.slice(animation.indexOf(":") + 1);
+  return sceneTag.includes(`data-ipw-animation-reference="${referenceId}"`) || sceneTag.includes(`data-ipw-animation-reference='${referenceId}'`);
 }
 
 function sceneMarkup(html: string, openingTag: string): string {
@@ -757,7 +768,9 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const sceneTags = tags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
   const issues: Array<{ code: string; sceneId?: string; message: string }> = [];
   const selection = attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-selected-components");
-  const recipesOnly = input.recipesOnly === true || attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-recipe-policy") === "recipes-only";
+  const recipePolicy = attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-recipe-policy");
+  const recipesOnly = input.recipesOnly === true || recipePolicy === "recipes-only";
+  const recipeFirst = recipePolicy === "recipe-first" || (!recipePolicy && Boolean(selection));
   if (selection) {
     try {
       for (const componentId of z.array(componentIdSchema).max(48).parse(JSON.parse(selection))) {
@@ -775,6 +788,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const scenes = [];
   const compositionIds = new Set<string>();
   const timedScenes: Array<{ sceneId: string; start: number; end: number; transition: string; transitionDuration: number | null; transitionIntent: string }> = [];
+  const sceneBeats = new Map<string, z.infer<typeof videoBeatMapSchema>>();
   let hasSpatialCameraRecipe = false;
 
   for (const tag of tags) {
@@ -815,6 +829,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       issues.push({ code: "invalid_scene_timing_source", sceneId, message: `${sceneId} must record whether timing comes from voiceover, estimated reading, a visual cue, music, or media.` });
     }
     const beatMap = validateBeatMap(tag, sceneId, duration);
+    sceneBeats.set(sceneId, beatMap.beats);
     issues.push(...beatMap.issues);
     const patternIssues = patternEvidenceIssues(tag, sceneId, motionPattern, timingSource, beatMap.beats, duration);
     issues.push(...patternIssues);
@@ -896,7 +911,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
               issues.push({ code: "invalid_semantic_recipe_instance", sceneId, message: error instanceof Error ? error.message : "Invalid semantic recipe values or cues" });
             }
           }
-          if (recipesOnly && !semanticRecipeValidated) issues.push({ code: "recipe_only_scene_required", sceneId, message: `${sceneId} needs a validated authored recipe, not just a registry component label.` });
+          if ((recipesOnly || recipeFirst) && !semanticRecipeValidated) issues.push({ code: recipesOnly ? "recipe_only_scene_required" : "recipe_scene_not_validated", sceneId, message: `${sceneId} needs a validated authored recipe, not just a registry component label.` });
           if (!rootTag || attribute(rootTag, "data-ipw-timing-owner") !== "host") {
             issues.push({ code: "component_timing_not_host_owned", sceneId, message: `${sceneId} uses an older component copy whose internal root can end before the parent scene. Reinstall ${componentId}.` });
           }
@@ -948,16 +963,33 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       }
     } else if (!customDecision.startsWith("custom:")) {
       issues.push({ code: "missing_component_decision", sceneId, message: `${sceneId} must use an installed registry component or record data-ipw-component-decision="custom:<specific reason>".` });
-    } else if (timingSource === "voiceover") {
-      try {
-        const narration = hyperframesVideoInstanceSchema.shape.narration.unwrap().parse(JSON.parse(attribute(tag, "data-ipw-narration-binding")));
-        const active = beatMap.beats.filter(beat => !beat.animation.startsWith("hold:"));
-        const ids = active.map(beat => beat.animation);
-        if (new Set(ids).size !== ids.length || duration === null) throw new Error("Custom events need unique animation references and a valid scene duration.");
-        const cues = await resolveNarrationCues(workspace, projectRelative, narration, ids, duration);
-        if (active.some(beat => Math.abs(beat.motion.start - cues[beat.animation]!) > 1 / 30 + 0.001)) throw new Error("Custom motion windows must start at their measured spoken phrase (within one frame).");
-      } catch (error) {
-        issues.push({ code: "invalid_custom_narration_binding", sceneId, message: error instanceof Error ? error.message : "Custom narrated scenes need validated phrase bindings." });
+    } else {
+      if (recipeFirst) {
+        try {
+          const evidence = customRecipeEvidenceSchema.parse(JSON.parse(attribute(tag, "data-ipw-custom-recipe-evidence")));
+          if (/(?:phrase|cue|binding|install|对齐|绑定|安装|时间戳)/iu.test(customDecision)
+            || evidence.candidates.some(candidate => /(?:phrase|cue|binding|install|对齐|绑定|安装|时间戳)/iu.test(candidate.limitation))) {
+            throw new Error("A phrase-alignment or installation failure is not a structural recipe gap; repair the cue, split the scene, or choose another recipe.");
+          }
+          for (const candidate of evidence.candidates) {
+            const manifest = await stat(resolve(registryRoot(), candidate.componentId, "registry-item.json")).catch(() => null);
+            if (!manifest?.isFile()) throw new Error(`${candidate.componentId} is not an available executable recipe candidate.`);
+          }
+        } catch (error) {
+          issues.push({ code: "custom_recipe_evidence_required", sceneId, message: `${sceneId} needs up to three real recipe candidates, each specific structural limitation, why splitting/combining cannot preserve the content, and the minimal custom scope. ${error instanceof Error ? error.message : "Invalid evidence."}` });
+        }
+      }
+      if (timingSource === "voiceover") {
+        try {
+          const narration = hyperframesVideoInstanceSchema.shape.narration.unwrap().parse(JSON.parse(attribute(tag, "data-ipw-narration-binding")));
+          const active = beatMap.beats.filter(beat => !beat.animation.startsWith("hold:"));
+          const ids = active.map(beat => beat.animation);
+          if (new Set(ids).size !== ids.length || duration === null) throw new Error("Custom events need unique animation references and a valid scene duration.");
+          const cues = await resolveNarrationCues(workspace, projectRelative, narration, ids, duration);
+          if (active.some(beat => Math.abs(beat.motion.start - cues[beat.animation]!) > 1 / 30 + 0.001)) throw new Error("Custom motion windows must start at their measured spoken phrase (within one frame).");
+        } catch (error) {
+          issues.push({ code: "invalid_custom_narration_binding", sceneId, message: error instanceof Error ? error.message : "Custom narrated scenes need validated phrase bindings." });
+        }
       }
     }
     scenes.push({ sceneId, componentId: componentId || null, customDecision: customDecision || null, motionPattern: motionPattern || null, compositionSource: compositionSource || null, compositionId: compositionId || null, timingSource: timingSource || null, transition: transition || null, transitionDuration, transitionIntent: transitionIntent || null });
@@ -976,7 +1008,8 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
     if (Math.abs(current.start - previous.end) > 0.05) {
       issues.push({ code: current.start > previous.end ? "scene_timeline_gap" : "scene_timeline_overlap", sceneId: current.sceneId, message: `${previous.sceneId} and ${current.sceneId} must meet at one boundary; run the transition inside the incoming scene instead of exposing a gap or overlapping full scene windows.` });
     }
-    if (!videoTransitionPresets.has(current.transition)) {
+    const authoredTransition = customTransitionId.test(current.transition);
+    if (!videoTransitionPresets.has(current.transition) && !authoredTransition) {
       issues.push({ code: "invalid_scene_transition", sceneId: current.sceneId, message: `${current.sceneId} must declare a supported data-ipw-transition-in.` });
     } else if (current.transition === "cut") {
       if (current.transitionDuration !== 0) issues.push({ code: "invalid_scene_transition_duration", sceneId: current.sceneId, message: `${current.sceneId} uses a cut, so data-ipw-transition-duration must be 0.` });
@@ -987,6 +1020,20 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       const currentTag = sceneTags.find(tag => attribute(tag, "id") === current.sceneId) ?? "";
       if (!hasAnimationReference(currentTag, current.transition)) {
         issues.push({ code: "missing_transition_animation_reference", sceneId: current.sceneId, message: `${current.sceneId} declares ${current.transition} but has no matching data-ipw-animation-reference.` });
+      }
+      if (authoredTransition) {
+        try {
+          const handoff = customTransitionHandoffSchema.parse(JSON.parse(attribute(currentTag, "data-ipw-transition-handoff")));
+          if (handoff.fromSceneId !== previous.sceneId) throw new Error("The handoff must name the actual outgoing scene.");
+          const transitionBeat = sceneBeats.get(current.sceneId)?.find(beat => beat.animation === current.transition);
+          if (!transitionBeat || transitionBeat.motion.start > 0.05
+            || transitionBeat.motion.end > (current.transitionDuration ?? 0) + 0.05
+            || !transitionBeat.targets.includes(handoff.target)) {
+            throw new Error("A matching incoming beat must animate the declared target from the scene start within the transition window.");
+          }
+        } catch (error) {
+          issues.push({ code: "invalid_custom_transition_handoff", sceneId: current.sceneId, message: `${current.sceneId} needs a truthful outgoing result, incoming subject, continuity, visual action, target, and a matching timed custom beat. ${error instanceof Error ? error.message : "Invalid handoff."}` });
+        }
       }
     }
     if (!videoTransitionIntentSchema.safeParse(current.transitionIntent).success) {

@@ -27,6 +27,8 @@ items.forEach((item,index)=>{
 });
 const resolved=recipe.events.at(-1);
 tl.to(items,{opacity:1,y:0,x:0,duration:resolved.duration,ease:"power2.out"},cue(resolved));
+const conclusion=items.at(-1),primary=getComputedStyle(root).getPropertyValue("--ipw-color-primary").trim()||"#20bbc0";
+if(conclusion)tl.fromTo(conclusion,{boxShadow:`inset 0 0 0 0px ${primary}`},{boxShadow:`inset 0 0 0 8px ${primary}`,duration:resolved.duration,ease:"power2.out"},cue(resolved));
 
 tl.set(root,{visibility:"visible"},10);
 window.__timelines[id]=tl;tl.seek(0);

@@ -175,7 +175,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the common subject → Read the former state → Reveal the changed state → Read the bounded takeaway. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "并置同一对象的前后状态，让观众看清变化发生在哪里，而非误以为是两个对象。"
     }
   }
 }

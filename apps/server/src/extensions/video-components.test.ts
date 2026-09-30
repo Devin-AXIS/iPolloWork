@@ -60,13 +60,13 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
-  test("rejects reference-only card IDs before writing even the valid selections", async () => {
+  test("rejects unavailable recipe IDs before writing even the valid selections", async () => {
     const { root, project } = await recipeFixture("question-opener");
     const original = await readFile(join(project, "index.html"), "utf8");
     const error = await installVideoComponents({ id: "workspace", path: root }, {
       sourcePath: "video/session-one/index.html", componentIds: ["question-opener", "depth-layer-moves"],
     }).catch((error: unknown) => error);
-    expect(error).toMatchObject({ code: "video_recipe_reference_only" });
+    expect(error).toMatchObject({ code: "video_component_not_found" });
     expect(await readFile(join(project, "index.html"), "utf8")).toBe(original);
     expect(await readdir(project)).toEqual(["index.html"]);
   });
@@ -164,6 +164,19 @@ describe("Video Studio registry component integration", () => {
     expect((await save(1, narration)).valid).toBe(true);
     expect((await save(1, { ...narration, text: "停止" })).valid).toBe(false);
   });
+  test("recipe-first custom scenes require inspectable recipe alternatives, not an alignment excuse", async () => {
+    const { root, project } = await fixture();
+    const scene = (decision: string, evidence = "") => `<main data-composition-id="main" data-ipw-recipe-policy="recipe-first"><section id="heat" class="scene clip" data-ipw-scene data-ipw-component-decision="${decision}" ${evidence ? `data-ipw-custom-recipe-evidence='${evidence}'` : ""} data-motion-pattern="progressive-build" data-ipw-timing-source="visual-cue" data-ipw-beats='[{"start":0,"end":3,"intent":"Explain heat","focus":"Heater","action":"Turn on","result":"Warmer","targets":["#heat"],"animation":"custom:heat","motion":{"start":0,"end":2}}]' data-start="0" data-duration="3" data-track-index="0"></section></main>`;
+    const check = async (html: string) => {
+      await writeFile(join(project, "index.html"), html);
+      return checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" });
+    };
+    expect((await check(scene("custom:cannot represent the heater state"))).issues.map(issue => issue.code)).toContain("custom_recipe_evidence_required");
+    expect((await check(scene("custom:cannot represent the heater state").replace('data-ipw-recipe-policy="recipe-first"', "data-ipw-selected-components='[&quot;milestone-timeline&quot;]'"))).issues.map(issue => issue.code)).toContain("custom_recipe_evidence_required");
+    const evidence = JSON.stringify({ candidates: [{ componentId: "milestone-timeline", limitation: "The timeline has no continuously measured heater state." }], splitOrCombine: "Splitting loses the single continuously updated thermostat state.", minimalScope: "Only the measured heater state needs an editable custom diagram." });
+    expect((await check(scene("custom:phrase binding failed twice", evidence))).issues.map(issue => issue.code)).toContain("custom_recipe_evidence_required");
+    expect((await check(scene("custom:continuous heater state is unavailable", evidence))).valid).toBe(true);
+  });
   test("mounts selected recipes into empty slots and rejects unused selection without overwriting authored scenes", async () => {
     const { root, project, instance } = await recipeFixture("question-opener");
     expect(attribute('<section data-hf-id="editor-id" id="evidence">', "id")).toBe("evidence");
@@ -177,15 +190,16 @@ describe("Video Studio registry component integration", () => {
     expect(mounted.mounted).toBe(true);
     const html = await readFile(join(project, "index.html"), "utf8");
     expect(html).toContain(mounted.instances[0]!.snippet);
+    expect(html).toContain('data-ipw-recipe-policy="recipe-first"');
     expect(html).toContain('<p>Preserved</p>');
     expect((html.match(/data-ipw-selected-components=/g) ?? [])).toHaveLength(1);
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", recipesOnly: true })).valid).toBe(true);
     await writeFile(join(project, "index.html"), html.replace('data-ipw-registry-component="question-opener"', 'data-ipw-component-decision="custom:diagram"'));
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", recipesOnly: true })).issues.map(issue => issue.code)).toContain("recipe_only_scene_required");
-    await writeFile(join(project, "index.html"), html.replace('data-composition-id="main"', 'data-composition-id="main" data-ipw-recipe-policy="recipes-only"'));
+    await writeFile(join(project, "index.html"), html.replace('data-ipw-recipe-policy="recipe-first"', 'data-ipw-recipe-policy="recipes-only"'));
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(true);
-    await writeFile(join(project, "index.html"), html.replace('data-composition-id="main"', 'data-composition-id="main" data-ipw-recipe-policy="recipes-only"').replace('data-ipw-registry-component="question-opener"', 'data-ipw-component-decision="custom:diagram"'));
+    await writeFile(join(project, "index.html"), html.replace('data-ipw-recipe-policy="recipe-first"', 'data-ipw-recipe-policy="recipes-only"').replace('data-ipw-registry-component="question-opener"', 'data-ipw-component-decision="custom:diagram"'));
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).issues.map(issue => issue.code)).toContain("recipe_only_scene_required");
     await writeFile(join(project, "index.html"), html);
     await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [instance], mount: true })).rejects.toMatchObject({ code: "video_mount_slot_conflict" });
@@ -215,6 +229,26 @@ describe("Video Studio registry component integration", () => {
     await expect(installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, timingSource: "voiceover" }] })).rejects.toMatchObject({ code: "video_recipe_alignment_required" });
     await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "unavailable", words: [] }));
     expect((await checkVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html" })).valid).toBe(false);
+  });
+  test("accepts a measured opening phrase before the recipe's default 0.65s establish", async () => {
+    const { root, project, manifest, instance } = await recipeFixture("question-opener");
+    const words = manifest.motionRecipe.events.map((event, index) => ({
+      text: `词${index + 1}`, beginIndex: index * 2, endIndex: index * 2 + 2,
+      startSeconds: index === 0 ? .28 : event.time, endSeconds: (index === 0 ? .28 : event.time) + .12,
+    }));
+    await mkdir(join(project, "assets"), { recursive: true });
+    await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words }));
+    const narration = { timingSourcePath: "video/session-one/assets/voice.timings.json", text: words.map(word => word.text).join(""), bindings: Object.fromEntries(manifest.motionRecipe.events.map((event, index) => [event.id, { phrase: words[index]!.text }])) };
+    const result = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, timingSource: "voiceover", narration }] });
+    expect(result.instances[0]!.cueTimes[manifest.motionRecipe.events[0]!.id]).toBeCloseTo(8 / 30);
+    const beats = JSON.parse(attribute(result.instances[0]!.snippet, "data-ipw-beats"));
+    expect(beats[0].motion.end).toBeCloseTo(8 / 30);
+    words[0]!.startSeconds = 0;
+    words[0]!.endSeconds = .12;
+    await writeFile(join(project, "assets/voice.timings.json"), JSON.stringify({ alignment: "provider", words }));
+    const immediate = await installVideoComponents({ id: "test", path: root }, { sourcePath: "video/session-one/index.html", componentIds: [instance.componentId], instances: [{ ...instance, timingSource: "voiceover", narration }] });
+    expect(immediate.instances[0]!.cueTimes[manifest.motionRecipe.events[0]!.id]).toBe(0);
+    expect(JSON.parse(attribute(immediate.instances[0]!.snippet, "data-ipw-beats"))[0].start).toBe(0);
   });
   test("numeric recipes reject invalid domains instead of inventing chart geometry", async () => {
     for (const [name, items] of [
@@ -261,6 +295,7 @@ describe("Video Studio registry component integration", () => {
     await writeFile(join(base.project, "assets", "evidence.svg"), '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080"><rect width="1920" height="1080" fill="#245b66"/></svg>');
     for (const name of names) {
       const manifest = recipeManifestSchema.parse(JSON.parse(await readFile(join(base.registry, name, "registry-item.json"), "utf8")));
+      expect(manifest.motionRecipe.usage.intent?.length).toBeGreaterThan(12);
       const values = manifest.motionRecipe.usage.example.values;
       expect(Object.keys(values).sort()).toEqual(manifest.variables.filter(variable => variable.id !== "motionCueTimes").map(variable => variable.id).sort());
       expect(Object.keys(manifest.motionRecipe.usage.inputRules).sort()).toEqual(Object.keys(values).sort());
@@ -270,7 +305,12 @@ describe("Video Studio registry component integration", () => {
       const embedded = html.match(/^ const recipe=(\{.*\});$/m);
       if (embedded?.[1]) {
         const recipe = z.object({ usage: hyperframesMotionRecipeSchema.shape.usage.optional() }).parse(JSON.parse(embedded[1]));
-        if (recipe.usage) expect({ name, usage: recipe.usage }).toEqual({ name, usage: manifest.motionRecipe.usage });
+        if (recipe.usage) {
+          const embeddedUsage = { ...recipe.usage }, manifestUsage = { ...manifest.motionRecipe.usage };
+          delete embeddedUsage.intent;
+          delete manifestUsage.intent;
+          expect({ name, usage: embeddedUsage }).toEqual({ name, usage: manifestUsage });
+        }
       }
 
       const result = await installVideoComponents({ id: "test", path: base.root }, {
@@ -693,6 +733,25 @@ describe("Video Studio registry component integration", () => {
       <section id="outro" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:short closing lockup" data-motion-pattern="progressive-build" data-ipw-timing-source="visual-cue" data-ipw-transition-in="preset:transition.split-wipe" data-ipw-transition-duration="0.8" data-ipw-transition-intent="closure" data-ipw-beats='[{"start":0,"end":3,"intent":"Close","focus":"Final message","action":"Reveal the closing lockup","result":"Message lands","targets":["#outro"],"animation":"preset:transition.split-wipe","motion":{"start":0,"end":3}}]' data-ipw-animation-reference="transition.split-wipe" data-start="12" data-duration="3" data-track-index="0"></section>
     </main>`);
     expect(await checkVideoComponents({ id: "workspace", path: root }, { sourcePath: "video/session-one/index.html" })).toMatchObject({ valid: true, sceneCount: 2, issues: [] });
+  });
+
+  test("accepts a timed authored transition only with an explicit cross-scene handoff", async () => {
+    const { root, project } = await fixture();
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">
+      <section id="queue" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:continuous queue state" data-motion-pattern="progressive-build" data-ipw-timing-source="visual-cue" data-ipw-beats='[{"start":0,"end":3,"intent":"Build the queue","focus":"Queue","action":"Show arrivals","result":"Three people wait","targets":["#queue"],"animation":"custom:arrivals","motion":{"start":0,"end":3}}]' data-start="0" data-duration="3" data-track-index="0"></section>
+      <section id="backlog" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:continuous queue state" data-motion-pattern="state-transformation" data-ipw-timing-source="visual-cue" data-ipw-transition-in="custom:queue-handoff" data-ipw-transition-duration="0.8" data-ipw-transition-intent="continue" data-ipw-transition-handoff='{"fromSceneId":"queue","outgoingResult":"Three people wait","incomingSubject":"The same coffee queue","continuity":"Keep the three existing people in place","visualAction":"Reveal the next arrival behind them","target":"#backlog"}' data-ipw-animation-reference="queue-handoff" data-ipw-beats='[{"start":0,"end":0.8,"intent":"Carry the queue","focus":"Same people","action":"Reveal another arrival","result":"Old queue stays visible","targets":["#backlog"],"animation":"custom:queue-handoff","motion":{"start":0,"end":0.8}},{"start":0.8,"end":3,"intent":"Read the result","focus":"Longer queue","action":"Hold the state","result":"Queue is readable","targets":["#backlog"],"animation":"hold:reading","motion":{"start":0.8,"end":0.9}}]' data-start="3" data-duration="3" data-track-index="0"></section>
+    </main>`);
+    const workspace = { id: "workspace", path: root };
+    const input = { sourcePath: "video/session-one/index.html" };
+    expect(await checkVideoComponents(workspace, input)).toMatchObject({ valid: true, sceneCount: 2, issues: [] });
+
+    const source = await readFile(join(project, "index.html"), "utf8");
+    await writeFile(join(project, "index.html"), source.replace(' data-ipw-animation-reference="queue-handoff"', ""));
+    expect((await checkVideoComponents(workspace, input)).issues.map(issue => issue.code)).toContain("missing_transition_animation_reference");
+    await writeFile(join(project, "index.html"), source.replace('"fromSceneId":"queue"', '"fromSceneId":"wrong-scene"'));
+    expect((await checkVideoComponents(workspace, input)).issues.map(issue => issue.code)).toContain("invalid_custom_transition_handoff");
+    await writeFile(join(project, "index.html"), source.replace('"animation":"custom:queue-handoff"', '"animation":"custom:unrelated"'));
+    expect((await checkVideoComponents(workspace, input)).issues.map(issue => issue.code)).toContain("invalid_custom_transition_handoff");
   });
 
   test("enforces observable evidence for the five extended narrative patterns", async () => {

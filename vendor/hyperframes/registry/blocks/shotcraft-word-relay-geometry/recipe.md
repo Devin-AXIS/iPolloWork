@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-word-relay-geometry
 
+## Narrative intent
+
+以三个关键词的接力形成强调层级，让观众按正确顺序读出短概念。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 三个短关键词依次接力，以装饰圆形和填色形成强调层级。

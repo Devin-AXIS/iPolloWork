@@ -3,6 +3,12 @@
 
 Component ID: gauge-scorecard
 
+## Narrative intent
+
+把多项评分固定在同一满分标尺上，让观众看清各项距满分的真实差距。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 展示同一0–100量表下的2–4项评分。

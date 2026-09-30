@@ -228,7 +228,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the file and language → Follow actual code lines → Restore the whole fragment. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "沿真实代码的阅读顺序聚焦关键行，让观众理解整体片段怎样工作。"
     }
   }
 }

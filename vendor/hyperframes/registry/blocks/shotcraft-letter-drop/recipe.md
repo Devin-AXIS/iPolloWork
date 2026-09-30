@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-letter-drop
 
+## Narrative intent
+
+让短标题字符轻快落位，为轻松内容建立语气，再停住供观众阅读。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用字符落下与回弹为轻松主题、活泼短标题提供一次入场。

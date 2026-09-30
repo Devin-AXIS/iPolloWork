@@ -3,6 +3,12 @@
 
 Component ID: comparison-matrix
 
+## Narrative intent
+
+让两个选项始终按相同标准对齐，使观众基于条件而非视觉强调作比较。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Compare exactly two options using 1–4 common criteria.

@@ -65,10 +65,10 @@ test("exposes measured audio cues as a built-in Video Studio action", () => {
   });
 });
 
-test("discovers and calls the full offline reference catalog without workspace or provider access", async () => {
+test("discovers and calls the executable offline recipe catalog without workspace or provider access", async () => {
   expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_recipe_catalog")?.inputSchema).toMatchObject({ additionalProperties: false });
   const result = await callMediaExtensionAction(config, env({}), "video_recipe_catalog", { cardIds: ["card-stack"] }, {});
-  expect(result).toMatchObject({ ok: true, result: { provider: "local", output: { stats: { cardCount: 157, styleCount: 214 }, cards: [{ name: "card-stack", styles: [{ componentIds: ["shotcraft-card-stack"] }] }] } } });
+  expect(result).toMatchObject({ ok: true, result: { provider: "local", output: { stats: { cardCount: 23, styleCount: 30 }, cards: [{ name: "card-stack", styles: [{ componentIds: ["shotcraft-card-stack"] }] }] } } });
 });
 
 test("selects only visual scene windows for rendered pixel review", () => {
@@ -581,6 +581,21 @@ describe("Media Center extension", () => {
       { sourcePath: "video.html" },
       { directory: workspace.root },
     );
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("allows unused immutable voiceover revisions once the chosen audio is mounted", async () => {
+    const workspace = await workspaceConfig();
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "voiceover-r1-intro.mp3"), "old revision");
+    await writeFile(join(workspace.root, "assets", "voiceover-r2-intro.mp3"), "chosen revision");
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+      <audio src="./assets/voiceover-r2-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "video.html", requirements: { voiceover: true } }, { directory: workspace.root });
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 

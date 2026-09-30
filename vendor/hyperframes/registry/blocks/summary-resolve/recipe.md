@@ -3,6 +3,12 @@
 
 Component ID: summary-resolve
 
+## Narrative intent
+
+把已解释的要点收束到一个有依据的判断，让观众带走清楚的结论。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Close an explained topic with 2–4 grounded takeaways and one clear decision.

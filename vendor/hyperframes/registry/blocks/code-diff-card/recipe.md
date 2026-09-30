@@ -3,6 +3,12 @@
 
 Component ID: code-diff-card
 
+## Narrative intent
+
+在同一代码位置对照修改前后，让观众看出哪一行变化带来什么影响。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain one small before/after code change in the same file.

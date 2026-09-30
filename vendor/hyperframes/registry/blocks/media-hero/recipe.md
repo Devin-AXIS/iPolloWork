@@ -3,6 +3,12 @@
 
 Component ID: media-hero
 
+## Narrative intent
+
+沿真实素材的可见细节引导视线，让观众亲眼核对旁白所指的对象。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explore one supplied or sourced local image whose visible detail supports narration.

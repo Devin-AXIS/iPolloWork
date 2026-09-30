@@ -3,6 +3,12 @@
 
 Component ID: quote-pullout
 
+## Narrative intent
+
+从有出处的原句提取重点并解释，让观众区分原话与作者解读。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 从一条有来源的原句中提炼重点并给出解释。

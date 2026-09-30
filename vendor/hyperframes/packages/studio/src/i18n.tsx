@@ -413,6 +413,7 @@ const studioLiteralZh: Record<string, string> = {
   "More settings": "更多设置",
   "Configured": "已设置",
   "Recipe": "画面配方",
+  "Selection intent": "选用意图",
   "Custom graphics": "定制图形",
   "Not selected": "待选配方",
   "Mounted in source": "已挂载 · 源码核对",

@@ -18,7 +18,7 @@ Read [references/video.md](references/video.md) once per task. For initial gener
 
 ## Editing workflow
 
-1. On initial/full generation, derive a compact content-led storyboard. If the user has not approved a script/storyboard and has not explicitly requested direct generation, present it once before media submission and full composition; do not ask again after confirmation. Continue only independent preparation while confirmation is pending.
+1. On initial/full generation, identify the narrative driver, map intended audience changes to observable events, shortlist executable recipes by intent and capacity, then save a compact content-led storyboard. Continue production by default. Pause after the script only when the user explicitly requests script review or a script-only result; do not ask again after confirmation.
 2. Preserve the root composition contract, stable editor hooks, visual system, editable variables, and deterministic timeline so Video Studio controls continue to work.
 3. For targeted and follow-up edits, preserve unrelated user-authored scenes and media. Keep the root duration and every scene, clip, transition, audio, and animation timestamp consistent after structural changes.
 4. Use the shared `--ipw-*` design tokens when the project provides them.

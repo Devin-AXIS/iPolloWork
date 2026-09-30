@@ -3,6 +3,12 @@
 
 Component ID: cause-effect-chain
 
+## Narrative intent
+
+逐段显露有依据的因果连接，让观众能复述原因如何导致结果。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain a supported 2–4-link causal mechanism, not merely an ordered list.

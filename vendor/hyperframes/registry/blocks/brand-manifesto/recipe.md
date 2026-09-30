@@ -3,6 +3,12 @@
 
 Component ID: brand-manifesto
 
+## Narrative intent
+
+把品牌原则接到具体行动，让观众理解立场如何兑现，而非只记住口号。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用少量原则及具体行动表达品牌立场。

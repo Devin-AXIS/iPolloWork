@@ -3,6 +3,12 @@
 
 Component ID: agenda-opener
 
+## Narrative intent
+
+把将回答的问题排成理解路线，让观众知道接下来为何依次观看这些内容。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 预告本片将回答的2–4个问题，给观众一条理解路线。

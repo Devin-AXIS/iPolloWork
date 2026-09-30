@@ -3,6 +3,12 @@
 
 Component ID: product-steps
 
+## Narrative intent
+
+把有顺序的操作逐一连到结果，让观众知道实际完成任务的路径。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Demonstrate 1–4 ordered actions leading to one practical outcome.

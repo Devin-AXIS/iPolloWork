@@ -290,8 +290,8 @@ describe("plugin package manifest", () => {
     expect(video).toContain("relative energy and information density");
     expect(video).toContain("Submit independent assets as one bounded batch or in parallel");
     expect(video).toContain("media/video_recipe_catalog");
-    expect(video).toContain("157 cards and 214 preview variants");
-    expect(video).toContain("upstream pipeline's autonomous self-approval never releases");
+    expect(video).toContain("all locally installable native and Shotcraft recipes");
+    expect(video).toContain("Continue automatically after the saved script");
     expect(video).toContain("assets/capture-layout.json");
     expect(videoAcceptance).toContain("A preview HTTP success is not proof of having watched it");
     expect(videoMotionPrinciples).toContain("Establish, Develop, and Land states");

@@ -3,6 +3,12 @@
 
 Component ID: cohort-retention
 
+## Narrative intent
+
+把同口径队列与时期排成矩阵，让观众比较留存如何随时间变化。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 2–4个可比队列，各有同口径的三期留存百分比。

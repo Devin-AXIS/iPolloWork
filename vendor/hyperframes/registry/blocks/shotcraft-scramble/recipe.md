@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-scramble
 
+## Narrative intent
+
+把未知短词逐步锁定为清晰标题，让观众经历一次有意义的揭晓。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 将未知问题锁定为一个清晰短标题，表达揭晓。

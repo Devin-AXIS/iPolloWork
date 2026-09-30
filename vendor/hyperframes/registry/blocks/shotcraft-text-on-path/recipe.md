@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-text-on-path
 
+## Narrative intent
+
+让短标题沿曲线进入再回到基线，为方向变化作提示而不把轨迹当数据。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 短标题字符沿一条曲线行进，再回到水平基线。

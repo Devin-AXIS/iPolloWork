@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-terminal-typewriter
 
+## Narrative intent
+
+先呈现真实命令再接对应截图，让观众理解命令与实际结果的联系。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 展示一条明确的命令示例，推进后切到对应真实截图。

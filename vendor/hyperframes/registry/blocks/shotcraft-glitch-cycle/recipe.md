@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-glitch-cycle
 
+## Narrative intent
+
+在四个状态间推进并锁定最终状态，让观众看清同一任务的阶段变化。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 逐项说明同一任务的四个状态，最后锁定完成态。

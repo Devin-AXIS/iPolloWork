@@ -85,8 +85,10 @@ import {
 } from "../video/video-voice";
 import {
   unchangedVideoArtifactIssue,
+  readVideoBriefDetails,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
+  videoPromptRequestsFinishedVideo,
   videoHostExportOperationKey,
   videoProjectEntryPath,
   type VideoArtifactCompletionRequirement,
@@ -1588,7 +1590,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const videoTask = Boolean(voiceoverRequest) || newConversationMode === "video"
       || props.artifactContext?.kind === "video"
       || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath)
-      || promptVideoDeliveryIntent !== null;
+      || promptVideoDeliveryIntent !== null
+      || videoPromptRequestsFinishedVideo(promptText);
     let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
       if (videoTask && !recoveryDraft) {
@@ -1598,17 +1601,18 @@ export function SessionSurface(props: SessionSurfaceProps) {
           voiceoverRequest?.videoSessionId ?? props.sessionId,
           props.workspaceRoot,
         );
-        const requirements = videoDeliveryRequirementsForPrompt({
-          capabilityId: nextDraft.capability?.id,
-          promptText,
-          animationReferences: selectedAnimations.map((selection) => selection.item.name),
-          voiceoverEnabled: voiceover.enabled,
-          voiceoverAvailable: voiceover.configured,
-        });
         const mustChange = Boolean(voiceoverRequest);
         const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
           ? props.artifactContext.entryPath
           : templateEntryPath || videoProjectEntryPath(props.sessionId);
+        const requirements = videoDeliveryRequirementsForPrompt({
+          capabilityId: nextDraft.capability?.id,
+          promptText,
+          originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, sourcePath),
+          animationReferences: selectedAnimations.map((selection) => selection.item.name),
+          voiceoverEnabled: voiceover.enabled,
+          voiceoverAvailable: voiceover.configured,
+        });
         pendingDelivery = {
           sourcePath,
           requirements,
@@ -1668,6 +1672,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           requirements: videoDeliveryRequirementsForPrompt({
             capabilityId: nextDraft.capability?.id,
             promptText,
+            originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, videoDeliveryTarget.sourcePath),
             animationReferences: selectedAnimations.map((selection) => selection.item.name),
             voiceoverAvailable: true,
             voiceoverEnabled: false,

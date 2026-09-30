@@ -3,6 +3,12 @@
 
 Component ID: speaker-intro
 
+## Narrative intent
+
+把讲述者的真实身份与问题关联起来，让观众知道此人为何参与叙述。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用文字说明讲述者或参与角色与本片问题的关联。

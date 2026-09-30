@@ -3,6 +3,12 @@
 
 Component ID: feature-spotlight-stack
 
+## Narrative intent
+
+把功能与同一用户任务中的具体作用配对，让观众理解它解决哪一步。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 逐一解释产品功能在同一任务中解决什么具体问题。

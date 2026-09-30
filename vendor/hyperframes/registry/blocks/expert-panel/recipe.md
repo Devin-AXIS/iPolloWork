@@ -3,6 +3,12 @@
 
 Component ID: expert-panel
 
+## Narrative intent
+
+把不同专业视角对准同一问题，让观众理解其约束与分歧而非误认为一致结论。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 比较同一问题的不同专业视角和约束。

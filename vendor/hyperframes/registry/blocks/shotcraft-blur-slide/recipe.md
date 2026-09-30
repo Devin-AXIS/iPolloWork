@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-blur-slide
 
+## Narrative intent
+
+让短标题由模糊落到清晰，标示一个观点终于明确，而非承担事实证明。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 短标题由模糊到清晰，适合引出一个逐步明确的观点或章节。

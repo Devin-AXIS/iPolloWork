@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-word-relay-filmstrip
 
+## Narrative intent
+
+让同一真实页面与三个关联动词接力同步，让观众把动作映射到素材变化。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 同一真实页面的胶片滚动与三个关联动词同步接力。

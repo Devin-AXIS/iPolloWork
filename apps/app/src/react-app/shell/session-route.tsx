@@ -137,6 +137,7 @@ import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/do
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
 import {
   shouldInjectVideoTaskContext,
+  readVideoBriefDetails,
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
@@ -1725,6 +1726,9 @@ export function SessionRoute() {
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
+            originalBriefText: selectedWorkspaceEndpoint
+              ? await readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId))
+              : undefined,
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });

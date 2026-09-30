@@ -3,6 +3,12 @@
 
 Component ID: narrative-hook
 
+## Narrative intent
+
+用真实现象与预期冲突提出待解问题，让观众产生有依据的观看动机。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 用现象、矛盾和待解问题建立观看动机。

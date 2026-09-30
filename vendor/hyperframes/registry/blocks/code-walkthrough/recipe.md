@@ -3,6 +3,12 @@
 
 Component ID: code-walkthrough
 
+## Narrative intent
+
+沿真实代码的阅读顺序聚焦关键行，让观众理解整体片段怎样工作。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain a bounded real code fragment line by line.

@@ -22,6 +22,17 @@ const CATEGORY_ORDER = [
 
 const EFFECT_CATEGORIES = new Set(["scroll", "svg", "text-effects", "transitions", "captions", "effects", "vfx"]);
 
+const RECIPE_PATTERN_LABELS: Record<string, string> = {
+  "progressive-build": "逐步构建",
+  "state-transformation": "状态变换",
+  "kinetic-type": "动态文字",
+  "path-journey": "路径与流程",
+  compare: "并列对比",
+  "focus-transfer": "焦点转移",
+  "camera-journey": "空间运镜",
+  "data-accumulation": "数据累积",
+};
+
 const catalogSourceSchema = z.object({
   provider: z.string().trim().min(1).max(64),
   label: z.string().trim().min(1).max(96),
@@ -236,6 +247,7 @@ export function normalizeHyperframesCatalogItem(
     variables: normalizeVariables(raw),
     recipeSummary: recipeResult.success ? {
       pattern: recipeResult.data.pattern,
+      intent: recipeResult.data.usage.intent,
       useWhen: recipeResult.data.usage.useWhen,
       avoidWhen: recipeResult.data.usage.avoidWhen,
     } : undefined,
@@ -279,14 +291,13 @@ export const videoRecipeCatalogInput = z.object({
   query: z.string().max(200).optional(), category: z.string().max(64).optional(),
   cardIds: z.array(z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/)).min(1).max(3).optional(),
   offset: z.number().int().min(0).default(0), limit: z.number().int().min(1).max(20).default(20),
-  executableOnly: z.boolean().default(false),
   includeMethodology: z.boolean().default(false),
 }).strict();
 
 export async function queryVideoRecipeCatalog(raw: unknown) {
   const input = videoRecipeCatalogInput.parse(raw);
   const root = registryRoot();
-  if (!root || !existsSync(resolve(root, "shotcraft-references.json"))) throw new ApiError(503, "video_recipe_catalog_unavailable", "The pinned Shotcraft reference catalog is missing from this runtime.");
+  if (!root || !existsSync(resolve(root, "shotcraft-references.json"))) throw new ApiError(503, "video_recipe_catalog_unavailable", "The executable Shotcraft recipe catalog is missing from this runtime.");
   const catalog = shotcraftCatalogSchema.parse(JSON.parse(await readFile(resolve(root, "shotcraft-references.json"), "utf8")));
   const localSchema = z.object({ name: z.string(), motionRecipe: hyperframesMotionRecipeSchema, upstream: z.object({ rules: z.string(), implementation: z.string(), revision: z.string() }) });
   const locals: z.infer<typeof localSchema>[] = [];
@@ -307,22 +318,39 @@ export async function queryVideoRecipeCatalog(raw: unknown) {
       return normalize(style.key) === (aliases[stem] ?? stem);
     }).map(local => local.name);
     return { ...style, executable: componentIds.length > 0, componentIds,
-      migrationStatus: componentIds.length ? "validated-local-recipe" : "reference-only" };
-  }) }));
+      migrationStatus: componentIds.length ? "validated-local-recipe" : "unavailable" };
+  }).filter(style => style.executable) })).filter(card => card.styles.length > 0);
   if (input.cardIds?.some(id => !cards.some(card => card.name === id))) throw new ApiError(404, "video_recipe_card_not_found", "One or more requested Shotcraft card IDs do not exist.");
   const tokens = input.query?.toLocaleLowerCase().trim().split(/\s+/).filter(Boolean) ?? [];
   const selected = cards.filter(card => (!input.cardIds || input.cardIds.includes(card.name))
     && (!input.category || input.category === card.category)
-    && (!input.executableOnly || card.styles.some(style => style.executable))
     && tokens.every(token => [card.name, card.summary, card.use, card.intention, ...card.tags, ...card.styles.flatMap(style => [style.key, style.description, style.use])].join(" ").toLocaleLowerCase().includes(token)));
+  const recipes = (await listHyperframesCatalog()).filter(item => item.recipeSummary);
+  const matchingRecipes = input.cardIds ? [] : recipes.filter(item =>
+    (!input.category || item.recipeSummary?.pattern === input.category)
+    && tokens.every(token => [item.name, item.title, item.description, item.recipeSummary?.intent, item.recipeSummary?.useWhen, item.recipeSummary?.avoidWhen].join(" ").toLocaleLowerCase().includes(token)));
+  const categoryCounts = new Map<string, number>();
+  for (const recipe of recipes) {
+    const pattern = recipe.recipeSummary?.pattern;
+    if (pattern) categoryCounts.set(pattern, (categoryCounts.get(pattern) ?? 0) + 1);
+  }
+  const recipeCategories = [...categoryCounts].map(([name, count]) => ({ name, label: RECIPE_PATTERN_LABELS[name] ?? name, count }))
+    .sort((a, b) => a.name.localeCompare(b.name));
   return { repository: catalog.repository, revision: catalog.revision, conversionRevision: catalog.conversionRevision,
     license: catalog.license, licenseFile: catalog.licenseFile,
-    stats: { ...catalog.stats, executableVariantCount: cards.flatMap(card => card.styles).filter(style => style.executable).length, localRecipeCount: locals.length },
+    stats: { cardCount: cards.length, styleCount: cards.flatMap(card => card.styles).length, executableVariantCount: cards.flatMap(card => card.styles).length, localRecipeCount: locals.length, availableRecipeCount: recipes.length },
     categories: [...new Set(cards.map(card => card.category))].sort(), total: selected.length,
     nextOffset: input.offset + input.limit < selected.length ? input.offset + input.limit : null,
-    policy: "Reference cards, previews and converted HTML are not installable recipes. Install only returned componentIds; unresolved sources and unverified conversions never authorize imitation. Preserve user script approval and disclose library gaps under recipes-only policy.",
+    recipeCategories, recipeTotal: matchingRecipes.length,
+    nextRecipeOffset: input.offset + input.limit < matchingRecipes.length ? input.offset + input.limit : null,
+    recipes: matchingRecipes.slice(input.offset, input.offset + input.limit).map(item => ({
+      componentId: item.name, title: item.title, description: item.description,
+      pattern: item.recipeSummary?.pattern, intent: item.recipeSummary?.intent, useWhen: item.recipeSummary?.useWhen,
+      avoidWhen: item.recipeSummary?.avoidWhen, source: item.source?.provider,
+    })),
+    policy: "Only locally installable recipes are listed. Install returned componentIds rather than copying preview markup. If no recipe fits, disclose the library gap under recipes-only policy. Finished-video requests continue after saving the script unless the user explicitly asks for review.",
     methodologySourceUrl: catalog.methodology.sourceUrl,
-    methodology: input.includeMethodology ? { ...catalog.methodology, referenceOnly: true, adaptation: "The active iPolloWork video.md production order is authoritative. Upstream autonomous approval, Remotion commands and genre-specific audio defaults do not override the current user's approval gate, HyperFrames runtime or audio choices." } : undefined,
+    methodology: input.includeMethodology ? { ...catalog.methodology, referenceOnly: true, adaptation: "The active iPolloWork video.md production order is authoritative. Upstream Remotion commands and genre-specific audio defaults do not override the HyperFrames runtime, user audio choices or an explicit script-review request." } : undefined,
     cards: selected.slice(input.offset, input.offset + input.limit).map(card => {
       const { rules, implementations, ...summary } = card;
       return input.cardIds ? { ...summary, rules, implementations } : summary;

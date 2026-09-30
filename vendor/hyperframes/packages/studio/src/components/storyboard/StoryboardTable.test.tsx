@@ -80,11 +80,12 @@ describe("StoryboardTable interactions", () => {
   let root: Root;
 
   it("shows recipe plans, source mounts and custom reasons without trusting Markdown status", async () => {
-    const plan = source + '- recipe: "feedback-loop"\n- scene_id: "opening"\n- recipe_status: "mounted"\n';
+    const plan = source + '- recipe: "feedback-loop"\n- recipe_intent: "让观众看清结果如何返回下一次行动"\n- scene_id: "opening"\n- recipe_status: "mounted"\n';
     const parsed = parseStoryboard(plan);
     const data = { ...response(), source: plan, ...parsed, frames: parsed.frames.map(frame => ({ ...frame, srcExists: false })) };
     await act(async () => root.render(<StoryboardTable projectId="project-1" data={data} onSaved={vi.fn()} />));
     expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Planned recipe");
+    expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("让观众看清结果如何返回下一次行动");
     const mounted = { ...data, frames: data.frames.map(frame => ({ ...frame, recipeMount: { componentId: "feedback-loop", source: "compositions/feedback-loop.html" } })) };
     await act(async () => root.render(<StoryboardTable projectId="project-1" data={mounted} onSaved={vi.fn()} />));
     expect(container.querySelector('[data-testid="storyboard-recipe-1"]')?.textContent).toContain("Mounted in source");

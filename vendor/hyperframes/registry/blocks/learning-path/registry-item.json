@@ -192,7 +192,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the learning goal → Advance through the stages → Review the route. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "按前置关系展开学习阶段，让观众知道下一步应建立在什么能力之上。"
     }
   }
 }

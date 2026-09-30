@@ -3,6 +3,12 @@
 
 Component ID: founder-story
 
+## Narrative intent
+
+沿真实经历中的阻碍与选择推进，让观众理解最后决定的来由。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 讲清一个真实经历中的起点、阻碍、尝试与选择。

@@ -3,6 +3,12 @@
 
 Component ID: product-comparison-stage
 
+## Narrative intent
+
+在相同体验维度间交替对照两种方式，让观众理解差异及适用条件。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 按同一体验维度交替比较两种方式或状态。

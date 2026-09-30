@@ -3,6 +3,12 @@
 
 Component ID: kinetic-keyword
 
+## Narrative intent
+
+按语义顺序强调少量关键词，让观众抓住同一概念的几个关键动作。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 把同一概念压缩成2–4个短关键词或动作词，依次强调。

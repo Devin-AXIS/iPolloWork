@@ -454,6 +454,7 @@ export function StoryboardTable({
           {manifest.frames.map((frame) => {
             const diskFrame = data.frames.find((item) => item.src === frame.src && item.srcExists);
             const recipeId = frame.extra.recipe?.trim() || frame.camera?.match(/(?:^|\s)component:([a-z0-9-]+)/)?.[1] || "";
+            const recipeIntent = frame.extra.recipe_intent?.trim() || "";
             const customReason = frame.extra.custom_reason?.trim() || "";
             const recipeTitle = componentSections.flatMap(section => section.items).find(item => item.name === recipeId)?.title || recipeId;
             const recipeEvidence = data.frames.find(item => frame.extra.scene_id
@@ -610,6 +611,7 @@ export function StoryboardTable({
                       <div className="text-[10px] text-[var(--hf-panel-text-3)]">{tx("Recipe")}</div>
                       <div className="font-medium break-words">{customReason ? tx("Custom graphics") : recipeTitle || tx("Not selected")}</div>
                       {recipeId && !customReason && <><div className="break-all text-[10px] text-[var(--hf-panel-text-3)]">{recipeId}</div><div className="text-[var(--hf-panel-text-2)]">{tx(recipeMounted ? "Mounted in source" : "Planned recipe")}</div></>}
+                      {recipeId && recipeIntent && !customReason && <p className="whitespace-pre-wrap break-words text-[var(--hf-panel-text-2)]"><span className="font-medium">{tx("Selection intent")}：</span>{recipeIntent}</p>}
                       {customReason && <p className="whitespace-pre-wrap break-words text-[var(--hf-panel-text-2)]">{customReason}</p>}
                     </div>
                     <button type="button" data-testid={`storyboard-picture-picker-${frame.index}`} aria-haspopup="dialog" aria-controls="storyboard-shot-settings"

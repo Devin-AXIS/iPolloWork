@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-gradient-word-sweep
 
+## Narrative intent
+
+只给当前关键词一次渐变强调，让观众识别本段的核心概念。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 让一个短关键词由白字到渐变填充，并在副句中限定含义。

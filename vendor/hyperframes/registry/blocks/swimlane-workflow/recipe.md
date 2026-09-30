@@ -3,6 +3,12 @@
 
 Component ID: swimlane-workflow
 
+## Narrative intent
+
+在角色泳道中逐一呈现动作与交接，让观众看清谁在何时负责哪一步。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Explain role-based handoffs with one actor and action per lane.

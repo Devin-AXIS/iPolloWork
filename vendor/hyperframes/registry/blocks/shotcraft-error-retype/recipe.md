@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-error-retype
 
+## Narrative intent
+
+先呈现不准确表述再删除改写，让观众看见认识如何被纠正。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 同一前缀下输入一个表述，删除后改写为更准确的表述。

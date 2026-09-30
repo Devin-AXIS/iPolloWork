@@ -168,7 +168,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the topic → Read one question → Read its context → Hold the question before the answer. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "用一个可回答的问题和必要背景开场，让观众知道后续内容要解决什么。"
     }
   }
 }

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-dolly-zoom
 
+## Narrative intent
+
+在真实素材中固定主体并扩张背景，让观众感到该主体的重要性与环境关系。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。

@@ -193,7 +193,8 @@
         "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
         "Identify the misconception → Reveal the correction → Explain the reason → Show its implication. Preserve this reading order and the source qualifiers.",
         "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
-      ]
+      ],
+      "intent": "先呈现常见误解再揭示证据与边界，让观众修正原有判断。"
     }
   }
 }

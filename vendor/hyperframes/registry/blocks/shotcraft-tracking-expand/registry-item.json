@@ -147,7 +147,8 @@
         "Every action changes the real target and reverse seeking restores the same picture.",
         "Use actual content, measured fonts and validated project-local media.",
         "Preserve original movement functions, geometry and ordering; the final state remains readable."
-      ]
+      ],
+      "intent": "用平静的字距展开引入短概念，再补解释，让观众获得可读的章节起点。"
     }
   },
   "source": {

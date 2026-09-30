@@ -3,6 +3,12 @@
 
 Component ID: myth-fact-reveal
 
+## Narrative intent
+
+先呈现常见误解再揭示证据与边界，让观众修正原有判断。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - Correct one documented misconception using a fact, reason and practical implication.

@@ -3,6 +3,12 @@
 
 Component ID: shotcraft-drift-assembly
 
+## Narrative intent
+
+让分散字符归拢成可读标题，传达多个线索正在汇成一个主题。
+
+Select this recipe only when the current story event needs that audience outcome; the animation alone is not evidence that the outcome was delivered.
+
 ## Purpose and selection
 
 - 分散字符沿原漂移路径组装成短标题，表达聚合与整理。
