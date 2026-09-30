@@ -1,0 +1,38 @@
+<!-- TerminalTypewriter -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="TerminalTypewriter"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="TerminalTypewriter" data-start="0" data-duration="4.8333" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',panel:'#f7f7f6',line:'#dcdcda',bar:'#c2c2c0',mid:'#8f8f8d',card:'#ffffff',border:'#d8d8d6',side:'#3a3a3a',sideBar:'#5a5a58'};
+    const CMD='acme deploy --prod', T={typeStart:10,typeEnd:46,enter:58,pushEnd:64,settleEnd:68}, TOTAL=145;
+    const TW=1100,TH=620,TL=410,TT=230,TITLEBAR=52,PAD=34,FOCUS_X=960,FOCUS_Y=408;
+    const inCubic=t=>t*t*t, outCubic=t=>1-Math.pow(1-t,3);
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='inCubic')t=inCubic(t);else if(e==='outCubic')t=outCubic(t);return va+(vb-va)*t;};
+    const fakeDash=()=>`<div style="width:1920px;height:1080px;background:${G.bg};display:flex"><div style="width:220px;background:${G.side};padding:28px 22px;box-sizing:border-box;display:flex;flex-direction:column;gap:18px"><div style="width:40px;height:40px;border-radius:10px;background:#777775"></div>${Array.from({length:7}).map((_,i)=>`<div style="height:12px;width:${60+((i*29)%35)}%;background:${G.sideBar};border-radius:6px"></div>`).join('')}</div>
+      <div style="flex:1;display:flex;flex-direction:column"><div style="height:72px;background:${G.panel};border-bottom:2px solid ${G.line};display:flex;align-items:center;padding:0 32px;gap:20px"><div style="height:18px;width:180px;background:${G.bar};border-radius:9px"></div></div>
+      <div style="flex:1;padding:36px;display:grid;grid-template-columns:repeat(3,1fr);gap:28px">${Array.from({length:6}).map((_,i)=>`<div style="background:${G.card};border:2px solid ${G.border};border-radius:14px;min-height:200px"></div>`).join('')}</div></div></div>`;
+    const term=(chars,cursorOn)=>`<div style="width:${TW}px;height:${TH}px;background:#1e1e1c;border-radius:14px;box-shadow:0 24px 64px rgba(0,0,0,0.35);overflow:hidden"><div style="height:${TITLEBAR}px;background:#2a2a28;border-bottom:1px solid #3a3a38;display:flex;align-items:center;gap:12px;padding:0 22px">${['#6a6a68','#8f8f8d','#b5b5b3'].map(c=>`<div style="width:16px;height:16px;border-radius:8px;background:${c}"></div>`).join('')}</div>
+      <div style="padding:${PAD}px;font-family:Menlo,Consolas,monospace;font-size:40px;color:#d8d8d6;line-height:1.5"><div style="color:#7a7a78;font-size:32px;margin-bottom:18px">~/acme-app (main)</div><div style="display:flex;align-items:center"><span style="color:#9f9f9d">$ </span><span>${CMD.substring(0,chars)}</span><span style="display:inline-block;width:24px;height:48px;margin-left:4px;background:#d8d8d6;opacity:${cursorOn?1:0}"></span></div></div></div>`;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), chars=Math.min(CMD.length,Math.max(0,Math.floor((frame-T.typeStart)/2))), cursorOn=frame%12<6;
+      const cut=frame>=T.pushEnd;
+      if(!cut){const pushScale=clamp(frame,T.enter,T.pushEnd,1,3.2,'inCubic'), pushBlur=clamp(frame,T.pushEnd-2,T.pushEnd,0,10);
+        comp.innerHTML=`<div style="width:1920px;height:1080px;transform:scale(${pushScale});transform-origin:${FOCUS_X}px ${FOCUS_Y}px;${pushBlur>0?`filter:blur(${pushBlur}px)`:''}"><div style="position:absolute;left:${TL}px;top:${TT}px">${term(chars,cursorOn)}</div></div>`;}
+      else {const dashScale=clamp(frame,T.pushEnd,T.settleEnd,1.06,1,'outCubic');
+        comp.innerHTML=`<div style="width:1920px;height:1080px;transform:scale(${dashScale});transform-origin:960px 540px">${fakeDash()}</div>`;}
+    }},0);
+    window.__timelines['TerminalTypewriter']=tl;
+  </script>
+</body>
+</html>

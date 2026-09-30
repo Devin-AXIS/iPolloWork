@@ -35,6 +35,7 @@ import { ensureDir, exists, hashToken, shortId } from "./utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles, readRawOpencodeConfig } from "./workspace-init.js";
 import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
+import { engineHostMcp } from "./engine-host-mcp.js";
 import { EnvService } from "./env-file.js";
 import { DeepSeekHarnessRuntimePool } from "./deepseek-harness-runtime.js";
 import { CodexHarnessRuntimePool } from "./codex-harness-runtime.js";
@@ -753,6 +754,9 @@ export async function startServer(config: ServerConfig): Promise<ServeResult> {
     unwrapOpencodeResult,
     deepseekHarness,
     codexHarness,
+    prepareOpencodePrompt: async workspace => {
+      if (workspace.workspaceType !== "remote") await syncRuntimeMcpToOpencodeEngine(config, workspace, ["ipollowork"]);
+    },
   });
   const logger = createServerLogger(config);
   const watcherHandle = startReloadWatchers({ config, reloadEvents, logger });
@@ -1115,6 +1119,12 @@ async function proxyOpencodeRequest(input: {
   }
 
   const method = input.request.method.toUpperCase();
+  // OpenCode shares OPENCODE_CONFIG across directory instances. Rebind the
+  // built-in bridge before each turn, including newly created workspaces and
+  // rebuilt instances; never let a stale primary-workspace bridge start work.
+  if (workspace && workspace.workspaceType !== "remote" && method === "POST" && /^\/session\/[^/]+\/(?:message|prompt_async|command)$/.test(normalizeOpencodeProxyPath(proxyPath))) {
+    await syncRuntimeMcpToOpencodeEngine(input.config, workspace, ["ipollowork"]);
+  }
   // Buffer the request body so it can be forwarded reliably across Node.js
   // stream boundaries (Readable.toWeb streams from the HTTP adapter aren't
   // always accepted directly by Node's global fetch as a body).
@@ -3568,7 +3578,10 @@ async function syncRuntimeMcpToOpencodeEngine(
   const baseUrl = connection.baseUrl?.trim() ?? "";
   if (!baseUrl) return;
 
-  const engineMcp = await readEngineRuntimeMcpConfig(config, workspace.id);
+  const engineMcp: Record<string, Record<string, unknown>> = {
+    ...await readEngineRuntimeMcpConfig(config, workspace.id),
+    ...(workspace.workspaceType !== "remote" ? { ipollowork: engineHostMcp(config, workspace) } : {}),
+  };
   const storedMcp = onlyNames ? await readRuntimeMcpConfig(config, workspace.id) : {};
   const entries = onlyNames
     ? onlyNames.flatMap((name) => {

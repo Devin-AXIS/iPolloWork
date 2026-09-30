@@ -1,0 +1,182 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-karaoke-fill",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "逐词填色同步",
+  "description": "逐词填色同步，保留转换版原动作并支持旁白事件绑定。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu HyperFrames conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/type-rhythm-sync/KaraokeFillSync/index.html",
+    "rules": "references/shots/typography/type-rhythm-sync.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "2c2ed5cbe54ef2ef0ac9d4e3ffa71b878b3e1a18a79b49662878c0e6f8431a14",
+    "adaptation": "Preserves the converted HTML/GSAP source. Modified: editable escaped content, measured phase cues, explicit canvas, final hold and iPolloWork contracts. No generic replacement animation.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/type-rhythm-sync.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "words"
+      ],
+      "instructions": "用四个短词组的依次填色强调一条已实测对齐的短句。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6.5,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-karaoke-fill.html",
+      "target": "compositions/shotcraft-karaoke-fill.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-karaoke-fill.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "words",
+      "label": "words",
+      "type": "string",
+      "default": "观察|偏差|调整|稳定",
+      "maxLength": 35,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Measured phase cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "words",
+      "separator": "|",
+      "minItems": 4,
+      "maxItems": 4,
+      "fieldSeparator": "::",
+      "fieldsPerItem": 1,
+      "maxFieldLength": 4
+    },
+    "textLimits": {
+      "words": {
+        "maxLines": 1,
+        "maxLineLength": 35
+      }
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 0.6,
+        "action": "填色第一词组"
+      },
+      {
+        "id": "phase-2",
+        "target": ".sc-content *",
+        "time": 1.3833333333333333,
+        "duration": 1.1,
+        "action": "填色第二词组"
+      },
+      {
+        "id": "phase-3",
+        "target": ".sc-content *",
+        "time": 2.816666666666667,
+        "duration": 0.5999999999999996,
+        "action": "填色第三词组"
+      },
+      {
+        "id": "phase-4",
+        "target": ".sc-content *",
+        "time": 3.5500000000000003,
+        "duration": 0.7666666666666662,
+        "action": "填色第四词组"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "用四个短词组的依次填色强调一条已实测对齐的短句。"
+      ],
+      "avoidWhen": [
+        "不是通用自动字幕或任意长度歌词；无可靠词组对齐时不能宣称精确音画同步。",
+        "不要把文字特效当作全场景内容；避免与运镜或另一强调动作同时争抢焦点。"
+      ],
+      "inputRules": {
+        "words": "恰好四个真实词组用 | 分隔，每项最多四字；不拆词凑数。分别绑定实测发声，无可靠对齐时换配方或明确降级。"
+      },
+      "readingOrder": [
+        "按发声顺序建立四词组",
+        "依次填色当前词组",
+        "保留完整短句"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白中与“填色第一词组”对应的精确短语；保持该段原曲线。",
+        "phase-2": "绑定实测旁白中与“填色第二词组”对应的精确短语；保持该段原曲线。",
+        "phase-3": "绑定实测旁白中与“填色第三词组”对应的精确短语；保持该段原曲线。",
+        "phase-4": "绑定实测旁白中与“填色第四词组”对应的精确短语；保持该段原曲线。"
+      },
+      "fallback": {
+        "overflow": "拆分语义或选择其他配方，不缩小文字或截断。",
+        "missingInput": "要求真实内容，不使用英文演示文案或虚构界面。",
+        "timingMismatch": "重新绑定实测短语；内部动作比例不变，超长旁白拆镜。",
+        "inapplicable": "选择合适配方；仅配方模式下报告库缺口，不临时绘制替代图形。"
+      },
+      "example": {
+        "values": {
+          "words": "观察|偏差|调整|稳定"
+        },
+        "narration": "观察，偏差，调整，稳定。"
+      },
+      "acceptance": [
+        "逐词检查填色起点是否对应实际发声；四词顺序和最终短句完整，不以默认时值充当精确同步。",
+        "原始 GSAP / 逐帧函数真实执行，倒放复现同一画面。",
+        "每个绑定事件改变实际目标，结束文字完整且可读。",
+        "以实际字体和中文内容检查安全边界；不复用演示身份与假素材。"
+      ],
+      "intent": "按实际发声顺序填亮短句词组，让观众听到与看到的是同一段语言。"
+    }
+  }
+}

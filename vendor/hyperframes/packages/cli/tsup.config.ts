@@ -69,6 +69,16 @@ var __dirname = __hf_dirname(__filename);`,
   },
   esbuildOptions(options) {
     options.alias = {
+      "@hyperframes/studio-server": resolve(__dirname, "../studio-server/src/index.ts"),
+      "@hyperframes/studio-server/screenshot-clip": resolve(__dirname, "../studio-server/src/helpers/screenshotClip.ts"),
+      "@hyperframes/studio-server/manual-edits-render-script": resolve(__dirname, "../studio-server/src/helpers/manualEditsRenderScript.ts"),
+      "@hyperframes/studio-server/studio-motion-render-script": resolve(__dirname, "../studio-server/src/helpers/studioMotionRenderScript.ts"),
+      "@hyperframes/studio-server/draft-markers": resolve(__dirname, "../studio-server/src/helpers/draftMarkers.ts"),
+      "@hyperframes/studio-server/finite-mutation": resolve(__dirname, "../studio-server/src/helpers/finiteMutation.ts"),
+      "@hyperframes/studio-server/source-mutation": resolve(__dirname, "../studio-server/src/helpers/sourceMutation.ts"),
+      "@hyperframes/studio-server/media-codec-map": resolve(__dirname, "../studio-server/src/helpers/mediaCodecMap.ts"),
+      "@hyperframes/studio-server/proxy-transcoder": resolve(__dirname, "../studio-server/src/helpers/proxyTranscoder.ts"),
+      "@hyperframes/studio-server/media-proxy-preview": resolve(__dirname, "../studio-server/src/helpers/mediaProxyPreview.ts"),
       "@hyperframes/producer": resolve(__dirname, "../producer/src/index.ts"),
       // esbuild's alias map treats `@hyperframes/producer` as a file path
       // and would otherwise resolve `@hyperframes/producer/distributed`

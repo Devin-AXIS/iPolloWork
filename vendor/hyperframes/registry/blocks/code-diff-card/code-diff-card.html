@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en" data-composition-variables='[{"id":"filename","label":"File name","type":"string","default":"player.ts","maxLength":64},{"id":"before","label":"Removed code","type":"string","default":"- pauseOnUpdate();","maxLength":240},{"id":"after","label":"Added code","type":"string","default":"+ preservePlaybackState();","maxLength":240},{"id":"summary","label":"Summary","type":"string","default":"Keep preview playback stable while edits arrive.","maxLength":100}]'>
+<html lang="en" data-composition-variables='[{"id":"filename","label":"File name","type":"string","default":"player.ts","maxLength":64,"update":"live"},{"id":"before","label":"Removed code","type":"string","default":"- pauseOnUpdate();","maxLength":240,"update":"live"},{"id":"after","label":"Added code","type":"string","default":"+ preservePlaybackState();","maxLength":240,"update":"live"},{"id":"summary","label":"Summary","type":"string","default":"Keep preview playback stable while edits arrive.","maxLength":100,"update":"live"},{"id":"motionCueTimes","label":"Semantic cue times","type":"string","default":"{}","maxLength":2048,"update":"reload","description":"JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."}]'>
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Code Diff Card</title><style>
 *{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
-.diff-shell{width:1500px;margin:auto}.diff-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:26px}.diff-file{font:750 25px/1 var(--ipw-font-mono,ui-monospace,monospace)}.diff-summary{max-width:760px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.diff-pane{min-height:430px;padding:42px;border-radius:30px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.diff-label{font-size:15px;font-weight:800;letter-spacing:.16em}.diff-code{display:block;margin-top:92px;padding:26px;border-radius:16px;white-space:pre-wrap;font:26px/1.5 var(--ipw-font-mono,ui-monospace,monospace)}.diff-before .diff-code{background:#fff0f0;color:#a93636}.diff-after .diff-code{background:#eafaf3;color:#14704d}</style></head>
+.diff-shell{width:1500px;margin:auto}.diff-head{display:flex;justify-content:space-between;align-items:end;margin-bottom:26px}.diff-file{font:750 25px/1 var(--ipw-font-mono,ui-monospace,monospace)}.diff-summary{max-width:760px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}.diff-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px}.diff-pane{min-height:430px;padding:42px;border-radius:30px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.diff-label{font-size:15px;font-weight:800;letter-spacing:.16em}.diff-code{display:block;margin-top:92px;padding:26px;border-radius:16px;white-space:pre-wrap;font:26px/1.5 var(--ipw-font-mono,ui-monospace,monospace)}.diff-before .diff-code{background:#fff0f0;color:#a93636}.diff-after .diff-code{background:#eafaf3;color:#14704d}.diff-code{white-space:pre-wrap;overflow-wrap:anywhere}.diff-summary{line-height:1.4}
+</style></head>
 <body><main id="root" data-composition-id="code-diff-card" data-width="1920" data-height="1080" data-start="0" data-duration="9" data-defaults='{"filename":"player.ts","before":"- pauseOnUpdate();","after":"+ preservePlaybackState();","summary":"Keep preview playback stable while edits arrive."}'><section class="diff-shell"><header class="diff-head vc-animate"><div class="diff-file" data-ipw-variable="filename" data-ipw-ai-slot="filename"></div><div class="diff-summary" data-ipw-variable="summary" data-ipw-ai-slot="summary"></div></header><div class="diff-grid"><article class="diff-pane diff-before vc-animate"><div class="diff-label">BEFORE</div><code class="diff-code" data-ipw-variable="before" data-ipw-ai-slot="before"></code></article><article class="diff-pane diff-after vc-animate"><div class="diff-label">AFTER</div><code class="diff-code" data-ipw-variable="after" data-ipw-ai-slot="after"></code></article></div></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
 window.__timelines=window.__timelines||{};(function(){
 const root=document.getElementById("root"),id="code-diff-card";
@@ -31,17 +32,24 @@ root.querySelectorAll("[data-ipw-code]").forEach(function(host){
  const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
  lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
 });
-const initial={};const motion="slide-right";
-if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
-else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
-else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
-else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
-else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
-else Object.assign(initial,{y:54,opacity:0});
-const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
-const tl=gsap.timeline({paused:true});
-tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
-  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
-  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
-window.__timelines[id]=tl;tl.seek(0);
+})();</script><script data-ipw-motion-recipe="1">
+(function(){
+  const root=document.querySelector('[data-composition-id="code-diff-card"]'),id=root.dataset.compositionId;
+  const recipe={"version":1,"pattern":"state-transformation","minHoldSeconds":0.7,"events":[{"id":"before","target":".diff-before","time":1.2,"duration":0.6,"action":"Show the old code behavior"},{"id":"after","target":".diff-after","time":3.2,"duration":0.6,"action":"Show the replacement code"},{"id":"explain","target":".diff-summary","time":5.5,"duration":0.65,"action":"Explain the behavioral difference"},{"id":"resolve","target":".diff-pane","time":7.6,"duration":0.55,"action":"Restore both code panes for comparison"}]},values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+  const cues=JSON.parse(String(values.motionCueTimes??"{}")),events=recipe.events.filter(event=>root.querySelector(event.target));
+  const tl=gsap.timeline({paused:true}),targets=[...new Set(events.flatMap(event=>[...root.querySelectorAll(event.target)]))];
+  window.__timelines[id]?.kill();
+  tl.set(targets,{clearProps:"transform,opacity"},0);
+  tl.fromTo(root.querySelectorAll("h1,.vc-header,.question-meta,.diff-head"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power2.out"},0);
+  const steps=events.filter(event=>event.id!=="resolve"),stepTargets=steps.flatMap(event=>[...root.querySelectorAll(event.target)]);
+  tl.set(stepTargets,{opacity:.18},0);
+  steps.forEach((event,index)=>{
+    const at=cues[event.id]??event.time,target=root.querySelectorAll(event.target);
+    if(index>0)tl.to(root.querySelectorAll(steps[index-1].target),{opacity:.58,duration:.2},at);
+    tl.fromTo(target,{y:16,opacity:.18},{x:0,y:0,opacity:1,duration:event.duration,ease:"power2.out"},at);
+  });
+  const resolve=events.find(event=>event.id==="resolve");
+  if(resolve)tl.to(root.querySelectorAll(resolve.target),{opacity:1,scale:1.012,duration:resolve.duration,ease:"power2.inOut"},cues.resolve??resolve.time);
+  tl.to({hold:0},{hold:1,duration:.001},Math.max(9,...events.map(event=>(cues[event.id]??event.time)+event.duration))-.001);
+  window.__timelines[id]=tl;tl.seek(0);
 })();</script></body></html>

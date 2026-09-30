@@ -1,0 +1,52 @@
+<!-- gradient-word-sweep -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="GradientWordSweep"] { width: 1920px; height: 1080px; background: #050505; display: flex; align-items: center; justify-content: center; position: relative; }
+    .grad { position: absolute; inset: 0; background-image: linear-gradient(92deg, #59c2ff 0%, #9d6bff 32%, #ff6ed4 62%, #ffc46b 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="GradientWordSweep" data-start="0" data-duration="3.3333" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const mulberry32=a=>()=>{let t=(a+=0x6d2b79f5);t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);return((t^(t>>>14))>>>0)/4294967296;};
+    const rand=mulberry32(20260718), FILL_START=12,FILL_END=30,LIGHT_START=33,TOTAL=100,GRAD='linear-gradient(92deg, #59c2ff 0%, #9d6bff 32%, #ff6ed4 62%, #ffc46b 100%)';
+    const makeLongBolt=r=>{let x0=30+r()*220,x1=x0+160+r()*320,yBase=38+r()*42,n=7+Math.floor(r()*4),d=`M ${x0.toFixed(1)} ${(yBase+26+r()*20).toFixed(1)}`;for(let i=1;i<=n;i++){const x=x0+((x1-x0)*i)/n+(r()-0.5)*22,arch=Math.sin((i/n)*Math.PI)*-22,y=yBase+arch+(r()-0.5)*30+(i===n?30+r()*18:0);d+=` L ${x.toFixed(1)} ${y.toFixed(1)}`;}return{d,long:true};};
+    const makeShortBolt=r=>{const x=60+r()*540,y0=72+r()*24,y1=y0+55+r()*45,n=4+Math.floor(r()*3);let d=`M ${x.toFixed(1)} ${y0.toFixed(1)}`;for(let i=1;i<=n;i++){const y=y0+((y1-y0)*i)/n,xx=x+(r()-0.5)*30;d+=` L ${xx.toFixed(1)} ${y.toFixed(1)}`;}return{d,long:false};};
+    const BOLTS=Array.from({length:16},(_,i)=>i%3===0?makeShortBolt(rand):makeLongBolt(rand));
+    const FLASHES=Array.from({length:36},()=>({at:LIGHT_START+Math.floor(rand()*70),life:2+Math.floor(rand()*4),bolt:Math.floor(rand()*BOLTS.length)}));
+    const FLICKER=Array.from({length:160},()=>rand());
+    const outCubic=t=>1-Math.pow(1-t,3), outQuad=t=>t*(2-t);
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);else if(e==='outQuad')t=outQuad(t);return va+(vb-va)*t;};
+    const softMask=(p,pPct,soft)=>p>=1?'none':`linear-gradient(90deg, #000 0%, #000 ${Math.max(0,pPct-soft)}%, transparent ${Math.min(100,pPct+soft*0.6)}%)`;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      const enter=clamp(frame,0,12,0,1,'outCubic'), p=clamp(frame,FILL_START,FILL_END,0,1,'outQuad'), pPct=p*100;
+      const filling=frame>=FILL_START&&frame<=FILL_END+4, headFade=clamp(frame,FILL_END,FILL_END+6,1,0), trailFade=clamp(frame,FILL_END,FILL_END+10,1,0);
+      const TRAIL=34, trailMask=`linear-gradient(90deg, transparent 0%, transparent ${Math.max(0,pPct-TRAIL)}%, rgba(0,0,0,0.9) ${Math.max(0,pPct-3)}%, rgba(0,0,0,0.9) ${Math.min(100,pPct+1)}%, transparent ${Math.min(100,pPct+6)}%)`;
+      const noise=FLICKER[Math.min(frame,FLICKER.length-1)], active=FLASHES.filter(f=>frame>=f.at&&frame<f.at+f.life), boltBoost=active.length>0?0.35:0;
+      const glowLvl=clamp(frame,FILL_START,FILL_END,0,1)*(0.82+0.18*noise)+boltBoost;
+      const gradLayer=(extra='')=>`<span aria-hidden class="grad" style="background-image:${GRAD};${extra}">Supercharged</span>`;
+      const bolts=active.map((f,i)=>{const b=BOLTS[f.bolt],decay=1-(frame-f.at)/f.life;return `<g opacity="${Math.min(1,1.1*decay)}"><path d="${b.d}" fill="none" stroke="rgba(216,60,190,0.65)" stroke-width="${b.long?6:4.5}" style="filter:blur(6px)"/><path d="${b.d}" fill="none" stroke="#ffd8f2" stroke-width="${b.long?1.4:1.1}"/></g>`;}).join('');
+      comp.innerHTML=`<div style="position:absolute;left:500px;top:340px;width:820px;height:320px;border-radius:50%;background:radial-gradient(closest-side, rgba(180,110,255,0.6), rgba(255,110,212,0.25) 55%, transparent 78%);filter:blur(38px);opacity:${0.55*glowLvl}"></div>
+        <div style="text-align:center;opacity:${enter};transform:translateY(${(1-enter)*36}px);font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;letter-spacing:-1px;line-height:1.28;color:#fff;white-space:nowrap">
+          <span style="position:relative;display:inline-block;color:#fff">Supercharged
+            ${gradLayer(`filter:blur(46px) saturate(1.6);opacity:${0.55*glowLvl};transform:scale(1.05);-webkit-mask-image:${softMask(p,pPct,14)};mask-image:${softMask(p,pPct,14)}`)}
+            ${gradLayer(`filter:blur(18px) saturate(1.4) brightness(1.15);opacity:${0.62*glowLvl};-webkit-mask-image:${softMask(p,pPct,10)};mask-image:${softMask(p,pPct,10)}`)}
+            ${gradLayer(`clip-path:inset(-25% ${100-pPct}% -25% 0)`)}
+            ${trailFade>0.01?gradLayer(`filter:blur(9px) saturate(1.7) brightness(1.7);opacity:${0.95*trailFade};-webkit-mask-image:${trailMask};mask-image:${trailMask}`):''}
+            ${filling&&p<1?`<span aria-hidden style="position:absolute;inset:0;color:#fff;clip-path:inset(-25% ${Math.max(0,100-pPct)}% -25% ${Math.max(0,pPct-10)}%);filter:blur(3px);opacity:${0.9*headFade}">Supercharged</span>`:''}
+            <svg aria-hidden viewBox="0 0 700 240" style="position:absolute;left:-25px;top:-62px;width:700px;height:240px;overflow:visible;pointer-events:none">${bolts}</svg>
+          </span> <span>performance</span></div>
+        <div style="font-family:'Avenir Next',Futura,'Helvetica Neue',sans-serif;font-weight:700;font-style:italic;font-size:92px;color:#fff;text-align:center;margin-top:8px">with rock-solid reliability</div>`;
+    }},0);
+    window.__timelines['GradientWordSweep']=tl;
+  </script>
+</body>
+</html>

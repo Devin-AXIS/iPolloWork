@@ -27,7 +27,7 @@
         "highlight",
         "note"
       ],
-      "instructions": "AI may rewrite the title, supporting note, and up to four cycle stages. Keep pipe separators between items and preserve the orbit layout."
+      "instructions": "说明2–4步首尾相接的概念反馈循环；恒温器等控制原理可合并为比较、执行、测量、回传四步，目标值放在标题或注释。"
     }
   },
   "dimensions": {
@@ -45,6 +45,11 @@
       "path": "feedback-loop.html",
       "target": "compositions/feedback-loop.html",
       "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/feedback-loop.recipe.md",
+      "type": "hyperframes:asset"
     }
   ],
   "variables": [
@@ -52,7 +57,7 @@
       "id": "title",
       "label": "Title",
       "type": "string",
-      "default": "Feedback Loop",
+      "default": "结果如何回到下一次行动",
       "maxLength": 76,
       "update": "live"
     },
@@ -60,7 +65,7 @@
       "id": "items",
       "label": "Items (label::detail | ...)",
       "type": "string",
-      "default": "Observe::Read the signal|Draft::Make a move|Review::Test the result|Learn::Update the system",
+      "default": "观察::读取结果信号|调整::修改当前行动|执行::产生新的结果|复核::把结果带回观察",
       "maxLength": 280,
       "update": "live"
     },
@@ -78,9 +83,127 @@
       "id": "note",
       "label": "Supporting note",
       "type": "string",
-      "default": "A useful loop gets sharper every pass",
+      "default": "概念反馈闭环 · 不模拟增益或振荡",
       "maxLength": 100,
       "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
     }
-  ]
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "items",
+      "separator": "|",
+      "minItems": 2,
+      "maxItems": 4,
+      "fieldSeparator": "::",
+      "fieldsPerItem": 2,
+      "maxFieldLength": 24
+    },
+    "textLimits": {
+      "title": {
+        "maxLines": 1,
+        "maxLineLength": 24
+      },
+      "note": {
+        "maxLines": 1,
+        "maxLineLength": 40
+      }
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".vc-item:nth-child(1)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Explain supplied item 1 in narration order"
+      },
+      {
+        "id": "step-2",
+        "target": ".vc-item:nth-child(2)",
+        "time": 2.6,
+        "duration": 0.5,
+        "action": "Explain supplied item 2 in narration order"
+      },
+      {
+        "id": "step-3",
+        "target": ".vc-item:nth-child(3)",
+        "time": 4.1,
+        "duration": 0.5,
+        "action": "Explain supplied item 3 in narration order"
+      },
+      {
+        "id": "step-4",
+        "target": ".vc-item:nth-child(4)",
+        "time": 5.5,
+        "duration": 0.5,
+        "action": "Explain supplied item 4 in narration order"
+      },
+      {
+        "id": "resolve",
+        "target": ".vc-item",
+        "time": 6.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable relationship"
+      }
+    ],
+    "usage": {
+      "intent": "从观察经行动到结果回传形成可见闭环，让观众理解下一次行动为何会改变。",
+      "useWhen": [
+        "说明2–4步首尾相接的概念反馈循环；恒温器等控制原理可合并为比较、执行、测量、回传四步，目标值放在标题或注释。"
+      ],
+      "avoidWhen": [
+        "需要模拟真实物理温度变化、增益、延迟振荡或分支，而非解释概念回路。",
+        "Only the stated serial topology; no arbitrary branching, spatial or physical simulation."
+      ],
+      "inputRules": {
+        "title": "One content-specific heading, at most 24 characters.",
+        "items": "2–4 label::detail entries separated by |; each field at most 24 characters. 循环阶段::阶段作用；最后阶段必须逻辑上返回第一阶段。",
+        "highlight": "A real integer pointing to an existing item; it marks the final emphasis, not an inferred metric.",
+        "note": "One qualifier or source note, at most 40 characters. Retain uncertainty and evidence limitations."
+      },
+      "readingOrder": [
+        "建立观察对象",
+        "逐步连通行动与结果",
+        "沿返回箭头回到第一阶段"
+      ],
+      "cueBindings": {
+        "step-1": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-2": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-3": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "step-4": "Bind to the exact measured phrase introducing this item, never its text-length estimate.",
+        "resolve": "Bind to the concluding phrase that resolves the shown relationship."
+      },
+      "fallback": {
+        "overflow": "Split at a semantic boundary or choose a suitable recipe; never truncate or shrink text.",
+        "missingInput": "Report the missing real content or evidence; do not substitute demo defaults.",
+        "timingMismatch": "Bind every active event to measured narration while preserving order, nonoverlap and a readable final hold.",
+        "inapplicable": "Choose another proven native recipe. Under recipes-only policy report the capability gap; do not create custom graphics."
+      },
+      "example": {
+        "values": {
+          "title": "结果如何回到下一次行动",
+          "items": "观察::读取结果信号|调整::修改当前行动|执行::产生新的结果|复核::把结果带回观察",
+          "highlight": 1,
+          "note": "概念反馈闭环 · 不模拟增益或振荡"
+        },
+        "narration": "观察，调整，执行，复核，最后把它们放回同一个问题中理解。"
+      },
+      "acceptance": [
+        "最后有明确可见的返回路径；循环不是几张无关系的淡入卡。",
+        "Every active phrase changes its real visible target; forward and reverse seek reproduce the same state.",
+        "Chinese content fits at minimum and maximum capacity without cropped or overlapping labels.",
+        "Connections carry the declared relationship and remain attached to their nodes."
+      ]
+    }
+  }
 }

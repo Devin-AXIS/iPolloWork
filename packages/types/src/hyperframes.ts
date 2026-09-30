@@ -1,7 +1,121 @@
 import { z } from "zod";
+export const storyboardSettingsFieldsSchema = z.object({
+  asset_source: z.string(), asset_kind: z.string(), asset_brief: z.string(),
+  asset_reference: z.string(), asset_origin: z.string(), camera: z.string(),
+  transition_in: z.string(), sound_effects: z.string(), sound_effect_reference: z.string(),
+}).strict();
+export type StoryboardSettingsFields = z.infer<typeof storyboardSettingsFieldsSchema>;
+export const storyboardSettingsAssetSchema = z.object({
+  path: z.string(), url: z.string(), kind: z.enum(["image", "video", "audio"]),
+});
+export type StoryboardSettingsAsset = z.infer<typeof storyboardSettingsAssetSchema>;
+export const storyboardSettingsRequestSchema = z.object({
+  type: z.literal("ipollowork:video-studio-settings-open"),
+  projectId: z.string(), requestId: z.string(), frameIndex: z.number().int().positive(),
+  title: z.string(), kind: z.enum(["picture", "sound"]),
+  fields: storyboardSettingsFieldsSchema,
+  assets: z.array(storyboardSettingsAssetSchema).max(2000),
+  cameras: z.array(z.object({ value: z.string(), label: z.string() })),
+});
+export type StoryboardSettingsRequest = z.infer<typeof storyboardSettingsRequestSchema>;
+export const storyboardSettingsApplySchema = z.object({
+  type: z.literal("ipollowork:video-studio-settings-apply"),
+  projectId: z.string(), requestId: z.string(), fields: storyboardSettingsFieldsSchema,
+});
 export { hyperframesStudioPort, videoProjectDirectory, videoProjectId } from "./hyperframes-project.js";
 
 export const hyperframesEffectVariableUpdateSchema = z.enum(["live", "rebuild", "reload"]);
+
+/** CSS-page geometry for real screenshot crops; pixel ratio describes the image bytes. */
+export const hyperframesPageCaptureSchema = z.object({
+  width: z.number().positive().max(8192), height: z.number().positive().max(16384),
+  pixelRatio: z.number().min(1).max(4),
+  regions: z.array(z.object({
+    id: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+    x: z.number().nonnegative(), y: z.number().nonnegative(),
+    width: z.number().positive(), height: z.number().positive(),
+  }).strict()).min(6).max(8),
+  heroId: z.string(), foregroundIds: z.array(z.string()).length(2),
+}).strict().superRefine((capture, context) => {
+  const ids = new Set(capture.regions.map(region => region.id));
+  if (ids.size !== capture.regions.length || !ids.has(capture.heroId)
+    || new Set(capture.foregroundIds).size !== 2 || capture.foregroundIds.some(id => !ids.has(id))) {
+    context.addIssue({ code: "custom", message: "Capture regions need unique IDs and existing hero/foreground references." });
+  }
+  if (capture.regions.some(region => region.x + region.width > capture.width || region.y + region.height > capture.height)) {
+    context.addIssue({ code: "custom", message: "Capture rectangles must stay inside the CSS-page dimensions." });
+  }
+});
+
+/** Authored semantic cues, not fabricated speech alignment. Times are scene-relative seconds. */
+export const hyperframesMotionRecipeSchema = z.object({
+  version: z.literal(1),
+  pattern: z.string().min(1),
+  minHoldSeconds: z.number().positive(),
+  capacity: z.object({
+    variable: z.string(), separator: z.string(), maxItems: z.number().int().positive(),
+    minItems: z.number().int().positive().default(1),
+    fieldSeparator: z.string().min(1).optional(),
+    fieldsPerItem: z.number().int().positive().optional(),
+    maxFieldLength: z.number().int().positive().optional(),
+    numericField: z.number().int().nonnegative().optional(),
+  }).strict().optional(),
+  textLimits: z.record(z.string(), z.object({
+    maxLines: z.number().int().positive(), maxLineLength: z.number().int().positive(),
+  }).strict()).optional(),
+  usage: z.object({
+    intent: z.string().min(12).max(240).optional(),
+    useWhen: z.array(z.string().min(1).max(240)).min(1).max(4),
+    avoidWhen: z.array(z.string().min(1).max(240)).min(1).max(4),
+    inputRules: z.record(z.string(), z.string().min(1).max(240)),
+    readingOrder: z.array(z.string().min(1).max(160)).min(2).max(8),
+    cueBindings: z.record(z.string(), z.string().min(1).max(180)),
+    fallback: z.object({
+      overflow: z.string().min(1).max(240), missingInput: z.string().min(1).max(240),
+      timingMismatch: z.string().min(1).max(240), inapplicable: z.string().min(1).max(240),
+    }).strict(),
+    example: z.object({
+      values: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])),
+      narration: z.string().min(1).max(500),
+    }).strict(),
+    acceptance: z.array(z.string().min(1).max(240)).min(3).max(6),
+  }).strict(),
+  events: z.array(z.object({
+    id: z.string().regex(/^[a-z][a-z0-9-]*$/),
+    target: z.string().min(1),
+    time: z.number().nonnegative(),
+    duration: z.number().positive(),
+    action: z.string().min(1),
+  }).strict()).min(1).max(12),
+}).strict().superRefine((recipe, context) => {
+  const ids = recipe.events.map(event => event.id);
+  if (new Set(ids).size !== ids.length || ids.some(id => !recipe.usage.cueBindings[id])
+    || Object.keys(recipe.usage.cueBindings).some(id => !ids.includes(id))) {
+    context.addIssue({ code: "custom", message: "Every unique event needs exactly one semantic narration binding." });
+  }
+  if (recipe.capacity && recipe.capacity.minItems > recipe.capacity.maxItems) {
+    context.addIssue({ code: "custom", message: "Recipe minimum capacity exceeds its maximum." });
+  }
+});
+
+export const hyperframesVideoInstanceSchema = z.object({
+  sceneId: z.string().regex(/^[A-Za-z][A-Za-z0-9_-]*$/).max(96),
+  componentId: z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/),
+  start: z.number().nonnegative(),
+  duration: z.number().positive().max(120),
+  track: z.number().int().nonnegative().default(0),
+  values: z.record(z.string(), z.union([z.string(), z.number().finite(), z.boolean()])),
+  cueTimes: z.record(z.string(), z.number().nonnegative()).optional(),
+  narration: z.object({
+    timingSourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/assets\/[^/]+\.timings\.json$/),
+    text: z.string().min(1).max(10000),
+    bindings: z.record(z.string(), z.object({ phrase: z.string().min(1), occurrence: z.number().int().positive().optional() }).strict()),
+  }).strict().optional(),
+  timingSource: z.enum(["voiceover", "estimated-reading", "visual-cue", "music", "media"]),
+  transition: z.enum(["cut", "preset:element.enter.fade", "preset:element.enter.slide", "preset:element.enter.scale"]).default("cut"),
+  transitionDuration: z.number().nonnegative().default(0),
+  transitionIntent: z.enum(["continue", "topic-change", "time-change", "location-change", "compare", "reveal", "closure"]).default("continue"),
+}).strict();
 
 const variableBaseSchema = z.object({
   id: z.string().trim().regex(/^[A-Za-z_][A-Za-z0-9_-]*$/).max(64),
@@ -101,6 +215,12 @@ export const hyperframesCatalogItemSchema = z.object({
     url: z.string().url().optional(),
   }).strict().optional(),
   variables: z.array(hyperframesEffectVariableSchema).default([]),
+  recipeSummary: z.object({
+    pattern: hyperframesMotionRecipeSchema.shape.pattern,
+    intent: hyperframesMotionRecipeSchema.shape.usage.shape.intent,
+    useWhen: hyperframesMotionRecipeSchema.shape.usage.shape.useWhen,
+    avoidWhen: hyperframesMotionRecipeSchema.shape.usage.shape.avoidWhen,
+  }).strict().optional(),
   agentPrompt: z.string().optional(),
 }).strict();
 

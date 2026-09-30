@@ -1,0 +1,30 @@
+<!-- SplitTextStagger -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="SplitTextStagger"] { width: 1920px; height: 1080px; background: #ececea; position: relative; overflow: hidden; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="SplitTextStagger" data-start="0" data-duration="4.3333" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',ink:'#2f2f2f',bar:'#c2c2c0'}; const TEXT='MOTION SYSTEM',START=12,RISE=14,SETTLE=6,OVERSHOOT=-10,FONT=120,TOTAL=130;
+    const outCubic=t=>1-Math.pow(1-t,3), outQuad=t=>t*(2-t);
+    const charY=(f,i)=>{const t0=START+i*2;if(f<t0+RISE){let t=(f-t0)/RISE;return 115+(OVERSHOOT-115)*outCubic(t);}let t=(f-t0-RISE)/SETTLE;return OVERSHOOT+(0-OVERSHOOT)*outQuad(t);};
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);return va+(vb-va)*t;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), lineW=clamp(frame,START,START+26,0,100,'outCubic');
+      const chars=TEXT.split('').map((c,i)=>`<div style="overflow:hidden;height:${FONT*1.35}px;display:flex;align-items:flex-end"><span style="display:inline-block;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:${FONT}px;line-height:1.05;color:${G.ink};letter-spacing:2px;transform:translateY(${charY(frame,i)}%)">${c===' '?'&nbsp;':c}</span></div>`).join('');
+      comp.innerHTML=`<div style="position:absolute;left:120px;top:96px;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:54px;color:${G.ink}">SPLIT TEXT STAGGER</div>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column"><div style="display:flex">${chars}</div><div style="width:920px;margin-top:10px"><div style="height:2px;width:${lineW}%;background:${G.bar}"></div></div></div>`;
+    }},0);
+    window.__timelines['SplitTextStagger']=tl;
+  </script>
+</body>
+</html>

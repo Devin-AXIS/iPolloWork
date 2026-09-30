@@ -5,17 +5,159 @@
   "type": "hyperframes:block",
   "title": "Brand Headline",
   "description": "A theme-linked opening statement with an editorial frame and a decisive brand lockup.",
-  "tags": ["component", "intro", "headline", "brand", "theme"],
+  "tags": [
+    "component",
+    "intro",
+    "headline",
+    "brand",
+    "theme"
+  ],
   "author": "iPolloWork",
   "license": "Apache-2.0",
-  "visualComponent": { "version": 1, "category": "scene", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["kicker", "headline", "supporting"], "instructions": "AI may rewrite the message, preserve the short three-line hierarchy, and reposition the lockup without changing the seekable opening timeline." } },
-  "dimensions": { "width": 1920, "height": 1080 },
+  "visualComponent": {
+    "version": 1,
+    "category": "scene",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "kicker",
+        "headline",
+        "supporting"
+      ],
+      "instructions": "AI may rewrite the message, preserve the short three-line hierarchy, and reposition the lockup without changing the seekable opening timeline."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
   "duration": 8,
-  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
-  "files": [{ "path": "brand-headline.html", "target": "compositions/brand-headline.html", "type": "hyperframes:composition" }],
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "brand-headline.html",
+      "target": "compositions/brand-headline.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/brand-headline.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
   "variables": [
-    { "id": "kicker", "label": "Kicker", "type": "string", "default": "A clearer way forward", "maxLength": 48, "update": "live" },
-    { "id": "headline", "label": "Headline", "type": "string", "default": "Build the work that moves people.", "maxLength": 80, "update": "live" },
-    { "id": "supporting", "label": "Supporting line", "type": "string", "default": "One focused idea. Made visible.", "maxLength": 96, "update": "live" }
-  ]
+    {
+      "id": "kicker",
+      "label": "Kicker",
+      "type": "string",
+      "default": "A clearer way forward",
+      "maxLength": 48,
+      "update": "live"
+    },
+    {
+      "id": "headline",
+      "label": "Headline",
+      "type": "string",
+      "default": "Build the work that moves people.",
+      "maxLength": 80,
+      "update": "live"
+    },
+    {
+      "id": "supporting",
+      "label": "Supporting line",
+      "type": "string",
+      "default": "One focused idea. Made visible.",
+      "maxLength": 96,
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "progressive-build",
+    "minHoldSeconds": 0.7,
+    "events": [
+      {
+        "id": "headline",
+        "target": ".headline",
+        "time": 1.2,
+        "duration": 0.85,
+        "action": "Establish the primary message"
+      },
+      {
+        "id": "supporting",
+        "target": ".supporting",
+        "time": 3.2,
+        "duration": 0.65,
+        "action": "Reveal supporting meaning"
+      },
+      {
+        "id": "resolve",
+        "target": ".mark",
+        "time": 6.6,
+        "duration": 0.55,
+        "action": "Resolve the brand lockup and hold"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Open with one concise brand promise and one supporting statement."
+      ],
+      "avoidWhen": [
+        "Do not use for evidence-heavy teaching, multiple claims or a fake logo/endorsement."
+      ],
+      "inputRules": {
+        "kicker": "Supply real kicker within the declared character limit. Do not substitute demo text.",
+        "headline": "Supply real headline within the declared character limit. Do not substitute demo text.",
+        "supporting": "Supply real supporting line within the declared character limit. Do not substitute demo text."
+      },
+      "readingOrder": [
+        "Read the identity cue",
+        "Land one headline",
+        "Read supporting meaning",
+        "Settle on the mark"
+      ],
+      "cueBindings": {
+        "headline": "When the corresponding narration clause begins: Establish the primary message. Use an actual measured scene-relative cue when available.",
+        "supporting": "When the corresponding narration clause begins: Reveal supporting meaning. Use an actual measured scene-relative cue when available.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
+      },
+      "example": {
+        "values": {
+          "kicker": "运河边的夜校",
+          "headline": "晚上，也有一个能坐下来的地方",
+          "supporting": "面向附近居民的公共学习空间"
+        },
+        "narration": "晚上，也有一个能坐下来的地方。这是面向附近居民的公共学习空间。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Read the identity cue → Land one headline → Read supporting meaning → Settle on the mark. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ],
+      "intent": "先给出品牌承诺及其支撑信息，让观众理解本片的表达立场。"
+    }
+  }
 }

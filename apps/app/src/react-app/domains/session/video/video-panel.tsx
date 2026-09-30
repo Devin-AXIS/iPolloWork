@@ -14,6 +14,8 @@ import { readDenSettings } from "@/app/lib/den";
 import { formatBytes, isDesktopRuntime } from "@/app/utils";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
+import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
+import { VideoStoryboardSettingsDialog } from "./video-storyboard-settings-dialog";
 import { toast } from "@/components/ui/sonner";
 import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
@@ -90,6 +92,7 @@ type VideoPanelProps = {
   onAskAi?: (context: DesignAiSelectionContext) => void;
   onRegenerateFromStoryboard?: () => void | Promise<void>;
   onSaveAsTemplate?: () => void;
+  onGenerateVideo?: () => Promise<boolean>;
 };
 
 type StudioStartupStage =
@@ -182,6 +185,7 @@ export function VideoPanel({
   onAskAi,
   onRegenerateFromStoryboard,
   onSaveAsTemplate,
+  onGenerateVideo,
 }: VideoPanelProps) {
   const studioFrameRef = React.useRef<HTMLIFrameElement | null>(null);
   const studioChromeReadyRef = React.useRef(false);
@@ -198,6 +202,8 @@ export function VideoPanel({
   const [studioChromeReady, setStudioChromeReady] = React.useState(false);
   const [studioHistoryReady, setStudioHistoryReady] = React.useState(false);
   const [studioHostPanel, setStudioHostPanel] = React.useState<StudioHostPanel>(null);
+  const [scriptSettingsRequest, setScriptSettingsRequest] = React.useState<StoryboardSettingsRequest | null>(null);
+  const [scriptVoiceDialog, setScriptVoiceDialog] = React.useState<{ title: string } | null>(null);
   const [voiceSelectionTarget, setVoiceSelectionTarget] =
     React.useState<StudioVoiceSelectionTarget | null>(null);
   const [templateDialogOpen, setTemplateDialogOpen] = React.useState(false);
@@ -228,6 +234,74 @@ export function VideoPanel({
     revision,
     view,
   );
+  React.useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow || event.origin !== new URL(studioUrl).origin) return;
+      const parsed = storyboardSettingsRequestSchema.safeParse(event.data);
+      if (!parsed.success || parsed.data.projectId !== videoProjectId(sessionId)) return;
+      setScriptVoiceDialog(null); setVoiceSelectionTarget(null); setStudioHostPanel(null);
+      setScriptSettingsRequest(parsed.data);
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [sessionId, studioUrl]);
+  async function applyScriptSettings(fields: StoryboardSettingsFields | undefined) {
+    const request = scriptSettingsRequest;
+    const host = studioFrameRef.current?.contentWindow;
+    if (!request || !fields || !host) return false;
+    return new Promise<boolean>(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.source !== host || event.origin !== new URL(studioUrl).origin ||
+          event.data?.type !== "ipollowork:video-studio-settings-apply-result" ||
+          event.data.projectId !== request.projectId || event.data.requestId !== request.requestId) return;
+        finish(event.data.accepted === true);
+      };
+      const finish = (accepted: boolean) => { window.clearTimeout(timeout); window.removeEventListener("message", receive); resolve(accepted); };
+      const timeout = window.setTimeout(() => finish(false), 5000);
+      window.addEventListener("message", receive);
+      host.postMessage({ type: "ipollowork:video-studio-settings-apply", projectId: request.projectId, requestId: request.requestId, fields }, new URL(studioUrl).origin);
+    });
+  }
+  async function importScriptAsset(file: File): Promise<StoryboardSettingsAsset[]> {
+    const request = scriptSettingsRequest;
+    const host = studioFrameRef.current?.contentWindow;
+    if (!request || !host) return [];
+    return new Promise(resolve => {
+      const receive = (event: MessageEvent) => {
+        if (event.source !== host || event.origin !== new URL(studioUrl).origin ||
+          event.data?.type !== "ipollowork:video-studio-settings-import-result" ||
+          event.data.projectId !== request.projectId || event.data.requestId !== request.requestId) return;
+        const parsed = storyboardSettingsAssetSchema.array().safeParse(event.data.assets);
+        finish(parsed.success ? parsed.data : []);
+      };
+      const finish = (assets: StoryboardSettingsAsset[]) => { window.clearTimeout(timeout); window.removeEventListener("message", receive); resolve(assets); };
+      const timeout = window.setTimeout(() => finish([]), 60_000);
+      window.addEventListener("message", receive);
+      host.postMessage({ type: "ipollowork:video-studio-settings-import", projectId: request.projectId, requestId: request.requestId, file }, new URL(studioUrl).origin);
+    });
+  }
+  const generationPendingRef = React.useRef(false);
+  React.useEffect(() => {
+    const receive = (event: MessageEvent) => {
+      if (event.source !== studioFrameRef.current?.contentWindow ||
+        event.origin !== new URL(studioUrl).origin ||
+        event.data?.type !== "ipollowork:video-studio-generate" ||
+        event.data.projectId !== videoProjectId(sessionId) ||
+        typeof event.data.requestId !== "string") return;
+      const requestId: string = event.data.requestId;
+      const reply = (accepted: boolean) => studioFrameRef.current?.contentWindow?.postMessage({
+        type: "ipollowork:video-studio-generate-result",
+        projectId: videoProjectId(sessionId), requestId, accepted,
+      }, event.origin);
+      if (generationPendingRef.current || aiEditing || !onGenerateVideo) { reply(false); return; }
+      generationPendingRef.current = true;
+      void onGenerateVideo().then(reply).catch(() => reply(false)).finally(() => {
+        generationPendingRef.current = false;
+      });
+    };
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [sessionId, studioUrl, aiEditing, onGenerateVideo]);
   const projectDirectory = videoProjectDirectory(sessionId);
   const handleAvatarAsset = React.useCallback(
     (
@@ -491,6 +565,7 @@ export function VideoPanel({
       if (event.origin !== new URL(studioUrl).origin) return;
       if (event.data?.type !== "ipollowork:video-studio-panel") return;
       if (event.data.projectId !== videoProjectId(sessionId)) return;
+      if ((scriptVoiceDialog || scriptSettingsRequest) && event.data.presentation !== "dialog") return;
       if (typeof event.data.width === "number" && Number.isFinite(event.data.width)) {
         setStudioPanelWidth(
           Math.max(MIN_STUDIO_PANEL_WIDTH, Math.min(MAX_STUDIO_PANEL_WIDTH, event.data.width)),
@@ -503,6 +578,8 @@ export function VideoPanel({
         if (features.voice) {
           const index = event.data.frameIndex;
           const selection = event.data.voiceSelection;
+          setScriptVoiceDialog(event.data.presentation === "dialog" && Number.isInteger(index) && index > 0
+            ? { title: typeof event.data.title === "string" ? event.data.title : "" } : null);
           setVoiceSelectionTarget(
             Number.isInteger(index) && index > 0
               ? {
@@ -526,7 +603,7 @@ export function VideoPanel({
     };
     window.addEventListener("message", handlePanelRequest);
     return () => window.removeEventListener("message", handlePanelRequest);
-  }, [features.designSystem, features.voice, sessionId, studioUrl]);
+  }, [features.designSystem, features.voice, sessionId, studioUrl, scriptVoiceDialog, scriptSettingsRequest]);
 
   React.useEffect(() => {
     setStudioHistoryReady(false);
@@ -1311,18 +1388,58 @@ export function VideoPanel({
 
   React.useEffect(() => {
     setStudioHostPanel(null);
+    setScriptVoiceDialog(null);
+    setScriptSettingsRequest(null);
+    setVoiceSelectionTarget(null);
   }, [revision]);
 
   React.useEffect(() => {
     if (!expanded) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented || scriptVoiceDialog || scriptSettingsRequest) return;
       event.preventDefault();
       onExpandedChange?.(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [expanded, onExpandedChange]);
+  }, [expanded, onExpandedChange, scriptVoiceDialog, scriptSettingsRequest]);
+
+  const voicePanel = features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? (
+    <VideoVoicePanel
+      key={
+        voiceSelectionTarget
+          ? `frame-${voiceSelectionTarget.frameIndex}`
+          : "project-default"
+      }
+      sessionId={sessionId}
+      conversationId={conversationId}
+      generating={aiEditing}
+      workspaceRoot={workspaceRoot}
+      client={client}
+      workspaceId={workspaceId}
+      previewRequest={0}
+      selectionTarget={voiceSelectionTarget}
+      onVoiceSelected={(selection) => {
+        if (!voiceSelectionTarget) return;
+        if (!scriptVoiceDialog) {
+          studioFrameRef.current?.contentWindow?.postMessage({
+            type: "ipollowork:video-studio-voice-selected",
+            projectId: videoProjectId(sessionId),
+            frameIndex: voiceSelectionTarget.frameIndex,
+            ...selection,
+          }, new URL(studioUrl).origin);
+        }
+        setVoiceSelectionTarget((current) => current ? { ...current, ...selection } : null);
+      }}
+      onClose={() => {
+        setVoiceSelectionTarget(null);
+        setStudioHostPanel(null);
+      }}
+      embeddedWidth={studioPanelWidth}
+      inDialog={Boolean(scriptVoiceDialog)}
+      embedded
+    />
+  ) : null;
 
   return (
     <div
@@ -1455,43 +1572,18 @@ export function VideoPanel({
                 }}
               />
             ) : null}
-            {features.voice && studioHostPanel === "voice" && isIPolloWorkServerClient(client) ? (
-              <VideoVoicePanel
-                key={
-                  voiceSelectionTarget
-                    ? `frame-${voiceSelectionTarget.frameIndex}`
-                    : "project-default"
-                }
-                sessionId={sessionId}
-                conversationId={conversationId}
-                generating={aiEditing}
-                workspaceRoot={workspaceRoot}
-                client={client}
-                workspaceId={workspaceId}
-                previewRequest={0}
-                selectionTarget={voiceSelectionTarget}
-                onVoiceSelected={(selection) => {
-                  if (!voiceSelectionTarget) return;
-                  studioFrameRef.current?.contentWindow?.postMessage(
-                    {
-                      type: "ipollowork:video-studio-voice-selected",
-                      projectId: videoProjectId(sessionId),
-                      frameIndex: voiceSelectionTarget.frameIndex,
-                      ...selection,
-                    },
-                    new URL(studioUrl).origin,
-                  );
-                  setVoiceSelectionTarget(null);
-                  setStudioHostPanel(null);
-                }}
-                onClose={() => {
-                  setVoiceSelectionTarget(null);
-                  setStudioHostPanel(null);
-                }}
-                embeddedWidth={studioPanelWidth}
-                embedded
-              />
-            ) : null}
+            {scriptSettingsRequest && <VideoStoryboardSettingsDialog key={scriptSettingsRequest.requestId}
+              frameIndex={scriptSettingsRequest.frameIndex} title={scriptSettingsRequest.title} kind={scriptSettingsRequest.kind}
+              request={scriptSettingsRequest} disabled={aiEditing} onClose={() => setScriptSettingsRequest(null)}
+              onApply={applyScriptSettings} onImport={importScriptAsset} />}
+            {scriptVoiceDialog && voiceSelectionTarget ? <VideoStoryboardSettingsDialog key={`voice-${voiceSelectionTarget.frameIndex}`}
+              frameIndex={voiceSelectionTarget.frameIndex} title={scriptVoiceDialog.title} kind="voice" voiceContent={voicePanel}
+              disabled={aiEditing} onClose={() => { setScriptVoiceDialog(null); setVoiceSelectionTarget(null); setStudioHostPanel(null); }}
+              onImport={async () => []} onApply={async () => {
+                studioFrameRef.current?.contentWindow?.postMessage({ type: "ipollowork:video-studio-voice-selected",
+                  projectId: videoProjectId(sessionId), ...voiceSelectionTarget }, new URL(studioUrl).origin);
+                return true;
+              }} /> : voicePanel}
             {features.voice && isIPolloWorkServerClient(client) && workspaceId ? (
               <StudioInspectorPanel
                 ariaLabel={t("video.voice.avatar_tab")}

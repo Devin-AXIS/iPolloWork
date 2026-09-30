@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 const INPUT =
   "w-full min-w-0 rounded-md border border-transparent bg-transparent px-2 py-1.5 text-xs leading-5 text-[var(--hf-panel-text-0)] outline-none placeholder:text-[var(--hf-panel-text-4)] hover:border-[var(--hf-panel-border-input)] focus:border-studio-accent focus:bg-[var(--hf-panel-surface)]";
@@ -25,6 +25,21 @@ export function StoryboardPlanField({
 }) {
   const [text, setText] = useState(value);
   const focused = useRef(false);
+  const textarea = useRef<HTMLTextAreaElement>(null);
+  useLayoutEffect(() => {
+    const element = textarea.current;
+    if (!element) return;
+    const resize = () => {
+      if (element.getBoundingClientRect().width === 0) return;
+      element.style.height = "auto";
+      const height = `${element.scrollHeight}px`;
+      if (element.style.height !== height) element.style.height = height;
+    };
+    resize();
+    const observer = new ResizeObserver(resize);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text]);
   useEffect(() => {
     if (!focused.current) setText(value);
   }, [value]);
@@ -48,7 +63,7 @@ export function StoryboardPlanField({
     },
   };
   return multiline ? (
-    <textarea {...props} rows={rows} className={`${INPUT} resize-y`} />
+    <textarea {...props} ref={textarea} rows={rows} className={`${INPUT} resize-none overflow-hidden`} />
   ) : (
     <input {...props} />
   );

@@ -1,0 +1,43 @@
+<!-- pill-slot-cycle -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="PillSlotCycle"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="PillSlotCycle" data-start="0" data-duration="5.0667" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',ink:'#2f2f2f',line:'#dcdcda',card:'#ffffff',border:'#d8d8d6'};
+    const PILLS=[{label:'Ask a question',icon:'?'},{label:'Find in Drive',icon:'▲'},{label:'Find in Slack',icon:'#'},{label:'Summarize',icon:'≡'},{label:'Improve writing',icon:'✎'},{label:'Draft an agenda',icon:'☰'}];
+    const BEAT=21,INTRO=12,CYCLES=PILLS.length,SWAP=8,TOTAL=INTRO+CYCLES*BEAT+14;
+    const outCubic=t=>1-Math.pow(1-t,3), inCubic=t=>t*t*t, back14=t=>{const s=1.4;return 1+(s+1)*Math.pow(t-1,3)+s*Math.pow(t-1,2);};
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);else if(e==='inCubic')t=inCubic(t);else if(e==='back')t=back14(t);return va+(vb-va)*t;};
+    const pill=(label,icon,style='')=>`<div style="display:inline-flex;align-items:center;gap:16px;padding:18px 36px;border-radius:999px;background:${G.card};border:2px solid ${G.border};box-shadow:0 4px 16px rgba(0,0,0,0.06);font-family:Helvetica,Arial,sans-serif;font-weight:700;font-size:44px;color:${G.ink};white-space:nowrap;${style}"><span style="width:52px;height:52px;border-radius:26px;background:${G.line};display:flex;align-items:center;justify-content:center;font-size:28px">${icon}</span>${label}</div>`;
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1))), stemT=clamp(frame,0,INTRO,0,1,'outCubic');
+      const cycleStart=INTRO,cycleEnd=cycleStart+CYCLES*BEAT,isFinale=frame>=cycleEnd,finT=isFinale?clamp(frame,cycleEnd,cycleEnd+14,0,1,'back'):0;
+      let slot='';
+      if(!isFinale&&frame-cycleStart>=0){const rel=frame-cycleStart,idx=Math.min(Math.floor(rel/BEAT),CYCLES-1),beatFrame=rel-idx*BEAT;
+        const incoming=PILLS[idx],outgoing=idx>0?PILLS[idx-1]:null;
+        const inT=clamp(beatFrame,0,SWAP,0,1,'outCubic'),inY=120*(1-inT),inBlur=14*(1-inT);
+        const outT=clamp(beatFrame,0,SWAP-1,0,1,'inCubic'),outY=-130*outT;
+        slot=`<div style="position:relative;display:inline-block">${pill(incoming.label,incoming.icon,'visibility:hidden')}
+          ${outgoing&&outT<1?`<div style="position:absolute;left:0;top:0;transform:translateY(${outY}px);opacity:${1-outT};filter:blur(${outT*10}px)">${pill(outgoing.label,outgoing.icon)}</div>`:''}
+          <div style="position:absolute;left:0;top:0;transform:translateY(${inY}px);opacity:${idx===0?inT:Math.min(1,inT*1.6)};filter:blur(${inBlur}px)">${pill(incoming.label,incoming.icon)}</div></div>`;}
+      else if(isFinale){const lastOutT=clamp(frame,cycleEnd,cycleEnd+7,0,1,'inCubic');
+        slot=`<div style="position:relative;display:inline-block">${lastOutT<1?`<div style="position:absolute;left:0;top:0;transform:translateY(${-130*lastOutT}px);opacity:${1-lastOutT}">${pill(PILLS[CYCLES-1].label,PILLS[CYCLES-1].icon)}</div>`:''}
+          <span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:96px;color:${G.ink};letter-spacing:-1px;transform:translateY(${(1-finT)*80}px);opacity:${finT};display:inline-block">do it all.</span></div>`;}
+      comp.innerHTML=`<div style="position:absolute;left:300px;top:540px;transform:translateY(calc(-50% + ${(1-stemT)*50}px));display:flex;align-items:center;gap:36px;opacity:${stemT}">
+        <span style="font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:96px;color:${G.ink};letter-spacing:-1px;white-space:nowrap">One AI tool to</span>${slot}</div>`;
+    }},0);
+    window.__timelines['PillSlotCycle']=tl;
+  </script>
+</body>
+</html>

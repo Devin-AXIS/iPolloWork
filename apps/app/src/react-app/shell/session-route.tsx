@@ -137,10 +137,12 @@ import type { iPolloWorkSessionType, iPolloWorkTemplateId } from "@/react-app/do
 import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react-app/domains/session/sidebar/session-type";
 import {
   shouldInjectVideoTaskContext,
+  readVideoBriefDetails,
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
   videoProjectEntryPath,
+  videoPromptRequiresStoryboardReview,
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
   videoHostExportOperationKey,
@@ -1719,7 +1721,11 @@ export function SessionRoute() {
           : isLegacyVideoTask
             ? [{ sessionId: targetSessionId, template: null }]
             : [];
-        const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0
+        const requiresStoryboardReview = videoTasks.length > 0 && videoPromptRequiresStoryboardReview({
+          promptText: videoPromptText,
+          hasReferenceAttachments: draft.attachments.length > 0,
+        });
+        const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0 && !requiresStoryboardReview
           ? videoHostExportOperationKey(targetSessionId, dispatchOptions?.clientUserMessageId ?? crypto.randomUUID())
           : null;
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
@@ -1734,6 +1740,9 @@ export function SessionRoute() {
           const videoDeliveryRequirements = videoDeliveryRequirementsForPrompt({
             capabilityId: draft.capability?.id,
             promptText: videoPromptText,
+            originalBriefText: selectedWorkspaceEndpoint
+              ? await readVideoBriefDetails(selectedWorkspaceEndpoint.client, selectedWorkspaceEndpoint.workspaceId, template?.state.entry ?? videoProjectEntryPath(sessionId))
+              : undefined,
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
@@ -1755,6 +1764,7 @@ export function SessionRoute() {
               deliveryRequirements: videoDeliveryRequirements,
               hostManagedExport: draft.capability?.id === "video-publish-continuation" || draft.capability?.id === "video-delivery-recovery",
               hostExportOperationKey: hostVideoOperationKey ?? undefined,
+              requireStoryboardReview: requiresStoryboardReview,
             },
           );
         }));
@@ -1825,7 +1835,7 @@ export function SessionRoute() {
             }
           }
         }
-        const hostVideoTask = videoDeliveryIntent
+        const hostVideoTask = videoDeliveryIntent && !requiresStoryboardReview
           ? videoTasks.at(-1) ?? null
           : null;
         const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
@@ -1836,7 +1846,10 @@ export function SessionRoute() {
           || parts.some(part => part.type === "text" && part.synthetic
             && part.text.includes("media/artifact_media_review phase=plan") && part.text.includes(entry));
         const completionTemplates = automaticTemplateInstruction
-          ? sessionTemplates.filter((template) => template.sessionId !== hostVideoTask?.template?.sessionId)
+          ? sessionTemplates.filter((template) => (
+              template.sessionId !== hostVideoTask?.template?.sessionId
+              && (!requiresStoryboardReview || template.manifest.surface !== "video")
+            ))
           : sessionTemplates.filter((template) => (
               (template.manifest.surface !== "video" || requiresMediaReview(template.state.entry))
               && explicitlyTargetedTemplateSessionIds.has(template.sessionId)

@@ -2,14 +2,41 @@ import type { UIMessage } from "ai";
 import type { SessionArtifact } from "@ipollowork/types/workspace";
 import { formatFileSize } from "@/lib/utils";
 
+export function getPartMetadataId(part: UIMessage["parts"][number]) {
+  if (part.type === "dynamic-tool") {
+    const metadata = part.callProviderMetadata?.ipollowork;
+    return metadata && typeof metadata === "object" && typeof metadata.partId === "string" ? metadata.partId : null;
+  }
+  if (part.type === "data-design-selection" || part.type === "data-animation-references" || part.type === "data-voice-reference") {
+    const data = part.data;
+    return data && typeof data === "object" && "partId" in data && typeof data.partId === "string" ? data.partId : null;
+  }
+  if (!("providerMetadata" in part)) return null;
+  const metadata = part.providerMetadata?.ipollowork;
+  return metadata && typeof metadata === "object" && typeof metadata.partId === "string" ? metadata.partId : null;
+}
+
 function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage) {
+  // Parts can arrive out of order. Array positions are not provider identities.
+  const identity = (part: UIMessage["parts"][number]) =>
+    part.type === "dynamic-tool" ? part.toolCallId : getPartMetadataId(part);
+  const cachedById = new Map<string, UIMessage["parts"][number]>();
+  for (const part of cachedMessage.parts) {
+    const id = identity(part);
+    if (id && !cachedById.has(id)) cachedById.set(id, part);
+  }
+  const seen = new Set<string>();
   const parts = snapshotMessage.parts.map((part, index) => {
-    const cachedPart = cachedMessage.parts[index];
+    const id = identity(part);
+    if (id) seen.add(id);
+    const cachedPart = id ? cachedById.get(id) : cachedMessage.parts[index];
     if (!cachedPart) return part;
 
     if (
       (part.type === "text" || part.type === "reasoning") &&
       cachedPart.type === part.type &&
+      (!id || part.state !== "done") &&
+      cachedPart.text.startsWith(part.text) &&
       cachedPart.text.length > part.text.length
     ) {
       return { ...part, text: cachedPart.text };
@@ -18,8 +45,12 @@ function mergeMessageParts(snapshotMessage: UIMessage, cachedMessage: UIMessage)
     return part;
   });
 
-  if (cachedMessage.parts.length > snapshotMessage.parts.length) {
-    parts.push(...cachedMessage.parts.slice(snapshotMessage.parts.length));
+  for (const [index, part] of cachedMessage.parts.entries()) {
+    const id = identity(part);
+    if (id ? !seen.has(id) : index >= snapshotMessage.parts.length) {
+      parts.push(part);
+      if (id) seen.add(id);
+    }
   }
 
   return parts;

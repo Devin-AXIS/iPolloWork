@@ -18,12 +18,12 @@ Read [references/video.md](references/video.md) once per task. For initial gener
 
 ## Editing workflow
 
-1. On initial/full generation, derive a compact content-led storyboard. If the user has not approved a script/storyboard and has not explicitly requested direct generation, present it once before media submission and full composition; do not ask again after confirmation. Continue only independent preparation while confirmation is pending.
+1. On initial/full generation, identify the narrative driver, map intended audience changes to observable events, shortlist executable recipes by intent and capacity, then save a compact content-led storyboard. Continue production by default. Pause after the script only when the user explicitly requests script review or a script-only result; do not ask again after confirmation.
 2. Preserve the root composition contract, stable editor hooks, visual system, editable variables, and deterministic timeline so Video Studio controls continue to work.
 3. For targeted and follow-up edits, preserve unrelated user-authored scenes and media. Keep the root duration and every scene, clip, transition, audio, and animation timestamp consistent after structural changes.
 4. Use the shared `--ipw-*` design tokens when the project provides them.
 5. Save changes to the exact session-owned `index.html` and keep referenced assets inside the same project.
-6. Follow the single plan → compose → batch-check → consolidated-repair flow in `references/video.md`. Do not repeat capability discovery, rule reads, catalog scans or unchanged validation.
+6. For initial generation or structural reordering, use the Sequence templates section in `references/video.md` to select a fitting structure, assign executable recipe slots and plan adjacent handoffs before transitions. Follow the recipe-selection method and single plan → compose → batch-check → consolidated-repair flow in `references/video.md`. Record fit and tradeoffs in the existing script; review delivered recipe fit through `references/video-acceptance.md`. Do not repeat capability discovery, rule reads, catalog scans or unchanged validation.
 
 If the active session provides stricter timing, template, media, or validation instructions, those instructions take precedence.
 

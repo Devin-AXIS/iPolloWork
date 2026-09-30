@@ -85,9 +85,12 @@ import {
 } from "../video/video-voice";
 import {
   unchangedVideoArtifactIssue,
+  readVideoBriefDetails,
   publicationUserInterventionRequired,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
+  videoPromptRequestsFinishedVideo,
+  videoPromptRequiresStoryboardReview,
   videoHostExportOperationKey,
   videoProjectEntryPath,
   type VideoArtifactCompletionRequirement,
@@ -285,6 +288,18 @@ function videoRenderOutput(response: unknown) {
     outputPath: "outputPath" in output && typeof output.outputPath === "string" ? output.outputPath : null,
     error: "error" in output && typeof output.error === "string" ? output.error : null,
     pollAfterMs: "pollAfterMs" in output && typeof output.pollAfterMs === "number" ? output.pollAfterMs : 2_000,
+    pixelReview: "pixelReview" in output && output.pixelReview && typeof output.pixelReview === "object"
+      && "valid" in output.pixelReview && typeof output.pixelReview.valid === "boolean"
+      ? {
+          valid: output.pixelReview.valid,
+          issues: "issues" in output.pixelReview && Array.isArray(output.pixelReview.issues)
+            ? output.pixelReview.issues.flatMap((issue) => issue && typeof issue === "object" && "code" in issue && typeof issue.code === "string" && "sceneId" in issue && typeof issue.sceneId === "string" ? [`${issue.sceneId}: ${issue.code}`] : [])
+            : [],
+          blankSceneIds: "blankSceneIds" in output.pixelReview && Array.isArray(output.pixelReview.blankSceneIds)
+            ? output.pixelReview.blankSceneIds.filter((value): value is string => typeof value === "string")
+            : [],
+        }
+      : null,
   };
 }
 
@@ -1669,27 +1684,29 @@ export function SessionSurface(props: SessionSurfaceProps) {
     const videoTask = Boolean(voiceoverRequest) || newConversationMode === "video"
       || props.artifactContext?.kind === "video"
       || /^video\/[^/]+\/index\.html$/i.test(templateEntryPath)
-      || promptVideoDeliveryIntent !== null;
+      || promptVideoDeliveryIntent !== null
+      || videoPromptRequestsFinishedVideo(promptText);
     let pendingDelivery: PendingVideoDeliveryValidation | null = null;
     try {
-      if (videoTask && !recoveryDraft) {
+      if (videoTask && !recoveryDraft && !videoPromptRequiresStoryboardReview({ promptText })) {
         const voiceover = await readVideoVoiceoverAvailability(
           props.client,
           props.workspaceId,
           voiceoverRequest?.videoSessionId ?? props.sessionId,
           props.workspaceRoot,
         );
+        const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
+          ? props.artifactContext.entryPath
+          : templateEntryPath || videoProjectEntryPath(props.sessionId);
         const requirements = videoDeliveryRequirementsForPrompt({
           capabilityId: nextDraft.capability?.id,
           promptText,
+          originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, sourcePath),
           animationReferences: selectedAnimations.map((selection) => selection.item.name),
           voiceoverEnabled: voiceover.enabled,
           voiceoverAvailable: voiceover.configured,
         });
         const mustChange = Boolean(voiceoverRequest);
-        const sourcePath = voiceoverRequest ? videoProjectEntryPath(voiceoverRequest.videoSessionId) : props.artifactContext?.kind === "video"
-          ? props.artifactContext.entryPath
-          : templateEntryPath || videoProjectEntryPath(props.sessionId);
         pendingDelivery = {
           sourcePath,
           requirements,
@@ -1749,6 +1766,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
           requirements: videoDeliveryRequirementsForPrompt({
             capabilityId: nextDraft.capability?.id,
             promptText,
+            originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, videoDeliveryTarget.sourcePath),
             animationReferences: selectedAnimations.map((selection) => selection.item.name),
             voiceoverAvailable: true,
             voiceoverEnabled: false,
@@ -2072,8 +2090,41 @@ export function SessionSurface(props: SessionSurfaceProps) {
             pending.requestOrdinal,
             ownedPaths,
           ));
-          if (pending.hostExport) {
-            const args = { sourcePath: pending.sourcePath, operationKey: pending.hostExport.operationKey };
+          if (!pending.hostExport) {
+            const args = {
+              sourcePath: pending.sourcePath,
+              operationKey: `ipw:${props.sessionId}:pixel-review:${pending.requestOrdinal}:${pending.recoveryAttempts}`,
+              reviewOnly: true,
+            };
+            const renderCall = async (action: "video_render_start" | "video_render_status") => {
+              const response = await props.client.callExtensionAction({
+                extensionId: "media", action, args,
+                context: { directory: props.workspaceRoot || undefined },
+              });
+              if (!response.ok) throw new Error(response.message);
+              const render = videoRenderOutput(response);
+              if (!render) throw new Error("Video pixel review returned an unreadable result.");
+              return render;
+            };
+            let render = await renderCall("video_render_start");
+            const deadline = Date.now() + 30 * 60_000;
+            while (render.status === "preparing" || render.status === "rendering") {
+              if (pendingVideoDeliveryRef.current !== pending) return;
+              if (Date.now() >= deadline) throw new Error("Video pixel review did not finish within 30 minutes.");
+              await new Promise((resolve) => window.setTimeout(resolve, Math.max(500, Math.min(render.pollAfterMs, 5_000))));
+              render = await renderCall("video_render_status");
+            }
+            if (render.status === "failed" && !render.pixelReview) throw new Error(render.error || "Video pixel review render failed.");
+            if (!render.pixelReview) throw new Error("Video render completed without establish/develop/land pixel samples.");
+            if (!render.pixelReview.valid) {
+              issues = [{
+                code: "rendered_motion_health_failed",
+                message: `Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}. Repair the sampled defect; do not add decorative loops or claim semantic approval.`,
+              }];
+            }
+          }
+          if (issues.length === 0 && pending.hostExport) {
+            const args = { sourcePath: pending.sourcePath, operationKey: pending.hostExport.operationKey, review: true };
             const renderCall = async (action: "video_render_start" | "video_render_status") => {
               const response = await props.client.callExtensionAction({
                 extensionId: "media", action, args,
@@ -2094,6 +2145,8 @@ export function SessionSurface(props: SessionSurfaceProps) {
             }
             if (render.status === "failed") throw new Error(render.error || "Video export failed.");
             if (!render.outputPath) throw new Error("Video export completed without an MP4 path.");
+            if (!render.pixelReview) throw new Error("Video export completed without establish/develop/land pixel samples.");
+            if (!render.pixelReview.valid) throw new Error(`Rendered motion review failed: ${[...render.pixelReview.blankSceneIds.map(id => `${id}: blank-scene`), ...render.pixelReview.issues].join(", ")}.`);
             if (pendingVideoDeliveryRef.current !== pending) return;
             const outputPath = render.outputPath;
             setArtifactRequestOwnership((current) => assignArtifactRequestOwnership(current, pending.requestOrdinal, [...ownedPaths, outputPath]));
@@ -2148,11 +2201,13 @@ export function SessionSurface(props: SessionSurfaceProps) {
             toast.success(t("session.video_delivery_validated"));
             return;
           }
-          pendingVideoDeliveryRef.current = null;
-          props.onArtifactCompletionRequirementConsumed?.();
-          setSending(false);
-          toast.success(t("session.video_delivery_validated"));
-          return;
+          if (issues.length === 0) {
+            pendingVideoDeliveryRef.current = null;
+            props.onArtifactCompletionRequirementConsumed?.();
+            setSending(false);
+            toast.success(t("session.video_delivery_validated"));
+            return;
+          }
         }
       }
       const issueMessages = issues

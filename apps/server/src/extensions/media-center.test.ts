@@ -14,7 +14,10 @@ import {
   estimateVoiceoverDurationSeconds,
   planSceneVoiceoverTiming,
   validateVoiceoverTimelineHtml,
+  reconcileVoiceoverWordTimings,
+  compileVoiceoverCaptions,
 } from "./media-center.js";
+import { renderedSceneWindows } from "./video-render.js";
 
 const nativeFetch = globalThis.fetch;
 const mediaProviderFetchKey = Symbol.for("ipollowork.mediaProviderFetch");
@@ -62,10 +65,52 @@ test("exposes measured audio cues as a built-in Video Studio action", () => {
   });
 });
 
+test("discovers and calls the executable offline recipe catalog without workspace or provider access", async () => {
+  expect(MEDIA_EXTENSION_ACTIONS.find(action => action.action === "video_recipe_catalog")?.inputSchema).toMatchObject({ additionalProperties: false });
+  const result = await callMediaExtensionAction(config, env({}), "video_recipe_catalog", { cardIds: ["card-stack"] }, {});
+  expect(result).toMatchObject({ ok: true, result: { provider: "local", output: { stats: { cardCount: 23, styleCount: 30 }, cards: [{ name: "card-stack", styles: [{ componentIds: ["shotcraft-card-stack"] }] }] } } });
+});
+
+test("selects only visual scene windows for rendered pixel review", () => {
+  expect(renderedSceneWindows(`<main>
+    <section id="intro" class="scene clip" data-start="0" data-duration="4"></section>
+    <section id="details" data-scene data-start="4" data-duration="5"></section>
+    <audio data-ipw-scene-id="intro" data-start="0" data-duration="3"></audio>
+  </main>`)).toEqual([
+    { sceneId: "intro", start: 0, duration: 4, motion: [], transitionDuration: 0 },
+    { sceneId: "details", start: 4, duration: 5, motion: [], transitionDuration: 0 },
+  ]);
+});
+
+test("reconciles revised cumulative words by sentence, validates coverage and audio boundaries", () => {
+  const event = (index: number, original_text: string, end_time: number, begin_time = 0) => ({ output: { sentence: { index, original_text, words: [{ text: original_text, begin_index: 0, end_index: original_text.length, begin_time, end_time }] } } });
+  const result = reconcileVoiceoverWordTimings([event(0, "晚", 200), event(0, "晚", 400), event(1, "上", 800, 400)], "晚上", 1);
+  expect(result.issues).toEqual([]);
+  expect(result.words).toEqual([
+    { text: "晚", beginIndex: 0, endIndex: 1, startSeconds: 0, endSeconds: .4 },
+    { text: "上", beginIndex: 1, endIndex: 2, startSeconds: .4, endSeconds: .8 },
+  ]);
+  expect(reconcileVoiceoverWordTimings([event(0, "晚", 400)], "晚上", 1).issues).toContain("word-coverage-incomplete");
+  expect(reconcileVoiceoverWordTimings([event(0, "晚上", 2000)], "晚上", 1).words).toEqual([]);
+  expect(reconcileVoiceoverWordTimings([event(0, "晚", 600), event(1, "上", 800, 400)], "晚上", 1).issues).toContain("word-boundary-invalid");
+});
+
+test("compiles phrase captions from measured words and labels unavailable alignment honestly", () => {
+  expect(compileVoiceoverCaptions("你好，夜校。", [
+    { text: "你好", beginIndex: 0, endIndex: 2, startSeconds: .1, endSeconds: .8 },
+    { text: "夜校", beginIndex: 3, endIndex: 5, startSeconds: 1, endSeconds: 1.8 },
+  ], 2, 2)).toEqual([
+    { text: "你好，", startFrame: 63, endFrame: 84, alignment: "provider" },
+    { text: "夜校。", startFrame: 90, endFrame: 114, alignment: "provider" },
+  ]);
+  expect(compileVoiceoverCaptions("没有精确对齐。", [], 2, 3)).toEqual([{ text: "没有精确对齐。", startFrame: 60, endFrame: 150, alignment: "scene-fallback" }]);
+});
+
 async function workspaceConfig() {
   const root = await mkdtemp(join(tmpdir(), "ipollowork-media-"));
   directories.push(root);
   await writeFile(join(root, "sample.wav"), "voice sample");
+  await mkdir(join(root, "video/session"), { recursive: true });
   return {
     root,
     config: {
@@ -75,6 +120,54 @@ async function workspaceConfig() {
 }
 
 describe("Media Center extension", () => {
+  test("rejects a missing bound video project before a paid synthesis request", async () => {
+    const workspace = await workspaceConfig();
+    let requests = 0;
+    Reflect.set(globalThis, mediaProviderFetchKey, async () => { requests += 1; throw new Error("must not request provider"); });
+    const scene = { text: "Intro", sceneText: "Intro", sceneId: "intro", sceneStart: 0, sceneDuration: 1, outputPath: "assets/intro.mp3" };
+    for (const action of ["speech_synthesize_workspace_file", "speech_synthesize_workspace_batch"]) {
+      await expect(callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-preflight" }), action,
+        { ...(action.endsWith("batch") ? { scenes: [scene] } : scene), compositionPath: "video/missing/index.html" },
+        { directory: workspace.root })).rejects.toMatchObject({ code: "voiceover_project_missing" });
+    }
+    expect(requests).toBe(0);
+  });
+
+  test("preserves successful batch audio and resumes the same receipt without regenerating it", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417); frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    const requested: string[] = [];
+    let fail = true;
+    Reflect.set(globalThis, mediaProviderFetchKey, async (input: string | URL | Request, init?: RequestInit) => {
+      if (!String(input).includes("SpeechSynthesizer")) return new Response(mp3);
+      const text = JSON.parse(String(init?.body)).input.text;
+      requested.push(text);
+      if (text === "Receipt second" && fail) {
+        await new Promise(resolve => setTimeout(resolve, 20));
+        return Response.json({ message: "test provider failure" }, { status: 500 });
+      }
+      return Response.json({ output: { audio: { url: "https://dashscope-result-bj.oss-cn-beijing.aliyuncs.com/resume.mp3" } } });
+    });
+    const args = { compositionPath: "video/session/index.html", scenes: ["Receipt first", "Receipt second"].map((text, index) => ({
+      text, sceneText: text, sceneId: `scene-${index}`, sceneStart: index * 4, sceneDuration: 4, outputPath: `assets/resume-${index}.mp3`,
+    })) };
+    const call = () => callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-receipt-resume" }),
+      "speech_synthesize_workspace_batch", args, { directory: workspace.root });
+    await expect(call()).rejects.toMatchObject({ code: "voiceover_batch_incomplete", details: {
+      completedPaths: ["video/session/assets/resume-0.mp3"],
+    } });
+    expect(await readFile(join(workspace.root, "video/session/assets/resume-0.mp3"))).toEqual(mp3);
+    fail = false;
+    await call();
+    expect(requested.filter(text => text === "Receipt first")).toHaveLength(1);
+    await call();
+    expect(requested.filter(text => text === "Receipt second")).toHaveLength(2);
+    const changed = { ...args, scenes: [{ ...args.scenes[0]!, text: "Changed", sceneText: "Changed" }] };
+    await expect(callMediaExtensionAction(workspace.config, env({ DASHSCOPE_API_KEY: "sk-receipt-resume" }),
+      "speech_synthesize_workspace_batch", changed, { directory: workspace.root })).rejects.toMatchObject({ code: "voiceover_batch_incomplete" });
+    expect(requested).not.toContain("Changed");
+  });
   test("validates media in the workspace selected by its engine directory", async () => {
     const unrelatedRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-unrelated-"));
     const targetRoot = await mkdtemp(join(tmpdir(), "ipollowork-media-target-"));
@@ -142,6 +235,25 @@ describe("Media Center extension", () => {
       shiftFollowingBySeconds: 0,
       readingBufferSeconds: 0.25,
     });
+  });
+
+  test("rejects composition timing and narration that drift from STORYBOARD.md", () => {
+    const html = `<main data-composition-id="main" data-duration="9">
+      <section id="one" class="scene clip" data-start="0" data-duration="4"><p data-ipw-narration-source="true">First line</p></section>
+      <section id="two" class="scene clip" data-start="4" data-duration="5"><p data-ipw-narration-source="true">Old second line</p></section>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="one" data-ipw-scene-text="First line" data-ipw-narration-text="First line" data-start="0" data-duration="3"></audio>
+      <audio data-ipw-voiceover="true" data-ipw-scene-id="two" data-ipw-scene-text="Old second line" data-ipw-narration-text="Old second line" data-start="4" data-duration="4"></audio>
+    </main>`;
+    const result = validateVoiceoverTimelineHtml(html, {
+      storyboardFrames: [
+        { durationSeconds: 4, voiceover: "First line" },
+        { durationSeconds: 6, voiceover: "New second line", transitionIn: "preset:element.enter.fade" },
+      ],
+    });
+
+    expect(result.issues.map((issue) => issue.code)).toContain("storyboard_scene_duration_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("storyboard_voiceover_mismatch");
+    expect(result.issues.map((issue) => issue.code)).toContain("storyboard_transition_mismatch");
   });
 
   test("rejects a video that cuts away before slow narration finishes", () => {
@@ -481,6 +593,34 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("allows unused immutable voiceover revisions once the chosen audio is mounted", async () => {
+    const workspace = await workspaceConfig();
+    await mkdir(join(workspace.root, "assets"), { recursive: true });
+    await writeFile(join(workspace.root, "assets", "voiceover-r1-intro.mp3"), "old revision");
+    await writeFile(join(workspace.root, "assets", "voiceover-r2-intro.mp3"), "chosen revision");
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5.25">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5.25">Intro</section>
+      <audio src="./assets/voiceover-r2-intro.mp3" data-ipw-voiceover="true" data-ipw-scene-id="intro" data-ipw-scene-text="Intro" data-ipw-narration-text="Intro" data-start="0" data-duration="5"></audio>
+    </main>`);
+
+    const result = await callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "video.html", requirements: { voiceover: true } }, { directory: workspace.root });
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
+  });
+
+  test("rejects stringified delivery requirements instead of silently skipping requested audio", async () => {
+    const workspace = await workspaceConfig();
+    for (const requirements of [
+      '{"voiceover":true}',
+      { voiceover: "true" }, { bgm: "false" }, { captions: "true" }, { sfx: "false" }, { recipesOnly: "true" },
+      { targetDurationSeconds: "300" }, { animationReferences: "" },
+    ]) {
+      await expect(callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+        { sourcePath: "video.html", requirements }, { directory: workspace.root }))
+        .rejects.toMatchObject({ code: "invalid_video_delivery_requirements" });
+    }
+  });
+
   test("includes scene beat and component timing checks in the final video gate", async () => {
     const workspace = await workspaceConfig();
     const project = join(workspace.root, "video", "session-one");
@@ -493,13 +633,14 @@ describe("Media Center extension", () => {
       workspace.config,
       env({}),
       "voiceover_timeline_validate",
-      { sourcePath: "video/session-one/index.html" },
+      { sourcePath: "video/session-one/index.html", requirements: { recipesOnly: true } },
       { directory: workspace.root },
     );
 
     expect(result).toMatchObject({ ok: true, result: { output: { valid: false, componentCheck: { valid: false } } } });
     expect(JSON.stringify(result)).toContain("invalid_scene_timing_source");
     expect(JSON.stringify(result)).toContain("missing_scene_beats");
+    expect(JSON.stringify(result)).toContain("recipe_only_scene_required");
   });
 
   test("blocks missing GSAP and persists safe timeline initialization at the final gate", async () => {
@@ -890,6 +1031,45 @@ describe("Media Center extension", () => {
     });
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-intro.mp3"))).toEqual(mp3);
     expect(await readFile(join(workspace.root, "video/session/assets/voiceover-batch-details.mp3"))).toEqual(mp3);
+  });
+
+  test("persists provider word timestamps from streaming CosyVoice output", async () => {
+    const workspace = await workspaceConfig();
+    const frame = Buffer.alloc(417);
+    frame.set([0xff, 0xfb, 0x90, 0x00]);
+    const mp3 = Buffer.concat(Array.from({ length: 100 }, () => frame));
+    globalThis.fetch = (async (_input, init) => {
+      expect(new Headers(init?.headers).get("X-DashScope-SSE")).toBe("enable");
+      expect(JSON.parse(String(init?.body)).parameters).toEqual({ word_timestamp_enabled: true });
+      const event = {
+        output: {
+          audio: { data: mp3.toString("base64") },
+          sentence: { words: [{ text: "Hello", begin_index: 0, end_index: 5, begin_time: 120, end_time: 640 }] },
+        },
+      };
+      return new Response(`data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+
+    const result = await callMediaExtensionAction(
+      workspace.config,
+      env({ DASHSCOPE_API_KEY: "sk-word-timing-test" }),
+      "speech_synthesize_workspace_file",
+      { text: "Hello", sceneId: "hello", sceneText: "Hello", sceneStart: 0, sceneDuration: 2, outputPath: "video/session/assets/voiceover-timed.mp3" },
+      { directory: workspace.root },
+    );
+
+    expect(result).toMatchObject({ result: { output: {
+      wordTimingAlignment: "provider",
+      timingSourcePath: "video/session/assets/voiceover-timed.timings.json",
+      wordTimings: [{ text: "Hello", beginIndex: 0, endIndex: 5, startSeconds: 0.12, endSeconds: 0.64 }],
+    } } });
+    expect(JSON.parse(await readFile(join(workspace.root, "video/session/assets/voiceover-timed.timings.json"), "utf8"))).toMatchObject({
+      alignment: "provider",
+      words: [{ text: "Hello", beginIndex: 0, endIndex: 5, startSeconds: 0.12, endSeconds: 0.64 }],
+    });
   });
 
   test("rejects voiceover output outside the current composition assets directory", async () => {

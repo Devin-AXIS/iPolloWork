@@ -1621,6 +1621,7 @@ interface MessageListProps {
   assistantWaitLabel?: string
   stoppedImageMessageIds?: ReadonlySet<string>
   stopAcknowledged?: boolean
+  deliveryIncomplete?: boolean
   runOutcome?: "running" | "completed" | "failed" | "stopped" | null
   finalizing?: boolean
   runStartedAt?: number | null
@@ -1629,7 +1630,7 @@ interface MessageListProps {
   deliveryError?: string | null
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {}, deliveryError = null }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, deliveryIncomplete = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {}, deliveryError = null }: MessageListProps) {
   const { sessionTitle, waitingLabel } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = !stopAcknowledged
@@ -1699,7 +1700,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               artifactContext={artifactContext}
               latestAssistantMessageId={latestAssistantMessageId}
               activeAssistantMessageId={activeAssistantMessageId}
-              runIncomplete={Boolean(error || stopAcknowledged) && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)}
+              runIncomplete={(Boolean(error || stopAcknowledged) || deliveryIncomplete) && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)}
               imageStatus={error && item.messages.some(({ message }) => message.id === latestTurnAssistantMessageId)
                 ? "failed"
                 : item.messages.some(({ message }) => stoppedImageMessageIds.has(message.id))

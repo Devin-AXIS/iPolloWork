@@ -1,0 +1,147 @@
+<!-- blur-slide — Blur Slide 逐词入场（motion-lab 定稿转原生 HyperFrames）
+     标题逐词入场：y 40→0 + blur 10→0 + opacity 0→1，词间 stagger 极短，
+     easeOutCubic——y/blur/opacity 三通道同缓动同步收敛的"专业文字 reveal"；
+     副标题随后同法跟进。设计坐标 480×270 等比放大。 -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [data-composition-id="BlurSlide"] {
+      background: #0a0b10;
+      overflow: hidden;
+    }
+
+    .design-stage {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 480px;
+      height: 270px;
+      overflow: hidden;
+      transform: scale(4);
+      transform-origin: top left;
+    }
+
+    .content {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      overflow: hidden;
+    }
+
+    .line {
+      display: flex;
+      gap: 0.32em;
+    }
+
+    .word {
+      opacity: 0;
+      transform: translateY(40px);
+      filter: blur(10px);
+    }
+
+    .h1-line {
+      font-weight: 800;
+      font-size: 34px;
+      line-height: 1.15;
+      font-family: -apple-system, sans-serif;
+      color: #eef1fa;
+      letter-spacing: -0.5px;
+    }
+
+    .h2-line {
+      font-weight: 400;
+      font-size: 14px;
+      line-height: 1.4;
+      font-family: -apple-system, sans-serif;
+      color: #7d86a3;
+    }
+
+    .h2-line .word {
+      transform: translateY(26px);
+    }
+  </style>
+</head>
+<body>
+  <div
+    data-composition-id="BlurSlide"
+    data-start="0"
+    data-duration="3.8"
+    data-fps="30"
+    data-width="1920"
+    data-height="1080"
+  >
+    <div class="design-stage">
+      <div class="content">
+        <div class="line h1-line" id="h1"></div>
+        <div class="line h2-line" id="h2"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const tl = gsap.timeline({ paused: true });
+    const DUR = 3.8; // 114 frames @30fps
+
+    const H1_WORDS = "Your headline goes here".split(" ");
+    const H2_WORDS = "Short supporting subtitle for placeholders".split(" ");
+
+    // Build word spans
+    function buildLine(container, words, cls) {
+      words.forEach((w, i) => {
+        const span = document.createElement("span");
+        span.className = "word";
+        span.textContent = w;
+        span.id = `${cls}-w${i}`;
+        container.appendChild(span);
+      });
+    }
+
+    buildLine(document.getElementById("h1"), H1_WORDS, "h1");
+    buildLine(document.getElementById("h2"), H2_WORDS, "h2");
+
+    // H1: words enter from 0.06–0.62 of total duration, stagger gap 0.055
+    const h1Start = 0.06 * DUR;
+    const h1End = 0.62 * DUR;
+    const h1Window = h1End - h1Start;
+    H1_WORDS.forEach((w, i) => {
+      const wordStart = h1Start + (i * 0.055 * h1Window);
+      const wordDur = 0.32 * h1Window;
+      tl.to(`#h1-w${i}`, {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: wordDur,
+        ease: "power2.out"
+      }, wordStart);
+    });
+
+    // H2: words enter from 0.34–0.90, stagger gap 0.04
+    const h2Start = 0.34 * DUR;
+    const h2End = 0.90 * DUR;
+    const h2Window = h2End - h2Start;
+    H2_WORDS.forEach((w, i) => {
+      const wordStart = h2Start + (i * 0.04 * h2Window);
+      const wordDur = 0.32 * h2Window;
+      tl.to(`#h2-w${i}`, {
+        opacity: 1,
+        y: 0,
+        filter: "blur(0px)",
+        duration: wordDur,
+        ease: "power2.out"
+      }, wordStart);
+    });
+
+    window.__timelines["BlurSlide"] = tl;
+  </script>
+</body>
+</html>

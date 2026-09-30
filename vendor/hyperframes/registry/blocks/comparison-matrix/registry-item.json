@@ -5,18 +5,209 @@
   "type": "hyperframes:block",
   "title": "Comparison Matrix",
   "description": "A compact multi-criterion matrix for comparing two options without replacing the before-and-after component.",
-  "tags": ["component", "structured", "comparison", "matrix", "theme"],
+  "tags": [
+    "component",
+    "structured",
+    "comparison",
+    "matrix",
+    "theme"
+  ],
   "author": "iPolloWork",
   "license": "Apache-2.0",
-  "visualComponent": { "version": 1, "category": "data", "surfaces": ["video"], "themeMode": "inherit", "ai": { "slots": ["title", "options", "rows", "winner"], "instructions": "Separate option names with |. Format each row as Criterion|Left value|Right value and separate rows with semicolons." } },
-  "dimensions": { "width": 1920, "height": 1080 },
+  "visualComponent": {
+    "version": 1,
+    "category": "data",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "title",
+        "options",
+        "rows",
+        "winner"
+      ],
+      "instructions": "Separate option names with |. Format each row as Criterion|Left value|Right value and separate rows with semicolons."
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
   "duration": 10,
-  "engine": { "name": "gsap", "version": "3.13.0", "seekable": true },
-  "files": [{ "path": "comparison-matrix.html", "target": "compositions/comparison-matrix.html", "type": "hyperframes:composition" }],
+  "engine": {
+    "name": "gsap",
+    "version": "3.13.0",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "comparison-matrix.html",
+      "target": "compositions/comparison-matrix.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/comparison-matrix.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
   "variables": [
-    { "id": "title", "label": "Title", "type": "string", "default": "Choose for the work ahead", "maxLength": 72, "update": "live" },
-    { "id": "options", "label": "Options", "description": "Left | Right", "type": "string", "default": "Managed flow|Manual flow", "maxLength": 96, "update": "live" },
-    { "id": "rows", "label": "Comparison rows", "description": "Criterion|Left|Right; Criterion|Left|Right", "type": "string", "default": "Setup|Guided|Manual;Handoffs|Visible|Scattered;Review|In context|Separate;Scale|Repeatable|Fragile", "maxLength": 700, "update": "live" },
-    { "id": "winner", "label": "Featured option", "type": "enum", "default": "left", "options": [{ "value": "left", "label": "Left" }, { "value": "right", "label": "Right" }, { "value": "none", "label": "None" }], "update": "live" }
-  ]
+    {
+      "id": "title",
+      "label": "Title",
+      "type": "string",
+      "default": "Choose for the work ahead",
+      "maxLength": 72,
+      "update": "live"
+    },
+    {
+      "id": "options",
+      "label": "Options",
+      "description": "Left | Right",
+      "type": "string",
+      "default": "Managed flow|Manual flow",
+      "maxLength": 96,
+      "update": "live"
+    },
+    {
+      "id": "rows",
+      "label": "Comparison rows",
+      "description": "Criterion|Left|Right; Criterion|Left|Right",
+      "type": "string",
+      "default": "Setup|Guided|Manual;Handoffs|Visible|Scattered;Review|In context|Separate;Scale|Repeatable|Fragile",
+      "maxLength": 700,
+      "update": "live"
+    },
+    {
+      "id": "winner",
+      "label": "Featured option",
+      "type": "enum",
+      "default": "left",
+      "options": [
+        {
+          "value": "left",
+          "label": "Left"
+        },
+        {
+          "value": "right",
+          "label": "Right"
+        },
+        {
+          "value": "none",
+          "label": "None"
+        }
+      ],
+      "update": "live"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "Semantic cue times",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload",
+      "description": "JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "compare",
+    "minHoldSeconds": 0.7,
+    "capacity": {
+      "variable": "rows",
+      "separator": ";",
+      "maxItems": 4,
+      "fieldSeparator": "|",
+      "fieldsPerItem": 3,
+      "maxFieldLength": 64,
+      "minItems": 1
+    },
+    "events": [
+      {
+        "id": "step-1",
+        "target": ".cm-row:not(.cm-head):nth-child(2)",
+        "time": 1.2,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-2",
+        "target": ".cm-row:not(.cm-head):nth-child(3)",
+        "time": 3.3,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-3",
+        "target": ".cm-row:not(.cm-head):nth-child(4)",
+        "time": 5.4,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "step-4",
+        "target": ".cm-row:not(.cm-head):nth-child(5)",
+        "time": 7.5,
+        "duration": 0.5,
+        "action": "Reveal and focus the next semantic item"
+      },
+      {
+        "id": "resolve",
+        "target": ".cm-row:not(.cm-head)",
+        "time": 8.6,
+        "duration": 0.55,
+        "action": "Restore the complete readable result"
+      }
+    ],
+    "usage": {
+      "useWhen": [
+        "Compare exactly two options using 1–4 common criteria."
+      ],
+      "avoidWhen": [
+        "Do not compare more than two options, incompatible units or omit unfavorable evidence to force a winner."
+      ],
+      "inputRules": {
+        "title": "Supply real title within the declared character limit. Do not substitute demo text.",
+        "options": "Exactly two nonempty option names separated by |; apply the same criterion and unit to both.",
+        "rows": "Supply 1–4 entries separated by \";\", each with exactly 3 nonempty fields separated by \"|\". Keep each field within 64 characters.",
+        "winner": "Choose only a declared option; do not force a winner without evidence."
+      },
+      "readingOrder": [
+        "Identify both options",
+        "Compare one common criterion at a time",
+        "Read the full matrix"
+      ],
+      "cueBindings": {
+        "step-1": "When narration reaches rows 1, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-2": "When narration reaches rows 2, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-3": "When narration reaches rows 3, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "step-4": "When narration reaches rows 4, reveal and focus the next semantic item. Do not infer a word timestamp from character count.",
+        "resolve": "At the concluding narration clause, settle the shown evidence; allow the authored final reading hold."
+      },
+      "fallback": {
+        "overflow": "Split at a real semantic boundary or use a more suitable component; never truncate items or shrink text until unreadable.",
+        "missingInput": "Resolve the actual required input or report the missing content; do not substitute demo defaults or custom graphics under recipes-only policy.",
+        "timingMismatch": "Bind measured cueTimes once, preserving order, authored action durations and a 0.7–4s final hold. Split at a narration boundary when the sequence cannot fit; do not stretch speech or create a frozen tail.",
+        "inapplicable": "Choose another validated recipe whose narrative job fits, split at a meaningful boundary, or report the library gap. Under recipes-only policy, never author custom graphics or force-fit content."
+      },
+      "example": {
+        "values": {
+          "title": "两种晚间空间的差别",
+          "options": "原有场地|夜校方案",
+          "rows": "开放时间|18点关闭|晚间开放;学习方式|独自阅读|共同学习;参与条件|限本校|面向居民",
+          "winner": "none"
+        },
+        "narration": "我们按开放时间、学习方式和参与条件比较，不预先指定哪种方案获胜。"
+      },
+      "acceptance": [
+        "Every active declared event changes its actual visible target; forward and backward seeking restore the same state.",
+        "The final state remains readable without cropped or overlapping important text, with honest source and timing metadata.",
+        "Identify both options → Compare one common criterion at a time → Read the full matrix. Preserve this reading order and the source qualifiers.",
+        "Test Chinese content, the minimum and maximum supported item counts, and one rejected overflow or malformed input."
+      ],
+      "intent": "让两个选项始终按相同标准对齐，使观众基于条件而非视觉强调作比较。"
+    }
+  }
 }

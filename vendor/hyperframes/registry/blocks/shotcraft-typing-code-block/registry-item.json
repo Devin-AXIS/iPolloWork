@@ -1,0 +1,149 @@
+{
+  "$schema": "https://hyperframes.heygen.com/schema/registry-item.json",
+  "name": "shotcraft-typing-code-block",
+  "version": "1.0.0",
+  "type": "hyperframes:block",
+  "title": "代码逐行与逐字对照",
+  "description": "用同一段真实代码对比逐行呈现与逐字输入，最多四行。",
+  "tags": [
+    "component",
+    "shotcraft",
+    "typography",
+    "theme"
+  ],
+  "author": "Wei Yihao; louiseliu conversion; iPolloWork integration",
+  "license": "Apache-2.0",
+  "upstream": {
+    "repository": "https://github.com/louiseliu/hyperFrames-video-shotcraft",
+    "revision": "1df77f1ab080323558f70a5fb880fad0f88f87fc",
+    "implementation": "demos/typography/typing-code-block/index.html",
+    "rules": "references/shots/typography/typing-code-block.md",
+    "license": "Apache-2.0",
+    "upstreamSha256": "1ffb65a03c66500df5d6293cd975b352954fa471630d9cfde84fcc4db949b77a",
+    "adaptation": "Retains converted GSAP/frame functions. Modified: escaped real content, measured stage cues, Chinese geometry, clamped character settling, readable final hold; real screenshots replace demo skeletons. Does not certify pixel parity.",
+    "referenceGallery": "https://github.com/louiseliu/hyperFrames-video-shotcraft/tree/1df77f1ab080323558f70a5fb880fad0f88f87fc/gallery"
+  },
+  "source": {
+    "provider": "hyperframes-video-shotcraft",
+    "label": "HyperFrames Shotcraft · Apache-2.0",
+    "url": "https://github.com/louiseliu/hyperFrames-video-shotcraft/blob/1df77f1ab080323558f70a5fb880fad0f88f87fc/references/shots/typography/typing-code-block.md"
+  },
+  "visualComponent": {
+    "version": 1,
+    "category": "typography",
+    "surfaces": [
+      "video"
+    ],
+    "themeMode": "inherit",
+    "ai": {
+      "slots": [
+        "code"
+      ],
+      "instructions": "用同一段真实代码对比逐行呈现与逐字输入，最多四行。 不是代码运行证明；不使用演示代码替代用户源码或声称已验证结果。"
+    }
+  },
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  },
+  "duration": 6.266666666666667,
+  "engine": {
+    "name": "gsap",
+    "version": "3.14.2",
+    "seekable": true
+  },
+  "files": [
+    {
+      "path": "shotcraft-typing-code-block.html",
+      "target": "compositions/shotcraft-typing-code-block.html",
+      "type": "hyperframes:composition"
+    },
+    {
+      "path": "LICENSE",
+      "target": "compositions/licenses/hyperframes-video-shotcraft-LICENSE.txt",
+      "type": "hyperframes:asset"
+    },
+    {
+      "path": "recipe.md",
+      "target": "compositions/shotcraft-typing-code-block.recipe.md",
+      "type": "hyperframes:asset"
+    }
+  ],
+  "variables": [
+    {
+      "id": "code",
+      "label": "code",
+      "type": "string",
+      "default": "const cap = 30;\nconst need = 45;\nconst gap = need-cap;\n// gap: 15",
+      "maxLength": 91,
+      "update": "reload"
+    },
+    {
+      "id": "motionCueTimes",
+      "label": "实测语义时间",
+      "type": "string",
+      "default": "{}",
+      "maxLength": 2048,
+      "update": "reload"
+    }
+  ],
+  "motionRecipe": {
+    "version": 1,
+    "pattern": "kinetic-type",
+    "minHoldSeconds": 0.7,
+    "textLimits": {
+      "code": {
+        "maxLines": 4,
+        "maxLineLength": 22
+      }
+    },
+    "usage": {
+      "useWhen": [
+        "用同一段真实代码对比逐行呈现与逐字输入，最多四行。"
+      ],
+      "avoidWhen": [
+        "不是代码运行证明；不使用演示代码替代用户源码或声称已验证结果。",
+        "文字动效不是图表或执行证明；不要为了使用特效改写事实。"
+      ],
+      "inputRules": {
+        "code": "提供真实code，最多4行，每行22字，不使用演示默认内容。"
+      },
+      "readingOrder": [
+        "建立共同主题",
+        "左侧逐行呈现，右侧逐字输入同一代码",
+        "停留在完整可读的落定状态"
+      ],
+      "cueBindings": {
+        "phase-1": "绑定实测旁白或音乐中与“左侧逐行呈现，右侧逐字输入同一代码”对应的短语或节拍；保留内部曲线，不按字数伪造精确对齐。"
+      },
+      "fallback": {
+        "overflow": "按语义拆镜或换配方；禁止截断和缩到不可读。",
+        "missingInput": "补真实内容与素材；不要使用源码里的演示文案或模拟 UI。",
+        "timingMismatch": "按实测时间重绑事件，保留各阶段动作比例和最终停留；过长旁白拆镜。",
+        "inapplicable": "优先选择适用的可执行配方；确需定制时说明具体合同或语义缺口，不冒充复用。"
+      },
+      "example": {
+        "values": {
+          "code": "const cap = 30;\nconst need = 45;\nconst gap = need-cap;\n// gap: 15"
+        },
+        "narration": "const cap = 30;\nconst need = 45;\nconst gap = need-cap;\n// gap: 15"
+      },
+      "acceptance": [
+        "各阶段实际执行原转换版运动函数；正放、倒放与直接跳转得到同一状态。",
+        "真实中文在容量边界上不裁切重要文字；最后保持完整可读，不留白屏。",
+        "实测锚点控制可见阶段，不能只写元数据；提供真实素材，不保留演示身份。",
+        "不宣称逐像素等同原片；保留输入、页面几何与文字安全修正的说明。"
+      ],
+      "intent": "按真实代码的阅读顺序逐行或逐字呈现，让观众跟上代码结构。"
+    },
+    "events": [
+      {
+        "id": "phase-1",
+        "target": ".sc-content *",
+        "time": 0.65,
+        "duration": 4.6,
+        "action": "左侧逐行呈现，右侧逐字输入同一代码"
+      }
+    ]
+  }
+}

@@ -13,6 +13,8 @@ import {
   videoProjectDirectory,
   videoProjectId,
   videoProjectPath,
+  videoPromptRequiresStoryboardReview,
+  videoPromptRequestsFinishedVideo,
   videoPromptRequestsVoiceoverContext,
   requestedVideoDurationSeconds,
   videoTaskSystemContext,
@@ -366,7 +368,7 @@ describe("HyperFrames Video Studio", () => {
     );
     expect(panelSource).toContain("embeddedWidth={studioPanelWidth}");
     expect(panelSource).toContain("style={{ width: studioPanelWidth }}");
-    expect(voiceSource).toContain("width={embedded ? embeddedWidth : undefined}");
+    expect(voiceSource).toContain("width={inDialog ? undefined : embedded ? embeddedWidth : undefined}");
     expect(panelSource).toContain("top-[90px]");
     expect(voiceSource).toContain("top-[148px]");
     expect(panelSource).not.toContain("top-[82px]");
@@ -1307,6 +1309,16 @@ describe("HyperFrames Video Studio", () => {
     expect(publicationUserInterventionRequired("Login required before publication can continue.")).toBe(true);
   });
 
+  test("arms finished-video delivery for a plain conversation request", () => {
+    expect(videoPromptRequestsFinishedVideo("请用 Video Studio 生成一条完整可编辑的中文概念讲解视频")).toBe(true);
+    expect(videoPromptRequestsFinishedVideo("做一个 40 秒的讲解短片")).toBe(true);
+    expect(videoPromptRequestsFinishedVideo("先给我看脚本，再生成视频")).toBe(false);
+    expect(videoPromptRequestsFinishedVideo("只写分镜，暂时不要制作视频")).toBe(false);
+    expect(videoPromptRequestsFinishedVideo("为什么视频效果不够好？")).toBe(false);
+    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
+    expect(surfaceSource).toContain("videoTask && !recoveryDraft && !videoPromptRequiresStoryboardReview({ promptText })");
+  });
+
   test("injects the Video Studio contract before animation guidance", () => {
     const sessionRouteSource = readFileSync(
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
@@ -1342,7 +1354,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("music_asset");
     expect(contract).toContain("sound_effect_reference");
     expect(contract).toContain("A plan alone is not completion of a requested finished video");
-    expect(contract).toContain("Continue through composition and narration in the same run; export only when requested");
+    expect(contract).toContain("Continue through composition and narration in the same run after saving STORYBOARD.md");
     expect(contract).toContain(
       "Prefer a smaller complete valid result over an ambitious plan that is never applied",
     );
@@ -1446,7 +1458,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("Never use generic `speech_synthesize`");
     expect(contract).toContain("voiceId");
     expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
-    expect(contract).toContain("never write narration to the workspace-root assets directory");
+    expect(contract).toContain("Never write narration outside the current composition's assets directory");
     expect(contract).toContain("directly under the root composition");
     expect(contract).toContain("immutable");
     expect(contract).toContain("compositionPath");
@@ -1497,8 +1509,27 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("parses requested media and final duration into an explicit delivery gate", () => {
+    expect(videoDeliveryRequirementsForPrompt({ promptText: "生成视频，优先配方，实在不行说明原因再定制" }).recipesOnly).toBeUndefined();
+    const recipeRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成一个概念讲解视频" });
+    expect(recipeRequirements.recipesOnly).toBeUndefined();
+    const recipeFirst = videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: recipeRequirements });
+    expect(recipeFirst).toContain("without another approval round");
+    expect(recipeFirst).toContain("considered recipes");
+    expect(recipeFirst).toContain("try another recipe");
+    const strictRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成视频，禁止定制图形，只用真实配方" });
+    expect(strictRequirements.recipesOnly).toBe(true);
+    expect(videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: strictRequirements })).toContain("independently of HTML metadata");
     expect(requestedVideoDurationSeconds("最终视频总时长两分钟左右")).toBe(120);
     expect(requestedVideoDurationSeconds("make it about 90 seconds")).toBe(90);
+    const originalBriefText = "制作一条约 35 秒的概念讲解视频";
+    expect(videoDeliveryRequirementsForPrompt({
+      promptText: "修复第 2 幕的 7 秒静止问题",
+      originalBriefText,
+    }).targetDurationSeconds).toBe(35);
+    expect(videoDeliveryRequirementsForPrompt({
+      promptText: "把视频总时长改成 25 秒",
+      originalBriefText,
+    }).targetDurationSeconds).toBe(25);
     const requirements = videoDeliveryRequirementsForPrompt({
       promptText: "请做配音字幕并加 BGM，最终视频总时长两分钟左右",
     });
@@ -1521,7 +1552,7 @@ describe("HyperFrames Video Studio", () => {
     ).toBe(true);
     expect(
       videoDeliveryRequirementsForPrompt({ promptText: "制作一个产品介绍视频" }).animationReferences,
-    ).toEqual(["spatial-camera-suite"]);
+    ).toEqual([]);
     expect(
       videoDeliveryRequirementsForPrompt({ promptText: "制作一个静态视频，不要动画" }).animationReferences,
     ).toEqual([]);
@@ -1597,6 +1628,22 @@ describe("HyperFrames Video Studio", () => {
     expect(videoPromptRequestsVoiceoverContext("video-storyboard-regeneration", "")).toBe(true);
   });
 
+  test("continues finished videos by default and pauses only for explicit script review", () => {
+    const contract = videoTaskSystemContext("ses_video_a", "/workspace/current");
+    expect(contract).toContain("Pause only when the user explicitly requests script review or script-only work");
+    expect(videoPromptRequiresStoryboardReview({ promptText: "根据这份 PDF 做一个技术讲解视频" })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "做一个产品视频", hasReferenceAttachments: true })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "根据课件直接生成成片，无需确认脚本" })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "脚本确认，继续生成" })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "继续修改技术讲解视频的第三幕", hasReferenceAttachments: true })).toBe(false);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "先给我看脚本，再生成视频", hasReferenceAttachments: true })).toBe(true);
+    expect(videoPromptRequiresStoryboardReview({ promptText: "只写分镜，暂时不要制作视频" })).toBe(true);
+    const reviewContract = videoTaskSystemContext("ses_review", "/workspace/current", null, { requireStoryboardReview: true });
+    expect(reviewContract).toContain("Script review requested");
+    expect(reviewContract).toContain("create or update only `/workspace/current/video/ses_review/STORYBOARD.md`");
+    expect(reviewContract).toContain("Do not source or generate media");
+  });
+
   test("connects the editable shot plan to real media and purposeful motion", () => {
     const contract = videoTaskSystemContext("ses_workflow", "/workspace/current");
     expect(contract).toContain("asset_source` (auto | existing | generate | search");
@@ -1610,7 +1657,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("never the article page URL as media");
     expect(contract).toContain("never presented as news footage");
     expect(contract).toContain("observable Establish -> Develop -> Land");
-    expect(contract).toContain("component:spatial-camera-suite#<shotStyle>");
+    expect(contract).toContain("use `spatial-camera-suite` only when traversing real spatial layers");
     expect(contract).toContain("Do not add a wrapper camera to a component that already owns its camera");
     expect(contract).toContain("the app owns validation and one bounded repair continuation");
   });

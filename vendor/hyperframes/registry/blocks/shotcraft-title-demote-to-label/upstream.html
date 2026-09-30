@@ -1,0 +1,42 @@
+<!-- title-demote-to-label -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    [data-composition-id="TitleDemoteToLabel"] { width: 1920px; height: 1080px; background: #ececea; position: relative; }
+  </style>
+</head>
+<body>
+  <div data-composition-id="TitleDemoteToLabel" data-start="0" data-duration="6.4" data-fps="30" data-width="1920" data-height="1080" id="comp"></div>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const G={bg:'#ececea',ink:'#2f2f2f',line:'#dcdcda',card:'#ffffff',border:'#d8d8d6'}; const SEL='rgba(58, 128, 236, 0.35)'; const SPLIT=92,TOTAL=192;
+    const outCubic=t=>1-Math.pow(1-t,3), inOutCubic=t=>t<0.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2, inQuad=t=>t*t, outQuad=t=>t*(2-t);
+    const clamp=(f,a,b,va,vb,e)=>{let t=(f-a)/(b-a);t=Math.max(0,Math.min(1,t));if(e==='outCubic')t=outCubic(t);else if(e==='inOutCubic')t=inOutCubic(t);else if(e==='inQuad')t=inQuad(t);else if(e==='outQuad')t=outQuad(t);return va+(vb-va)*t;};
+    const skeleton=(t)=>{const blocks=[{w:1500,h:26},{w:1280,h:26},{w:1420,h:26},{w:760,h:26},{w:1500,h:300,card:true}];
+      return blocks.map((b,i)=>{const bt=clamp(t,i*0.16,i*0.16+0.3,0,1,'outCubic');
+        return `<div style="width:${b.w*(0.35+0.65*bt)}px;height:${b.h}px;background:${b.card?G.card:G.line};border:${b.card?`2px solid ${G.border}`:'none'};border-radius:${b.card?16:13}px;opacity:${bt};transform:translateY(${(1-bt)*28}px);box-sizing:border-box"></div>`;}).join('');};
+    const scene=(frame,title,withSelection)=>{
+      const rev=clamp(frame,0,12,0,1,'outCubic'), dem=clamp(frame,withSelection?44:32,withSelection?64:52,0,1,'inOutCubic');
+      const scale=1-0.7*dem,x=960+(150-960)*dem,y=480+(110-480)*dem;
+      let selLeft=0,selWidth=0;
+      if(withSelection){const on=clamp(frame,14,24,0,1,'outQuad'),off=clamp(frame,32,40,0,1,'inQuad');selLeft=off*100;selWidth=Math.max(0,on*100-selLeft);}
+      const growT=clamp(frame,(withSelection?44:32)+12,(withSelection?44:32)+52,0,1);
+      return `<div style="position:absolute;left:150px;top:210px;display:flex;flex-direction:column;gap:34px">${skeleton(growT)}</div>
+        <div style="position:absolute;left:${x}px;top:${y}px;transform:translate(${-(1-dem)*50}%,-50%) scale(${scale});transform-origin:left center;opacity:${rev};filter:blur(${(1-rev)*12}px)">
+          <div style="position:relative;font-family:Helvetica,Arial,sans-serif;font-weight:800;font-size:128px;color:${G.ink};letter-spacing:-2px;white-space:nowrap;padding:10px 18px">
+            ${withSelection&&selWidth>0?`<div style="position:absolute;left:${selLeft}%;top:8px;width:${selWidth}%;height:calc(100% - 16px);background:${SEL};border-radius:6px"></div>`:''}
+            <span style="position:relative">${title}</span></div></div>`;};
+    const comp=document.getElementById('comp'); const tl=gsap.timeline({paused:true}); const state={t:0};
+    tl.to(state,{t:1,duration:TOTAL/30,ease:'none',onUpdate:()=>{
+      const frame=Math.min(TOTAL-1,Math.round(state.t*(TOTAL-1)));
+      if(frame<SPLIT) comp.innerHTML=scene(frame,'Running Subagents',false);
+      else {const f=frame-SPLIT, flash=clamp(f,0,4,1,0); comp.innerHTML=scene(f,'Select the Answer',true)+`<div style="position:absolute;inset:0;background:#fff;opacity:${flash};pointer-events:none"></div>`;}
+    }},0);
+    window.__timelines['TitleDemoteToLabel']=tl;
+  </script>
+</body>
+</html>

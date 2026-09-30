@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"From prompt to polished sequence","maxLength":72},{"id":"steps","label":"Steps","type":"string","default":"Frame the idea|Choose a component|Tune the properties|Review the motion","maxLength":280},{"id":"outcome","label":"Outcome","type":"string","default":"A reusable scene, ready to insert.","maxLength":80},{"id":"activeStep","label":"Active step","type":"number","default":3,"min":1,"max":4,"step":1}]'>
+<html lang="en" data-composition-variables='[{"id":"title","label":"Title","type":"string","default":"From prompt to polished sequence","maxLength":72,"update":"live"},{"id":"steps","label":"Steps","type":"string","default":"Frame the idea|Choose a component|Tune the properties|Review the motion","maxLength":280,"update":"live"},{"id":"outcome","label":"Outcome","type":"string","default":"A reusable scene, ready to insert.","maxLength":80,"update":"live"},{"id":"activeStep","label":"Active step","type":"number","default":3,"min":1,"max":4,"step":1,"update":"live"},{"id":"motionCueTimes","label":"Semantic cue times","type":"string","default":"{}","maxLength":2048,"update":"reload","description":"JSON event IDs to measured scene-relative seconds. Empty uses authored timings; this is not word alignment."}]'>
 <head><meta charset="UTF-8"/><meta name="viewport" content="width=1920,height=1080"/><title>Product Steps</title><style>
 *{box-sizing:border-box}html,body{margin:0;width:1920px;height:1080px;overflow:hidden;background:transparent}#root{position:relative;display:flex;width:1920px;height:1080px;padding:100px 120px;overflow:hidden;background:var(--ipw-color-bg,#f4f6f8);color:var(--ipw-color-text,#15171a);font-family:var(--ipw-font-display,Inter,Arial,sans-serif)}#root::before{content:"";position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,color-mix(in srgb,var(--ipw-color-border,#d8dde3) 24%,transparent) 1px,transparent 1px),linear-gradient(color-mix(in srgb,var(--ipw-color-border,#d8dde3) 18%,transparent) 1px,transparent 1px);background-size:80px 80px;opacity:.22}#root>*{position:relative;z-index:1}.vc-item{will-change:transform,opacity}.vc-animate,.vc-pop,.vc-draw{will-change:transform,opacity}
-.steps{width:1580px;margin:auto}.steps-title{max-width:1050px;margin:0 0 60px;font-size:68px;line-height:1;letter-spacing:-.05em}.steps-list{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.steps-list .vc-item{position:relative;min-height:360px;padding:34px;border-radius:26px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.steps-list .vc-item.is-highlight{background:var(--ipw-color-text,#15171a);color:var(--ipw-color-bg,#f4f6f8);transform:translateY(-16px)}.steps-list .vc-index{font-size:16px;font-weight:850;color:var(--ipw-color-primary,#20bbc0)}.steps-list .vc-value{position:absolute;left:34px;right:34px;bottom:38px;font-size:29px;font-weight:750;line-height:1.18}.steps-outcome{margin-top:38px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}</style></head>
+.steps{width:1580px;margin:auto}.steps-title{max-width:1050px;margin:0 0 60px;font-size:68px;line-height:1;letter-spacing:-.05em}.steps-list{display:grid;grid-template-columns:repeat(4,1fr);gap:16px}.steps-list .vc-item{position:relative;min-height:360px;padding:34px;border-radius:26px;border:1px solid var(--ipw-color-border,#d8dde3);background:var(--ipw-color-surface,#fff)}.steps-list .vc-item.is-highlight{background:var(--ipw-color-text,#15171a);color:var(--ipw-color-bg,#f4f6f8);transform:translateY(-16px)}.steps-list .vc-index{font-size:16px;font-weight:850;color:var(--ipw-color-primary,#20bbc0)}.steps-list .vc-value{position:absolute;left:34px;right:34px;bottom:38px;font-size:29px;font-weight:750;line-height:1.18}.steps-outcome{margin-top:38px;color:var(--ipw-color-muted,#68717c);font-size:22px;text-align:right}[data-composition-id] .steps-title{line-height:1.4}</style></head>
 <body><main id="root" data-composition-id="product-steps" data-width="1920" data-height="1080" data-start="0" data-duration="9" data-defaults='{"title":"From prompt to polished sequence","steps":"Frame the idea|Choose a component|Tune the properties|Review the motion","outcome":"A reusable scene, ready to insert.","activeStep":3}'><section class="steps"><h1 class="steps-title vc-animate" data-ipw-variable="title" data-ipw-ai-slot="title"></h1><div class="steps-list" data-ipw-list="steps" data-list-mode="steps" data-active-key="activeStep" data-ipw-ai-slot="steps"></div><p class="steps-outcome vc-animate" data-ipw-variable="outcome" data-ipw-ai-slot="outcome"></p><span hidden data-ipw-ai-slot="activeStep"></span></section></main><script src="https://cdn.jsdelivr.net/npm/gsap@3.13.0/dist/gsap.min.js"></script><script>
 window.__timelines=window.__timelines||{};(function(){
 const root=document.getElementById("root"),id="product-steps";
@@ -31,17 +31,33 @@ root.querySelectorAll("[data-ipw-code]").forEach(function(host){
  const lines=String(values[host.dataset.ipwCode]??"").replace(/\\n/g,"\n").split("\n").slice(0,8),focus=Math.max(1,Number(values[host.dataset.focusKey]??0));
  lines.forEach(function(line,index){const row=document.createElement("span");row.className="code-line vc-animate"+(index+1===focus?" is-highlight":"");row.textContent=line;host.append(row)});
 });
-const initial={};const motion="slide-left";
-if(motion==="slide-left")Object.assign(initial,{x:-64,opacity:0});
-else if(motion==="slide-right")Object.assign(initial,{x:64,opacity:0});
-else if(motion==="scale")Object.assign(initial,{scale:.84,opacity:0});
-else if(motion==="rotate")Object.assign(initial,{rotation:-7,scale:.86,opacity:0});
-else if(motion==="clip")Object.assign(initial,{y:54,opacity:0,clipPath:"inset(0 0 100% 0)"});
-else Object.assign(initial,{y:54,opacity:0});
-const final={x:0,y:0,rotation:0,scale:1,opacity:1,clipPath:"inset(0 0 0% 0)",duration:.62,stagger:.085,ease:"power3.out"};
+
+})();</script>
+<script data-ipw-motion-recipe="1">
+(function(){
+const root=document.querySelector("[data-composition-id]"),id=root.dataset.compositionId;
+const values=window.__hyperframes?.getVariables?.()??window.__hfVariablesByComp?.[id]??{};
+const recipe={"version":1,"pattern":"progressive-build","minHoldSeconds":0.7,"capacity":{"variable":"steps","separator":"|","maxItems":4},"events":[{"id":"step-1","target":".steps-list .vc-item:nth-child(1)","time":1.2,"duration":0.5,"action":"Reveal and focus the next semantic item"},{"id":"step-2","target":".steps-list .vc-item:nth-child(2)","time":2.967,"duration":0.5,"action":"Reveal and focus the next semantic item"},{"id":"step-3","target":".steps-list .vc-item:nth-child(3)","time":4.733,"duration":0.5,"action":"Reveal and focus the next semantic item"},{"id":"step-4","target":".steps-list .vc-item:nth-child(4)","time":6.5,"duration":0.5,"action":"Reveal and focus the next semantic item"},{"id":"resolve","target":".steps-list .vc-item","time":7.6,"duration":0.55,"action":"Restore the complete readable result"}]};
+const times=JSON.parse(String(values.motionCueTimes??"{}"));
+const cue=event=>times[event.id]??event.time;
+window.__timelines[id]?.kill();
 const tl=gsap.timeline({paused:true});
-tl.fromTo(root.querySelectorAll(".vc-animate"),initial,final,.08)
-  .fromTo(root.querySelectorAll(".vc-draw"),{scaleX:0,transformOrigin:"left center"},{scaleX:1,duration:.64,ease:"power2.out"},.24)
-  .fromTo(root.querySelectorAll(".vc-pop"),{scale:.6,opacity:0},{scale:1,opacity:1,duration:.5,stagger:.1,ease:"back.out(1.5)"},.42);
+tl.set(root.querySelectorAll("*"),{clearProps:"transform,opacity,clipPath"},0);
+const items=[...root.querySelectorAll(".steps-list .vc-item")];
+tl.fromTo(root.querySelectorAll(".steps-title"),{y:24,opacity:0},{y:0,opacity:1,duration:.65,ease:"power3.out"},0);
+tl.set(items,{opacity:.18,y:18},0);
+items.forEach((item,index)=>{
+  const event=recipe.events[index]; if(!event||event.id==="resolve")return;
+  const time=cue(event);
+  tl.to(item,{opacity:1,y:0,duration:event.duration,ease:"power3.out"},time);
+  tl.fromTo(item,{x:12},{x:0,duration:event.duration,ease:"power2.out"},time);
+  if(index>0)tl.to(items[index-1],{opacity:.58,duration:.25,ease:"power2.out"},time);
+});
+const resolved=recipe.events.at(-1);
+tl.to(items,{opacity:1,y:0,x:0,duration:resolved.duration,ease:"power2.out"},cue(resolved));
+tl.fromTo(root.querySelector(".steps-outcome"),{y:16,opacity:0},{y:0,opacity:1,duration:.55,ease:"power3.out"},cue(resolved));
+tl.set(root,{visibility:"visible"},9);
 window.__timelines[id]=tl;tl.seek(0);
-})();</script></body></html>
+})();
+</script>
+</body></html>
