@@ -261,6 +261,7 @@ function registryRoot(): string | null {
   const resourcesPath = typeof process.resourcesPath === "string" ? process.resourcesPath : "";
   const cli = process.env.HYPERFRAMES_CLI_PATH?.trim();
   const candidates = [
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT?.trim() ?? "",
     process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT ? resolve(process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, "..") : "",
     cli ? resolve(dirname(cli), "../../../registry") : "",
     resolve(here, "..", "..", "..", "vendor", "hyperframes", "registry"),

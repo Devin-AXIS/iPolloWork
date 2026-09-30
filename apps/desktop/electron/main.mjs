@@ -22,6 +22,7 @@ import { configureFakeMediaForTests, installMediaPermissionHandlers } from "./me
 import { registerMigrationIpc } from "./migration.mjs";
 import { createRuntimeManager } from "./runtime.mjs";
 import { createEnginePackageManager } from "./engine-package-manager.mjs";
+import { createVideoResourceManager } from "./video-resource-manager.mjs";
 import { registerUpdaterIpc } from "./updater.mjs";
 import {
   checkComputerUsePermissions,
@@ -32,6 +33,7 @@ import {
 import { createUiControlServer } from "./ui-control-server.mjs";
 import { createApplicationMenu } from "./app-menu.mjs";
 import { createBrowserPanel } from "./browser-panel.mjs";
+import { createBackgroundVideoDeliverySupervisor } from "./background-video-delivery.mjs";
 import { createWorkspaceStore } from "./workspace-store.mjs";
 import { openExternalUrl } from "./open-external.mjs";
 import { protectOutputStreamFromBrokenPipe } from "./stdio-safety.mjs";
@@ -135,13 +137,14 @@ const uiControlServer = createUiControlServer({
 const terminalProcesses = new Map();
 const hyperframesProcesses = new Map();
 const hyperframesExportLeases = new Map();
+const hyperframesStartingPorts = new Map();
+const hyperframesStarts = new Map();
 const processCleanupWebContents = new Set();
 let nextTerminalId = 1;
 const HYPERFRAMES_START_TIMEOUT_MS = 90_000;
 const HYPERFRAMES_IDLE_STOP_DELAY_MS = 60_000;
 const HYPERFRAMES_PORT_BASE = 3_100;
 const HYPERFRAMES_PORT_RANGE = 800;
-const resolvedFfBinaries = new Map();
 let resolvedSystemChromiumBinary;
 
 function isHyperframesStudioUrl(url) {
@@ -219,6 +222,7 @@ function desktopRepoRoot() {
 
 function resolveLocalHyperframesCli() {
   const candidates = [
+    process.env.HYPERFRAMES_CLI_PATH,
     path.resolve(desktopRepoRoot(), "vendor", "hyperframes", "packages", "cli", "bin", "hyperframes.mjs"),
     process.resourcesPath
       ? path.join(process.resourcesPath, "hyperframes", "packages", "cli", "bin", "hyperframes.mjs")
@@ -228,15 +232,6 @@ function resolveLocalHyperframesCli() {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error("Local HyperFrames Studio is missing. Run `bun install` and `bun run build:local-studio` in `vendor/hyperframes`.");
-}
-
-function localHyperframesVersion() {
-  try {
-    const packagePath = path.join(path.dirname(resolveLocalHyperframesCli()), "..", "package.json");
-    return require(packagePath).version || "";
-  } catch {
-    return "";
-  }
 }
 
 function resolveLocalHyperframesRoot() {
@@ -271,92 +266,6 @@ function findFirstRunnablePath(candidates) {
   return null;
 }
 
-function asarUnpackedPath(candidate) {
-  if (!candidate || !candidate.includes("app.asar")) return null;
-  return candidate.replace(/app\.asar(?=([\\/]|$))/, "app.asar.unpacked");
-}
-
-function resolveBundledFfBinary(name) {
-  const extension = process.platform === "win32" ? ".exe" : "";
-  const executable = `${name}${extension}`;
-  const hyperframesRoot = resolveLocalHyperframesRoot();
-  const packageName = name === "ffprobe" ? "ffprobe-static" : "ffmpeg-static";
-  const packageGlobPrefix = name === "ffprobe" ? "ffprobe-static@" : "ffmpeg-static@";
-  const nodeModulesRoot = path.join(hyperframesRoot, "node_modules");
-  const directPackage = path.join(nodeModulesRoot, packageName);
-  const bunRoot = path.join(nodeModulesRoot, ".bun");
-  const bunPackageRoot = existsSync(bunRoot)
-    ? readdirSync(bunRoot, { withFileTypes: true })
-      .find((entry) => entry.isDirectory() && entry.name.startsWith(packageGlobPrefix))?.name
-    : null;
-  return findFirstRunnablePath([
-    path.join(directPackage, executable),
-    path.join(directPackage, "bin", process.platform, process.arch, executable),
-    path.join(directPackage, "bin", executable),
-    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, executable) : null,
-    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", process.platform, process.arch, executable) : null,
-    bunPackageRoot ? path.join(bunRoot, bunPackageRoot, "node_modules", packageName, "bin", executable) : null,
-  ]);
-}
-
-function resolveInstallerFfBinary(name) {
-  const packageName = name === "ffprobe" ? "@ffprobe-installer/ffprobe" : "@ffmpeg-installer/ffmpeg";
-  const platformPackageName = name === "ffprobe" ? "@ffprobe-installer" : "@ffmpeg-installer";
-  const platformPackageDir = process.platform === "win32" ? "win32-x64" : null;
-  const executable = process.platform === "win32" ? `${name}.exe` : name;
-  try {
-    const installer = require(packageName);
-    const installerPath = typeof installer?.path === "string" ? installer.path : "";
-    const unpackedInstallerPath = asarUnpackedPath(installerPath);
-    const resourcesNodeModules = process.resourcesPath
-      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
-      : null;
-    return findFirstRunnablePath([
-      unpackedInstallerPath,
-      installerPath,
-      resourcesNodeModules && platformPackageDir
-        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
-        : null,
-    ]);
-  } catch {
-    const resourcesNodeModules = process.resourcesPath
-      ? path.join(process.resourcesPath, "app.asar.unpacked", "node_modules")
-      : null;
-    return findFirstRunnablePath([
-      resourcesNodeModules && platformPackageDir
-        ? path.join(resourcesNodeModules, platformPackageName, platformPackageDir, executable)
-        : null,
-    ]);
-  }
-}
-
-function resolveSystemFfBinary(name) {
-  const command = process.platform === "win32" ? "where.exe" : "which";
-  try {
-    const output = execFileSync(command, [name], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 3_000,
-      windowsHide: true,
-    });
-    const resolved = findFirstRunnablePath(
-      output.split(/\r?\n/).map((line) => line.trim()).filter(Boolean),
-    );
-    if (resolved) return resolved;
-  } catch {
-    /* fall through to local fallbacks */
-  }
-  if (process.platform !== "win32" || name !== "ffmpeg") return null;
-  return findFirstRunnablePath(["C:\\LenovoSoftstore\\Install\\EVluping\\ffmpeg.exe"]);
-}
-
-function resolveFfBinary(name) {
-  if (resolvedFfBinaries.has(name)) return resolvedFfBinaries.get(name);
-  const resolved = resolveInstallerFfBinary(name) ?? resolveBundledFfBinary(name) ?? resolveSystemFfBinary(name);
-  resolvedFfBinaries.set(name, resolved);
-  return resolved;
-}
-
 function resolveSystemChromiumBinary() {
   if (resolvedSystemChromiumBinary !== undefined) return resolvedSystemChromiumBinary;
   if (process.platform === "win32") {
@@ -389,8 +298,8 @@ function inheritedPathEnv() {
 
 function spawnLocalHyperframes(args, cwd) {
   const isInit = args[0] === "init";
-  const ffmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH || resolveFfBinary("ffmpeg");
-  const ffprobePath = process.env.HYPERFRAMES_FFPROBE_PATH || resolveFfBinary("ffprobe");
+  const ffmpegPath = process.env.HYPERFRAMES_FFMPEG_PATH;
+  const ffprobePath = process.env.HYPERFRAMES_FFPROBE_PATH;
   const browserPath =
     process.env.HYPERFRAMES_BROWSER_PATH ||
     process.env.PRODUCER_HEADLESS_SHELL_PATH ||
@@ -470,29 +379,27 @@ async function waitForHyperframesServer(port, expectedProjectPath, timeoutMs = H
   throw new Error(`Timed out waiting for HyperFrames Studio on port ${port}.`);
 }
 
-async function stopStaleHyperframesPort(port, expectedProjectPath) {
-  const config = await readHyperframesServerConfig(port);
-  if (!config?.pid) return;
-  const expectedProjectDir = path.resolve(expectedProjectPath);
-  const expectedProjectName = path.basename(expectedProjectDir);
-  const runningProjectDir = typeof config.projectDir === "string" ? path.resolve(config.projectDir) : "";
-  const runningProjectName = typeof config.projectName === "string" ? config.projectName : "";
-  const runningVersion = typeof config.version === "string" ? config.version : "";
-  const expectedVersion = localHyperframesVersion();
-  if (
-    runningProjectDir === expectedProjectDir &&
-    runningProjectName === expectedProjectName &&
-    runningVersion === expectedVersion
-  ) return;
-  try {
-    if (process.platform === "win32") {
-      execFileSync("taskkill", ["/pid", String(config.pid), "/T", "/F"], { stdio: "ignore" });
-    } else {
-      process.kill(Number(config.pid), "SIGTERM");
-    }
-  } catch {
-    /* stale process may already be gone */
+async function reserveHyperframesPort(requestedPort, key) {
+  const firstOffset = ((requestedPort - HYPERFRAMES_PORT_BASE) % HYPERFRAMES_PORT_RANGE + HYPERFRAMES_PORT_RANGE) % HYPERFRAMES_PORT_RANGE;
+  for (let offset = 0; offset < HYPERFRAMES_PORT_RANGE; offset += 1) {
+    const port = HYPERFRAMES_PORT_BASE + ((firstOffset + offset) % HYPERFRAMES_PORT_RANGE);
+    if (hyperframesStartingPorts.has(port)) continue;
+    if ([...hyperframesProcesses.values()].some((running) => running.port === port && running.process?.exitCode === null)) continue;
+    const available = await new Promise((resolve) => {
+      const server = createServer();
+      server.unref();
+      server.once("error", () => resolve(false));
+      server.listen(port, "127.0.0.1", () => server.close(() => resolve(true)));
+    });
+    if (!available) continue;
+    hyperframesStartingPorts.set(port, key);
+    return port;
   }
+  throw new Error("No HyperFrames Studio port is available. Close an unused video preview and retry.");
+}
+
+function releaseHyperframesPortReservation(port, key) {
+  if (hyperframesStartingPorts.get(port) === key) hyperframesStartingPorts.delete(port);
 }
 
 function resolveWorkspaceChild(root, childPath) {
@@ -618,6 +525,23 @@ function stopAllDesktopChildProcesses() {
 async function startHyperframesPreview(event, options = {}) {
   const sessionId = String(options.sessionId ?? "").trim();
   if (!sessionId) throw new Error("sessionId is required.");
+  const key = hyperframesKey(event.sender.id, sessionId);
+  const pending = hyperframesStarts.get(key);
+  if (pending) return await pending;
+  const start = startHyperframesPreviewUnlocked(event, options);
+  hyperframesStarts.set(key, start);
+  try {
+    return await start;
+  } finally {
+    if (hyperframesStarts.get(key) === start) hyperframesStarts.delete(key);
+  }
+}
+
+async function startHyperframesPreviewUnlocked(event, options = {}) {
+  if (!await videoResourceManager.currentPaths()) {
+    throw new Error("视频工作台首次使用所需的 FFmpeg / FFprobe 资源尚未下载完成。");
+  }
+  const sessionId = String(options.sessionId ?? "").trim();
   const port = Number(options.port);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error("Valid HyperFrames port is required.");
   const { workspaceRoot, projectPath, projectDirectory } = resolveWorkspaceChild(options.workspaceRoot, options.projectDirectory);
@@ -627,18 +551,22 @@ async function startHyperframesPreview(event, options = {}) {
   if (
     current?.process &&
     current.process.exitCode === null &&
-    current.port === port &&
     current.projectPath === projectPath
   ) {
     clearTimeout(current.idleTimeout);
     current.idleTimeout = null;
-    return { ok: true, port, reused: true };
+    return { ok: true, port: current.port, reused: true };
   }
   stopHyperframesForKey(key);
-  await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
-  await stopStaleHyperframesPort(port, projectPath);
-
-  const child = spawnLocalHyperframes(["preview", projectPath, "--port", String(port), "--no-open"], projectPath);
+  const allocatedPort = await reserveHyperframesPort(port, key);
+  let child;
+  try {
+    await runHyperframesInit(workspaceRoot, projectDirectory, projectPath);
+    child = spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--no-open"], projectPath);
+  } catch (error) {
+    releaseHyperframesPortReservation(allocatedPort, key);
+    throw error;
+  }
   let output = "";
   return await new Promise((resolve, reject) => {
     let ready = false;
@@ -657,14 +585,16 @@ async function startHyperframesPreview(event, options = {}) {
       child.stdout?.off("data", onData);
       child.stderr?.off("data", onData);
       child.off("error", onError);
-      hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, projectPath, timeout: null, idleTimeout: null });
-      resolve({ ok: true, port, reused: false });
+      hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port: allocatedPort, projectPath, timeout: null, idleTimeout: null });
+      releaseHyperframesPortReservation(allocatedPort, key);
+      resolve({ ok: true, port: allocatedPort, reused: false });
     };
     const failStart = (error) => {
       if (settled || ready) return;
       settled = true;
       cleanup();
       hyperframesProcesses.delete(key);
+      releaseHyperframesPortReservation(allocatedPort, key);
       reject(error);
     };
     const onData = (data) => {
@@ -688,12 +618,13 @@ async function startHyperframesPreview(event, options = {}) {
       killProcessTree(child);
       failStart(new Error(output.trim() || "Timed out starting HyperFrames Studio."));
     }, HYPERFRAMES_START_TIMEOUT_MS);
-    hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port, projectPath, timeout, idleTimeout: null });
+    hyperframesProcesses.set(key, { process: child, webContentsId: event.sender.id, port: allocatedPort, projectPath, timeout, idleTimeout: null });
+    releaseHyperframesPortReservation(allocatedPort, key);
     child.stdout?.on("data", onData);
     child.stderr?.on("data", onData);
     child.once("error", onError);
     child.once("exit", onExit);
-    waitForHyperframesServer(port, projectPath).then(finishReady, (error) => {
+    waitForHyperframesServer(allocatedPort, projectPath).then(finishReady, (error) => {
       killProcessTree(child);
       failStart(error);
     });
@@ -1493,6 +1424,7 @@ const IDLE_ROUTER_INFO = Object.freeze({
 });
 
 let mainWindow = null;
+let backgroundVideoDeliverySupervisor = null;
 const pendingDeepLinks = [];
 
 function mainWindowStatePath() {
@@ -1728,8 +1660,6 @@ const runtimeManager = createRuntimeManager({
 });
 const enginePackageManager = createEnginePackageManager({
   app,
-  desktopRoot: path.resolve(__dirname, ".."),
-  resourcesPath: process.resourcesPath,
   versions: enginePackageVersions(),
   fetch: electronNet.fetch.bind(electronNet),
   beforeUninstall: async () => {
@@ -1740,6 +1670,10 @@ const enginePackageManager = createEnginePackageManager({
       remoteAccessEnabled: server.remoteAccessEnabled,
     });
   },
+});
+const videoResourceManager = createVideoResourceManager({
+  app,
+  fetch: electronNet.fetch.bind(electronNet),
 });
 
 let runtimeDisposedForQuit = false;
@@ -2435,11 +2369,13 @@ const desktopCommandHandlers = {
       return enginePackageManager.list();
   },
   "enginePackageInstall": async (event, ...args) => {
-      return enginePackageManager.install(String(args[0] ?? "").trim());
+      return enginePackageManager.install(String(args[0] ?? "").trim(), String(args[1] ?? "").trim());
   },
   "enginePackageUninstall": async (event, ...args) => {
       return enginePackageManager.uninstall(String(args[0] ?? "").trim());
   },
+  "videoResourceInfo": async () => videoResourceManager.info(),
+  "videoResourceInstall": async (_event, ...args) => videoResourceManager.install(String(args[0] ?? "").trim() || DEFAULT_DEN_BASE_URL),
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
   },
@@ -3074,6 +3010,8 @@ async function createMainWindow() {
   });
 
   mainWindow.on("closed", () => {
+    backgroundVideoDeliverySupervisor?.stop();
+    backgroundVideoDeliverySupervisor = null;
     browserPanel.destroy();
     mainWindow = null;
   });
@@ -3136,6 +3074,41 @@ async function createMainWindow() {
     flushPendingDeepLinks();
   });
 
+  backgroundVideoDeliverySupervisor = createBackgroundVideoDeliverySupervisor({
+    getMainWindow: () => mainWindow,
+    isReady: async (entry, win) => win.webContents.executeJavaScript(`(async () => {
+      const info = await window.__IPOLLOWORK_ELECTRON__?.invokeDesktop('ipolloworkServerInfo');
+      if (!info?.baseUrl) return false;
+      const response = await fetch(info.baseUrl + '/workspace/'
+        + ${JSON.stringify(entry.workspaceId)} + '/sessions/'
+        + ${JSON.stringify(entry.sessionId)} + '/snapshot', {
+        headers: {
+          authorization: 'Bearer ' + (info.ownerToken || info.clientToken),
+          'X-iPolloWork-Host-Token': info.hostToken,
+        },
+      });
+      if (!response.ok) return false;
+      const snapshot = (await response.json()).item;
+      return snapshot?.status?.type === 'idle' || snapshot?.status?.type === 'error';
+    })()`, true).catch(() => false),
+    createWorkerWindow: () => new BrowserWindow({
+      width: 1280,
+      height: 800,
+      show: false,
+      skipTaskbar: true,
+      webPreferences: {
+        backgroundThrottling: false,
+        preload: preloadPath,
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: false,
+      },
+    }),
+  });
+  mainWindow.webContents.on("did-navigate-in-page", (_event, url) => {
+    backgroundVideoDeliverySupervisor?.onMainNavigation(url);
+  });
+
   const startUrl = process.env.IPOLLOWORK_ELECTRON_START_URL?.trim() || process.env.ELECTRON_START_URL?.trim();
   if (startUrl) {
     await mainWindow.loadURL(startUrl);
@@ -3144,6 +3117,8 @@ async function createMainWindow() {
     const devIndexPath = path.resolve(__dirname, "../../app/dist/index.html");
     await mainWindow.loadFile(app.isPackaged ? packagedIndexPath : devIndexPath);
   }
+
+  backgroundVideoDeliverySupervisor.start();
 
   return mainWindow;
 }
@@ -4327,17 +4302,11 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(async () => {
     console.info("[startup] Electron ready");
     await enginePackageManager.applyEnvironment();
+    await videoResourceManager.applyEnvironment();
     try {
       process.env.HYPERFRAMES_CLI_PATH ||= resolveLocalHyperframesCli();
     } catch {
       console.warn("[avatar] Local HyperFrames cutout is unavailable");
-    }
-    // Reuse the packaged Video Studio binaries in the local video workbench server.
-    for (const [name, variable] of [["ffmpeg", "HYPERFRAMES_FFMPEG_PATH"], ["ffprobe", "HYPERFRAMES_FFPROBE_PATH"]]) {
-      if (!process.env[variable]) {
-        const binary = resolveFfBinary(name);
-        if (binary) process.env[variable] = binary;
-      }
     }
     installDesktopPowerRecovery();
     installMediaPermissionHandlers(session, () => mainWindow);

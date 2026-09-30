@@ -15,6 +15,7 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
 import {
   openCodeZenPublicModels,
   openCodeZenPublicModelUsesSessionAffinity,
@@ -31,6 +32,7 @@ import {
 } from "./runtime-opencode-config-store.js";
 import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
+import { ipolloworkSessionHostPluginPath } from "./ipollowork-extensions-plugin-path.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -151,10 +153,10 @@ export async function buildiPolloWorkRuntimeConfigObject(
         prompt: IPOLLOWORK_AGENT_PROMPT,
       },
     },
-    // OpenCode 1.18.x on Windows can stall while importing the bundled local
-    // plugins. Their host actions are already exposed by the authenticated
-    // iPolloWork MCP bridge, so keep only explicitly installed native plugins.
-    plugin: runtimePluginList(runtimeConfig),
+    // The workspace MCP connection is shared by concurrent OpenCode tasks and
+    // does not carry their sessionID. Keep one small native bridge for browser
+    // and publisher calls; its tool context is scoped to the invoking task.
+    plugin: [...new Set([...runtimePluginList(runtimeConfig), pathToFileURL(ipolloworkSessionHostPluginPath()).href])],
     ...(disabledProviders.length ? { disabled_providers: disabledProviders } : {}),
     mcp: {
       ...engineMcp,

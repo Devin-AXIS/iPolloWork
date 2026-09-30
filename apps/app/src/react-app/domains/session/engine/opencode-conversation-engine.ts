@@ -10,6 +10,7 @@ import {
   type ConversationEngineConnection,
   type ConversationPermission,
   type ConversationStatus,
+  SYNTHETIC_ONLY_EXECUTION_PROMPT,
   withSessionPermissionMemory,
   waitForConversationIdle,
 } from "./conversation-engine";
@@ -303,6 +304,13 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
           : []
       ));
       const promptParts = input.parts.filter((part) => part.type !== "text" || !part.synthetic);
+      if (promptParts.length === 0 && syntheticInstructions.length > 0) {
+        promptParts.push({
+          type: "text",
+          text: SYNTHETIC_ONLY_EXECUTION_PROMPT,
+          synthetic: true,
+        });
+      }
       const runtimeModelContext = input.model
         ? `Authoritative iPolloWork runtime model selection for this turn: ${JSON.stringify(input.model)}. When asked which model is running, report this selection exactly. Do not infer or claim a different model identity from earlier messages, training data, or generated self-description.`
         : "";

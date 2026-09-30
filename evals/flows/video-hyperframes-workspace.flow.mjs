@@ -8,27 +8,98 @@ export default {
   kind: "user-facing",
   steps: [
     {
+      name: "First launch downloads video resources automatically",
+      run: async (ctx) => {
+        await ctx.prove("Video Studio owns its first-launch resource download", {
+          voiceover: vo[0],
+          action: async () => {
+            if (await ctx.eval(`document.body.innerText.includes('首次打开，正在下载视频资源')`)) return;
+            if (await ctx.eval(`location.hash.includes("/settings/")`)) await ctx.clickText("返回应用");
+            const proofWorkspaceId = ctx.env.IPOLLOWORK_EVAL_VIDEO_WORKSPACE_ID?.trim();
+            const proofSessionId = ctx.env.IPOLLOWORK_EVAL_VIDEO_SESSION_ID?.trim();
+            if (proofWorkspaceId && proofSessionId) {
+              await ctx.navigateHash(`/workspace/${proofWorkspaceId}/session/${proofSessionId}`);
+              await ctx.waitFor(`Boolean(
+                [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                  .some((iframe) => iframe.getClientRects().length > 0)
+                || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
+              )`, { timeoutMs: 60_000, label: "configured video proof session" });
+            }
+            const hasStudioEntry = await ctx.eval(`Boolean(
+              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0)
+              || [...document.querySelectorAll('[title="index.html"]')].some((node) => node.closest('button'))
+              || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
+              || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
+            )`);
+            if (!hasStudioEntry && !(proofWorkspaceId && proofSessionId)) {
+              await ctx.clickText("视频", { selector: "button" });
+            }
+            await ctx.waitFor(`Boolean(
+              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0)
+              || [...document.querySelectorAll('[title="index.html"]')].some((node) => node.closest('button'))
+              || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
+              || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
+            )`, { timeoutMs: 30_000, label: "Video Studio entry" });
+            await ctx.eval(`(() => {
+              if ([...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0)) return;
+              const openButton = [...document.querySelectorAll('button')]
+                .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
+                || [...document.querySelectorAll('[title="index.html"]')]
+                  .map((node) => node.closest('button'))
+                  .find(Boolean)
+                || [...document.querySelectorAll('button')]
+                  .find((button) => button.textContent?.includes('index.html'));
+              openButton?.click();
+            })()`);
+            await ctx.waitFor(`document.body.innerText.includes('首次打开，正在下载视频资源')`, {
+              timeoutMs: 30_000,
+              label: "first-launch video resource download",
+            });
+          },
+          assert: async () => {
+            const state = await ctx.eval(`(() => ({
+              progress: Boolean(document.querySelector('[data-testid="video-resource-download-progress"]')),
+              failed: document.body.innerText.includes('视频资源下载失败'),
+            }))()`);
+            ctx.assert(state.progress && !state.failed, `Video resource download did not stay active: ${JSON.stringify(state)}`);
+          },
+          screenshot: {
+            name: "video-first-launch-resource-download",
+            requireText: ["首次打开，正在下载视频资源"],
+            rejectText: ["视频资源下载失败"],
+          },
+        });
+      },
+    },
+    {
       name: "Video opens one native Studio workspace",
       run: async (ctx) => {
         await ctx.prove("Video keeps the HyperFrames canvas and timeline together", {
-          voiceover: vo[0],
+          voiceover: vo[1],
           action: async () => {
             await ctx.waitFor(`Boolean(
-              document.querySelector('iframe[title*="HyperFrames"]')
+              [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0)
+              || document.querySelector('[data-testid="video-resource-download-progress"]')
               || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
-            )`, { timeoutMs: 30000, label: "Video Studio entry" });
+            )`, { timeoutMs: 30000, label: "Video Studio startup" });
             await ctx.eval(`(() => {
-              if (document.querySelector('iframe[title*="HyperFrames"]')) return;
+              if ([...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0)) return;
               [...document.querySelectorAll('button')]
                 .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
                 ?.click();
             })()`);
-            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 60000, label: "loaded HyperFrames Studio" });
+            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 720000, label: "loaded HyperFrames Studio after resource download" });
             await new Promise((resolve) => setTimeout(resolve, 1200));
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              iframe: Boolean(document.querySelector('iframe[title*="HyperFrames"]')),
+              iframe: [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
+                .some((iframe) => iframe.getClientRects().length > 0),
               failed: document.body.innerText.includes('启动失败') || document.body.innerText.includes('failed to start'),
               designTab: [...document.querySelectorAll('[role="tab"]')].some((node) => node.textContent?.includes('Design')),
               htmlTab: [...document.querySelectorAll('[role="tab"]')].some((node) => node.textContent?.includes('HTML')),
@@ -43,7 +114,7 @@ export default {
       name: "Studio is the inline editing surface",
       run: async (ctx) => {
         await ctx.prove("The native Studio owns canvas editing and timeline editing", {
-          voiceover: vo[1],
+          voiceover: vo[2],
           action: async () => {},
           assert: async () => {
             const iframe = await ctx.eval(`document.querySelector('iframe[title*="HyperFrames"]')?.getAttribute('src') || ''`);

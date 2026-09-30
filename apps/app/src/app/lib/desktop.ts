@@ -131,7 +131,17 @@ declare global {
       browser?: {
         show?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         hide?: () => Promise<void>;
-        openUrl?: (url: string, options?: { profileId?: string; taskId?: string; loginUi?: BrowserLoginUi & { origin: string } }) => Promise<{
+        openUrl?: (url: string, options?: {
+          profileId?: string;
+          taskId?: string;
+          loginUi?: BrowserLoginUi & { origin: string };
+          sessionRecovery?: {
+            origin: string;
+            loginPath: string;
+            authenticatedPath: string;
+            cookieNames: string[];
+          };
+        }) => Promise<{
           provider: "builtin";
           tabId: string;
           url: string;
@@ -225,19 +235,19 @@ declare global {
         reload?: () => Promise<void>;
         setBounds?: (bounds: { x: number; y: number; width: number; height: number }) => Promise<void>;
         getState?: () => Promise<BrowserStatePayload | null>;
-        createTab?: (url?: string) => Promise<{ tabId: string }>;
+        createTab?: (url?: string, options?: { sessionId?: string | null }) => Promise<{ tabId: string }>;
         closeTab?: (tabId: string) => Promise<string | null>;
         closeAllTabs?: () => Promise<string[]>;
         selectTab?: (tabId: string) => Promise<string>;
-        reorderTabs?: (tabIds: string[]) => Promise<BrowserPanelTab[]>;
+        reorderTabs?: (tabIds: string[], options?: { sessionId?: string | null }) => Promise<BrowserPanelTab[]>;
         listTabs?: () => Promise<BrowserPanelTab[]>;
         setProxy?: (proxy?: string | null) => Promise<BrowserProxyState>;
         getProxy?: () => Promise<BrowserProxyState>;
         showTabContextMenu?: (tabId: string, point?: { x: number; y: number }) => Promise<void>;
         destroy?: () => Promise<void>;
         onStateChange?: (callback: (state: BrowserStatePayload) => void) => () => void;
-        onPanelOpened?: (callback: () => void) => () => void;
-        onPanelClosed?: (callback: () => void) => () => void;
+        onPanelOpened?: (callback: (payload?: { sessionId?: string | null; tabId?: string }) => void) => () => void;
+        onPanelClosed?: (callback: (payload?: { sessionId?: string | null }) => void) => () => void;
       };
       terminal?: {
         create?: (options: { cwd: string; cols: number; rows: number }) => Promise<{ terminalId: string }>;
@@ -614,6 +624,8 @@ const {
   enginePackagesList,
   enginePackageInstall,
   enginePackageUninstall,
+  videoResourceInfo,
+  videoResourceInstall,
   pickDirectory,
   pickFile,
   saveFile,
@@ -673,6 +685,8 @@ export {
   enginePackagesList,
   enginePackageInstall,
   enginePackageUninstall,
+  videoResourceInfo,
+  videoResourceInstall,
   pickDirectory,
   pickFile,
   saveFile,

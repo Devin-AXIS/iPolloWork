@@ -148,7 +148,7 @@ import {
   videoHostExportOperationKey,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
-import { publishHostVideoDelivery } from "@/react-app/domains/session/video/video-delivery-coordination";
+import { currentHostVideoDelivery, publishHostVideoDelivery, subscribeHostVideoDeliverySettled } from "@/react-app/domains/session/video/video-delivery-coordination";
 import { douyinPublicationCopyForPrompt } from "@/react-app/domains/session/video/douyin-publication";
 import { wechatChannelsPublicationCopyForPrompt } from "@/react-app/domains/session/video/wechat-channels-publication";
 import { useRemoteWorkspaceConnectionEditor } from "@/react-app/domains/workspace/use-remote-workspace-connection-editor";
@@ -1121,7 +1121,9 @@ export function SessionRoute() {
 
   const handleSessionStatus = useCallback((update: { sessionId: string; status: ConversationStatus }) => {
     if (update.status.type !== "idle" || !selectedWorkspaceEndpoint) return;
-    finishProjectExecution({ sessionId: update.sessionId, status: "done" });
+    if (!currentHostVideoDelivery(selectedWorkspaceEndpoint.workspaceId, update.sessionId)) {
+      finishProjectExecution({ sessionId: update.sessionId, status: "done" });
+    }
     const { contexts, complete, completeWithoutChange, fail } = useDesignAiSelectionStore.getState();
     const runningContexts = Object.values(contexts).filter((context) => (
       context.sessionId === update.sessionId
@@ -1150,8 +1152,15 @@ export function SessionRoute() {
   }, [finishProjectExecution, selectedWorkspaceEndpoint]);
 
   const handleSessionError = useCallback((update: { sessionId: string; errorText: string }) => {
-    finishProjectExecution({ sessionId: update.sessionId, status: "failed", error: update.errorText });
-  }, [finishProjectExecution]);
+    if (!selectedWorkspaceEndpoint || !currentHostVideoDelivery(selectedWorkspaceEndpoint.workspaceId, update.sessionId)) {
+      finishProjectExecution({ sessionId: update.sessionId, status: "failed", error: update.errorText });
+    }
+  }, [finishProjectExecution, selectedWorkspaceEndpoint]);
+
+  useEffect(() => subscribeHostVideoDeliverySettled((result) => {
+    if (result.workspaceId !== selectedWorkspaceEndpoint?.workspaceId) return;
+    finishProjectExecution({ sessionId: result.sessionId, status: result.status, error: result.error });
+  }), [finishProjectExecution, selectedWorkspaceEndpoint]);
 
   const surfaceProps = useMemo(() => {
     if (!client || !selectedWorkspaceId || !opencodeBaseUrl || !token || !conversation) {
@@ -1599,9 +1608,14 @@ export function SessionRoute() {
         let automaticTemplateInstruction: string | null = null;
         let automaticTemplateRoutingAttempted = false;
         const automaticTemplateIntents = workspaceAppRequest ? [] : inferConversationTemplateIntents(text);
+        const continuingExistingTemplates = existingTemplateEdit && automaticTemplateIntents.length > 0
+          && automaticTemplateIntents.every((intent) => sessionTemplates.some(
+            (template) => template.manifest.category === intent.category,
+          ));
         if (
           explicitlyTargetedTemplateSessionIds.size === 0
           && automaticTemplateIntents.length > 0
+          && !continuingExistingTemplates
           && selectedWorkspaceEndpoint
         ) {
           automaticTemplateRoutingAttempted = true;

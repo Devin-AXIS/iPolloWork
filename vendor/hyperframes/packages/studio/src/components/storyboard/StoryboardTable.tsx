@@ -3,6 +3,7 @@ import {
   AudioLines,
   GripVertical,
   Plus,
+  RefreshCw,
   Save,
   Play,
   Pencil,
@@ -87,6 +88,7 @@ export function StoryboardTable({
   const [hostVoiceSelectionAvailable, setHostVoiceSelectionAvailable] = useState<boolean | null>(
     null,
   );
+  const [hostRegenerationAvailable, setHostRegenerationAvailable] = useState<boolean | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const savingRef = useRef(false);
   const hostedSettingsRef = useRef<{ request: StoryboardSettingsRequest; base: string } | null>(null);
@@ -186,6 +188,7 @@ export function StoryboardTable({
   useEffect(() => {
     if (!embeddedInWork) {
       setHostVoiceSelectionAvailable(false);
+      setHostRegenerationAvailable(false);
       return;
     }
     const handleHostContext = (event: MessageEvent) => {
@@ -193,6 +196,7 @@ export function StoryboardTable({
       if (event.data?.type !== "ipollowork:studio-host-context") return;
       if (event.data.projectId !== projectId) return;
       setHostVoiceSelectionAvailable(event.data.actions?.selectRoleVoice !== false);
+      setHostRegenerationAvailable(event.data.actions?.regenerateFromStoryboard === true);
     };
     window.addEventListener("message", handleHostContext);
     return () => window.removeEventListener("message", handleHostContext);
@@ -299,7 +303,7 @@ export function StoryboardTable({
     setExpandedShot(null);
     edit((source) => moveStoryboardFrame(source, from, to));
   }
-  async function save() {
+  async function save(): Promise<boolean> {
     if (savingRef.current) return false;
     if (!dirty) return true;
     savingRef.current = true;
@@ -318,6 +322,14 @@ export function StoryboardTable({
       savingRef.current = false;
       setSaving(false);
     }
+  }
+  async function regenerate() {
+    if (!embeddedInWork || hostRegenerationAvailable !== true || manifest.frames.length === 0 || aiActive || generating || productionRequested) return;
+    if (!(await save())) return;
+    window.parent.postMessage(
+      { type: "ipollowork:video-studio-regenerate", projectId },
+      "*",
+    );
   }
   async function generate() {
     if (generating || productionRequested || aiActive || savingRef.current || changedOnDisk) return;
@@ -386,7 +398,18 @@ export function StoryboardTable({
           >
             {tx("Save script")}
           </Button>
-          {embeddedInWork && <Button size="sm" variant="primary" className="hf-script-generate" icon={<Play size={14} />}
+          {embeddedInWork && hostRegenerationAvailable === true ? (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<RefreshCw size={14} />}
+              disabled={saving || generating || productionRequested || aiActive || hostRegenerationAvailable !== true || manifest.frames.length === 0 || changedOnDisk}
+              loading={saving}
+              onClick={() => void regenerate()}
+            >
+              {tx("Save and regenerate video")}
+            </Button>
+          ) : embeddedInWork && <Button size="sm" variant="primary" className="hf-script-generate" icon={<Play size={14} />}
             disabled={saving || generating || productionRequested || aiActive || changedOnDisk || manifest.frames.length === 0}
             loading={generating} onClick={() => void generate()}>
             {tx(aiActive ? "Video production in progress" : productionRequested ? "Production requested" : generating ? "Starting video…" : "Confirm script & generate video")}
@@ -781,7 +804,9 @@ export function StoryboardTable({
 
       <div className="border-t border-[var(--hf-workspace-border)] px-5 py-3 text-xs text-[var(--hf-panel-text-3)]">
         {tx(
-          "Save keeps your script for later. Confirm script & generate video saves it and starts production in this conversation.",
+          hostRegenerationAvailable === true
+            ? "The first script version produces the video automatically. Save and regenerate after editing this table."
+            : "Save keeps your script for later. Confirm script & generate video saves it and starts production in this conversation.",
         )}
         {manifest.warnings.length > 0 && (
           <details className="mt-2">

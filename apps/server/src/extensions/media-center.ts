@@ -6,6 +6,7 @@ import { providerFetch } from "../provider-fetch.js";
 import type { ServerConfig } from "../types.js";
 import type { VideoDeliveryRequirements } from "@ipollowork/types/hyperframes-project";
 import { link, mkdir, open, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream } from "node:fs";
 import { basename, dirname, extname, posix } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { resolveWorkspaceFile, withTemporaryWorkspaceObject, workspaceForContext } from "./storage.js";
@@ -358,6 +359,38 @@ async function listWorkspaceAssets(
   return assets.sort();
 }
 
+async function workspaceAssetHash(root: string, relativePath: string) {
+  const hash = createHash("sha256");
+  for await (const chunk of createReadStream(resolveWorkspaceFile(root, relativePath).absolutePath)) {
+    hash.update(chunk);
+  }
+  return hash.digest("hex");
+}
+
+async function musicDuplicatesNarration(
+  root: string,
+  sourceDirectory: string,
+  musicAsset: string,
+  mediaAssets: string[],
+  voiceoverAssets: string[],
+) {
+  const normalized = musicAsset.replace(/\\/g, "/").replace(/^\.\//, "").trim();
+  const musicPath = mediaAssets.find((path) => path === normalized || path === posix.normalize(posix.join(sourceDirectory, normalized)));
+  if (!musicPath) return false;
+  const musicSize = (await stat(resolveWorkspaceFile(root, musicPath).absolutePath)).size;
+  const sameSizeVoiceovers: string[] = [];
+  for (const path of voiceoverAssets) {
+    if (path === musicPath) return true;
+    if ((await stat(resolveWorkspaceFile(root, path).absolutePath)).size === musicSize) sameSizeVoiceovers.push(path);
+  }
+  if (sameSizeVoiceovers.length === 0) return false;
+  const musicHash = await workspaceAssetHash(root, musicPath);
+  for (const path of sameSizeVoiceovers) {
+    if (await workspaceAssetHash(root, path) === musicHash) return true;
+  }
+  return false;
+}
+
 function finiteTimelineNumber(node: TimelineNode, name: string): number | null {
   const raw = node.attributes.get(name);
   if (raw == null || raw.trim() === "") return null;
@@ -538,6 +571,7 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
   voiceoverAssets?: string[];
   mediaAssets?: string[];
   musicPlan?: { prompt: string; asset: string };
+  sourceDirectory?: string;
   storyboardFrames?: StoryboardDeliveryFrame[];
   requirements?: Partial<VideoDeliveryRequirements>;
 } = {}) {
@@ -605,6 +639,10 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       if (node.tagName !== "audio") return false;
       const id = node.attributes.get("id") ?? "";
       const src = node.attributes.get("src") ?? "";
+      const timelineRole = node.attributes.get("data-timeline-role") ?? "";
+      if ((timelineRole === "music" || timelineRole === "sfx") && node.attributes.get("data-ipw-voiceover") !== "true") {
+        return false;
+      }
       return node.attributes.get("data-ipw-voiceover") === "true"
         || id === "voiceover"
         || id.startsWith("vo-")
@@ -658,12 +696,21 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       ? node.attributes.get("data-timeline-role") === "music"
       : node.attributes.get("data-ipw-bgm") === "true"));
   const sfxNodes = nodes.filter((node) => node.tagName === "audio" && node.attributes.get("data-timeline-role") === "sfx");
+  const explicitlyNonNarrationSources = new Set(
+    [...bgmNodes, ...sfxNodes]
+      .filter(node => node.attributes.get("data-ipw-voiceover") !== "true")
+      .map(node => decodeHtmlText(node.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, ""))
+      .filter(Boolean),
+  );
   const musicPlan = options.musicPlan;
   if (musicPlan) {
     const prompt = musicPlan.prompt.trim();
     const silent = prompt.toLowerCase() === "none";
     const asset = musicPlan.asset.replace(/\\/g, "/").replace(/^\.\//, "").trim();
-    const mounted = bgmNodes.map((node) => decodeHtmlText(node.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, ""));
+    const mounted = bgmNodes.map((node) => posix.normalize(posix.join(
+      options.sourceDirectory ?? ".",
+      decodeHtmlText(node.attributes.get("src") ?? "").replace(/\\/g, "/").replace(/^\.\//, ""),
+    )));
     if (!musicPlan.prompt.trim()) {
       issues.push({ code: "music_plan_missing", message: "Set STORYBOARD.md music_prompt to a deliberate music direction, or none for an intentionally music-free video." });
     }
@@ -676,7 +723,9 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       if ((musicPlan.prompt.trim() || mounted.length) && !asset) {
         issues.push({ code: "music_asset_missing", message: "Choose appropriate music and write its actual project-relative path to STORYBOARD.md music_asset; do not leave the script out of sync with the video." });
       }
-      if (asset && (mounted.length === 0 || mounted.some((source) => source !== asset))) {
+      if (asset && (mounted.length === 0 || mounted.some((source) => (
+        source !== asset && posix.relative(options.sourceDirectory ?? ".", source) !== asset
+      )))) {
         issues.push({ code: "music_asset_mismatch", message: "The music timeline must reference the exact music_asset selected in STORYBOARD.md." });
       }
       if (musicPlan.prompt.trim() && mounted.length === 0) {
@@ -788,13 +837,22 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
       message: "Remove manual voiceover play/pause/seek script; HyperFrames must own narration playback from data-start/data-duration.",
     });
   }
-  if (referencedVoiceoverSources(html).size > voiceovers.length) {
+  const referencedSources = referencedVoiceoverSources(html);
+  for (const source of [...referencedSources]) {
+    const fileName = source.split("/").pop() ?? source;
+    if ([...explicitlyNonNarrationSources].some((candidate) => {
+      const candidateFileName = candidate.split("/").pop() ?? candidate;
+      return candidate === source || candidateFileName === fileName;
+    })) {
+      referencedSources.delete(source);
+    }
+  }
+  if (referencedSources.size > voiceovers.length) {
     issues.push({
       code: "voiceover_assets_not_on_timeline",
       message: "Voiceover MP3 references exist outside HyperFrames audio timeline nodes. Insert each voiceover as <audio data-ipw-voiceover=\"true\" ...> with data-start/data-duration.",
     });
   }
-  const referencedSources = referencedVoiceoverSources(html);
   const normalizedAssets = (options.voiceoverAssets ?? []).map((value) => value.replace(/\\/g, "/").replace(/^\.\//, ""));
   if (options.voiceoverAssets !== undefined) {
     const availableFileNames = new Set(normalizedAssets.map((asset) => asset.split("/").pop() ?? asset));
@@ -813,10 +871,10 @@ export function validateVoiceoverTimelineHtml(html: string, options: {
     const fileName = asset.split("/").pop() ?? asset;
     return !referencedSources.has(asset) && !referencedSources.has(`assets/${fileName}`) && !referencedSources.has(fileName);
   });
-  // Earlier immutable synthesis revisions are harmless once the finished
-  // timeline references its chosen audio. No attached voiceover is still a
-  // delivery failure even when generated files are present.
-  if (orphanAssets.length > 0 && referencedSources.size === 0) {
+  // Stale synthesis files do not require narration in a silent video. When
+  // narration is requested or planned, the files must be mounted on the timeline.
+  if (orphanAssets.length > 0 && referencedSources.size === 0
+    && (options.requirements?.voiceover === true || options.storyboardFrames?.some(frame => Boolean(frame.voiceover)))) {
     issues.push({
       code: "voiceover_assets_unreferenced",
       message: `Voiceover assets are present but not attached to the HyperFrames timeline: ${orphanAssets.slice(0, 5).join(", ")}${orphanAssets.length > 5 ? ", ..." : ""}.`,
@@ -2271,6 +2329,7 @@ export async function callMediaExtensionAction(
     const storyboardPlan = await readStoryboardDeliveryPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath);
     const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
+      sourceDirectory,
       musicPlan: storyboardPlan?.music,
       storyboardFrames: storyboardPlan?.frames,
       mediaAssets: mediaAssets.map((path) => posix.relative(sourceDirectory, path)),
@@ -2290,6 +2349,9 @@ export async function callMediaExtensionAction(
     const issues = [
       ...output.issues,
       ...await validateVideoScriptAssets(html, dirname(source.absolutePath)),
+      ...(storyboardPlan?.music.asset && await musicDuplicatesNarration(
+        workspace.path, sourceDirectory, storyboardPlan.music.asset, mediaAssets, voiceoverAssets,
+      ) ? [{ code: "music_reuses_narration", message: "Background music is identical to a narration asset. Use a real instrumental music file; renaming or copying voiceover audio does not make it BGM." }] : []),
       ...(componentCheck?.issues ?? []),
     ];
     return {

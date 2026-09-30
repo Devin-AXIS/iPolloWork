@@ -8,6 +8,7 @@ import {
   type EnginePackageInfo,
 } from "@/app/lib/desktop";
 import { isDesktopRuntime } from "@/app/utils";
+import { readDenSettings } from "@/app/lib/den";
 
 const ACTIVE_STATUSES = new Set(["downloading", "verifying", "installing", "uninstalling"]);
 
@@ -45,7 +46,7 @@ export function useEnginePackages() {
     setActionEngineId(engineId);
     try {
       await Promise.all([
-        enginePackageInstall(engineId),
+        enginePackageInstall(engineId, readDenSettings().baseUrl),
         new Promise<void>((resolve) => window.setTimeout(resolve, 180)),
       ]);
     } finally {

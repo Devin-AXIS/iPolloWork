@@ -8,11 +8,49 @@ import { serviceErrorMessage } from "@ipollowork/types/provider-errors";
 import type { iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import type { BrowserPanelTab } from "@/app/lib/desktop-types";
 import type { PluginUiSurface } from "./plugin-ui-contributions";
 
 const browserOpenLinkSchema = McpUiOpenLinkRequestSchema.extend({
   params: McpUiOpenLinkRequestSchema.shape.params.passthrough(),
 });
+
+type BrowserSessionObservation = {
+  origin: string;
+  paths: string[];
+  sessionRecovery?: {
+    loginPath: string;
+    authenticatedPath: string;
+  };
+};
+
+export function browserSessionTabsToObserve(
+  tabs: BrowserPanelTab[] | undefined,
+  login: BrowserSessionObservation,
+  profilePrefix: string,
+  observedTabs: ReadonlySet<string>,
+  sessionId?: string | null,
+): BrowserPanelTab[] {
+  const matchingTabs = tabs?.filter(tab => {
+    if (!tab.url || tab.status !== "ready"
+      || (sessionId && tab.sessionId !== sessionId)
+      || (tab.profileId && !tab.profileId.startsWith(profilePrefix))) return false;
+    return new URL(tab.url).origin === login.origin;
+  }) ?? [];
+  const authenticatedPath = login.sessionRecovery?.authenticatedPath;
+  const authenticatedProfiles = new Set(authenticatedPath ? matchingTabs.flatMap(tab => {
+    const pathname = new URL(tab.url).pathname;
+    return pathname === authenticatedPath || pathname.startsWith(authenticatedPath)
+      ? [tab.profileId ?? ""] : [];
+  }) : []);
+  return matchingTabs.filter(tab => {
+    if (observedTabs.has(tab.id)) return false;
+    const pathname = new URL(tab.url).pathname;
+    if (!login.paths.includes(pathname)) return false;
+    return pathname !== login.sessionRecovery?.loginPath
+      || !authenticatedProfiles.has(tab.profileId ?? "");
+  });
+}
 
 export function ServiceWorkbenchFrame(props: {
   surface: PluginUiSurface;
@@ -58,6 +96,10 @@ export function ServiceWorkbenchFrame(props: {
     retry: false,
     staleTime: 0,
     refetchOnWindowFocus: false,
+    // A package update or a crashed local service changes its loopback port.
+    // Keep the visible Studio pointed at the current service without resetting
+    // its iframe on every healthy poll.
+    refetchInterval: 15_000,
   });
 
   useEffect(() => {
@@ -81,6 +123,7 @@ export function ServiceWorkbenchFrame(props: {
       if (!browser?.openUrl) return { isError: true };
       await browser.openUrl(url, browserProfileId ? {
         profileId: `${props.surface.pluginId}:${browserProfileId}`,
+        ...(props.sessionId ? { taskId: props.sessionId } : {}),
         ...(login.loginUi ? { loginUi: { ...login.loginUi, origin: login.origin } } : {}),
         ...(login.sessionRecovery ? { sessionRecovery: { ...login.sessionRecovery, origin: login.origin } } : {}),
       } : undefined);
@@ -129,12 +172,7 @@ export function ServiceWorkbenchFrame(props: {
       try {
         const state = await browser.getState!();
         const profilePrefix = `${props.surface.pluginId}:`;
-        const pending = state?.tabs?.filter(tab => {
-          if (!tab.url || tab.status !== "ready" || observedTabs.has(tab.id)
-            || (tab.profileId && !tab.profileId.startsWith(profilePrefix))) return false;
-          const url = new URL(tab.url);
-          return url.origin === login.origin && login.paths.includes(url.pathname);
-        }) ?? [];
+        const pending = browserSessionTabsToObserve(state?.tabs, login, profilePrefix, observedTabs, props.sessionId);
         if (!pending.length || stopped || observationRevision !== revision) return;
         const tab = pending[nextTab++ % pending.length]!;
         const snapshot = await browser.snapshot!({ tabId: tab.id, ...(login.avatarSelector ? { imageSelector: login.avatarSelector } : {}) });
@@ -155,7 +193,7 @@ export function ServiceWorkbenchFrame(props: {
     return () => { stopped = true; window.clearInterval(timer); unsubscribe?.(); };
   }, [frameLoad, workbench.data, props.sessionId, props.workspaceId, props.workspaceRoot, props.client, props.surface]);
 
-  if (workbench.isPending || workbench.isFetching) {
+  if (workbench.isPending || (workbench.isFetching && !workbench.data)) {
     return <div className={cn("flex h-full items-center justify-center text-sm text-muted-foreground", props.className)}>
       <Loader2 className="mr-2 size-4 animate-spin" />正在启动{props.surface.label}…
     </div>;

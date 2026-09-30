@@ -12,6 +12,12 @@ const buildCopySource = await readFile(
 );
 const electronMainSource = await readFile(new URL("./main.mjs", import.meta.url), "utf8");
 const electronDevSource = await readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8");
+const electronBuildSource = await readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8");
+const electronBuilderSource = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
+const studioViteSource = await readFile(
+  new URL("../../../vendor/hyperframes/packages/studio/vite.config.ts", import.meta.url),
+  "utf8",
+);
 
 test("stages HyperFrames dependencies in an electron-builder-safe layout", () => {
   assert.match(prepareRuntimeSource, /"--linker", "hoisted"/);
@@ -40,6 +46,14 @@ test("keeps the separately packaged registry out of the cached runtime", () => {
   assert.ok(cleanupIndex < cacheSkipIndex);
 });
 
+test("bundles HyperFrames runtime and registry while pruning media binaries", () => {
+  assert.match(electronBuildSource, /prepare-hyperframes-runtime\.mjs/);
+  assert.match(electronBuilderSource, /from: hyperframes-runtime[\s\S]*to: hyperframes/);
+  assert.match(electronBuilderSource, /from: \.\.\/\.\.\/vendor\/hyperframes\/registry[\s\S]*to: hyperframes\/registry/);
+  assert.match(prepareRuntimeSource, /pruneStaticMediaBinaries/);
+  assert.match(prepareRuntimeSource, /\["ffmpeg-static", "ffprobe-static"\]/);
+});
+
 test("cleans stale hashed Studio assets before copying a new build", () => {
   assert.match(buildCopySource, /rmSync\(join\(DIST, sub\), \{ recursive: true, force: true \}\)/);
   assert.ok(
@@ -59,6 +73,12 @@ test("rebuilds the dev Studio when shared HyperFrames source changes", () => {
   assert.match(electronDevSource, /"studio"/);
   assert.match(electronDevSource, /"studio-server"/);
   assert.match(electronDevSource, /newestBuildInputTime > studioBuildTime/);
+});
+
+test("builds Studio against the current iPolloWork runtime contracts", () => {
+  assert.match(studioViteSource, /"@ipollowork\/types\/hyperframes": resolve\(/);
+  assert.match(studioViteSource, /packages\/types\/src\/hyperframes\.ts/);
+  assert.match(studioViteSource, /"@ipollowork\/types\/video-image-workbench": resolve\(/);
 });
 
 test("keeps a recently closed Studio process warm for a bounded same-session reopen", () => {

@@ -156,6 +156,8 @@ describe("settings route parsing", () => {
     expect(engineManagementSource).toContain('case "official"');
     expect(engineManagementSource).toContain('t("settings.engine_manager.external_official_notice"');
     expect(engineManagementSource).toContain("engine.canUninstall");
+    expect(engineManagementSource).not.toContain("videoResourceInstall");
+    expect(engineManagementSource).not.toContain("video-codecs");
     expect(englishLocaleSource).toContain('"settings.engine_manager.source_official": "Using official installation"');
     expect(chineseLocaleSource).toContain('"settings.engine_manager.source_official": "使用官方安装资源"');
     expect(chineseLocaleSource).toContain("该资源由官方安装程序管理，因此不支持在 iPolloWork 中卸载");

@@ -13,6 +13,7 @@ import {
   type ConversationPermission,
   type ConversationPromptPart,
   type ConversationQuestion,
+  SYNTHETIC_ONLY_EXECUTION_PROMPT,
 } from "./conversation-engine";
 import {
   codexNativeRequest,
@@ -148,6 +149,9 @@ function preparePrompt(parts: ConversationPromptPart[]) {
         : `[Attached file: ${part.filename || "file"}]\n${text}`,
       text_elements: [],
     });
+  }
+  if (input.length === 0 && applicationInstructions.length > 0) {
+    input.push({ type: "text", text: SYNTHETIC_ONLY_EXECUTION_PROMPT, text_elements: [] });
   }
   return { input, applicationInstructions };
 }

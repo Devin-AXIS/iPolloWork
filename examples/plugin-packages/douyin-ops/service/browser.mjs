@@ -118,8 +118,10 @@ export class BrowserOperations {
     const job = this.store.get('job', required(input.jobId, '任务 ID', 100));
     if (!job || job.transport !== 'browser' || job.status !== 'pending') fail('任务已领取或已完成，请查看记录，不要重复执行');
     const account = this.ops.account(job.accountId);
-    if (this.store.list('job', account.id, 1000).some(other => other.id !== job.id && other.status === 'running')) fail('该账号的浏览器正在执行上一项任务，本任务保留排队，完成后再领取');
-    if (writes.has(job.browserAction) && this.store.list('job', account.id, 1000).some(other => other.id !== job.id && other.status === 'uncertain')) fail('该账号有待核对的操作，本任务保留排队，请先核对');
+    const blocker = this.store.list('job', account.id, 1000).find(other => other.id !== job.id
+      && (other.status === 'running' || (writes.has(job.browserAction) && other.status === 'uncertain')));
+    if (blocker) return { job, queued: true, retryAfterMs: 2000, blockedByJobId: blocker.id,
+      blockedByStatus: blocker.status, requiresReconciliation: blocker.status === 'uncertain' };
     if (input.actualProfileId !== `douyin-ops:${account.browserProfileId}`) fail('浏览器环境与任务账号不一致');
     if (writes.has(job.browserAction) && (!account.webIdentity || input.actualAccount !== account.webIdentity)) fail('请先从当前登录账号页面核对抖音号');
     const executionToken = randomBytes(32).toString('hex');
@@ -144,7 +146,8 @@ export class BrowserOperations {
           if (!['published', 'under_review'].includes(input.publicationStatus)) fail('请记录作品是已发布还是审核中');
           result.publicationStatus = input.publicationStatus;
           if (input.resultUrl) result.url = douyinUrl(input.resultUrl, 'video');
-          if (input.publicationStatus === 'published' && !result.url) fail('已发布作品必须提供实际作品链接');
+          // A matching row in the official creator console is a valid publish
+          // receipt even when Douyin has not exposed a working public URL yet.
         } else {
           result.url = douyinUrl(input.resultUrl, 'video');
           if (job.targetUrl.startsWith('https://www.douyin.com/video/') && result.url !== job.targetUrl) fail('评论回执不属于任务目标作品');

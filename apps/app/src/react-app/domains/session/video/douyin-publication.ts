@@ -111,6 +111,7 @@ function truncate(value: string, limit: number) {
 
 /** Build usable publication copy when the model has authored video visuals but not social metadata. */
 export function douyinPublicationCopyForPrompt(promptText: string): DouyinPublicationCopy {
+  const requestedTitle = /(?:作品)?标题\s*[：:]?\s*[《「“"]([^》」”"]{1,100})[》」”"]/u.exec(promptText)?.[1]?.trim();
   const topic = promptText
     .replace(/(?:请|麻烦)?(?:给我|帮我)?(?:做|制作|生成|创建)(?:一个|一条)?/gi, "")
     .replace(/(?:然后|并且|并)?(?:发布|上传|发到|发至).{0,12}抖音/gi, "")
@@ -118,13 +119,13 @@ export function douyinPublicationCopyForPrompt(promptText: string): DouyinPublic
     .trim();
   if (/ipollowork/i.test(topic || promptText)) {
     return {
-      title: "iPolloWork：让项目协作更简单",
+      title: requestedTitle ? truncate(requestedTitle, 30) : "iPolloWork：让项目协作更简单",
       text: "iPolloWork 把想法、素材、AI Agent 和交付流程放进同一个项目空间，从创作、校验到发布，一次需求持续推进。#iPolloWork #AI工作流 #效率工具",
     };
   }
   const subject = topic || "本期短视频";
   return {
-    title: truncate(subject, 30),
+    title: truncate(requestedTitle || subject, 30),
     text: truncate(`${subject}。由 iPolloWork 完成创作、校验与发布。#iPolloWork`, 1000),
   };
 }
@@ -145,6 +146,8 @@ export async function prepareDouyinPublication(input: {
   sourcePath: string;
   operationKey: string;
   copy: DouyinPublicationCopy;
+  waitForQueue?: (ms: number) => Promise<void>;
+  queueTimeoutMs?: number;
 }): Promise<PreparedDouyinPublication> {
   const draftRunKey = `${input.operationKey}:douyin-draft`;
   const publishOperationKey = `${input.operationKey}:douyin-publish`;
@@ -190,11 +193,23 @@ export async function prepareDouyinPublication(input: {
   }
 
   const profileId = `douyin-ops:${account.browserProfileId}`;
-  const claimed = resultRecord(await input.call("claim-browser-job", {
-    jobId: job.id,
-    actualProfileId: profileId,
-    actualAccount: account.webIdentity,
-  }), "claim-browser-job");
+  const deadline = Date.now() + (input.queueTimeoutMs ?? 3 * 60 * 60_000);
+  let claimed: Record<string, unknown>;
+  while (true) {
+    claimed = resultRecord(await input.call("claim-browser-job", {
+      jobId: job.id,
+      actualProfileId: profileId,
+      actualAccount: account.webIdentity,
+    }), "claim-browser-job");
+    if (claimed.queued !== true) break;
+    if (claimed.requiresReconciliation === true) {
+      throw new Error("同一抖音账号有结果待核对的任务；为避免重复发布，需先核对该任务。");
+    }
+    if (Date.now() >= deadline) throw new Error("抖音账号发布队列等待超过 3 小时；草稿和任务已保留，可继续原任务。");
+    await (input.waitForQueue ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms))))(
+      Math.max(500, Math.min(Number(claimed.retryAfterMs) || 2_000, 5_000)),
+    );
+  }
   const executionToken = text(claimed.executionToken);
   const mediaPath = text(claimed.mediaPath);
   const extensionId = text(claimed.extensionId);

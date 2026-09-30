@@ -26,9 +26,9 @@ save-draft 保存 accountId、内部 title、description、topics、assetId、co
 
 1. 调用 prepare-job：发布 type=publish + draftId；同步作品 type=sync-videos；读取自己作品评论 type=sync-comments + videoId；回复已同步评论 type=reply + commentId + body。始终指定 accountId 与稳定 operationKey。已有 prepared 任务可直接使用，不重新创建。不能通过修改 key 绕过失败或未知结果。
 2. get-job 检查状态。prepared 才能领取；running 不重复执行；submitting/uncertain 必须先核对；submitted/reviewing 表示平台处理阶段，不等于公开发布。其他终态复用现有记录。
-3. 在当前会话完成账号核验后，claim-job 传 jobId、actualChannelId、profileId。返回 job 的 payload 是锁定内容，mediaPaths 按视频、封面顺序。领取到终态之间不要修改载荷。时间超过 15 分钟则重新核验身份。
+3. 在当前会话完成账号核验后，claim-job 传 jobId、actualChannelId、profileId。返回 `queued=true` 时任务仍在队列；前一任务仍在 running/submitting 时按 `retryAfterMs` 等待并重领同一任务。若 `requiresReconciliation=true`，保留本任务为 prepared，报告前一任务待核对并安全结束当前执行，不得绕过队列或直接操作网页。没有 mediaPaths 前不得操作网页。领取成功后 job 的 payload 是锁定内容，mediaPaths 按视频、封面顺序。领取到终态之间不要修改载荷。时间超过 15 分钟则重新核验身份。
 4. 使用 ipollowork_browser_snapshot 和 ipollowork_browser_act 的最新引用执行，避免猜测选择器。upload 动作传 extensionId="wechat-channels-ops"，使用 claim 返回的素材路径。按 description 和 topics 填写实际描述与话题；内部 title 不自动作为平台短标题。封面需要实际上传/选定。控件不可用则停止报告，不偷偷省略。
-5. 最终提交前再次检查账号、视频、封面、描述、话题。先 mark-submitting 成功持久化后，再点击发布/回复一次。若 mark-submitting 响应不明，get-job 核对状态，不点击。页面要求额外内容声明或验证时交用户处理。
+5. 最终提交前再次检查账号、视频、封面、描述、话题。先 mark-submitting 成功持久化后，再用最新交互快照点击发布/回复一次。若鼠标点击在执行前明确报告被遮挡、且同一可访问控件仍可见并启用，可改用 Enter 或 Space 激活一次；两种方式只能选一种，点击结果不明时不得切换方式或重试。若 mark-submitting 响应不明，get-job 核对状态，不点击。页面要求额外内容声明或验证时交用户处理。
 6. 用新快照回读实际平台状态，report-job 传 jobId、actualChannelId、profileId、status、evidence，可附 resultUrl。成功提示仅表示已提交则 submitted；审核中则 reviewing；明确已发布才 published；明确新增指定回复才 replied。published/replied 必须有可回访的平台页面地址。
 7. 点击后超时、页面中断或无法确认，报告 uncertain，不重新提交。提交前失败用 blocked/failed；明确平台拒绝提交可 failed。外部已提交时不可用 blocked 掩盖未知结果。
 8. 后续在同账号页面核对 uncertain/blocked/submitted/reviewing，使用 reconcile-job 记录依据及真实结果，不能直接重发。失败任务保留；确需再次尝试由用户明确要求后编辑为新草稿版本。

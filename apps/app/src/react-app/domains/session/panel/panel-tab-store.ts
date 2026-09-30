@@ -65,6 +65,19 @@ export type PluginStudioPanelTab = {
 
 export type PanelTab = BrowserPanelTab | ArtifactPanelTab | DesignPanelTab | VideoPanelTab | WorkspaceAppPanelTab | PluginStudioPanelTab;
 
+export function browserTabsForSession(
+  browserState: { tabs?: BrowserPanelTab[]; activeTabId?: string | null },
+  sessionId: string,
+) {
+  const tabs = (browserState.tabs ?? []).filter((tab) => tab.sessionId === sessionId);
+  return {
+    tabs,
+    activeTabId: tabs.some((tab) => tab.id === browserState.activeTabId)
+      ? browserState.activeTabId ?? null
+      : tabs[0]?.id ?? null,
+  };
+}
+
 export type SessionPanelState = {
   tabs: PanelTab[];
   activeTabId: string | null;
@@ -221,6 +234,8 @@ function isSameTab(left: PanelTab, right: PanelTab) {
     return (
       left.label === right.label &&
       left.url === right.url &&
+      left.sessionId === right.sessionId &&
+      left.profileId === right.profileId &&
       left.favicon === right.favicon &&
       left.status === right.status &&
       left.canGoBack === right.canGoBack &&

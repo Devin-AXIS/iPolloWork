@@ -15,7 +15,7 @@ Object.defineProperty(globalThis, "localStorage", {
   },
 });
 
-const { usePanelTabStore } = await import("../src/react-app/domains/session/panel/panel-tab-store");
+const { browserTabsForSession, usePanelTabStore } = await import("../src/react-app/domains/session/panel/panel-tab-store");
 
 const browserTab = {
   id: "browser:new",
@@ -46,6 +46,20 @@ describe("panel tab store", () => {
     usePanelTabStore.getState().syncBrowserTabs("session-1", [browserTab], browserTab.id);
 
     expect(usePanelTabStore.getState().sessions["session-1"]?.activeTabId).toBe(browserTab.id);
+  });
+
+  test("keeps native browser tabs scoped to their owning conversation", () => {
+    const first = { ...browserTab, id: "browser:first", sessionId: "session-1", profileId: "douyin:account" };
+    const second = { ...browserTab, id: "browser:second", sessionId: "session-2", profileId: "douyin:account" };
+
+    expect(browserTabsForSession({ tabs: [first, second], activeTabId: second.id }, "session-1")).toEqual({
+      tabs: [first],
+      activeTabId: first.id,
+    });
+    expect(browserTabsForSession({ tabs: [first, second], activeTabId: second.id }, "session-2")).toEqual({
+      tabs: [second],
+      activeTabId: second.id,
+    });
   });
 
   test("does not let background browser updates steal an existing work surface", () => {

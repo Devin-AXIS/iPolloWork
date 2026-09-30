@@ -2,6 +2,7 @@
 node_modules/
 apps/desktop/dist-electron/
 apps/desktop/dist-engine-packs/
+apps/desktop/dist-video-packs/
 apps/desktop/dist-electron-windows-0.17.34-20260728101109/
 
 
@@ -80,5 +81,10 @@ evals/results/
 /design/
 /nba-story/
 .superpowers/
+# Local repositories and non-source working documents.
+/external-plugins/jev-decision-model/
+/docs/*.docx
+/docs/code-optimization.md
+/docs/superpowers/
 # Local design-system experiments; keep out of commits for now.
 # /apps/app/src/react-app/domains/session/design/design-systems/

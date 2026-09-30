@@ -630,6 +630,22 @@ describe("Video Studio registry component integration", () => {
     expect(invalidRecipe.issues.map(issue => issue.code)).toContain("invalid_spatial_camera_recipe");
   });
 
+  test("accepts a host-owned camera journey summarized by explicit route metadata", async () => {
+    const { root, project } = await fixture();
+    process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = join(import.meta.dir, "../../../../vendor/hyperframes/registry/blocks");
+    await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+      componentIds: ["spatial-camera-suite"],
+    });
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">
+      <section id="hero" class="scene clip" data-ipw-scene data-composition-id="spatial-camera-suite-hero" data-composition-src="compositions/spatial-camera-suite.html" data-ipw-registry-component="spatial-camera-suite" data-ipw-animation-reference="spatial-camera-suite" data-ipw-timing-owner="host" data-motion-pattern="camera-journey" data-ipw-camera-origin="wide opener" data-ipw-camera-waypoint="hero product card" data-ipw-camera-destination="settled overview" data-ipw-timing-source="visual-cue" data-ipw-beats='[{"start":0,"end":9,"intent":"Introduce","focus":"Product journey","action":"Run the installed camera choreography","result":"Overview lands","targets":"#hero","animation":"component:spatial-camera-suite","motion":{"start":0,"end":9}}]' data-variable-values='{"title":"A real story","shotStyle":"spotlight-hero-card","imageUrl":"assets/source.jpg","items":"*Evidence::Visible"}' data-start="0" data-duration="9" data-track-index="0"></section>
+    </main>`);
+
+    expect(await checkVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html",
+    })).toMatchObject({ valid: true, sceneCount: 1, issues: [] });
+  });
+
   test("accepts a justified custom scene with a logo without forcing a spatial camera", async () => {
     const { root, project } = await fixture();
     await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">
@@ -733,6 +749,12 @@ describe("Video Studio registry component integration", () => {
       <section id="outro" class="scene clip" data-ipw-scene data-ipw-component-decision="custom:short closing lockup" data-motion-pattern="progressive-build" data-ipw-timing-source="visual-cue" data-ipw-transition-in="preset:transition.split-wipe" data-ipw-transition-duration="0.8" data-ipw-transition-intent="closure" data-ipw-beats='[{"start":0,"end":3,"intent":"Close","focus":"Final message","action":"Reveal the closing lockup","result":"Message lands","targets":["#outro"],"animation":"preset:transition.split-wipe","motion":{"start":0,"end":3}}]' data-ipw-animation-reference="transition.split-wipe" data-start="12" data-duration="3" data-track-index="0"></section>
     </main>`);
     expect(await checkVideoComponents({ id: "workspace", path: root }, { sourcePath: "video/session-one/index.html" })).toMatchObject({ valid: true, sceneCount: 2, issues: [] });
+    const source = await readFile(join(project, "index.html"), "utf8");
+    await writeFile(join(project, "index.html"), source.replace('data-ipw-transition-intent="closure"', 'data-ipw-transition-intent="progression"'));
+    const invalid = await checkVideoComponents({ id: "workspace", path: root }, { sourcePath: "video/session-one/index.html" });
+    expect(invalid.issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "invalid_scene_transition_intent", message: expect.stringContaining("topic-change") }),
+    ]));
   });
 
   test("accepts a timed authored transition only with an explicit cross-scene handoff", async () => {

@@ -698,21 +698,20 @@ export default {
       }),
     },
     {
-      name: "Terminal error has a short explanation and optional details",
-      run: (ctx) => ctx.prove("Final failure gives an actionable summary and allows technical detail to be copied", {
+      name: "Terminal error appears in response text",
+      run: (ctx) => ctx.prove("Final failure appears as ordinary response text without a card", {
         voiceover: vo[15],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showTerminalError()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.textContent.includes('模型当前请求较多')");
-          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice] summary')?.click()");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('HTTP 429 rate limit')");
         },
         assert: async () => {
-          const state = await ctx.eval(`(() => { const notice = document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]');
-            return { title: notice?.textContent.includes('模型当前请求较多'), details: notice?.querySelector('details')?.open,
-              raw: notice?.textContent.includes('HTTP 429 rate limit'), copy: notice?.textContent.includes('复制详情') }; })()`);
-          ctx.assert(state.title && state.details && state.raw && state.copy, JSON.stringify(state));
+          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
+            return { text: host.querySelector('[data-assistant-run-error]')?.textContent,
+              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          ctx.assert(state.text?.includes('本次任务未完成') && state.text.includes('HTTP 429 rate limit') && state.cards === 0, JSON.stringify(state));
         },
-        screenshot: { name: "terminal-error-details", requireText: ["模型当前请求较多", "查看技术详情", "复制详情"] },
+        screenshot: { name: "terminal-error-details", requireText: ["本次任务未完成", "HTTP 429 rate limit"] },
       }),
     },
     {
@@ -722,51 +721,53 @@ export default {
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showSavedImageFailure()");
           await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=assistant-image-status]')?.textContent.includes('图片已生成')");
-          await ctx.eval("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.scrollIntoView({ block: 'end' })");
+          await ctx.eval("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.scrollIntoView({ block: 'end' })");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
             return { saved: host.querySelector('[data-testid=assistant-image-status]')?.textContent,
               open: host.textContent.includes('打开图片'), run: host.textContent.includes('本次任务未完成'),
-              detailsCollapsed: !host.querySelector('[data-testid=run-issue-notice] details')?.open }; })()`);
-          ctx.assert(state.saved?.includes('图片已生成') && state.open && state.run && state.detailsCollapsed, JSON.stringify(state));
+              errorInReply: Boolean(host.querySelector('[data-assistant-result] [data-assistant-run-error]')),
+              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          ctx.assert(state.saved?.includes('图片已生成') && state.open && state.run && state.errorInReply && state.cards === 0, JSON.stringify(state));
         },
         screenshot: { name: "saved-image-after-failure", requireText: ["图片已生成", "打开图片", "本次任务未完成"] },
       }),
     },
     {
       name: "Historical interruption reopens as an interruption",
-      run: (ctx) => ctx.prove("A replayed interrupted turn uses a neutral notice and preserves partial text", {
+      run: (ctx) => ctx.prove("A replayed interrupted turn keeps partial text and shows the reason inline", {
         voiceover: vo[17],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showHistoricalInterruption()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.textContent.includes('任务已中断')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('interrupted')");
         },
         assert: async () => {
           const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
             const result = host.querySelector('[data-assistant-result]');
             return { partial: result?.textContent.includes('已完成部分内容'), rawInResult: result?.textContent.includes('interrupted'),
-              stopped: host.textContent.includes('任务已中断'), notices: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
-          ctx.assert(state.partial && !state.rawInResult && state.stopped && state.notices === 1, JSON.stringify(state));
+              interrupted: host.querySelector('[data-assistant-run-error]')?.textContent.includes('interrupted'),
+              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          ctx.assert(state.partial && state.interrupted && state.cards === 0, JSON.stringify(state));
         },
-        screenshot: { name: "historical-interruption", requireText: ["已完成部分内容", "任务已中断"] },
+        screenshot: { name: "historical-interruption", requireText: ["已完成部分内容", "本次任务未完成"] },
       }),
     },
     {
       name: "Unsupported model explains the next action",
-      run: (ctx) => ctx.prove("An unsupported model error points to model selection while keeping provider text collapsed", {
+      run: (ctx) => ctx.prove("An unsupported model error appears as ordinary conversation text", {
         voiceover: vo[18],
         action: async () => {
           await ctx.eval("window.__streamingAnswerProof.showUnsupportedModel()");
-          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]')?.textContent.includes('当前模型不可用')");
+          await ctx.waitFor("document.querySelector('#streaming-answer-proof [data-assistant-run-error]')?.textContent.includes('not supported')");
         },
         assert: async () => {
-          const state = await ctx.eval(`(() => { const notice = document.querySelector('#streaming-answer-proof [data-testid=run-issue-notice]');
-            return { title: notice?.textContent.includes('当前模型不可用'), action: notice?.textContent.includes('请选择其他模型后重试'),
-              detailsCollapsed: !notice?.querySelector('details')?.open }; })()`);
-          ctx.assert(state.title && state.action && state.detailsCollapsed, JSON.stringify(state));
+          const state = await ctx.eval(`(() => { const host = document.querySelector('#streaming-answer-proof');
+            return { text: host.querySelector('[data-assistant-run-error]')?.textContent,
+              cards: host.querySelectorAll('[data-testid=run-issue-notice]').length }; })()`);
+          ctx.assert(state.text?.includes('not supported') && state.cards === 0, JSON.stringify(state));
         },
-        screenshot: { name: "unsupported-model-guidance", requireText: ["当前模型不可用", "请选择其他模型后重试"] },
+        screenshot: { name: "unsupported-model-guidance", requireText: ["本次任务未完成", "not supported"] },
       }),
     },
     {

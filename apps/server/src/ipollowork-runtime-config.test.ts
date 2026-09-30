@@ -87,7 +87,7 @@ describe("ipollowork runtime config file", () => {
     expect(parsed.default_agent).toBe("ipollowork");
     expect(Array.isArray(parsed.plugin)).toBe(true);
     expect((parsed.plugin as string[]).join("\n")).not.toContain("chrome-devtools");
-    expect(parsed.plugin).toEqual([]);
+    expect(parsed.plugin).toEqual([expect.stringContaining("ipollowork-session-host.ts")]);
     expect(mcp.ipollowork).toEqual({
       type: "remote",
       url: "http://127.0.0.1:0/engine-tools/mcp?workspaceId=ws_1",

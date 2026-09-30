@@ -219,12 +219,6 @@ importers:
 
   apps/desktop:
     dependencies:
-      '@ffmpeg-installer/ffmpeg':
-        specifier: ^1.1.0
-        version: 1.1.0
-      '@ffprobe-installer/ffprobe':
-        specifier: ^2.1.2
-        version: 2.1.2
       '@modelcontextprotocol/sdk':
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
@@ -268,6 +262,12 @@ importers:
       '@electron/asar':
         specifier: ^3.4.1
         version: 3.4.1
+      '@ffmpeg-installer/ffmpeg':
+        specifier: ^1.1.0
+        version: 1.1.0
+      '@ffprobe-installer/ffprobe':
+        specifier: ^2.1.2
+        version: 2.1.2
       '@ipollowork/types':
         specifier: workspace:*
         version: link:../../packages/types

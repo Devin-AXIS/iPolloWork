@@ -1,6 +1,6 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile, realpath, readdir, stat } from "node:fs/promises";
+import { mkdir, readFile, writeFile, realpath, readdir, rename, rm, stat } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { dirname, relative, sep, join } from "node:path";
 import { z } from "zod";
@@ -30,6 +30,7 @@ const pixelReviewSchema = z.object({
 const receiptSchema = z.object({
   status: z.enum(["preparing", "rendering", "complete", "failed"]),
   startedAt: z.number(), jobId: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
+  studioPort: z.number().int().min(1).max(65_535).optional(),
   progress: z.number().optional(), stage: z.string().optional(), error: z.string().optional(),
   outputPath: z.string().optional(), size: z.number().optional(),
   pixelReview: pixelReviewSchema.optional(),
@@ -37,6 +38,7 @@ const receiptSchema = z.object({
 });
 type Receipt = z.infer<typeof receiptSchema>;
 const preparing = new Set<string>();
+const RENDER_TIMEOUT_MS = 3 * 60 * 60_000;
 
 /** Snapshot the bounded project, including nested composition/media dependencies, not its generated renders. */
 export async function videoProjectFingerprint(directory: string) {
@@ -221,9 +223,17 @@ export async function videoRenderAction(workspace: { id: string; path: string },
   await mkdir(renders, { recursive: true });
   if (!(await realpath(renders)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Render directory escapes workspace");
   const receiptPath = `${renders}/.export-${createHash("sha256").update(input.operationKey).digest("hex")}.json`;
-  const base = `http://127.0.0.1:${hyperframesStudioPort(project)}/api`;
-  const save = (receipt: Receipt) => writeFile(receiptPath, JSON.stringify(receipt), "utf8");
-  const review = async (output: string, sourceHash?: string) => {
+  const save = async (receipt: Receipt) => {
+    const temporaryPath = `${receiptPath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporaryPath, JSON.stringify(receipt), "utf8");
+      await rename(temporaryPath, receiptPath);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  };
+  const review = async (output: string, studioPort: number, sourceHash?: string) => {
+    const base = `http://127.0.0.1:${studioPort}/api`;
     const html = await readFile(actual, "utf8");
     if (!sourceHash || await videoProjectFingerprint(directory) !== sourceHash) throw new Error("Video source changed (including dependencies) during rendering; this output cannot pass delivery review.");
     const response = await fetch(`${base}/projects/${project}/thumbnail/index.html?review=runtime`, { signal: AbortSignal.timeout(60000) }).catch(error => { throw new Error(`Video runtime inspection unavailable; delivery remains a draft: ${error instanceof Error ? error.message : String(error)}`); });
@@ -260,9 +270,9 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       try {
         const ready = await uiControlRequest("/video/ensure-studio", { method: "POST", timeoutMs: 100000,
           body: { workspaceId: workspace.id, projectId: project } });
-        if (!ready || typeof ready !== "object" || !("ok" in ready) || ready.ok !== true) {
-          throw new Error(`Cannot start bundled Studio: ${JSON.stringify(ready)}`);
-        }
+        const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535).optional() }).parse(ready);
+        const studioPort = studio.port ?? hyperframesStudioPort(project);
+        const base = `http://127.0.0.1:${studioPort}/api`;
         const sourceHash = await videoProjectFingerprint(directory);
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, {
           format: "mp4",
@@ -270,9 +280,10 @@ export async function videoRenderAction(workspace: { id: string; path: string },
           fps: 30,
           ...(input.reviewOnly ? { captureSize: { width: 640, height: 360 } } : {}),
         }));
-        await save({ ...initial, ...job, sourceHash, status: "rendering", stage: "Rendering MP4" });
+        await save({ ...initial, ...job, studioPort, sourceHash, status: "rendering", stage: "Rendering MP4" });
       } catch (error) {
         await save({ ...initial, status: "failed", error: error instanceof Error ? error.message : String(error) });
+        await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
       } finally { preparing.delete(receiptPath); }
     })().catch(error => console.error("[video-render] receipt persistence failed", error instanceof Error ? error.message : String(error)));
     return { ...receipt, operationKey: input.operationKey, pollAfterMs: 2000 };
@@ -286,6 +297,16 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     await save(receipt);
   }
   if (receipt.status === "rendering" && receipt.jobId) {
+    const studioPort = receipt.studioPort ?? hyperframesStudioPort(project);
+    const base = `http://127.0.0.1:${studioPort}/api`;
+    if ((input.review || input.reviewOnly) && receipt.sourceHash
+      && await videoProjectFingerprint(directory) !== receipt.sourceHash) {
+      receipt = { ...receipt, status: "failed", outputPath: undefined,
+        error: "Video source changed (including dependencies) during rendering; this output cannot pass delivery review." };
+      await save(receipt);
+      await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
+      return { ...receipt, operationKey: input.operationKey };
+    }
     try {
       // Studio removes completed jobs from memory after five minutes. Its
       // persisted metadata remains authoritative after a long continuation.
@@ -295,7 +316,7 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
         const size = (await stat(output)).size;
         if (!size) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await review(output, receipt.sourceHash) : undefined;
+        const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
         receipt = { ...receipt, status: pixelReview?.valid === false ? "failed" : "complete", progress: 100, ...(pixelReview?.valid === false ? { error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
         await save(receipt);
         await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
@@ -321,13 +342,14 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
         const size = (await stat(output)).size;
         if (size === 0) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await review(output, receipt.sourceHash) : undefined;
+        const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
         receipt = { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
       }
-      if (Date.now() - receipt.startedAt > 1800000 && receipt.status === "rendering") throw new Error("Export exceeded the 30-minute limit; check the existing Studio job before retrying.");
+      if (Date.now() - receipt.startedAt > RENDER_TIMEOUT_MS && receipt.status === "rendering") throw new Error("Export exceeded the 3-hour limit; check the existing Studio job before retrying.");
     } catch (error) {
-      const transient = error instanceof Error && ["TimeoutError", "AbortError", "TypeError"].includes(error.name);
-      receipt = { ...receipt, status: transient && Date.now() - receipt.startedAt < 1800000 ? "rendering" : "failed", error: error instanceof Error ? error.message : String(error) };
+      const withinDeadline = Date.now() - receipt.startedAt < RENDER_TIMEOUT_MS;
+      const message = error instanceof Error ? error.message : String(error);
+      receipt = { ...receipt, status: withinDeadline && !message.includes("source changed") ? "rendering" : "failed", error: message };
     }
     await save(receipt);
     if (receipt.status === "complete" || receipt.status === "failed") await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });

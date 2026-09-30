@@ -1779,7 +1779,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
           { pluginId: "douyin-ops", version: "0.2.14", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-channels-ops", version: "0.1.9", installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-channels-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.17", installedVersion: "0.3.17", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.10", installedVersion: "0.3.10", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
@@ -1930,7 +1930,7 @@ describe("plugin package lifecycle", () => {
       const socialServices = [
         { id: "xiaohongshu-ops", version: "0.4.17", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
         { id: "douyin-ops", version: "0.2.14", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
-        { id: "wechat-channels-ops", version: "0.1.9", skill: "wechat-channels-ops-worker", heading: "# 视频号运营台", action: "open-workbench" },
+        { id: "wechat-channels-ops", version: "0.1.11", skill: "wechat-channels-ops-worker", heading: "# 视频号运营台", action: "open-workbench" },
       ];
       for (const service of socialServices) {
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {

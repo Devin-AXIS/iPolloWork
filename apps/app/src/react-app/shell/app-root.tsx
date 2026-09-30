@@ -52,6 +52,8 @@ function BrowserControlActions() {
       { name: "url", type: "string", required: true, description: "The website URL to open." },
       { name: "profileId", type: "string", required: false, description: "Persistent browser profile returned by the account plugin." },
       { name: "taskId", type: "string", required: false, description: "Host-owned task scope for an isolated tab that shares the selected profile login." },
+      { name: "loginUi", type: "object", required: false, description: "Host-owned plugin login UI policy." },
+      { name: "sessionRecovery", type: "object", required: false, description: "Host-owned plugin session recovery policy." },
     ],
     previewArgs: { url: "https://example.com" },
     disabled: !isElectronRuntime(),
@@ -60,9 +62,42 @@ function BrowserControlActions() {
       if (!url) return { ok: false, error: "Missing URL." };
       const profileId = controlStringArg(args, "profileId");
       const taskId = controlStringArg(args, "taskId");
-      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId ? {
+      const object = controlObjectArg(args);
+      const rawLoginUi = object ? controlObjectArg(Reflect.get(object, "loginUi")) : null;
+      const loginOrigin = controlStringArg(rawLoginUi, "origin");
+      const loginPath = controlStringArg(rawLoginUi, "path");
+      const loginWhenText = controlStringArg(rawLoginUi, "whenText");
+      const loginSelector = controlStringArg(rawLoginUi, "selector");
+      const rawRecovery = object ? controlObjectArg(Reflect.get(object, "sessionRecovery")) : null;
+      const recoveryOrigin = controlStringArg(rawRecovery, "origin");
+      const recoveryLoginPath = controlStringArg(rawRecovery, "loginPath");
+      const recoveryAuthenticatedPath = controlStringArg(rawRecovery, "authenticatedPath");
+      const rawCookieNames = rawRecovery ? Reflect.get(rawRecovery, "cookieNames") : null;
+      const cookieNames = Array.isArray(rawCookieNames)
+        ? rawCookieNames.filter((name): name is string => typeof name === "string")
+        : [];
+      if (rawLoginUi && (!loginOrigin || !loginPath || !loginWhenText || !loginSelector)) {
+        return { ok: false, error: "Invalid browser login UI policy." };
+      }
+      if (rawRecovery && (!recoveryOrigin || !recoveryLoginPath || !recoveryAuthenticatedPath
+        || !Array.isArray(rawCookieNames) || cookieNames.length !== rawCookieNames.length)) {
+        return { ok: false, error: "Invalid browser session recovery policy." };
+      }
+      const result = await window.__IPOLLOWORK_ELECTRON__?.browser?.openUrl?.(url, profileId || taskId || rawLoginUi || rawRecovery ? {
         ...(profileId ? { profileId } : {}),
         ...(taskId ? { taskId } : {}),
+        ...(rawLoginUi ? { loginUi: {
+          origin: loginOrigin,
+          path: loginPath,
+          whenText: loginWhenText,
+          selector: loginSelector,
+        } } : {}),
+        ...(rawRecovery ? { sessionRecovery: {
+          origin: recoveryOrigin,
+          loginPath: recoveryLoginPath,
+          authenticatedPath: recoveryAuthenticatedPath,
+          cookieNames,
+        } } : {}),
       } : undefined);
       return result;
     },

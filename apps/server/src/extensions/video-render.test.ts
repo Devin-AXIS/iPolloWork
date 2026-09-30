@@ -25,7 +25,12 @@ test("project fingerprint invalidates nested media, CSS and composition edits bu
     }
     await writeFile(join(root, "renders/proof.png"), "generated evidence");
     expect(await videoProjectFingerprint(root)).toBe(previous);
-    await symlink(join(root, "index.html"), join(root, "assets/unsafe.html"));
+    try {
+      await symlink(join(root, "index.html"), join(root, "assets/unsafe.html"), "file");
+    } catch (error) {
+      if (process.platform === "win32" && error instanceof Error && "code" in error && error.code === "EPERM") return;
+      throw error;
+    }
     await expect(videoProjectFingerprint(root)).rejects.toThrow("symlinks");
   } finally { await rm(root, { recursive: true, force: true }); }
 });
@@ -81,6 +86,7 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
   const workspace = { id: "ws_export", path: root };
   let starts = 0;
   let readyCalls = 0;
+  const renderUrls: string[] = [];
   let status = "rendering";
   const discovery = join(root, "bridge.json");
   await mkdir(join(root, "video/ses_export/renders"), { recursive: true });
@@ -89,8 +95,8 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
   process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
   globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
     const url = String(input);
-    if (url.endsWith("/video/ensure-studio")) { readyCalls++; return Response.json({ ok: true }); }
-    if (url.endsWith("/render")) { starts++; return Response.json({ jobId: `ses_export_job${starts}` }); }
+    if (url.endsWith("/video/ensure-studio")) { readyCalls++; return Response.json({ ok: true, port: 3456 }); }
+    if (url.endsWith("/render")) { renderUrls.push(url); starts++; return Response.json({ jobId: `ses_export_job${starts}` }); }
     if (url.endsWith("/progress")) return new Response(`event: progress\ndata: ${JSON.stringify({ status, progress: status === "complete" ? 100 : 35, stage: "rendering", ...(status === "failed" ? { error: "encoder failed" } : {}) })}\n\n`);
     throw new Error(`Unexpected URL ${url}`);
   }, nativeFetch);
@@ -106,6 +112,7 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
   try {
     expect((await videoRenderAction(workspace, "video_render_start", args)).status).toBe("preparing");
     expect((await settle()).status).toBe("rendering");
+    expect(renderUrls[0]).toBe("http://127.0.0.1:3456/api/projects/ses_export/render");
     await videoRenderAction(workspace, "video_render_start", args);
     expect(starts).toBe(1);
     expect(readyCalls).toBe(1);

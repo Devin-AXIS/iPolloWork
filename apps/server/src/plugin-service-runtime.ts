@@ -140,6 +140,38 @@ export async function listPluginServiceActions(
     .flatMap((entry) => actionsForManifest(entry.manifest));
 }
 
+export async function pluginBrowserSessionOptions(
+  config: ServerConfig,
+  profileId: string,
+  rawUrl: string,
+) {
+  const separator = profileId.indexOf(":");
+  if (separator <= 0) return null;
+  let target: URL;
+  try {
+    target = new URL(rawUrl);
+  } catch {
+    return null;
+  }
+  const pluginId = profileId.slice(0, separator);
+  const installed = (await listInstalledPluginPackages({ serverConfig: config }))
+    .find((entry) => entry.enabled && entry.pluginId === pluginId);
+  const browserSession = installed?.manifest.resources
+    .find((resource) => resource.type === "local-service" && resource.browserSession)
+    ?.browserSession;
+  if (!browserSession || target.origin !== browserSession.origin || !browserSession.paths.includes(target.pathname)) {
+    return null;
+  }
+  return {
+    ...(browserSession.loginUi
+      ? { loginUi: { ...browserSession.loginUi, origin: browserSession.origin } }
+      : {}),
+    ...(browserSession.sessionRecovery
+      ? { sessionRecovery: { ...browserSession.sessionRecovery, origin: browserSession.origin } }
+      : {}),
+  };
+}
+
 async function loadService(factoryPath: string, runtime: PluginServiceRuntime): Promise<PluginService> {
   const loaded: unknown = await import(pathToFileURL(factoryPath).href);
   const factory = isRecord(loaded) ? loaded.default : null;

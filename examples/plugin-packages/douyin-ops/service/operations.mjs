@@ -323,6 +323,33 @@ export class Operations {
     }
     return { job: resolved };
   }
+  reconcilePublishLink(input) {
+    const job = this.store.get('job', text(input.jobId, '操作 ID', 100));
+    if (!job || job.browserAction !== 'publish-draft' || job.status !== 'succeeded') fail('只能核对已成功发布的网页任务');
+    const expectedUrl = text(input.expectedUrl, '待核对作品链接', 500);
+    const alreadyUnavailable = job.result?.linkStatus === 'unavailable' && job.result.unverifiedUrl === expectedUrl;
+    if (!alreadyUnavailable && job.result?.url !== expectedUrl) fail('待核对链接与发布回执不一致');
+    const evidence = text(input.evidence, '官方页面核对依据', 2000);
+    return this.store.transaction(() => {
+      const { url, ...receipt } = job.result;
+      const corrected = alreadyUnavailable ? job : this.store.put('job', { ...job,
+        result: { ...receipt, unverifiedUrl: url, linkStatus: 'unavailable', linkEvidence: evidence }, updatedAt: Date.now() });
+      let reconciledVideoLists = 0;
+      for (const read of this.store.list('job', job.accountId, 1000)) {
+        if (read.browserAction !== 'list-videos' || read.status !== 'succeeded' || !Array.isArray(read.result?.list)) continue;
+        const list = read.result.list.map(item => {
+          if (item.link !== expectedUrl) return item;
+          const { link, ...verifiedFields } = item;
+          return verifiedFields;
+        });
+        if (list.some((item, index) => item !== read.result.list[index])) {
+          this.store.put('job', { ...read, result: { ...read.result, list }, updatedAt: Date.now() });
+          reconciledVideoLists += 1;
+        }
+      }
+      return { job: corrected, reused: alreadyUnavailable && reconciledVideoLists === 0, reconciledVideoLists };
+    });
+  }
   browserTarget(input) {
     const account = input.accountId ? this.account(input.accountId) : null;
     if (!['creator', 'search'].includes(input.kind)) fail('不支持的网页入口');
@@ -366,6 +393,7 @@ export class Operations {
       case 'publish-draft': return this.publishDraft(input);
       case 'reply-comment': return this.replyComment(input);
       case 'resolve-job': return this.resolveJob(input);
+      case 'reconcile-publish-link': return this.reconcilePublishLink(input);
       case 'search-videos': return this.searchVideos(input);
       case 'browser-target': return this.browserTarget(input);
       case 'get-job': return { job: this.store.get('job', text(input.jobId, '操作 ID', 100)) ?? fail('操作不存在') };

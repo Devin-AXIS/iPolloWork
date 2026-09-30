@@ -37,7 +37,7 @@ export default function createWorkbench(runtime) {
     return { url: `${origin}/#token=${token}` };
   }
   const names = ['studio-state', 'list-accounts', 'start-authorization', 'import-media', 'save-draft', 'publish-draft',
-    'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job',
+    'list-videos', 'video-data', 'list-comments', 'reply-comment', 'search-videos', 'browser-target', 'get-job', 'resolve-job', 'reconcile-publish-link',
     'connect-browser', 'verify-browser-account', 'claim-browser-job', 'finish-browser-job', 'comment-video'];
   return {
     actions: { 'open-workbench': ensureStarted, ...Object.fromEntries(names.map(name => [name, async (input, context) => {

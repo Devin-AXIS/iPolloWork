@@ -402,6 +402,7 @@ const studioLiteralZh: Record<string, string> = {
   "Visuals, voice and materials in one plan": "画面、旁白与素材，一张表规划",
   "Reset changes": "放弃修改",
   "Save script": "保存脚本",
+  "Save and regenerate video": "保存并重新生成视频",
   "Shot title": "镜头标题",
   "Automatic theme": "自动主题",
   "Custom theme": "自选主题",
@@ -605,8 +606,8 @@ const studioLiteralZh: Record<string, string> = {
     "先描述镜头，再选择已有素材或让 AI 生成素材。",
   "New shot": "新镜头",
   "Add shot": "添加镜头",
-  "This editable table saves to STORYBOARD.md. The agent uses this same script to produce the video.":
-    "此表格直接编辑并保存到 STORYBOARD.md；AI 会沿用同一份脚本制作视频。",
+  "The first script version produces the video automatically. Save and regenerate after editing this table.":
+    "第一版脚本会自动生成视频；修改此表后可保存并重新生成。",
   "Check script fields": "检查脚本字段",
   "Could not load storyboard.": "无法载入分镜。",
   "Loading storyboard…": "正在载入分镜…",

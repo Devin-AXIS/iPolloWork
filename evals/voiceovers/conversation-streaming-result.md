@@ -30,13 +30,13 @@
 
 15. During an automatic retry, the conversation shows a calm retry status and countdown. The transport error remains in collapsed technical details.
 
-16. When retries end in a terminal error, the conversation gives a short reason and next action. Technical detail can be expanded and copied for support.
+16. When retries end in a terminal error, the reason appears as ordinary text at the end of that response, without a separate error card.
 
-17. If an image was saved before the run fails, its open action and generated status remain available; the separate run notice explains that the overall task did not finish.
+17. If an image was saved before the run fails, its open action and generated status remain available; the reason appears in the same response text.
 
-18. After an interrupted run is loaded from history, its partial answer remains visible and the interruption appears once as a neutral status instead of a raw engine error.
+18. After an interrupted run is loaded from history, its partial answer remains visible and the interruption reason appears once as plain response text.
 
-19. If the selected model is unsupported by this account, the notice says that the model is unavailable and asks the user to choose another model. The provider's raw error remains in collapsed details.
+19. If the selected model is unsupported by this account, the reason appears as ordinary text in the conversation, without an error card.
 
 20. Expanding a completed run shows icon-labeled action groups for file inspection and command execution. Each group starts closed, opens to reveal its original steps, and can be folded again without hiding the final answer.
 

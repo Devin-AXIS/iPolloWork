@@ -1029,7 +1029,7 @@ type MessageComponentProps = {
 const MessageComponent = React.memo(
   ({ message, artifactMessages, isLastMessage, isStreaming, isLastStep, hideProcess, showLatestArtifactsTitle, requestNaming, requestOrdinal, artifactRequestOwnership, templateEntryPath, artifactFiles, artifactContext, imageStatus, deferFilesWhileStreaming = false }: MessageComponentProps) => {
     if (isSessionErrorMessage(message)) {
-      return <ErrorMessage error={getMessagesText([message]) || t("message.session_failed")} />
+      return <AssistantRunErrorText error={getMessagesText([message]) || t("message.session_failed")} />
     }
 
     if (isEmptyMessage(message) && !isStreaming) {
@@ -1109,7 +1109,7 @@ const LoadingMessage = React.memo(({ label, paused = false, startedAt = null }: 
 
 LoadingMessage.displayName = "LoadingMessage"
 
-interface ErrorMessageProps {
+interface AssistantRunErrorTextProps {
   error: string | null
 }
 
@@ -1160,11 +1160,11 @@ export function RunIssueNotice({ detail, kind, onDismiss, children }: {
   )
 }
 
-function ErrorMessage({ error }: ErrorMessageProps) {
+function AssistantRunErrorText({ error }: AssistantRunErrorTextProps) {
   return (
-    <Message className="not-prose mx-auto flex w-full max-w-[800px] flex-col items-start gap-2 px-0 md:px-10">
-      <RunIssueNotice key={error} detail={error} />
-    </Message>
+    <p className={cn(ASSISTANT_COLUMN_CLASS_NAME, "whitespace-pre-wrap break-words text-sm text-foreground")} data-assistant-run-error="true" data-chat-readable-text="true">
+      {t("session.run_failed_title")}：{error}
+    </p>
   )
 }
 
@@ -1294,6 +1294,7 @@ interface AssistantMessageGroupProps {
   runStartedAt?: number | null
   runEndedAt?: number | null
   runTimings?: Record<string, { startedAt: number; endedAt: number }>
+  terminalError?: string | null
 }
 
 function MessageGroup({
@@ -1313,6 +1314,7 @@ function MessageGroup({
   runStartedAt = null,
   runEndedAt = null,
   runTimings = {},
+  terminalError = null,
 }: AssistantMessageGroupProps) {
   const { onRevertToUserMessage, onForkAtMessage, sessionTitle, showThinking, waitingLabel } = useMessageList()
   const lastItem = items[items.length - 1]
@@ -1323,12 +1325,13 @@ function MessageGroup({
   const isLatestAssistantGroup = items.some(
     (item) => item.message.id === latestAssistantMessageId,
   )
-  const isLiveGroup = isStreaming && items.some(
-    (item) => item.message.id === activeAssistantMessageId,
-  )
   const precedingUser = messages.slice(0, items[0].index).findLast((message) => message.role === "user" && !isInternalContinuationMessage(message))
   const latestUser = messages.findLast((message) => message.role === "user" && !isInternalContinuationMessage(message))
   const currentTurn = isLatestAssistantGroup && precedingUser?.id === latestUser?.id
+  const isLiveGroup = isStreaming && (
+    items.some((item) => item.message.id === activeAssistantMessageId)
+    || (currentTurn && activeAssistantMessageId === undefined)
+  )
   const liveProcess = isLiveGroup
   const artifactMessages = React.useMemo(
     () => getAssistantGroupArtifactMessages(items),
@@ -1366,7 +1369,7 @@ function MessageGroup({
     [artifactMessages],
   )
 
-  if (!lastItem || (isMessageEmptyGroup(items) && requestArtifactFiles.length === 0)) {
+  if (!lastItem || (isMessageEmptyGroup(items) && requestArtifactFiles.length === 0 && !terminalError)) {
     return null
   }
 
@@ -1380,7 +1383,7 @@ function MessageGroup({
   // Unphased text can be followed by more tools. Keep it in the live timeline
   // until the turn ends instead of moving the latest paragraph between sections.
   const resultItemIndex = itemRenderData.findLastIndex(({ item, groups }) =>
-    ((!liveProcess && !runIncomplete) || isAssistantFinalAnswerMessage(item.message))
+    (!liveProcess || isAssistantFinalAnswerMessage(item.message))
       && !isAssistantCommentaryMessage(item.message)
       && !isSessionErrorMessage(item.message)
       && (groups.some((group) => group.kind === "text" && Boolean(group.text.trim()))
@@ -1444,6 +1447,13 @@ function MessageGroup({
     : null
   const hasSessionError = items.some((item) => isSessionErrorMessage(item.message))
   const sessionErrorItem = items.find((item) => isSessionErrorMessage(item.message))
+  const inlineError = terminalError ?? (sessionErrorItem ? getMessagesText([sessionErrorItem.message]) || t("message.session_failed") : null)
+  const responseActionMessages: UIMessage[] = inlineError
+    ? [...renderableItems.map(({ message }) => message), {
+        id: `${lastItem.message.id}:error`, role: "assistant",
+        parts: [{ type: "text", text: `${t("session.run_failed_title")}：${inlineError}` }],
+      }]
+    : renderableItems.map(({ message }) => message)
 
   const renderProcessRow = (row: ProcessRow) => {
     const firstStep = row.kind === "tools" ? row.steps[0] : row.step
@@ -1552,9 +1562,10 @@ function MessageGroup({
             imageStatus={hasSessionError ? "failed" : imageStatus}
             deferFilesWhileStreaming={liveProcess}
           />
+          {inlineError && !isLiveGroup ? <AssistantRunErrorText error={inlineError} /> : null}
         </div>
       ) : null}
-      {sessionErrorItem ? <ErrorMessage error={getMessagesText([sessionErrorItem.message]) || t("message.session_failed")} /> : null}
+      {!resultData && inlineError && !isLiveGroup ? <AssistantRunErrorText error={inlineError} /> : null}
       {!isLiveGroup && scheduleApplyResult ? <ScheduleApplyResultCard result={scheduleApplyResult} /> : null}
       {lastTextMessage && !isStreaming && (
         <div
@@ -1562,9 +1573,9 @@ function MessageGroup({
           data-testid="assistant-message-actions"
         >
           <MessageActions className={MESSAGE_ACTIONS_CLASS_NAME}>
-            <CopyMessageButton messages={renderableItems.map((item) => item.message)} />
-            <SaveMessageAsMarkdownButton messages={renderableItems.map((item) => item.message)} />
-            <QuoteFollowUpButton messages={renderableItems.map((item) => item.message)} />
+            <CopyMessageButton messages={responseActionMessages} />
+            <SaveMessageAsMarkdownButton messages={responseActionMessages} />
+            <QuoteFollowUpButton messages={responseActionMessages} />
             {lastRealItem ? (
               <>
                 <MessageAction tooltip={t("message.branch_new_chat")}>
@@ -1616,9 +1627,10 @@ interface MessageListProps {
   runStartedAt?: number | null
   runEndedAt?: number | null
   runTimings?: Record<string, { startedAt: number; endedAt: number }>
+  deliveryError?: string | null
 }
 
-export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, deliveryIncomplete = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {} }: MessageListProps) {
+export function MessageList({ messages, status, retryStatus, templateEntryPath, artifactFiles, artifactRequestOwnership = [], artifactContext, activeMessageBaseline, assistantWaitLabel, stoppedImageMessageIds = EMPTY_STOPPED_IMAGE_MESSAGE_IDS, stopAcknowledged = false, deliveryIncomplete = false, runOutcome = null, finalizing = false, runStartedAt = null, runEndedAt = null, runTimings = {}, deliveryError = null }: MessageListProps) {
   const { sessionTitle, waitingLabel } = useMessageList()
   const deliveredPaths = React.useMemo(() => getArtifactsFromMessages(messages.filter(isStudioResultMessage)).map(artifact => artifact.path), [messages])
   const isStreaming = !stopAcknowledged
@@ -1656,8 +1668,11 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
     () => isStreaming ? getActiveAssistantMessageId(messages.filter(message => !isStudioResultMessage(message)), activeMessageBaseline) : undefined,
     [activeMessageBaseline, isStreaming, messages],
   )
-  const error = useSessionErrorMessage();
-  const hasSessionErrorMessage = React.useMemo(() => messages.some(isSessionErrorMessage), [messages])
+  const activityError = useSessionErrorMessage();
+  const error = deliveryError ?? activityError;
+  const latestUserIndex = messages.findLastIndex(message => message.role === "user" && !isInternalContinuationMessage(message))
+  const latestSessionErrorMessage = messages.slice(latestUserIndex + 1).findLast(isSessionErrorMessage)
+  const latestErrorTargetId = latestTurnAssistantMessageId ?? latestSessionErrorMessage?.id
   const liveActionLabel = isStreaming
     ? getActiveToolLabel(collectToolParts(messages))
     : null
@@ -1678,6 +1693,7 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
               runStartedAt={runStartedAt}
               runEndedAt={runEndedAt}
               runTimings={runTimings}
+              terminalError={item.messages.some(({ message }) => message.id === latestErrorTargetId) ? error : null}
               templateEntryPath={templateEntryPath}
               artifactFiles={supplementalArtifactFiles}
               artifactRequestOwnership={resolvedArtifactRequestOwnership}
@@ -1738,8 +1754,8 @@ export function MessageList({ messages, status, retryStatus, templateEntryPath, 
         ? <LoadingMessage label={waitingLabel ?? liveActionLabel ?? assistantWaitLabel ?? undefined} paused={Boolean(waitingLabel)} startedAt={runStartedAt} />
         : null}
       {retryStatus ? <RetryMessage status={retryStatus} /> : null}
-      {error && !hasSessionErrorMessage ? <ErrorMessage error={error} /> : null}
-      {stopAcknowledged && !error && !hasSessionErrorMessage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0 md:px-10"><RunIssueNotice kind="stopped" /></Message> : null}
+      {error && !latestErrorTargetId ? <AssistantRunErrorText error={error} /> : null}
+      {stopAcknowledged && !error && !latestSessionErrorMessage ? <Message className="not-prose mx-auto w-full max-w-[800px] px-0 md:px-10"><RunIssueNotice kind="stopped" /></Message> : null}
     </div>
     </StudioDeliveryPaths.Provider>
   )

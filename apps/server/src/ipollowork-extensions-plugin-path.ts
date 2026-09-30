@@ -34,6 +34,7 @@ export function ipolloworkPluginPath(name: string, here = dirname(fileURLToPath(
 }
 
 export const ipolloworkExtensionsPreviewPluginPath = () => ipolloworkPluginPath("ipollowork-extensions-preview");
+export const ipolloworkSessionHostPluginPath = () => ipolloworkPluginPath("ipollowork-session-host");
 export const ipolloworkCapabilitiesKnowledgePluginPath = () => ipolloworkPluginPath("ipollowork-capabilities-knowledge");
 export const ipolloworkAnthropicAdaptiveThinkingPluginPath = () => ipolloworkPluginPath("ipollowork-anthropic-adaptive-thinking");
 export const ipolloworkAnthropicToolSchemaPluginPath = () => ipolloworkPluginPath("ipollowork-anthropic-tool-schema");

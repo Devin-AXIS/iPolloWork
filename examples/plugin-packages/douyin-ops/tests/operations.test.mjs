@@ -321,6 +321,36 @@ test('browser publishing treats a matching work under review as an accepted subm
   assert.equal(f.store.get('draft', draft.id).status, 'succeeded');
 });
 
+test('published creator-console receipts need no guessed public URL and a bad saved link can be quarantined', async t => {
+  const f = await fixture(t), { account, identity } = await browserAccount(f);
+  await writeFile(resolve(f.workspaceRoot, 'video.mp4'), mp4);
+  const { asset } = await f.ops.importMedia({ sourcePath: 'video.mp4' });
+  const { draft } = f.ops.saveDraft({ accountId: account.id, title: '已发布作品', text: '已确认文案', assetId: asset.id });
+  const { job } = await f.ops.action('publish-draft', { accountId: account.id, draftId: draft.id, operationKey: 'published-without-url' });
+  const claim = await f.ops.action('claim-browser-job', { jobId: job.id, ...identity });
+  const receipt = { jobId: job.id, ...identity, executionToken: claim.executionToken, outcome: 'succeeded',
+    publicationStatus: 'published', evidence: '官方内容管理出现精确标题作品，状态已发布。' };
+  const finished = await f.ops.action('finish-browser-job', receipt);
+  assert.equal(finished.job.status, 'succeeded');
+  assert.equal(finished.job.result.url, undefined);
+
+  const savedUrl = 'https://www.douyin.com/video/1234567890';
+  f.store.put('job', { ...finished.job, result: { ...finished.job.result, url: savedUrl } });
+  const corrected = await f.ops.action('reconcile-publish-link', { jobId: job.id, expectedUrl: savedUrl,
+    evidence: '官方公开页显示“你要观看的视频不存在”，管理页仍显示作品已发布。' });
+  assert.equal(corrected.job.status, 'succeeded');
+  assert.equal(corrected.job.result.url, undefined);
+  assert.equal(corrected.job.result.unverifiedUrl, savedUrl);
+  assert.equal(corrected.job.result.linkStatus, 'unavailable');
+  assert.equal((await f.ops.action('reconcile-publish-link', { jobId: job.id, expectedUrl: savedUrl, evidence: '同一核对依据' })).reused, true);
+  f.store.put('job', { id: 'read-with-unverified-link', accountId: account.id, browserAction: 'list-videos',
+    status: 'succeeded', result: { list: [{ title: '已发布作品', link: savedUrl, statistics: { play_count: '0' } }] } });
+  const scrubbed = await f.ops.action('reconcile-publish-link', { jobId: job.id, expectedUrl: savedUrl, evidence: '公开页再次显示视频不存在' });
+  assert.equal(scrubbed.reconciledVideoLists, 1);
+  assert.deepEqual(f.store.get('job', 'read-with-unverified-link').result.list,
+    [{ title: '已发布作品', statistics: { play_count: '0' } }]);
+});
+
 test('browser links route data without pretending to be API IDs, and read counts are enforced', async t => {
   const f = await fixture(t), { account } = await f.connect();
   const link = 'https://www.douyin.com/video/1234567890';
@@ -343,10 +373,14 @@ test('browser instructions queue while only one job may own an account browser',
   const a = await f.ops.action('comment-video', { ...input, operationKey: 'queue-a' });
   const b = await f.ops.action('comment-video', { ...input, operationKey: 'queue-b' });
   const claim = await f.ops.action('claim-browser-job', { ...identity, jobId: a.job.id });
-  await assert.rejects(f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id }), /上一项任务/);
+  const queued = await f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id });
+  assert.equal(queued.queued, true);
+  assert.equal(queued.blockedByJobId, a.job.id);
   assert.equal(f.store.get('job', b.job.id).status, 'pending');
   await f.ops.action('finish-browser-job', { ...identity, jobId: a.job.id, executionToken: claim.executionToken, outcome: 'uncertain', evidence: '模拟提交后反馈中断' });
-  await assert.rejects(f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id }), /待核对/);
+  const awaitingReconciliation = await f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id });
+  assert.equal(awaitingReconciliation.queued, true);
+  assert.equal(awaitingReconciliation.requiresReconciliation, true);
   f.ops.resolveJob({ jobId: a.job.id, outcome: 'failed', evidence: '模拟核对没有提交' });
   assert.equal((await f.ops.action('claim-browser-job', { ...identity, jobId: b.job.id })).job.status, 'running');
 });
