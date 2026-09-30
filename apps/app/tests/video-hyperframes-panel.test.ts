@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   hyperframesStudioPort,
   hyperframesStudioUrl,
+  publicationUserInterventionRequired,
   shouldInjectVideoTaskContext,
   videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
@@ -25,6 +26,18 @@ import {
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
+  test("downloads and verifies video codecs on first open before starting Studio", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(panelSource).toContain("await videoResourceInstall(readDenSettings().baseUrl)");
+    expect(panelSource).toContain('setStartupStage("downloading-resources")');
+    expect(panelSource).toContain('data-testid="video-resource-download-progress"');
+    expect(panelSource).toContain("if (!resourcesReady)");
+  });
+
   test("shows avatar preparation failures instead of a waiting placeholder", () => {
     const source = readFileSync(
       new URL("../src/react-app/domains/session/video/video-avatar-panel.tsx", import.meta.url),
@@ -835,8 +848,10 @@ describe("HyperFrames Video Studio", () => {
     );
 
     expect(electronSource).toContain(
-      'spawnLocalHyperframes(["preview", projectPath, "--port", String(port), "--no-open"], projectPath)',
+      'spawnLocalHyperframes(["preview", projectPath, "--port", String(allocatedPort), "--no-open"], projectPath)',
     );
+    expect(electronSource).toContain("reserveHyperframesPort(port, key)");
+    expect(electronSource).not.toContain("stopStaleHyperframesPort(port, projectPath)");
     expect(electronSource).toContain("runningProjectName === expectedProjectName");
   });
 
@@ -1282,6 +1297,16 @@ describe("HyperFrames Video Studio", () => {
     expect(videoHostExportOperationKey("ses_video", "client:request-1")).toBe("ipw:ses_video:client-request-1:export");
   });
 
+  test("pauses publication only for a confirmed user login boundary", () => {
+    expect(publicationUserInterventionRequired(
+      "我已经打开官方平台页。现在读取页面快照，判断是否已登录或需要用户扫码。",
+    )).toBe(false);
+    expect(publicationUserInterventionRequired(
+      "当前页面仍然停留在登录页，请你扫码登录后继续。",
+    )).toBe(true);
+    expect(publicationUserInterventionRequired("Login required before publication can continue.")).toBe(true);
+  });
+
   test("injects the Video Studio contract before animation guidance", () => {
     const sessionRouteSource = readFileSync(
       new URL("../src/react-app/shell/session-route.tsx", import.meta.url),
@@ -1311,6 +1336,8 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain(
       "Create/update the existing Studio STORYBOARD.md as the editable production blueprint",
     );
+    expect(contract).toContain("The first complete storyboard version is approved by default as production input");
+    expect(contract).toContain("finished-video, export, or publication request itself authorizes production from version one");
     expect(contract).toContain("record exact project-relative paths");
     expect(contract).toContain("music_asset");
     expect(contract).toContain("sound_effect_reference");
@@ -1456,6 +1483,7 @@ describe("HyperFrames Video Studio", () => {
     expect(voiceContract).toContain("speech_synthesize_workspace_batch");
     expect(visualContract.length).toBeLessThan(voiceContract.length);
     expect(videoPromptRequestsVoiceoverContext("video-voice-reference", "")).toBe(true);
+    expect(videoPromptRequestsVoiceoverContext("video-delivery-recovery", "")).toBe(true);
     expect(videoPromptRequestsVoiceoverContext(undefined, "请给这个视频添加旁白")).toBe(true);
     expect(videoPromptRequestsVoiceoverContext(undefined, "Make the second scene longer")).toBe(
       false,
@@ -1539,7 +1567,34 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("update-element");
     expect(contract).toContain("freeform-patch");
     expect(contract).toContain("For a small local edit, patch only that element");
-    expect(contract).toContain("do not impose a review gate unless the user requested it");
+    expect(contract).toContain("script review is optional and non-blocking unless the user explicitly asks to review first");
+  });
+
+  test("lets the embedded script table save and regenerate through the active video session", () => {
+    const panelSource = readFileSync(
+      new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
+      "utf8",
+    );
+    const pageSource = readFileSync(
+      new URL("../src/react-app/domains/session/chat/session-page.tsx", import.meta.url),
+      "utf8",
+    );
+    const tableSource = readFileSync(
+      new URL(
+        "../../../vendor/hyperframes/packages/studio/src/components/storyboard/StoryboardTable.tsx",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+
+    expect(tableSource).toContain('type: "ipollowork:video-studio-regenerate"');
+    expect(tableSource).toContain('tx("Save and regenerate video")');
+    expect(panelSource).toContain('event.data?.type !== "ipollowork:video-studio-regenerate"');
+    expect(panelSource).toContain("void onRegenerateFromStoryboard?.()");
+    expect(pageSource).toContain("createStoryboardRegenerationDraft(sourcePath)");
+    expect(pageSource).toContain('capability: { id: "video-storyboard-regeneration", instruction }');
+    expect(pageSource).toContain("onRegenerateVideoFromStoryboard={regenerateVideoFromStoryboard}");
+    expect(videoPromptRequestsVoiceoverContext("video-storyboard-regeneration", "")).toBe(true);
   });
 
   test("connects the editable shot plan to real media and purposeful motion", () => {

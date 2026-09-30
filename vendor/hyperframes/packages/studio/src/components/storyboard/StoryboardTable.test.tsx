@@ -79,7 +79,7 @@ describe("StoryboardTable interactions", () => {
   let root: Root;
 
   beforeEach(() => {
-    mocks.writeProjectFile.mockClear();
+    mocks.writeProjectFile.mockReset().mockResolvedValue(undefined);
     mocks.uploadProjectFiles.mockReset().mockResolvedValue(["media/imported.png"]);
     mocks.assets = ["media/cover.png", "media/music-bed.mp3", "media/hit.wav"];
     container = document.createElement("div");
@@ -466,6 +466,54 @@ describe("StoryboardTable interactions", () => {
         voiceId: "warm-voice",
         voiceModel: "cosyvoice-v3-flash",
         voiceName: "Warm voice",
+      });
+    } finally {
+      if (originalParent) Object.defineProperty(window, "parent", originalParent);
+      else Reflect.deleteProperty(window, "parent");
+    }
+  });
+
+  it("saves edits and asks the Work host to regenerate from the canonical script", async () => {
+    const originalParent = Object.getOwnPropertyDescriptor(window, "parent");
+    const host = { postMessage: vi.fn() } as unknown as Window;
+    try {
+      flushSync(() => root.unmount());
+      Object.defineProperty(window, "parent", { configurable: true, value: host });
+      root = createRoot(container);
+      flushSync(() =>
+        root.render(
+          <StoryboardTable projectId="project-1" data={response()} onSaved={vi.fn()} />,
+        ),
+      );
+      flushSync(() =>
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            source: host,
+            data: {
+              type: "ipollowork:studio-host-context",
+              projectId: "project-1",
+              actions: { regenerateFromStoryboard: true },
+            },
+          }),
+        ),
+      );
+      const narration = container.querySelector<HTMLTextAreaElement>("#storyboard-narration-1");
+      if (!narration) throw new Error("Narration field missing");
+      setControlValue(narration, "Use the revised narration.");
+      const regenerate = [...container.querySelectorAll("button")].find((button) =>
+        button.textContent?.includes("Save and regenerate video"),
+      );
+      if (!(regenerate instanceof HTMLButtonElement)) throw new Error("Regenerate action missing");
+      await act(async () => {
+        regenerate.click();
+        await Promise.resolve();
+      });
+      expect(mocks.writeProjectFile).toHaveBeenCalledOnce();
+      await vi.waitFor(() => {
+        expect(host.postMessage).toHaveBeenCalledWith(
+          { type: "ipollowork:video-studio-regenerate", projectId: "project-1" },
+          "*",
+        );
       });
     } finally {
       if (originalParent) Object.defineProperty(window, "parent", originalParent);

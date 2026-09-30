@@ -16,6 +16,7 @@ import {
   createiPolloWorkServerClient,
 } from "./ipollowork-server";
 import { isDesktopRuntime } from "./runtime-env";
+import { isBackgroundVideoDeliveryRenderer } from "./background-video-delivery-renderer";
 
 export const PERSONAL_WORK_CONTEXT_ID = "personal" as const;
 export type WorkContextId = typeof PERSONAL_WORK_CONTEXT_ID | `enterprise:${string}`;
@@ -145,7 +146,7 @@ export function readLastProjectForWorkContext(contextId: WorkContextId): string 
 }
 
 export function rememberProjectForWorkContext(contextId: WorkContextId, projectId: string | null): void {
-  if (typeof window === "undefined") return;
+  if (typeof window === "undefined" || isBackgroundVideoDeliveryRenderer()) return;
   const projects = readLastProjectMap();
   const normalized = projectId?.trim() ?? "";
   if (normalized) projects[contextId] = normalized;

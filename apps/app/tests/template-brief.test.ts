@@ -376,7 +376,10 @@ describe("template brief", () => {
     expect(shouldUseExistingTemplateContext("如何修改这个视频")).toBe(false);
     expect(shouldUseExistingTemplateContext("把标题改成红色")).toBe(true);
     expect(shouldUseExistingTemplateContext("继续优化视频节奏")).toBe(true);
+    expect(shouldUseExistingTemplateContext("继续当前视频任务，导出并发布到微信视频号")).toBe(true);
     expect(shouldUseExistingTemplateContext("Remove the second scene")).toBe(true);
+    expect(inferConversationTemplateIntents("继续当前视频任务：使用已保存的 index.html，不要重做视频，导出并发布到微信视频号")
+      .map((intent) => intent.category)).toEqual(["video"]);
   });
 
   test("turns the original conversation into the persisted template brief", () => {
@@ -403,6 +406,8 @@ describe("template brief", () => {
     expect(routeSource).toContain('setSessionType(targetSessionId, "work")');
     expect(routeSource).toContain("explicitlyTargetedTemplateSessionIds.size === 0");
     expect(routeSource).toContain("shouldUseExistingTemplateContext(text)");
+    expect(routeSource).toContain("const continuingExistingTemplates = existingTemplateEdit && automaticTemplateIntents.length > 0");
+    expect(routeSource).toContain("&& !continuingExistingTemplates");
     expect(routeSource).not.toContain("conversationTemplates.slice(0, 1)");
     expect(routeSource).not.toContain('sessionTypeBeforeRouting === "work"');
     expect(routeSource).toContain("Multi-artifact delivery contract");
@@ -425,7 +430,7 @@ describe("template brief", () => {
     );
 
     expect(pageSource).toContain("createVideoArtifactCompletionRequirement(");
-    expect(pageSource).toContain("pendingProgrammaticDraft={pendingTemplateDispatch");
+    expect(pageSource).toContain("pendingProgrammaticDraft={pendingStoryboardRegeneration");
     expect(pageSource).toContain("artifactCompletionRequirement={pendingVideoArtifactCompletion");
     expect(surfaceSource).toContain("sendDraft(pending.draft, pending.draft.attachments)");
     expect(surfaceSource).toContain("beginOptimisticSessionPrompt(");

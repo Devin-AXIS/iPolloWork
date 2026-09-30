@@ -110,6 +110,7 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain("getAssistantProcessState(isStreaming, hasError)");
     expect(source).toContain("getToolActivityLabel(activeTool.part)");
     expect(source).toContain('runOutcome === "running"');
+    expect(source).toContain("currentTurn && activeAssistantMessageId === undefined");
     expect(source).toContain("getLatestArtifactAssistantMessageId(messages.slice(latestUserIndex + 1))");
     expect(source).toContain("message.id === latestTurnAssistantMessageId");
     expect(source).toContain("aria-expanded={isOpen}");
@@ -120,7 +121,7 @@ describe("assistant process collapse sections", () => {
     expect(source).toContain('message.process_handled_tool_count');
     expect(source).toContain("<AssistantProcessDisclosure");
     expect(source).toContain("isStreaming={liveProcess}");
-    expect(source).toContain("const isLiveGroup = isStreaming && items.some");
+    expect(source).toContain("const isLiveGroup = isStreaming && (");
     expect(source).toContain("processRows.map(renderProcessRow)");
     expect(source).toContain("hideProcess");
     expect(source).toContain("isStreaming={group.isStreaming}");

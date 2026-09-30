@@ -11,7 +11,7 @@
     "reference": "https://github.com/Devin-AXIS/iPolloWork"
   },
   "package": {
-    "version": "0.1.9",
+    "version": "0.1.14",
     "publisher": {
       "id": "zjy-web222",
       "name": "zjy-web222"
@@ -417,7 +417,7 @@
         {
           "id": "claim-job",
           "title": "核验身份并领取任务",
-          "description": "核验身份并领取任务",
+          "description": "核验身份并领取任务；同账号忙时返回 queued，前一任务完成后可继续领取",
           "effect": "write",
           "inputSchema": {
             "type": "object",

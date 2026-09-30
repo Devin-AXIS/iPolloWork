@@ -34,6 +34,7 @@ test("installs signed FFmpeg and FFprobe resources after a real HTTP download an
   for (const id of ids) archives.set(id, await fixtureArchive(root, id));
   let origin;
   let requestCount = 0;
+  let interruptedFfmpeg = 0;
   const server = createServer((request, response) => {
     requestCount += 1;
     if (request.url.startsWith("/api/v1/desktop/resources?")) {
@@ -66,6 +67,28 @@ test("installs signed FFmpeg and FFprobe resources after a real HTTP download an
     const id = request.url.slice(1).replace(/\.tar\.gz$/, "");
     const archive = archives.get(id);
     if (!archive) { response.writeHead(404); response.end(); return; }
+    const range = /^bytes=(\d+)-(\d+)$/.exec(String(request.headers.range ?? ""));
+    if (range) {
+      const start = Number(range[1]);
+      const end = Number(range[2]);
+      const firstPartEnd = Math.ceil(archive.bytes.length / 4) - 1;
+      if (id === "ffmpeg" && end === firstPartEnd && interruptedFfmpeg < 5) {
+        interruptedFfmpeg += 1;
+        const interruptedEnd = start + Math.floor((end - start + 1) / 2);
+        response.writeHead(206, {
+          "content-type": "application/gzip",
+          "content-range": `bytes ${start}-${interruptedEnd - 1}/${archive.bytes.length}`,
+        });
+        response.end(archive.bytes.subarray(start, interruptedEnd));
+        return;
+      }
+      response.writeHead(206, {
+        "content-type": "application/gzip",
+        "content-range": `bytes ${start}-${end}/${archive.bytes.length}`,
+      });
+      response.end(archive.bytes.subarray(start, end + 1));
+      return;
+    }
     response.writeHead(200, { "content-type": "application/gzip" });
     response.end(archive.bytes);
   });
@@ -76,23 +99,28 @@ test("installs signed FFmpeg and FFprobe resources after a real HTTP download an
   try {
     /** @type {NodeJS.ProcessEnv} */
     const env = {};
+    const probed = [];
     const manager = createVideoResourceManager({
-      app: { getPath: () => root, getVersion: () => "0.50.13" },
+      app: { getPath: () => root, getVersion: () => "0.50.14", isPackaged: true },
       fetch,
       env,
       platform: "win32",
       arch: "x64",
       trustedKeys: { test: publicKey.export({ type: "spki", format: "pem" }).toString() },
+      probeBinary: async (binaryPath, id) => {
+        probed.push({ binaryPath, id });
+      },
     });
     assert.equal((await manager.info()).status, "not-installed");
     assert.equal((await manager.install(origin)).status, "ready");
-    assert.equal(requestCount, 3);
+    assert.equal(requestCount, 14);
     assert.match(env.HYPERFRAMES_FFMPEG_PATH, /ffmpeg\.exe$/);
     assert.match(env.HYPERFRAMES_FFPROBE_PATH, /ffprobe\.exe$/);
+    assert.deepEqual(probed.map((item) => item.id).sort(), ["ffmpeg", "ffprobe"]);
     assert.equal(env.HYPERFRAMES_CLI_PATH, undefined);
     assert.equal(env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT, undefined);
     assert.equal((await manager.install(origin)).status, "ready");
-    assert.equal(requestCount, 3);
+    assert.equal(requestCount, 14);
   } finally {
     await new Promise((resolve) => server.close(resolve));
     await rm(root, { recursive: true, force: true });

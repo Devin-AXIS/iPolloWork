@@ -212,7 +212,7 @@ describe("composer queue behavior", () => {
     expect(successfulSend.replaceAll("\r\n", "\n")).not.toContain("\n      setSending(false);\n");
     expect(sender.slice(sender.indexOf("} catch (nextError)"))).toContain("setSending(false)");
     expect(sessionSurfaceSource).toContain("runActivityObservedRef.current = true");
-    expect(sessionSurfaceSource).toContain("if (!runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;");
+    expect(sessionSurfaceSource).toContain("if (!hostDeliveryReady && !runActivityObservedRef.current && !assistantOutputAfterAwaitStart) return;");
     expect(sessionSurfaceSource).not.toContain('if (liveStatus.type === "idle") {\n      setSending(false);');
   });
 
@@ -223,6 +223,7 @@ describe("composer queue behavior", () => {
     );
 
     expect(sendHandler.indexOf("clearComposer();")).toBeLessThan(sendHandler.indexOf("await sendDraft("));
+    expect(sendHandler).toContain("if (dispatched === false) {");
     expect(sendHandler).toContain("restoreComposerSessionIfEmpty(props.sessionId, submittedComposerState)");
   });
 

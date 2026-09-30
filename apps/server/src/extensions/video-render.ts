@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile, realpath, stat } from "node:fs/promises";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, readFile, writeFile, realpath, rename, rm, stat } from "node:fs/promises";
 import { dirname, relative, sep } from "node:path";
 import { z } from "zod";
 import { hyperframesStudioPort } from "@ipollowork/types/hyperframes";
@@ -14,11 +14,13 @@ export const videoRenderInput = z.object({
 const receiptSchema = z.object({
   status: z.enum(["preparing", "rendering", "complete", "failed"]),
   startedAt: z.number(), jobId: z.string().regex(/^[A-Za-z0-9_-]+$/).optional(),
+  studioPort: z.number().int().min(1).max(65_535).optional(),
   progress: z.number().optional(), stage: z.string().optional(), error: z.string().optional(),
   outputPath: z.string().optional(), size: z.number().optional(),
 });
 type Receipt = z.infer<typeof receiptSchema>;
 const preparing = new Set<string>();
+const RENDER_TIMEOUT_MS = 3 * 60 * 60_000;
 
 async function studioJson(url: string, body?: unknown) {
   const response = await fetch(url, {
@@ -43,8 +45,15 @@ export async function videoRenderAction(workspace: { id: string; path: string },
   await mkdir(renders, { recursive: true });
   if (!(await realpath(renders)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Render directory escapes workspace");
   const receiptPath = `${renders}/.export-${createHash("sha256").update(input.operationKey).digest("hex")}.json`;
-  const base = `http://127.0.0.1:${hyperframesStudioPort(project)}/api`;
-  const save = (receipt: Receipt) => writeFile(receiptPath, JSON.stringify(receipt), "utf8");
+  const save = async (receipt: Receipt) => {
+    const temporaryPath = `${receiptPath}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporaryPath, JSON.stringify(receipt), "utf8");
+      await rename(temporaryPath, receiptPath);
+    } finally {
+      await rm(temporaryPath, { force: true });
+    }
+  };
   let receipt: Receipt;
   try {
     if (!(await realpath(receiptPath)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Export receipt escapes workspace");
@@ -67,13 +76,13 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       try {
         const ready = await uiControlRequest("/video/ensure-studio", { method: "POST", timeoutMs: 100000,
           body: { workspaceId: workspace.id, projectId: project } });
-        if (!ready || typeof ready !== "object" || !("ok" in ready) || ready.ok !== true) {
-          throw new Error(`Cannot start bundled Studio: ${JSON.stringify(ready)}`);
-        }
+        const studio = z.object({ ok: z.literal(true), port: z.number().int().min(1).max(65_535) }).parse(ready);
+        const base = `http://127.0.0.1:${studio.port}/api`;
         const job = z.object({ jobId: z.string().regex(/^[A-Za-z0-9_-]+$/) }).parse(await studioJson(`${base}/projects/${project}/render`, { format: "mp4", quality: "high", fps: 30 }));
-        await save({ ...initial, ...job, status: "rendering", stage: "Rendering MP4" });
+        await save({ ...initial, ...job, studioPort: studio.port, status: "rendering", stage: "Rendering MP4" });
       } catch (error) {
         await save({ ...initial, status: "failed", error: error instanceof Error ? error.message : String(error) });
+        await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
       } finally { preparing.delete(receiptPath); }
     })().catch(error => console.error("[video-render] receipt persistence failed", error instanceof Error ? error.message : String(error)));
     return { ...receipt, operationKey: input.operationKey, pollAfterMs: 2000 };
@@ -83,6 +92,8 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     await save(receipt);
   }
   if (receipt.status === "rendering" && receipt.jobId) {
+    const studioPort = receipt.studioPort ?? hyperframesStudioPort(project);
+    const base = `http://127.0.0.1:${studioPort}/api`;
     try {
       // Studio removes completed jobs from memory after five minutes. Its
       // persisted metadata remains authoritative after a long continuation.
@@ -119,10 +130,10 @@ export async function videoRenderAction(workspace: { id: string; path: string },
         if (size === 0) throw new Error("Completed export is empty");
         receipt = { ...receipt, outputPath: relative(root, output).replaceAll(sep, "/"), size };
       }
-      if (Date.now() - receipt.startedAt > 1800000 && receipt.status === "rendering") throw new Error("Export exceeded the 30-minute limit; check the existing Studio job before retrying.");
+      if (Date.now() - receipt.startedAt > RENDER_TIMEOUT_MS && receipt.status === "rendering") throw new Error("Export exceeded the 3-hour limit; check the existing Studio job before retrying.");
     } catch (error) {
-      const transient = error instanceof Error && ["TimeoutError", "AbortError", "TypeError"].includes(error.name);
-      receipt = { ...receipt, status: transient && Date.now() - receipt.startedAt < 1800000 ? "rendering" : "failed", error: error instanceof Error ? error.message : String(error) };
+      const withinDeadline = Date.now() - receipt.startedAt < RENDER_TIMEOUT_MS;
+      receipt = { ...receipt, status: withinDeadline ? "rendering" : "failed", error: error instanceof Error ? error.message : String(error) };
     }
     await save(receipt);
     if (receipt.status === "complete" || receipt.status === "failed") await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });

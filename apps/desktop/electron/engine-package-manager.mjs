@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import {
-  cp,
   mkdir,
   mkdtemp,
   open,
@@ -18,6 +17,7 @@ import os from "node:os";
 import path from "node:path";
 import { compareVersions } from "./updater.mjs";
 import { fetchDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
+import { DESKTOP_RESOURCE_APP_VERSION } from "./app-version.mjs";
 
 const OPENCODE_ENGINE_ID = "opencode";
 const DSH_ENGINE_ID = "deepseek-harness";
@@ -27,19 +27,9 @@ const RUNTIME_PROBE_TIMEOUT_MS = 10_000;
 const FAILED_RUNTIME_PROBE_TTL_MS = 30_000;
 const ENGINE_PACK_REQUEST_TIMEOUT_MS = 15_000;
 const ENGINE_PACK_IDLE_TIMEOUT_MS = 30_000;
-const ENGINE_PACK_GITHUB_MIRRORS = [
-  "https://gh-proxy.com/",
-  "https://ghfast.top/",
-];
 
 function normalizeVersion(value) {
   return String(value ?? "").trim().replace(/^v/, "") || "unknown";
-}
-
-function platformAssetSegment(platform) {
-  if (platform === "darwin") return "macos";
-  if (platform === "win32") return "windows";
-  return platform;
 }
 
 function safeErrorMessage(error) {
@@ -352,12 +342,6 @@ async function directorySize(root) {
   return total;
 }
 
-function parseExpectedSha256(value) {
-  const match = String(value ?? "").match(/\b[a-fA-F0-9]{64}\b/);
-  if (!match) throw new Error("Engine package checksum is missing or invalid.");
-  return match[0].toLowerCase();
-}
-
 async function assertArchiveEntriesSafe(archivePath) {
   const safeName = (entry) => {
     const name = entry.replaceAll("\\", "/");
@@ -379,7 +363,7 @@ async function assertArchiveEntriesSafe(archivePath) {
   })) throw new Error("Engine package contains a link or special file.");
 }
 
-async function writeResponseBody(response, targetPath, onProgress) {
+async function writeResponseBody(response, targetPath, onProgress, expectedBytes = null) {
   if (!response.ok) throw new Error(`Engine package download returned HTTP ${response.status}.`);
   if (!response.body) throw new Error("Engine package download returned an empty body.");
   const totalHeader = Number(response.headers.get("content-length"));
@@ -404,6 +388,9 @@ async function writeResponseBody(response, targetPath, onProgress) {
       if (result.done) break;
       const chunk = Buffer.from(result.value);
       if (chunk.byteLength === 0) continue;
+      if (expectedBytes != null && downloaded + chunk.byteLength > expectedBytes) {
+        throw new Error("Cloud resource download exceeded its signed size.");
+      }
       await handle.write(chunk);
       downloaded += chunk.byteLength;
       onProgress(downloaded, total);
@@ -414,26 +401,6 @@ async function writeResponseBody(response, targetPath, onProgress) {
     await handle.close();
   }
   return { downloaded, total };
-}
-
-async function copyFileWithProgress(sourcePath, targetPath, onProgress) {
-  const totalBytes = (await stat(sourcePath)).size;
-  const handle = await open(targetPath, "w");
-  let copiedBytes = 0;
-  try {
-    for await (const chunk of createReadStream(sourcePath)) {
-      let offset = 0;
-      while (offset < chunk.byteLength) {
-        const { bytesWritten } = await handle.write(chunk, offset, chunk.byteLength - offset);
-        if (bytesWritten <= 0) throw new Error("Engine package copy stopped before completion.");
-        offset += bytesWritten;
-        copiedBytes += bytesWritten;
-        onProgress(copiedBytes, totalBytes);
-      }
-    }
-  } finally {
-    await handle.close();
-  }
 }
 
 function engineDescriptor(id, versions, platform, architecture) {
@@ -449,8 +416,6 @@ function engineDescriptor(id, versions, platform, architecture) {
       nodeRelativePath: path.join("node-runtime", platform === "win32" ? "node.exe" : "node"),
       nodeEnvironmentKey: "IPOLLOWORK_DSH_NODE_BIN",
       hostPluginRelativePath: "ipollowork-host-tools.mjs",
-      prepareScript: "prepare-dsh-runtime.mjs",
-      developmentDirectory: "dsh-runtime",
     };
   }
   if (id === CODEX_ENGINE_ID) {
@@ -475,8 +440,6 @@ function engineDescriptor(id, versions, platform, architecture) {
       nodeRelativePath: null,
       nodeEnvironmentKey: null,
       hostPluginRelativePath: null,
-      prepareScript: "prepare-codex-runtime.mjs",
-      developmentDirectory: "codex-runtime",
     };
   }
   return null;
@@ -599,24 +562,21 @@ export function createEnginePackageManager(options) {
     }
   }
 
-  function assetName(descriptor) {
-    return `ipollowork-engine-${descriptor.id}-${platformAssetSegment(platform)}-${architecture}-${descriptor.version}.tar.gz`;
-  }
-
-  function officialReleaseAssetUrl(name) {
-    const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
-    return `https://github.com/Devin-AXIS/iPolloWork/releases/download/v${version}/${name}`;
-  }
-
   async function fetchEnginePackage(url, init = {}, consume = null) {
     const controller = new AbortController();
     let requestTimedOut = false;
+    let rejectRequestTimeout;
+    const requestTimeout = new Promise((_, reject) => { rejectRequestTimeout = reject; });
     const timeout = setTimeout(() => {
       requestTimedOut = true;
       controller.abort();
+      rejectRequestTimeout(new Error(`Engine package request timed out after ${ENGINE_PACK_REQUEST_TIMEOUT_MS / 1_000} seconds.`));
     }, ENGINE_PACK_REQUEST_TIMEOUT_MS);
     try {
-      const response = await options.fetch(url, { ...init, signal: controller.signal });
+      const response = await Promise.race([
+        options.fetch(url, { ...init, signal: controller.signal }),
+        requestTimeout,
+      ]);
       clearTimeout(timeout);
       if (typeof consume !== "function") return response;
       try {
@@ -632,39 +592,6 @@ export function createEnginePackageManager(options) {
     } finally {
       clearTimeout(timeout);
     }
-  }
-
-  async function resolveOfficialReleaseAsset(name) {
-    const version = encodeURIComponent(normalizeVersion(options.app.getVersion()));
-    const metadataUrls = [
-      `https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/tags/v${version}`,
-      "https://api.github.com/repos/Devin-AXIS/iPolloWork/releases/latest",
-    ];
-    const failures = [];
-    for (const metadataUrl of metadataUrls) {
-      try {
-        const response = await fetchEnginePackage(metadataUrl, {
-          headers: {
-            Accept: "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-          },
-        });
-        if (!response.ok) throw new Error(`metadata returned HTTP ${response.status}`);
-        const metadata = await response.json();
-        const asset = Array.isArray(metadata?.assets)
-          ? metadata.assets.find((candidate) => candidate?.name === name)
-          : null;
-        const digest = String(asset?.digest ?? "").match(/^sha256:([a-fA-F0-9]{64})$/);
-        const url = String(asset?.browser_download_url ?? "");
-        if (!digest || !url.startsWith("https://github.com/Devin-AXIS/iPolloWork/releases/download/")) {
-          throw new Error(`release does not contain a verified ${name} asset`);
-        }
-        return { expectedSha: digest[1].toLowerCase(), url };
-      } catch (error) {
-        failures.push(`${metadataUrl}: ${safeErrorMessage(error)}`);
-      }
-    }
-    throw new Error(`Engine package release metadata could not resolve ${name}. ${failures.join(" | ")}`);
   }
 
   function setOperation(id, patch) {
@@ -820,138 +747,30 @@ export function createEnginePackageManager(options) {
     }
   }
 
-  async function installFromDevelopmentSource(descriptor, stagingRoot) {
-    const developmentRoot = path.join(options.desktopRoot, descriptor.developmentDirectory);
-    const prepareScript = path.join(options.desktopRoot, "scripts", descriptor.prepareScript);
-    if (!await pathExists(developmentRoot) || !await pathExists(prepareScript)) return false;
-    setOperation(descriptor.id, { status: "installing", downloadedBytes: null, totalBytes: null });
-    await run(process.execPath, [prepareScript], {
-      cwd: options.desktopRoot,
-      env: { ...environment, ELECTRON_RUN_AS_NODE: "1" },
-    });
-    await cp(developmentRoot, stagingRoot, {
-      recursive: true,
-      filter: (source) => !source.endsWith(".install-stamp.json"),
-    });
-    return true;
-  }
-
-  async function downloadVerifiedReleaseArchive(descriptor, name, archivePath, trustedExpectedSha = null) {
-    const explicitBaseUrl = environment.IPOLLOWORK_ENGINE_PACK_BASE_URL?.trim().replace(/\/$/, "");
-    let expectedSha;
-    let sourceUrls;
-    if (explicitBaseUrl) {
-      const url = `${explicitBaseUrl}/${name}`;
-      if (trustedExpectedSha) {
-        expectedSha = trustedExpectedSha;
-      } else {
-        const checksumResponse = await fetchEnginePackage(`${url}.sha256`);
-        if (!checksumResponse.ok) {
-          throw new Error(`Engine package checksum download returned HTTP ${checksumResponse.status}.`);
-        }
-        expectedSha = parseExpectedSha256(await checksumResponse.text());
-      }
-      sourceUrls = [url];
-    } else if (trustedExpectedSha) {
-      const url = officialReleaseAssetUrl(name);
-      expectedSha = trustedExpectedSha;
-      sourceUrls = [
-        url,
-        ...ENGINE_PACK_GITHUB_MIRRORS.map((mirror) => `${mirror}${url}`),
-      ];
-    } else {
-      const releaseAsset = await resolveOfficialReleaseAsset(name);
-      expectedSha = releaseAsset.expectedSha;
-      sourceUrls = [
-        releaseAsset.url,
-        ...ENGINE_PACK_GITHUB_MIRRORS.map((mirror) => `${mirror}${releaseAsset.url}`),
-      ];
-    }
-    const failures = [];
-    for (const url of sourceUrls) {
-      setOperation(descriptor.id, {
-        status: "downloading",
-        downloadedBytes: null,
-        totalBytes: null,
-      });
-      try {
-        await fetchEnginePackage(url, {}, async (response) => {
-          await writeResponseBody(response, archivePath, (downloadedBytes, totalBytes) => {
-            setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes });
-          });
-        });
-        setOperation(descriptor.id, { status: "verifying" });
-        const actualSha = await sha256File(archivePath);
-        if (actualSha !== expectedSha) throw new Error("checksum verification failed");
-        await assertArchiveEntriesSafe(archivePath);
-        return;
-      } catch (error) {
-        failures.push(`${url}: ${safeErrorMessage(error)}`);
-        await rm(archivePath, { force: true });
-      }
-    }
-    throw new Error(`Engine package download failed from all sources. ${failures.join(" | ")}`);
-  }
-
   async function installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl) {
-    if (options.app.isPackaged || environment.IPOLLOWORK_DESKTOP_RESOURCE_TEST_CLOUD === "1") {
-      const manifest = await fetchDesktopResourceManifest({
-        baseUrl: cloudBaseUrl || options.cloudBaseUrl || "http://i.ipollo.ai",
-        appVersion: normalizeVersion(options.app.getVersion()),
-        platform,
-        arch: architecture,
-        fetch: options.fetch,
-        trustedKeys: options.trustedResourceKeys,
-      });
-      const resource = manifest.resources.find((item) => item.id === descriptor.id);
-      if (!resource || resource.version !== descriptor.version) {
-        throw new Error(`Cloud resource ${descriptor.id} does not match the required engine version ${descriptor.version}.`);
-      }
-      const archivePath = path.join(temporaryRoot, resource.fileName);
-      setOperation(descriptor.id, { status: "downloading", downloadedBytes: 0, totalBytes: resource.sizeBytes });
-      await fetchEnginePackage(resource.url, {}, async (response) => {
-        const { downloaded } = await writeResponseBody(response, archivePath, (downloadedBytes) => {
-          setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes: resource.sizeBytes });
-        });
-        if (downloaded !== resource.sizeBytes) throw new Error("Cloud resource download size mismatch.");
-      });
-      setOperation(descriptor.id, { status: "verifying" });
-      if (await sha256File(archivePath) !== resource.sha256) throw new Error("Cloud resource checksum verification failed.");
-      await assertArchiveEntriesSafe(archivePath);
-      setOperation(descriptor.id, { status: "installing" });
-      await mkdir(stagingRoot, { recursive: true });
-      await run("tar", ["-xzf", archivePath, "-C", stagingRoot]);
-      return;
+    const manifest = await fetchDesktopResourceManifest({
+      baseUrl: cloudBaseUrl || options.cloudBaseUrl || "http://i.ipollo.ai",
+      appVersion: DESKTOP_RESOURCE_APP_VERSION,
+      platform,
+      arch: architecture,
+      fetch: (url, init) => fetchEnginePackage(url, init),
+      trustedKeys: options.trustedResourceKeys,
+    });
+    const resource = manifest.resources.find((item) => item.id === descriptor.id);
+    if (!resource || resource.version !== descriptor.version) {
+      throw new Error(`Cloud resource ${descriptor.id} does not match the required engine version ${descriptor.version}.`);
     }
-    const name = assetName(descriptor);
-    const archivePath = path.join(temporaryRoot, name);
-    const configuredSourceDirectory = environment.IPOLLOWORK_ENGINE_PACK_SOURCE_DIR?.trim();
-    const bundledSourceDirectory = options.app.isPackaged
-      ? path.join(options.resourcesPath ?? path.dirname(options.desktopRoot), "engine-packs")
-      : null;
-    const bundledChecksumPath = bundledSourceDirectory
-      ? path.join(bundledSourceDirectory, `${name}.sha256`)
-      : null;
-    const bundledExpectedSha = bundledChecksumPath && await pathExists(bundledChecksumPath)
-      ? parseExpectedSha256(await readFile(bundledChecksumPath, "utf8"))
-      : null;
-    const hasBundledPackage = Boolean(bundledSourceDirectory
-      && await pathExists(path.join(bundledSourceDirectory, name))
-      && bundledExpectedSha);
-    const sourceDirectory = configuredSourceDirectory || (hasBundledPackage ? bundledSourceDirectory : null);
-    if (sourceDirectory) {
-      const sourceArchive = path.join(sourceDirectory, name);
-      const expectedSha = parseExpectedSha256(await readFile(`${sourceArchive}.sha256`, "utf8"));
-      await copyFileWithProgress(sourceArchive, archivePath, (downloadedBytes, totalBytes) => {
-        setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes });
-      });
-      setOperation(descriptor.id, { status: "verifying" });
-      const actualSha = await sha256File(archivePath);
-      if (actualSha !== expectedSha) throw new Error("Engine package checksum verification failed.");
-      await assertArchiveEntriesSafe(archivePath);
-    } else {
-      await downloadVerifiedReleaseArchive(descriptor, name, archivePath, bundledExpectedSha);
-    }
+    const archivePath = path.join(temporaryRoot, resource.fileName);
+    setOperation(descriptor.id, { status: "downloading", downloadedBytes: 0, totalBytes: resource.sizeBytes });
+    await fetchEnginePackage(resource.url, {}, async (response) => {
+      const { downloaded } = await writeResponseBody(response, archivePath, (downloadedBytes) => {
+        setOperation(descriptor.id, { status: "downloading", downloadedBytes, totalBytes: resource.sizeBytes });
+      }, resource.sizeBytes);
+      if (downloaded !== resource.sizeBytes) throw new Error("Cloud resource download size mismatch.");
+    });
+    setOperation(descriptor.id, { status: "verifying" });
+    if (await sha256File(archivePath) !== resource.sha256) throw new Error("Cloud resource checksum verification failed.");
+    await assertArchiveEntriesSafe(archivePath);
     setOperation(descriptor.id, { status: "installing" });
     await mkdir(stagingRoot, { recursive: true });
     await run("tar", ["-xzf", archivePath, "-C", stagingRoot]);
@@ -984,10 +803,7 @@ export function createEnginePackageManager(options) {
     const stagingRoot = path.join(temporaryRoot, "runtime");
     const destination = installedRoot(descriptor);
     try {
-      const usedDevelopmentSource = !options.app.isPackaged
-        ? await installFromDevelopmentSource(descriptor, stagingRoot)
-        : false;
-      if (!usedDevelopmentSource) await installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl);
+      await installFromRelease(descriptor, stagingRoot, temporaryRoot, cloudBaseUrl);
       const stagedCli = path.join(stagingRoot, descriptor.cliRelativePath);
       if (!await pathExists(stagedCli)) throw new Error("Engine package does not contain the expected runtime executable.");
       const installedBytes = await directorySize(stagingRoot);

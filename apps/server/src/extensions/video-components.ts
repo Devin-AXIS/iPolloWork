@@ -20,7 +20,10 @@ const videoBeatSchema = z.object({
   focus: z.string().min(1),
   action: z.string().min(1),
   result: z.string().min(1),
-  targets: z.array(z.string().min(1)).min(1),
+  targets: z.preprocess(
+    value => typeof value === "string" ? [value] : value,
+    z.array(z.string().min(1)).min(1),
+  ),
   animation: z.string().regex(/^(?:component|preset|custom|hold):\S(?:.*\S)?$/u),
   motion: videoMotionWindowSchema,
 }).strict().superRefine((beat, context) => {
@@ -343,11 +346,16 @@ function patternEvidenceIssues(
   const issues: Array<{ code: string; sceneId: string; message: string }> = [];
   const active = beats.filter(beat => !beat.animation.startsWith("hold:"));
   const distinctFocus = new Set(active.map(beat => beat.focus.trim().toLocaleLowerCase()));
+  const declaredCameraJourney = [
+    "data-ipw-camera-origin",
+    "data-ipw-camera-waypoint",
+    "data-ipw-camera-destination",
+  ].every(name => attribute(tag, name).length > 0);
   const fail = (code: string, message: string) => issues.push({ code, sceneId, message });
   if (pattern === "montage" && active.length < 3) {
     fail("montage_missing_shot_states", `${sceneId} uses montage but records fewer than three intentional shot or focus changes.`);
   }
-  if (pattern === "camera-journey" && (active.length < 3 || distinctFocus.size < 3)) {
+  if (pattern === "camera-journey" && !declaredCameraJourney && (active.length < 3 || distinctFocus.size < 3)) {
     fail("camera_journey_missing_waypoints", `${sceneId} uses camera-journey but does not record an origin, meaningful waypoint, and destination.`);
   }
   if (pattern === "dialogue" && distinctFocus.size < 2) {
@@ -600,7 +608,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
       }
     }
     if (!videoTransitionIntentSchema.safeParse(current.transitionIntent).success) {
-      issues.push({ code: "invalid_scene_transition_intent", sceneId: current.sceneId, message: `${current.sceneId} must explain the transition with a supported data-ipw-transition-intent.` });
+      issues.push({ code: "invalid_scene_transition_intent", sceneId: current.sceneId, message: `${current.sceneId} data-ipw-transition-intent must be one of: continue, topic-change, time-change, location-change, compare, reveal, closure.` });
     }
   }
   if (sceneTags.length === 0) issues.push({ code: "missing_video_scenes", message: "No data-ipw-scene elements were found in the video composition." });

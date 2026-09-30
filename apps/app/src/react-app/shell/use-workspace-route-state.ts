@@ -10,6 +10,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 
 import { publishInspectorSlice, recordInspectorEvent } from "@/app/lib/app-inspector";
+import { isBackgroundVideoDeliveryRenderer } from "@/app/lib/background-video-delivery-renderer";
 import {
   desktopResumeEvent,
   resolveWorkspaceListSelectedId,
@@ -155,6 +156,7 @@ export function useWorkspaceRouteState(input: UseWorkspaceRouteStateInput) {
   // at a different workspace than the visible conversation.
   useEffect(() => {
     if (loading || !selectedWorkspace) return;
+    if (isBackgroundVideoDeliveryRenderer()) return;
     const workspaceId = selectedWorkspace.id.trim();
     if (!workspaceId) return;
 

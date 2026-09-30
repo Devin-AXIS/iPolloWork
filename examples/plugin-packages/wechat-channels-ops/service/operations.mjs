@@ -137,7 +137,6 @@ export class Operations {
       const duplicate = input.type === 'publish' && jobs.find(job => job.type === 'publish' &&
         job.payload.draftId === payload.draftId && job.payload.revision === payload.revision && job.status !== 'cancelled');
       if (duplicate) return { job: duplicate, reused: true };
-      if (jobs.some(job => ['running', 'submitting', 'uncertain'].includes(job.status))) fail('该账号有执行中或待核对任务，请先处理');
       if (this.store.count('job') >= 1000) fail('任务数量已达本地上限');
       return { job: this.store.put('job', { id: randomUUID(), accountId: account.id, type: input.type,
         operationKey, payload, status: 'prepared', sessionId: context.sessionId || null,

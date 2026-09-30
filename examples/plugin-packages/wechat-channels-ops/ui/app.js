@@ -190,7 +190,17 @@
       if (video.url) { const link = node('a', '', '打开作品 ↗'); link.href = video.url; link.target = '_blank'; link.rel = 'noopener noreferrer'; actions.append(link); }
       card.append(actions); list.append(card);
     }
-    if (!videos.length) empty(list, '作品会从这里开始积累', '连接视频号后同步作品，查看真实的平台状态与表现。');
+    const receipts = items('jobs').filter(job => job.type === 'publish'
+      && ['submitted', 'reviewing', 'published'].includes(job.status)
+      && !videos.some(video => video.title === job.payload.title));
+    for (const job of receipts) {
+      const card = node('article', 'record'), header = node('header');
+      header.append(node('strong', '', job.payload.title || '已提交作品'), badge(job.status));
+      card.append(header, node('p', '', `平台回读 · ${fmtDate(job.updatedAt)}`));
+      if (job.evidence) card.append(node('p', '', job.evidence));
+      list.append(card);
+    }
+    if (!videos.length && !receipts.length) empty(list, '作品会从这里开始积累', '连接视频号后同步作品，查看真实的平台状态与表现。');
     const selected = $('#comment-video').value;
     selectOptions('#comment-video', videos.map(item => ({ id: item.id, label: item.title })), '选择已同步作品', selected);
     const definitions = [['plays','播放'],['likes','点赞'],['comments','评论'],['shares','分享'],['favorites','收藏']];
@@ -201,7 +211,14 @@
       $('#data-metrics').append(card);
     }
     set('#data-updated', currentAccount()?.videosSyncedAt ? `最近同步 ${fmtDate(currentAccount().videosSyncedAt)}` : '尚未同步');
-    if (!videos.length) empty($('#data-table'), '先同步，再分析', '这里将展示真实作品数据，不使用示例指标填充。', '▥');
+    if (!videos.length && receipts.length) {
+      $('#data-table').replaceChildren(...receipts.map(job => {
+        const card = node('article', 'record');
+        card.append(node('strong', '', job.payload.title || '已提交作品'),
+          node('p', '', job.evidence || '平台已接受提交，指标尚未回读。'));
+        return card;
+      }));
+    } else if (!videos.length) empty($('#data-table'), '先同步，再分析', '这里将展示真实作品数据，不使用示例指标填充。', '▥');
     else {
       const table = node('table'), head = node('thead'), row = node('tr');
       ['作品', ...definitions.map(item => item[1])].forEach(label => row.append(node('th', '', label))); head.append(row); table.append(head);
@@ -367,6 +384,7 @@
     connectionRefreshPending = true;
     refresh().catch(() => {}).finally(() => { connectionRefreshPending = false; });
   }, 2500);
+  window.setInterval(() => { if (!busy && !document.hidden) refresh().catch(() => {}); }, 5000);
   run(async () => { await refresh(); loadDraft(items('drafts')[0]?.id); });
   if (window !== parent) {
     const initializeHost = () => connectHost().catch(() => {

@@ -108,7 +108,7 @@ for (const corrupted of [false, true]) {
     await writeFile(workFile, "kept");
     try {
       const manager = createEnginePackageManager({
-        app: { getPath: () => userData, getVersion: () => "0.50.13", isPackaged: true },
+        app: { getPath: () => userData, getVersion: () => "0.50.14", isPackaged: true },
         desktopRoot: path.join(root, "desktop"),
         versions: { opencode: "1.0.0", deepseekHarness: "4.5.6", codexHarness: "1.0.0" },
         env,
@@ -134,6 +134,7 @@ for (const corrupted of [false, true]) {
       }
       assert.equal(await readFile(workFile, "utf8"), "kept");
       assert.equal(requested.length, 2);
+      assert.equal(new URL(requested[0]).searchParams.get("appVersion"), "0.50.13");
     } finally {
       await rm(root, { recursive: true, force: true });
     }

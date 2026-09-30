@@ -3,6 +3,7 @@ import {
   AudioLines,
   GripVertical,
   Plus,
+  RefreshCw,
   Save,
   Trash2,
 } from "lucide-react";
@@ -73,6 +74,7 @@ export function StoryboardTable({
   const [hostVoiceSelectionAvailable, setHostVoiceSelectionAvailable] = useState<boolean | null>(
     null,
   );
+  const [hostRegenerationAvailable, setHostRegenerationAvailable] = useState<boolean | null>(null);
   const [voiceNotice, setVoiceNotice] = useState<string | null>(null);
   const savingRef = useRef(false);
   const dirty = draft.text !== (draft.base ?? EMPTY_PLAN);
@@ -90,6 +92,7 @@ export function StoryboardTable({
   useEffect(() => {
     if (!embeddedInWork) {
       setHostVoiceSelectionAvailable(false);
+      setHostRegenerationAvailable(false);
       return;
     }
     const handleHostContext = (event: MessageEvent) => {
@@ -97,6 +100,7 @@ export function StoryboardTable({
       if (event.data?.type !== "ipollowork:studio-host-context") return;
       if (event.data.projectId !== projectId) return;
       setHostVoiceSelectionAvailable(event.data.actions?.selectRoleVoice !== false);
+      setHostRegenerationAvailable(event.data.actions?.regenerateFromStoryboard === true);
     };
     window.addEventListener("message", handleHostContext);
     return () => window.removeEventListener("message", handleHostContext);
@@ -208,8 +212,9 @@ export function StoryboardTable({
     if (saving || from === to) return;
     edit((source) => moveStoryboardFrame(source, from, to));
   }
-  async function save() {
-    if (savingRef.current || !dirty) return;
+  async function save(): Promise<boolean> {
+    if (savingRef.current) return false;
+    if (!dirty) return true;
     savingRef.current = true;
     setSaving(true);
     setError(null);
@@ -218,12 +223,22 @@ export function StoryboardTable({
       setDraft({ base: draft.text, text: draft.text });
       setSaved(true);
       onSaved();
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : tx("Could not save script."));
+      return false;
     } finally {
       savingRef.current = false;
       setSaving(false);
     }
+  }
+  async function regenerate() {
+    if (!embeddedInWork || hostRegenerationAvailable !== true || manifest.frames.length === 0) return;
+    if (!(await save())) return;
+    window.parent.postMessage(
+      { type: "ipollowork:video-studio-regenerate", projectId },
+      "*",
+    );
   }
   function reset() {
     if (dirty && !window.confirm(tx("Discard unsaved script changes?"))) return;
@@ -259,7 +274,7 @@ export function StoryboardTable({
           )}
           <Button
             size="sm"
-            variant="primary"
+            variant="secondary"
             icon={<Save size={14} />}
             disabled={!dirty || saving || (changedOnDisk && dirty)}
             loading={saving}
@@ -267,6 +282,18 @@ export function StoryboardTable({
           >
             {tx("Save script")}
           </Button>
+          {embeddedInWork && (
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<RefreshCw size={14} />}
+              disabled={saving || hostRegenerationAvailable !== true || manifest.frames.length === 0 || (changedOnDisk && dirty)}
+              loading={saving}
+              onClick={() => void regenerate()}
+            >
+              {tx("Save and regenerate video")}
+            </Button>
+          )}
         </div>
       </div>
       {changedOnDisk && dirty && (
@@ -626,7 +653,7 @@ export function StoryboardTable({
       </StoryboardTableLayout>
       <div className="border-t border-[var(--hf-workspace-border)] px-5 py-3 text-xs text-[var(--hf-panel-text-3)]">
         {tx(
-          "This editable table saves to STORYBOARD.md. The agent uses this same script to produce the video.",
+          "The first script version produces the video automatically. Save and regenerate after editing this table.",
         )}
         {manifest.warnings.length > 0 && (
           <details className="mt-2">

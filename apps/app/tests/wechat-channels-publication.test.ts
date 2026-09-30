@@ -11,6 +11,9 @@ describe("host-managed WeChat Channels publication", () => {
     expect(copy.title).toBe("iPolloWork：让项目协作更简单");
     expect(copy.description).toContain("一次需求持续推进");
     expect(copy.topics).toContain("#iPolloWork");
+    const namedCopy = wechatChannelsPublicationCopyForPrompt("制作 iPolloWork 短视频，作品标题《iPolloWork：多引擎协作》并发布到视频号");
+    expect(namedCopy.title).toBe("iPolloWork：多引擎协作");
+    expect(namedCopy.description).toContain("iPolloWork：多引擎协作");
   });
 
   test("reuses the generated-media draft and prepares one account-specific browser job", async () => {
@@ -89,6 +92,32 @@ describe("host-managed WeChat Channels publication", () => {
       assetId: "asset-1",
       runKey: "delivery-2:wechat-channels-draft",
     });
+  });
+
+  test("keeps the prepared job queued when another submission needs reconciliation", async () => {
+    const actions: string[] = [];
+    const call = async (action: string) => {
+      actions.push(action);
+      if (action === "studio-state") return {
+        ok: true,
+        message: "ok",
+        result: {
+          accounts: [{ id: "account-1", channelId: "sph-1", browserProfileId: "profile-1", status: "verified" }],
+          drafts: [{ id: "draft-1", accountId: "account-1", operationKey: "delivery-queued:wechat-channels-draft" }],
+          jobs: [{ id: "earlier-job", accountId: "account-1", status: "uncertain" }],
+        },
+      };
+      if (action === "prepare-job") return { ok: true, message: "ok", result: { job: { id: "queued-job", status: "prepared" } } };
+      throw new Error(`Unexpected action ${action}`);
+    };
+
+    await expect(prepareWechatChannelsPublication({
+      call,
+      sourcePath: "video/render.mp4",
+      operationKey: "delivery-queued",
+      copy: { title: "标题", description: "正文", topics: "#话题" },
+    })).rejects.toThrow("待发布任务已保存");
+    expect(actions).toEqual(["studio-state", "prepare-job"]);
   });
 
   test("continues through the one recoverable account browser when login needs revalidation", async () => {

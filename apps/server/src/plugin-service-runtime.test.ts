@@ -21,6 +21,7 @@ import {
   disposeAllPluginServices,
   disposePluginServices,
   listPluginServiceActions,
+  pluginBrowserSessionOptions,
   pluginServiceDataDirectory,
 } from "./plugin-service-runtime.js";
 import type { ServerConfig } from "./types.js";
@@ -311,6 +312,38 @@ afterEach(async () => {
 });
 
 describe("plugin service runtime", () => {
+  test("derives account browser recovery only from the installed plugin manifest", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-plugin-browser-session-workspace-");
+    const runtimeRoot = await temporaryRoot("ipollowork-plugin-browser-session-runtime-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(runtimeRoot, "runtime.sqlite");
+    const serverConfig = config(workspaceRoot);
+    const packageRoot = fileURLToPath(new URL("../../../examples/plugin-packages/wechat-channels-ops", import.meta.url));
+    await installPluginPackage({ serverConfig, packageRoot });
+
+    await expect(pluginBrowserSessionOptions(
+      serverConfig,
+      "wechat-channels-ops:account-profile",
+      "https://channels.weixin.qq.com/platform/",
+    )).resolves.toEqual({
+      sessionRecovery: {
+        origin: "https://channels.weixin.qq.com",
+        loginPath: "/login.html",
+        authenticatedPath: "/platform/",
+        cookieNames: ["sessionid", "wxuin"],
+      },
+    });
+    await expect(pluginBrowserSessionOptions(
+      serverConfig,
+      "wechat-channels-ops:account-profile",
+      "https://example.com/platform/",
+    )).resolves.toBeNull();
+    await expect(pluginBrowserSessionOptions(
+      serverConfig,
+      "unknown-plugin:account-profile",
+      "https://channels.weixin.qq.com/platform/",
+    )).resolves.toBeNull();
+  });
+
   test("lets trusted built-in services call only declared host actions in the active request scope", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-plugin-host-action-workspace-");
     const packageRoot = await temporaryRoot("ipollowork-plugin-host-action-package-");

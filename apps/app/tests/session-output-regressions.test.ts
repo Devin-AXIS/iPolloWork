@@ -695,7 +695,7 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(surfaceSource).toContain('if (liveStatus.type === "busy" || liveStatus.type === "retry" || activityRunActive)');
+    expect(surfaceSource).toContain('if (liveStatus.type === "busy" || liveStatus.type === "retry" || (activityRunActive && !hostDeliveryReady))');
     expect(surfaceSource).toContain("}, [activityRunActive, liveStatus, runOutcome, runSettled, sending, stopAcknowledged]);");
     expect(messageListSource).toContain('runOutcome !== "failed"');
     expect(messageListSource).toContain('runOutcome !== "stopped"');

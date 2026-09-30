@@ -2,7 +2,7 @@ import { connect, evaluate, listTargets } from "../runner/cdp.mjs";
 
 const PLUGIN_ID = "wechat-channels-ops";
 const PLUGIN_NAME = "视频号运营台";
-const VERSION = "0.1.9";
+const VERSION = "0.1.11";
 
 export default {
   id: "wechat-channels-ops",

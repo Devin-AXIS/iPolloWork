@@ -141,7 +141,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       selectBrowserTab(existing.tabId);
       if (!loginUi && !recovery && existing.view.webContents.getURL() !== url) await existing.view.webContents.loadURL(url);
       if (recovery) await recoverAuthenticatedSession(existing);
-      sendToRenderer("ipollowork:browser:panel-opened");
+      sendToRenderer("ipollowork:browser:panel-opened", { sessionId: existing.taskId, tabId: existing.tabId });
       return { provider: "builtin", tabId: existing.tabId, url: existing.view.webContents.getURL() };
     }
     const partition = profileId
@@ -303,6 +303,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       type: "browser",
       label: getBrowserTabLabel(title, url),
       url,
+      sessionId: tab.taskId,
       profileId: tab.profileId,
       favicon: tab.favicon ?? null,
       status: isLoading ? "loading" : "ready",
@@ -663,7 +664,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
           // The tab may be mid-close; the panel-opened event below still fires.
         }
       }
-      sendToRenderer("ipollowork:browser:panel-opened");
+      sendToRenderer("ipollowork:browser:panel-opened", { sessionId: tab.taskId, tabId });
     });
     view.webContents.on("dom-ready", () => injectBrowserScrollbarCss(view.webContents));
     view.webContents.on("did-navigate", () => sendBrowserState());
@@ -809,6 +810,7 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     browserRuntime.forget(tabId);
     browserTabs.delete(tabId);
     browserTabOrder = browserTabOrder.filter((id) => id !== tabId);
+    const hasOwnedTab = browserTabOrder.some((id) => browserTabs.get(id)?.taskId === tab.taskId);
     if (wasActive) {
       const nextTabId =
         browserTabOrder[Math.min(closingIndex, browserTabOrder.length - 1)] ??
@@ -819,8 +821,11 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
         attachActiveBrowserView();
       } else {
         hideBrowserView();
-        sendToRenderer("ipollowork:browser:panel-closed");
+        sendToRenderer("ipollowork:browser:panel-closed", { sessionId: tab.taskId });
       }
+    }
+    if (tab.taskId !== null && hasOwnedTab === false && browserTabOrder.length > 0) {
+      sendToRenderer("ipollowork:browser:panel-closed", { sessionId: tab.taskId });
     }
     try { tab.view.webContents.close(); } catch { /* already destroyed */ }
     sendBrowserState();
@@ -848,19 +853,29 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
     return closedTabIds;
   }
 
-  function reorderBrowserTabs(tabIds) {
+  function reorderBrowserTabs(tabIds, taskId = null) {
     const nextOrder = Array.isArray(tabIds) ? tabIds.map(String) : [];
-    if (nextOrder.length !== browserTabOrder.length) {
+    const currentOrder = taskId === null
+      ? browserTabOrder
+      : browserTabOrder.filter((tabId) => browserTabs.get(tabId)?.taskId === taskId);
+    if (nextOrder.length !== currentOrder.length) {
       throw new Error("Tab order must include every open tab.");
     }
     if (new Set(nextOrder).size !== nextOrder.length) {
       throw new Error("Tab order must not contain duplicate tabs.");
     }
-    const current = new Set(browserTabOrder);
+    const current = new Set(currentOrder);
     if (nextOrder.some((tabId) => !current.has(tabId))) {
       throw new Error("Tab order contains an unknown tab.");
     }
-    browserTabOrder = nextOrder;
+    if (taskId === null) {
+      browserTabOrder = nextOrder;
+    } else {
+      let index = 0;
+      browserTabOrder = browserTabOrder.map((tabId) => (
+        browserTabs.get(tabId)?.taskId === taskId ? nextOrder[index++] : tabId
+      ));
+    }
     sendBrowserState();
     return listBrowserTabs();
   }
@@ -949,15 +964,25 @@ export function createBrowserPanel({ getWindow, onDeepLink, listLocalWorkspaces 
       }
     });
     ipcMain.handle("ipollowork:browser:state", () => browserStatePayload());
-    ipcMain.handle("ipollowork:browser:createTab", (_event, url) => {
+    ipcMain.handle("ipollowork:browser:createTab", (_event, url, options = {}) => {
       const target = typeof url === "string" && url.trim() ? url : BROWSER_NEW_TAB_URL;
-      const tab = createBrowserTab(target, { select: true });
+      const sessionId = options?.sessionId ?? null;
+      if (sessionId !== null && (typeof sessionId !== "string" || !/^[a-zA-Z0-9:._-]{1,256}$/.test(sessionId))) {
+        throw new Error("Invalid browser session ID");
+      }
+      const tab = createBrowserTab(target, { select: true, taskId: sessionId });
       return { tabId: tab.tabId };
     });
     ipcMain.handle("ipollowork:browser:closeTab", (_event, tabId) => closeBrowserTab(tabId == null ? undefined : String(tabId)));
     ipcMain.handle("ipollowork:browser:closeAllTabs", () => closeAllBrowserTabs());
     ipcMain.handle("ipollowork:browser:selectTab", (_event, tabId) => selectBrowserTab(String(tabId ?? "")).tabId);
-    ipcMain.handle("ipollowork:browser:reorderTabs", (_event, tabIds) => reorderBrowserTabs(tabIds));
+    ipcMain.handle("ipollowork:browser:reorderTabs", (_event, tabIds, options = {}) => {
+      const sessionId = options?.sessionId ?? null;
+      if (sessionId !== null && (typeof sessionId !== "string" || !/^[a-zA-Z0-9:._-]{1,256}$/.test(sessionId))) {
+        throw new Error("Invalid browser session ID");
+      }
+      return reorderBrowserTabs(tabIds, sessionId);
+    });
     ipcMain.handle("ipollowork:browser:listTabs", () => listBrowserTabs());
     ipcMain.handle("ipollowork:browser:setProxy", (_event, proxy) => setBrowserProxy(proxy));
     ipcMain.handle("ipollowork:browser:getProxy", () => browserProxyState());

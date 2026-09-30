@@ -16,19 +16,25 @@ export class Jobs {
   identity(account, input, context) {
     if (input.actualChannelId !== account.channelId || !account.channelId ||
       input.profileId !== `wechat-channels-ops:${account.browserProfileId}`) fail('页面身份或浏览器环境不匹配');
-    if (account.verifiedSessionId !== context.sessionId || Date.now() - Date.parse(account.verifiedAt || '') > 15 * 60_000 || !account.verifiedAt) fail('请在当前会话重新核验登录身份');
+    if (account.status !== 'verified' || !account.verifiedAt ||
+      Date.now() - Date.parse(account.verifiedAt) > 15 * 60_000) fail('请重新核验登录身份');
   }
   async claim(input, context) {
     const job = record(this.store, 'job', input.jobId), account = record(this.store, 'account', job.accountId);
     this.identity(account, input, context);
-    if (job.status !== 'prepared') fail('任务不处于待执行状态，不可重复领取');
+    if (!['prepared', 'blocked'].includes(job.status)) fail('任务不处于待执行状态，不可重复领取');
     if (job.sessionId && job.sessionId !== context.sessionId) fail('任务已绑定其他会话');
-    if (this.store.list('job', account.id, 1000).some(other => other.id !== job.id && ACTIVE.includes(other.status))) fail('该账号已有执行中或待核对任务');
+    const queued = this.store.list('job', account.id, 1000).find(other => other.id !== job.id && ACTIVE.includes(other.status));
+    if (queued) return { job, queued: true, retryAfterMs: 2000, blockedByJobId: queued.id,
+      blockedByStatus: queued.status, requiresReconciliation: queued.status === 'uncertain' };
     const mediaPaths = [];
     for (const id of [job.payload.assetId, job.payload.coverId].filter(Boolean)) mediaPaths.push((await this.media.path(id)).path);
     // Async media checks may yield to another claimant. Recheck atomically.
     return this.store.transaction(() => {
-      if (record(this.store, 'job', job.id).status !== 'prepared' || this.store.list('job', account.id, 1000).some(other => other.id !== job.id && ACTIVE.includes(other.status))) fail('任务已被领取');
+      if (!['prepared', 'blocked'].includes(record(this.store, 'job', job.id).status)) fail('任务已被领取');
+      const blocker = this.store.list('job', account.id, 1000).find(other => other.id !== job.id && ACTIVE.includes(other.status));
+      if (blocker) return { job, queued: true, retryAfterMs: 2000, blockedByJobId: blocker.id,
+        blockedByStatus: blocker.status, requiresReconciliation: blocker.status === 'uncertain' };
       const claimed = this.store.put('job', { ...job, status: 'running', sessionId: context.sessionId, updatedAt: now() });
       return { job: claimed, mediaPaths, profileId: input.profileId };
     });

@@ -135,11 +135,11 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
     reload() { return ipcRenderer.invoke("ipollowork:browser:reload"); },
     setBounds(bounds) { return ipcRenderer.invoke("ipollowork:browser:bounds", bounds); },
     getState() { return ipcRenderer.invoke("ipollowork:browser:state"); },
-    createTab(url) { return ipcRenderer.invoke("ipollowork:browser:createTab", url); },
+    createTab(url, options) { return ipcRenderer.invoke("ipollowork:browser:createTab", url, options); },
     closeTab(tabId) { return ipcRenderer.invoke("ipollowork:browser:closeTab", tabId); },
     closeAllTabs() { return ipcRenderer.invoke("ipollowork:browser:closeAllTabs"); },
     selectTab(tabId) { return ipcRenderer.invoke("ipollowork:browser:selectTab", tabId); },
-    reorderTabs(tabIds) { return ipcRenderer.invoke("ipollowork:browser:reorderTabs", tabIds); },
+    reorderTabs(tabIds, options) { return ipcRenderer.invoke("ipollowork:browser:reorderTabs", tabIds, options); },
     listTabs() { return ipcRenderer.invoke("ipollowork:browser:listTabs"); },
     setProxy(proxy) { return ipcRenderer.invoke("ipollowork:browser:setProxy", proxy); },
     getProxy() { return ipcRenderer.invoke("ipollowork:browser:getProxy"); },
@@ -151,12 +151,12 @@ contextBridge.exposeInMainWorld("__IPOLLOWORK_ELECTRON__", {
       return () => ipcRenderer.removeListener("ipollowork:browser:state", handler);
     },
     onPanelOpened(callback) {
-      const handler = () => callback();
+      const handler = (_event, payload) => callback(payload);
       ipcRenderer.on("ipollowork:browser:panel-opened", handler);
       return () => ipcRenderer.removeListener("ipollowork:browser:panel-opened", handler);
     },
     onPanelClosed(callback) {
-      const handler = () => callback();
+      const handler = (_event, payload) => callback(payload);
       ipcRenderer.on("ipollowork:browser:panel-closed", handler);
       return () => ipcRenderer.removeListener("ipollowork:browser:panel-closed", handler);
     },

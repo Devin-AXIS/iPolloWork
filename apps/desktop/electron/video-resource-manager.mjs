@@ -1,16 +1,21 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { createReadStream, existsSync } from "node:fs";
+import { chmod, mkdir, mkdtemp, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { pipeline } from "node:stream/promises";
-import { Readable, Transform } from "node:stream";
 
 import { fetchDesktopResourceManifest } from "./desktop-resource-manifest.mjs";
+import { DESKTOP_RESOURCE_APP_VERSION } from "./app-version.mjs";
 
 const VIDEO_IDS = ["ffmpeg", "ffprobe"];
 const VIDEO_ID = "video-codecs";
+const BINARY_PROBE_TIMEOUT_MS = 10_000;
+const DOWNLOAD_REQUEST_TIMEOUT_MS = 15_000;
+const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
+const DOWNLOAD_ATTEMPTS = 8;
+const DOWNLOAD_PARTS = 4;
+const DOWNLOAD_CONCURRENCY = 3;
 
 function runTar(args) {
   return new Promise((resolve, reject) => {
@@ -48,29 +53,164 @@ async function assertSafeArchive(archivePath) {
   }
 }
 
-async function downloadArchive(resource, destination, fetch, onProgress) {
-  const response = await fetch(resource.url);
-  if (!response.ok || !response.body) throw new Error(`Cloud resource ${resource.id} returned HTTP ${response.status}.`);
-  let bytes = 0;
+async function sha256File(targetPath) {
   const hash = createHash("sha256");
-  const verifier = new Transform({
-    transform(chunk, _encoding, callback) {
-      bytes += chunk.length;
-      if (bytes > resource.sizeBytes) return callback(new Error(`Cloud resource ${resource.id} is oversized.`));
-      hash.update(chunk);
-      onProgress(bytes);
-      callback(null, chunk);
-    },
+  for await (const chunk of createReadStream(targetPath)) hash.update(chunk);
+  return hash.digest("hex");
+}
+
+async function downloadRange(resource, destination, start, end, fetch, onProgress) {
+  const expectedBytes = end - start + 1;
+  for (let attempt = 0; attempt < DOWNLOAD_ATTEMPTS; attempt += 1) {
+    let downloaded = (await stat(destination).catch(() => null))?.size ?? 0;
+    if (downloaded > expectedBytes) {
+      await rm(destination, { force: true });
+      downloaded = 0;
+    }
+    if (downloaded === expectedBytes) return;
+    const controller = new AbortController();
+    let rejectRequestTimeout;
+    const requestTimedOut = new Promise((_, reject) => { rejectRequestTimeout = reject; });
+    const requestTimeout = setTimeout(() => {
+      controller.abort();
+      rejectRequestTimeout(new Error(`Cloud resource ${resource.id} request timed out.`));
+    }, DOWNLOAD_REQUEST_TIMEOUT_MS);
+    try {
+      const requestStart = start + downloaded;
+      const response = await Promise.race([
+        fetch(resource.url, {
+          headers: { Range: `bytes=${requestStart}-${end}` },
+          signal: controller.signal,
+        }),
+        requestTimedOut,
+      ]);
+      clearTimeout(requestTimeout);
+      const contentRange = response.headers.get("content-range") ?? "";
+      if (response.status !== 206 || !response.body || !contentRange.startsWith(`bytes ${requestStart}-`)) {
+        throw new Error(`Cloud resource ${resource.id} returned HTTP ${response.status}.`);
+      }
+      const handle = await open(destination, downloaded > 0 ? "a" : "w");
+      const reader = response.body.getReader();
+      let idleTimeout;
+      let rejectIdle;
+      const stalled = new Promise((_, reject) => { rejectIdle = reject; });
+      const resetIdleTimeout = () => {
+        clearTimeout(idleTimeout);
+        idleTimeout = setTimeout(() => {
+          controller.abort();
+          rejectIdle(new Error(`Cloud resource ${resource.id} download stalled.`));
+        }, DOWNLOAD_IDLE_TIMEOUT_MS);
+      };
+      resetIdleTimeout();
+      try {
+        while (true) {
+          const result = await Promise.race([reader.read(), stalled]);
+          if (result.done) break;
+          const chunk = Buffer.from(result.value);
+          if (chunk.byteLength === 0) continue;
+          if (downloaded + chunk.byteLength > expectedBytes) {
+            throw new Error(`Cloud resource ${resource.id} is oversized.`);
+          }
+          await handle.write(chunk);
+          downloaded += chunk.byteLength;
+          onProgress(downloaded);
+          resetIdleTimeout();
+        }
+      } finally {
+        clearTimeout(idleTimeout);
+        await handle.close();
+      }
+      if (downloaded === expectedBytes) return;
+      throw new Error(`Cloud resource ${resource.id} download ended early.`);
+    } catch (error) {
+      if (attempt === DOWNLOAD_ATTEMPTS - 1) throw error;
+    } finally {
+      clearTimeout(requestTimeout);
+    }
+  }
+}
+
+async function downloadArchive(resource, destination, fetch, onProgress) {
+  const partSize = Math.ceil(resource.sizeBytes / DOWNLOAD_PARTS);
+  const ranges = Array.from({ length: DOWNLOAD_PARTS }, (_, index) => ({
+    start: index * partSize,
+    end: Math.min(resource.sizeBytes - 1, ((index + 1) * partSize) - 1),
+    path: `${destination}.part-${index}`,
+  })).filter((range) => range.start <= range.end);
+  const progress = await Promise.all(ranges.map(async (range) => (
+    (await stat(range.path).catch(() => null))?.size ?? 0
+  )));
+  const reportProgress = () => onProgress(progress.reduce((total, bytes) => total + bytes, 0));
+  reportProgress();
+  let nextRangeIndex = 0;
+  const workers = Array.from({ length: Math.min(DOWNLOAD_CONCURRENCY, ranges.length) }, async () => {
+    while (nextRangeIndex < ranges.length) {
+      const index = nextRangeIndex;
+      nextRangeIndex += 1;
+      const range = ranges[index];
+      await downloadRange(resource, range.path, range.start, range.end, fetch, (bytes) => {
+        progress[index] = bytes;
+        reportProgress();
+      });
+    }
   });
-  await pipeline(Readable.fromWeb(response.body), verifier, createWriteStream(destination, { flags: "wx" }));
-  if (bytes !== resource.sizeBytes || hash.digest("hex") !== resource.sha256) {
+  await Promise.all(workers);
+  const handle = await open(destination, "w");
+  try {
+    for (const range of ranges) {
+      for await (const chunk of createReadStream(range.path)) await handle.write(chunk);
+    }
+  } finally {
+    await handle.close();
+  }
+  const bytes = (await stat(destination)).size;
+  if (bytes !== resource.sizeBytes || await sha256File(destination) !== resource.sha256) {
     throw new Error(`Cloud resource ${resource.id} failed size or SHA-256 verification.`);
   }
   await assertSafeArchive(destination);
 }
 
-export function createVideoResourceManager({ app, fetch, env = process.env, platform = process.platform, arch = process.arch, trustedKeys = undefined }) {
-  const root = path.join(app.getPath("userData"), "desktop-resources", "video", app.getVersion());
+function probeBinary(binaryPath, resourceId) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(binaryPath, ["-version"], {
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => { output = (output + chunk).slice(0, 4096); });
+    child.stderr.on("data", (chunk) => { output = (output + chunk).slice(0, 4096); });
+    const timeout = setTimeout(() => {
+      child.kill();
+      reject(new Error(`${resourceId} verification timed out.`));
+    }, BINARY_PROBE_TIMEOUT_MS);
+    child.once("error", (error) => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timeout);
+      if (code !== 0 || !output.toLowerCase().includes(resourceId)) {
+        reject(new Error(`Downloaded ${resourceId} executable failed its version check.`));
+        return;
+      }
+      resolve(output.split(/\r?\n/, 1)[0]);
+    });
+  });
+}
+
+export function createVideoResourceManager({
+  app,
+  fetch,
+  env = process.env,
+  platform = process.platform,
+  arch = process.arch,
+  trustedKeys = undefined,
+  probeBinary: verifyBinary = probeBinary,
+}) {
+  const appVersion = DESKTOP_RESOURCE_APP_VERSION;
+  const root = path.join(app.getPath("userData"), "desktop-resources", "video", appVersion);
   const marker = path.join(root, "current.json");
   let operation = null;
   let inFlight = null;
@@ -91,7 +231,20 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
 
   async function applyEnvironment() {
     const paths = await currentPaths();
-    if (!paths) return null;
+    if (!paths) {
+      delete env.HYPERFRAMES_FFMPEG_PATH;
+      delete env.HYPERFRAMES_FFPROBE_PATH;
+      return null;
+    }
+    try {
+      await Promise.all(VIDEO_IDS.map((id) => verifyBinary(paths[id], id)));
+    } catch (error) {
+      await rm(marker, { force: true });
+      delete env.HYPERFRAMES_FFMPEG_PATH;
+      delete env.HYPERFRAMES_FFPROBE_PATH;
+      operation = { status: "failed", error: error instanceof Error ? error.message : String(error) };
+      return null;
+    }
     env.HYPERFRAMES_FFMPEG_PATH = paths.ffmpeg;
     env.HYPERFRAMES_FFPROBE_PATH = paths.ffprobe;
     return paths;
@@ -103,7 +256,7 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
     return {
       id: VIDEO_ID,
       name: "FFmpeg / FFprobe 视频编解码组件",
-      version: app.getVersion(),
+      version: appVersion,
       status: operation?.status ?? (paths ? "ready" : "not-installed"),
       source: paths ? "downloaded" : "none",
       installed: Boolean(paths),
@@ -124,7 +277,7 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
     try {
       const manifest = await fetchDesktopResourceManifest({
         baseUrl,
-        appVersion: app.getVersion(),
+        appVersion,
         platform,
         arch,
         fetch,
@@ -155,7 +308,14 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
         path.join(staging, "ffprobe", `ffprobe${executable}`),
       ]) {
         if (!(await stat(expected).catch(() => null))?.isFile()) throw new Error(`Cloud video resource is missing ${path.basename(expected)}.`);
+        if (platform !== "win32") await chmod(expected, 0o755);
       }
+      operation.status = "verifying";
+      const stagedPaths = {
+        ffmpeg: path.join(staging, "ffmpeg", `ffmpeg${executable}`),
+        ffprobe: path.join(staging, "ffprobe", `ffprobe${executable}`),
+      };
+      await Promise.all(VIDEO_IDS.map((id) => verifyBinary(stagedPaths[id], id)));
       const mediaSha256 = createHash("sha256")
         .update(resources.map((item) => `${item.id}:${item.sha256}`).join("|"))
         .digest("hex");
@@ -166,7 +326,8 @@ export function createVideoResourceManager({ app, fetch, env = process.env, plat
       await writeFile(nextMarker, JSON.stringify({ mediaSha256, versions: Object.fromEntries(resources.map((item) => [item.id, item.version])) }));
       await rename(nextMarker, marker);
       operation = null;
-      await applyEnvironment();
+      env.HYPERFRAMES_FFMPEG_PATH = path.join(destination, "ffmpeg", `ffmpeg${executable}`);
+      env.HYPERFRAMES_FFPROBE_PATH = path.join(destination, "ffprobe", `ffprobe${executable}`);
       return info();
     } catch (error) {
       operation = { status: "failed", error: error instanceof Error ? error.message : String(error) };

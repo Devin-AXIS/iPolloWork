@@ -173,7 +173,7 @@ import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
-import { useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
+import { browserTabsForSession, useActivePanelTab, usePanelTabStore, useSessionPanelState } from "../panel/panel-tab-store";
 import { useWorkspaceShellLayout } from "../../../shell/workspace-shell-layout";
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import { getExtensionId, isiPolloWorkExtensionEnabled, IPOLLOWORK_EXTENSION_STATE_CHANGED } from "../../settings/extension-state";
@@ -258,6 +258,12 @@ type PendingTemplateDispatch = {
   draft: ComposerDraft | null;
 };
 
+type PendingStoryboardRegeneration = {
+  requestId: string;
+  sessionId: string;
+  draft: ComposerDraft;
+};
+
 function createTemplateDispatchRequestId(sessionId: string) {
   return `${sessionId}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2)}`;
 }
@@ -277,6 +283,27 @@ function createTemplateDispatchDraft(
     attachments: dispatch.attachments,
     text: dispatch.visibleText,
     resolvedText: dispatch.visibleText,
+  };
+}
+
+function createStoryboardRegenerationDraft(sourcePath: string): ComposerDraft {
+  const visibleText = "按已保存的脚本重新生成视频";
+  const storyboardPath = sourcePath.replace(/index\.html$/i, "STORYBOARD.md");
+  const instruction = [
+    `Regenerate the existing video at ${sourcePath} from the saved ${storyboardPath}.`,
+    "The saved storyboard is approved production input. Do not ask for script confirmation and do not stop after planning.",
+    "Re-read both files from disk, apply every changed scene, narration, caption, visual, audio and timing field, preserve unrelated user edits, then save the complete composition for the application's delivery validator.",
+  ].join("\n");
+  return {
+    mode: "prompt",
+    parts: [
+      { type: "text", text: visibleText },
+      { type: "text", text: instruction, synthetic: true },
+    ],
+    attachments: [],
+    text: visibleText,
+    resolvedText: visibleText,
+    capability: { id: "video-storyboard-regeneration", instruction },
   };
 }
 
@@ -1790,6 +1817,7 @@ export function SessionPage(props: SessionPageProps) {
   const [pendingCustomTemplateApplication, setPendingCustomTemplateApplication] = useState<PendingCustomTemplateApplication | null>(null);
   const [pendingTemplateProjectId, setPendingTemplateProjectId] = useState(props.selectedWorkspaceId);
   const [pendingTemplateDispatch, setPendingTemplateDispatch] = useState<PendingTemplateDispatch | null>(null);
+  const [pendingStoryboardRegeneration, setPendingStoryboardRegeneration] = useState<PendingStoryboardRegeneration | null>(null);
   const templateDispatchPreparationRef = useRef<string | null>(null);
   const [templateSessionData, setTemplateSessionData] = useState<TemplateSessionData | null>(null);
   const [pendingVideoArtifactCompletion, setPendingVideoArtifactCompletion] = useState<{
@@ -2542,6 +2570,44 @@ export function SessionPage(props: SessionPageProps) {
     setTemplateSessionData((current) => current?.sessionId === sessionId ? { ...current, hasBrief: false } : current);
     toast.error(t("templates.error_apply"));
   }, [pendingTemplateDispatch]);
+  const regenerateVideoFromStoryboard = useCallback(async () => {
+    const sessionId = props.selectedSessionId;
+    const sourcePath = currentVideoEntryPath;
+    if (!sessionId || !sourcePath || !props.ipolloworkServerClient || !props.runtimeWorkspaceId) return;
+    try {
+      const source = await props.ipolloworkServerClient.readWorkspaceFile(props.runtimeWorkspaceId, sourcePath);
+      setPendingVideoArtifactCompletion({
+        sessionId,
+        requirement: createVideoArtifactCompletionRequirement(
+          sourcePath,
+          source.content,
+          conversationMessages.length,
+          conversationRequestCount,
+        ),
+      });
+      setPendingStoryboardRegeneration({
+        requestId: createTemplateDispatchRequestId(sessionId),
+        sessionId,
+        draft: createStoryboardRegenerationDraft(sourcePath),
+      });
+      toast.success("已保存脚本，正在按新版脚本重新生成视频。");
+    } catch (error) {
+      toast.error("无法开始重新生成视频。", {
+        description: error instanceof Error ? error.message : undefined,
+      });
+    }
+  }, [conversationMessages.length, conversationRequestCount, currentVideoEntryPath, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const settlePendingProgrammaticDraft = useCallback((requestId: string, dispatched: boolean) => {
+    if (pendingStoryboardRegeneration?.requestId === requestId) {
+      setPendingStoryboardRegeneration(null);
+      if (!dispatched) {
+        setPendingVideoArtifactCompletion((current) => current?.sessionId === pendingStoryboardRegeneration.sessionId ? null : current);
+        toast.error("新版脚本未能提交给当前视频会话，请重试。");
+      }
+      return;
+    }
+    settlePendingTemplateDispatch(requestId, dispatched);
+  }, [pendingStoryboardRegeneration, settlePendingTemplateDispatch]);
   const closeTemplateBrief = useCallback(async () => {
     const conversationId = props.selectedSessionId;
     const templateSessionId = currentTemplateSessionData?.sessionId;
@@ -2927,7 +2993,8 @@ export function SessionPage(props: SessionPageProps) {
     const browser = (window as Window).__IPOLLOWORK_ELECTRON__?.browser;
     if (!browser) return;
     let stopped = false;
-    const unsubOpen = browser.onPanelOpened?.(() => {
+    const unsubOpen = browser.onPanelOpened?.((payload) => {
+      if (payload?.sessionId && payload.sessionId !== props.selectedSessionId) return;
       if (preserveSidePanelOnPanelOpenRef.current) {
         preserveSidePanelOnPanelOpenRef.current = false;
         return;
@@ -2938,11 +3005,13 @@ export function SessionPage(props: SessionPageProps) {
       void browser.getState?.().then((state) => {
         if (stopped || !state?.activeTabId || !state.tabs?.length || !props.selectedSessionId) return;
         const store = usePanelTabStore.getState();
-        store.syncBrowserTabs(props.selectedSessionId, state.tabs, state.activeTabId);
-        store.selectTab(props.selectedSessionId, state.activeTabId);
+        const scoped = browserTabsForSession(state, props.selectedSessionId);
+        store.syncBrowserTabs(props.selectedSessionId, scoped.tabs, scoped.activeTabId);
+        if (scoped.activeTabId) store.selectTab(props.selectedSessionId, scoped.activeTabId);
       }).catch((error: unknown) => console.error("Failed to activate browser tab", error));
     });
-    const unsubClose = browser.onPanelClosed?.(() => {
+    const unsubClose = browser.onPanelClosed?.((payload) => {
+      if (payload?.sessionId && payload.sessionId !== props.selectedSessionId) return;
       const remainingTabs = props.selectedSessionId
         ? usePanelTabStore.getState().sessions[props.selectedSessionId]?.tabs ?? []
         : [];
@@ -3294,6 +3363,16 @@ export function SessionPage(props: SessionPageProps) {
     }
     toast.error(t(pluginId === "image-studio" ? "artifact.image_studio_install_required" : "media.workbench.unavailable"));
   }, [openWorkspaceApp, workspaceApps, props.runtimeWorkspaceId, props.selectedSessionId]);
+  const openInstalledPublishingStudio = useCallback(async (pluginId: "douyin-ops" | "wechat-channels-ops", sessionId: string) => {
+    let surface = workspaceApps.find((entry) => entry.pluginId === pluginId);
+    if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
+      const packages = await props.ipolloworkServerClient.listPluginPackages(props.runtimeWorkspaceId).catch(() => null);
+      surface = packages?.items
+        ? resolveInstalledPluginContributions(packages.items).workspaceApps.find((entry) => entry.pluginId === pluginId)
+        : undefined;
+    }
+    if (surface) openWorkspaceApp(surface, undefined, sessionId);
+  }, [openWorkspaceApp, props.ipolloworkServerClient, props.runtimeWorkspaceId, workspaceApps]);
   const openImageStudio = useCallback(async (target: OpenTarget, sourceSessionId?: string) => {
     let surface = workspaceApps.find((entry) => mediaStudioEngine(entry) === "image-studio");
     if (!surface && props.ipolloworkServerClient && props.runtimeWorkspaceId) {
@@ -3339,7 +3418,7 @@ export function SessionPage(props: SessionPageProps) {
         if (!options?.auto) prioritizeRightPanel();
         preserveSidePanelOnPanelOpenRef.current = true;
         setCurrentSidePanel("panel");
-        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url);
+        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(url, { sessionId: sourceSessionId ?? props.selectedSessionId });
       } else {
         window.open(url, "_blank", "noopener,noreferrer");
       }
@@ -3522,19 +3601,19 @@ export function SessionPage(props: SessionPageProps) {
       const hasBrowserTab = sessionPanelState.tabs.some((tab) => tab.type === "browser");
       if (!hasBrowserTab) {
         preserveSidePanelOnPanelOpenRef.current = true;
-        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
+        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(undefined, { sessionId: props.selectedSessionId });
       }
     }
     toggleCurrentSidePanel("panel");
-  }, [panelRailActive, sessionPanelState.tabs, toggleCurrentSidePanel]);
+  }, [panelRailActive, props.selectedSessionId, sessionPanelState.tabs, toggleCurrentSidePanel]);
   const addBrowserPanelTab = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     if (isElectronRuntime()) {
       preserveSidePanelOnPanelOpenRef.current = true;
-      void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.();
+      void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(undefined, { sessionId: props.selectedSessionId });
     }
     setCurrentSidePanel("panel");
-  }, [setCurrentSidePanel]);
+  }, [props.selectedSessionId, setCurrentSidePanel]);
   const toggleRightPanel = useCallback(() => {
     if (sidePanelOpen) {
       if (effectiveSidePanelView) {
@@ -4859,10 +4938,12 @@ export function SessionPage(props: SessionPageProps) {
                         onConversationMessagesChange={handleConversationMessagesChange}
                         onLoadSettled={handleSessionLoadSettled}
                         assistantWaitLabel={templateAssistantWait?.sessionId === props.selectedSessionId ? templateAssistantWait.label : undefined}
-                        pendingProgrammaticDraft={pendingTemplateDispatch?.sessionId === props.selectedSessionId && pendingTemplateDispatch.draft
-                          ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft }
-                          : null}
-                        onPendingProgrammaticDraftSettled={settlePendingTemplateDispatch}
+                        pendingProgrammaticDraft={pendingStoryboardRegeneration?.sessionId === props.selectedSessionId
+                          ? { id: pendingStoryboardRegeneration.requestId, draft: pendingStoryboardRegeneration.draft }
+                          : pendingTemplateDispatch?.sessionId === props.selectedSessionId && pendingTemplateDispatch.draft
+                            ? { id: pendingTemplateDispatch.requestId, draft: pendingTemplateDispatch.draft }
+                            : null}
+                        onPendingProgrammaticDraftSettled={settlePendingProgrammaticDraft}
                         templateEntryPath={templateEntryPathForArtifacts}
                         artifactFiles={artifactFiles}
                         artifactContext={artifactContext}
@@ -4873,6 +4954,7 @@ export function SessionPage(props: SessionPageProps) {
                         onOpenVideoStudio={openCurrentVideoArtifactStudio}
                         onOpenSchedule={openGlobalSchedule}
                         onOpenWorkspaceApp={openWorkspaceAppForPlugin}
+                        onOpenPublishingStudio={openInstalledPublishingStudio}
                         onOpenTemplateMarket={() => {
                           setTemplateMarketTarget("current-session");
                           setTemplateMarketOpen(true);
@@ -5111,6 +5193,7 @@ export function SessionPage(props: SessionPageProps) {
                         onAskAi={handleDesignAskAi}
                         onSendWorkspaceAppMessage={sendWorkspaceAppMessage}
                         onGenerateVideo={(path,sourceSessionId)=>openWorkspaceAppForPlugin("video-console",{intent:"generate-video",requestId:crypto.randomUUID(),source:{kind:"workspace-file",path,name:path.split(/[\\/]/).pop() || path,preview:"image"}},sourceSessionId)}
+                        onRegenerateVideoFromStoryboard={regenerateVideoFromStoryboard}
                         onEditImage={openImageStudio}
                         onSwitchMedia={kind => openWorkspaceAppForPlugin(kind === "image" ? "image-studio" : "video-console", {intent:`generate-${kind}`,requestId:crypto.randomUUID()})}
                         onOpenMedia={(path,kind) => void openTarget({id:path,kind:"file",value:path,name:path.split("/").pop() || path,preview:kind === "image" ? "image" : "external",confidence:1,reason:"media-studio-import"})}

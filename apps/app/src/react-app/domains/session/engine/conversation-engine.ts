@@ -257,6 +257,8 @@ export type ConversationPromptPart =
   | { type: "file"; mime: string; url: string; filename?: string }
   | { type: "agent"; name: string };
 
+export const SYNTHETIC_ONLY_EXECUTION_PROMPT = "Continue the unfinished task from its saved progress and complete the requested result.";
+
 export type ConversationMessageChunk = Extract<
   UIMessageChunk,
   { type: "text-delta" | "reasoning-delta" }

@@ -56,6 +56,7 @@ type SessionMessageRole = "assistant" | "system" | "user";
 type SessionActivityRecord = {
   status: SessionActivityStatus;
   runActive: boolean;
+  hostDeliveryActive: boolean;
   runOutcome: SessionRunOutcome;
   runStartedAt: number | null;
   runEndedAt: number | null;
@@ -87,6 +88,7 @@ type SessionActivityStore = {
   seedWorkspaceSessions: (workspaceId: string, sessions: SessionLike[]) => void;
   seedSessionRun: (workspaceId: string, sessionId: string, status: unknown, assistantOutput: boolean) => void;
   setRunStatus: (workspaceId: string, sessionId: string, status: unknown) => void;
+  setHostDelivery: (workspaceId: string, sessionId: string, active: boolean, error?: string) => void;
   finishRun: (workspaceId: string, sessionId: string, outcome: "completed" | "stopped", turnId?: string) => void;
   markMessageRole: (workspaceId: string, sessionId: string, messageId: string, role: SessionMessageRole) => void;
   markAssistantOutput: (workspaceId: string, sessionId: string, messageId?: string, options?: { allowUnknownMessageRole?: boolean }) => void;
@@ -101,6 +103,7 @@ type SessionActivityStore = {
 const createRecord = (): SessionActivityRecord => ({
   status: "idle",
   runActive: false,
+  hostDeliveryActive: false,
   runOutcome: null,
   runStartedAt: null,
   runEndedAt: null,
@@ -133,6 +136,7 @@ function sessionRunStatus(session: SessionLike) {
 }
 
 function statusForRecord(record: SessionActivityRecord): SessionActivityStatus {
+  if (record.hostDeliveryActive) return "thinking";
   if (record.errorActive) return "error";
   if (record.waitingPermissionIds.length > 0 || record.waitingQuestionIds.length > 0) return "waiting";
   if (record.compacting) return "compacting";
@@ -326,6 +330,21 @@ export const useSessionActivityStore = create<SessionActivityStore>((set, get) =
         waitingQuestionIds: runActive ? record.waitingQuestionIds : [],
       };
     }));
+  },
+  setHostDelivery: (workspaceId, sessionId, active, error) => {
+    const workspace = workspaceId.trim();
+    const session = sessionId.trim();
+    if (!workspace || !session) return;
+    set((state) => updateRecord(state, workspace, session, (record) => ({
+      ...record,
+      hostDeliveryActive: active,
+      runOutcome: active ? "running" : error ? "failed" : "completed",
+      runStartedAt: active ? record.runStartedAt ?? Date.now() : record.runStartedAt,
+      runEndedAt: active ? null : Date.now(),
+      errorActive: active ? false : Boolean(error),
+      errorMessage: active ? null : error ?? null,
+      ...(active ? {} : { runActive: false, assistantOutput: false }),
+    })));
   },
   finishRun: (workspaceId, sessionId, outcome, turnId) => {
     const workspace = workspaceId.trim();

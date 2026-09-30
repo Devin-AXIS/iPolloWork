@@ -100,15 +100,45 @@ test('claim enforces identity, profile and session; concurrent claims cannot win
   assert.equal(success.mediaPaths.length, 1);
   await assert.rejects(f.ops.action('mark-submitting', { jobId: job.id, ...f.identity }, { trusted: true, sessionId: 'other' }), /不属于/);
 });
-test('one browser per account; uncertain submission blocks further work until reconciliation', async t => {
+test('fresh account verification is shared while each job remains bound to its own session', async t => {
+  const f = await fixture(t), { job } = await f.prepare();
+  await f.verify({ trusted: true, sessionId: 'verification-session' });
+  await f.ops.action('claim-job', { jobId: job.id, ...f.identity }, context);
+  await f.ops.action('report-job', { jobId: job.id, ...f.identity, status: 'blocked', evidence: '最终点击前网络中断' }, context);
+  const resumed = await f.ops.action('claim-job', { jobId: job.id, ...f.identity }, context);
+  assert.equal(resumed.job.status, 'running');
+  assert.equal(resumed.job.sessionId, context.sessionId);
+  await assert.rejects(f.ops.action('mark-submitting', { jobId: job.id, ...f.identity }, { trusted: true, sessionId: 'other' }), /不属于/);
+});
+test('jobs for one account queue without failing another conversation', async t => {
+  const f = await fixture(t); await f.verify();
+  const first = (await f.prepare()).job;
+  const second = (await f.ops.prepareJob({ accountId: f.account.id, type: 'sync-videos', operationKey: 'queued-sync' })).job;
+  await f.ops.action('claim-job', { jobId: first.id, ...f.identity }, context);
+  const queued = await f.ops.action('claim-job', { jobId: second.id, ...f.identity }, { trusted: true, sessionId: 'second-session' });
+  assert.equal(queued.queued, true);
+  assert.equal(queued.blockedByJobId, first.id);
+  assert.equal(f.store.get('job', second.id).status, 'prepared');
+  await f.ops.action('report-job', { jobId: first.id, ...f.identity, status: 'blocked', evidence: '提交前停止' }, context);
+  const claimed = await f.ops.action('claim-job', { jobId: second.id, ...f.identity }, { trusted: true, sessionId: 'second-session' });
+  assert.equal(claimed.job.status, 'running');
+  assert.equal(claimed.job.sessionId, 'second-session');
+});
+test('one browser per account; uncertain submission queues later work until reconciliation', async t => {
   const f = await fixture(t); await f.verify(); const { job } = await f.prepare();
   await f.ops.action('claim-job', { jobId: job.id, ...f.identity }, context);
   await assert.rejects(f.ops.action('report-job', { jobId: job.id, ...f.identity, status: 'published', evidence: '错误提前成功', resultUrl: 'https://channels.weixin.qq.com/' }, context), /不匹配/);
   await f.ops.action('mark-submitting', { jobId: job.id, ...f.identity }, context);
   await f.ops.action('report-job', { jobId: job.id, status: 'uncertain', evidence: '点击后页面断开' }, context);
-  await assert.rejects(f.ops.prepareJob({ accountId: f.account.id, type: 'sync-videos', operationKey: 'sync1' }), /待核对/);
+  const waiting = (await f.ops.prepareJob({ accountId: f.account.id, type: 'sync-videos', operationKey: 'sync1' })).job;
+  const queued = await f.ops.action('claim-job', { jobId: waiting.id, ...f.identity }, { trusted: true, sessionId: 'second-session' });
+  assert.equal(queued.queued, true);
+  assert.equal(queued.requiresReconciliation, true);
+  assert.equal(queued.blockedByJobId, job.id);
+  assert.equal(f.store.get('job', waiting.id).status, 'prepared');
   await f.ops.action('reconcile-job', { jobId: job.id, ...f.identity, status: 'published', evidence: '夹具模拟已发布列表', resultUrl: 'https://channels.weixin.qq.com/platform/post/list' }, context);
   assert.equal(f.store.get('job', job.id).status, 'published');
+  assert.equal((await f.ops.action('claim-job', { jobId: waiting.id, ...f.identity }, { trusted: true, sessionId: 'second-session' })).job.status, 'running');
   assert.equal((await f.prepare('new-key')).job.id, job.id);
 });
 test('restart turns submitting into uncertain without re-execution', async t => {

@@ -1,13 +1,42 @@
 import { describe, expect, test } from "bun:test";
 
 import type { iPolloWorkPluginPackageItem } from "../src/app/lib/ipollowork-server";
+import type { BrowserPanelTab } from "../src/app/lib/desktop-types";
 import { resolveInstalledPluginContributions, mediaStudioEngine, workspaceAppLaunchers, workspaceAppServiceAction } from "../src/react-app/plugin-ui/plugin-ui-contributions";
+import { browserSessionTabsToObserve } from "../src/react-app/plugin-ui/service-workbench-frame";
 import {
   parsePluginPackageManifest,
   parsePluginUiInspectorContext,
 } from "@ipollowork/types/plugins";
 
 describe("plugin UI contributions", () => {
+  test("an authenticated profile cannot be downgraded by its stale login tab", () => {
+    const tab = (id: string, url: string, profileId = "social:profile-a"): BrowserPanelTab => ({
+      id, type: "browser", label: id, url, profileId, favicon: null,
+      status: "ready", canGoBack: false, canGoForward: false,
+    });
+    const login = {
+      origin: "https://channels.example.com",
+      paths: ["/login.html", "/platform/"],
+      sessionRecovery: { loginPath: "/login.html", authenticatedPath: "/platform/" },
+    };
+
+    expect(browserSessionTabsToObserve([
+      tab("stale-login", "https://channels.example.com/login.html"),
+      tab("authenticated", "https://channels.example.com/platform/post/create"),
+      tab("other-login", "https://channels.example.com/login.html", "social:profile-b"),
+    ], login, "social:", new Set())).toEqual([
+      tab("other-login", "https://channels.example.com/login.html", "social:profile-b"),
+    ]);
+    expect(browserSessionTabsToObserve([
+      tab("login", "https://channels.example.com/login.html"),
+    ], login, "social:", new Set())).toHaveLength(1);
+    expect(browserSessionTabsToObserve([
+      { ...tab("mine", "https://channels.example.com/platform/"), sessionId: "session-a" },
+      { ...tab("other", "https://channels.example.com/platform/"), sessionId: "session-b" },
+    ], login, "social:", new Set(), "session-a").map(item => item.id)).toEqual(["mine"]);
+  });
+
   test("one Media Studio install exposes two engines behind one launcher and respects disablement", async () => {
     const manifest = parsePluginPackageManifest(await Bun.file(new URL("../../../examples/plugin-packages/media-studio/ipollowork.plugin.json", import.meta.url)).json());
     const item: iPolloWorkPluginPackageItem = { pluginId:manifest.id, name:manifest.name, version:"1.0.0", enabled:true, disabledResourceIds:[], previousVersion:null, manifest, integrity:{sha256:"0".repeat(64),status:"unsigned"}, activeEngineId:"opencode", engineCompatibility:[] };

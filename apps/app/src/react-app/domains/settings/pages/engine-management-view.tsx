@@ -1,13 +1,12 @@
 /** @jsxImportSource react */
-import { useEffect, useMemo, useState } from "react";
-import { Download, HardDrive, LoaderCircle, ShieldCheck, Trash2, Video } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Download, HardDrive, LoaderCircle, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
 import { formatBytes, isDesktopRuntime } from "@/app/utils";
 import { publicAssetUrl } from "@/app/lib/public-asset";
-import { videoResourceInfo, videoResourceInstall, type EnginePackageInfo } from "@/app/lib/desktop";
-import { readDenSettings } from "@/app/lib/den";
+import type { EnginePackageInfo } from "@/app/lib/desktop";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
@@ -93,18 +92,7 @@ function EngineProgress({ engine }: { engine: EnginePackageInfo }) {
 
 export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean }) {
   const { actionEngineId, install, loading, packages, uninstall } = useEnginePackages();
-  const [videoResource, setVideoResource] = useState<EnginePackageInfo | null>(null);
-  const [installingVideo, setInstallingVideo] = useState(false);
   const [removeEngineId, setRemoveEngineId] = useState<string | null>(null);
-  useEffect(() => {
-    if (!isDesktopRuntime()) return;
-    void videoResourceInfo().then(setVideoResource).catch(() => undefined);
-  }, []);
-  useEffect(() => {
-    if (!installingVideo) return;
-    const interval = window.setInterval(() => void videoResourceInfo().then(setVideoResource).catch(() => undefined), 350);
-    return () => window.clearInterval(interval);
-  }, [installingVideo]);
   const removeEngine = useMemo(
     () => packages.find((engine) => engine.id === removeEngineId) ?? null,
     [packages, removeEngineId],
@@ -132,9 +120,8 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
   return (
     <LayoutStack>
       <div className="overflow-hidden rounded-2xl border border-dls-border bg-dls-card/75 shadow-[var(--dls-card-shadow)] backdrop-blur-xl">
-        {[...packages, ...(videoResource ? [videoResource] : [])].map((engine, index) => {
-          const isVideo = engine.id === "video-codecs";
-          const busy = actionEngineId === engine.id || (isVideo && installingVideo)
+        {packages.map((engine, index) => {
+          const busy = actionEngineId === engine.id
             || ["downloading", "verifying", "installing", "uninstalling"].includes(engine.status);
           const sourceNotice = externalSourceNotice(engine);
           return (
@@ -146,11 +133,11 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
             >
               <div className="flex min-w-0 items-start gap-4">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-dls-border bg-background/70">
-                  {isVideo ? <Video className="size-5" aria-hidden="true" /> : <img
+                  <img
                     src={engineIcon(engine.id)}
                     alt=""
                     className={cn("max-h-6 max-w-7 object-contain", engine.id !== "deepseek-harness" && "dark:invert")}
-                  />}
+                  />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -184,7 +171,6 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                       {sourceNotice}
                     </p>
                   ) : null}
-                  {isVideo ? <p className="mt-2 text-xs leading-5 text-dls-secondary">HyperFrames 运行时和组件库已随软件安装；这里只下载并校验 FFmpeg 与 FFprobe，完成后即可使用视频工作台。</p> : null}
                   {busy ? <EngineProgress engine={engine} /> : null}
                   {engine.error ? <p className="mt-2 text-xs leading-5 text-red-11">{engine.error}</p> : null}
                 </div>
@@ -195,18 +181,7 @@ export function EngineManagementView({ anyActiveRuns }: { anyActiveRuns: boolean
                       variant="secondary"
                       disabled={busy}
                       onClick={() => {
-                        const action = isVideo
-                          ? (async () => {
-                              setInstallingVideo(true);
-                              try {
-                                await videoResourceInstall(readDenSettings().baseUrl);
-                              } finally {
-                                setVideoResource(await videoResourceInfo().catch(() => null));
-                                setInstallingVideo(false);
-                              }
-                            })()
-                          : install(engine.id);
-                        void action.catch((error) => {
+                        void install(engine.id).catch((error) => {
                           toast.error(error instanceof Error ? error.message : t("settings.engine_manager.install_failed"));
                         });
                       }}

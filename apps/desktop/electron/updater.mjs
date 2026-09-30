@@ -1,35 +1,12 @@
 import { rm } from "node:fs/promises";
-import { readFileSync } from "node:fs";
 import { execFile } from "node:child_process";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { resolveDesktopAppVersion } from "./app-version.mjs";
 
 const LEGACY_ELECTRON_UPDATER_CHANNEL_FILENAME = "electron-updater-channel.v1.json";
 const OFFICIAL_ELECTRON_UPDATER_FEED = "https://github.com/Devin-AXIS/iPolloWork/releases/latest/download";
 
-// In dev mode, app.getVersion() returns the Electron framework version
-// (e.g. "35.7.5") instead of the iPolloWork app version. Read from
-// package.json so the UI always shows the correct version.
-const __updater_dirname = path.dirname(fileURLToPath(import.meta.url));
-let _cachedAppVersion = null;
-function resolveAppVersion(app) {
-  if (_cachedAppVersion) return _cachedAppVersion;
-  const electronVersion = app.getVersion();
-  // If packaged, app.getVersion() is correct (set by electron-builder).
-  if (app.isPackaged) {
-    _cachedAppVersion = electronVersion;
-    return electronVersion;
-  }
-  // In dev, read from package.json.
-  try {
-    const pkgPath = path.resolve(__updater_dirname, "..", "package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
-    _cachedAppVersion = pkg.version || electronVersion;
-  } catch {
-    _cachedAppVersion = electronVersion;
-  }
-  return _cachedAppVersion;
-}
 export function normalizeElectronUpdaterChannel(_value) {
   return "stable";
 }
@@ -127,7 +104,7 @@ function updaterChannelState(app) {
   return {
     channel: normalized,
     feedUrl: electronUpdaterFeedUrl(normalized),
-    currentVersion: resolveAppVersion(app),
+    currentVersion: resolveDesktopAppVersion(app),
   };
 }
 
@@ -266,7 +243,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     try {
       const result = await updater.checkForUpdates();
       const info = result?.updateInfo ?? null;
-      const currentVersion = resolveAppVersion(app);
+      const currentVersion = resolveDesktopAppVersion(app);
       const available = Boolean(info?.version && isVersionNewer(info.version, currentVersion));
       checkedUpdateVersion = available ? info.version : null;
       return {
@@ -288,7 +265,7 @@ export function registerUpdaterIpc({ app, ipcMain, getMainWindow }) {
     if (!updater) return { ok: false, reason: "unavailable" };
     try {
       await applyElectronUpdaterFeed(app, updater);
-      const currentVersion = resolveAppVersion(app);
+      const currentVersion = resolveDesktopAppVersion(app);
       if (!checkedUpdateVersion || !isVersionNewer(checkedUpdateVersion, currentVersion)) {
         const result = await updater.checkForUpdates();
         const info = result?.updateInfo ?? null;

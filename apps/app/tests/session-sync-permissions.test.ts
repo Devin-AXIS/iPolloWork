@@ -10,7 +10,7 @@ import type {
   ConversationSnapshot,
 } from "../src/react-app/domains/session/engine/conversation-engine";
 import { mapOpenCodeConversationEvent } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
-import { deriveRenderedSessionMessages } from "../src/react-app/domains/session/surface/session-render-state";
+import { createInternalContinuationMessageId, deriveRenderedSessionMessages } from "../src/react-app/domains/session/surface/session-render-state";
 import { useSessionActivityStore } from "../src/react-app/domains/session/status/session-activity-store";
 import {
   __applySessionSyncEventForTest,
@@ -535,6 +535,22 @@ describe("session transcript sync", () => {
     }).map((message) => message.id)).toEqual([
       "msg-user-old",
       "ipollowork-user-after-stop",
+    ]);
+  });
+
+  test("hides host-owned continuation prompts while retaining their assistant work", () => {
+    expect(createInternalContinuationMessageId()).toMatch(/^msg_ipollowork_internal_continuation_/);
+    const snapshot = snapshotWithMessages([
+      { id: "msg-user", role: "user", text: "生成视频并发布到视频号" },
+      { id: "ipollowork-internal-continuation-1", role: "user", text: "Continue the unfinished task from its saved progress and complete the requested result." },
+      { id: "msg_ipollowork_internal_continuation_1", role: "user", text: "Continue the unfinished task from its saved progress and complete the requested result." },
+      { id: "msg-assistant-repair", role: "assistant", text: "正在修复并保存视频。" },
+      { id: "legacy-recovery", role: "user", text: "Continue the unfinished video delivery." },
+    ]);
+
+    expect(deriveRenderedSessionMessages({ transcriptState: null, snapshot }).map((message) => message.id)).toEqual([
+      "msg-user",
+      "msg-assistant-repair",
     ]);
   });
 

@@ -47,7 +47,7 @@ import {
   googleWorkspaceTestConnection,
 } from "../extensions/google-workspace.js";
 import { callExperimentalExtensionAction, listExperimentalExtensionActions } from "../extensions/index.js";
-import { workspaceIdForPluginContext } from "../plugin-service-runtime.js";
+import { pluginBrowserSessionOptions, workspaceIdForPluginContext } from "../plugin-service-runtime.js";
 import { listOpencodeOAuthProviderIds } from "../opencode-db.js";
 import {
   readiPolloWorkWorkspaceConfig,
@@ -212,6 +212,9 @@ async function executeUiControlAction(actionId: string, args: Record<string, unk
   const response = await uiControlRequest("/execute", {
     method: "POST",
     body: { actionId, args },
+    // Opening a creator page waits for Electron's loadURL, and uploads/actions
+    // can legitimately outlive the discovery bridge's 5-second default.
+    ...(actionId.startsWith("browser.") ? { timeoutMs: 45_000 } : {}),
   });
   if (isRecord(response) && response.ok === false) {
     throw new ApiError(
@@ -515,10 +518,16 @@ export function registerCoreRoutes(options: RegisterCoreRoutesOptions): void {
     }),
     [ENGINE_HOST_TOOL_NAMES.browserOpenUrl]: async (_ctx, args, context) => {
       const taskId = engineBrowserTaskId(context);
+      const url = typeof args.url === "string" ? args.url : "";
+      const profileId = typeof args.profileId === "string" ? args.profileId : "";
+      const browserSession = profileId
+        ? await pluginBrowserSessionOptions(config, profileId, url)
+        : null;
       return executeUiControlAction("browser.open_url", {
-        url: typeof args.url === "string" ? args.url : "",
-        ...(typeof args.profileId === "string" ? { profileId: args.profileId } : {}),
+        url,
+        ...(profileId ? { profileId } : {}),
         ...(taskId ? { taskId } : {}),
+        ...browserSession,
       });
     },
     [ENGINE_HOST_TOOL_NAMES.browserSnapshot]: async (_ctx, args) => executeUiControlAction(

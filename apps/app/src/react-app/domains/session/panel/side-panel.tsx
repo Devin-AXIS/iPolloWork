@@ -85,6 +85,7 @@ type SidePanelProps = {
   onSendWorkspaceAppMessage?: (input: { text: string; modelContext: WorkspaceAppModelContext | null; sourceTabId?: string }) => WorkspaceAppMessageResult | Promise<WorkspaceAppMessageResult>;
   onEditImage?: (target: OpenTarget) => void;
   onGenerateVideo?: (path:string, sourceSessionId:string) => void;
+  onRegenerateVideoFromStoryboard?: () => void | Promise<void>;
   onSwitchMedia?: (kind: "image" | "video") => void;
   onOpenMedia?: (path: string, kind: "image" | "video") => void;
   onSaveAsTemplate?: () => void;
@@ -365,6 +366,10 @@ function BrowserPanelContent({
 
   React.useEffect(() => {
     setAddressExpanded(false);
+  }, [tab.id]);
+
+  React.useEffect(() => {
+    void getElectronBrowser()?.selectTab?.(tab.id);
   }, [tab.id]);
 
   const expandAddress = React.useCallback(() => {
@@ -673,6 +678,7 @@ export function SidePanel({
   onSendWorkspaceAppMessage,
   onEditImage,
   onGenerateVideo,
+  onRegenerateVideoFromStoryboard,
   onSwitchMedia,
   onOpenMedia,
   onSaveAsTemplate,
@@ -977,6 +983,7 @@ export function SidePanel({
             expanded={expanded}
             onExpandedChange={onExpandedChange}
             onAskAi={onAskAi}
+            onRegenerateFromStoryboard={onRegenerateVideoFromStoryboard}
             onSaveAsTemplate={onSaveAsTemplate}
           />
         ) : activeTab?.type === "browser" ? (

@@ -125,21 +125,23 @@ function truncate(value: string, limit: number) {
 }
 
 export function wechatChannelsPublicationCopyForPrompt(promptText: string): WechatChannelsPublicationCopy {
+  const requestedTitle = /(?:作品)?标题\s*[：:]?\s*[《「“"]([^》」”"]{1,100})[》」”"]/u.exec(promptText)?.[1]?.trim();
   const topic = promptText
     .replace(/(?:请|麻烦)?(?:给我|帮我)?(?:做|制作|生成|创建)(?:一个|一条)?/gi, "")
     .replace(/(?:然后|并且|并)?(?:发布|上传|发到|发至).{0,12}(?:微信)?视频号/gi, "")
     .replace(/\s+/g, " ")
     .trim();
   if (/ipollowork/i.test(topic || promptText)) {
+    const title = requestedTitle ? truncate(requestedTitle, 100) : "iPolloWork：让项目协作更简单";
     return {
-      title: "iPolloWork：让项目协作更简单",
-      description: "iPolloWork 把想法、素材、AI Agent 和交付流程放进同一个项目空间，从创作、校验到发布，一次需求持续推进。",
+      title,
+      description: `${title}。iPolloWork 把想法、素材、AI Agent 和交付流程放进同一个项目空间，从创作、校验到发布，一次需求持续推进。`,
       topics: "#iPolloWork #AI工作流 #效率工具",
     };
   }
   const subject = topic || "本期短视频";
   return {
-    title: truncate(subject, 100),
+    title: truncate(requestedTitle || subject, 100),
     description: truncate(`${subject}。由 iPolloWork 完成创作、校验与发布。`, 2000),
     topics: "#iPolloWork",
   };
@@ -209,6 +211,16 @@ export async function prepareWechatChannelsPublication(input: {
   if (jobError) throw jobError;
   if (job.status !== "prepared") {
     throw new Error(job.evidence || `WeChat Channels publication stopped in ${job.status}; inspect the existing job before retrying.`);
+  }
+
+  const uncertainJob = Array.isArray(state.jobs) ? state.jobs.find((value) => {
+    const candidate = record(value);
+    return text(candidate?.accountId) === account.id
+      && text(candidate?.id) !== job.id
+      && text(candidate?.status) === "uncertain";
+  }) : null;
+  if (uncertainJob) {
+    throw new Error("视频号账号上一笔提交结果待核对；本次 MP4、草稿和待发布任务已保存。为避免重复发布，当前执行已安全结束；核对上一笔结果后可从此任务继续。");
   }
 
   const target = resultRecord(await input.call("browser-target", { accountId: account.id }), "browser-target");

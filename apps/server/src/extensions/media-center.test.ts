@@ -396,7 +396,7 @@ describe("Media Center extension", () => {
     expect(result.issues.map((issue) => issue.code)).toContain("voiceover_assets_not_on_timeline");
   });
 
-  test("rejects generated voiceover assets that are not referenced by index.html", async () => {
+  test("rejects generated voiceover assets that are not referenced when narration is required", async () => {
     const workspace = await workspaceConfig();
     await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
       <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
@@ -408,7 +408,7 @@ describe("Media Center extension", () => {
       workspace.config,
       env({}),
       "voiceover_timeline_validate",
-      { sourcePath: "video.html" },
+      { sourcePath: "video.html", requirements: { voiceover: true } },
       { directory: workspace.root },
     );
 
@@ -435,7 +435,7 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(result)).toContain("voiceover_assets_missing");
   });
 
-  test("rejects underscore voiceover files present in assets but missing from the timeline", async () => {
+  test("ignores stale voiceover files when the current video does not use narration", async () => {
     const workspace = await workspaceConfig();
     await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
       <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
@@ -451,8 +451,17 @@ describe("Media Center extension", () => {
       { directory: workspace.root },
     );
 
-    expect(result).toMatchObject({ ok: true, result: { output: { valid: false, voiceoverAssetCount: 1 } } });
-    expect((result as any).result.output.issues.map((issue: any) => issue.code)).toContain("voiceover_assets_unreferenced");
+    expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverAssetCount: 1 } } });
+    expect((result as any).result.output.issues.map((issue: any) => issue.code)).not.toContain("voiceover_assets_unreferenced");
+  });
+
+  test("lets an explicit music role override a legacy voiceover filename", () => {
+    const result = validateVoiceoverTimelineHtml(`<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+      <audio src="assets/voiceover-intro-01.mp3" data-timeline-role="music" data-ipw-bgm="true" data-start="0" data-duration="5"></audio>
+    </main>`);
+
+    expect(result).toMatchObject({ valid: true, voiceoverCount: 0, bgmCount: 1, issues: [] });
   });
 
   test("validates a workspace video timeline without requiring provider credentials", async () => {
@@ -649,6 +658,51 @@ describe("Media Center extension", () => {
     expect(JSON.stringify(await validate())).toContain('planned_music_missing');
     await writeFile(join(workspace.root, "STORYBOARD.md"), '---\nmusic_prompt: none');
     await expect(validate()).rejects.toMatchObject({ code: 'invalid_storyboard_music_plan' });
+  });
+
+  test("matches nested video music against a workspace-relative storyboard asset", async () => {
+    const workspace = await workspaceConfig();
+    const project = join(workspace.root, "video", "soundtrack-project");
+    await mkdir(join(project, "assets"), { recursive: true });
+    await writeFile(join(project, "assets", "bed.mp3"), "audio inventory fixture");
+    await writeFile(join(project, "STORYBOARD.md"),
+      '---\nmusic_prompt: Gentle electronic pulse\nmusic_asset: video/soundtrack-project/assets/bed.mp3\n---\n');
+    const sourcePath = "video/soundtrack-project/index.html";
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath, requirements: { bgm: true } }, { directory: workspace.root });
+    const html = (src: string) => `<main data-composition-id="main" data-duration="5">
+      <audio data-timeline-role="music" src="${src}" data-src-project="video/soundtrack-project/assets/bed.mp3" data-start="0" data-duration="5"></audio>
+    </main>`;
+    await writeFile(join(project, "index.html"), html("assets/missing.mp3"));
+    expect(JSON.stringify(await validate())).toContain("music_asset_mismatch");
+    await writeFile(join(project, "index.html"), html("assets/bed.mp3"));
+    const matched = await validate();
+    expect(matched).toMatchObject({ result: { output: { bgmCount: 1 } } });
+    expect(JSON.stringify(matched)).not.toContain("music_asset_mismatch");
+    await writeFile(join(project, "STORYBOARD.md"),
+      '---\nmusic_prompt: Gentle electronic pulse\nmusic_asset: assets/bed.mp3\n---\n');
+    expect(JSON.stringify(await validate())).not.toContain("music_asset_mismatch");
+  });
+
+  test("rejects a renamed copy of narration used as background music", async () => {
+    const workspace = await workspaceConfig();
+    const project = join(workspace.root, "video", "duplicated-narration");
+    await mkdir(join(project, "assets"), { recursive: true });
+    const narration = Buffer.from("fixture narration audio");
+    await writeFile(join(project, "assets", "voiceover-intro.mp3"), narration);
+    await writeFile(join(project, "assets", "bgm-intro.mp3"), narration);
+    await writeFile(join(project, "STORYBOARD.md"),
+      "---\nmusic_prompt: Soft instrumental pulse\nmusic_asset: assets/bgm-intro.mp3\n---\n");
+    await writeFile(join(project, "index.html"), `<main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+      <audio data-ipw-voiceover="true" src="assets/voiceover-intro.mp3" data-start="0" data-duration="5"></audio>
+      <audio data-timeline-role="music" data-ipw-bgm="true" src="assets/bgm-intro.mp3" data-start="0" data-duration="5"></audio>
+    </main>`);
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "video/duplicated-narration/index.html" }, { directory: workspace.root });
+    expect(JSON.stringify(await validate())).toContain("music_reuses_narration");
+    await writeFile(join(project, "assets", "bgm-intro.mp3"), "different instrumental audio");
+    expect(JSON.stringify(await validate())).not.toContain("music_reuses_narration");
   });
 
   test("does not count commented audio or a sound effect as delivered background music", () => {

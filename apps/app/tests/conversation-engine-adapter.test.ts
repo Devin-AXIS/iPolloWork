@@ -588,6 +588,35 @@ describe("conversation engine adapters", () => {
     })]);
   });
 
+  test("keeps a synthetic-only OpenCode continuation executable", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push(await request.clone().json());
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      await connection.sendPrompt({
+        sessionId: "session-internal-continuation",
+        parts: [{ type: "text", text: "Repair the saved artifact.", synthetic: true }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[0]).toEqual(expect.objectContaining({
+      parts: [{
+        type: "text",
+        text: "Continue the unfinished task from its saved progress and complete the requested result.",
+        synthetic: true,
+      }],
+      system: "Repair the saved artifact.",
+    }));
+  });
+
   test("updates OpenCode permission rules on the active session", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<{ url: string; method: string; body: Record<string, unknown> }> = [];
@@ -1489,6 +1518,42 @@ describe("conversation engine adapters", () => {
       },
     }]);
     expect(promptResult).toEqual({ sessionId: "codex-thread-rebound" });
+  });
+
+  test("keeps a synthetic-only Codex continuation executable", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
+      return Response.json({ ok: true, sessionId: "codex-thread" });
+    }) as typeof fetch;
+
+    try {
+      const connection = conversationEngineAdapters.get(CODEX_HARNESS_ENGINE_ID).connect({
+        baseUrl: "http://unused.test",
+        serverBaseUrl: "http://ipollowork.test",
+        workspaceId: "ws_codex",
+        token: "token",
+      });
+      await connection.sendPrompt({
+        sessionId: "codex-thread",
+        parts: [{ type: "text", text: "Repair the saved artifact.", synthetic: true }],
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[0]).toEqual({
+      payload: expect.objectContaining({
+        threadId: "codex-thread",
+        input: [{
+          type: "text",
+          text: "Continue the unfinished task from its saved progress and complete the requested result.",
+          text_elements: [],
+        }],
+        system: "Repair the saved artifact.",
+      }),
+    });
   });
 
   test("rejects duplicate adapter registrations", () => {
