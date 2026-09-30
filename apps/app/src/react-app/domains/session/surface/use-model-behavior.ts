@@ -20,6 +20,14 @@ export function modelSupportsAttachments(
   return providerCatalog[model.providerID]?.[model.modelID]?.capabilities.attachment === true;
 }
 
+export function modelSupportsToolCalls(
+  providerCatalog: ProviderCatalog,
+  model: ModelRef | null,
+) {
+  if (!model) return null;
+  return providerCatalog[model.providerID]?.[model.modelID]?.capabilities.toolcall ?? null;
+}
+
 const emptyModelBehaviorOptions: { value: string | null; label: string }[] = [];
 
 export type UseModelBehaviorInput = {

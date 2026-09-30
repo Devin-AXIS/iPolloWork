@@ -274,6 +274,7 @@ function openCodeConnection(input: { baseUrl: string; token?: string; directory?
           parts: promptParts,
           model: input.model,
           agent,
+          ...(input.toolCalls === false ? { tools: { "*": false } } : {}),
           ...(input.reasoningEffort
             ? { reasoning_effort: input.reasoningEffort }
             : input.variant

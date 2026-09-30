@@ -522,6 +522,37 @@ describe("conversation engine adapters", () => {
     }));
   });
 
+  test("disables OpenCode tools only when the selected model explicitly lacks tool calls", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input, init) => {
+      const request = input instanceof Request ? input : new Request(input, init);
+      requests.push(await request.clone().json());
+      return new Response(null, { status: 204 });
+    }) as typeof fetch;
+
+    try {
+      const connection = openCodeConversationEngineAdapter.connect({ baseUrl: "http://opencode.test" });
+      await connection.sendPrompt({
+        sessionId: "session-text-only-model",
+        parts: [{ type: "text", text: "Answer without tools" }],
+        model: { providerID: "model2api", modelID: "deepseek-v4-pro" },
+        toolCalls: false,
+      });
+      await connection.sendPrompt({
+        sessionId: "session-tool-model",
+        parts: [{ type: "text", text: "Use tools when useful" }],
+        model: { providerID: "model2api", modelID: "deepseek-v4-flash" },
+        toolCalls: true,
+      });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    expect(requests[0]).toEqual(expect.objectContaining({ tools: { "*": false } }));
+    expect(requests[1]).not.toHaveProperty("tools");
+  });
+
   test("keeps OpenCode application instructions out of the authored user message", async () => {
     const originalFetch = globalThis.fetch;
     const requests: Array<Record<string, unknown>> = [];

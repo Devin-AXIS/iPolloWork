@@ -119,6 +119,7 @@ import {
 import { useSessionInteractions } from "@/react-app/domains/session/sync/use-session-interactions";
 import {
   modelSupportsAttachments,
+  modelSupportsToolCalls,
   useModelBehavior,
 } from "@/react-app/domains/session/surface/use-model-behavior";
 import { tokenStarModelSupportsEffort } from "@/app/lib/model-behavior";
@@ -1356,6 +1357,7 @@ export function SessionRoute() {
           ),
         );
         const effectiveModelSupportsAttachments = modelSupportsAttachments(providerCatalog, effectiveModel);
+        const effectiveModelSupportsToolCalls = modelSupportsToolCalls(providerCatalog, effectiveModel);
         if (
           !effectiveModelSupportsAttachments
           && draft.attachments.some((attachment) => attachmentRequiresNativeModelSupport(attachment.mimeType))
@@ -1830,6 +1832,7 @@ export function SessionRoute() {
             parts: promptParts,
             model: effectiveModel ?? undefined,
             mode: effectiveMode ?? undefined,
+            toolCalls: effectiveModelSupportsToolCalls,
             reasoningEffort: effectiveModel?.providerID === "tokenstar" && effectiveModelVariant && tokenStarModelSupportsEffort(effectiveModel.modelID)
               ? effectiveModelVariant
               : undefined,

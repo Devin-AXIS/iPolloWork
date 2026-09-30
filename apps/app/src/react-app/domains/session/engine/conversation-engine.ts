@@ -349,6 +349,7 @@ export type ConversationPromptInput = {
   mode?: string;
   variant?: string;
   reasoningEffort?: string;
+  toolCalls?: boolean | null;
   system?: string;
 };
 

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 
 import {
   modelSupportsAttachments,
+  modelSupportsToolCalls,
   type ProviderCatalog,
 } from "../src/react-app/domains/session/surface/use-model-behavior";
 import { attachmentRequiresNativeModelSupport } from "../src/react-app/domains/session/sync/attachment-support";
@@ -132,6 +133,22 @@ describe("Composer model and reasoning menu", () => {
     expect(modelSupportsAttachments(catalog, { providerID: "provider", modelID: "textOnly" })).toBe(false);
     expect(modelSupportsAttachments(catalog, { providerID: "provider", modelID: "missing" })).toBe(false);
     expect(modelSupportsAttachments(catalog, null)).toBe(false);
+  });
+
+  test("preserves explicit model tool-call support without guessing unknown capabilities", () => {
+    const catalog = {
+      provider: {
+        tools: { capabilities: { toolcall: true } },
+        textOnly: { capabilities: { toolcall: false } },
+        unknown: { capabilities: {} },
+      },
+    } as unknown as ProviderCatalog;
+
+    expect(modelSupportsToolCalls(catalog, { providerID: "provider", modelID: "tools" })).toBe(true);
+    expect(modelSupportsToolCalls(catalog, { providerID: "provider", modelID: "textOnly" })).toBe(false);
+    expect(modelSupportsToolCalls(catalog, { providerID: "provider", modelID: "unknown" })).toBeNull();
+    expect(modelSupportsToolCalls(catalog, { providerID: "provider", modelID: "missing" })).toBeNull();
+    expect(modelSupportsToolCalls(catalog, null)).toBeNull();
   });
 
   test("keeps file attachment available while guarding native media at the send boundary", () => {
