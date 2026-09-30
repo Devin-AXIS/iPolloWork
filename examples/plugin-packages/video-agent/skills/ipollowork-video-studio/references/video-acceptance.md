@@ -39,10 +39,10 @@ Any invalid root, missing timeline, zero or inconsistent duration, out-of-bounds
 
 ## 4. Transitions and continuity
 
-- Every scene after the first records a supported incoming transition, its duration, and its narrative intent. The transition is an actual applied preset with matching `data-ipw-animation-reference`, or a declared zero-duration cut.
+- Every scene after the first records an incoming transition, its duration, and its narrative intent. The transition is an actual applied preset with matching `data-ipw-animation-reference`, a declared zero-duration cut, or a seek-safe authored `custom:<id>` with a matching animation reference, incoming beat, and `data-ipw-transition-handoff` evidence. These source markers are not proof that the authored animation executed.
 - Transitions communicate continuation, topic change, time/location change, comparison, reveal, or closure and do not expose empty frames.
 - The outgoing scene remains meaningful through its final frame; the incoming focal subject becomes clear as its transition completes.
-- Sample the frame immediately before, during, and after every changed or flagged boundary. A scene-level fade that finishes before the transition begins is an empty-frame failure.
+- Sample the frame immediately before, during, and after every changed or flagged boundary, including every authored transition. Confirm the shared subject or intentional reset is recognizable and the incoming state does not restart a continuing process. A scene-level fade that finishes before the transition begins is an empty-frame failure.
 - Fixed chrome, captions, audio, and persistent identity elements do not jump, duplicate, or disappear unintentionally.
 
 ## 5. Media and audio
