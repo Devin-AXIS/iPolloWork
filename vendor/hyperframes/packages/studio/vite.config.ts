@@ -191,6 +191,10 @@ export default defineConfig({
     alias: {
       // The embedded Studio consumes the host's source contract in both dev
       // and release builds; Bun file dependencies may omit ignored dist files.
+      "@ipollowork/types/hyperframes": resolve(
+        __dirname,
+        "../../../../packages/types/src/hyperframes.ts",
+      ),
       "@ipollowork/types/video-image-workbench": resolve(
         __dirname,
         "../../../../packages/types/src/video-image-workbench.ts",

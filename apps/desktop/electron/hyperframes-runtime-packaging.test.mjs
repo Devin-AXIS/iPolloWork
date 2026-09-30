@@ -14,6 +14,10 @@ const electronMainSource = await readFile(new URL("./main.mjs", import.meta.url)
 const electronDevSource = await readFile(new URL("../scripts/electron-dev.mjs", import.meta.url), "utf8");
 const electronBuildSource = await readFile(new URL("../scripts/electron-build.mjs", import.meta.url), "utf8");
 const electronBuilderSource = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");
+const studioViteSource = await readFile(
+  new URL("../../../vendor/hyperframes/packages/studio/vite.config.ts", import.meta.url),
+  "utf8",
+);
 
 test("stages HyperFrames dependencies in an electron-builder-safe layout", () => {
   assert.match(prepareRuntimeSource, /"--linker", "hoisted"/);
@@ -69,6 +73,12 @@ test("rebuilds the dev Studio when shared HyperFrames source changes", () => {
   assert.match(electronDevSource, /"studio"/);
   assert.match(electronDevSource, /"studio-server"/);
   assert.match(electronDevSource, /newestBuildInputTime > studioBuildTime/);
+});
+
+test("builds Studio against the current iPolloWork runtime contracts", () => {
+  assert.match(studioViteSource, /"@ipollowork\/types\/hyperframes": resolve\(/);
+  assert.match(studioViteSource, /packages\/types\/src\/hyperframes\.ts/);
+  assert.match(studioViteSource, /"@ipollowork\/types\/video-image-workbench": resolve\(/);
 });
 
 test("keeps a recently closed Studio process warm for a bounded same-session reopen", () => {
