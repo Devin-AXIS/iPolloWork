@@ -21,7 +21,7 @@ describe("video script contract", () => {
         "one rough narration-duration estimate per shot",
         "single counting calculation",
         "Approximate targets are not strict caps",
-        "before media capability discovery or production",
+        "before media acquisition or production",
         "do not calculate per-word, per-phrase or frame-accurate timestamps before synthesis",
         "one post-save review",
         "reopen only affected shots",
@@ -33,6 +33,27 @@ describe("video script contract", () => {
       ]) expect(context).toContain(requirement);
       if (requireStoryboardReview) expect(context).toContain("and STOP");
     }
+  });
+
+  test("event-driven recipe selection precedes the script, while installation and precise timing follow it", () => {
+    const context = videoTaskSystemContext("ses_example", undefined, undefined, { requireStoryboardReview: true });
+    const eventStage = context.indexOf("define each intended audience change and observable event");
+    const catalogStage = context.indexOf("shortlist executable recipes by intent, inputs, and capacity");
+    const scriptStage = context.indexOf("save the complete native STORYBOARD.md with rough scene durations");
+    const installStage = context.indexOf("install fitting recipes");
+    const customGate = context.indexOf("Before drawing any new scene graphics, query media/video_recipe_catalog");
+    expect(eventStage).toBeGreaterThan(-1);
+    expect(catalogStage).toBeGreaterThan(eventStage);
+    expect(scriptStage).toBeGreaterThan(catalogStage);
+    expect(installStage).toBeGreaterThan(scriptStage);
+    expect(customGate).toBeGreaterThan(installStage);
+    expect(context).toContain("speech, dialogue, visible action, music, footage, or silent reading");
+    expect(context).toContain("do not force it onto visual- or music-led work");
+    expect(context).toContain("do not draw SVG paths, calculate element coordinates, write a JS/Python timeline builder, or schedule motion every four seconds");
+    expect(context).toContain("the considered component IDs, each concrete semantic/input/capacity mismatch");
+    expect(context).toContain("A missing catalog/install action is a capability gap to report");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("shortlist executable recipes by intent, input and capacity before saving one complete native STORYBOARD.md");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Do not draw SVG coordinates, author a timeline builder, enumerate per-beat timestamps");
   });
 
   test("the actual agent example parses into editable globals and frame fields", () => {
@@ -81,7 +102,7 @@ describe("video script contract", () => {
       "never invent source anchors",
       "meaningful parentheses/qualifiers",
       "user choice, not silent deletion",
-      "audience takeaway → visible evidence/change",
+      "intended audience change → observable event/evidence",
       "matching viewpoints and scales",
       "Decide readable holds before motion",
       "re-read the source and saved storyboard",
@@ -101,7 +122,7 @@ describe("video script contract", () => {
     const context = videoTaskSystemContext("ses_example");
     for (const requirement of [
       "exact spoken phrase",
-      "Keep beats in spoken order",
+      "Keep events in causal or viewing order",
       "one concrete query per distinct visual need",
       "date/location when factual",
       "exclusion criteria",
