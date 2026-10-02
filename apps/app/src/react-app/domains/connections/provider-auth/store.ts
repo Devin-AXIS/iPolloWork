@@ -88,6 +88,7 @@ import {
 } from "../../../../app/cloud/desktop-app-restrictions";
 import { TOKENSTAR_PROVIDER, tokenStarRuntimeModels } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER, orcarouterRuntimeModels } from "./orcarouter-provider";
+import { CHEAPER_INFERENCE_PROVIDER, cheaperInferenceRuntimeModels } from "./cheaperinference-provider";
 import {
   modelRuntimeAdapters,
   type CompatibleProviderProfile,
@@ -347,6 +348,18 @@ const COMPATIBLE_PROVIDER_PRESETS: CompatibleProviderPreset[] = [
     models: (modelIds) => orcarouterRuntimeModels([
       ...new Set(
         (modelIds?.length ? modelIds : ORCAROUTER_PROVIDER.fallbackModels.map((model) => model.id))
+          .map((modelId) => modelId.trim())
+          .filter(Boolean),
+      ),
+    ]),
+  },
+  {
+    providerId: CHEAPER_INFERENCE_PROVIDER.providerId,
+    name: CHEAPER_INFERENCE_PROVIDER.name,
+    baseURL: CHEAPER_INFERENCE_PROVIDER.baseURL,
+    models: (modelIds) => cheaperInferenceRuntimeModels([
+      ...new Set(
+        (modelIds?.length ? modelIds : CHEAPER_INFERENCE_PROVIDER.fallbackModels.map((model) => model.id))
           .map((modelId) => modelId.trim())
           .filter(Boolean),
       ),
@@ -1748,6 +1761,26 @@ export function createProviderAuthStore(options: CreateProviderAuthStoreOptions)
             type: "api",
             label: t("providers.api_key_label"),
             description: "Connect OrcaRouter with an API key and use it from every supported agent engine.",
+          },
+        ];
+      }
+    }
+
+    if (
+      getProviderEngineAdapter().capabilities.customProviders &&
+      !isDesktopProviderBlocked({
+        providerId: CHEAPER_INFERENCE_PROVIDER.providerId,
+        checkRestriction: options.checkDesktopAppRestriction,
+      })
+    ) {
+      const existing = merged[CHEAPER_INFERENCE_PROVIDER.providerId] ?? [];
+      if (!existing.some((method) => method.type === "api")) {
+        merged[CHEAPER_INFERENCE_PROVIDER.providerId] = [
+          ...existing,
+          {
+            type: "api",
+            label: t("providers.api_key_label"),
+            description: "Connect Cheaper Inference with an API key and use it from every supported agent engine.",
           },
         ];
       }

@@ -32,6 +32,7 @@ import {
   TOKENSTAR_PROVIDER,
 } from "./tokenstar-provider";
 import { ORCAROUTER_PROVIDER } from "./orcarouter-provider";
+import { CHEAPER_INFERENCE_PROVIDER } from "./cheaperinference-provider";
 import {
   buildProviderAuthEntries,
   getProviderAuthEntryGroups,
@@ -114,10 +115,12 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
   const isiPolloWorkBuiltInProvider = (id: string) => id.trim().toLowerCase() === "opencode";
   const isTokenStarProvider = (id: string) => id.trim().toLowerCase() === TOKENSTAR_PROVIDER.providerId;
   const isOrcaRouterProvider = (id: string) => id.trim().toLowerCase() === ORCAROUTER_PROVIDER.providerId;
+  const isCheaperInferenceProvider = (id: string) => id.trim().toLowerCase() === CHEAPER_INFERENCE_PROVIDER.providerId;
 
   const OPENCODE_ZEN_KEY_URL = "https://opencode.ai/auth";
   const TOKENSTAR_WEBSITE_URL = "https://tokenstar.io";
   const ORCAROUTER_WEBSITE_URL = ORCAROUTER_PROVIDER.signupUrl;
+  const CHEAPER_INFERENCE_WEBSITE_URL = CHEAPER_INFERENCE_PROVIDER.signupUrl;
 
   const openExternalUrl = async (url: string) => {
     if (!url) return;
@@ -692,6 +695,9 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
     if (isOrcaRouterProvider(entry.id)) {
       return "Connect OrcaRouter and use it from every supported agent engine.";
     }
+    if (isCheaperInferenceProvider(entry.id)) {
+      return "Connect Cheaper Inference and use it from every supported agent engine.";
+    }
     return "Paste a secret key that iPolloWork stores locally on this device.";
   };
 
@@ -914,6 +920,8 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                             ? "Paste your TokenStar API key. iPolloWork verifies it and finds your available models automatically."
                             : isOrcaRouterProvider(selectedEntry.id)
                               ? "Paste your OrcaRouter API key to route through the OrcaRouter gateway."
+                              : isCheaperInferenceProvider(selectedEntry.id)
+                                ? "Paste your Cheaper Inference API key to use the Cheaper Inference gateway."
                           : "Paste your API key to connect."}
                       </div>
                     </div>
@@ -959,6 +967,18 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                       </button>
                     </div>
                   ) : null}
+                  {isCheaperInferenceProvider(selectedEntry.id) ? (
+                    <div className="rounded-lg border border-indigo-5/30 bg-indigo-3/15 px-3 py-2.5 text-xs text-indigo-12 space-y-1.5">
+                      <div>Cheaper Inference is an OpenAI-compatible gateway to models from OpenAI, Anthropic, Google, DeepSeek, and more.</div>
+                      <button
+                        type="button"
+                        className="text-indigo-11 hover:text-indigo-12 underline underline-offset-2 font-medium"
+                        onClick={() => void openExternalUrl(CHEAPER_INFERENCE_WEBSITE_URL)}
+                      >
+                        No API key? Visit Cheaper Inference to get one.
+                      </button>
+                    </div>
+                  ) : null}
                   {selectedTokenStarConnected ? (
                     <div className="rounded-lg border border-gray-6/60 bg-gray-1/60 px-3 py-2.5 text-xs text-gray-10">
                       A TokenStar API key is configured on this device. Delete it before adding a new one.
@@ -967,7 +987,7 @@ export default function ProviderAuthModal(props: ProviderAuthModalProps) {
                     <TextInput
                       label="API key"
                       type="password"
-                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isiPolloWorkBuiltInProvider(selectedEntry.id) ? "ock_..." : isOrcaRouterProvider(selectedEntry.id) ? "sk-orca-..." : "sk-..."}
+                      placeholder={isTokenStarProvider(selectedEntry.id) ? "vk_..." : isiPolloWorkBuiltInProvider(selectedEntry.id) ? "ock_..." : isOrcaRouterProvider(selectedEntry.id) ? "sk-orca-..." : isCheaperInferenceProvider(selectedEntry.id) ? "ci_live_..." : "sk-..."}
                       value={apiKeyInput}
                       onChange={(event) => {
                         setApiKeyInput(event.currentTarget.value);

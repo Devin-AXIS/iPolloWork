@@ -33,6 +33,7 @@ export const PROVIDER_LABELS: Record<string, string> = {
   google: "Google",
   openrouter: "OpenRouter",
   orcarouter: "OrcaRouter",
+  cheaperinference: "Cheaper Inference",
   qwen: "Qwen",
   tokenstar: "TokenStar",
   "deepseek-official": "DeepSeek",
