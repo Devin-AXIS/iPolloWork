@@ -708,6 +708,8 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
           serverConfig: config,
           packageRoot,
         });
+        await disposePluginServicesEverywhere(config, pluginId);
+        await reconcilePluginAuthorization({ config, pluginId });
       }
       if (installed && !installed.enabled && isInternalPluginPackage(pluginId)) {
         await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });

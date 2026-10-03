@@ -25,6 +25,7 @@ import {
   pluginServiceDataDirectory,
 } from "./plugin-service-runtime.js";
 import type { ServerConfig } from "./types.js";
+import { startServer } from "./server.js";
 
 const WORKSPACE_ID = "ws_plugin_service";
 const roots: string[] = [];
@@ -33,6 +34,7 @@ const previousGitHubApiBase = process.env.IPOLLOWORK_GITHUB_API_BASE;
 const previousWeChatOfficialApiBase = process.env.IPOLLOWORK_WECHAT_OFFICIAL_API_BASE;
 const previousDshCli = process.env.IPOLLOWORK_DSH_CLI;
 const previousDshCliVersion = process.env.IPOLLOWORK_DSH_CLI_VERSION;
+const previousBundledPackagesDir = process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
 const originalFetch = globalThis.fetch;
 const bundledHeadlessTest = process.platform === "win32" || process.platform === "darwin" ? test : test.skip;
 const managedRuntimeTest = process.platform === "win32" || process.platform === "darwin" ? test.skip : test;
@@ -305,6 +307,8 @@ afterEach(async () => {
   else process.env.IPOLLOWORK_DSH_CLI = previousDshCli;
   if (previousDshCliVersion === undefined) delete process.env.IPOLLOWORK_DSH_CLI_VERSION;
   else process.env.IPOLLOWORK_DSH_CLI_VERSION = previousDshCliVersion;
+  if (previousBundledPackagesDir === undefined) delete process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR;
+  else process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = previousBundledPackagesDir;
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });
@@ -312,6 +316,65 @@ afterEach(async () => {
 });
 
 describe("plugin service runtime", () => {
+  test("automatic bundled upgrades dispose the old service and prune removed authorization methods", async () => {
+    const workspaceRoot = await temporaryRoot("ipollowork-bundled-service-workspace-");
+    const catalogRoot = await temporaryRoot("ipollowork-bundled-service-catalog-");
+    const packageRoot = join(catalogRoot, "video-agent");
+    const counterKey = "ipollowork-test-service-instance:video-agent";
+    Reflect.deleteProperty(globalThis, counterKey);
+    Reflect.deleteProperty(globalThis, `${counterKey}:disposed`);
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
+    process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = catalogRoot;
+    await writeServicePackage(packageRoot, "video-agent");
+    const manifestPath = join(packageRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.source.origin = "builtin";
+    manifest.source.trusted = true;
+    manifest.defaultEnabled = true;
+    await writeFile(manifestPath, JSON.stringify(manifest), "utf8");
+    const serverConfig = config(workspaceRoot);
+    const server = await startServer(serverConfig);
+    const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`;
+    const headers = { authorization: "Bearer client-token" };
+    const status = () => callPluginServiceAction({
+      config: serverConfig, workspaceId: WORKSPACE_ID, pluginId: "video-agent", action: "status", args: {}, context: {},
+    });
+    try {
+      const initial = await fetch(base, { headers });
+      expect(initial.status).toBe(200);
+      await savePluginSecretAuthorization({
+        config: serverConfig, pluginId: "video-agent", methodId: "api-key", accountId: "default", values: { apiKey: "fixture-secret" },
+      });
+      expect(await status()).toMatchObject({ result: { connected: true, instance: 1 } });
+      expect(await status()).toMatchObject({ result: { connected: true, instance: 1 } });
+      const store = await authorizationVault(serverConfig);
+      const consumerId = pluginAuthorizationConsumerId("video-agent");
+      await store.savePendingFlow({
+        consumerId, connectionId: "video-agent", methodId: "oauth", accountId: "default", flowId: "obsolete-oauth-flow",
+        state: "fixture-oauth-state", privateData: {}, expiresAt: Date.now() + 60_000,
+      });
+      expect(await store.listPendingFlows(consumerId)).toHaveLength(1);
+      manifest.package.version = "2.0.0";
+      manifest.authorization.methods = manifest.authorization.methods.filter((method: { id: string }) => method.id !== "oauth");
+      await writeFile(manifestPath, JSON.stringify(manifest), "utf8");
+      const upgraded = await fetch(base, { headers });
+      expect(upgraded.status).toBe(200);
+      expect((await upgraded.json()).items).toEqual(expect.arrayContaining([
+        expect.objectContaining({ pluginId: "video-agent", version: "2.0.0" }),
+      ]));
+      expect(Reflect.get(globalThis, `${counterKey}:disposed`)).toBe(1);
+      expect(await store.listPendingFlows(consumerId)).toEqual([]);
+      expect(await status()).toMatchObject({ result: { connected: true, instance: 2 } });
+      expect(await status()).toMatchObject({ result: { connected: true, instance: 2 } });
+      expect(Reflect.get(globalThis, counterKey)).toBe(2);
+      expect(Reflect.get(globalThis, `${counterKey}:disposed`)).toBe(1);
+    } finally {
+      await server.stop();
+      Reflect.deleteProperty(globalThis, counterKey);
+      Reflect.deleteProperty(globalThis, `${counterKey}:disposed`);
+    }
+  });
+
   test("derives account browser recovery only from the installed plugin manifest", async () => {
     const workspaceRoot = await temporaryRoot("ipollowork-plugin-browser-session-workspace-");
     const runtimeRoot = await temporaryRoot("ipollowork-plugin-browser-session-runtime-");
