@@ -1,23 +1,12 @@
 ---
 name: ipollowork-video-voiceover
-description: Add or revise scene-bound narration in an active iPolloWork Video Studio project using its selected voice, media actions, timing contract, and final validation.
+description: Add or revise scene-bound narration using the active Video Studio voice contract, measured audio and one client-owned delivery gate.
 ---
 
 # iPolloWork Video Voiceover
 
-Use this Skill for scene-bound narration in an active Video Studio project when the voice service is available and automatic voiceover is enabled, or when the user explicitly requests narration. The Video Studio and its media services remain core iPolloWork capabilities and do not depend on this Skill being installed.
+Use only for authorized enabled speech or an explicit narration request. Read the exact session `voiceover.json`, saved `STORYBOARD.md`, current entry and injected contract. Respect saved disabled state and pinned/per-frame voices; use actual project/service defaults rather than guessing a provider, model, voice or instruction. Never request chat keys or substitute another TTS/CLI.
 
-## Workflow
+Read only [Narration, captions and soundtrack](../ipollowork-video-studio/references/video.md#narration-captions-and-soundtrack) for synthesis/caption interfaces. Match marked visible transcript to each scene, keep immutable per-scene outputs, use sequential batches of at most three, and apply returned duration/timing/nodes/cumulative shifts once. Preserve prior speech until batch success and preserve music/SFX throughout. A synthesis receipt is unfinished until the exact entry has its actual returned audio/captions and retimed dependencies.
 
-1. Read the active session's exact video project, `voiceover.json`, and injected voiceover contract before synthesizing anything.
-2. Build narration per visual scene from that scene's visible text in reading order. Do not paraphrase or narrate another scene.
-3. Use only the media action and selected voice supplied by iPolloWork. Do not substitute a generic speech tool or another provider.
-4. Treat returned duration and timing data as authoritative. Extend the current scene and shift every later scene, transition, caption, audio start, and animation timestamp when narration runs longer.
-5. Keep one immutable narration asset and one timeline audio node per narrated scene; remove only obsolete narration references, never music or sound effects.
-6. Save the edited composition and let the active session run its combined project and voiceover validation. Run checks yourself only when the task explicitly delegates validation; do not start a second validation loop.
-
-With an authorized voice service, use the saved valid voice selection; otherwise use the default voice supplied by the active iPolloWork voice contract. Do not hardcode or infer a provider, model or voice ID in this Skill. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and let the Video Studio voice panel explain how to connect the service in Authorization Center. If narration is required by the requested delivery or saved storyboard, report partial delivery until it is available or the user explicitly changes that requirement. Never request an API key in chat or fabricate narration assets.
-
-## Content scope
-
-Let content determine page count, scene count, and duration. Template sample quantities and timings are not limits, even when an inherited checklist calls them fixed. Apply counts or duration constraints only when explicitly requested by the user. Approximate targets allow reasonable variation; explicit maximums remain strict. Do not omit important content or add filler to fit a template. For narration, pass `targetDurationSeconds` only for a user duration request and synchronize scenes to actual audio duration.
+Let source content and measured audio determine shots/duration; examples are not quotas. Pass target duration only for a user request, keep explicit caps and required facts, and use real provider alignment or honest sentence-level captions. Save the composition and let the client's combined project/voice gate run; do not create a second check loop. Without usable speech continue visual work, preserve existing audio and disclose unfinished required narration; never fabricate spoken assets.

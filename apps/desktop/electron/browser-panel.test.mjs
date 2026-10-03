@@ -119,8 +119,23 @@ if (!process.versions.electron) {
       process.stdout.write('web-login-no-client-launch-passed\n');
     } finally { shell.openExternal = openExternal; }
     const editor = await call('openUrl', new URL('/comment-editor', url).href, { profileId: 'douyin-ops:editor-test' });
+    // A visible panel needs a mapped host window; Linux collapses child layout
+    // while this fixture's initially hidden BrowserWindow remains unmapped.
+    if (!window.isVisible()) {
+      const shown = once(window, "show", { signal: AbortSignal.timeout(5000) });
+      window.showInactive();
+      await shown;
+    }
     await call('show', { x: 0, y: 0, width: 800, height: 600 });
     const editorView = webContents.getAllWebContents().find(item => item.getURL().endsWith('/comment-editor'));
+    const layoutDeadline = Date.now() + 5000;
+    let viewport;
+    do {
+      viewport = await editorView.executeJavaScript("[innerWidth,innerHeight]");
+      if (viewport[0] === 800 && viewport[1] === 600) break;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    } while (Date.now() < layoutDeadline);
+    assert.deepEqual(viewport, [800, 600], 'Visible browser panel has a real layout viewport before its snapshot');
     const entry = await call('snapshot', { tabId: editor.tabId });
     const entryRef = entry.tree.split('\n').find(line => line.includes('button "留下你的精彩评论吧"'))?.match(/\[(@e\d+)\]/)?.[1];
     if (!entryRef) {

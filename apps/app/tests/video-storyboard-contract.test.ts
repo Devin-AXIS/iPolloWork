@@ -11,53 +11,12 @@ describe("video script contract", () => {
   test("production instructions do not override the client-owned gate or invite audio probing", () => {
     const context = videoTaskSystemContext("ses_example");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("prepared task contract owns final validation");
-    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("ipollowork-video-studio skill once");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Read ipollowork-video-studio once");
     for (const text of ["speech_synthesize_workspace_batch", "retry", "TTS"]) expect(videoSkill).toContain(text);
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).not.toContain("Before reporting an editable video complete, run its supplied HyperFrames check");
-    expect(context).toContain("Do not add your own validation or review render");
+    expect(context).toContain("single aggregate delivery validator and one bounded repair continuation");
+    expect(context.length).toBeLessThan(3500);
   });
-  test("draft planning is bounded without weakening approval, coverage or measured timing", () => {
-    for (const requireStoryboardReview of [true, false]) {
-      const context = videoTaskSystemContext("ses_example", undefined, undefined, { requireStoryboardReview, includeVoiceover: true });
-      for (const requirement of [
-        "one rough narration-duration estimate per shot",
-        "single counting calculation",
-        "Approximate targets are not strict caps",
-        "before media acquisition or production",
-        "do not calculate per-word, per-phrase or frame-accurate timestamps before synthesis",
-        "one post-save review",
-        "reopen only affected shots",
-        "Preserve required facts and explicit user caps",
-        "never character-proportional word timestamps",
-        "not a runtime timeout",
-        "reuse the storyboard's rough narration estimate before synthesis",
-        "calculate it once only if absent or spoken text changed",
-      ]) expect(context).toContain(requirement);
-      if (requireStoryboardReview) expect(context).toContain("and STOP");
-    }
-  });
-
-  test("event-driven recipe selection precedes the script, while installation and precise timing follow it", () => {
-    const context = videoTaskSystemContext("ses_example", undefined, undefined, { requireStoryboardReview: true });
-    const eventStage = context.indexOf("define each intended audience change and observable event");
-    const catalogStage = context.indexOf("shortlist executable recipes by intent, inputs, and capacity");
-    const scriptStage = context.indexOf("save the complete native STORYBOARD.md with rough scene durations");
-    const installStage = context.indexOf("install fitting recipes");
-    const customGate = context.indexOf("Before drawing any new scene graphics, query media/video_recipe_catalog");
-    expect(eventStage).toBeGreaterThan(-1);
-    expect(catalogStage).toBeGreaterThan(eventStage);
-    expect(scriptStage).toBeGreaterThan(catalogStage);
-    expect(installStage).toBeGreaterThan(scriptStage);
-    expect(customGate).toBeGreaterThan(installStage);
-    expect(context).toContain("speech, dialogue, visible action, music, footage, or silent reading");
-    expect(context).toContain("do not force it onto visual- or music-led work");
-    expect(context).toContain("do not draw SVG paths, calculate element coordinates, write a JS/Python timeline builder, or schedule motion every four seconds");
-    expect(context).toContain("the considered component IDs, each concrete semantic/input/capacity mismatch");
-    expect(context).toContain("A missing catalog/install action is a capability gap to report");
-    expect(videoSkill).toContain("shortlist executable recipes by intent, input and capacity");
-    expect(context).toContain("JS/Python timeline builder");
-  });
-
   test("the actual agent example parses into editable globals and frame fields", () => {
     const result = parseStoryboard(VIDEO_STORYBOARD_EXAMPLE);
     expect(result.warnings).toEqual([]);
@@ -71,7 +30,16 @@ describe("video script contract", () => {
       assetSource: "code",
       status: "outline",
     });
-    expect(videoTaskSystemContext("ses_example")).toContain(VIDEO_STORYBOARD_EXAMPLE.trimEnd());
+    const savedSkillExample = /```markdown\n([\s\S]+?)\n```/.exec(videoSkill)?.[1];
+    expect(savedSkillExample).toBeDefined();
+    const skillStoryboard = parseStoryboard(savedSkillExample ?? "");
+    expect(skillStoryboard.warnings).toEqual([]);
+    expect(skillStoryboard.frames.length).toBeGreaterThan(0);
+    for (const frame of skillStoryboard.frames) {
+      expect(frame.scene).toBeTruthy();
+      expect(frame.durationSeconds).toBeGreaterThan(0);
+      expect(frame.status).toBe("outline");
+    }
   });
 
   test("coverage and shot-fit notes remain native editable frame narrative", () => {
@@ -97,91 +65,12 @@ describe("video script contract", () => {
     expect(saved.frames[0]?.durationSeconds).toBe(6);
   });
 
-  test("generation requires source coverage and motivated shot selection before approval", () => {
-    const context = videoTaskSystemContext("ses_example");
-    for (const requirement of [
-      "point ID → source heading/page/paragraph → frame(s)",
-      "never invent source anchors",
-      "meaningful parentheses/qualifiers",
-      "user choice, not silent deletion",
-      "intended audience change → observable event/evidence",
-      "matching viewpoints and scales",
-      "Decide readable holds before motion",
-      "re-read the source and saved storyboard",
-      "agent semantic self-review, not a deterministic parser",
-    ]) expect(context).toContain(requirement);
-  });
-
   test("only canonical project scripts route to Studio", () => {
     expect(videoProjectIdFromStoryboardPath("video/ses_example-artifact-video/STORYBOARD.md")).toBe("ses_example-artifact-video");
     expect(videoProjectIdFromStoryboardPath(".\\video\\ses_example\\STORYBOARD.md")).toBe("ses_example");
     for (const path of ["STORYBOARD.md", "docs/STORYBOARD.md", "video/../STORYBOARD.md", "video/ses_example/notes/STORYBOARD.md", "/other/video/ses_example/STORYBOARD.md"]) {
       expect(videoProjectIdFromStoryboardPath(path)).toBeNull();
     }
-  });
-
-  test("visual needs and search queries stay bound to semantic narration beats", () => {
-    const context = videoTaskSystemContext("ses_example");
-    for (const requirement of [
-      "exact spoken phrase",
-      "Keep events in causal or viewing order",
-      "one concrete query per distinct visual need",
-      "date/location when factual",
-      "exclusion criteria",
-      "no fixed keyword quota",
-      "source relevance, provenance and license",
-      "editable graphics instead of loosely related B-roll",
-    ]) expect(context).toContain(requirement);
-  });
-
-  test("generated briefs and reference roles preserve continuity without assuming a provider", () => {
-    const context = videoTaskSystemContext("ses_example");
-    for (const requirement of [
-      "subject/identity + environment + action/change",
-      "model's actual capabilities and duration limits",
-      "Each supplied reference must have an explicit role",
-      "what to preserve and what may change",
-      "Resolve conflicting references from user priorities",
-      "location geometry, palette and screen direction",
-      "invent @reference syntax",
-    ]) expect(context).toContain(requirement);
-  });
-
-  test("pause direction is not spoken text or a fabricated audio capability", () => {
-    const context = videoTaskSystemContext("ses_example");
-    for (const requirement of [
-      "pronunciation of names/abbreviations/numbers",
-      "Keep stage directions and pause markers out of voiceover spoken text",
-      "do not invent pauseSeconds or SSML support",
-      "A visual hold is not an inserted audio pause",
-      "real provider word timings and measured audio",
-      "not evenly divided word timestamps",
-      "unsupported, disclose the gap",
-      "after narration edits",
-    ]) expect(context).toContain(requirement);
-  });
-
-  test("genre-led rhythm uses existing recipes without enforcing a promotional template", () => {
-    const context = videoTaskSystemContext("ses_example");
-    for (const requirement of [
-      "relative energy and information density",
-      "dependency order and reading time",
-      "quiet stories need not end in a sales CTA",
-      "entry state, focal subject, content change, resolved state",
-      "existing temporal-pattern/component map",
-      "once-per-preset quotas",
-      "real measured audio cues",
-    ]) expect(context).toContain(requirement);
-  });
-
-  test("finished-video instructions resolve and synchronize the soundtrack and content revisions", () => {
-    const context = videoTaskSystemContext("ses_example");
-    expect(context).toContain("make an explicit soundtrack decision BEFORE assembly");
-    expect(context).toContain("music_prompt: none");
-    expect(context).toContain("MUST be written back");
-    expect(context).toContain("not merely because a download works");
-    expect(context).toContain("Regenerate changed spoken lines");
-    expect(context).toContain("report partial delivery");
   });
 
   test("paragraph-style metadata is preserved but never silently called a valid script", () => {

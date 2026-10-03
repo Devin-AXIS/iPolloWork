@@ -508,51 +508,45 @@ export default {
       },
     },
     {
-      name: "Group independent Video skills without taking ownership",
+      name: "Use the consolidated Video authoring and voiceover skills",
       run: async (ctx) => {
-        await ctx.prove("Video shows detected HyperFrames capabilities as related skills without managing their lifecycle", {
+        await ctx.prove("Video exposes two managed skills with on-demand creative guidance", {
           voiceover: vo[10],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
             await selectPersonalResourceScope(ctx);
-            await ctx.waitForText("独立插件包", { timeoutMs: 30_000 });
+            await ctx.waitForText("iPollo Video", { timeoutMs: 30_000 });
 
-            const updateStarted = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["更新", "Update"], true));
+            const updateStarted = await ctx.eval(pluginCardActionExpression("iPollo Video", ["更新", "Update"], true));
             if (updateStarted) {
-              await ctx.waitFor(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"]), {
+              await ctx.waitFor(pluginCardActionExpression("iPollo Video", ["打开", "Open"]), {
                 timeoutMs: 45_000,
                 label: "Video Agent updated",
               });
             }
 
-            const opened = await ctx.eval(pluginCardActionExpression("iPolloWork Video Agent", ["打开", "Open"], true));
+            const opened = await ctx.eval(pluginCardActionExpression("iPollo Video", ["打开", "Open"], true));
             ctx.assert(opened, "Could not find the Video Agent detail action");
-            await ctx.waitFor("document.body.innerText.includes('相关技能 9') && document.body.innerText.includes('hyperframes-cli')", {
+            await ctx.waitFor("document.body.innerText.includes('技能 2') && document.body.innerText.includes('Video Studio') && document.body.innerText.includes('视频旁白')", {
               timeoutMs: 30_000,
-              label: "Video related skills",
+              label: "consolidated Video skills",
             });
             await ctx.eval(`(() => {
-              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
+              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.trim() === '技能');
               heading?.scrollIntoView({ block: 'center' });
             })()`);
           },
           assert: async () => {
             await ctx.expectText("技能 2");
-            await ctx.expectText("相关技能 9");
-            await ctx.expectText("此插件不会安装、停用、更新或删除它们");
-            await ctx.expectText("hyperframes-cli");
-            await ctx.expectText("media-use");
-            await ctx.expectText("product-launch-video");
-            const relatedSwitchCount = await ctx.eval(`(() => {
-              const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.includes('相关技能'));
-              return heading?.parentElement?.querySelectorAll('[role="switch"]').length ?? -1;
-            })()`);
-            ctx.assert(relatedSwitchCount === 0, `Expected related skills to have no lifecycle switches, received ${relatedSwitchCount}`);
+            await ctx.expectText("Video Studio");
+            await ctx.expectText("视频旁白");
+            await ctx.expectText("0.3.11");
+            await ctx.expectNoText("相关技能 9");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
-            name: "plugin-video-related-skills",
-            requireText: ["技能 2", "相关技能 9", "hyperframes-cli", "media-use", "product-launch-video"],
+            name: "plugin-video-consolidated-skills",
+            requireText: ["技能 2", "Video Studio", "视频旁白", "0.3.11"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/plugin/video-agent",
           },

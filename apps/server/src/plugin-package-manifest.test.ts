@@ -303,6 +303,11 @@ describe("plugin package manifest", () => {
     expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-motion-principles.md", root)).text()).toBe(header + videoMotionPrinciples);
     expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-acceptance.md", root)).text()).toBe(header + videoAcceptance);
     const videoSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-studio/SKILL.md", root)).text();
+    expect(videoSkill).toContain("Load only applicable sections");
+    expect(videoSkill).toContain("runtime supplies paths, port, selected/default voice");
+    const voiceSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-voiceover/SKILL.md", root)).text();
+    expect(await Bun.file(new URL("examples/plugin-packages/video-agent/skills/ipollowork-video-voiceover/SKILL.md", root)).text()).toBe(voiceSkill);
+    expect(voiceSkill).toContain("../ipollowork-video-studio/references/video.md#narration-captions-and-soundtrack");
     for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
       expect(await Bun.file(new URL(`${directory}SKILL.md`, root)).text()).toBe(videoSkill);
       for (const [name, body] of [["shared-guidelines.md", shared], ["video.md", video], ["video-motion-principles.md", videoMotionPrinciples], ["video-acceptance.md", videoAcceptance]]) {
@@ -361,20 +366,14 @@ describe("plugin package manifest", () => {
     expect(design.manifest.name).toBe("iPollo Design");
     expect(video.manifest.name).toBe("iPollo Video");
     expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["file", "file", "skill", "skill"]);
-    expect(video.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(11);
+    expect(video.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id))
+      .toEqual(["ipollowork-video-studio", "ipollowork-video-voiceover"]);
     expect(video.manifest.resources).toContainEqual(expect.objectContaining({ type: "file", path: "skills/ipollowork-video-studio/references" }));
     expect(video.manifest.relatedSkills).toBeUndefined();
-    expect(video.manifest.resources.map((resource) => resource.id)).toEqual(expect.arrayContaining([
-      "hyperframes",
-      "hyperframes-animation",
-      "hyperframes-cli",
-      "hyperframes-core",
-      "hyperframes-creative",
-      "hyperframes-keyframes",
-      "hyperframes-registry",
-      "media-use",
-      "product-launch-video",
-    ]));
+    expect(video.manifest.resources.map((resource) => resource.id)).toEqual([
+      "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-voiceover",
+    ]);
+    expect(video.manifest.package?.version).toBe("0.3.11");
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();

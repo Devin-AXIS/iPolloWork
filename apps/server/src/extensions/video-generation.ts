@@ -305,10 +305,26 @@ async function sourceUrl(workspace: WorkspaceInfo, source: string, kind: "image"
   return uploaded;
 }
 
-async function avatarWorkflow(args: Submission, key: string, image: string, audio: string, signal: AbortSignal) {
-  const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId: AVATAR_WORKFLOW }, signal));
+async function runningHubWorkflow(key: string, workflowId: string, signal: AbortSignal) {
+  const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId }, signal));
   const { prompt } = z.object({ prompt: z.string() }).parse(data);
-  const graph = z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
+  return z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
+}
+
+function workflowDependencyIds(graph: Awaited<ReturnType<typeof runningHubWorkflow>>, outputId: string, missingNodeMessage: string) {
+  const reachable = new Set<string>();
+  const visit = (id: string) => {
+    if (reachable.has(id)) return;
+    if (!graph[id]) throw new ApiError(400, "video_workflow_changed", missingNodeMessage);
+    reachable.add(id);
+    for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
+  };
+  visit(outputId);
+  return reachable;
+}
+
+async function avatarWorkflow(args: Submission, key: string, image: string, audio: string, signal: AbortSignal) {
+  const graph = await runningHubWorkflow(key, AVATAR_WORKFLOW, signal);
   const nodeByType = (type: string) => {
     const matches = Object.entries(graph).filter(([, candidate]) => candidate.class_type === type);
     if (matches.length !== 1) throw new ApiError(400, "video_workflow_changed", "数字人工作流节点已变化，尚未提交生成。");
@@ -379,14 +395,7 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
   noiseNode.inputs.noise_seed = Number.parseInt(args.requestId.replaceAll("-", "").slice(0, 12), 16);
   output.audio = [cropNode.id, 0]; output.frame_rate = 24; output.trim_to_audio = true;
   output.format = "video/h264-mp4"; output.save_output = true;
-  const reachable = new Set<string>();
-  const visit = (id: string) => {
-    if (reachable.has(id)) return;
-    if (!graph[id]) throw new ApiError(400, "video_workflow_changed", "数字人缺少生成节点，尚未提交。");
-    reachable.add(id);
-    for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
-  };
-  visit(outputNode.id);
+  const reachable = workflowDependencyIds(graph, outputNode.id, "数字人缺少生成节点，尚未提交。");
   if (!reachable.has(referenceNode.id) || !reachable.has(audioInputNode.id)) fail("数字人输出缺少图片或音频生成链路。");
   return { url: `${RH}/task/openapi/create`, body: { apiKey: key, workflowId: AVATAR_WORKFLOW,
     workflow: JSON.stringify(Object.fromEntries(Object.entries(graph).filter(([id]) => reachable.has(id)))),
@@ -397,9 +406,7 @@ async function avatarWorkflow(args: Submission, key: string, image: string, audi
 // Fetch the published graph before billing, verify the bindings, and replace only
 // the selected inputs. No local model execution or secret is embedded in the graph.
 async function h3Workflow(args: Submission, key: string, first: string, last: string, signal: AbortSignal) {
-  const data = workflowData(await jsonRequest(`${RH}/api/openapi/getJsonApiFormat`, key, { apiKey: key, workflowId: H3_WORKFLOW }, signal));
-  const { prompt } = z.object({ prompt: z.string() }).parse(data);
-  const graph = z.record(z.string(), z.object({ class_type: z.string(), inputs: z.record(z.string(), z.unknown()) }).passthrough()).parse(JSON.parse(prompt));
+  const graph = await runningHubWorkflow(key, H3_WORKFLOW, signal);
   const node = (id: string, type: string) => {
     if (graph[id]?.class_type !== type) throw new ApiError(400, "video_workflow_changed", "H3 公开工作流的节点已变更，请更新软件后重试；尚未提交生成。");
     return graph[id].inputs;
@@ -447,14 +454,7 @@ async function h3Workflow(args: Submission, key: string, first: string, last: st
   if (last) { imageNode("25", last); target.last_frame = ["25", 0]; }
   else delete target.last_frame;
   // Submit only the selected output's dependency graph; disconnected demo media is excluded.
-  const reachable = new Set<string>();
-  const visit = (id: string) => {
-    if (reachable.has(id)) return;
-    if (!graph[id]) throw new ApiError(400, "video_workflow_changed", "H3 工作流缺少生成节点，尚未提交。");
-    reachable.add(id);
-    for (const value of Object.values(graph[id].inputs)) if (Array.isArray(value) && typeof value[0] === "string" && typeof value[1] === "number") visit(value[0]);
-  };
-  visit("7");
+  const reachable = workflowDependencyIds(graph, "7", "H3 工作流缺少生成节点，尚未提交。");
   if (!reachable.has("17")) throw new ApiError(400, "video_workflow_changed", "H3 输出未连接当前生成节点，尚未提交。");
   const workflow = Object.fromEntries(Object.entries(graph).filter(([id]) => reachable.has(id)));
   const nodeInfoList = [{ nodeId: "17", fieldName: "prompt", fieldValue: args.prompt }];

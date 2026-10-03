@@ -2,116 +2,57 @@
 
 # iPolloWork Video Acceptance
 
-Use this acceptance contract for initial generation, template application, structural scene changes, and final delivery. Targeted text, theme, or timing edits run only the affected checks plus a core playback check. Validation is bounded: one aggregate source check, one batch temporal sample, one consolidated repair pass, and at most one targeted follow-up for remaining must-fix defects.
+Load applicable checks before final delivery or an explicitly delegated acceptance run. Targeted edits check only affected claims plus core playback. Use one aggregate source check, one batch temporal sample, one consolidated repair pass and at most one targeted follow-up for remaining must-fix defects; stop optional polishing when the brief holds. The client owns the aggregate component/project/voiceover gate. This guide never starts another preview/validation service.
 
-## 1. Source and timeline integrity
+## Source and timeline
 
-- One valid root composition owns stage dimensions, FPS, duration, tracks, and the registered paused timeline.
-- Scene, clip, transition, caption, narration, media, and animation windows stay within root bounds and agree after retiming.
-- Authored boundaries resolve to integer frames. Direct seek, reverse seek, replay, and export do not depend on prior playback.
-- Editable variables, stable IDs, theme tokens, component bindings, and project-relative asset paths remain valid.
-- Every full `.scene.clip` is marked `data-ipw-scene` and has a stable ID, frame-aligned timing, track, motion pattern, accepted timing source, and literal executable beat map. Beat ranges cover the scene continuously.
-- Registry component hosts own timing through `data-ipw-timing-owner="host"`; installed component roots do not carry a competing clip window and remain visible in their Land state until the host ends.
-- Required scripts and media load without console, decode, or missing-file errors.
+- One valid root owns stage dimensions/aspect ratio, FPS, duration, tracks and registered paused timeline. Required scripts/media load without console/decode/missing-file errors. All scene/clip/transition/caption/narration/media/animation windows agree within root bounds after retiming, on integer frames.
+- Every full scene has its stable ID, `data-ipw-scene`, track/window, motion pattern, truthful timing source and literal executable continuous beat map. Registry hosts have unique composition IDs, actual source/variables/registry marker and `data-ipw-timing-owner="host"`; component roots carry no competing clip window and hold Land to host end. Custom scenes have specific structural exception/evidence under the active recipe policy. Editable variable IDs, tokens, brand assets, hooks and relative paths remain valid.
+- Direct/reverse seek, replay/reopen and export are history-independent. Invalid root/timeline, zero/inconsistent duration, out-of-bounds clips, broken variables or missing required assets fail delivery; source markers alone never prove motion executed.
 
-Any invalid root, missing timeline, zero or inconsistent duration, out-of-bounds clip, broken variable declaration, or missing required asset fails delivery.
+## Content, recipe fit and sequence
 
-## 2. Content and visual integrity
+Review the approved source/brief, latest native storyboard, actual selected card/variant/source and mounted implementation against rendered evidence, without assuming construction succeeded.
 
-- Every declared scene has purposeful visible content at its required reading state. Blank or placeholder scenes fail unless the approved storyboard explicitly calls for a blank beat. Brand marks, captions, narration transcripts, editor outlines, and persistent chrome do not count as the scene's primary visible content.
-- Titles, body text, captions, data labels, and annotations fit with the actual fonts and final copy.
-- Contrast, safe margins, crop, hierarchy, and focal subject remain clear at the declared stage and output aspect ratio.
-- Generated imagery is never presented as factual evidence. Required attribution stays attached to evidence.
-- A reused registry component preserves its supported editable variables, structured data, theme inheritance, and selection hooks.
-- Every substantive scene is traceable: a reused component has an installed `data-composition-src`, unique `data-composition-id`, `data-ipw-registry-component`, real `data-variable-values`, and `data-motion-pattern`; a custom scene has `data-ipw-component-decision="custom:<specific structural reason>"` and a motion pattern.
+- Required facts, names, units and qualifiers are spoken or visibly explained in the correct order. Each scene has purposeful primary content at its reading state; blank/placeholders fail except an explicitly approved blank beat. Branding, captions/transcripts and persistent chrome alone are not scene content. Corrected subjects must appear in actual speech/text/pictures/captions, not merely replacement imagery.
+- Check final-font fit, hierarchy, contrast, safe margins, crop and scale at output dimensions. Preserve supported editable data/variables, theme inheritance and selection hooks. Label illustrative imagery and retain factual evidence attribution.
+- Recipe useWhen/avoidWhen, real inputs, capacity, reading order and usage limits hold. Card name or a moving wrapper does not prove explanation. Compare supported motion grammar/easing/timing ratios/masking and meaningful final hold with accessible reference footage. A preview HTTP success is not proof of having watched it; missing reference playback leaves fidelity unverified, never pixel-parity claims.
+- Imports record exact card/variant, pinned rule/source and actual installed component. Reference-only/unported entries and recipe labels on original graphics are not executable reuse. Under recipes-only, missing capacity/input support needs another valid recipe, semantic split or gap disclosure; custom graphics fail that policy.
+- Chosen sequence fits the audience task and source. Required slots add meaning or purposeful reading rest, optional slots may merge/disappear with reason. Names cannot validate content. Preserve semantic dependencies, comparable units/viewpoints, justified energy and readable rests; reject unsupported causality/winners, duplicate headlines/title cards or generic promotional rhythm imposed on teaching.
+- Real-page/camera work retains sharp texture/cutout/backplate dimensions and `assets/capture-layout.json` coordinates for actual landing slots. Reject blurry closeups, detached annotations, floating destinations or fabricated interfaces substituting supplied evidence. Representative styleframes or their justified skip remain traceable.
 
-## 3. Temporal storytelling
+## Temporal samples and continuity
 
-- Each substantive scene records one primary temporal pattern and observable Establish, Develop, and Land states.
-- Each substantive narrated scene has a beat map whose spoken intents remain in source order and whose time ranges, visual focus, visual action, and result or hold, plus targets and an executable animation reference cover the narration without overlaps or unexplained gaps. Silent scenes use the same mapping against their reading order, music cues, or media events; simple titles and outros may use one beat.
-- Once narration exists, beat boundaries use the measured audio and project FPS rather than sample reading estimates. The visual change for each beat occurs while its meaning is spoken, while intentional pauses hold the current state. When narration is unavailable, `estimated-reading`, `visual-cue`, `music`, or `media` timing remains valid and must still produce a complete visual sequence.
-- Sample those three states in one batch. The samples must show the intended progression of meaning, focus, state, path, evidence, or media framing.
-- Narration and visual development follow the same semantic order. Required information remains readable while discussed.
-- A scene whose only change is a generic entrance, or whose meaningful motion finishes near the start and leaves most of the scene unintentionally unchanged, fails temporal acceptance.
-- Repeating the same fade, rise, scale, and stagger recipe across scenes is a repair signal unless the brief explicitly requests a presentation-like treatment.
-- Purposeful pauses, calm pacing, title cards, and final holds are valid. Constant motion is not required.
-- Pattern-specific evidence must match the selected recipe: montage has multiple intentional shot states and a resolving motif; camera journeys preserve orientation through meaningful waypoints; dialogue exposes identifiable timed turns and responses; kinetic type remains readable at every semantic change; audio-reactive scenes bind reproducible visual events to measured audio cues. A compatible component name alone is not evidence.
+Render Establish, Develop, and Land samples for every substantive scene in one batch/contact sheet when acceptance is explicitly delegated. Keep scene/time or frame identities. Beat time ranges, visual focus, visual action, and result or hold plus targets/executable reference cover the scene and relevant speech/reading order without gaps/overlaps. Real narration uses measured provider timing and project FPS; silent work uses actual estimated-reading/visual/music/media driver. Purposeful pauses, calm pacing/simple title cards and final holds remain valid.
 
-## 4. Transitions and continuity
+Samples must show progression of focus/state/evidence/path/framing, with required information readable when discussed. Generic entrance followed by an unintentionally static long explanation fails. Montage needs intentional distinct shot states/motif; camera journeys need spatial orientation/waypoints; dialogue needs identifiable timed responses; kinetic type needs readable semantic changes; audio reactive needs measured saved cues causing real motion. A compatible component name or metadata label is insufficient.
 
-- Every scene after the first records an incoming transition, its duration, and its narrative intent. The transition is an actual applied preset with matching `data-ipw-animation-reference`, a declared zero-duration cut, or a seek-safe authored `custom:<id>` with a matching animation reference, incoming beat, and `data-ipw-transition-handoff` evidence. These source markers are not proof that the authored animation executed.
-- Transitions communicate continuation, topic change, time/location change, comparison, reveal, or closure and do not expose empty frames.
-- The outgoing scene remains meaningful through its final frame; the incoming focal subject becomes clear as its transition completes.
-- Sample the frame immediately before, during, and after every changed or flagged boundary, including every authored transition. Confirm the shared subject or intentional reset is recognizable and the incoming state does not restart a continuing process. A scene-level fade that finishes before the transition begins is an empty-frame failure.
-- Fixed chrome, captions, audio, and persistent identity elements do not jump, duplicate, or disappear unintentionally.
+Sample immediately before/during/after each changed or flagged boundary, including all authored transitions, and inspect outgoing Land + seam + incoming Establish together. Confirm recognizable continuity or intended reset and actual zero-cut/preset/custom reference/handoff execution. Full scene windows meet; incoming motion consumes Establish, not extra/overlapping time. Outgoing remains meaningful through its final frame, incoming begins non-empty, and fixed captions/identity/audio do not jump/duplicate. Reject empty fades, covered qualifiers or replayed entrances that restart a continuing process.
 
-## 5. Media and audio
+Use current host receipt `pixelReview.evidence.videoPath` and timed frame paths/scene IDs/absolute frames, not a second render service. Include declared event anchors, representative action/peak/hold, final Land and seams. Missing intermediate evidence needs targeted sampling rather than an unsupported smooth-motion claim. `resolution: draft` cannot certify export text sharpness: requested exports need native-size frames, enlarged dense text/texture regions where useful. Inspect ordinary-speed whole-sequence rhythm too, not only stills.
 
-- Every planned media need has a final outcome: reused, generated, declined, unavailable, failed, or intentionally replaced by an editable visual.
-- The saved storyboard matches the delivered scene order, narration, asset decisions and timing; generation is not a substitute for a missing script or shot purpose.
-- Visible media uses the intended file, crop, timing, and resolution. Video clips decode and play inside their declared windows.
-- Enabled narration is audible, mapped to the correct scene, and measured from the actual returned audio. Captions and dependent timing follow it.
-- Explicitly disabled or unavailable narration is reported honestly and does not block visual delivery. Timeline clips or waveforms alone do not prove sound.
-- Music and effects do not mask speech or start outside project bounds.
-- A finished video's saved script contains an explicit music direction or deliberate `music_prompt: none`. Selected music is recorded in `music_asset` and matches the real mounted track; absent, stale or conflicting script/audio choices fail delivery. A missing source remains partial delivery, not a reason to silently mark music unnecessary.
-- Track choice has a source/license and a content-fit rationale, not just a successful download. A corrected subject is reflected in the actual narration and rendered content, not only in replacement imagery.
-- Requested BGM and SFX have separate real local timeline clips (`data-timeline-role="music"` / `"sfx"`), valid source/trim windows and audible levels. Muted, missing, wrong-path or out-of-bounds clips do not satisfy delivery. Effects coincide with their planned visual events; music does not acquire invented beat cues.
-- Source validation checks references and declared timing, not waveform content, licensing, perceived mix quality or device output. Audition narration, music and effects together and verify the rendered mix separately when export is requested.
+## Media, narration and soundtrack
 
-## 6. Editor and playback experience
+- Every planned need has a truthful final outcome (reused/generated/declined/unavailable/failed/intentional editable replacement) with actual file/receipt/provenance. Delivered ordering, script choices and timing agree. Visible images/clips use intended crop/resolution/window and decode correctly; hidden dummy media or URL-only declarations do not count.
+- Enabled/required narration is real, audible and scene-bound; measured duration/alignment drives beats/captions and dependent timing. Disabled/unavailable speech permits disclosed visual delivery, not a completed narrated result. Timeline nodes/waveforms do not prove audible output.
+- Finished script has explicit `music_prompt` or deliberate authorized `music_prompt: none`; actual `music_asset` matches the mounted bed and documented source/license/content-fit. Failed sourcing cannot silently become no music. Requested BGM/SFX are separate local music/sfx clips with valid source/trim/start/duration/track/levels and planned visual cues. Muted/missing/wrong-path/out-of-bounds audio fails its requirement.
+- Source/receipt checks verify references/timing, not licensing, sound waveform, device output, mix quality or synchronization. Listen to narration/music/SFX together and to exported mix when requested; verify spoken phrase/visual-event pairs, effects onset/trailing sound, intelligibility and masking. Music-led events need measured cues, not filenames or decorative waveforms.
+- Host `audioReview` decode detects missing/silent mix and sample peak warnings. Non-silent BGM can hide absent speech/effects; it is neither speech recognition nor audible-sync proof. Near-full-scale peaks require inspection, not automatic clipping claims. If supported, diagnose masking with same-timeline music-disabled render retaining speech/SFX; no parallel project or compulsory second export for music-free work.
 
-- Open the exact project in the built-in Video Studio. Scrub forward and backward through scene starts, Develop states, Land states, and incoming transition intervals.
-- Play across at least one ordinary transition and every changed or flagged scene. A moving playhead alone does not prove a correct picture or audible output.
-- Confirm component variables and supported edits still update the selected visual without replacing unrelated scenes or starting another preview server.
-- Confirm stop, replay, reopen, and theme changes preserve the saved composition.
+## Editor, export and publication
 
-## 7. Export and delivery
+Open the exact project in built-in Studio only when runtime validation is delegated. Scrub forward/backward through starts/action/Land/transitions and play ordinary seams plus changed/flagged scenes. Check actual picture/audio, stop/replay/reopen/theme stability and supported variable edits without altering unrelated scenes or creating another server. A moving playhead alone proves neither picture nor sound.
 
-- When export is requested, inspect the exported file separately for dimensions, duration, representative frames, media, and audible audio.
-- Show result files only after the complete requested artifact passes its applicable checks. Intermediate generated assets remain process evidence rather than separate final results.
-- Report source validation, temporal samples, client playback, real-model media generation, and export as separate scopes. Do not claim an unperformed scope.
+Requested export needs its completed host-render receipt and separate file checks for dimensions, duration, representative native frames, media and audible mix. Intermediate generated assets are process evidence, not final requested deliverables. Publication additionally needs the authorized publisher result/receipt; render preparation or upload submission is not publication success. Do not claim real-model generation, source verification, playback, independent review or exported quality when not observed.
 
-## 8. Bounded evidence and verdict
+## Artifact-first verdict and bounded repair
 
-The client runs `video_component_check` together with source, project, and voiceover checks as one aggregate batch after the model turn. For an explicit acceptance run, Render Establish, Develop, and Land samples for every substantive scene in one batch or contact sheet. Inspect full-size frames and transition boundaries only for changed or programmatically flagged scenes; do not launch per-scene servers or repeat the source checks.
+An available authorized independent reviewer receives only approved brief/script, selected card/variant/source/reference, current rendered artifact and timed frame evidence, without maker verdict/debugging explanations. Otherwise record that review was not independent; never invent or spawn unavailable/unauthorized agents.
 
-- **Passed:** all applicable must-fix checks hold with observable evidence.
-- **Partial:** the artifact is usable but an explicitly declined, unavailable, or failed optional capability is disclosed.
-- **Failed:** any required scene is blank, selected registry component is not actually installed and referenced, a custom scene lacks a specific exception reason, timeline or media is invalid, temporal storytelling does not develop, required audio is inaudible, or requested export is unverified.
+Report separate **technical health**, **expression/recipe fit**, and **ordinary-speed audiovisual/export review** in existing acceptance outputs. Automatic receipt leaves `expression` and `audibleSync` unverified and cannot upgrade them. Each failed/unverified claim records scene ID, absolute frame/time, observed issue/missing evidence and next action. Keep must-fix, optional and unverified findings separate.
 
-## 9. Shotcraft provenance and production evidence
+- **Passed:** every applicable required claim has observable supporting evidence.
+- **Partial:** usable scoped artifact with disclosed declined/unavailable/failed optional capability or review; unresolved required audio/export is an unfinished required scope.
+- **Failed:** required scene blank, selected component not mounted, unsupported custom exception, invalid timeline/media, undeveloped temporal story, required inaudible audio or unverified requested export. Do not label an unperformed review Passed.
 
-- A Shotcraft selection records card, variant, pinned rule/source reference and actual installed componentId. Reference-only entries, placeholder conversions and a card-name label do not satisfy executable reuse. Inspect the real mounted source and final content/capacity; under recipes-only policy, custom graphics fail instead of filling a library gap silently.
-- Check the final frames against the approved storyboard, selected variant and representative styleframes (or the recorded skip), without assuming the implementation is correct. A preview HTTP success is not proof of having watched it. Preserve critical motion grammar and timing; do not claim pixel parity without a comparison.
-- For real-page spatial shots, verify full texture/cutout/backplate dimensions, capture coordinate metadata and the actual landing slot. Reject floating endpoints, detached annotations and blurry closeups; do not substitute hand-drawn interfaces for supplied evidence.
-- Validate the action/landing states and boundary samples with scene-relative times or frame numbers. Reconcile audible cues after visual retiming, not just metadata. Missing frame, audition or export evidence remains unverified; guidance completion alone cannot mark the film Passed.
-
-Apply one consolidated repair pass, then one targeted follow-up only for remaining must-fix defects. Stop optional polishing once the approved brief and acceptance contract hold.
-
-## 10. Recipe fit review
-
-Use this review for all selected native and imported recipes, not only Shotcraft ports. Review from the approved source/storyboard, selection notes, final mounted implementation and actual frame/audio evidence; construction success is not a visual verdict. If an independent-review capability is available and authorized, provide these raw artifacts and the selected card/source/preview, without the maker's preferred verdict or debugging justification. Otherwise make an artifact-first review pass and disclose that no independent reviewer was used; do not invent a subagent or start another preview service.
-
-- Content: does the shot visibly explain its recorded takeaway with the correct facts, units and qualifiers? A compatible title or three decorative cards does not prove a causal mechanism or direct comparison.
-- Selection: are useWhen/avoidWhen, inputs, capacity, reading order and explicit usage limits respected in the delivered shot? Reconcile card, variant, source and mounted component; surface conflicting references rather than choosing silently. Under recipes-only policy, report gaps instead of substituting custom graphics.
-- Motion: compare the actual action and landing states with the declared visual change and accessible reference. Preserve key easing, timing ratios, sharp focal content and useful final hold; a metadata label or moving wrapper is insufficient.
-- Sequence: check the chosen sequence against the audience task and approved source, not a universal trailer rhythm. Each required slot adds information or a purposeful reading rest, uses a fitting executable recipe and lands a clear result. Optional slots may merge or disappear; missing required coverage may not. A sequence name does not validate its contents.
-- Handoff: inspect each changed or flagged outgoing Land, boundary and incoming Establish as one pair. Check that the intended continuation, comparison or topic change is understandable and shared labels, scale or direction stay consistent where supported. Reject unsupported morph/camera claims, repeated unnecessary entrances, duplicate title cards and transitions covering unread facts. A clean direct cut can pass.
-- Budget: reconcile actual speech/reading time, recipe motion and minimum holds with the integer-frame shot windows. Incoming transitions consume the incoming Establish window, not added or overlapping scene time. Check the full sequence at ordinary speed for evidence that can actually be read, purposeful rests and selective emphasis; do not claim audible pauses from visual holds or inspect only isolated stills.
-- Timing: verify that the corresponding visual event appears while its meaning is spoken, and that captions and sound remain readable/audible after retiming. Missing alignment or audition evidence is unverified, not exact synchronization.
-
-For each failed or unverified claim, record scene ID, scene-relative time/frame, observed issue or missing evidence, and remedy in existing acceptance outputs/frame notes. A poor narrative fit requires reselection or a semantic split; a correct recipe with faulty implementation requires repairing that implementation. Missing reference playback cannot substantiate motion fidelity. Return must-fix, optional and unverified items separately within the existing bounded review, without claiming an automatic semantic validator.
-
-## 11. Artifact-first final review
-
-Use the current host render receipt, not a second render service. Reviewed receipts retain `pixelReview.evidence.videoPath` and frame paths with scene IDs and absolute frame numbers. Samples include declared event anchors, a representative action state, final landing and transition boundaries. `resolution: draft` means reduced-size evidence: it cannot certify export text sharpness. For requested exports, inspect native-size frames; enlarge text/texture regions for dense or spatial shots. Missing intermediate peak/hold evidence needs a targeted sample, not a claim that a few stills prove smooth motion.
-
-Review at ordinary speed as well as by frame. Check each required takeaway against the approved script, actual recipe/variant and mounted content. A visible wrapper movement is not explanation. Compare supported motion grammar, timing ratios, masking and landing states to accessible reference footage; unavailable reference playback remains unverified. Inspect adjacent outgoing/entry states together after edits, not only the changed shot.
-
-For audio-bearing films, the host decodes the output mix and reports missing/silent audio and sample peak warnings under `audioReview`. This is neither speech recognition nor proof of audible synchronization: BGM can mask missing narration or SFX while the mix remains non-silent. Listen to the final artifact, verify spoken phrase/visual-event pairs and SFX onset/trailing sound, and check speech intelligibility and music masking. Near-full-scale sample peaks require inspection, not an automatic clipping verdict. If BGM obscures the diagnosis, compare a same-timeline music-disabled render retaining narration/SFX only when the current workflow supports it; do not create a parallel project or require two exports for intentionally music-free explainers.
-
-An independent reviewer, when available and authorized, receives only the approved brief/script, selected card/variant/source/reference, current rendered artifact and timed frame evidence. Do not supply maker explanations, expected verdicts or debugging history. Otherwise explicitly record that review was not independent. Do not spawn unavailable or unauthorized agents.
-
-Report three scopes separately in the existing acceptance output: **technical health**, **expression/recipe fit**, and **ordinary-speed audiovisual/export review**. The automatic receipt leaves `expression` and `audibleSync` unverified; no automatic technical pass can upgrade these. Each failed or unverified claim needs scene ID, absolute frame/time, observed issue or missing evidence, and next action. Never mark an unperformed review Passed. Required unresolved defects remain a draft; optional omissions and unavailable review are disclosed separately.
-
-Repair content/selection errors in the script/recipe choice, implementation errors in the mounted composition, and sound errors in the mix. Retain prior evidence, produce current-version evidence, then replay the whole sequence to catch shifted cues and seams. The host fingerprints the project (including scripts, components, styles and assets, excluding generated renders); changes invalidate the prior receipt. External dependencies not included in that fingerprint must be disclosed, not certified by the local snapshot. Keep one consolidated repair and one targeted follow-up; remaining must-fix issues stop delivery rather than trigger indefinite polishing.
+Repair source/selection errors in script/recipe, implementation errors in mounted source and sound errors in mix. Preserve prior evidence, obtain current-version evidence and replay whole sequence after retiming to catch shifted cues/seams. Host fingerprint includes scripts/components/styles/assets, excludes generated renders, and source changes invalidate prior receipt. Disclose outside dependencies not covered by fingerprint. After one consolidated repair and one targeted follow-up, remaining must-fix issues keep delivery in draft instead of indefinite polish.

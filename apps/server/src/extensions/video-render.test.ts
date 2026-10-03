@@ -5,7 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction } from "./video-render.js";
+import { renderedSceneWindows, reviewRenderedPixels, reviewRenderedAudio, videoProjectFingerprint, videoRenderAction } from "./video-render.js";
+
+test("render review reads standard timed HTML attributes and skips incomplete or invalid scene windows", () => {
+  for (const timing of ['data-start="0" data-duration="3"', "data-start = 0 data-duration=3", 'data-start="&#48;" data-duration="&#x33;"']) {
+    expect(renderedSceneWindows(`<section class="scene clip" id=" proof " ${timing}></section>`)).toEqual([
+      { sceneId: "proof", start: 0, duration: 3, motion: [], transitionDuration: 0 },
+    ]);
+  }
+  for (const timing of ["data-duration=3", "data-start=0", 'data-start=" " data-duration=3', "data-start=NaN data-duration=3", "data-start=0 data-duration=Infinity", "data-start=0 data-duration=0"]) {
+    expect(renderedSceneWindows(`<section class="scene" ${timing}></section>`)).toEqual([]);
+  }
+});
 
 test("project fingerprint invalidates nested media, CSS and composition edits but excludes generated evidence", async () => {
   const root = await mkdtemp(join(tmpdir(), "ipw-review-fingerprint-"));
@@ -160,7 +171,8 @@ test("runtime acceptance failures and changed source cannot become completed del
   }, nativeFetch);
   const workspace = { id: "ws_review", path: root };
   try {
-    for (const mode of ["failed-runtime", "valid-runtime", "review-only", "changed-dependency", "changed-source"]) {
+    for (const mode of ["failed-runtime", "valid-runtime", "valid-runtime-metadata", "review-only", "changed-dependency", "changed-source"]) {
+      const validRuntime = mode.startsWith("valid-runtime");
       valid = mode !== "failed-runtime";
       const args = { sourcePath, operationKey: mode, review: true, reviewOnly: mode === "review-only" };
       await videoRenderAction(workspace, "video_render_start", args);
@@ -170,12 +182,12 @@ test("runtime acceptance failures and changed source cannot become completed del
         await new Promise(resolve => setTimeout(resolve, 2));
       }
       await promisify(execFile)(process.env.HYPERFRAMES_FFMPEG_PATH || "ffmpeg", ["-v", "error", "-f", "lavfi", "-i", "testsrc2=size=192x108:rate=30:duration=3", "-c:v", "libx264", join(directory, "renders", `review_job${starts}.mp4`)]);
-      if (mode === "failed-runtime") await writeFile(join(directory, "renders", `review_job${starts}.meta.json`), '{"status":"complete"}');
+      if (mode === "failed-runtime" || mode === "valid-runtime-metadata") await writeFile(join(directory, "renders", `review_job${starts}.meta.json`), '{"status":"complete"}');
       if (mode === "changed-source") await writeFile(join(root, sourcePath), html + "<!-- edited during rendering -->");
       if (mode === "changed-dependency") await writeFile(join(directory, "design-tokens.css"), "body{color:red}");
       const result = await videoRenderAction(workspace, "video_render_status", args);
-      expect(result.status).toBe(mode === "valid-runtime" || mode === "review-only" ? "complete" : "failed");
-      if (mode !== "valid-runtime") expect(result.outputPath).toBeUndefined();
+      expect(result.status).toBe(validRuntime || mode === "review-only" ? "complete" : "failed");
+      if (!validRuntime) expect(result.outputPath).toBeUndefined();
       if (mode === "failed-runtime") expect(result.pixelReview?.runtimeReview?.issues[0]?.code).toBe("executed-event-time-mismatch");
       if (mode === "changed-source") expect(result.error).toContain("source changed");
       if (mode === "changed-dependency") expect(result.error).toContain("dependencies");
@@ -183,7 +195,7 @@ test("runtime acceptance failures and changed source cannot become completed del
         expect(result.pixelReview?.evidence?.resolution).toBe("draft");
         expect(await readFile(join(root, result.pixelReview!.evidence!.videoPath))).not.toBeEmpty();
       }
-      if (mode === "valid-runtime") {
+      if (validRuntime) {
         expect(result.pixelReview?.evidence?.expression).toBe("unverified");
         expect(result.pixelReview?.evidence?.audibleSync).toBe("unverified");
         expect(result.pixelReview?.evidence?.frames.length).toBeGreaterThan(1);
@@ -192,11 +204,12 @@ test("runtime acceptance failures and changed source cannot become completed del
           expect(png.subarray(1, 4).toString()).toBe("PNG");
           expect(png.readUInt32BE(16)).toBe(192);
         }
-        await writeFile(join(directory, "design-tokens.css"), "body{color:blue}");
+        await writeFile(join(directory, "design-tokens.css"), `body{color:blue}/* ${mode} */`);
+        const completedStarts = starts;
         const stale = await videoRenderAction(workspace, "video_render_status", args);
         expect(stale.status).toBe("failed");
         expect(stale.outputPath).toBeUndefined();
-        expect(starts).toBe(2);
+        expect(starts).toBe(completedStarts);
       }
     }
   } finally {
