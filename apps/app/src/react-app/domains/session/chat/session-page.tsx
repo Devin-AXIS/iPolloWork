@@ -7,8 +7,8 @@ import { videoProjectIdFromStoryboardPath } from "../video/video-storyboard";
 import { useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "motion/react";
 import { createClient, unwrap } from "@/app/lib/opencode";
-import { Check, ChevronDown, CircleAlert, Code2, Download, Ellipsis, Eye, FileText, Film, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Mic2, Palette, PanelRightClose, PanelRightOpen, Pencil, Plus, Presentation, Search, Settings2, Trash2, Upload, X, Zap } from "lucide-react";
-import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionSnapshot, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
+import { Check, ChevronDown, CircleAlert, Download, Ellipsis, Eye, FileText, Folder, FolderPlus, Globe, Image, LoaderCircle, Lock, Palette, Pencil, Plus, Presentation, Trash2, Upload, X, Zap } from "lucide-react";
+import { MAX_TEMPLATE_PACKAGE_BYTES, TEMPLATE_PACKAGE_FILE_ACCEPT, isPptxCompatibleTemplate, type PptxCompatibility, type TemplateCatalogItem, type TemplateCategory, type TemplateManifestV1, type TemplateSessionState, type TemplateValidationReport } from "@ipollowork/types/templates";
 import {
   CODEX_HARNESS_ENGINE_ID,
   DEEPSEEK_HARNESS_ENGINE_ID,
@@ -21,7 +21,7 @@ import { currentLocale, t, translationKey } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
-import { iPolloWorkServerError, type iPolloWorkPluginPackageItem, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
+import { iPolloWorkServerError, type iPolloWorkServerClient, type iPolloWorkServerStatus } from "../../../../app/lib/ipollowork-server";
 import {
   enterpriseWorkContextId,
   PERSONAL_WORK_CONTEXT_ID,
@@ -169,7 +169,6 @@ import {
 } from "../references/template-reference-submit";
 import type { TemplateReferenceItem } from "../references/types";
 import { TemplateMarketDialog, type TemplateCatalogSource } from "../templates/template-market-dialog";
-import { shouldRefreshTemplateCatalogOnOpen } from "../templates/template-market-refresh";
 import { savePromptTemplate } from "@/react-app/domains/session/templates/prompt-template-store";
 import { SidePanel, SidePanelLauncherMenu, type SidePanelLauncherItem } from "../panel/side-panel";
 import { TerminalDock } from "../terminal/terminal-dock";
@@ -697,7 +696,6 @@ export type SessionPageSidebarProps = {
     templateId?: iPolloWorkTemplateId,
     templateScope?: WorkContextId,
   ) => Promise<string | null> | string | null | void;
-  onCreateTaskWithPrompt?: (workspaceId: string, prompt: string) => void;
   onCreateProjectBuilder?: (workspaceId: string) => void | Promise<void>;
   onCreateTemplateAuthoring: (
     workspaceId: string,
@@ -1260,23 +1258,6 @@ function InitialProjectTaskStarter({
   );
 }
 
-function getSidebarInitialLoading(props: SessionPageSidebarProps) {
-  if (props.projectSessionLists.some((project) => project.sessions.length > 0)) {
-    return false;
-  }
-  if (props.sidebarHydratedFromCache) return false;
-  if (
-    props.startupPhase !== "sessionIndexReady" &&
-    props.startupPhase !== "firstSessionReady" &&
-    props.startupPhase !== "ready"
-  ) {
-    return true;
-  }
-  return props.projectSessionLists.some(
-    (project) => project.status === "loading" || project.status === "idle",
-  );
-}
-
 function sessionTitleForId(projects: ProjectSessionList[], id: string | null | undefined) {
   if (!id) return "";
   const sessionsById = new Map(projects.flatMap((project) => project.sessions.map((session) => [session.id, session] as const)));
@@ -1332,16 +1313,6 @@ function writeHiddenAccessibleTargetIds(workspaceId: string | null | undefined, 
   } catch {
     // ignore storage failures
   }
-}
-
-function controlObjectArg(args: unknown) {
-  return args && typeof args === "object" && !Array.isArray(args) ? args : null;
-}
-
-function controlStringArg(args: unknown, key: string) {
-  const object = controlObjectArg(args);
-  const value = object ? Reflect.get(object, key) : null;
-  return typeof value === "string" ? value.trim() : "";
 }
 
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
@@ -2211,11 +2182,6 @@ export function SessionPage(props: SessionPageProps) {
       filters: [{ name: "iPolloWork Template", extensions: ["ipwp"] }],
     }, packageFile.data);
   }, []);
-  const exportPersonalTemplateFile = useCallback(async (templateId: string) => {
-    if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId) throw new Error(t("template_market.export_unavailable"));
-    const packageFile = await props.ipolloworkServerClient.exportTemplatePackage(props.runtimeWorkspaceId, templateId, "personal");
-    return saveTemplatePackageFile(packageFile);
-  }, [props.ipolloworkServerClient, props.runtimeWorkspaceId, saveTemplatePackageFile]);
   const saveCurrentTemplate = useCallback(async (input: TemplateSaveInput) => {
     if (!props.ipolloworkServerClient || !props.runtimeWorkspaceId || !props.selectedSessionId || !currentTemplateSessionData) return;
     setTemplateSaveMode(input.mode);
@@ -2366,17 +2332,6 @@ export function SessionPage(props: SessionPageProps) {
     refreshStarterTemplateCatalog,
     refreshTemplateCatalog,
   ]);
-  const exportPersonalTemplate = useCallback(async (template: TemplateCatalogItem) => {
-    setTemplateBusyId(`export:${template.manifest.id}`);
-    try {
-      const filePath = await exportPersonalTemplateFile(template.manifest.id);
-      if (filePath) toast.success(t("template_market.exported"));
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : t("template_market.export_failed"));
-    } finally {
-      setTemplateBusyId(null);
-    }
-  }, [exportPersonalTemplateFile]);
   const importDesignTemplate = useCallback(async (
     file: File,
     category?: TemplateManifestV1["category"],
@@ -2640,10 +2595,6 @@ export function SessionPage(props: SessionPageProps) {
   const sidePanelOpen = effectiveSidePanelView !== null;
   const [outputFilesPopoverOpen, setOutputFilesPopoverOpen] = useState(false);
   const panelRailActive = activeSidePanel === "panel";
-  const designRailActive = activeSidePanel === "design";
-  const videoRailActive = panelRailActive && activePanelTab?.type === "video";
-  const extensionsRailActive = activeSidePanel === "extensions";
-  const voiceRailActive = activeSidePanel === "voice";
   useEffect(() => {
     setOutputFilesPopoverOpen(false);
   }, [effectiveSidePanelView, props.selectedSessionId]);
@@ -3592,20 +3543,6 @@ export function SessionPage(props: SessionPageProps) {
     sidebarOpen,
     sidePanelOpen,
   ]);
-  const openBrowserRailPane = useCallback(() => {
-    // Opening the browser pane should land on a usable page, not an empty
-    // panel that forces the user to click "+". If no browser tab exists yet,
-    // create one (defaults to the new-tab URL in the main process).
-    const opening = !panelRailActive;
-    if (opening && isElectronRuntime()) {
-      const hasBrowserTab = sessionPanelState.tabs.some((tab) => tab.type === "browser");
-      if (!hasBrowserTab) {
-        preserveSidePanelOnPanelOpenRef.current = true;
-        void window.__IPOLLOWORK_ELECTRON__?.browser?.createTab?.(undefined, { sessionId: props.selectedSessionId });
-      }
-    }
-    toggleCurrentSidePanel("panel");
-  }, [panelRailActive, props.selectedSessionId, sessionPanelState.tabs, toggleCurrentSidePanel]);
   const addBrowserPanelTab = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     if (isElectronRuntime()) {
@@ -3639,14 +3576,6 @@ export function SessionPage(props: SessionPageProps) {
   const showDesignRailPane = useCallback(() => {
     openDesignRailPane();
   }, [openDesignRailPane]);
-  const openVideoRailPane = useCallback(() => {
-    userOpenedSidebarWhileNarrowRef.current = false;
-    if (videoRailActive) {
-      closeRightPane();
-      return;
-    }
-    openCurrentVideoStudio();
-  }, [closeRightPane, openCurrentVideoStudio, videoRailActive]);
   const showVideoRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     openCurrentVideoStudio();
@@ -3809,36 +3738,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [openDesignTab, props.ipolloworkServerClient, props.runtimeWorkspaceId, props.selectedSessionId, props.selectedWorkspaceDisplay.workspaceType]);
   useControlAction(seedDesignHtmlControlAction);
   useControlAction(seedDesignDeckControlAction);
-  const openArtifactRailPane = useCallback(() => {
-    if (!hasArtifactTargets || !props.selectedSessionId) return;
-    const activeTab = sessionPanelState.tabs.find((tab) => tab.id === sessionPanelState.activeTabId);
-    const artifactTargetIds = new Set(artifactFileTargets.map((target) => target.id));
-    const artifactTab = sessionPanelState.tabs.find((tab) => (
-      tab.type === "artifact" && artifactTargetIds.has(tab.id)
-    ));
-    const firstArtifact = artifactFileTargets[0];
-    if (panelRailActive && activeTab?.type === "artifact") {
-      toggleCurrentSidePanel("panel");
-      return;
-    }
-    if (!panelRailActive) {
-      preserveSidePanelOnPanelOpenRef.current = true;
-    }
-    if (artifactTab) {
-      selectTab(props.selectedSessionId, artifactTab.id);
-    } else if (firstArtifact) {
-      openTab(props.selectedSessionId, {
-        id: firstArtifact.id,
-        type: "artifact",
-        label: firstArtifact.name,
-        preview: firstArtifact.preview,
-        target: firstArtifact,
-      });
-    }
-    if (!panelRailActive) {
-      toggleCurrentSidePanel("panel");
-    }
-  }, [artifactFileTargets, hasArtifactTargets, openTab, panelRailActive, props.selectedSessionId, selectTab, sessionPanelState, toggleCurrentSidePanel]);
   const showArtifactRailPane = useCallback(() => {
     userOpenedSidebarWhileNarrowRef.current = false;
     if (!hasArtifactTargets || !props.selectedSessionId) return;
@@ -3924,9 +3823,6 @@ export function SessionPage(props: SessionPageProps) {
     props.selectedWorkspaceId,
     props.sidebar,
   ]);
-  const openVoiceRailPane = useCallback(() => {
-    toggleCurrentSidePanel("voice");
-  }, [toggleCurrentSidePanel]);
   const sendWorkspaceAppMessage = useCallback(async (input: {
     text: string;
     modelContext: WorkspaceAppModelContext | null;
@@ -4252,7 +4148,6 @@ export function SessionPage(props: SessionPageProps) {
   }, [enginePackages.install, props.selectedWorkspaceId, props.sidebar.onSelectProject, selectedEnginePackage]);
   const showWorkspaceSetupEmptyState = props.workspaces.length === 0 && !hasSelectedTask;
   const showNewTaskStarter = !props.selectedSessionId && Boolean(props.surface) && !showWorkspaceSetupEmptyState;
-  const showNewConversationChrome = !hasSelectedTask && !showWorkspaceSetupEmptyState;
   const showStartupSkeleton =
     !hasSelectedTask &&
     !showProjectNoTasksState &&

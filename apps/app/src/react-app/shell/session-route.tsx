@@ -170,7 +170,6 @@ import {
   writeActiveWorkspaceId,
   writeLastSessionFor,
 } from "./session-memory";
-import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
 import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
@@ -2265,10 +2264,6 @@ export function SessionRoute() {
         pendingInitialProjectTask?.workspaceId === workspaceId &&
         !pendingInitialProjectTask.sessionId
       ) {
-        saveSessionDraft(workspaceId, session.id, {
-          text: pendingInitialProjectTask.draft.text,
-          mode: pendingInitialProjectTask.draft.mode,
-        });
         const clientUserMessageId = beginOptimisticSessionPrompt(
           endpoint.workspaceId,
           session.id,
@@ -2424,10 +2419,6 @@ export function SessionRoute() {
     if (!sessionId) return;
     markProjectBuilderSession(workspaceId, sessionId);
     const starterPrompt = t("project_builder.starter_prompt");
-    saveSessionDraft(workspaceId, sessionId, {
-      text: starterPrompt,
-      mode: "prompt",
-    });
     useComposerStateStore.getState().setDraft(sessionId, starterPrompt);
 
     const workspaceConversation = conversationEngineAdapters
@@ -2474,9 +2465,8 @@ export function SessionRoute() {
         pending.clientUserMessageId,
       );
     }
-    // Session creation already succeeded and the draft is persisted locally.
-    // Keep both so a transient first-send failure remains visible in the
-    // sidebar and the user can retry instead of losing their task.
+    // Keep the created session visible in the sidebar after a transient
+    // first-send failure so the user can retry their task.
   }, []);
 
   useEffect(() => {
@@ -3065,42 +3055,6 @@ export function SessionRoute() {
           onCreateProjectBuilder: handleCreateProjectBuilder,
         onCreateTemplateAuthoring: (workspaceId, input) =>
           handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
-        onCreateTaskWithPrompt: (workspaceId, prompt) => {
-          void (async () => {
-            const workspace = workspaces.find((item) => item.id === workspaceId);
-            if (!workspace) return;
-            const endpoint = resolveWorkspaceEndpoint(workspace, {
-              baseUrl,
-              token,
-              hostToken: ipolloworkServerHostInfoState?.hostToken,
-            });
-            if (!endpoint?.token) return;
-            try {
-              const { item: session } = await endpoint.client.createSession(
-                endpoint.workspaceId,
-                undefined,
-                activeSelectedModel,
-              );
-              saveSessionDraft(workspaceId, session.id, { text: prompt, mode: "prompt" });
-              writeActiveWorkspaceId(workspaceId || null);
-              writeLastSessionFor(workspaceId, session.id);
-              rememberPendingCreatedSession(workspaceId, session.id);
-              setSessionsByWorkspaceId((current) => {
-                const next = {
-                  ...current,
-                  [workspaceId]: [session, ...(current[workspaceId] ?? [])],
-                };
-                sessionsByWorkspaceIdRef.current = next;
-                return next;
-              });
-              navigateToWorkspaceSession(workspaceId, session.id);
-              focusPromptSoon();
-            } catch {
-              // Fall back to normal task creation without prompt
-              void handleCreateTaskInWorkspace(workspaceId);
-            }
-          })();
-        },
         onRecoverWorkspace: (workspaceId) => runRemoteWorkspaceConnectionCheck(workspaceId, "recover"),
         onTestWorkspaceConnection: (workspaceId) => runRemoteWorkspaceConnectionCheck(workspaceId, "test"),
         onEditWorkspaceConnection: remoteWorkspaceConnectionEditor.open,

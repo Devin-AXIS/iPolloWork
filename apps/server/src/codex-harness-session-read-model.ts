@@ -105,12 +105,6 @@ function contentText(content: CodexThreadItem["content"]): string {
   )).join("\n");
 }
 
-function userContentText(content: CodexThreadItem["content"]): string {
-  return (content ?? []).flatMap((entry) => (
-    typeof entry !== "string" && entry.type === "text" && typeof entry.text === "string" ? [entry.text] : []
-  )).join("\n");
-}
-
 function dataUrlMediaType(url: string): string | undefined {
   return /^data:([^;,]+)[;,]/u.exec(url)?.[1];
 }
@@ -201,7 +195,7 @@ function imageFileParts(content: CodexThreadItem["content"]) {
 
 function messagePart(item: CodexThreadItem) {
   if (item.type === "userMessage" || item.type === "agentMessage" || item.type === "plan") {
-    const text = item.text ?? (item.type === "userMessage" ? userContentText(item.content) : contentText(item.content));
+    const text = item.text ?? contentText(item.content);
     const textParts = text ? [{ type: "text", text }] : [];
     return item.type === "userMessage" ? [...textParts, ...imageFileParts(item.content)] : textParts;
   }

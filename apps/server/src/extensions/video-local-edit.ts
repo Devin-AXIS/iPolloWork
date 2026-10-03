@@ -93,13 +93,15 @@ async function runBinary(name: "ffmpeg" | "ffprobe", args: string[], timeout: nu
     throw new ApiError(422, "video_encode_failed", "视频处理失败或超时，请检查编码和参数；原文件未被覆盖。");
   }
 }
-export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string) {
-  const source = await videoFile(workspace, path);
+async function inspectVideoSource(source: Awaited<ReturnType<typeof videoFile>>) {
   const result = await runBinary("ffprobe", ["-v", "error", "-protocol_whitelist", "file,pipe", "-show_entries", "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", source.absolute], 15000);
   const metadata = probeSchema.parse(JSON.parse(result.stdout));
   const video = metadata.streams.find(stream => stream.codec_type === "video");
   if (!video?.width || !video.height || video.width * video.height > 3840 * 2160) throw new ApiError(400, "video_dimensions", "请选择分辨率不超过 4K 的视频。");
-  return { path, bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, codec: video.codec_name, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
+  return { bytes: source.bytes, revision: source.revision, duration: metadata.format.duration, width: video.width, height: video.height, codec: video.codec_name, hasAudio: metadata.streams.some(stream => stream.codec_type === "audio") };
+}
+export async function inspectLocalVideo(workspace: WorkspaceInfo, path: string) {
+  return { path, ...await inspectVideoSource(await videoFile(workspace, path)) };
 }
 export function localVideoFilters(edit: Edit) {
   const { crop } = edit;
@@ -160,7 +162,7 @@ export async function saveLocalVideo(config: ServerConfig, workspace: WorkspaceI
       if (count >= 512) throw new ApiError(413, "video_edit_capacity", "本会话近期保存记录已达上限，请在新会话中继续编辑。");
     }
     if (source.revision !== edit.revision) throw new ApiError(409, "video_source_changed", "原视频已发生变化，请重新打开后编辑；未执行覆盖。");
-    const metadata = await inspectLocalVideo(workspace, edit.path);
+    const metadata = await inspectVideoSource(source);
     if (edit.end > metadata.duration + .05) throw new ApiError(400, "video_range", "剪辑范围超出原视频时长。");
     // A copy lives beside its source, with a distinct name; overwrite retains the exact reference.
     const extension = extname(edit.path);

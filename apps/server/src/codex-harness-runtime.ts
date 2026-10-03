@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
@@ -465,8 +464,6 @@ export class CodexHarnessRuntime {
   readonly #workspace: WorkspaceInfo;
   #process: StdioJsonRpcProcess | null = null;
   #starting: Promise<StdioJsonRpcProcess> | null = null;
-  #fingerprint = "";
-  #providers: CodexHarnessProvider[] = [];
   readonly #attachedThreadSelections = new Map<string, AttachedThreadSelection>();
   readonly #eventListeners = new Set<(event: CodexHarnessEvent) => void>();
   // Approval requests outlive renderer subscriptions; replay until answered or cancelled.
@@ -543,13 +540,11 @@ export class CodexHarnessRuntime {
 
   async providers(): Promise<CodexHarnessProvider[]> {
     const { providers } = await this.#readSourceProviders();
-    this.#providers = providers;
     return providers;
   }
 
   async providerDirectory(): Promise<CodexHarnessProviderDirectory> {
     const { catalog, providers, records } = await this.#readSourceProviders();
-    this.#providers = providers;
     return codexHarnessProviderDirectory({ records, providers, catalog });
   }
 
@@ -614,7 +609,6 @@ export class CodexHarnessRuntime {
     const process = this.#process;
     this.#process = null;
     this.#starting = null;
-    this.#fingerprint = "";
     this.#attachedThreadSelections.clear();
     this.#pendingRequests.clear();
     this.#unsubscribeProcessEvents();
@@ -795,10 +789,7 @@ export class CodexHarnessRuntime {
   }
 
   async #prepareRuntime(): Promise<{
-    codexHome: string;
-    providers: CodexHarnessProvider[];
     environment: NodeJS.ProcessEnv;
-    fingerprint: string;
   }> {
     const [{ records, providers: sourceProviders }, mcp] = await Promise.all([
       this.#readSourceProviders(),
@@ -847,10 +838,7 @@ export class CodexHarnessRuntime {
     for (const provider of providers) {
       environment[providerEnvironmentKey(codexHarnessRuntimeProviderId(provider.id))] = provider.apiKey;
     }
-    const fingerprint = createHash("sha256")
-      .update(JSON.stringify({ config, credentials: providers.map(({ id, apiKey }) => [id, apiKey]) }))
-      .digest("hex");
-    return { codexHome, providers, environment, fingerprint };
+    return { environment };
   }
 
   async #readSourceProviders(): Promise<{
@@ -881,9 +869,7 @@ export class CodexHarnessRuntime {
   }
 
   async #start(prepared: {
-    providers: CodexHarnessProvider[];
     environment: NodeJS.ProcessEnv;
-    fingerprint: string;
   }): Promise<StdioJsonRpcProcess> {
     const rpc = createCodexAppServer({
       cwd: this.#workspace.path,
@@ -921,8 +907,6 @@ export class CodexHarnessRuntime {
         for (const listener of this.#eventListeners) listener(event);
       });
       this.#process = rpc;
-      this.#providers = prepared.providers;
-      this.#fingerprint = prepared.fingerprint;
       return rpc;
     } catch (error) {
       await rpc.close();
