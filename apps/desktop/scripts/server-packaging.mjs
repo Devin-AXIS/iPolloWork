@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 
 const REPO_CONSTANTS_IMPORT = /from\s+["']\.\.\/\.\.\/\.\.\/constants\.json["']/g;
@@ -20,6 +20,18 @@ function javascriptFiles(root) {
 
 function portablePath(filePath) {
   return filePath.split(sep).join("/");
+}
+
+export function stageServerRuntime({ serverDistDir, serverPackagePath, packagedServerRoot }) {
+  rmSync(packagedServerRoot, { recursive: true, force: true });
+  cpSync(serverDistDir, resolve(packagedServerRoot, "dist"), {
+    recursive: true,
+    filter: (sourcePath) => {
+      const segments = relative(serverDistDir, sourcePath).split(sep);
+      return !segments.some((name) => /\.(?:test|spec)\./.test(name) || /^(?:tests|__tests__|__fixtures__|__mocks__)$/.test(name));
+    },
+  });
+  copyFileSync(serverPackagePath, resolve(packagedServerRoot, "package.json"));
 }
 
 export function assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath }) {

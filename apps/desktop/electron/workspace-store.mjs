@@ -1056,9 +1056,10 @@ export function createWorkspaceStore({ app, defaultDenBaseUrl, defaultRequireSig
       .map((entry) => ({ ...entry, runtimeStorageRoot }));
     const byPath = new Map();
     for (const workspace of [...desktopWorkspaces, ...serverWorkspaces]) {
-      const key = normalizeWorkspacePathKey(workspace?.path);
+      const canonicalPath = await normalizeLocalWorkspacePath(workspace?.path);
+      const key = normalizeWorkspacePathKey(canonicalPath);
       if (!key || !workspace?.id) continue;
-      byPath.set(key, workspace);
+      byPath.set(key, { ...workspace, path: canonicalPath });
     }
     return [...byPath.values()];
   }

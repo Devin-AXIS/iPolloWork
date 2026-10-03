@@ -1,5 +1,13 @@
 import { DEFAULT_ENGINE_ID, type WorkspaceWire } from "@ipollowork/types/workspace";
 
+declare global {
+  namespace NodeJS {
+    interface Process {
+      resourcesPath?: string;
+    }
+  }
+}
+
 export { DEFAULT_ENGINE_ID };
 
 export type WorkspaceType = "local" | "remote";

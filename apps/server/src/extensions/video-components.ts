@@ -620,11 +620,11 @@ export async function installVideoComponents(workspace: Workspace, raw: unknown)
     components: [...installed.values()],
     instances,
     mounted: input.mount,
-    instruction: "Reference each installed composition from index.html with the returned host-timed snippet. Existing project copies are preserved instead of overwritten. Keep the root data-ipw-selected-components and set data-ipw-recipe-policy=\"recipe-first\" unless the user requested recipes-only; the component check also infers recipe-first from a nonempty selection. A custom scene needs real candidate limitations, why splitting/combining fails, and minimal scope in data-ipw-custom-recipe-evidence; cue or installation failures are not custom exceptions. Replace all placeholders, set the real scene duration, preserve data-ipw-timing-owner=host, and replace data-variable-values with the scene's real content. The motionContract identifies declared native duration and authored targets only; measure actual establish, develop, and land windows from the rendered component instead of inventing percentage timings. Every beat must include a truthful scene-relative motion window. If narration extends beyond native motion, call list_motion_presets for a suitable element preset and mutate_motion with explicit start and end times, or split the scene at a semantic beat. For every scene after the first, describe the outgoing result and incoming subject, then choose a cut, applied preset, or seek-safe authored custom transition; record its duration and exact intent: continue, topic-change, time-change, location-change, compare, reveal, or closure. An authored custom transition needs matching handoff JSON, animation reference and timed incoming beat, plus rendered seam review. The client runs the aggregate delivery validator after the turn.",
+    instruction: "Mount the returned host-timed snippets in index.html using real content, durations and data-variable-values. Preserve data-ipw-timing-owner=host, data-ipw-selected-components and data-ipw-recipe-policy; existing edited project copies are retained. motionContract reports declared duration and authored targets, not measured beat timing. Follow the Video Studio skill workflow for measured narration, scene beats, custom-scene evidence and transitions. Save the source and let the client run its single aggregate delivery validator after the turn.",
   };
 }
 
-function numberAttribute(tag: string, name: string): number | null {
+export function numberAttribute(tag: string, name: string): number | null {
   const value = attribute(tag, name);
   if (!value) return null;
   const parsed = Number(value);
@@ -736,6 +736,7 @@ function unplannedStillIntervals(
   duration: number,
 ): Array<{ start: number; end: number; duration: number }> {
   const active = beats
+    .filter(beat => !beat.animation.startsWith("hold:"))
     .map(beat => beat.motion)
     .sort((left, right) => left.start - right.start);
   const merged: Array<{ start: number; end: number }> = [];
@@ -775,8 +776,9 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
   const tags = openingTags(html);
   const sceneTags = tags.filter(tag => /\bdata-ipw-scene(?:\s|=|>)/iu.test(tag));
   const issues: Array<{ code: string; sceneId?: string; message: string }> = [];
-  const selection = attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-selected-components");
-  const recipePolicy = attribute(tags.find(tag => attribute(tag, "data-composition-id")) ?? "", "data-ipw-recipe-policy");
+  const compositionRoot = tags.find(tag => attribute(tag, "data-composition-id")) ?? "";
+  const selection = attribute(compositionRoot, "data-ipw-selected-components");
+  const recipePolicy = attribute(compositionRoot, "data-ipw-recipe-policy");
   const recipesOnly = input.recipesOnly === true || recipePolicy === "recipes-only";
   const recipeFirst = recipePolicy === "recipe-first" || (!recipePolicy && Boolean(selection));
   if (selection) {
@@ -863,7 +865,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         issues.push({
           code: "scene_hold_too_long",
           sceneId,
-          message: `${sceneId} declares a ${interval.duration.toFixed(2)}s intentional hold (${interval.start.toFixed(2)}-${interval.end.toFixed(2)}s). Keep a readable hold at four seconds or less, or split it at a real semantic boundary.`,
+          message: `${sceneId} declares a ${interval.duration.toFixed(2)}s intentional hold (${interval.start.toFixed(2)}-${interval.end.toFixed(2)}s). Keep it to ${MAX_STILL_SECONDS} seconds or less, or split it at a real semantic boundary.`,
         });
         repairPlan.push(repairForStillInterval(sceneId, interval));
       }

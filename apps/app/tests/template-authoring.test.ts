@@ -52,9 +52,10 @@ describe("template authoring", () => {
       expect(context).toContain("shared-guidelines.md, slides-ppt.md and layout.md");
       expect(context).not.toContain("design-slides.md");
     } else if (category === "video") {
-      expect(context).toContain("ipollowork-video-studio");
-      expect(context).toContain("read references/video.md once");
-      expect(context).toContain("only the shared-guidelines.md sections it identifies");
+      expect(context).toContain("active Video surface contract");
+      expect(context).toContain("Read references/video.md only when that exact file is already present inside the active project");
+      expect(context).toContain("Do not repeat unchanged rule, catalog, capability, or validation reads");
+      expect(context).toContain("continue from the injected contract and copied template");
       expect(context).not.toContain("design-video.md");
     } else {
       expect(context).toContain(`references/design-${category}.md`);

@@ -37,7 +37,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import type { EnterpriseResource } from "@/app/lib/enterprise-connections";
 
@@ -66,7 +66,7 @@ const PRIMARY_CATEGORIES = CATEGORIES.slice(0, 4);
 const MORE_CATEGORIES = CATEGORIES.slice(4);
 
 const STYLE_ORDER = Object.keys(TEMPLATE_STYLE_LABELS) as TemplateStyle[];
-const templateStyleLabel = (style: TemplateStyle) => t(`template_market.style.${style}`);
+const templateStyleLabel = (style: TemplateStyle) => t(translationKey("template_market.style.", style));
 const TEMPLATE_COVER_TIMEOUT_MS = 12_000;
 const TEMPLATE_COVER_ROOT_MARGIN = "480px 0px";
 const FAVORITE_TEMPLATE_IDS_STORAGE_KEY = "ipollowork.template-favorites.v1";
@@ -382,7 +382,7 @@ export function TemplateMarketDialog(props: TemplateMarketDialogProps) {
             </DropdownMenu>
             </div> : <>
             <div className="flex min-w-max items-center gap-2" role="tablist" aria-label={t("template_market.my_templates")}>
-              {MY_TEMPLATE_COLLECTIONS.map((item) => <button key={item} type="button" role="tab" aria-selected={myCollection === item} onClick={() => setMyCollection(item)} className={cn("inline-flex h-7 items-center justify-center whitespace-nowrap rounded-[28px] bg-transparent px-4 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", myCollection === item ? "bg-foreground text-background" : "text-foreground hover:bg-muted")}>{t(`template_market.my_${item}`)}</button>)}
+              {MY_TEMPLATE_COLLECTIONS.map((item) => <button key={item} type="button" role="tab" aria-selected={myCollection === item} onClick={() => setMyCollection(item)} className={cn("inline-flex h-7 items-center justify-center whitespace-nowrap rounded-[28px] bg-transparent px-4 font-['PingFang_SC',sans-serif] text-[13px] font-medium leading-[22px] transition-colors", myCollection === item ? "bg-foreground text-background" : "text-foreground hover:bg-muted")}>{t(translationKey("template_market.my_", item))}</button>)}
             </div>
             <DropdownMenu>
               <div className="ml-auto flex shrink-0 items-center gap-2">

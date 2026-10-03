@@ -10,7 +10,7 @@ import {
 } from "@/app/lib/enterprise-connections";
 import type { iPolloWorkPluginPackageItem, iPolloWorkServerClient } from "@/app/lib/ipollowork-server";
 import { Button } from "@/components/ui/button";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import { useCloudSession } from "@/react-app/domains/settings/cloud/cloud-session-provider";
 import { PluginPackageDetail } from "@/react-app/domains/settings/plugin-package-detail";
 import { PluginPackageListItem } from "@/react-app/domains/settings/plugin-package-list-item";
@@ -87,7 +87,7 @@ export function resolveMarketplaceCategory(item: {
 }
 
 function categoryLabel(categoryId: MarketplaceCategoryId): string {
-  return t(`plugin_library.category.${categoryId}`);
+  return t(translationKey("plugin_library.category.", categoryId));
 }
 
 function resourcePluginId(resource: EnterpriseResource): string {

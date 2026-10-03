@@ -1,6 +1,7 @@
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@opencode-ai/sdk"
+  - "@opencode-ai/plugin"
 
 # macOS release jobs build both Apple Silicon and Intel installers on the
 # same runner. Keep both optional native packages available so electron-builder
@@ -23,12 +24,12 @@ catalog:
 linkWorkspacePackages: true
 preferWorkspacePackages: true
 allowBuilds:
-  "@ffmpeg-installer/darwin-arm64": false
-  "@ffmpeg-installer/darwin-x64": false
+  "@ffmpeg-installer/darwin-arm64": true
+  "@ffmpeg-installer/darwin-x64": true
   "@ffmpeg-installer/linux-arm64": true
   "@ffmpeg-installer/linux-x64": true
-  "@ffprobe-installer/darwin-arm64": false
-  "@ffprobe-installer/darwin-x64": false
+  "@ffprobe-installer/darwin-arm64": true
+  "@ffprobe-installer/darwin-x64": true
   "@ffprobe-installer/linux-arm64": true
   "@ffprobe-installer/linux-x64": true
   "@whiskeysockets/baileys": true

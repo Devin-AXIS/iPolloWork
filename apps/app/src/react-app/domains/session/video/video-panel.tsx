@@ -7,11 +7,9 @@ import {
   pickLocalImageFile,
   readLocalImageAsDataUrl,
   videoResourceInfo,
-  videoResourceInstall,
-  type EnginePackageInfo,
 } from "@/app/lib/desktop";
 import { readDenSettings } from "@/app/lib/den";
-import { formatBytes, isDesktopRuntime } from "@/app/utils";
+import { isDesktopRuntime } from "@/app/utils";
 import { getResolvedThemeMode, subscribeToTheme } from "@/app/theme";
 import { Button } from "@/components/ui/button";
 import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
@@ -57,7 +55,7 @@ import {
   videoProjectDirectory,
   videoProjectId,
 } from "./video-project";
-import { resolveVideoAiSelectionTarget } from "./video-ai-selection";
+import { resolveVideoAiSelectionTarget } from "@ipollowork/video-studio/bridge";
 import {
   resolveAvatarAudioStart,
   resolveAvatarDuration,
@@ -66,13 +64,6 @@ import {
 import { VideoTemplateDialog } from "./video-template-dialog";
 import { VideoVoicePanel } from "./video-voice-panel";
 import { VideoImageWorkbench } from "./video-image-workbench";
-
-export {
-  hyperframesStudioPort,
-  hyperframesStudioUrl,
-  videoProjectDirectory,
-  videoProjectId,
-} from "./video-project";
 
 type VideoPanelProps = {
   title: string;
@@ -96,7 +87,6 @@ type VideoPanelProps = {
 };
 
 type StudioStartupStage =
-  | "downloading-resources"
   | "starting-service"
   | "waiting-for-studio"
   | "loading-frame";
@@ -118,14 +108,12 @@ type StudioHistoryFiles = Record<
 >;
 
 const studioStartupTitleKey: Record<StudioStartupStage, string> = {
-  "downloading-resources": "video.startup.downloading_resources_title",
   "starting-service": "video.startup.starting_service_title",
   "waiting-for-studio": "video.startup.waiting_for_studio_title",
   "loading-frame": "video.startup.loading_frame_title",
 };
 
 const studioStartupDetailKey: Record<StudioStartupStage, string> = {
-  "downloading-resources": "video.startup.downloading_resources_detail",
   "starting-service": "video.startup.starting_service_detail",
   "waiting-for-studio": "video.startup.waiting_for_studio_detail",
   "loading-frame": "video.startup.loading_frame_detail",
@@ -146,19 +134,6 @@ function ensureVideoTokenBridge(source: string) {
 
 function normalizeVideoThemeTypeScale(source: string) {
   return replaceDesignTokenValue(source, "--ipw-type-scale", "1");
-}
-
-function videoResourceDetail(resource: EnginePackageInfo | null) {
-  if (!resource) return t("video.startup.downloading_resources_detail");
-  if (resource.status === "verifying") return t("video.resources.verifying");
-  if (resource.status === "installing") return t("video.resources.installing");
-  if (resource.downloadedBytes != null && resource.totalBytes) {
-    return t("video.resources.downloading_progress", {
-      downloaded: formatBytes(resource.downloadedBytes),
-      total: formatBytes(resource.totalBytes),
-    });
-  }
-  return t("video.startup.downloading_resources_detail");
 }
 
 function isIPolloWorkServerClient(
@@ -194,7 +169,6 @@ export function VideoPanel({
   const [startAttempt, setStartAttempt] = React.useState(0);
   const [resourceAttempt, setResourceAttempt] = React.useState(0);
   const [resourcesReady, setResourcesReady] = React.useState(Boolean(runtime));
-  const [videoResource, setVideoResource] = React.useState<EnginePackageInfo | null>(null);
   const [status, setStatus] = React.useState<"starting" | "ready" | "failed">("starting");
   const [startupStage, setStartupStage] = React.useState<StudioStartupStage>("starting-service");
   const [detail, setDetail] = React.useState(`Starting ${HYPERFRAMES_STUDIO_LABEL}...`);
@@ -466,9 +440,6 @@ export function VideoPanel({
   );
   const showStudioStartupOverlay =
     status === "starting" || (status === "ready" && !studioChromeReady);
-  const videoResourceProgress = videoResource?.totalBytes && videoResource.downloadedBytes != null
-    ? Math.min(100, Math.round((videoResource.downloadedBytes / videoResource.totalBytes) * 100))
-    : null;
   const studioRuntime = runtime ?? window.__IPOLLOWORK_ELECTRON__?.hyperframes;
   const templatesAvailable = Boolean(
     features.templates &&
@@ -1214,49 +1185,19 @@ export function VideoPanel({
     }
 
     let disposed = false;
-    let pollTimer: number | null = null;
-    const refresh = async () => {
-      const next = await videoResourceInfo();
-      if (!disposed) {
-        setVideoResource(next);
-        setDetail(videoResourceDetail(next));
-      }
-      return next;
-    };
-
     setResourcesReady(false);
     setStatus("starting");
-    setStartupStage("downloading-resources");
-    setDetail(t("video.startup.downloading_resources_detail"));
-    void (async () => {
-      try {
-        const current = await refresh();
-        if (current.installed) {
-          if (!disposed) setResourcesReady(true);
-          return;
-        }
-        pollTimer = window.setInterval(() => {
-          void refresh().catch(() => undefined);
-        }, 350);
-        const installed = await videoResourceInstall(readDenSettings().baseUrl);
-        if (disposed) return;
-        setVideoResource(installed);
-        setResourcesReady(true);
-      } catch (cause) {
-        if (disposed) return;
-        const failed = await videoResourceInfo().catch(() => null);
-        setVideoResource(failed);
-        setStatus("failed");
-        setDetail(cause instanceof Error ? cause.message : t("video.resources.download_failed"));
-      } finally {
-        if (pollTimer != null) window.clearInterval(pollTimer);
-      }
-    })();
-
-    return () => {
-      disposed = true;
-      if (pollTimer != null) window.clearInterval(pollTimer);
-    };
+    setStartupStage("starting-service");
+    void videoResourceInfo().then((resource) => {
+      if (disposed) return;
+      if (!resource.installed) throw new Error(resource.error ?? "视频组件未完整打包，请重新安装完整安装包。");
+      setResourcesReady(true);
+    }).catch((cause) => {
+      if (disposed) return;
+      setStatus("failed");
+      setDetail(cause instanceof Error ? cause.message : t("video.resources.download_failed"));
+    });
+    return () => { disposed = true; };
   }, [isRemoteWorkspace, resourceAttempt, runtime]);
 
   React.useEffect(() => {
@@ -1266,7 +1207,7 @@ export function VideoPanel({
     setStudioChromeReady(false);
     setActiveStudioPort(studioPort);
     if (!resourcesReady) {
-      setStartupStage("downloading-resources");
+      setStartupStage("starting-service");
       return;
     }
     setStartupStage("starting-service");
@@ -1478,34 +1419,13 @@ export function VideoPanel({
                     {t(studioStartupTitleKey[startupStage])}
                   </p>
                   <p className="mt-1 text-[10px] font-medium text-primary">
-                    {startupStage === "downloading-resources"
-                      ? "1 / 4"
-                      : startupStage === "starting-service"
-                        ? "2 / 4"
-                        : startupStage === "waiting-for-studio"
-                          ? "3 / 4"
-                          : "4 / 4"}
+                    {startupStage === "starting-service" ? "1 / 3"
+                      : startupStage === "waiting-for-studio" ? "2 / 3" : "3 / 3"}
                   </p>
                   <p className="mt-1 max-w-[32rem] text-[11px] text-muted-foreground">
                     {detail || t(studioStartupDetailKey[startupStage])}
                   </p>
-                  {startupStage === "downloading-resources" ? (
-                    <div className="mx-auto mt-3 w-64 max-w-full" data-testid="video-resource-download-progress">
-                      <div className="h-1 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className={videoResourceProgress == null
-                            ? "h-full w-1/3 animate-pulse rounded-full bg-primary"
-                            : "h-full rounded-full bg-primary transition-[width] duration-300"}
-                          style={videoResourceProgress == null ? undefined : { width: `${videoResourceProgress}%` }}
-                        />
-                      </div>
-                      {videoResourceProgress != null ? (
-                        <p className="mt-1 text-[10px] tabular-nums text-muted-foreground">
-                          {videoResourceProgress}%
-                        </p>
-                      ) : null}
-                    </div>
-                  ) : null}
+
                 </div>
               </div>
             ) : null}

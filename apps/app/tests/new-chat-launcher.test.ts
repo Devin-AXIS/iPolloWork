@@ -40,7 +40,7 @@ test("new-chat launcher creates once, preserves draft and opens with the new ses
   const h = harness(async () => { calls++; return "created"; });
   h.click();
   h.click();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(calls).toBe(1);
   expect(h.context.launcherBusy).toBe(true);
   expect(h.restored).toEqual(["created:unsent text"]);
@@ -62,7 +62,7 @@ test("existing sessions launch directly without creating another task", () => {
 test("creation failure unlocks retry and does not launch against a missing session", async () => {
   const h = harness(async () => null);
   h.click();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expect(h.context.launcherBusy).toBe(false);
   expect(h.context.launcherCreationRef.current).toBe(false);
   expect(h.errors).toHaveLength(1);
@@ -72,7 +72,7 @@ test("creation failure unlocks retry and does not launch against a missing sessi
 test("changing workspace cancels the deferred launcher", async () => {
   const h = harness(async () => "created");
   h.click();
-  await Promise.resolve();
+  await new Promise((resolve) => setTimeout(resolve, 0));
   h.context.props.selectedWorkspaceId = "other";
   h.finish();
   expect(h.context.pendingLauncher).toBeNull();

@@ -1,6 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync } from "node:fs";
 import {
   cp,
   mkdir,
@@ -232,10 +232,6 @@ function resolveLocalHyperframesCli() {
     if (existsSync(candidate)) return candidate;
   }
   throw new Error("Local HyperFrames Studio is missing. Run `bun install` and `bun run build:local-studio` in `vendor/hyperframes`.");
-}
-
-function resolveLocalHyperframesRoot() {
-  return path.resolve(path.dirname(resolveLocalHyperframesCli()), "..", "..", "..");
 }
 
 function findFirstExistingPath(candidates) {
@@ -538,8 +534,8 @@ async function startHyperframesPreview(event, options = {}) {
 }
 
 async function startHyperframesPreviewUnlocked(event, options = {}) {
-  if (!await videoResourceManager.currentPaths()) {
-    throw new Error("视频工作台首次使用所需的 FFmpeg / FFprobe 资源尚未下载完成。");
+  if (!await videoResourceManager.applyEnvironment()) {
+    throw new Error("视频组件未完整打包，请重新安装完整的 iPolloWork 安装包。");
   }
   const sessionId = String(options.sessionId ?? "").trim();
   const port = Number(options.port);
@@ -1368,7 +1364,6 @@ if (extraLaunchArgs) {
 }
 configureFakeMediaForTests(app, envFlagEnabled("IPOLLOWORK_ELECTRON_FAKE_MEDIA"));
 const DEFAULT_DEN_BASE_URL = process.env.VITE_DEN_BASE_URL?.trim() || "http://i.ipollo.ai";
-const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:4096";
 const FORCE_DESKTOP_REQUIRE_SIGNIN = envFlagEnabled("IPOLLOWORK_FORCE_SIGNIN");
 const DEFAULT_DESKTOP_REQUIRE_SIGNIN = FORCE_DESKTOP_REQUIRE_SIGNIN;
 
@@ -1376,52 +1371,6 @@ function envFlagEnabled(name) {
   const value = process.env[name]?.trim().toLowerCase();
   return value === "1" || value === "true" || value === "yes" || value === "on";
 }
-
-const IDLE_ENGINE_INFO = Object.freeze({
-  running: false,
-  runtime: "direct",
-  baseUrl: null,
-  projectDir: null,
-  hostname: null,
-  port: null,
-  opencodeUsername: null,
-  opencodePassword: null,
-  opencodeBinPath: null,
-  opencodeBinSource: null,
-  pid: null,
-  lastStdout: null,
-  lastStderr: null,
-});
-
-const IDLE_IPOLLOWORK_SERVER_INFO = Object.freeze({
-  running: false,
-  remoteAccessEnabled: false,
-  host: null,
-  port: null,
-  baseUrl: null,
-  connectUrl: null,
-  mdnsUrl: null,
-  lanUrl: null,
-  clientToken: null,
-  ownerToken: null,
-  hostToken: null,
-  managedOpencodeBinPath: null,
-  managedOpencodeBinSource: null,
-  pid: null,
-  lastStdout: null,
-  lastStderr: null,
-});
-
-const IDLE_ROUTER_INFO = Object.freeze({
-  running: false,
-  version: null,
-  workspacePath: null,
-  opencodeUrl: null,
-  healthPort: null,
-  pid: null,
-  lastStdout: null,
-  lastStderr: null,
-});
 
 let mainWindow = null;
 let backgroundVideoDeliverySupervisor = null;
@@ -1492,12 +1441,6 @@ const browserPanel = createBrowserPanel({
   listLocalWorkspaces: () => workspaceStore.listLocalBrowserWorkspaces(),
   onDeepLink: (urls) => queueDeepLinks(urls),
 });
-
-function normalizePlatform(value) {
-  if (value === "darwin" || value === "linux") return value;
-  if (value === "win32") return "windows";
-  return "linux";
-}
 
 function forwardedDeepLinks(argv) {
   return argv
@@ -1671,10 +1614,7 @@ const enginePackageManager = createEnginePackageManager({
     });
   },
 });
-const videoResourceManager = createVideoResourceManager({
-  app,
-  fetch: electronNet.fetch.bind(electronNet),
-});
+const videoResourceManager = createVideoResourceManager({ app });
 
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
@@ -2375,7 +2315,6 @@ const desktopCommandHandlers = {
       return enginePackageManager.uninstall(String(args[0] ?? "").trim());
   },
   "videoResourceInfo": async () => videoResourceManager.info(),
-  "videoResourceInstall": async (_event, ...args) => videoResourceManager.install(String(args[0] ?? "").trim() || DEFAULT_DEN_BASE_URL),
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
   },

@@ -81,8 +81,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.4.3)
       '@opencode-ai/sdk':
-        specifier: ^1.18.31
-        version: 1.18.31
+        specifier: 1.18.34
+        version: 1.18.34
       '@shikijs/transformers':
         specifier: ^4.0.2
         version: 4.0.2
@@ -223,8 +223,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
       '@opencode-ai/sdk':
-        specifier: ^1.18.31
-        version: 1.18.31
+        specifier: 1.18.34
+        version: 1.18.34
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -272,8 +272,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/types
       '@opencode-ai/plugin':
-        specifier: 1.18.31
-        version: 1.18.31
+        specifier: 1.18.34
+        version: 1.18.34
       electron:
         specifier: ^35.0.0
         version: 35.7.5
@@ -293,8 +293,8 @@ importers:
   apps/orchestrator:
     dependencies:
       '@opencode-ai/sdk':
-        specifier: ^1.18.31
-        version: 1.18.31
+        specifier: 1.18.34
+        version: 1.18.34
       '@opentui/core':
         specifier: 0.1.77
         version: 0.1.77(stage-js@1.0.0-alpha.17)(typescript@5.9.3)(web-tree-sitter@0.25.10)
@@ -345,8 +345,8 @@ importers:
         specifier: 1.29.0
         version: 1.29.0(zod@4.3.6)
       '@opencode-ai/sdk':
-        specifier: ^1.18.31
-        version: 1.18.31
+        specifier: 1.18.34
+        version: 1.18.34
       better-sqlite3:
         specifier: ^11.10.0
         version: 11.10.0
@@ -2147,8 +2147,8 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@opencode-ai/plugin@1.18.31':
-    resolution: {integrity: sha512-Rdc1bPK06PByaGyGd0kf7JUZ4pTkexz2OOUNlqZWLpHOiMEZ+/rFGjt46ypZ3QwA697gNdWwwwQbHbKG5NMwGA==}
+  '@opencode-ai/plugin@1.18.34':
+    resolution: {integrity: sha512-bC1EBL/QJ6LpC7liKZXr5JA+oa9qDAwTzpEgPxPsx1pbIUdhKOqg3/yoPEQgoa4YdO3hsgCWNFmbDE/DeOl/Ug==}
     peerDependencies:
       '@opentui/core': '>=0.4.5'
       '@opentui/keymap': '>=0.4.5'
@@ -2161,8 +2161,8 @@ packages:
       '@opentui/solid':
         optional: true
 
-  '@opencode-ai/sdk@1.18.31':
-    resolution: {integrity: sha512-Raouthf8Lhe9edjvYeeSK7SgvdoU6bBjH9qV3f70dHoa6h+z0X2TMz/e22/wKp/StlFUZ4kIRpYYxFnY8/k01w==}
+  '@opencode-ai/sdk@1.18.34':
+    resolution: {integrity: sha512-R9QWUpcngtdQ6FCixz7NC6n1WsSho6CEuRUzYHz/CzZcp3miSklDzXkm0oDwXVCnuEu+ANoeM0f6RDp51kOMzQ==}
 
   '@opentelemetry/api@1.9.0':
     resolution: {integrity: sha512-3giAOQvZiH5F9bMlMiv8+GSPMeqg0dbaeo58/0SlA9sxSqZhnUtxzX9/2FzyhS9sWQf5S0GJE0AKBrFqjpeYcg==}
@@ -8496,14 +8496,14 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@opencode-ai/plugin@1.18.31':
+  '@opencode-ai/plugin@1.18.34':
     dependencies:
       '@ai-sdk/provider': 3.0.8
-      '@opencode-ai/sdk': 1.18.31
+      '@opencode-ai/sdk': 1.18.34
       effect: 4.0.0-beta.83
       zod: 4.1.8
 
-  '@opencode-ai/sdk@1.18.31':
+  '@opencode-ai/sdk@1.18.34':
     dependencies:
       cross-spawn: 7.0.6
 

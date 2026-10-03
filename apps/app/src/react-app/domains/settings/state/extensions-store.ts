@@ -53,8 +53,6 @@ const DEFAULT_HUB_REPO: HubSkillRepo = {
 };
 const HUB_REPOS_STORAGE_KEY = "ipollowork.skills.hubRepos.v1";
 
-type SetStateAction<T> = T | ((current: T) => T);
-
 export type ExtensionsStoreSnapshot = {
   workspaceContextKey: string;
   skills: SkillCard[];
@@ -266,9 +264,6 @@ export function createExtensionsStore(options: {
     if (Object.is(state[key], value)) return;
     mutateState((current) => ({ ...current, [key]: value }));
   };
-
-  const applyStateAction = <T,>(current: T, next: SetStateAction<T>) =>
-    typeof next === "function" ? (next as (value: T) => T)(current) : next;
 
   const formatSkillPath = (location: string) => location.replace(/[/\\]SKILL\.md$/i, "");
 

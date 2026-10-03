@@ -145,9 +145,14 @@ test("avatar follows validated node types and wiring when RunningHub renumbers p
 
 test("avatar rejects changed audio wiring before creating a billable task", async () => {
   const { root, config } = await setup(); await writeFile(join(root, "voice.wav"), "test-audio");
-  const fixture = avatarFixture(); const graph = JSON.parse(fixture.data.prompt); graph["172"].inputs.av_latent = ["wrong", 0]; fixture.data.prompt = JSON.stringify(graph);
-  Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
-  await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow("尚未提交");
+  for (const change of ["wiring", "dependency"]) {
+    const fixture = avatarFixture(), graph = JSON.parse(fixture.data.prompt);
+    if (change === "wiring") graph["172"].inputs.av_latent = ["wrong", 0];
+    else delete graph["128"];
+    fixture.data.prompt = JSON.stringify(graph);
+    Reflect.set(globalThis, PROVIDER_FETCH_SYMBOL, async (url: string) => Response.json(url.endsWith("/media/upload/binary") ? { code: 0, data: { fileName: "input/voice.wav" } } : fixture));
+    await expect(videoRequest(config.workspaces[0], validateVideoSubmission(submission({ model: "minimax-h3-avatar", operation: "reference", resolution: "0.589824MP", ratio: "9:16", imageRefs: "https://example.com/person.png", audioRefs: "voice.wav" })), "key", config, auth)).rejects.toThrow(change === "wiring" ? "尚未提交" : "数字人缺少生成节点");
+  }
 });
 afterEach(async () => {
   if (initialCutoutCli === undefined) delete process.env.HYPERFRAMES_CLI_PATH;
@@ -322,12 +327,16 @@ test("H3 workflow rejections are definite, redacted and never prompt for a stand
 });
 
 test("H3 refuses a changed public graph before billing and never resubmits an uncertain workflow", async () => {
-  for(const changed of [true,false]) {
+  for(const changed of ["binding", "dependency", ""]) {
     const {config,call}=await setup();let creates=0;
     Reflect.set(globalThis,PROVIDER_FETCH_SYMBOL,async(url:string)=>{
       if(url.endsWith("getJsonApiFormat")){
         const fixture=workflowFixture();
-        if(changed)fixture.data.prompt=fixture.data.prompt.replace('"CLIPLoader"','"RenamedPrompt"');
+        if(changed === "binding") fixture.data.prompt=fixture.data.prompt.replace('"CLIPLoader"','"RenamedPrompt"');
+        if(changed === "dependency") {
+          const graph = JSON.parse(fixture.data.prompt); delete graph["12"];
+          fixture.data.prompt = JSON.stringify(graph);
+        }
         return Response.json(fixture);
       }
       creates++;throw new Error("lost create response test-rh-secret");

@@ -12,6 +12,7 @@ import type {
   ConversationSnapshot,
 } from "./conversation-engine";
 import {
+  conversationIsRecord as isRecord,
   completeConversationMessage,
   conversationContextUsageFromTokens,
   conversationMessageMetadata,
@@ -54,10 +55,6 @@ export type DeepSeekHarnessLiveState = {
   activeTurnBySession?: Map<string, number>;
   parentUserMessageIdByTurn?: Map<string, string>;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function parseJson(value: unknown): unknown {
   if (typeof value !== "string") return value ?? {};

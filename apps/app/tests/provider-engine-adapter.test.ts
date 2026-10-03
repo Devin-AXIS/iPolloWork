@@ -4,10 +4,9 @@ import { QueryClient, QueryObserver } from "@tanstack/react-query";
 import {
   codexHarnessProviderEngineAdapter,
   deepSeekHarnessProviderEngineAdapter,
-  modelRuntimeAdapters,
   ModelRuntimeAdapterRegistry,
   openCodeProviderEngineAdapter,
-  providerEngineAdapters,
+  modelRuntimeAdapters,
 } from "../src/react-app/domains/connections/provider-auth/provider-engine-adapter";
 import { createProviderAuthStore } from "../src/react-app/domains/connections/provider-auth/store";
 import { getReactQueryClient } from "../src/react-app/infra/query-client";
@@ -462,7 +461,7 @@ describe("model runtime adapters", () => {
     expect(() => modelRuntimeAdapters.get("unknown")).toThrow(
       "Model runtime is not registered: unknown",
     );
-    expect(providerEngineAdapters.createClient("unknown", {} as never)).toBeNull();
+    expect(modelRuntimeAdapters.createClient("unknown", {} as never)).toBeNull();
   });
 
   test("rejects duplicate model runtime adapters", () => {

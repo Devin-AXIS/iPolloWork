@@ -24,7 +24,7 @@ function applyOpenCodeEvent(
 }
 import {
   describeConversationSessionError,
-  describeOpencodeSessionError,
+  describeConversationSessionError,
   mapOpencodePartToUIParts,
 } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 import {
@@ -118,7 +118,7 @@ function writeToolPart(
 
 describe("tool part mapper", () => {
   test("explains an aborted run instead of showing only the engine label", () => {
-    expect(describeOpencodeSessionError({
+    expect(describeConversationSessionError({
       name: "MessageAbortedError",
       message: "Aborted",
     })).toBe("The run was interrupted before it finished.");

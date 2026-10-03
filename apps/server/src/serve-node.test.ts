@@ -122,15 +122,31 @@ describe("serve", () => {
     }
   });
 
-  test("awaits shutdown before resolving stop", async () => {
+  test("awaits shutdown of an active stream before resolving stop and releasing its port", async () => {
+    let requestSignal: AbortSignal | undefined;
+    let bodyCancelled = false;
     const first = await serve({
       hostname: "127.0.0.1",
       port: 0,
-      fetch: () => Response.json({ ok: true }),
+      fetch: (request) => {
+        requestSignal = request.signal;
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) { controller.enqueue(new TextEncoder().encode("data: connected\n\n")); },
+          cancel() { bodyCancelled = true; },
+        }), { headers: { "Content-Type": "text/event-stream" } });
+      },
     });
     const port = first.port;
+    const response = await fetch(`http://127.0.0.1:${port}/events`);
+    const reader = response.body!.getReader();
+    expect(new TextDecoder().decode((await reader.read()).value)).toBe("data: connected\n\n");
+    const clientClosed = reader.read().then(chunk => chunk.done, () => true);
 
-    await first.stop();
+    await Promise.all([first.stop(), first.stop()]);
+    expect(await clientClosed).toBe(true);
+    expect(requestSignal?.aborted).toBe(true);
+    expect(bodyCancelled).toBe(true);
+    reader.releaseLock();
 
     const second = await serve({
       hostname: "127.0.0.1",

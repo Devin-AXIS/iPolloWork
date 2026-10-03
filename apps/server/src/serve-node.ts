@@ -260,6 +260,8 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
         stop: () => {
           if (stopPromise) return stopPromise;
           stopPromise = new Promise<void>((stopResolve, stopReject) => {
+            // Bun's Node adapter cannot force an earlier graceful close of an active stream.
+            server.closeAllConnections();
             server.close((error) => {
               if (error) {
                 if (String(error).includes("ERR_SERVER_NOT_RUNNING") || String(error).includes("Server is not running")) {
@@ -271,7 +273,6 @@ export function serve(options: ServeOptions): Promise<ServeResult> {
               }
               stopResolve();
             });
-            server.closeAllConnections();
           });
           return stopPromise;
         },

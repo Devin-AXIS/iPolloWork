@@ -8,6 +8,7 @@ import {
 import { DeepSeekHarnessClient } from "@/app/lib/deepseek-harness-client";
 import { t } from "@/i18n";
 import {
+  conversationIsRecord as isRecord,
   type ConversationEngineAdapter,
   type ConversationAccessMode,
   type ConversationEngineConnection,
@@ -127,10 +128,6 @@ function modePresentation(id: string): Pick<ConversationMode, "label" | "descrip
     },
   };
   return modes[id] ?? null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function nativeFrame(value: unknown): Record<string, unknown> | null {

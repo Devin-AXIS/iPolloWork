@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTitle, PopoverTrigger } from "@/compone
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import { StudioInspectorHeader, StudioInspectorPanel } from "../panel/studio-inspector-panel";
 
 import { VideoVoiceSample } from "./video-voice-sample";
@@ -124,7 +124,7 @@ function canSynthesizeCustomVoice(voice: CustomVoice | undefined) {
 
 function presetVoiceLabel(voiceId: string) {
   return BAILIAN_PRESET_VOICES.some((voice) => voice.id === voiceId)
-    ? t(`video.voice.preset_name.${voiceId}`)
+    ? t(translationKey("video.voice.preset_name.", voiceId))
     : voiceId;
 }
 
@@ -235,7 +235,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
     const query = voiceQuery.trim().toLocaleLowerCase();
     const matchesQuery = !query
       || presetVoiceLabel(voice.id).toLocaleLowerCase().includes(query)
-      || t(`video.voice.preset_description.${voice.id}`).toLocaleLowerCase().includes(query);
+      || t(translationKey("video.voice.preset_description.", voice.id)).toLocaleLowerCase().includes(query);
     const matchesLanguage = languageFilter === "all" || voice.languages.some((language) => language === languageFilter);
     const matchesGender = genderFilter === "all" || voice.gender === genderFilter;
     const matchesAge = ageFilter === "all" || voice.age === ageFilter;
@@ -616,7 +616,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
                           return <div key={voice.id} className={`flex h-12 items-center gap-1 rounded-lg pr-1 transition-colors hover:bg-foreground/10 ${selected ? "bg-foreground/10" : ""}`}>
                             <button data-testid="preset-voice-card" data-voice-id={voice.id} type="button" aria-pressed={selected} className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => void choosePreset(voice.id)}>
                               <span aria-hidden="true" className="grid size-6 shrink-0 place-items-center rounded-full bg-muted text-[10px] font-semibold text-muted-foreground">{presetVoiceLabel(voice.id).slice(0, 1)}</span>
-                              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{presetVoiceLabel(voice.id)}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{t(`video.voice.preset_description.${voice.id}`)}</span></span>
+                              <span className="min-w-0 flex-1"><span className="block truncate text-xs font-medium">{presetVoiceLabel(voice.id)}</span><span className="mt-0.5 block truncate text-[11px] text-muted-foreground">{t(translationKey("video.voice.preset_description.", voice.id))}</span></span>
                               {selected ? <Check aria-hidden="true" className="size-3.5 shrink-0 text-primary" /> : null}
                             </button>
                             <VoicePreviewButton label={presetVoiceLabel(voice.id)} previewing={previewingVoiceId === voice.id} disabled={!mediaReady || previewing} onPreview={() => void previewVoice({ voiceId: voice.id, source: "preset", model: DEFAULT_COSYVOICE_MODEL })} />
@@ -738,7 +738,7 @@ export function VideoVoicePanel({ sessionId, conversationId = sessionId, generat
               }}>
                 <div className="flex flex-col gap-1.5"><label htmlFor={cloneNameId} className="text-ui-control font-medium leading-5">{t("video.voice.clone_name")}</label><Input id={cloneNameId} autoFocus aria-required="true" maxLength={80} disabled={cloning} value={cloneName} onChange={event => { setCloneName(event.target.value); setCloneError(""); }} placeholder={t("video.voice.clone_name_placeholder")} className="w-full" /></div>
                 {cloneOpen ? <VideoVoiceSample file={cloneFile} disabled={cloning} onFile={file => { setCloneFile(file); if (file) setCloneError(""); }} onError={setCloneError} onBusy={setSampleBusy} /> : null}
-                {cloning ? <p data-testid="voice-clone-progress" role="status" className="flex items-center gap-2 text-ui-caption text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{t(`video.voice.clone_stage_${cloneStage}`)}</p> : null}
+                {cloning ? <p data-testid="voice-clone-progress" role="status" className="flex items-center gap-2 text-ui-caption text-muted-foreground"><Loader2 className="size-3.5 animate-spin" />{t(translationKey("video.voice.clone_stage_", cloneStage))}</p> : null}
                 {cloneError ? <p role="alert" className="text-ui-caption text-destructive">{cloneError}</p> : null}
                 <div className="flex justify-end gap-2 pt-1"><Button type="button" variant="ghost" disabled={cloning} className="h-[34px] rounded-lg text-ui-control" onClick={() => setCloneOpen(false)}>{t("common.cancel")}</Button><Button type="submit" disabled={cloning} className="h-[34px] rounded-lg text-[length:var(--text-ui-control)] disabled:opacity-100 disabled:bg-muted disabled:text-muted-foreground">{cloning ? <Loader2 className="size-3.5 animate-spin" /> : <Mic className="size-3.5" />}{t(cloning ? "video.voice.cloning" : "video.voice.clone_action")}</Button></div>
               </form>
@@ -761,7 +761,7 @@ function VoiceAiButton({ disabled, busy, label, onClick }: { disabled: boolean; 
 }
 
 function VoiceFilter({ value, options, label, onChange }: { value: string; options: readonly string[]; label: string; onChange: (value: string) => void }) {
-  return <div className="flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{t(`video.voice.filter.${label}`)}</span><Select value={value} onValueChange={(next) => { if (next) onChange(next); }}><SelectTrigger className="w-32" aria-label={t(`video.voice.filter.${label}`)}><SelectValue>{t(`video.voice.filter_value.${value}`)}</SelectValue></SelectTrigger><SelectContent align="start" className={voiceMenuClassName}>{options.map((option) => <SelectItem key={option} value={option}>{t(`video.voice.filter_value.${option}`)}</SelectItem>)}</SelectContent></Select></div>;
+  return <div className="flex items-center justify-between gap-3"><span className="text-xs text-muted-foreground">{t(translationKey("video.voice.filter.", label))}</span><Select value={value} onValueChange={(next) => { if (next) onChange(next); }}><SelectTrigger className="w-32" aria-label={t(translationKey("video.voice.filter.", label))}><SelectValue>{t(translationKey("video.voice.filter_value.", value))}</SelectValue></SelectTrigger><SelectContent align="start" className={voiceMenuClassName}>{options.map((option) => <SelectItem key={option} value={option}>{t(translationKey("video.voice.filter_value.", option))}</SelectItem>)}</SelectContent></Select></div>;
 }
 
 function VoicePreviewButton({ label, previewing, disabled, onPreview }: { label: string; previewing: boolean; disabled: boolean; onPreview: () => void }) {
@@ -786,8 +786,8 @@ function VoiceControls({ settings, onChange }: { settings: VideoVoiceoverSetting
       <div className={voiceParameterRowClassName}>
         <label htmlFor={styleId} className="text-xs font-normal text-foreground">{t("video.voice.style")}</label>
         <Select value={style} onValueChange={(value) => { const next = BAILIAN_VOICE_STYLES.find((option) => option === value); if (next) onChange({ instruction: videoVoiceInstruction(next) }); }}>
-          <SelectTrigger id={styleId} aria-label={t("video.voice.style")} className={voiceFieldClassName}><SelectValue>{t(`video.voice.style_value.${style}`)}</SelectValue></SelectTrigger>
-          <SelectContent align="start" className={voiceMenuClassName}>{BAILIAN_VOICE_STYLES.map((option) => <SelectItem key={option} value={option}>{t(`video.voice.style_value.${option}`)}</SelectItem>)}</SelectContent>
+          <SelectTrigger id={styleId} aria-label={t("video.voice.style")} className={voiceFieldClassName}><SelectValue>{t(translationKey("video.voice.style_value.", style))}</SelectValue></SelectTrigger>
+          <SelectContent align="start" className={voiceMenuClassName}>{BAILIAN_VOICE_STYLES.map((option) => <SelectItem key={option} value={option}>{t(translationKey("video.voice.style_value.", option))}</SelectItem>)}</SelectContent>
         </Select>
       </div>
       <VoiceParameterControl label={t("video.voice.rate")} value={settings.rate} min={0.5} max={2} step={0.05} options={[{ value: 0.75, label: t("video.voice.speed.slow") }, { value: 1, label: t("video.voice.standard") }, { value: 1.25, label: t("video.voice.speed.faster") }, { value: 1.5, label: t("video.voice.speed.fast") }]} format={(value) => `${Number.isInteger(value) ? value.toFixed(2) : value}×`} onCommit={(rate) => onChange({ rate })} />

@@ -27,16 +27,22 @@ import {
   pluginWorkshopSystemInstruction,
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
+const videoAuthoringGuidance = [
+  "SKILL.md", "references/video.md", "references/video-motion-principles.md", "references/video-acceptance.md",
+].map(path => readFileSync(new URL(`../../../.agents/skills/ipollowork-video-studio/${path}`, import.meta.url), "utf8")).join("\n")
+  + readFileSync(new URL("../../../.agents/skills/ipollowork-video-voiceover/SKILL.md", import.meta.url), "utf8");
+
 describe("HyperFrames Video Studio", () => {
-  test("downloads and verifies video codecs on first open before starting Studio", () => {
+  test("checks bundled video codecs without blocking on a cloud download", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(panelSource).toContain("await videoResourceInstall(readDenSettings().baseUrl)");
-    expect(panelSource).toContain('setStartupStage("downloading-resources")');
-    expect(panelSource).toContain('data-testid="video-resource-download-progress"');
+    expect(panelSource).toContain("void videoResourceInfo().then");
+    expect(panelSource).not.toContain("videoResourceInstall");
+    expect(panelSource).not.toContain('setStartupStage("downloading-resources")');
+    expect(panelSource).not.toContain('data-testid="video-resource-download-progress"');
     expect(panelSource).toContain("if (!resourcesReady)");
   });
 
@@ -1291,10 +1297,9 @@ describe("HyperFrames Video Studio", () => {
     expect(videoDeliveryIntentForPrompt("只做一个可编辑视频")).toBeNull();
     const contract = videoTaskSystemContext("ses_video", "/workspace", null, { hostExportOperationKey: "test-export-once" });
     expect(contract).toContain("The iPolloWork app owns the MP4 export");
-    expect(contract).toContain("Never call it the host");
     expect(contract).not.toContain("The iPolloWork host");
     expect(contract).toContain("operationKey test-export-once");
-    expect(contract).toContain("ipollowork_ipollowork_extension_call");
+    expect(contract).toContain("installed iPolloWork tools");
     expect(contract).not.toContain("Export directly with ipollowork_extension_call");
     expect(videoHostExportOperationKey("ses_video", "client:request-1")).toBe("ipw:ses_video:client-request-1:export");
   });
@@ -1337,91 +1342,35 @@ describe("HyperFrames Video Studio", () => {
     const contract = videoTaskSystemContext("ses/current video", "/workspace/current");
     expect(contract).toContain("/workspace/current/video/ses_current_video/index.html");
     expect(contract).toContain("prepared blank composition");
-    expect(contract).toContain("At the start of every edit turn");
-    expect(contract).toContain("Studio manual edits are user-owned source state");
-    expect(contract).toContain("data-hf-studio-*");
-    expect(contract).toContain("never regenerate from an earlier response or cached HTML snapshot");
-    expect(contract).toContain("Never run npm/pnpm/yarn install");
-    expect(contract).toContain(
-      "Batch compatible HTML/CSS/JS changes into one complete edit or write",
-    );
-    expect(contract).toContain(
-      "Create/update the existing Studio STORYBOARD.md as the editable production blueprint",
-    );
-    expect(contract).toContain("The first complete storyboard version is approved by default as production input");
-    expect(contract).toContain("finished-video, export, or publication request itself authorizes production from version one");
-    expect(contract).toContain("record exact project-relative paths");
-    expect(contract).toContain("music_asset");
-    expect(contract).toContain("sound_effect_reference");
-    expect(contract).toContain("A plan alone is not completion of a requested finished video");
-    expect(contract).toContain("Continue through composition and narration in the same run after saving STORYBOARD.md");
-    expect(contract).toContain(
-      "Prefer a smaller complete valid result over an ambitious plan that is never applied",
-    );
-    expect(contract).toContain("Never create or inspect another `video/`/`videos/` project");
-    expect(contract).toContain("Never stop all Node processes");
-    expect(contract).toContain("not an HTML/JSON response saved with a media extension");
-    expect(contract).not.toContain("Use `/media-use`");
-    expect(contract).toContain("Use the host's existing authorized image/video, search/import and audio capabilities");
-    expect(contract).toContain("verify its response type and local file signature");
-    expect(contract).toContain(
-      "Do not run `voiceover_timeline_validate`, `video_component_check`, HyperFrames check",
-    );
-    expect(contract).toContain("never use legacy `.frame` millisecond timelines");
-    expect(contract).toContain("A 1080×1920 portrait project stays 9:16");
-    expect(contract).toContain("never rewrite it to 1920×1080");
-    expect(contract).toContain("seconds-based `data-start`");
-    expect(contract).toContain("Root `data-duration` must cover the last scene/audio/clip");
-    expect(contract).toContain("Delivery requirements contract");
-    expect(contract).toContain('data-ipw-caption="true"');
-    expect(contract).toContain(
-      "Default captions are transparent text overlays in the bottom safe area",
-    );
-    expect(contract).toContain('data-ipw-caption-style="transparent-bottom"');
-    expect(contract).toContain("position:absolute;inset:auto 5% 5%;height:auto");
-    expect(contract).toContain('data-ipw-caption-text="true"');
-    expect(contract).toContain("do not add padding-backed color, a pill, card, band, or backdrop");
-    expect(contract).toContain("unless the user explicitly asks");
-    expect(contract).toContain('data-ipw-bgm="true"');
-    expect(contract).toContain('data-timeline-role="music"');
-    expect(contract).toContain('data-timeline-role="sfx"');
-    expect(contract).toContain("animationReferences");
-    expect(contract).toContain(
-      "Carry an explicitly requested but still missing deliverable forward",
-    );
-    expect(contract).toContain(
-      "The iPolloWork app automatically runs the single aggregate delivery validator",
-    );
-    expect(contract).toContain("the app owns validation and one bounded repair continuation");
-    expect(contract).toContain("at most 20 seconds");
-    expect(contract).toContain("on timeout abandon it without retrying");
-    expect(contract).toContain("assets/ipollowork-logo.svg?v=20260729");
-    expect(contract).toContain("top-left/bottom-right placement");
-    expect(contract).toContain("and local fallback");
+    expect(contract).toContain("Read ipollowork-video-studio once");
+    expect(contract).toContain("Read the current entry before editing and immediately before replacement");
+    expect(contract).toContain("merge user edits");
+    expect(contract).toContain("Save a complete replacement atomically");
+    expect(contract).toContain("Never create or inspect another session's project");
+    expect(contract).toContain("do not install runtimes");
+    expect(contract).toContain("stop Node processes");
+    expect(contract).toContain("single aggregate delivery validator");
+    expect(contract).toContain("one bounded repair continuation");
+    expect(contract).toContain("requirements");
+    expect(contract.length).toBeLessThan(3500);
+    for (const field of ["data-hf-studio", ".scene.clip", "data-ipw-beats", "data-ipw-caption", "data-ipw-bgm", "data-timeline-role"])
+      expect(videoAuthoringGuidance).toContain(field);
   });
 
   test("continues explicit publication through the session-owned render API without manual export", () => {
-    const sessionId = "ses_auto_publish";
-    const contract = videoTaskSystemContext(sessionId, "C:/workspace");
-    const surfaceSource = readFileSync(
-      new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
-      "utf8",
-    );
-    expect(contract).toContain('action=video_render_start');
-    expect(contract).toContain('media.video_render_status');
+    const contract = videoTaskSystemContext("ses_auto_publish", "C:/workspace");
+    expect(contract).toContain("action=video_render_start");
+    expect(contract).toContain("media.video_render_status");
     expect(contract).toContain('sourcePath:"video/ses_auto_publish/index.html"');
     expect(contract).toContain('operationKey:"ses_auto_publish:export-1"');
-    expect(contract).toContain("Do not search for render interfaces");
-    expect(contract).toContain("never ask the user to click Export/Render");
-    expect(contract).toContain("Never repeat POST just because a tool wait timed out");
-    expect(contract).toContain("A failed/cancelled render must never be imported or published");
+    expect(contract).toContain("Never repeat a start because a wait timed out");
     expect(contract).toContain("Export-only requests do not authorize publication");
-    expect(contract).toContain("import-media -> save-draft -> publish-draft");
-    expect(contract).toContain("never re-submit an uncertain publication");
-    expect(contract).not.toContain("If valid, stop using tools and answer immediately");
+    expect(contract).toContain("Never re-submit an uncertain publication");
+    expect(contract).toContain("failed/cancelled render");
+    expect(contract).toContain("account-specific browser job");
+    const surfaceSource = readFileSync(new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url), "utf8");
     expect(surfaceSource).toContain("publicationStatus=under_review");
     expect(surfaceSource).toContain("审核中 means the platform accepted the publication");
-    expect(surfaceSource).toContain("This is not an uncertain result");
     expect(surfaceSource).toContain("Add resultUrl only when the page provides a real");
   });
 
@@ -1442,46 +1391,16 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("gives video agents the selected Studio voice without forcing narration", () => {
-    const contract = videoTaskSystemContext("ses/current video", "/workspace/current", null, {
-      includeVoiceover: true,
-    });
+    const contract = videoTaskSystemContext("ses/current video", "/workspace/current", null, { includeVoiceover: true });
+    expect(contract).toContain("Read ipollowork-video-voiceover once");
     expect(contract).toContain("/workspace/current/video/ses_current_video/voiceover.json");
-    expect(contract).toContain("ipollowork_extension_call");
-    expect(contract).toContain("speech_synthesize_workspace_batch");
-    expect(contract).toContain("built into the installed desktop application");
-    expect(contract).toContain(
-      "Never check for, install, authenticate, or recommend HeyGen/HyperFrames CLI",
-    );
-    expect(contract).toContain("never ask the user to run an auth/login command");
-    expect(contract).toContain("ipollowork_extension_list_actions");
-    expect(contract).toContain("do not replace it with user setup instructions or an external CLI");
-    expect(contract).toContain("Never use generic `speech_synthesize`");
-    expect(contract).toContain("voiceId");
-    expect(contract).toContain("assets/voiceover-<revision>-<scene>.mp3");
-    expect(contract).toContain("Never write narration outside the current composition's assets directory");
-    expect(contract).toContain("directly under the root composition");
-    expect(contract).toContain("immutable");
-    expect(contract).toContain("compositionPath");
-    expect(contract).toContain("audioElementHtml");
-    expect(contract).toContain("timelinePatch");
-    expect(contract).toContain("cumulative shifts");
-    expect(contract).toContain("Keep narrated text visible");
-    expect(contract).toContain("voiceover_timeline_validate");
-    expect(contract).toContain("Video HTML must load GSAP explicitly before inline animation code");
-    expect(contract).toContain("window.__timelines = window.__timelines || {}");
-    expect(contract).toContain("fix all reported errors before claiming completion");
-    expect(contract).toContain("not complete when synthesis returns");
-    expect(contract).toContain("Never use cross-session search/read to recover this task");
-    expect(contract).toContain("the app owns validation and one bounded repair continuation");
-    expect(contract).toContain('data-ipw-voiceover="true"');
-    expect(contract).toContain('data-ipw-narration-source="true"');
-    expect(contract).toContain("existing headings, body copy, names, dates, metrics, labels");
-    expect(contract).toContain("targetDurationSeconds");
-    expect(contract).toContain("Never overlap");
-    expect(contract).toContain("root duration");
-    expect(contract).toContain("GSAP");
-    expect(contract).toContain("requirements.captions: true");
-    expect(contract).toContain("another provider");
+    expect(contract).toContain("speech_synthesize_workspace_batch defaults");
+    expect(contract).toContain("video/ses_current_video/assets");
+    expect(contract).toContain("preserve explicit enabled=false");
+    expect(contract).toContain("finish mounting the returned audio/captions");
+    expect(contract.length).toBeLessThan(3500);
+    for (const field of ["wordTimings", "captionElementsHtml", "audioElementHtml", "timelinePatch", "totalShiftSeconds", "voice_id", "voice_model", "data-ipw-narration-source", "data-ipw-narration-binding", "data-ipw-caption-text", "window.__timelines"])
+      expect(videoAuthoringGuidance).toContain(field);
   });
 
   test("loads the expensive voiceover contract only when the prompt or composition needs it", () => {
@@ -1513,9 +1432,8 @@ describe("HyperFrames Video Studio", () => {
     const recipeRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成一个概念讲解视频" });
     expect(recipeRequirements.recipesOnly).toBeUndefined();
     const recipeFirst = videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: recipeRequirements });
-    expect(recipeFirst).toContain("without another approval round");
-    expect(recipeFirst).toContain("considered recipes");
-    expect(recipeFirst).toContain("try another recipe");
+    expect(recipeFirst).toContain("Read ipollowork-video-studio once");
+    expect(videoAuthoringGuidance).toContain("custom_reason");
     const strictRequirements = videoDeliveryRequirementsForPrompt({ promptText: "生成视频，禁止定制图形，只用真实配方" });
     expect(strictRequirements.recipesOnly).toBe(true);
     expect(videoTaskSystemContext("ses_video_a", "/workspace/current", null, { deliveryRequirements: strictRequirements })).toContain("independently of HTML metadata");
@@ -1594,11 +1512,9 @@ describe("HyperFrames Video Studio", () => {
 
   test("uses an adaptive operation plan without forcing one video workflow", () => {
     const contract = videoTaskSystemContext("ses_video_a", "/workspace/current");
-    expect(contract).toContain("Adaptive execution contract");
-    expect(contract).toContain("update-element");
-    expect(contract).toContain("freeform-patch");
-    expect(contract).toContain("For a small local edit, patch only that element");
-    expect(contract).toContain("script review is optional and non-blocking unless the user explicitly asks to review first");
+    expect(contract).toContain("The Skill owns creative planning");
+    expect(contract).toContain("targeted edits keep their requested scope");
+    expect(contract).not.toContain("Adaptive execution contract");
   });
 
   test("lets the embedded script table save and regenerate through the active video session", () => {
@@ -1645,21 +1561,9 @@ describe("HyperFrames Video Studio", () => {
   });
 
   test("connects the editable shot plan to real media and purposeful motion", () => {
-    const contract = videoTaskSystemContext("ses_workflow", "/workspace/current");
-    expect(contract).toContain("asset_source` (auto | existing | generate | search");
-    expect(contract).toContain("asset_kind` (image | video");
-    expect(contract).toContain("asset_origin");
-    expect(contract).toContain("asset_reference` (exact local project media path)");
-    expect(contract).toContain("media/artifact_media_review with phase=plan, sourcePath=`video/ses_workflow/index.html`");
-    expect(contract).toContain("call phase=check with outcomes for every planned id");
-    expect(contract).toContain("original workspace-relative generationPath returned by the generator");
-    expect(contract).toContain("never add hidden dummy media to satisfy a check");
-    expect(contract).toContain("never the article page URL as media");
-    expect(contract).toContain("never presented as news footage");
-    expect(contract).toContain("observable Establish -> Develop -> Land");
-    expect(contract).toContain("use `spatial-camera-suite` only when traversing real spatial layers");
-    expect(contract).toContain("Do not add a wrapper camera to a component that already owns its camera");
-    expect(contract).toContain("the app owns validation and one bounded repair continuation");
+    for (const field of ["asset_source", "asset_kind", "asset_origin", "asset_reference", "artifact_media_review", "generationPath", "recipe_intent", "custom_reason", "video_component_install", "spatial-camera-suite", "list_motion_presets", "mutate_motion"])
+      expect(videoAuthoringGuidance).toContain(field);
+    expect(videoTaskSystemContext("ses_workflow", "/workspace/current")).toContain("video/ses_workflow/index.html");
   });
 
   test("requires requested sound effects without treating disabled audio as required", () => {
@@ -1722,27 +1626,20 @@ describe("HyperFrames Video Studio", () => {
       "Make the second scene longer",
       "继续修改画面",
     ]) expect(videoDeliveryRequirementsForPrompt({ promptText }).bgm).toBe(false);
-    expect(videoTaskSystemContext("ses_music", "/workspace/current")).toContain("Do not set `music_prompt: none` to override this requirement");
+    expect(videoAuthoringGuidance).toContain("music_prompt");
   });
 
   test("uses an imported video template as an adaptable visual and runtime seed", () => {
     const contract = videoTaskSystemContext("ses_video_a", "/workspace/current", {
-      id: "personal.launch-film",
-      title: "Launch Film",
-      entry: "index.html",
+      id: "personal.launch-film", title: "Launch Film", entry: "index.html",
       applyChecklist: ["Replace inherited copy", "Keep the visual language"],
     });
-    expect(contract).toContain("source is template `Launch Film`");
-    expect(contract).toContain("editable visual and runtime seed");
-    expect(contract).toContain("let the content determine scene count, order, and timing");
-    expect(contract).toContain(
-      "quality and export guidance, not a requirement to retain sample structure",
-    );
-    expect(contract).toContain("preserve the root composition contract");
-    expect(contract).toContain(
-      "At the start of every edit turn, re-read the current entry from disk",
-    );
-    expect(contract).toContain("Replace inherited copy; Keep the visual language");
+    expect(contract).toContain('"id":"personal.launch-film"');
+    expect(contract).toContain('"title":"Launch Film"');
+    expect(contract).toContain('"entry":"/workspace/current/video/ses_video_a/index.html"');
+    expect(contract).toContain('"applyChecklist":["Replace inherited copy","Keep the visual language"]');
+    expect(contract).toContain("sample scene counts and timings do not constrain the deliverable");
+    expect(contract).toContain("merge user edits");
   });
 
   test("does not leave the project to search for missing template guidance", () => {
@@ -1755,7 +1652,9 @@ describe("HyperFrames Video Studio", () => {
       authoringGuide: "references/video.md",
     });
     expect(contract).toContain("only if that exact project-local file exists");
-    expect(contract).toContain("never glob or search a parent directory");
+    expect(contract).toContain("core-v1-video/catalog.md");
+    expect(contract).not.toContain("core-v1-video.html");
+    expect(contract).toContain("Never glob or search a parent directory");
     expect(contract).toContain("workspace-external path");
   });
 });

@@ -20,6 +20,6 @@
 
 10. I uninstall the developer package, return to the plugin list, and the imported plugin is no longer present in the workspace.
 
-11. I open the Video Agent and see its two managed skills separated from nine detected HyperFrames and media skills. The related list has no lifecycle switches, so the plugin explains the relationship without taking ownership or changing those independent capabilities.
+11. I open the updated Video Agent and see two focused skills for video production and voiceover. Creative guidance is read when the task needs it, while media, animation, components, captions, export, and publication remain available.
 
 12. I open the upgraded Figma plugin and see a clear connection and authorization section for the official Desktop MCP. Clicking connect now waits for the local service and shows either a connected result or an exact Desktop MCP setup message, instead of silently doing nothing or attempting unsupported remote OAuth registration.

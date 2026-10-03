@@ -9,6 +9,6 @@ test("Design property menus escape the expanded panel overflow and stacking cont
   expect(panelSelect).toContain("createPortal");
   expect(panelSelect).toContain('className={cn("fixed z-[70]');
   expect(select).toContain('> & { positionerClassName?: string })');
-  expect(select).toContain('className={cn("isolate z-[70]", positionerClassName)}');
-  expect(popover).toContain('className="isolate z-[70] outline-none"');
+  expect(select).toContain('className={cn("isolate z-[90]", positionerClassName)}');
+  expect(popover).toContain('className="isolate z-[90] outline-none"');
 });

@@ -129,7 +129,7 @@ import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-st
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
-import { providerEngineAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
+import { modelRuntimeAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
 import { selectSharedProviderWorkspace } from "@/react-app/domains/connections/provider-auth/shared-provider-workspace";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
@@ -146,6 +146,7 @@ import {
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
   videoHostExportOperationKey,
+  type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import { currentHostVideoDelivery, publishHostVideoDelivery, subscribeHostVideoDeliverySettled } from "@/react-app/domains/session/video/video-delivery-coordination";
@@ -169,7 +170,6 @@ import {
   writeActiveWorkspaceId,
   writeLastSessionFor,
 } from "./session-memory";
-import { saveSessionDraft } from "@/react-app/domains/session/sync/draft-store";
 import { useComposerStateStore } from "@/react-app/domains/session/surface/composer-state-store";
 import { useControlAction, type iPolloWorkControlAction } from "./control/control-provider";
 import { useReactRenderWatchdog } from "./react-render-watchdog";
@@ -376,7 +376,7 @@ export function SessionRoute() {
   const engineProviderClient = useMemo(() => {
     if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
     if (!selectedWorkspaceEndpoint || !selectedWorkspaceServerToken) return null;
-    return providerEngineAdapters.createClient(activeEngineId, {
+    return modelRuntimeAdapters.createClient(activeEngineId, {
       endpoint: selectedWorkspaceEndpoint,
       directory: selectedWorkspace?.path,
     });
@@ -406,7 +406,7 @@ export function SessionRoute() {
   );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
-    return providerEngineAdapters.createClient(sharedProviderEngineId, {
+    return modelRuntimeAdapters.createClient(sharedProviderEngineId, {
       endpoint: sharedProviderEndpoint,
       directory: sharedProviderRoot,
     });
@@ -1011,7 +1011,7 @@ export function SessionRoute() {
     void (async () => {
       let disabledProviders: string[] = [];
       try {
-        disabledProviders = await providerEngineAdapters
+        disabledProviders = await modelRuntimeAdapters
           .get(sharedProviderEngineId)
           .connect(sharedProviderClient)
           .readDisabledProviders();
@@ -1728,6 +1728,7 @@ export function SessionRoute() {
         const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0 && !requiresStoryboardReview
           ? videoHostExportOperationKey(targetSessionId, dispatchOptions?.clientUserMessageId ?? crypto.randomUUID())
           : null;
+        const videoRequirementsBySession = new Map<string, VideoDeliveryRequirements>();
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const voiceover = selectedWorkspaceEndpoint
             ? await readVideoVoiceoverAvailability(
@@ -1746,6 +1747,7 @@ export function SessionRoute() {
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
+          videoRequirementsBySession.set(sessionId, videoDeliveryRequirements);
           let includeVoiceoverContext = videoDeliveryRequirements.voiceover
             || videoPromptRequestsVoiceoverContext(draft.capability?.id, videoPromptText);
           if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
@@ -1841,6 +1843,15 @@ export function SessionRoute() {
         const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
         const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
           ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
+          : null;
+        const videoDeliveryTask = videoTasks.at(-1) ?? null;
+        const videoDeliverySourcePath = videoDeliveryTask?.template?.state.entry
+          ?? (videoDeliveryTask ? videoProjectEntryPath(videoDeliveryTask.sessionId) : null);
+        const videoDeliveryBaseline = videoDeliverySourcePath && selectedWorkspaceEndpoint
+          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(
+              selectedWorkspaceEndpoint.workspaceId,
+              videoDeliverySourcePath,
+            )).content)
           : null;
         const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
           || parts.some(part => part.type === "text" && part.synthetic
@@ -1990,8 +2001,16 @@ export function SessionRoute() {
           dispatched: true,
           sessionId: effectiveSessionId,
           ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}),
-          ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
-            ? { videoDeliveryTarget: { sourcePath: hostVideoSourcePath, intent: videoDeliveryIntent, baselineFingerprint: hostVideoBaseline, operationKey: hostVideoOperationKey } }
+          ...(videoDeliverySourcePath && videoDeliveryTask
+            ? { videoDeliveryTarget: {
+                sourcePath: videoDeliverySourcePath,
+                requirements: videoRequirementsBySession.get(videoDeliveryTask.sessionId)
+                  ?? videoDeliveryRequirementsForPrompt({ promptText: videoPromptText }),
+                baselineFingerprint: videoDeliveryBaseline,
+                ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
+                  ? { intent: videoDeliveryIntent, operationKey: hostVideoOperationKey }
+                  : {}),
+              } }
             : {}),
         };
         } catch (error) {
@@ -2245,10 +2264,6 @@ export function SessionRoute() {
         pendingInitialProjectTask?.workspaceId === workspaceId &&
         !pendingInitialProjectTask.sessionId
       ) {
-        saveSessionDraft(workspaceId, session.id, {
-          text: pendingInitialProjectTask.draft.text,
-          mode: pendingInitialProjectTask.draft.mode,
-        });
         const clientUserMessageId = beginOptimisticSessionPrompt(
           endpoint.workspaceId,
           session.id,
@@ -2404,10 +2419,6 @@ export function SessionRoute() {
     if (!sessionId) return;
     markProjectBuilderSession(workspaceId, sessionId);
     const starterPrompt = t("project_builder.starter_prompt");
-    saveSessionDraft(workspaceId, sessionId, {
-      text: starterPrompt,
-      mode: "prompt",
-    });
     useComposerStateStore.getState().setDraft(sessionId, starterPrompt);
 
     const workspaceConversation = conversationEngineAdapters
@@ -2454,9 +2465,8 @@ export function SessionRoute() {
         pending.clientUserMessageId,
       );
     }
-    // Session creation already succeeded and the draft is persisted locally.
-    // Keep both so a transient first-send failure remains visible in the
-    // sidebar and the user can retry instead of losing their task.
+    // Keep the created session visible in the sidebar after a transient
+    // first-send failure so the user can retry their task.
   }, []);
 
   useEffect(() => {
@@ -2696,7 +2706,7 @@ export function SessionRoute() {
     ],
     execute: async (rawArgs: unknown) => {
       if (
-        providerEngineAdapters.get(sharedProviderEngineId).capabilities.customProviders
+        modelRuntimeAdapters.get(sharedProviderEngineId).capabilities.customProviders
         && checkDesktopRestriction({ restriction: "allowCustomProviders" })
       ) {
         return { ok: false, error: "Custom providers are disabled by your organization." };
@@ -3045,42 +3055,6 @@ export function SessionRoute() {
           onCreateProjectBuilder: handleCreateProjectBuilder,
         onCreateTemplateAuthoring: (workspaceId, input) =>
           handleCreateTaskInWorkspace(workspaceId, "work", undefined, undefined, input),
-        onCreateTaskWithPrompt: (workspaceId, prompt) => {
-          void (async () => {
-            const workspace = workspaces.find((item) => item.id === workspaceId);
-            if (!workspace) return;
-            const endpoint = resolveWorkspaceEndpoint(workspace, {
-              baseUrl,
-              token,
-              hostToken: ipolloworkServerHostInfoState?.hostToken,
-            });
-            if (!endpoint?.token) return;
-            try {
-              const { item: session } = await endpoint.client.createSession(
-                endpoint.workspaceId,
-                undefined,
-                activeSelectedModel,
-              );
-              saveSessionDraft(workspaceId, session.id, { text: prompt, mode: "prompt" });
-              writeActiveWorkspaceId(workspaceId || null);
-              writeLastSessionFor(workspaceId, session.id);
-              rememberPendingCreatedSession(workspaceId, session.id);
-              setSessionsByWorkspaceId((current) => {
-                const next = {
-                  ...current,
-                  [workspaceId]: [session, ...(current[workspaceId] ?? [])],
-                };
-                sessionsByWorkspaceIdRef.current = next;
-                return next;
-              });
-              navigateToWorkspaceSession(workspaceId, session.id);
-              focusPromptSoon();
-            } catch {
-              // Fall back to normal task creation without prompt
-              void handleCreateTaskInWorkspace(workspaceId);
-            }
-          })();
-        },
         onRecoverWorkspace: (workspaceId) => runRemoteWorkspaceConnectionCheck(workspaceId, "recover"),
         onTestWorkspaceConnection: (workspaceId) => runRemoteWorkspaceConnectionCheck(workspaceId, "test"),
         onEditWorkspaceConnection: remoteWorkspaceConnectionEditor.open,
@@ -3243,7 +3217,7 @@ export function SessionRoute() {
       onToggleProvider={async (providerId, enable) => {
         if (!sharedProviderClient) return;
         try {
-          const adapter = providerEngineAdapters.get(sharedProviderEngineId);
+          const adapter = modelRuntimeAdapters.get(sharedProviderEngineId);
           if (!adapter.capabilities.disabledProviders) return;
           const connection = adapter.connect(sharedProviderClient);
           const current = await connection.readDisabledProviders();

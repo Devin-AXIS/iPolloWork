@@ -253,6 +253,20 @@ it("promotes visible pointer controls without ARIA roles into safe named refs", 
   assert.match(interactiveSnapshot.tree, /button "发布图文笔记"/);
 });
 
+it("keeps rendered onclick controls actionable when the accessibility tree omits them", async () => {
+  const fixture = createFixture();
+  fixture.flattenedNodes.push({
+    nodeName: "DIV", backendNodeId: 15, attributes: ["onclick", "openEditor()"],
+  });
+  const snapshot = await fixture.runtime.snapshot({ tabId: "tab-1" });
+  assert.match(snapshot.tree, /\[@e4\] button "发布图文笔记"/);
+  await fixture.runtime.act({
+    tabId: "tab-1", snapshotId: snapshot.snapshotId,
+    actions: [{ type: "click", ref: "@e4", expectedName: "发布图文笔记" }],
+  });
+  assert.deepEqual(fixture.inputEvents.map(event => event.type), ["mouseMove", "mouseDown", "mouseUp"]);
+});
+
 it("includes actionable controls from child frames in the same semantic snapshot", async () => {
   const fixture = createFixture();
   fixture.frameNodes.push(

@@ -1,8 +1,8 @@
-import { homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname } from "node:path";
 import { eq } from "drizzle-orm";
 import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
 import { importNodeSqlite } from "./node-sqlite.js";
+import { runtimeDbPath } from "./runtime-storage.js";
 import type { ServerConfig } from "./types.js";
 import { ensureDir } from "./utils.js";
 
@@ -24,14 +24,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeiPolloWorkWorkspaceConfig(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
-}
-
-function runtimeDbPath(config: ServerConfig): string {
-  const override = process.env.IPOLLOWORK_RUNTIME_DB?.trim();
-  if (override) return resolve(override);
-  const configPath = config.configPath?.trim();
-  const configDir = configPath ? dirname(configPath) : join(homedir(), ".config", "ipollowork");
-  return join(configDir, "runtime.sqlite");
 }
 
 async function openDb(path: string): Promise<iPolloWorkWorkspaceConfigDb> {

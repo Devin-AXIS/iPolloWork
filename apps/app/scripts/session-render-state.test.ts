@@ -11,7 +11,7 @@ import {
   reconcileTranscriptMessages,
 } from "../src/react-app/domains/session/sync/transcript-reconcile";
 import { resolveOpenCodeForkBoundaryId } from "../src/react-app/domains/session/engine/opencode-conversation-mapper";
-import { describeOpencodeSessionError } from "../src/react-app/domains/session/engine/opencode-message-adapter";
+import { describeConversationSessionError } from "../src/react-app/domains/session/engine/opencode-message-adapter";
 
 function snapshotWithMessages(
   messages: Array<{ id: string; role: "user" | "assistant"; text: string; created?: number }>,
@@ -320,9 +320,9 @@ describe("deriveRenderedSessionMessages", () => {
   });
 });
 
-describe("describeOpencodeSessionError", () => {
+describe("describeConversationSessionError", () => {
   it("includes API error status and response details", () => {
-    expect(describeOpencodeSessionError({
+    expect(describeConversationSessionError({
       name: "APIError",
       data: {
         message: "Service unavailable",
@@ -334,14 +334,14 @@ describe("describeOpencodeSessionError", () => {
   });
 
   it("uses named error defaults when opencode omits a message", () => {
-    expect(describeOpencodeSessionError({
+    expect(describeConversationSessionError({
       name: "MessageOutputLengthError",
       data: {},
     })).toBe("The model reached its output limit before finishing");
   });
 
   it("surfaces structured output retry counts", () => {
-    expect(describeOpencodeSessionError({
+    expect(describeConversationSessionError({
       name: "StructuredOutputError",
       data: {
         message: "Invalid JSON",

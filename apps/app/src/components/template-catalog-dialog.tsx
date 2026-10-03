@@ -10,7 +10,7 @@ import { TemplateIcon } from "@/components/template-icon";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { toast } from "@/components/ui/sonner";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
 
@@ -33,7 +33,7 @@ export type TemplateCatalogDialogProps<Applied> = {
 };
 
 function categoryLabel(category: TemplateCategory) {
-  return t(`template_market.category.${category}`);
+  return t(translationKey("template_market.category.", category));
 }
 
 function TemplateCover(props: {

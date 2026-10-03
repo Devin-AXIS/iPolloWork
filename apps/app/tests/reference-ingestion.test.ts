@@ -357,6 +357,14 @@ describe("reference ingestion core", () => {
       warnings: [],
     };
 
+    const preview = packReferenceContext([file]);
+    expect(preview.files[0]).toBe(file);
+    expect(preview.totalChars).toBeLessThanOrEqual(4000);
+    expect(preview.promptText).toContain("full evidence is in reference-context.json");
+    expect(preview.promptText.match(/\[excerpt\]/g)).toHaveLength(3);
+    expect(preview.promptText).not.toContain("chunk-11-");
+    expect(file.chunks[11]?.text).toStartWith("chunk-11-");
+
     const pack = packReferenceContext([file], {
       maxSummaryChars: 5000,
       maxChunkChars: 5000,
@@ -893,6 +901,7 @@ describe("local-only reference limits and completeness", () => {
     const context = JSON.parse(parts.join(""));
     expect(context.files[0].text).toBe(original);
     expect(context.extraction.modelUsed).toBe(false);
+    expect(payload.contextPack.totalChars).toBeLessThanOrEqual(6000);
     expect(payload.contextPack.promptText).toContain("Do not invoke models for OCR");
   });
   test("Word autofill uses a readable title rather than an opaque filename", () => {

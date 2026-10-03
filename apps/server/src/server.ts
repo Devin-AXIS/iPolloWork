@@ -31,7 +31,7 @@ import { ReloadEventStore } from "./events.js";
 import { computeReloadFingerprint } from "./reload-fingerprint.js";
 import { startReloadWatchers } from "./reload-watcher.js";
 import { opencodeConfigPath, ipolloworkConfigPath, projectCommandsDir, projectSkillsDir } from "./workspace-files.js";
-import { ensureDir, exists, hashToken, shortId } from "./utils.js";
+import { ensureDir, hashToken, shortId } from "./utils.js";
 import { defaultWorkspaceiPolloWorkConfig, ensureWorkspaceFiles, readRawOpencodeConfig } from "./workspace-init.js";
 import { sanitizeCommandName, validateMcpName } from "./validators.js";
 import { TokenService } from "./tokens.js";
@@ -65,7 +65,7 @@ import {
   updatePluginPackage,
 } from "./plugin-package-lifecycle.js";
 import { withMaterializedPluginPackageUpload } from "./plugin-package-upload.js";
-import { bundledPluginPackageIds, catalogPluginPackageIds, defaultBundledPluginPackageIds, isInternalPluginPackage, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
+import { catalogPluginPackageIds, defaultBundledPluginPackageIds, isInternalPluginPackage, resolveBundledPluginPackageRoot, withPluginPackageCatalogRoot } from "./plugin-package-catalog.js";
 import {
   cancelPluginAuthorizationFlow,
   completePluginBrowserAuthorization,
@@ -1466,10 +1466,6 @@ function externalDirectoryKeyToAuthorizedFolder(key: string, value: unknown): st
 
 function authorizedFolderToExternalDirectoryKey(folder: string): string {
   return folder === "/" ? "/*" : `${folder}/*`;
-}
-
-function hasOwnKey(object: Record<string, unknown>, key: string): boolean {
-  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 function readAuthorizedFoldersFromOpencodeConfig(

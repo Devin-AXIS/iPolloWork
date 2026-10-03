@@ -311,7 +311,7 @@ describe("sidebar projects", () => {
     expect(starterSource).not.toContain('{t("new_conversation.subtitle")}');
     expect(starterSource).toContain('return t("new_conversation.placeholder")');
     expect(appStyleSource).toContain("--dls-active: var(--slate-4)");
-    expect(composerEditorSource).toContain('text-[15px] leading-6 text-[color:var(--new-conversation-placeholder)]');
+    expect(composerEditorSource).toContain('text-[14px] leading-[1.5] text-[color:var(--new-conversation-placeholder)]');
     expect(composerEditorSource).toContain('data-testid="composer-placeholder"');
     expect(englishLocaleSource).toContain('"new_conversation.placeholder": "Choose a direction, or describe the work in your own words."');
     expect(chineseLocaleSource).toContain('"new_conversation.placeholder": "选择一个方向，或直接描述你要推进的工作。"');

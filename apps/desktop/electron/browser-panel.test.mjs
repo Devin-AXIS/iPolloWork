@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ if (!process.versions.electron) {
     try {
       const { default: electron } = await import("electron");
       const env = { ...process.env, IPOLLOWORK_BROWSER_TEST_DATA: directory, ELECTRON_RUN_AS_NODE: undefined };
-      const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000 });
+      const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000, killSignal: "SIGKILL" });
       assert.match(result.stdout, /browser-profile-checks-passed/);
       assert.match(result.stdout, /web-login-no-client-launch-passed/);
     } finally { await rm(directory, { recursive: true, force: true }); }
@@ -60,6 +61,7 @@ if (!process.versions.electron) {
   const address = server.address();
   const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/login`;
   const window = new BrowserWindow({ show: false });
+  await window.loadURL("about:blank");
   const panel = createBrowserPanel({ getWindow: () => window, onDeepLink() {}, listLocalWorkspaces: () => [] });
   const handlers = new Map();
   panel.registerIpc({ handle: (name, fn) => handlers.set(name, fn), on() {} });
@@ -117,11 +119,30 @@ if (!process.versions.electron) {
       process.stdout.write('web-login-no-client-launch-passed\n');
     } finally { shell.openExternal = openExternal; }
     const editor = await call('openUrl', new URL('/comment-editor', url).href, { profileId: 'douyin-ops:editor-test' });
+    // A visible panel needs a mapped host window; Linux collapses child layout
+    // while this fixture's initially hidden BrowserWindow remains unmapped.
+    if (!window.isVisible()) {
+      const shown = once(window, "show", { signal: AbortSignal.timeout(5000) });
+      window.showInactive();
+      await shown;
+    }
     await call('show', { x: 0, y: 0, width: 800, height: 600 });
     const editorView = webContents.getAllWebContents().find(item => item.getURL().endsWith('/comment-editor'));
+    const layoutDeadline = Date.now() + 5000;
+    let viewport;
+    do {
+      viewport = await editorView.executeJavaScript("[innerWidth,innerHeight]");
+      if (viewport[0] === 800 && viewport[1] === 600) break;
+      await new Promise(resolve => setTimeout(resolve, 25));
+    } while (Date.now() < layoutDeadline);
+    assert.deepEqual(viewport, [800, 600], 'Visible browser panel has a real layout viewport before its snapshot');
     const entry = await call('snapshot', { tabId: editor.tabId });
     const entryRef = entry.tree.split('\n').find(line => line.includes('button "留下你的精彩评论吧"'))?.match(/\[(@e\d+)\]/)?.[1];
-    assert.ok(entryRef, 'Lazy input remains actionable after long content, even below the fold');
+    if (!entryRef) {
+      const metadata = await editorView.executeJavaScript(`(() => { const node = document.querySelector('#entry'); return { html: node?.outerHTML, rect: node?.getBoundingClientRect().toJSON(), onclick: typeof node?.onclick, fonts: document.fonts.status }; })()`);
+      process.stderr.write(`Lazy input DOM: ${JSON.stringify(metadata)}\n`);
+    }
+    assert.ok(entryRef, `Lazy input remains actionable after long content, even below the fold: ${entry.tree}`);
     assert.match(entry.tree, /button "回复" context="[^"\n]*原作者[^"\n]*原评论内容/, 'Reply carries original author and text through nested wrappers');
     await call('act', { tabId: editor.tabId, snapshotId: entry.snapshotId, actions: [{ type: 'click', ref: entryRef, expectedName: '留下你的精彩评论吧' }] });
     const expanded = await call('snapshot', { tabId: editor.tabId });
@@ -242,9 +263,13 @@ if (!process.versions.electron) {
     const loginReopen = await call('openUrl', url, { profileId: 'plugin:account-a', loginUi: { origin: new URL(url).origin, path: '/login', whenText: '短信登录', selector: '#qr' } });
     assert.equal(loginReopen.tabId, reopened.tabId);
     assert.equal(loginReopen.url, postUrl);
+    const minimized = once(window, "minimize", { signal: AbortSignal.timeout(5000) });
     window.minimize();
+    await minimized;
     assert.equal(window.isMinimized(), true);
+    const restored = once(window, "restore", { signal: AbortSignal.timeout(5000) });
     await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
+    await restored;
     assert.equal(window.isMinimized(), false);
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
     await assert.rejects(call("openUrl", url, { profileId: "plugin:account-a", taskId: "../shared" }), /Invalid browser task/);
@@ -254,7 +279,11 @@ if (!process.versions.electron) {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;
   } finally {
+    const closing = webContents.getAllWebContents()
+      .filter(item => item !== window.webContents && !item.isDestroyed())
+      .map(item => once(item, "destroyed", { signal: AbortSignal.timeout(5000) }));
     panel.destroy();
+    await Promise.all(closing);
     window.destroy();
     server.close();
     app.exit(Number(process.exitCode) || 0);

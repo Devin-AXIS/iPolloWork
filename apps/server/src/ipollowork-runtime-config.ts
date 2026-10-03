@@ -32,7 +32,7 @@ import {
 } from "./runtime-opencode-config-store.js";
 import { readEngineRuntimeMcpConfig } from "./mcp.js";
 import { engineHostMcp } from "./engine-host-mcp.js";
-import { ipolloworkSessionHostPluginPath } from "./ipollowork-extensions-plugin-path.js";
+import { ipolloworkSessionHostPluginPath } from "./ipollowork-session-host-plugin-path.js";
 import { runtimeStorageDir } from "./runtime-storage.js";
 
 function isRecord(value: unknown): value is Record<string, unknown> {

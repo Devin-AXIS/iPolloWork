@@ -71,6 +71,15 @@ async function readConfigFile(config: ServerConfig): Promise<Record<string, unkn
 }
 
 describe("ipollowork runtime config file", () => {
+  test("preserves explicitly installed native plugins after retiring bundled hooks", async () => {
+    const { config } = await setup();
+    await writeRuntimeOpencodeConfig(config, "ws_1", current => ({
+      ...current, plugin: ["custom-plugin@1.0.0"],
+    }));
+    await writeiPolloWorkRuntimeConfigFile(config, "ws_1");
+    expect((await readConfigFile(config)).plugin).toEqual(["custom-plugin@1.0.0", expect.stringContaining("ipollowork-session-host.ts")]);
+  });
+
   test("writes runtime-DB MCPs and ipollowork defaults into the file", async () => {
     const { config } = await setup();
     await writeRuntimeOpencodeConfig(config, "ws_1", (current) => ({

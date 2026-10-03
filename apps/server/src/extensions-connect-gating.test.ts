@@ -6,7 +6,7 @@ import { z } from "zod";
 import { Client as McpClient } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
-import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES } from "./engine-host-tools.js";
+import { consequentialBrowserControlNames, engineHostTool, ENGINE_HOST_TOOL_NAMES, ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION } from "./engine-host-tools.js";
 import { writeRuntimeOpencodeConfig } from "./runtime-opencode-config-store.js";
 import { startServer } from "./server.js";
 import type { ServerConfig } from "./types.js";
@@ -350,8 +350,13 @@ describe("extension and engine host tool gating", () => {
     expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
     expect(scheduleDescription).toContain("include automation with enabled=true");
     const extensionDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_extension_list_actions")?.description;
-    expect(extensionDescription).toContain("upload the exact mediaPath with the returned extensionId");
-    expect(extensionDescription).toContain("not a reason to ask the user to upload the generated MP4");
+    expect(extensionDescription).toContain("ipollowork-video-studio");
+    expect(extensionDescription).toContain("Host MCP actions own rendering and authenticated publication");
+    expect(extensionDescription?.length).toBeLessThan(1700);
+    expect(extensionDescription).not.toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
+    const actions = await listActions(base);
+    expect(actions.find((action) => action.extensionId === "openai-image-generation" && action.action === "image_generate")?.description)
+      .toContain(ENGINE_MEDIA_MODEL_SELECTION_INSTRUCTION);
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",

@@ -62,7 +62,7 @@ import {
   updateHyperframesEffectVariableOverride,
 } from "@/app/lib/hyperframes-effect-params";
 import { publicAssetUrl } from "@/app/lib/public-asset";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 export type NewConversationMode = "work" | "code" | "design" | "video";
@@ -244,7 +244,7 @@ function TemplateStrip({
   const categoryTemplates = templates.filter((template) => (
     template.manifest.category === category && (category !== "video" || template.manifest.surface === "video")
   ));
-  const categoryLabel = t(`new_conversation.template_category.${category}`);
+  const categoryLabel = t(translationKey("new_conversation.template_category.", category));
   const CategoryIcon = TEMPLATE_CATEGORY_ICONS[category];
   const scrollerRef = useRef<HTMLDivElement | null>(null);
   const [scrollProgress, setScrollProgress] = useState(0);
@@ -693,7 +693,7 @@ function AnimationParameterDialog({
                 </div>
               </div>
               <div className="flex min-h-7 items-center justify-between rounded-lg bg-muted/60 px-2.5 text-[10px] text-muted-foreground">
-                <span>{lastUpdate ? t(`new_conversation.animations.update_${lastUpdate}`) : t("new_conversation.animations.preview_defaults")}</span>
+                <span>{lastUpdate ? t(translationKey("new_conversation.animations.update_", lastUpdate)) : t("new_conversation.animations.preview_defaults")}</span>
                 <span>{t("new_conversation.animations.current_time", { time: preservedTimeRef.current.toFixed(1) })}</span>
               </div>
             </div>

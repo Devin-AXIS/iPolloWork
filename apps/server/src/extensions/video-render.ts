@@ -8,7 +8,7 @@ import { hyperframesStudioPort } from "@ipollowork/types/hyperframes";
 import { ApiError } from "../errors.js";
 import { uiControlRequest } from "../ui-control-client.js";
 import { resolveWorkspaceFile } from "./storage.js";
-import { attribute, openingTags } from "./video-components.js";
+import { attribute, numberAttribute, openingTags } from "./video-components.js";
 
 export const videoRenderInput = z.object({
   sourcePath: z.string().regex(/^video\/[A-Za-z0-9_-]+\/index\.html$/),
@@ -121,10 +121,10 @@ async function studioJson(url: string, body?: unknown) {
 
 export function renderedSceneWindows(html: string) {
   return openingTags(html).filter(tag => attribute(tag, "class").split(/\s+/).includes("scene") || /\sdata-scene(?:\s*=|\s|\/?>)/i.test(tag)).flatMap((tag, index) => {
-    const start = Number(/\bdata-start=["']([^"']+)["']/i.exec(tag)?.[1]);
-    const duration = Number(/\bdata-duration=["']([^"']+)["']/i.exec(tag)?.[1]);
-    if (!Number.isFinite(start) || !Number.isFinite(duration) || duration <= 0) return [];
-    const sceneId = attribute(tag, "id").trim() || `scene-${index + 1}`;
+    const start = numberAttribute(tag, "data-start");
+    const duration = numberAttribute(tag, "data-duration");
+    if (start === null || duration === null || duration <= 0) return [];
+    const sceneId = attribute(tag, "id") || `scene-${index + 1}`;
     let rawBeats: unknown = [];
     try { rawBeats = JSON.parse(attribute(tag, "data-ipw-beats") || "[]"); } catch { /* Structure gate reports malformed metadata. */ }
     const beats = z.array(z.object({ animation: z.string(), motion: z.object({ start: z.number().nonnegative(), end: z.number().positive() }) })).max(12).safeParse(rawBeats);
@@ -144,6 +144,12 @@ function extractRawReviewFrames(videoPath: string, frameNumbers: number[]) {
       else resolve(stdout);
     });
   });
+}
+
+function frameDifference(left: Uint8Array, right: Uint8Array) {
+  let difference = 0;
+  for (let offset = 0; offset < left.length; offset++) difference += Math.abs(left[offset]! - right[offset]!);
+  return difference / left.length / 255;
 }
 
 export async function reviewRenderedPixels(videoPath: string, html: string): Promise<z.infer<typeof pixelReviewSchema>> {
@@ -177,12 +183,7 @@ export async function reviewRenderedPixels(videoPath: string, html: string): Pro
   });
   const reviewedScenes = scenes.map((scene) => {
     const samples = metrics.filter((metric) => metric.sceneId === scene.sceneId).sort((a, b) => a.time - b.time);
-    const change = samples.slice(1).map((sample, index) => {
-      const previous = samples[index]!.frame;
-      let difference = 0;
-      for (let offset = 0; offset < sample.frame.length; offset += 1) difference += Math.abs(sample.frame[offset]! - previous[offset]!);
-      return Math.round((difference / sample.frame.length / 255) * 10_000) / 10_000;
-    });
+    const change = samples.slice(1).map((sample, index) => Math.round(frameDifference(sample.frame, samples[index]!.frame) * 10_000) / 10_000);
     return {
       sceneId: scene.sceneId,
       sampleTimes: samples.map((sample) => Math.round(sample.time * 1_000) / 1_000),
@@ -195,11 +196,7 @@ export async function reviewRenderedPixels(videoPath: string, html: string): Pro
     const samples = metrics.filter(metric => metric.sceneId === scene.sceneId);
     const motionIssues = scene.motion.flatMap((window, index) => {
       const before = samples[3 + index * 3]!;
-      const differences = [samples[4 + index * 3]!, samples[5 + index * 3]!].map(sample => {
-        let difference = 0;
-        for (let offset = 0; offset < before.frame.length; offset++) difference += Math.abs(before.frame[offset]! - sample.frame[offset]!);
-        return difference / before.frame.length / 255;
-      });
+      const differences = [samples[4 + index * 3]!, samples[5 + index * 3]!].map(sample => frameDifference(before.frame, sample.frame));
       return differences.every(difference => difference < .0005) ? [{ sceneId: scene.sceneId, code: "declared-motion-not-visible", time: scene.start + window.start }] : [];
     });
     const transitionSamples = scene.transitionDuration > 0 ? samples.slice(-3) : [];
@@ -247,6 +244,14 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     return { ...pixelReviewSchema.parse({ ...pixels, valid: pixels.valid && runtimeReview.valid && audioReview.valid, runtimeReview, audioReview,
       evidence: { videoPath: relative(root, output).replaceAll(sep, "/"), frames, resolution: input.reviewOnly ? "draft" : "export", expression: "unverified", audibleSync: "unverified" },
       issues }), issues };
+  };
+  const completedReceipt = async (receipt: Receipt, studioPort: number): Promise<Receipt> => {
+    const output = `${renders}/${receipt.jobId}.mp4`;
+    if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
+    const size = (await stat(output)).size;
+    if (size === 0) throw new Error("Completed export is empty");
+    const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
+    return { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
   };
   let receipt: Receipt;
   try {
@@ -312,12 +317,7 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       // persisted metadata remains authoritative after a long continuation.
       const meta = await readFile(`${renders}/${receipt.jobId}.meta.json`, "utf8").then(text => JSON.parse(text)).catch(() => null);
       if (meta?.status === "complete") {
-        const output = `${renders}/${receipt.jobId}.mp4`;
-        if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
-        const size = (await stat(output)).size;
-        if (!size) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
-        receipt = { ...receipt, status: pixelReview?.valid === false ? "failed" : "complete", progress: 100, ...(pixelReview?.valid === false ? { error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
+        receipt = await completedReceipt({ ...receipt, status: "complete", progress: 100 }, studioPort);
         await save(receipt);
         await uiControlRequest("/video/ensure-studio", { method: "POST", body: { workspaceId: workspace.id, projectId: project, release: true } });
         return { ...receipt, operationKey: input.operationKey };
@@ -337,14 +337,7 @@ export async function videoRenderAction(workspace: { id: string; path: string },
       if (!line) throw new Error("Render returned no progress event");
       const progress = z.object({ status: z.enum(["rendering", "complete", "failed", "cancelled"]), progress: z.number().optional(), stage: z.string().optional(), error: z.string().optional() }).parse(JSON.parse(line.slice(6)));
       receipt = { ...receipt, ...progress, status: progress.status === "cancelled" ? "failed" : progress.status };
-      if (receipt.status === "complete") {
-        const output = `${renders}/${receipt.jobId}.mp4`;
-        if (!(await realpath(output)).startsWith(root + sep)) throw new Error("Export escaped workspace");
-        const size = (await stat(output)).size;
-        if (size === 0) throw new Error("Completed export is empty");
-        const pixelReview = input.review || input.reviewOnly ? await review(output, studioPort, receipt.sourceHash) : undefined;
-        receipt = { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
-      }
+      if (receipt.status === "complete") receipt = await completedReceipt(receipt, studioPort);
       if (Date.now() - receipt.startedAt > RENDER_TIMEOUT_MS && receipt.status === "rendering") throw new Error("Export exceeded the 3-hour limit; check the existing Studio job before retrying.");
     } catch (error) {
       const withinDeadline = Date.now() - receipt.startedAt < RENDER_TIMEOUT_MS;

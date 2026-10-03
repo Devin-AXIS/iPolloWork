@@ -118,7 +118,7 @@ test("Creative Context publishes only after its dependencies and binds all local
     uploadInbox: async (_workspaceId, file, options) => {
       if (file.name === "creative-context.json") {
         expect(uploaded.has("reference-context.json")).toBe(true);
-        expect([...uploaded.keys()]).toContain("photo.png");
+        expect([...uploaded.keys()].some((name) => name.endsWith("photo.png"))).toBe(true);
       }
       uploaded.set(file.name, file);
       return { path: options!.path! };

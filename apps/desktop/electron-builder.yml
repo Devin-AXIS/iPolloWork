@@ -12,28 +12,43 @@ directories:
 files:
   - electron/**/*
   - server/**/*
+  - "!{electron,server}/**/*.{test,spec}.*"
+  - "!{electron,server}/**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
   # Template installation copies real directories from extraResources.
   # Exclude the staged copy from app.asar to avoid shipping it twice.
   - "!server/dist/bundled-templates/**"
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
+  - from: video-codecs
+    to: video-codecs
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
+    filter: &runtimeFiles
+      - "**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
   - from: ../../examples/plugin-packages/notion
     to: plugin-packages/notion
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/linear
     to: plugin-packages/linear
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/sentry
     to: plugin-packages/sentry
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/stripe
     to: plugin-packages/stripe
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/context7
     to: plugin-packages/context7
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/github
     to: plugin-packages/github
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/wechat-official
     to: plugin-packages/wechat-official
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/xiaohongshu-ops
     to: plugin-packages/xiaohongshu-ops
     filter:
@@ -42,6 +57,8 @@ extraResources:
       - "LICENSES/**/*"
       - "service/**/*"
       - "skills/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
       - "!skills/**/node_modules/**/*"
       - "!skills/**/app/data/**/*"
       - "!skills/**/app/dist/**/*"
@@ -54,6 +71,8 @@ extraResources:
       - "service/**/*"
       - "skills/**/*"
       - "ui/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
       - "!**/node_modules/**/*"
   - from: ../../examples/plugin-packages/wechat-channels-ops
     to: plugin-packages/wechat-channels-ops
@@ -64,17 +83,24 @@ extraResources:
       - "service/**/*"
       - "skills/**/*"
       - "ui/**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
       - "!**/node_modules/**/*"
   - from: ../../examples/plugin-packages/design-agent
     to: plugin-packages/design-agent
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/reference-context
     to: plugin-packages/reference-context
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/video-agent
     to: plugin-packages/video-agent
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/media-studio
     to: plugin-packages/media-studio
+    filter: *runtimeFiles
   - from: ../../examples/plugin-packages/deepseek-harness
     to: plugin-packages/deepseek-harness
+    filter: *runtimeFiles
   # Templates are installed by copying their full directory into the local
   # library. Electron's virtual ASAR filesystem can read them but Node cannot
   # recursively copy an ASAR directory on macOS, so keep these assets real.
@@ -89,12 +115,10 @@ extraResources:
     to: app-dist
   - from: server/dist/opencode-plugins
     to: opencode-plugins
-    filter:
-      - "**/*"
+    filter: *runtimeFiles
   - from: server/dist/opencode-runtime
     to: opencode-runtime
-    filter:
-      - "**/*"
+    filter: *runtimeFiles
   - from: ../../packages/docs
     to: ipollowork-docs
     filter:
@@ -105,12 +129,13 @@ extraResources:
     to: hyperframes
     filter:
       - "**/*"
+      - "!**/*.{test,spec}.*"
+      - "!**/{tests,__tests__,__fixtures__,__mocks__}{,/**/*}"
       - "!**/*.map"
       - "!node_modules/.bun/**/node_modules/.bin/**"
   - from: ../../vendor/hyperframes/registry
     to: hyperframes/registry
-    filter:
-      - "**/*"
+    filter: *runtimeFiles
 asar: true
 asarUnpack:
   - "**/node_modules/sharp/**/*"

@@ -262,6 +262,43 @@ Guide attention through media, an interface, a device, or social content.
 | `xiaohongshu-note` | body | seekable | A Xiaohongshu-style lifestyle note with author context, editorial copy and engagement. |
 | `xiaohongshu-review` | body | seekable | A Xiaohongshu-style product review card with verdict, score breakdown and a concise takeaway. |
 
+## Imported executable shotcraft recipes
+
+These additional recipes retain their manifest-owned primary pattern and capacity rules. The family summary above describes the original curated families; this table covers the imported recipes. Read only the selected recipe when fitting a shot.
+
+| Component | Typical phase | Registry contract | Primary pattern | Intended use |
+| --- | --- | --- | --- | --- |
+| `shotcraft-blur-slide` | body | seekable | `kinetic-type` | 模糊逐词入场，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-brace-expand` | body | seekable | `kinetic-type` | 括号展开，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-card-stack` | body | seekable | `progressive-build` | Establish a collection of exactly eight real images or page slices; quantity first, diversity second. |
+| `shotcraft-dolly-zoom` | body | seekable | `state-transformation` | 在真实素材上突出一个固定主体，背景膨胀形成一次戏剧性强调。 |
+| `shotcraft-drift-assembly` | body | seekable | `kinetic-type` | 分散字符沿原漂移路径组装成短标题，表达聚合与整理。 |
+| `shotcraft-error-retype` | body | seekable | `kinetic-type` | 同一前缀下输入一个表述，删除后改写为更准确的表述。 |
+| `shotcraft-font-weight-pump` | body | seekable | `kinetic-type` | 用五次已标定的节拍或语义强调改变同一短词的字重。 |
+| `shotcraft-glitch-cycle` | body | seekable | `kinetic-type` | 逐项说明同一任务的四个状态，最后锁定完成态。 |
+| `shotcraft-gradient-word-sweep` | body | seekable | `kinetic-type` | 让一个短关键词由白字到渐变填充，并在副句中限定含义。 |
+| `shotcraft-karaoke-fill` | body | seekable | `kinetic-type` | 逐词填色同步，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-lead-word-zoom-assemble` | body | seekable | `kinetic-type` | 先强调句首概念，再退镜组装三段短标题和解释。 |
+| `shotcraft-letter-drop` | body | seekable | `kinetic-type` | 字符落地回弹，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-marker-title` | body | seekable | `kinetic-type` | Emphasize one short keyword in a title with a quick human marker gesture. |
+| `shotcraft-multiplane` | body | seekable | `state-transformation` | 展示真实页面、图像或空间层次，沿同一方向探索真实内容。 |
+| `shotcraft-outline-word-fill` | body | seekable | `kinetic-type` | 描边关键词填充，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-pill-chip-slot-cycle-handled` | body | seekable | `kinetic-type` | 同一固定语句中轮播四个具体职责，说明覆盖范围。 |
+| `shotcraft-pill-slot-cycle` | body | seekable | `kinetic-type` | 在固定句式下依次展示六项功能，再收束成一句范围说明。 |
+| `shotcraft-scramble` | body | seekable | `kinetic-type` | 将未知问题锁定为一个清晰短标题，表达揭晓。 |
+| `shotcraft-scramble-decode` | body | seekable | `kinetic-type` | 乱码逐字解码，保留转换版原动作并支持旁白事件绑定。 |
+| `shotcraft-split-flap-title` | body | seekable | `kinetic-type` | 用机械翻牌揭晓一个短标题或章节词。 |
+| `shotcraft-split-text-stagger` | body | seekable | `kinetic-type` | 一个短标题按字符错峰上升并落定，适合章节入场。 |
+| `shotcraft-terminal-typewriter` | body | seekable | `kinetic-type` | 展示一条明确的命令示例，推进后切到对应真实截图。 |
+| `shotcraft-text-column-converge` | body | seekable | `kinetic-type` | 在同一前缀下切换九个短主题，最后与末项汇合成标题。 |
+| `shotcraft-text-on-path` | body | seekable | `kinetic-type` | 短标题字符沿一条曲线行进，再回到水平基线。 |
+| `shotcraft-title-demote-to-label` | body | seekable | `kinetic-type` | 在真实页面素材上演示两个章节标题从主体降为阅读标签。 |
+| `shotcraft-tracking-expand` | body | seekable | `kinetic-type` | Quiet concept or chapter opening with a short title; keep the camera still. |
+| `shotcraft-typing-code-block` | body | seekable | `kinetic-type` | 用同一段真实代码对比逐行呈现与逐字输入，最多四行。 |
+| `shotcraft-vertical-word-roll-blur-cycle` | body | seekable | `kinetic-type` | 在共同前缀下依次聚焦四个短词，最后保留末项。 |
+| `shotcraft-word-relay-filmstrip` | body | seekable | `kinetic-type` | 同一真实页面的胶片滚动与三个关联动词同步接力。 |
+| `shotcraft-word-relay-geometry` | body | seekable | `kinetic-type` | 三个短关键词依次接力，以装饰圆形和填色形成强调层级。 |
+
 ## Adaptation boundary
 
 Do not force a component into its listed pattern when the user's content has another narrative verb. Prefer the closest component structure, select the correct temporal recipe separately, and extend the component's existing timeline. If no component fits, author a local scene and record `data-ipw-component-decision="custom:<specific structural reason>"`; visual preference or implementation convenience is not an exception. Run `media/video_component_check` before acceptance. Record a new catalog candidate only after repeated use and playback validation.

@@ -42,7 +42,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { ConfirmModal } from "@/react-app/design-system/modals/confirm-modal";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 
 export type WorkItemEditorValue = {
   title: string;
@@ -543,7 +543,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                 }}
               >
                 <SelectTrigger id="work-item-priority" className={compactSelectTriggerClassName}>
-                  <SelectValue>{t(`work.priority.${value.priority}`)}</SelectValue>
+                  <SelectValue>{t(translationKey("work.priority.", value.priority))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent align="start">
                   <SelectItem value="low">{t("work.priority.low")}</SelectItem>
@@ -664,7 +664,7 @@ export function WorkItemSheet(props: WorkItemSheetProps) {
                         }}
                       >
                         <SelectTrigger id="work-item-automation-recurrence" className={compactSelectTriggerClassName}>
-                          <SelectValue>{t(`work.automation.${value.automation.recurrence}`)}</SelectValue>
+                          <SelectValue>{t(translationKey("work.automation.", value.automation.recurrence))}</SelectValue>
                         </SelectTrigger>
                         <SelectContent align="start">
                           <SelectItem value="once">{t("work.automation.once")}</SelectItem>

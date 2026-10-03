@@ -177,11 +177,11 @@ describe("host video delivery coordination", () => {
     const surfaceSource = readFileSync(
       new URL("../src/react-app/domains/session/surface/session-surface.tsx", import.meta.url),
       "utf8",
-    );
+    ).replaceAll("\r\n", "\n");
     const openCodeEngineSource = readFileSync(
       new URL("../src/react-app/domains/session/engine/opencode-conversation-engine.ts", import.meta.url),
       "utf8",
-    );
+    ).replaceAll("\r\n", "\n");
 
     expect(surfaceSource).toContain(
       "hostVideoDeliverySignalKeyRef.current === signalKey && activeOperationKey === signal.operationKey",

@@ -3,7 +3,7 @@ import {
   PPTX_SLIDE_HEIGHT_INCHES,
   PPTX_SLIDE_WIDTH_INCHES,
 } from "./pptx-export";
-import { isPptxExportImage } from "./pptx-dom";
+import { isPptxExportImage, pptxEffectiveOpacity } from "./pptx-dom";
 
 export type PptxCompatibleTextRun = {
   text: string;
@@ -199,14 +199,6 @@ function requiresPptxCompatibleFallback(element: HTMLElement, view: Window) {
     .some((candidate) => unsupported(view.getComputedStyle(candidate)) || hasVisiblePseudoElement(candidate, view));
 }
 
-function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
-  let opacity = 1;
-  for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
-    const value = Number.parseFloat(current.ownerDocument.defaultView?.getComputedStyle(current).opacity ?? "1");
-    opacity *= Number.isFinite(value) ? value : 1;
-  }
-  return opacity;
-}
 
 function elementTextRuns(element: HTMLElement, slideWidthPixels: number): PptxCompatibleTextRun[] {
   const view = element.ownerDocument.defaultView;
@@ -247,7 +239,7 @@ function elementTextRuns(element: HTMLElement, slideWidthPixels: number): PptxCo
 function shapeFor(element: HTMLElement, slide: HTMLElement, slideBox: DOMRect, style: CSSStyleDeclaration): PptxCompatibleShape {
   const fill = parseColor(style.backgroundColor);
   const line = parseColor(style.borderTopColor);
-  const opacity = effectiveOpacity(element, slide);
+  const opacity = pptxEffectiveOpacity(element, slide);
   const kind = element.dataset.pptxShape;
   if (kind !== "rect" && kind !== "roundRect" && kind !== "line" && kind !== "ellipse") {
     throw new Error("Unsupported PPTX shape marker.");

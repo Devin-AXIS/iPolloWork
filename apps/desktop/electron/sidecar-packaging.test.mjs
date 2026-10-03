@@ -3,16 +3,96 @@ import { it } from "node:test";
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { createPackage } from "@electron/asar";
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
+import { createPackage, listPackage } from "@electron/asar";
+import { parse as parseYaml } from "yaml";
 
 import afterPackModule from "../scripts/electron-after-pack.cjs";
 import {
   assertServerRuntimeDependencies,
   stageServerConstants,
+  stageServerRuntime,
   stageServerRuntimeTypes,
 } from "../scripts/server-packaging.mjs";
 
 const afterPack = afterPackModule.default ?? afterPackModule;
+const require = createRequire(import.meta.url);
+const { FileMatcher, copyFiles } = createRequire(require.resolve("electron-builder"))("app-builder-lib/out/fileMatcher.js");
+
+it("packages runtime modules without compiled tests, test support or stale staged files", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-runtime-package-"));
+  const serverDistDir = path.join(root, "server-dist");
+  const applicationDir = path.join(root, "application");
+  const packagedServerRoot = path.join(applicationDir, "server");
+  const serverPackagePath = path.join(root, "server-package.json");
+  const fixtures = {
+    "server-dist/server.js": 'export { value } from "./routes/test-tools.js";\n',
+    "server-dist/routes/test-tools.js": "export const value = 42;\n",
+    "server-dist/routes/video.js": "export const render = true;\n",
+    "server-dist/fixtures/runtime.json": "{}\n",
+    "server-dist/server.e2e.test.js": "throw new Error('test');\n",
+    "server-dist/routes/video.spec.js": "throw new Error('test');\n",
+    "server-dist/routes/video.spec.js.map": "{}\n",
+    "server-dist/tests/fixtures/helper.js": "export {};\n",
+    "application/server/dist/obsolete.test.js": "export {};\n",
+    "application/server/dist/obsolete.js": "export {};\n",
+    "application/electron/main.mjs": "export {};\n",
+    "application/electron/test-tools.mjs": "export {};\n",
+    "application/electron/main.test.mjs": "throw new Error('test');\n",
+    "application/electron/__tests__/support.mjs": "export {};\n",
+    "application/package.json": '{"type":"module"}\n',
+  };
+
+  try {
+    for (const [name, content] of Object.entries(fixtures)) {
+      await mkdir(path.dirname(path.join(root, name)), { recursive: true });
+      await writeFile(path.join(root, name), content);
+    }
+    await writeFile(serverPackagePath, '{"type":"module"}\n');
+    stageServerRuntime({ serverDistDir, serverPackagePath, packagedServerRoot });
+    assert.equal((await import(pathToFileURL(path.join(packagedServerRoot, "dist/server.js")).href)).value, 42);
+    assert.equal(await readFile(path.join(serverDistDir, "server.e2e.test.js"), "utf8"), fixtures["server-dist/server.e2e.test.js"]);
+    assert.deepEqual((await readdir(path.join(packagedServerRoot, "dist"))).sort(), ["fixtures", "routes", "server.js"]);
+
+    const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
+    const matcher = new FileMatcher(applicationDir, path.join(root, "release"), (value) => value, config.files);
+    await copyFiles([matcher]);
+    const archive = path.join(root, "app.asar");
+    await createPackage(matcher.to, archive);
+    const entries = listPackage(archive, { isPack: false });
+    for (const name of ["/electron/main.mjs", "/electron/test-tools.mjs", "/server/dist/server.js", "/server/dist/routes/video.js", "/server/dist/routes/test-tools.js", "/server/dist/fixtures/runtime.json"]) {
+      assert.ok(entries.includes(name), `Runtime entry is preserved: ${name}`);
+    }
+    assert.ok(entries.every((name) => !/\.(?:test|spec)\.|\/(?:tests|__tests__|__fixtures__|__mocks__)(?:\/|$)|obsolete/.test(name)));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("copies bundled plugin manifests, Skills and services while excluding test-only fixtures", async () => {
+  const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-plugin-release-"));
+  const config = parseYaml(await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8"));
+  const resources = config.extraResources.filter((resource) => resource.to.startsWith("plugin-packages/"));
+  const runtimeFiles = ["ipollowork.plugin.json", "service/test-tools.mjs", "skills/worker/SKILL.md", "skills/worker/app/src/simulation.ts"];
+  const testFiles = ["service/worker.test.mjs", "service/worker.spec.mjs", "skills/worker/app/tsconfig.test.json", "skills/worker/app/tests/fixtures/server.ts", "service/__tests__/helper.mjs"];
+  try {
+    const source = path.join(root, "source");
+    for (const name of [...runtimeFiles, ...testFiles]) {
+      await mkdir(path.dirname(path.join(source, name)), { recursive: true });
+      await writeFile(path.join(source, name), "fixture\n");
+    }
+    for (const resource of resources) {
+      const matcher = new FileMatcher(source, path.join(root, resource.to), (value) => value, resource.filter);
+      await copyFiles([matcher]);
+      for (const name of runtimeFiles) assert.equal(await readFile(path.join(matcher.to, name), "utf8"), "fixture\n", `${resource.to}: ${name}`);
+      for (const name of testFiles) await assert.rejects(readFile(path.join(matcher.to, name)), { code: "ENOENT" }, `${resource.to}: ${name}`);
+    }
+    assert.equal(await readFile(path.join(source, "service/worker.test.mjs"), "utf8"), "fixture\n");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 it("ships the shared reference Skill independently of Video", async () => {
   const builderConfig = await readFile(new URL("../electron-builder.yml", import.meta.url), "utf8");

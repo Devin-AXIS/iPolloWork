@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { relativeDesignMediaPath, resolveDesignMediaPath, resolveDesignPreviewAssetPath, designMediaTools } from "../src/react-app/domains/session/design/design-media";
 import { buildDesignPreviewDocument } from "../src/react-app/domains/session/design/design-html-runtime";
 import { mediaKindForPath, parseVideoImageRequest, safeVideoMediaPath, VIDEO_IMAGE_OPEN } from "@ipollowork/types/video-image-workbench";
@@ -11,13 +14,18 @@ describe("Design authored media contract", () => {
       target: "browser", format: "esm", minify: true,
     });
     expect(result.success).toBe(true);
-    const module = await import(`data:text/javascript;base64,${Buffer.from(await result.outputs[0].text()).toString("base64")}`);
+    const temporary = await mkdtemp(join(tmpdir(), "ipollowork-minified-runtime-"));
+    const modulePath = join(temporary, "runtime.mjs");
+    await writeFile(modulePath, await result.outputs[0].text());
+    let module;
+    try { module = await import(pathToFileURL(modulePath).href); }
+    finally { await rm(temporary, { recursive: true, force: true }); }
     const html = module.buildDesignPreviewDocument('<html><body><video src="clip.mp4"></video></body></html>', true);
     const script = html.match(/<script id="ipollowork-design-runtime">([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeTruthy();
     expect(() => new Function(script)).not.toThrow();
   });
-  test.each(["svg", "gif", "avif", "webm"])("preserves read-only %s previews without advertising model editing", extension => {
+  test.each(["svg", "gif", "avif"])("preserves read-only %s previews without advertising model editing", extension => {
     const src = `assets/original.${extension}`;
     expect(resolveDesignPreviewAssetPath("design/one/index.html", src)).toBe(`design/one/${src}`);
     expect(resolveDesignMediaPath("design/one/index.html", src)).toBeNull();
@@ -41,6 +49,10 @@ describe("Design authored media contract", () => {
     const script = runtime.match(/<script id="ipollowork-design-runtime">([\s\S]*?)<\/script>/)?.[1];
     expect(script).toBeTruthy();
     expect(() => new Function(script!)).not.toThrow();
+  });
+  test("webm follows the shared editable video-media contract", () => {
+    expect(resolveDesignMediaPath("design/one/index.html", "assets/original.webm")).toBe("design/one/assets/original.webm");
+    expect(mediaKindForPath("assets/original.webm")).toBe("video");
   });
   test("protocol binds video extensions to a video request, never an image request", () => {
     const request = { type: VIDEO_IMAGE_OPEN, requestId: "10000000-0000-4000-8000-000000000001", projectId: "one", sourcePath: "assets/clip.mp4", kind: "video" };

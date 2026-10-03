@@ -19,7 +19,6 @@ import { ensureLocalWorkspaceFiles } from "./workspace-init.js";
 import { findManagedEngineWorkspace } from "./workspaces.js";
 import { keepiPolloWorkRuntimeConfigFileFresh, writeiPolloWorkRuntimeConfigFile } from "./ipollowork-runtime-config.js";
 import { opencodeAuthPathFromEnvironment } from "./opencode-db.js";
-import type { ServeResult } from "./serve-node.js";
 import { DEFAULT_ENGINE_ID, type ServerConfig } from "./types.js";
 
 export type EmbeddedServerOptions = CliArgs & {

@@ -24,7 +24,7 @@ export function deliveryRoute(entry) {
 export function createBackgroundVideoDeliverySupervisor({
   getMainWindow,
   createWorkerWindow,
-  isReady = async () => true,
+  isReady = async (_entry, _main) => true,
   intervalMs = 4_000,
   log = console,
 }) {

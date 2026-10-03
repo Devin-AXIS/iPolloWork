@@ -4,6 +4,7 @@ import { CodexHarnessClient } from "@/app/lib/codex-harness-client";
 import type { WorkspaceEngineEvent } from "@/app/lib/workspace-engine-rpc-client";
 import { t } from "@/i18n";
 import {
+  conversationIsRecord as isRecord,
   withSessionPermissionMemory,
   waitForConversationIdle,
   type ConversationAccessMode,
@@ -74,10 +75,6 @@ function codexAccessModes(): ConversationAccessMode[] {
       dangerous: true,
     },
   ];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const TERMINAL_CODEX_TURN_STATUSES = new Set([
