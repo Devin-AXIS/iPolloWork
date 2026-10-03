@@ -113,10 +113,12 @@ function finiteTokenCount(value: unknown): number | undefined {
     : undefined;
 }
 
+export function conversationIsRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function recordValue(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : null;
+  return conversationIsRecord(value) ? value : null;
 }
 
 export function conversationContextUsageFromTokens(

@@ -1,6 +1,7 @@
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - "@opencode-ai/sdk"
+  - "@opencode-ai/plugin"
 
 # macOS release jobs build both Apple Silicon and Intel installers on the
 # same runner. Keep both optional native packages available so electron-builder

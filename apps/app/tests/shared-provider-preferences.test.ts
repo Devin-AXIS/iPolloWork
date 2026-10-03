@@ -116,7 +116,7 @@ describe("shared AI provider preferences", () => {
       expect(source).not.toContain("deepSeekHarnessWorkspace.id !== sharedProviderWorkspace?.id");
     }
     expect(sessionRouteSource).not.toContain("runtimeModelCatalogSources");
-    expect(settingsRouteSource).toContain("const supportedEngines = new Set(providerEngineAdapters.ids())");
+    expect(settingsRouteSource).toContain("const supportedEngines = new Set(modelRuntimeAdapters.ids())");
     expect(settingsRouteSource).toContain("...runtimeModelCatalogSources,");
     expect(settingsRouteSource).not.toContain("sources.push(...runtimeModelCatalogSources)");
   });

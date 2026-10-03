@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@opencode-ai/sdk": "^1.18.31",
+    "@opencode-ai/sdk": "1.18.34",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.45.1",
     "electron-updater": "^6.3.9",
@@ -48,7 +48,7 @@
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@ipollowork/types": "workspace:*",
-    "@opencode-ai/plugin": "1.18.31",
+    "@opencode-ai/plugin": "1.18.34",
     "electron": "^35.0.0",
     "electron-builder": "^25.1.8"
   }

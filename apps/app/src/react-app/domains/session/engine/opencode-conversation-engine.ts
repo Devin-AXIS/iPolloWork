@@ -5,6 +5,7 @@ import { createClient, unwrap } from "@/app/lib/opencode";
 import type { Client } from "@/app/types";
 import { t } from "@/i18n";
 import {
+  conversationIsRecord as isRecord,
   type ConversationAccessMode,
   type ConversationEngineAdapter,
   type ConversationEngineConnection,
@@ -104,10 +105,6 @@ function openCodeAccessModeFromRules(value: unknown): OpenCodeAccessModeId {
   const serialized = JSON.stringify(value);
   return (Object.entries(OPEN_CODE_ACCESS_RULES) as Array<[OpenCodeAccessModeId, OpenCodePermissionRule[]]>)
     .find(([, rules]) => JSON.stringify(rules) === serialized)?.[0] ?? "default";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function hasMethod(value: unknown, name: string) {

@@ -25,9 +25,8 @@ export default {
             "bun",
             "test",
             "src/extensions-connect-gating.test.ts",
-            "src/opencode-plugins/ipollowork-extensions-preview.test.ts",
             "--test-name-pattern",
-            "previews and atomically imports|omits UI-control tools",
+            "previews and atomically imports|exposes the shared host tools",
           ], {
             cwd: ROOT,
             encoding: "utf8",
@@ -39,7 +38,7 @@ export default {
           const output = `${result.stdout}\n${result.stderr}`;
           ctx.assert(result.status === 0, `Focused AI schedule tests exited ${String(result.status)}.`);
           ctx.assert(output.includes("previews and atomically imports confirmed AI plans"), "The automatic schedule import regression was not exercised.");
-          ctx.assert(output.includes("omits UI-control tools and steering by default"), "The AI tool schema regression was not exercised.");
+          ctx.assert(output.includes("exposes the shared host tools through the Codex-compatible MCP bridge"), "The AI tool schema regression was not exercised.");
         },
       });
     },

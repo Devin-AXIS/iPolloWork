@@ -28,15 +28,16 @@ import {
   pluginWorkshopTabId,
 } from "../src/react-app/domains/session/plugin-workshop/plugin-workshop-contract";
 describe("HyperFrames Video Studio", () => {
-  test("downloads and verifies video codecs on first open before starting Studio", () => {
+  test("checks bundled video codecs without blocking on a cloud download", () => {
     const panelSource = readFileSync(
       new URL("../src/react-app/domains/session/video/video-panel.tsx", import.meta.url),
       "utf8",
     );
 
-    expect(panelSource).toContain("await videoResourceInstall(readDenSettings().baseUrl)");
-    expect(panelSource).toContain('setStartupStage("downloading-resources")');
-    expect(panelSource).toContain('data-testid="video-resource-download-progress"');
+    expect(panelSource).toContain("void videoResourceInfo().then");
+    expect(panelSource).not.toContain("videoResourceInstall");
+    expect(panelSource).not.toContain('setStartupStage("downloading-resources")');
+    expect(panelSource).not.toContain('data-testid="video-resource-download-progress"');
     expect(panelSource).toContain("if (!resourcesReady)");
   });
 

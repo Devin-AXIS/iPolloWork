@@ -32,6 +32,7 @@ export async function resolveEnginePluginPrompt(input: {
   const capabilities = await listPortablePluginPromptCapabilities({
     serverConfig: input.config,
     engineId: input.engineId,
+    names: [...(input.selection.command ? [input.selection.command.name] : []), ...(input.selection.agents ?? [])],
   });
   const resolveCapability = (type: "command" | "agent", name: string) => {
     const matches = capabilities.filter((capability) => capability.type === type && capability.name === name);

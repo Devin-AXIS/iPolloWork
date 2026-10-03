@@ -10,6 +10,7 @@ import type {
   ConversationSnapshot,
 } from "./conversation-engine";
 import {
+  conversationIsRecord as isRecord,
   conversationContextUsageFromTokens,
   conversationMessageMetadata,
 } from "./conversation-engine";
@@ -35,10 +36,6 @@ export function createCodexLiveState(): CodexLiveState {
     parentUserMessageIdByTurn: new Map(),
     retryingThreads: new Set(),
   };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function stringValue(value: unknown): string | null {

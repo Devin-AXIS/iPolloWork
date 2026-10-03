@@ -252,6 +252,7 @@ run(nodeCmd, [resolve(__dirname, "prepare-computer-use-helper.mjs"), "--force", 
 // Build the server TS → JS so Electron can import it in-process
 ensureHyperframesBuild();
 run(nodeCmd, [resolve(__dirname, "prepare-hyperframes-runtime.mjs")], desktopRoot);
+run(nodeCmd, [resolve(__dirname, "package-video-resources.mjs"), "--bundled"], desktopRoot);
 run(pnpmCmd, ["--filter", "ipollowork-server", "build"], repoRoot);
 stageBundledOpenCodeRuntime();
 // IPOLLOWORK_ELECTRON_BUILD tells Vite to emit relative asset paths so

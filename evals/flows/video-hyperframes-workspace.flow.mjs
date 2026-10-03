@@ -8,12 +8,11 @@ export default {
   kind: "user-facing",
   steps: [
     {
-      name: "First launch downloads video resources automatically",
+      name: "First launch uses bundled video resources",
       run: async (ctx) => {
-        await ctx.prove("Video Studio owns its first-launch resource download", {
-          voiceover: vo[0],
+        await ctx.prove("Video Studio opens without downloading codecs", {
+          voiceover: "Video Studio uses the codecs shipped with the desktop app; cloud resource availability cannot block first launch.",
           action: async () => {
-            if (await ctx.eval(`document.body.innerText.includes('首次打开，正在下载视频资源')`)) return;
             if (await ctx.eval(`location.hash.includes("/settings/")`)) await ctx.clickText("返回应用");
             const proofWorkspaceId = ctx.env.IPOLLOWORK_EVAL_VIDEO_WORKSPACE_ID?.trim();
             const proofSessionId = ctx.env.IPOLLOWORK_EVAL_VIDEO_SESSION_ID?.trim();
@@ -54,22 +53,21 @@ export default {
                   .find((button) => button.textContent?.includes('index.html'));
               openButton?.click();
             })()`);
-            await ctx.waitFor(`document.body.innerText.includes('首次打开，正在下载视频资源')`, {
+            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, {
               timeoutMs: 30_000,
-              label: "first-launch video resource download",
+              label: "Studio loaded from bundled resources",
             });
           },
           assert: async () => {
             const state = await ctx.eval(`(() => ({
-              progress: Boolean(document.querySelector('[data-testid="video-resource-download-progress"]')),
-              failed: document.body.innerText.includes('视频资源下载失败'),
+              loaded: document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === 'true',
+              failed: /Cloud resource manifest|启动失败/.test(document.body.innerText),
             }))()`);
-            ctx.assert(state.progress && !state.failed, `Video resource download did not stay active: ${JSON.stringify(state)}`);
+            ctx.assert(state.loaded && !state.failed, `Bundled Studio did not load: ${JSON.stringify(state)}`);
           },
           screenshot: {
-            name: "video-first-launch-resource-download",
-            requireText: ["首次打开，正在下载视频资源"],
-            rejectText: ["视频资源下载失败"],
+            name: "video-first-launch-bundled-resources",
+            rejectText: ["视频资源下载失败", "Cloud resource manifest", "启动失败"],
           },
         });
       },
@@ -93,7 +91,7 @@ export default {
                 .find((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
                 ?.click();
             })()`);
-            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 720000, label: "loaded HyperFrames Studio after resource download" });
+            await ctx.waitFor(`document.querySelector('iframe[title*="HyperFrames"]')?.dataset.loaded === "true"`, { timeoutMs: 720000, label: "loaded HyperFrames Studio" });
             await new Promise((resolve) => setTimeout(resolve, 1200));
           },
           assert: async () => {

@@ -1,7 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { createReadStream, existsSync, readFileSync, writeFileSync } from "node:fs";
-import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { chmod, copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
@@ -11,7 +11,8 @@ const require = createRequire(import.meta.url);
 const desktopRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const license = path.join(desktopRoot, "resources", "licenses", "GPL-3.0.txt");
 const outputIndex = process.argv.indexOf("--outdir");
-const outputRoot = path.resolve(outputIndex < 0 ? path.join(desktopRoot, "dist-video-packs") : process.argv[outputIndex + 1]);
+const bundled = process.argv.includes("--bundled");
+const outputRoot = path.resolve(outputIndex < 0 ? path.join(desktopRoot, bundled ? "video-codecs" : "dist-video-packs") : process.argv[outputIndex + 1]);
 const platform = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "macos" : "linux";
 const arch = process.arch;
 
@@ -40,17 +41,24 @@ for (const id of ["ffmpeg", "ffprobe"]) {
   if (!binary || !existsSync(binary)) throw new Error(`Missing ${id} release binary.`);
   const packageRoot = path.dirname(binary);
   const metadata = JSON.parse(readFileSync(path.join(packageRoot, "package.json"), "utf8"));
-  const staging = await mkdtemp(path.join(os.tmpdir(), `ipollowork-${id}-pack-`));
+  const staging = bundled ? path.join(outputRoot, id) : await mkdtemp(path.join(os.tmpdir(), `ipollowork-${id}-pack-`));
+  await mkdir(staging, { recursive: true });
   try {
     await copyFile(binary, path.join(staging, path.basename(binary)));
+    if (process.platform !== "win32") await chmod(path.join(staging, path.basename(binary)), 0o755);
     await copyFile(license, path.join(staging, "LICENSE-GPL-3.0.txt"));
     await copyFile(path.join(packageRoot, "package.json"), path.join(staging, "BINARY-PACKAGE.json"));
     if (existsSync(path.join(packageRoot, "README.md"))) {
       await copyFile(path.join(packageRoot, "README.md"), path.join(staging, "BINARY-README.md"));
     }
+    if (bundled) {
+      const verified = spawnSync(path.join(staging, path.basename(binary)), ["-version"], { encoding: "utf8" });
+      if (verified.status !== 0) throw new Error(`Bundled ${id} failed its version check.`);
+      continue;
+    }
     const archive = pack(`ipollowork-${id}-${platform}-${arch}-${metadata.version}.tar.gz`, staging, ["."]);
     await record(archive);
   } finally {
-    await rm(staging, { recursive: true, force: true });
+    if (!bundled) await rm(staging, { recursive: true, force: true });
   }
 }

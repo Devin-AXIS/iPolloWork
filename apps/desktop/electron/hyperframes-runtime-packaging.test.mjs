@@ -46,10 +46,12 @@ test("keeps the separately packaged registry out of the cached runtime", () => {
   assert.ok(cleanupIndex < cacheSkipIndex);
 });
 
-test("bundles HyperFrames runtime and registry while pruning media binaries", () => {
+test("bundles one codec resource set alongside HyperFrames runtime and registry", () => {
   assert.match(electronBuildSource, /prepare-hyperframes-runtime\.mjs/);
   assert.match(electronBuilderSource, /from: hyperframes-runtime[\s\S]*to: hyperframes/);
   assert.match(electronBuilderSource, /from: \.\.\/\.\.\/vendor\/hyperframes\/registry[\s\S]*to: hyperframes\/registry/);
+  assert.match(electronBuilderSource, /from: video-codecs\s+to: video-codecs/);
+  assert.match(electronBuildSource, /package-video-resources\.mjs.*--bundled/);
   assert.match(prepareRuntimeSource, /pruneStaticMediaBinaries/);
   assert.match(prepareRuntimeSource, /\["ffmpeg-static", "ffprobe-static"\]/);
 });

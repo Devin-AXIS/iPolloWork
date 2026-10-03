@@ -8,7 +8,7 @@ import {
   type PptxShapeOverlay,
   type PptxTextOverlay,
 } from "./pptx-export";
-import { isPptxExportElement } from "./pptx-dom";
+import { isPptxExportElement, pptxCssPixels, pptxEffectiveOpacity } from "./pptx-dom";
 
 export type PptxElementKind = "shape" | "text" | "image" | "fallback";
 
@@ -63,19 +63,7 @@ function round(value: number) {
   return Number(value.toFixed(3));
 }
 
-function cssPixels(value: string) {
-  const pixels = Number.parseFloat(value);
-  return Number.isFinite(pixels) ? pixels : 0;
-}
 
-function effectiveOpacity(element: HTMLElement, slide: HTMLElement) {
-  let opacity = 1;
-  for (let current: HTMLElement | null = element; current && current !== slide; current = current.parentElement) {
-    const value = Number.parseFloat(current.ownerDocument.defaultView?.getComputedStyle(current).opacity ?? "1");
-    opacity *= Number.isFinite(value) ? value : 1;
-  }
-  return opacity;
-}
 
 function isUnsupportedVisualStyle(style: PptxElementStyle) {
   return style.backgroundImage !== "none"
@@ -116,7 +104,7 @@ function pseudoElementPaints(style: CSSStyleDeclaration) {
   if (style.display === "none" || style.visibility === "hidden" || Number(style.opacity) <= 0) return false;
   return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
-    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
+    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.filter !== "none"
     || style.backdropFilter !== "none"
@@ -165,7 +153,7 @@ function elementFrame(slideBox: DOMRect, box: DOMRect): PptxFrame {
 
 function hasSimpleShapePaint(style: CSSStyleDeclaration) {
   const fill = parsePptxColor(style.backgroundColor).transparency < 100;
-  const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(cssPixels);
+  const borderWidths = [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].map(pptxCssPixels);
   const uniformBorder = borderWidths.every((width) => width > 0)
     && new Set([style.borderTopColor, style.borderRightColor, style.borderBottomColor, style.borderLeftColor]).size === 1
     && new Set(borderWidths).size === 1;
@@ -175,7 +163,7 @@ function hasSimpleShapePaint(style: CSSStyleDeclaration) {
 function hasVisibleElementPaint(style: CSSStyleDeclaration) {
   return parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
-    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => cssPixels(width) > 0)
+    || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.outlineStyle !== "none"
     || style.filter !== "none"
@@ -195,7 +183,7 @@ export function pptxShapeNeedsFallback(style: PptxElementStyle & {
   const hasPaint = parsePptxColor(style.backgroundColor).transparency < 100
     || style.backgroundImage !== "none"
     || [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth]
-      .some((width) => cssPixels(width) > 0)
+      .some((width) => pptxCssPixels(width) > 0)
     || style.boxShadow !== "none"
     || style.outlineStyle !== "none"
     || style.filter !== "none"
@@ -227,7 +215,7 @@ export function pptxVisualElementPaints(input: {
   if (input.hasVisiblePseudo || input.hasStaticAnimation) return true;
   return parsePptxColor(input.backgroundColor).transparency < 100
     || input.backgroundImage !== "none"
-    || input.borderWidths.some((width) => cssPixels(width) > 0)
+    || input.borderWidths.some((width) => pptxCssPixels(width) > 0)
     || input.boxShadow !== "none"
     || input.outlineStyle !== "none"
     || input.filter !== "none"
@@ -335,7 +323,7 @@ function createTextPlan(element: HTMLElement, slide: HTMLElement, slideBox: DOMR
       textAlign: style.textAlign,
       lineHeight: style.lineHeight,
       letterSpacing: style.letterSpacing,
-      opacity: effectiveOpacity(element, slide),
+      opacity: pptxEffectiveOpacity(element, slide),
     },
   });
   const runs = editableTextRuns(element, slideBox.width);
@@ -362,7 +350,7 @@ function createShapePlan(element: HTMLElement, slide: HTMLElement, slideBox: DOM
         borderWidth: style.borderTopWidth,
         borderRadius: style.borderTopLeftRadius,
         boxShadow: style.boxShadow,
-        opacity: effectiveOpacity(element, slide),
+        opacity: pptxEffectiveOpacity(element, slide),
       },
     }),
   };
@@ -402,7 +390,7 @@ export function collectPptxElementPlans(slide: HTMLElement): PptxElementPlan[] {
 
     if (shouldFallbackElement(element, style)) {
       const minimumPadding = element.matches("h1,h2,h3,h4,h5,h6,p,li,pre") || hasPptxCapturedPseudoElement(element)
-        ? Math.max(4, cssPixels(style.fontSize) * 0.2)
+        ? Math.max(4, pptxCssPixels(style.fontSize) * 0.2)
         : 0;
       const capturePadding = pptxFallbackCapturePadding(style.boxShadow, style.filter, minimumPadding);
       const paddedBox = {

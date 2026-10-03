@@ -21,20 +21,17 @@ import type {
   ConversationStatus,
 } from "./conversation-engine";
 import {
+  conversationIsRecord as isRecord,
   conversationContextUsageFromTokens,
   conversationMessageContextUsage,
   conversationMessageMetadata,
 } from "./conversation-engine";
 import {
-  describeOpencodeSessionError,
+  describeConversationSessionError,
   mapOpencodePartToUIParts,
   opencodePartHasVisibleAssistantOutput,
   snapshotToUIMessages,
 } from "./opencode-message-adapter";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 export function mapOpenCodeSession(session: Session): ConversationSession {
   return {
@@ -224,7 +221,7 @@ export function mapOpenCodeConversationEvent(
     return {
       type: "session.error",
       sessionId,
-      errorText: describeOpencodeSessionError(isRecord(properties) ? properties.error : undefined),
+      errorText: describeConversationSessionError(isRecord(properties) ? properties.error : undefined),
       ...(state?.latestUserMessageIds.get(sessionId)
         ? { parentUserMessageId: state.latestUserMessageIds.get(sessionId) }
         : {}),

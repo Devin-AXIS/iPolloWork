@@ -1351,5 +1351,3 @@ export const SkillsView = forwardRef<SkillsViewHandle, SkillsViewProps>(function
     </section>
   );
 });
-
-export default SkillsView;

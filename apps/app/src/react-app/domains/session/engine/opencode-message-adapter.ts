@@ -104,7 +104,6 @@ export function describeConversationSessionError(error: unknown, fallback = "Ses
   return serialized && serialized !== "{}" ? serialized : fallback;
 }
 
-export const describeOpencodeSessionError = describeConversationSessionError;
 
 function sessionErrorMessageId(turnKey: string) {
   return `${SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX}${turnKey}`;
@@ -314,7 +313,7 @@ export function snapshotToUIMessages(snapshot: iPolloWorkSessionSnapshot): UIMes
     const error = message.info.role === "assistant" && "error" in message.info ? message.info.error : undefined;
     if (!error) return [uiMessage];
 
-    const errorMessage = createSessionErrorUIMessage(parentUserMessageId || message.info.id, describeOpencodeSessionError(error), {
+    const errorMessage = createSessionErrorUIMessage(parentUserMessageId || message.info.id, describeConversationSessionError(error), {
       created,
       ...(parentUserMessageId ? { parentUserMessageId } : {}),
     });

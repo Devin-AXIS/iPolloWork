@@ -53,7 +53,7 @@ import { createConnectionsStore, useConnectionsStoreSnapshot } from "@/react-app
 import { useOrgMcpConnections } from "@/react-app/domains/connections/use-org-mcp-connections";
 import { createiPolloWorkServerStore, useiPolloWorkServerStoreSnapshot } from "@/react-app/domains/connections/ipollowork-server-store";
 import { createProviderAuthStore, useProviderAuthStoreSnapshot } from "@/react-app/domains/connections/provider-auth/store";
-import { providerEngineAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
+import { modelRuntimeAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
 import { selectSharedProviderWorkspace } from "@/react-app/domains/connections/provider-auth/shared-provider-workspace";
 import { formatProviderAuthName } from "@/react-app/domains/connections/provider-auth/provider-auth-curation";
 import ProviderAuthModal from "@/react-app/domains/connections/provider-auth/provider-auth-modal";
@@ -513,7 +513,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   // Provider discovery/auth belongs to the application account. Use the
   // managed OpenCode sidecar as that control plane for every project engine.
   const sharedProviderEngineId = DEFAULT_ENGINE_ID;
-  const activeProviderCapabilities = providerEngineAdapters.get(sharedProviderEngineId).capabilities;
+  const activeProviderCapabilities = modelRuntimeAdapters.get(sharedProviderEngineId).capabilities;
   const selectedWorkspaceRoot = selectedWorkspace?.path?.trim() || "";
   const sharedProviderRoot = sharedProviderWorkspace?.path?.trim() || "";
   const selectedWorkspaceDisplay = useMemo<WorkspaceDisplay>(
@@ -922,7 +922,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
-    return providerEngineAdapters.createClient(sharedProviderEngineId, {
+    return modelRuntimeAdapters.createClient(sharedProviderEngineId, {
       endpoint: sharedProviderEndpoint,
       directory: sharedProviderRoot,
     });
@@ -933,7 +933,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
   // sees null and reports a false "not connected" error.
   routeStateRef.current.providerClient = sharedProviderClient;
   const runtimeModelCatalogSources = useMemo<readonly ProviderListQueryInput[]>(() => {
-    const supportedEngines = new Set(providerEngineAdapters.ids());
+    const supportedEngines = new Set(modelRuntimeAdapters.ids());
     const mountedEngines = new Set<string>();
     return workspaces.flatMap((workspace): ProviderListQueryInput[] => {
       const engineId = workspace.engineId?.trim() || DEFAULT_ENGINE_ID;
@@ -944,7 +944,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
         hostToken: ipolloworkServerSnapshot.ipolloworkServerAuth.hostToken,
       });
       if (!endpoint?.token) return [];
-      const client = providerEngineAdapters.createClient(engineId, {
+      const client = modelRuntimeAdapters.createClient(engineId, {
         endpoint,
         directory: workspace.path,
       });
@@ -1221,7 +1221,7 @@ function SettingsRouteContent(props: SettingsSurfaceProps = {}) {
     setLocalProviderStatus(null);
     setLocalProviderError(null);
     try {
-      const engineAdapter = providerEngineAdapters.get(sharedProviderEngineId);
+      const engineAdapter = modelRuntimeAdapters.get(sharedProviderEngineId);
       await engineAdapter.patchRuntimeProviders(
         {
           ipolloworkClient: client,

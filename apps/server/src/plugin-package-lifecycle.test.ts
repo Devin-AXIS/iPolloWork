@@ -1198,6 +1198,12 @@ describe("plugin package lifecycle", () => {
 
     await lifecycle.installPluginPackage({ serverConfig: config, packageRoot });
     expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config, engineId: "deepseek-harness", names: ["research-topic"],
+    })).toEqual([expect.objectContaining({ type: "command", name: "research-topic" })]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
+      serverConfig: config, engineId: "deepseek-harness", names: [],
+    })).toEqual([]);
+    expect(await lifecycle.listPortablePluginPromptCapabilities({
       serverConfig: config,
       engineId: "deepseek-harness",
     })).toEqual([
@@ -1778,8 +1784,8 @@ describe("plugin package lifecycle", () => {
           { pluginId: "github", version: "0.1.4", installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-official", version: "0.3.0", installedVersion: null, updateAvailable: false },
           { pluginId: "xiaohongshu-ops", version: "0.4.17", installedVersion: null, updateAvailable: false },
-          { pluginId: "douyin-ops", version: "0.2.14", installedVersion: null, updateAvailable: false },
-          { pluginId: "wechat-channels-ops", version: "0.1.11", installedVersion: null, updateAvailable: false },
+          { pluginId: "douyin-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/douyin-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
+          { pluginId: "wechat-channels-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/wechat-channels-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.17", installedVersion: "0.3.17", updateAvailable: false },
           { pluginId: "video-agent", version: "0.3.10", installedVersion: "0.3.10", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
@@ -1928,18 +1934,19 @@ describe("plugin package lifecycle", () => {
         .toMatchObject({ extensionId: "wechat-official", action: "delete-comment", effect: "destructive" });
 
       const socialServices = [
-        { id: "xiaohongshu-ops", version: "0.4.17", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
-        { id: "douyin-ops", version: "0.2.14", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
-        { id: "wechat-channels-ops", version: "0.1.11", skill: "wechat-channels-ops-worker", heading: "# 视频号运营台", action: "open-workbench" },
+        { id: "xiaohongshu-ops", skill: "xhs-ops-worker", heading: "# 日程与当前会话执行", action: "open-workbench" },
+        { id: "douyin-ops", skill: "douyin-ops-worker", heading: "# 抖音运营执行", action: "open-workbench" },
+        { id: "wechat-channels-ops", skill: "wechat-channels-ops-worker", heading: "# 视频号运营台", action: "open-workbench" },
       ];
       for (const service of socialServices) {
+        const bundledVersion = JSON.parse(await readFile(new URL(`../../../examples/plugin-packages/${service.id}/ipollowork.plugin.json`, import.meta.url), "utf8")).package.version;
         const socialInstallation = await fetch(`${base}/workspace/${WORKSPACE_ID}/plugin-packages/catalog/${service.id}/install`, {
           method: "POST",
           headers,
         });
         expect(socialInstallation.status).toBe(200);
         expect(await socialInstallation.json()).toMatchObject({
-          result: { status: "installed", pluginId: service.id, version: service.version },
+          result: { status: "installed", pluginId: service.id, version: bundledVersion },
           item: { pluginId: service.id, manifest: { source: { origin: "builtin", trusted: true } } },
         });
         expect(await readFile(join(workspaceRoot, ".opencode", "skills", service.skill, "SKILL.md"), "utf8"))

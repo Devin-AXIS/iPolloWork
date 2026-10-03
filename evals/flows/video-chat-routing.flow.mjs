@@ -14,7 +14,7 @@ export default {
         action: async () => {
           for (const [directory, files] of [
             ["apps/app/", ["tests/template-brief.test.ts", "tests/video-artifact-entry.test.ts", "tests/video-hyperframes-panel.test.ts"]],
-            ["apps/server/", ["src/opencode-plugins/ipollowork-extensions-preview.test.ts"]],
+            ["apps/server/", ["src/ipollowork-runtime-config.test.ts"]],
           ]) {
             const result = spawnSync("bun", ["test", ...files], {
               cwd: fileURLToPath(new URL(`../../${directory}`, import.meta.url)),

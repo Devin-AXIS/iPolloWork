@@ -14,9 +14,9 @@ Use this Skill for scene-bound narration in an active Video Studio project when 
 3. Use only the media action and selected voice supplied by iPolloWork. Do not substitute a generic speech tool or another provider.
 4. Treat returned duration and timing data as authoritative. Extend the current scene and shift every later scene, transition, caption, audio start, and animation timestamp when narration runs longer.
 5. Keep one immutable narration asset and one timeline audio node per narrated scene; remove only obsolete narration references, never music or sound effects.
-6. Run both the HyperFrames project check and the active session's voiceover timeline validation before finishing.
+6. Save the edited composition and let the active session run its combined project and voiceover validation. Run checks yourself only when the task explicitly delegates validation; do not start a second validation loop.
 
-With an authorized voice service, use the saved valid voice selection; otherwise use the default voice supplied by the active iPolloWork voice contract. Do not hardcode or infer a provider, model or voice ID in this Skill. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and let the Video Studio voice panel explain how to connect the service in Authorization Center. Never request an API key in chat or fabricate narration assets.
+With an authorized voice service, use the saved valid voice selection; otherwise use the default voice supplied by the active iPolloWork voice contract. Do not hardcode or infer a provider, model or voice ID in this Skill. Respect an explicitly saved `enabled: false` choice unless the user requests narration. Without an authorized voice service, continue visual video work without new narration, preserve existing audio, and let the Video Studio voice panel explain how to connect the service in Authorization Center. If narration is required by the requested delivery or saved storyboard, report partial delivery until it is available or the user explicitly changes that requirement. Never request an API key in chat or fabricate narration assets.
 
 ## Content scope
 

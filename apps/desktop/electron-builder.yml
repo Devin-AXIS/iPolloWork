@@ -18,6 +18,8 @@ files:
   - "!server/dist/opencode-plugins/**"
   - package.json
 extraResources:
+  - from: video-codecs
+    to: video-codecs
   - from: ../../examples/plugin-packages/figma
     to: plugin-packages/figma
   - from: ../../examples/plugin-packages/notion

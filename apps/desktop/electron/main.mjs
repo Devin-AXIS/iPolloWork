@@ -538,8 +538,8 @@ async function startHyperframesPreview(event, options = {}) {
 }
 
 async function startHyperframesPreviewUnlocked(event, options = {}) {
-  if (!await videoResourceManager.currentPaths()) {
-    throw new Error("视频工作台首次使用所需的 FFmpeg / FFprobe 资源尚未下载完成。");
+  if (!await videoResourceManager.applyEnvironment()) {
+    throw new Error("视频组件未完整打包，请重新安装完整的 iPolloWork 安装包。");
   }
   const sessionId = String(options.sessionId ?? "").trim();
   const port = Number(options.port);
@@ -1671,10 +1671,7 @@ const enginePackageManager = createEnginePackageManager({
     });
   },
 });
-const videoResourceManager = createVideoResourceManager({
-  app,
-  fetch: electronNet.fetch.bind(electronNet),
-});
+const videoResourceManager = createVideoResourceManager({ app });
 
 let runtimeDisposedForQuit = false;
 let runtimeDisposeInProgress = false;
@@ -2375,7 +2372,6 @@ const desktopCommandHandlers = {
       return enginePackageManager.uninstall(String(args[0] ?? "").trim());
   },
   "videoResourceInfo": async () => videoResourceManager.info(),
-  "videoResourceInstall": async (_event, ...args) => videoResourceManager.install(String(args[0] ?? "").trim() || DEFAULT_DEN_BASE_URL),
   "orchestratorStatus": async (event, ...args) => {
       return runtimeManager.orchestratorStatus();
   },

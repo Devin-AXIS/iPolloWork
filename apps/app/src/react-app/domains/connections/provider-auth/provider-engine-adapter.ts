@@ -201,6 +201,3 @@ export const modelRuntimeAdapters = new ModelRuntimeAdapterRegistry([
   deepSeekHarnessProviderEngineAdapter,
   codexHarnessProviderEngineAdapter,
 ]);
-
-/** Remove after the settings/session provider-management routes migrate to the canonical name. */
-export const providerEngineAdapters = modelRuntimeAdapters;

@@ -129,7 +129,7 @@ import { usePanelTabStore } from "@/react-app/domains/session/panel/panel-tab-st
 import { useModelPicker } from "@/react-app/domains/session/modals/use-model-picker";
 import { CreateRemoteWorkspaceModal } from "@/react-app/domains/workspace/create-remote-workspace-modal";
 import { useSessionProviderAuth } from "@/react-app/domains/connections/provider-auth/use-session-provider-auth";
-import { providerEngineAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
+import { modelRuntimeAdapters } from "@/react-app/domains/connections/provider-auth/provider-engine-adapter";
 import { selectSharedProviderWorkspace } from "@/react-app/domains/connections/provider-auth/shared-provider-workspace";
 import { useMcpConnectedCount } from "@/react-app/domains/connections/use-mcp-connected-count";
 import { useSessionMcpMaintenance } from "@/react-app/domains/connections/use-session-mcp-maintenance";
@@ -376,7 +376,7 @@ export function SessionRoute() {
   const engineProviderClient = useMemo(() => {
     if (activeEngineId === DEFAULT_ENGINE_ID) return opencodeClient;
     if (!selectedWorkspaceEndpoint || !selectedWorkspaceServerToken) return null;
-    return providerEngineAdapters.createClient(activeEngineId, {
+    return modelRuntimeAdapters.createClient(activeEngineId, {
       endpoint: selectedWorkspaceEndpoint,
       directory: selectedWorkspace?.path,
     });
@@ -406,7 +406,7 @@ export function SessionRoute() {
   );
   const sharedProviderClient = useMemo(() => {
     if (!sharedProviderEndpoint?.token) return null;
-    return providerEngineAdapters.createClient(sharedProviderEngineId, {
+    return modelRuntimeAdapters.createClient(sharedProviderEngineId, {
       endpoint: sharedProviderEndpoint,
       directory: sharedProviderRoot,
     });
@@ -1011,7 +1011,7 @@ export function SessionRoute() {
     void (async () => {
       let disabledProviders: string[] = [];
       try {
-        disabledProviders = await providerEngineAdapters
+        disabledProviders = await modelRuntimeAdapters
           .get(sharedProviderEngineId)
           .connect(sharedProviderClient)
           .readDisabledProviders();
@@ -2696,7 +2696,7 @@ export function SessionRoute() {
     ],
     execute: async (rawArgs: unknown) => {
       if (
-        providerEngineAdapters.get(sharedProviderEngineId).capabilities.customProviders
+        modelRuntimeAdapters.get(sharedProviderEngineId).capabilities.customProviders
         && checkDesktopRestriction({ restriction: "allowCustomProviders" })
       ) {
         return { ok: false, error: "Custom providers are disabled by your organization." };
@@ -3243,7 +3243,7 @@ export function SessionRoute() {
       onToggleProvider={async (providerId, enable) => {
         if (!sharedProviderClient) return;
         try {
-          const adapter = providerEngineAdapters.get(sharedProviderEngineId);
+          const adapter = modelRuntimeAdapters.get(sharedProviderEngineId);
           if (!adapter.capabilities.disabledProviders) return;
           const connection = adapter.connect(sharedProviderClient);
           const current = await connection.readDisabledProviders();

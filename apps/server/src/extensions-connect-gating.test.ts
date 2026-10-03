@@ -350,8 +350,8 @@ describe("extension and engine host tool gating", () => {
     expect(scheduleDescription).toContain("If the conversation already contains the required scheduling details, call this tool immediately");
     expect(scheduleDescription).toContain("include automation with enabled=true");
     const extensionDescription = catalog.tools?.find((tool) => tool.name === "ipollowork_extension_list_actions")?.description;
-    expect(extensionDescription).toContain("upload the exact mediaPath with the returned extensionId");
-    expect(extensionDescription).toContain("not a reason to ask the user to upload the generated MP4");
+    expect(extensionDescription).toContain("ipollowork-video-studio");
+    expect(extensionDescription).toContain("Host MCP actions own rendering and authenticated publication");
 
     const callResponse = await fetch(`${base}/engine-tools/call`, {
       method: "POST",

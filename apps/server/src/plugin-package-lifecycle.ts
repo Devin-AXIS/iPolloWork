@@ -1230,7 +1230,9 @@ export async function listInstalledPluginPackages(input: { serverConfig: ServerC
 export async function listPortablePluginPromptCapabilities(input: {
   serverConfig: ServerConfig;
   engineId: string;
+  names?: readonly string[];
 }): Promise<PortablePluginPromptCapability[]> {
+  const selectedNames = input.names ? new Set(input.names) : null;
   const state = await readState(input.serverConfig);
   const capabilities: PortablePluginPromptCapability[] = [];
   for (const installed of Object.values(state.packages)) {
@@ -1246,6 +1248,8 @@ export async function listPortablePluginPromptCapabilities(input: {
     for (const resource of manifest.resources) {
       if ((resource.type !== "command" && resource.type !== "agent") || !resource.path) continue;
       if (installed.disabledResourceIds.includes(resource.id)) continue;
+      const name = basename(resource.path, ".md");
+      if (selectedNames && !selectedNames.has(name)) continue;
       const sourcePath = pluginEngineSourcePath(projected, resource.path) ?? resource.path;
       if (!version.files.some((file) => file.path === sourcePath)) continue;
       const content = await readFile(resolveWithin(projected.artifactRoot, sourcePath), "utf8");
@@ -1253,7 +1257,7 @@ export async function listPortablePluginPromptCapabilities(input: {
         pluginId: installed.pluginId,
         resourceId: resource.id,
         type: resource.type,
-        name: basename(resource.path, ".md"),
+        name,
         ...(resource.description || resource.label || manifest.description
           ? { description: resource.description || resource.label || manifest.description }
           : {}),

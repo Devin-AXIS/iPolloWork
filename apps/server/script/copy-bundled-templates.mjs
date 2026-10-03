@@ -7,6 +7,13 @@ const serverRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(serverRoot, "bundled-templates");
 const target = process.argv[2] ?? join(serverRoot, "dist", "bundled-templates");
 
+// Remove retired plugin output from incremental builds before distribution.
+for (const name of ["ipollowork-extensions-preview", "ipollowork-extensions-preview-connect-steering", "ipollowork-capabilities-knowledge", "ipollowork-anthropic-adaptive-thinking", "ipollowork-anthropic-tool-schema", "ipollowork-moonshot-temperature"]) {
+  for (const extension of ["js", "js.map", "d.ts", "d.ts.map"]) {
+    await rm(join(serverRoot, "dist", "opencode-plugins", `${name}.${extension}`), { force: true });
+  }
+}
+
 await rm(target, { recursive: true, force: true, maxRetries: 8, retryDelay: 250 });
 await mkdir(dirname(target), { recursive: true });
 await cp(source, target, { recursive: true });
