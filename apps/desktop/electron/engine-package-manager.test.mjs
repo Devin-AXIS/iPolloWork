@@ -7,7 +7,22 @@ import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 
-import { createEnginePackageManager } from "./engine-package-manager.mjs";
+import { createEnginePackageManager, run } from "./engine-package-manager.mjs";
+
+test("engine package commands wait for inherited stdout and stderr to close after exit", async () => {
+  const delayedOutput = String.raw`setTimeout(() => {
+    process.stdout.write("archive-entry\n");
+    process.stderr.write("archive-diagnostic\n");
+  }, 50);`;
+  for (const code of [0, 7]) {
+    const parent = `const { spawn } = require("node:child_process");
+      spawn(process.execPath, ["-e", ${JSON.stringify(delayedOutput)}], { stdio: ["ignore", 1, 2] }).unref();
+      process.exit(${code});`;
+    const result = run(process.execPath, ["-e", parent]);
+    if (code === 0) assert.deepEqual(await result, { stdout: "archive-entry\n", stderr: "archive-diagnostic\n" });
+    else await assert.rejects(result, /failed \(7\): archive-diagnostic/);
+  }
+});
 
 function platformAssetSegment(platform = process.platform) {
   if (platform === "darwin") return "macos";
