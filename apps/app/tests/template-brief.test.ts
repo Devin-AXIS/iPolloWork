@@ -82,8 +82,8 @@ describe("template brief", () => {
         expect(prompt).not.toContain("design-slides.md");
       } else if (category === "video") {
         expect(prompt).toContain("active Video surface contract");
-        expect(prompt).toContain("references/video.md only when that exact file is already present");
-        expect(prompt).toContain("Never glob or search a parent directory");
+        expect(prompt).toContain("references relative to the installed Skill");
+        expect(prompt).not.toContain("Read references/video.md only when");
         expect(prompt).toContain("core-v1-video/catalog.md");
         expect(prompt).toContain("Use exact reads, not discovery globs");
         expect(prompt).toContain("workspace-external directory");
@@ -160,7 +160,7 @@ describe("template brief", () => {
 
   test("keeps each template category on its own application contract", () => {
     const video = templateBriefPrompt({
-      template: { category: "video", title: "Launch Film", applyChecklist: ["Keep composition"] },
+      template: { id: "ipollowork.html-anything.motion-frames", category: "video", title: "Motion Frames", applyChecklist: ["Keep composition"] },
       entryPath: "video/ses_a/index.html",
       briefPath: "video/ses_a/brief.json",
     });
@@ -171,6 +171,7 @@ describe("template brief", () => {
     });
 
     expect(video).toContain("Follow the Video voiceover contract and saved voiceover.json settings");
+    expect(video).toContain("using the selected `Motion Frames` template");
     expect(video).not.toContain("Decide whether narration materially helps");
     expect(video).toContain("content-led storyboard");
     expect(video).toContain("add, remove, reorder, or retime scenes");
@@ -361,13 +362,25 @@ describe("template brief", () => {
     expect(selectConversationTemplate("不用系统模板，帮我自定义一份融资路演 PPT", catalog)).toBeNull();
   });
 
-  test("routes vertical social video requests to the matching video template", () => {
+  test.each([
+    "帮我做一段模仿 OpenAI GPT-6 发布风格的宣传片",
+    "制作一个适合抖音的竖屏短视频",
+    "Make a product launch video with a dark cinematic style",
+  ])("starts new videos from the scaffold instead of an automatic template: %s", (prompt) => {
     const catalog = [
-      catalogItem({ id: "test.video-default", category: "video", title: "Product Film" }),
+      catalogItem({ id: "ipollowork.html-anything.motion-frames", category: "video", title: "Motion Frames" }),
+      catalogItem({ id: "ipollowork.hyperframes.release-spotlight", category: "video", title: "Release Spotlight", tags: ["product", "launch", "dark", "cinematic"] }),
       catalogItem({ id: "test.video-vertical", category: "video", title: "Vertical Social Story", tags: ["vertical", "social"] }),
     ];
 
-    expect(selectConversationTemplate("制作一个适合抖音的竖屏短视频", catalog)?.manifest.id).toBe("test.video-vertical");
+    expect(inferConversationTemplateIntent(prompt)?.category).toBe("video");
+    expect(selectConversationTemplate(prompt, catalog)).toBeNull();
+    expect(selectConversationTemplate(prompt, catalog, "video")).toBeNull();
+  });
+
+  test("keeps automatic website template selection", () => {
+    const catalog = [catalogItem({ id: "ipollowork.html-anything.prototype-web", category: "site", title: "Prototype Web" })];
+    expect(selectConversationTemplate("创建一个产品官网", catalog)?.manifest.id).toBe("ipollowork.html-anything.prototype-web");
   });
 
   test("keeps ordinary questions out of an existing template edit context", () => {

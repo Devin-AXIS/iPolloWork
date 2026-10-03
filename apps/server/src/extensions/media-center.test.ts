@@ -593,6 +593,29 @@ describe("Media Center extension", () => {
     expect(result).toMatchObject({ ok: true, result: { output: { valid: true, voiceoverCount: 1 } } });
   });
 
+  test("returns malformed storyboard content to delivery repair and accepts the corrected native script", async () => {
+    const workspace = await workspaceConfig();
+    await writeFile(join(workspace.root, "video.html"), `<!doctype html><main data-composition-id="main" data-duration="5">
+      <section id="intro" class="scene clip" data-start="0" data-duration="5">Intro</section>
+    </main>`);
+    const validate = () => callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "video.html" }, { directory: workspace.root });
+    for (const script of ["| Time | Scene |\n|---|---|\n| 0–5 | Intro |", "---\nmusic_prompt: none\n## Frame 1 — Intro"]) {
+      await writeFile(join(workspace.root, "STORYBOARD.md"), script);
+      expect(await validate()).toMatchObject({
+        ok: true,
+        result: { output: { valid: false, issues: expect.arrayContaining([
+          expect.objectContaining({ code: "invalid_storyboard_music_plan" }),
+        ]) } },
+      });
+    }
+    await writeFile(join(workspace.root, "STORYBOARD.md"), "---\nmusic_prompt: none\n---\n\n## Frame 1 — Intro\n- scene: Intro\n- duration: 5s\n- transition_in: cut\n- status: outline\n");
+    expect(await validate()).toMatchObject({ ok: true, result: { output: { valid: true, issues: [] } } });
+    // Only malformed authored content is repairable; path failures still reject.
+    await expect(callMediaExtensionAction(workspace.config, env({}), "voiceover_timeline_validate",
+      { sourcePath: "../video.html" }, { directory: workspace.root })).rejects.toBeDefined();
+  });
+
   test("allows unused immutable voiceover revisions once the chosen audio is mounted", async () => {
     const workspace = await workspaceConfig();
     await mkdir(join(workspace.root, "assets"), { recursive: true });
@@ -798,7 +821,12 @@ describe("Media Center extension", () => {
     await writeFile(join(workspace.root, "video.html"), silent);
     expect(JSON.stringify(await validate())).toContain('planned_music_missing');
     await writeFile(join(workspace.root, "STORYBOARD.md"), '---\nmusic_prompt: none');
-    await expect(validate()).rejects.toMatchObject({ code: 'invalid_storyboard_music_plan' });
+    expect(await validate()).toMatchObject({
+      ok: true,
+      result: { output: { valid: false, issues: expect.arrayContaining([
+        expect.objectContaining({ code: "invalid_storyboard_music_plan" }),
+      ]) } },
+    });
   });
 
   test("matches nested video music against a workspace-relative storyboard asset", async () => {

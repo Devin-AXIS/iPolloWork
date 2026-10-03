@@ -148,13 +148,20 @@ describe("artifact file routes", () => {
     const downloaded = await fetch(`${base}/workspace/ws_1/files/raw?path=${path}`, { headers: auth(token) });
     expect(downloaded.headers.get("content-type")).toBe("video/mp4");
     expect((await downloaded.arrayBuffer()).byteLength).toBe(bytes.length);
-    // Legacy JSON binary writes retain their original 5 MB bound, using the
-    // same isolated upload connection as the multipart rejection cases.
+  });
+
+  test("rejects legacy JSON binary uploads above 5 MB without creating an asset", async () => {
+    const root = await createWorkspaceRoot();
+    const { base, token } = await startiPolloWorkServer(root);
+    const path = "large.png";
+    const bytes = new Uint8Array(5_100_000).fill(37);
+    // This bound uses its own server, independently of multipart rejections.
     const legacy = await fetch(`${base}/workspace/ws_1/files/raw`, {
-      method: "POST", headers: { ...auth(token), Connection: "close" }, body: JSON.stringify({ path: "large.png", dataBase64: Buffer.from(bytes).toString("base64") }),
+      method: "POST", headers: { ...auth(token), Connection: "close" }, body: JSON.stringify({ path, dataBase64: Buffer.from(bytes).toString("base64") }),
     });
     expect(legacy.status).toBe(413);
     await legacy.arrayBuffer();
+    await expect(readFile(join(root, path))).rejects.toMatchObject({ code: "ENOENT" });
   });
   test("persists session outputs independently of chat, isolates owners, and rejects unsafe paths", async () => {
     const root = await createWorkspaceRoot();

@@ -373,7 +373,7 @@ describe("plugin package manifest", () => {
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual([
       "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-voiceover",
     ]);
-    expect(video.manifest.package?.version).toBe("0.3.11");
+    expect(video.manifest.package?.version).toBe("0.3.12");
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();
