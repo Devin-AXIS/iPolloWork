@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { copyFileSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   assertServerRuntimeDependencies,
   stageServerConstants,
+  stageServerRuntime,
   stageServerRuntimeTypes,
 } from "./server-packaging.mjs";
 
@@ -266,9 +267,7 @@ run(nodeCmd, [resolve(__dirname, "validate-renderer-assets.mjs")], repoRoot);
 // that still points at the repository root. Imports cannot escape app.asar.
 stageServerConstants({ serverDistDir, constantsSrc });
 stageServerRuntimeTypes({ serverDistDir, runtimeTypesDistDir: resolve(runtimeTypesRoot, "dist") });
-rmSync(packagedServerRoot, { recursive: true, force: true });
-cpSync(serverDistDir, resolve(packagedServerRoot, "dist"), { recursive: true });
-copyFileSync(serverPackagePath, resolve(packagedServerRoot, "package.json"));
+stageServerRuntime({ serverDistDir, serverPackagePath, packagedServerRoot });
 for (const fileName of readdirSync(electronRoot).filter((name) => name.endsWith(".mjs")).sort()) {
   run(nodeCmd, ["--check", resolve(electronRoot, fileName)], repoRoot);
 }

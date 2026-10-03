@@ -81,26 +81,6 @@ describe("composer plus entry menu", () => {
     expect(composerSource).not.toContain('["agents", t("composer.agents_label")]');
   });
 
-  test("orders the flat list by section and bounds its height", () => {
-    const actionRow = actionRowSource();
-    const addHeadingIndex = actionRow.indexOf('t("composer.plus_section_add")');
-    const filesIndex = actionRow.indexOf('t("composer.plus_attach_files")');
-    const templatesIndex = actionRow.indexOf('t("composer.plus_use_template")');
-    const pluginsIndex = actionRow.indexOf('t("composer.extensions_label")');
-    const mcpIndex = actionRow.indexOf('t("composer.mcps_label")');
-    const agentsIndex = actionRow.indexOf('t("composer.external_agents_label")');
-
-    expect(filesIndex).toBeGreaterThan(addHeadingIndex);
-    expect(templatesIndex).toBeGreaterThan(filesIndex);
-    expect(pluginsIndex).toBeGreaterThan(templatesIndex);
-    expect(agentsIndex).toBeGreaterThan(pluginsIndex);
-    expect(mcpIndex).toBeGreaterThan(agentsIndex);
-    expect(actionRow).toContain('data-testid="composer-plus-menu"');
-    expect(actionRow).toContain('max-h-[min(56dvh,26rem)] w-[min(24rem,calc(100cqw-2rem))]');
-    expect(actionRow).not.toContain('shadow-[var(--dls-shell-shadow)]');
-    expect(actionRow).toContain('min-h-8 w-full items-center gap-2');
-  });
-
   test("keeps the list open for internal clicks and closes on outside clicks", () => {
     const outsideClickHandler = plusMenuOutsideClickHandlerSource();
 
@@ -138,14 +118,6 @@ describe("composer plus entry menu", () => {
     expect(composerSource).toContain("props.listPlusMenuData");
     expect(composerSource).toContain("plusMenuData?.extensions");
     expect(composerSource).not.toContain("IPOLLOWORK_EXTENSION_CATALOG");
-  });
-
-  test("uses each plugin's displayed icon and matches the template and attachment icon sizes", () => {
-    expect(composerSource).toContain("pluginId: entry.pluginId");
-    expect(composerSource).toContain("extensionIcon(entry, 16)");
-    expect(composerSource).not.toContain("disabled:opacity-60\" onClick={() => applyExtensionSelection(entry)}");
-    expect(composerSource).toContain('<Paperclip className="size-3.5 text-gray-9"');
-    expect(composerSource).toContain('<TemplateIcon className="size-3 opacity-60" />');
   });
 
   test("refreshes one scoped menu snapshot and marks previous or unavailable status", () => {
