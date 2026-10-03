@@ -1,4 +1,5 @@
-import { test, expect } from "bun:test";
+import { test, expect, spyOn } from "bun:test";
+import * as fs from "node:fs/promises";
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
@@ -144,6 +145,159 @@ test("built-in export starts Studio once, resumes progress, verifies output and 
     await expect(videoRenderAction(workspace, "video_render_start", { ...args, sourcePath: "../other/index.html" })).rejects.toThrow();
     await expect(videoRenderAction(workspace, "video_render_status", { ...args, operationKey: "unknown" })).rejects.toThrow("No export exists");
   } finally {
+    globalThis.fetch = nativeFetch;
+    if (previous === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY; else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a delayed preparing snapshot cannot overwrite the committed Studio job or its encoder failure", async () => {
+  const root = await fs.realpath(await mkdtemp(join(tmpdir(), "ipw-export-race-")));
+  const sourcePath = "video/ses_race/index.html", operationKey = "delayed-status";
+  const workspace = { id: "ws_race", path: root }, args = { sourcePath, operationKey };
+  const renders = join(root, "video/ses_race/renders");
+  const receiptPath = join(renders, `.export-${createHash("sha256").update(operationKey).digest("hex")}.json`);
+  const nativeFetch = globalThis.fetch, previous = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  const nativeRealpath = fs.realpath, nativeRead = fs.readFile, nativeRm = fs.rm;
+  let releaseLookup = () => {}, lookupStarted = () => {}, releaseSnapshot = () => {}, snapshotRead = () => {}, releaseStudio = () => {};
+  const lookupGate = new Promise<void>(resolve => { releaseLookup = resolve; });
+  const lookupPending = new Promise<void>(resolve => { lookupStarted = resolve; });
+  const snapshotGate = new Promise<void>(resolve => { releaseSnapshot = resolve; });
+  const snapshotPending = new Promise<void>(resolve => { snapshotRead = resolve; });
+  const studioGate = new Promise<void>(resolve => { releaseStudio = resolve; });
+  let firstLookup = true, firstRead = true, firstSave = true, starts = 0;
+  await mkdir(renders, { recursive: true });
+  await writeFile(join(root, sourcePath), "<html></html>");
+  const discovery = join(root, "bridge.json");
+  await writeFile(discovery, JSON.stringify({ baseUrl: "http://127.0.0.1:54321", token: "test-token" }));
+  process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+  // Bun's spies require every fs overload; forwarding preserves encoding/results.
+  const lookup = spyOn(fs, "realpath").mockImplementation((async (...args: Parameters<typeof fs.realpath>) => {
+    if (args[0] === receiptPath && firstLookup) { firstLookup = false; lookupStarted(); await lookupGate; }
+    return nativeRealpath(...args);
+  }) as typeof fs.realpath);
+  const read = spyOn(fs, "readFile").mockImplementation((async (...args: Parameters<typeof fs.readFile>) => {
+    const text = await nativeRead(...args);
+    if (args[0] === receiptPath && firstRead) { firstRead = false; snapshotRead(); await snapshotGate; }
+    return text;
+  }) as typeof fs.readFile);
+  const remove = spyOn(fs, "rm").mockImplementation(async (path, options) => {
+    await nativeRm(path, options);
+    if (String(path).startsWith(`${receiptPath}.`) && firstSave) {
+      firstSave = false;
+      // Release the captured read after save() and the owner's finally cleanup.
+      setImmediate(releaseSnapshot);
+    }
+  });
+  globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith("/video/ensure-studio")) { await studioGate; return Response.json({ ok: true, port: 3456 }); }
+    if (url.endsWith("/render")) { starts++; return Response.json({ jobId: "race_job" }); }
+    if (url.endsWith("/progress")) return new Response('data: {"status":"failed","error":"encoder failed"}\n\n');
+    throw new Error(`Unexpected URL ${url}`);
+  }, nativeFetch);
+  const delayedStatus = videoRenderAction(workspace, "video_render_status", args);
+  try {
+    await lookupPending;
+    expect((await videoRenderAction(workspace, "video_render_start", args)).status).toBe("preparing");
+    releaseLookup();
+    await snapshotPending;
+    releaseStudio();
+    const result = await delayedStatus;
+    expect(result.status).toBe("failed");
+    expect(result.error).toBe("encoder failed");
+    expect(result.jobId).toBe("race_job");
+    expect(JSON.parse(await nativeRead(receiptPath, "utf8")).error).toBe("encoder failed");
+    expect((await videoRenderAction(workspace, "video_render_start", args)).jobId).toBe("race_job");
+    expect(starts).toBe(1);
+    const orphan = { sourcePath, operationKey: "persisted-before-restart" };
+    await writeFile(join(renders, `.export-${createHash("sha256").update(orphan.operationKey).digest("hex")}.json`), JSON.stringify({ status: "preparing", startedAt: Date.now() }));
+    const interrupted = await videoRenderAction(workspace, "video_render_status", orphan);
+    expect(interrupted.status).toBe("failed");
+    expect(interrupted.error).toContain("service restart");
+    expect((await videoRenderAction(workspace, "video_render_start", orphan)).error).toBe(interrupted.error);
+    expect(starts).toBe(1);
+  } finally {
+    releaseLookup(); releaseSnapshot(); releaseStudio();
+    await delayedStatus.catch(() => {});
+    lookup.mockRestore(); read.mockRestore(); remove.mockRestore();
+    globalThis.fetch = nativeFetch;
+    if (previous === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY; else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = previous;
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("export reservations reuse partial initial receipts, enforce the preparation cap and release failed claims", async () => {
+  const root = await fs.realpath(await mkdtemp(join(tmpdir(), "ipw-export-reservation-")));
+  const sourcePath = "video/ses_reservation/index.html", workspace = { id: "ws_reservation", path: root };
+  const renders = join(root, "video/ses_reservation/renders");
+  const receiptPath = (key: string) => join(renders, `.export-${createHash("sha256").update(key).digest("hex")}.json`);
+  const nativeWrite = fs.writeFile, nativeRm = fs.rm, nativeFetch = globalThis.fetch;
+  const previous = process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY;
+  let releaseWrites = () => {}, allReserved = () => {}, allCommitted = () => {}, retryCommitted = () => {};
+  const writeGate = new Promise<void>(resolve => { releaseWrites = resolve; });
+  const reserved = new Promise<void>(resolve => { allReserved = resolve; });
+  const committed = new Promise<void>(resolve => { allCommitted = resolve; });
+  const retrySaved = new Promise<void>(resolve => { retryCommitted = resolve; });
+  let writes = 0, commits = 0, starts = 0, denied = false, retried = false;
+  await mkdir(renders, { recursive: true });
+  await writeFile(join(root, sourcePath), "<html></html>");
+  const discovery = join(root, "bridge.json");
+  await writeFile(discovery, JSON.stringify({ baseUrl: "http://127.0.0.1:54321", token: "test-token" }));
+  process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = discovery;
+  const write = spyOn(fs, "writeFile").mockImplementation(async (path, data, options) => {
+    if (path === receiptPath("denied") && !denied) { denied = true; throw Object.assign(new Error("write denied"), { code: "EACCES" }); }
+    if (path === receiptPath("external")) {
+      await nativeWrite(path, JSON.stringify({ status: "failed", startedAt: Date.now(), error: "existing external receipt" }));
+      throw Object.assign(new Error("already exists"), { code: "EEXIST" });
+    }
+    if (String(path).endsWith(".json") && String(path).includes(".export-") && path !== receiptPath("denied")) {
+      await nativeWrite(path, "{", options);
+      if (++writes === 16) allReserved();
+      await writeGate;
+      return nativeWrite(path, data, "utf8");
+    }
+    return nativeWrite(path, data, options);
+  });
+  const remove = spyOn(fs, "rm").mockImplementation(async (path, options) => {
+    await nativeRm(path, options);
+    if (String(path).endsWith(".tmp") && ++commits === 16) setImmediate(allCommitted);
+    if (String(path).startsWith(`${receiptPath("denied")}.`)) setImmediate(retryCommitted);
+  });
+  globalThis.fetch = Object.assign(async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.endsWith("/video/ensure-studio")) return Response.json({ ok: true, port: 3456 });
+    if (url.endsWith("/render")) return Response.json({ jobId: `reservation_job${++starts}` });
+    if (url.endsWith("/progress")) return new Response('data: {"status":"failed","error":"encoder failed"}\n\n');
+    throw new Error(`Unexpected URL ${url}`);
+  }, nativeFetch);
+  const pending: ReturnType<typeof videoRenderAction>[] = [];
+  try {
+    await expect(videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: "denied" })).rejects.toThrow("write denied");
+    expect((await videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: "external" })).error).toBe("existing external receipt");
+    for (let i = 0; i < 16; i++) pending.push(videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: `reserved-${i}` }));
+    await reserved;
+    const args = { sourcePath, operationKey: "reserved-0" };
+    for (const action of ["video_render_start", "video_render_status"]) {
+      const reused = await Promise.all(Array.from({ length: 8 }, () => videoRenderAction(workspace, action, args)));
+      expect(reused.every(receipt => receipt.status === "preparing")).toBe(true);
+    }
+    expect(starts).toBe(0);
+    await expect(videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: "over-cap" })).rejects.toThrow("Too many exports");
+    releaseWrites();
+    expect((await Promise.all(pending)).every(receipt => receipt.status === "preparing")).toBe(true);
+    await committed;
+    expect(starts).toBe(16);
+    expect((await videoRenderAction(workspace, "video_render_status", args)).error).toBe("encoder failed");
+    const retry = await videoRenderAction(workspace, "video_render_start", { sourcePath, operationKey: "denied" });
+    retried = true;
+    expect(retry.status).toBe("preparing");
+  } finally {
+    releaseWrites();
+    await Promise.allSettled(pending);
+    if (writes === 16) await committed;
+    if (retried) await retrySaved;
+    write.mockRestore(); remove.mockRestore();
     globalThis.fetch = nativeFetch;
     if (previous === undefined) delete process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY; else process.env.IPOLLOWORK_UI_CONTROL_DISCOVERY = previous;
     await rm(root, { recursive: true, force: true });
