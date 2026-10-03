@@ -670,13 +670,14 @@ export function createBrowserRuntime({
         } else if (index >= 0 && metadata?.context) lines[index] += ` context=${quote(metadata.context)}`;
       }
 
-      // Supplement file inputs and role-less rich editors omitted by the AX
-      // tree, using DOM-backed refs without exposing arbitrary page evaluation.
+      // Supplement file inputs, rich editors and explicit click controls omitted
+      // by the AX tree, using DOM-backed refs and the existing action validation.
       const flattened = mode === "content" || scopeBackendNodeId ? { nodes: [] } : await debuggerCommand(debuggerApi, "DOM.getFlattenedDocument", {
         depth: -1,
         pierce: true,
       }).catch(() => ({ nodes: [] }));
       let supplementalControls = 0;
+      let inspectedClickControls = 0;
       for (const node of flattened?.nodes ?? []) {
         if (supplementalControls >= MAX_INFERRED_CONTROLS) {
           truncated = true;
@@ -685,22 +686,31 @@ export function createBrowserRuntime({
         const attributes = domAttributes(node);
         const fileInput = String(node?.nodeName ?? "").toUpperCase() === "INPUT" && attributes.type?.toLowerCase() === "file";
         const editor = ["", "true", "plaintext-only"].includes(attributes.contenteditable);
-        if (!fileInput && !editor) continue;
+        const clickControl = !fileInput && !editor && typeof attributes.onclick === "string";
+        if (!fileInput && !editor && !clickControl) continue;
         const backendNodeId = Number(node?.backendNodeId);
         if (!Number.isInteger(backendNodeId) || backendNodeId <= 0) continue;
         if ([...state.refs.values()].some((entry) => entry.backendNodeId === backendNodeId)) continue;
-        const objectId = editor ? await resolvedNode(debuggerApi, { backendNodeId }).catch(() => null) : null;
+        if (clickControl && inspectedClickControls >= MAX_INFERRED_CONTROLS) {
+          truncated = true;
+          continue;
+        }
+        if (clickControl) inspectedClickControls += 1;
+        const objectId = editor || clickControl ? await resolvedNode(debuggerApi, { backendNodeId }).catch(() => null) : null;
         const metadata = objectId ? await inspectElement(debuggerApi, objectId).catch(() => null) : null;
-        if (editor && (!metadata?.writable || !(metadata.rendered ?? metadata.visible) || metadata.disabled)) continue;
-        const name = editor ? metadata.label || "Unnamed textbox" : attributes["aria-label"] || attributes.title || attributes.name || "Upload file";
+        if ((editor || clickControl) && (!(metadata?.rendered ?? metadata?.visible) || metadata.disabled)) continue;
+        if (editor && !metadata.writable) continue;
+        if (clickControl && (!metadata.buttonLike || !metadata.text || metadata.text.length > MAX_EXPECTED_NAME)) continue;
+        const name = editor ? metadata.label || "Unnamed textbox" : clickControl ? metadata.text : attributes["aria-label"] || attributes.title || attributes.name || "Upload file";
         const pseudoNode = {
           backendDOMNodeId: backendNodeId,
           name: { value: boundedText(name, MAX_EXPECTED_NAME) },
           properties: [],
-          role: { value: editor ? "textbox" : "fileinput" },
+          role: { value: editor ? "textbox" : clickControl ? "button" : "fileinput" },
         };
-        const ref = referenceFor(state, pseudoNode, { inferred: editor });
-        controlLines.push(snapshotLine(pseudoNode, ref, 1));
+        const ref = referenceFor(state, pseudoNode, { inferred: editor || clickControl });
+        controlLines.push(snapshotLine(pseudoNode, ref, 1)
+          + (clickControl && metadata.context && metadata.context !== metadata.text ? ` context=${quote(metadata.context)}` : ""));
         supplementalControls += 1;
       }
 

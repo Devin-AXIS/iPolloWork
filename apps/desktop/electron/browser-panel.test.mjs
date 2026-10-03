@@ -123,7 +123,11 @@ if (!process.versions.electron) {
     const editorView = webContents.getAllWebContents().find(item => item.getURL().endsWith('/comment-editor'));
     const entry = await call('snapshot', { tabId: editor.tabId });
     const entryRef = entry.tree.split('\n').find(line => line.includes('button "留下你的精彩评论吧"'))?.match(/\[(@e\d+)\]/)?.[1];
-    assert.ok(entryRef, 'Lazy input remains actionable after long content, even below the fold');
+    if (!entryRef) {
+      const metadata = await editorView.executeJavaScript(`(() => { const node = document.querySelector('#entry'); return { html: node?.outerHTML, rect: node?.getBoundingClientRect().toJSON(), onclick: typeof node?.onclick, fonts: document.fonts.status }; })()`);
+      process.stderr.write(`Lazy input DOM: ${JSON.stringify(metadata)}\n`);
+    }
+    assert.ok(entryRef, `Lazy input remains actionable after long content, even below the fold: ${entry.tree}`);
     assert.match(entry.tree, /button "回复" context="[^"\n]*原作者[^"\n]*原评论内容/, 'Reply carries original author and text through nested wrappers');
     await call('act', { tabId: editor.tabId, snapshotId: entry.snapshotId, actions: [{ type: 'click', ref: entryRef, expectedName: '留下你的精彩评论吧' }] });
     const expanded = await call('snapshot', { tabId: editor.tabId });
