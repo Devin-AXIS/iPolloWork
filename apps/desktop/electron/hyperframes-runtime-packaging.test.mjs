@@ -129,10 +129,10 @@ test("rejects installer package metadata that disagrees with the pinned target",
 test("checks actual Mach-O, ELF and PE CPU headers rather than trusting package names", async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codec-header-test-"));
   try {
-    for (const [platform, arch, machine] of [
-      ["darwin", "x64", 0x01000007], ["darwin", "arm64", 0x0100000c],
-      ["linux", "x64", 62], ["linux", "arm64", 183],
-      ["win32", "x64", 0x8664], ["win32", "arm64", 0xaa64],
+    for (const { platform, arch, machine } of [
+      { platform: "darwin", arch: "x64", machine: 0x01000007 }, { platform: "darwin", arch: "arm64", machine: 0x0100000c },
+      { platform: "linux", arch: "x64", machine: 62 }, { platform: "linux", arch: "arm64", machine: 183 },
+      { platform: "win32", arch: "x64", machine: 0x8664 }, { platform: "win32", arch: "arm64", machine: 0xaa64 },
     ]) {
       const bytes = Buffer.alloc(134);
       if (platform === "darwin") { bytes.writeUInt32LE(0xfeedfacf, 0); bytes.writeUInt32LE(machine, 4); }
