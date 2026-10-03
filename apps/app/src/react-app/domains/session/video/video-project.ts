@@ -58,6 +58,7 @@ export function shouldInjectVideoTaskContext(
 
 const VOICEOVER_DISABLED_PATTERN = /(?:不要|不用|无需|不需要|关闭|禁用|去掉|取消)\s*(?:旁白|配音|解说|口播|语音合成|tts)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i;
 const VOICEOVER_PRESERVED_PATTERN = /(?:保留|保持|不改|不修改|不要改|不动|不用改|无需改)\s*(?:现有|已有|原有|原始|当前|原)?的?\s*(?:旁白|配音)|(?:keep|preserve|retain|leave|(?:do not|don't)\s+(?:change|edit|regenerate))\s+(?:the\s+)?(?:(?:existing|current|original)\s+)?(?:voice[ -]?over|narration)(?:\s+unchanged)?/gi;
+const NEGATED_VIDEO_PLANNING_PATTERN = /(?:不要|不用|无需|不需要)\s*(?:只|仅|暂时只)\s*(?:给我)?\s*(?:规划|计划)|\b(?:do\s+not|don['’]t|not|never)\s+(?:only|just)\s+(?:plan|planning)\b/gi;
 
 export function videoPromptRequestsVoiceoverContext(
   capabilityId?: string,
@@ -157,7 +158,7 @@ export function videoDeliveryRequirementsForPrompt(input: {
   };
   // Default finished-video sound design belongs to the delivery contract, not
   // just the model's prompt. Planning and local edits must not add new tracks.
-  const planningOnly = /(?:只|仅|先).{0,12}(?:脚本|分镜|规划)|(?:先别|不要|暂不).{0,8}(?:生成|制作|做)(?:视频|成片)|(?:only|just).{0,16}(?:script|storyboard|plan)|(?:script|storyboard|plan)[ -]only/i.test(text);
+  const planningOnly = /(?:只|仅|先).{0,12}(?:脚本|分镜|规划)|(?:先别|不要|暂不).{0,8}(?:生成|制作|做)(?:视频|成片)|(?:only|just).{0,16}(?:script|storyboard|plan)|(?:script|storyboard|plan)[ -]only/i.test(text.replace(NEGATED_VIDEO_PLANNING_PATTERN, ""));
   const createsVideo = videoPromptRequestsFinishedVideo(text);
   const requiresRecipesOnly = /(?:禁止|不允许).{0,8}(?:定制|自定义|手绘)图形|(?:必须|全部|只能|仅用|只用).{0,8}(?:真实)?配方|\brecipes[ -]only\b/i.test(text);
   const silenceRequested = /(?:静音|无声|无音乐|無音樂|仅保留原声|只保留原声)|\b(?:silent|music-free|original[ -]sound[ -]only)\b/i.test(text);
@@ -189,7 +190,7 @@ export function videoPromptRequiresStoryboardReview(input: {
   promptText?: string;
   hasReferenceAttachments?: boolean;
 }) {
-  const text = input.promptText ?? "";
+  const text = (input.promptText ?? "").replace(NEGATED_VIDEO_PLANNING_PATTERN, "");
   if (/(?:直接|立即|马上|一次性).{0,12}(?:生成|制作|出)(?:成片|视频)|(?:无需|不用|不要|跳过).{0,12}(?:确认|审核|审阅)(?:脚本|分镜)?|\b(?:skip|without)\b.{0,16}\b(?:script|storyboard)\s+(?:review|approval)\b|\bgo straight to (?:production|video)\b/i.test(text)) return false;
   return /(?:先|首先|只|仅|暂时只).{0,12}(?:看|写|出|做|给我|审核|审阅|确认).{0,8}(?:脚本|分镜|故事板)|(?:脚本|分镜|故事板).{0,12}(?:先给我看|先确认|确认后再|审核后再|审阅后再|暂不制作|不要生成视频)|\b(?:script|storyboard)\s+(?:first|only|for review)\b|\b(?:review|approve)\s+(?:the\s+)?(?:script|storyboard)\s+(?:first|before production)\b/i.test(text)
     || /(?:只|仅|暂时只)\s*(?:给我)?\s*(?:规划|计划)|\b(?:only|just)\s+(?:plan|planning)\b/i.test(text);

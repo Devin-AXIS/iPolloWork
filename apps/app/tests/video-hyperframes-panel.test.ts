@@ -1578,6 +1578,39 @@ describe("HyperFrames Video Studio", () => {
     expect(reviewContract).toContain("Do not source or generate media");
   });
 
+  test("negating planning-only work keeps production and its audio requirements active", () => {
+    for (const promptText of [
+      "Don't just plan; create the full video",
+      "Don’t just plan; create the full video",
+      "Do not only plan the storyboard; produce the video",
+      "Never only plan; create a video",
+      "不要只规划，请直接做视频",
+      "不要只给我规划，请直接做视频",
+      "不需要仅规划，请制作视频",
+    ]) {
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(false);
+      expect(videoPromptRequestsFinishedVideo(promptText)).toBe(true);
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(requirements.bgm).toBe(true);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(true);
+    }
+    for (const promptText of [
+      "Only plan the storyboard",
+      "只给我规划",
+      "Don't just plan the opening; only plan the storyboard for now",
+      "不要只规划开场，只给我规划整份分镜",
+      "Don't just plan; review the script before production",
+      "不要只规划，先给我看脚本，确认后再制作视频",
+      "Do not generate assets; only plan",
+    ]) {
+      expect(videoPromptRequiresStoryboardReview({ promptText })).toBe(true);
+      expect(videoPromptRequestsFinishedVideo(promptText)).toBe(false);
+      const requirements = videoDeliveryRequirementsForPrompt({ promptText });
+      expect(requirements.bgm).toBe(false);
+      expect(videoPromptRequestsVoiceoverContext(undefined, promptText, requirements)).toBe(false);
+    }
+  });
+
   test("connects the editable shot plan to real media and purposeful motion", () => {
     for (const field of ["asset_source", "asset_kind", "asset_origin", "asset_reference", "artifact_media_review", "generationPath", "recipe_intent", "custom_reason", "video_component_install", "spatial-camera-suite", "list_motion_presets", "mutate_motion"])
       expect(videoAuthoringGuidance).toContain(field);
