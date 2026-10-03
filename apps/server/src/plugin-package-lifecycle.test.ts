@@ -726,14 +726,38 @@ describe("plugin package lifecycle", () => {
     await expectMissing(join(workspaceRoot, ".agents", "skills", "acme-research", "SKILL.md"));
   });
 
-  test.each(["opencode", "deepseek-harness", "codex-harness"])("projects bundled Design and Video packages into %s skills", async (engineId) => {
+  test.each([
+    ...["opencode", "deepseek-harness", "codex-harness"].map((engineId) => ({ engineId, enabled: true, disabledSkill: null, customized: false })),
+    { engineId: "opencode", enabled: false, disabledSkill: null, customized: false },
+    { engineId: "codex-harness", enabled: true, disabledSkill: "ipollowork-presentations", customized: false },
+    { engineId: "deepseek-harness", enabled: true, disabledSkill: null, customized: true },
+  ])("projects and refreshes bundled Design capabilities without changing user work (%j)", async ({ engineId, enabled, disabledSkill, customized }) => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-plugin-dsh-creative-workspace-");
+    process.env.IPOLLOWORK_RUNTIME_DB = join(workspaceRoot, "runtime.sqlite");
     const config = serverConfig(workspaceRoot);
     const workspace = config.workspaces[0];
     if (!workspace) throw new Error("Test workspace is missing");
     workspace.engineId = engineId;
     const skillDirectory = engineId === "opencode" ? ".opencode" : engineId === "deepseek-harness" ? ".dsh" : ".agents";
+    const designRoot = fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url));
+    const catalogRoot = await createRoot("ipollowork-design-capabilities-catalog-");
+    const legacyDesignRoot = join(catalogRoot, "design-agent");
+    const addedSkills = ["ipollowork-design-web", "ipollowork-design-graphics", "ipollowork-design-editorial"];
+    await cp(designRoot, legacyDesignRoot, { recursive: true });
+    const manifestPath = join(legacyDesignRoot, "ipollowork.plugin.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.package.version = "0.3.18";
+    manifest.resources = manifest.resources.filter((resource: { id: string }) => !addedSkills.includes(resource.id));
+    for (const id of addedSkills) {
+      delete manifest.localization.translations.en.resources[id];
+      await rm(join(legacyDesignRoot, "skills", id), { recursive: true, force: true });
+    }
+    await writeFile(manifestPath, JSON.stringify(manifest), "utf8");
+    const studioRelative = "skills/ipollowork-design-studio/SKILL.md";
+    const legacyStudio = "---\nname: ipollowork-design-studio\ndescription: Existing two-entry Design capability fixture\n---\n# iPolloWork Design Studio\n\nOriginal Design workflow.\n";
+    await writeFile(join(legacyDesignRoot, studioRelative), legacyStudio, "utf8");
+    process.env.IPOLLOWORK_BUNDLED_PLUGIN_PACKAGES_DIR = catalogRoot;
     const packages = [
       {
         id: "reference-context",
@@ -743,7 +767,7 @@ describe("plugin package lifecycle", () => {
       },
       {
         id: "design-agent",
-        root: fileURLToPath(new URL("../../../examples/plugin-packages/design-agent", import.meta.url)),
+        root: legacyDesignRoot,
         skill: "ipollowork-design-studio",
         heading: "# iPolloWork Design Studio",
       },
@@ -781,11 +805,87 @@ describe("plugin package lifecycle", () => {
       }
     }
     const sharedSkill = join(workspaceRoot, skillDirectory, "skills", "ipollowork-reference-analyzer", "SKILL.md");
-    for (const pluginId of ["video-agent", "design-agent"]) {
-      await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: false });
+    await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "design-agent", enabled });
+    if (disabledSkill) {
+      await lifecycle.setPluginPackageResourceEnabled({ serverConfig: config, pluginId: "design-agent", resourceId: disabledSkill, enabled: false });
+    }
+    const studioPath = join(workspaceRoot, skillDirectory, studioRelative);
+    const customizedStudio = `${legacyStudio}\nUser-authored routing stays here.\n`;
+    if (customized) await writeFile(studioPath, customizedStudio, "utf8");
+    const designEntry = join(workspaceRoot, "design", "existing-session", "entry.html");
+    const tokensPath = join(dirname(designEntry), "design-tokens.css");
+    const designBody = '<main data-ipw-slide="slide-user"><h1 id="user-title" data-pptx-text>Existing user design</h1><div id="user-shape" data-pptx-shape></div></main><link rel="stylesheet" href="design-tokens.css">\n';
+    const tokens = ":root { --ipw-background: #153025; --ipw-font-heading: Georgia; }\n";
+    await mkdir(dirname(designEntry), { recursive: true });
+    await writeFile(designEntry, designBody, "utf8");
+    await writeFile(tokensPath, tokens, "utf8");
+    const personalSkill = join(workspaceRoot, skillDirectory, "skills", "my-design-workflow", "SKILL.md");
+    await mkdir(dirname(personalSkill), { recursive: true });
+    await writeFile(personalSkill, "# User-owned Design workflow\n", "utf8");
+    const server = await startServer(config);
+    try {
+      const base = `http://127.0.0.1:${server.port}/workspace/${WORKSPACE_ID}/plugin-packages`;
+      const headers = { authorization: "Bearer token" };
+      const initialCatalog = await fetch(`${base}/catalog`, { headers });
+      expect(initialCatalog.status).toBe(200);
+      const initial = (await initialCatalog.json()).items.find((item: { pluginId: string }) => item.pluginId === "design-agent");
+      expect(initial).toMatchObject({ version: "0.3.18", installedVersion: "0.3.18" });
+      expect(initial.manifest.resources.filter((resource: { type: string }) => resource.type === "skill")).toHaveLength(2);
+      await rm(legacyDesignRoot, { recursive: true });
+      await cp(designRoot, legacyDesignRoot, { recursive: true });
+      const response = await fetch(base, { headers });
+      expect(response.status).toBe(customized ? 409 : 200);
+      const result = await response.json();
+      if (customized) expect(result.code).toBe("plugin_package_conflict");
+      const installed = (await lifecycle.listInstalledPluginPackages({ serverConfig: config })).find((item) => item.pluginId === "design-agent");
+      if (!installed) throw new Error("Design package is missing after refresh");
+      expect(installed).toMatchObject({
+        version: customized ? "0.3.18" : "0.3.19", enabled,
+        disabledResourceIds: disabledSkill ? [disabledSkill] : [],
+      });
+      expect(installed.manifest.resources.filter((resource) => resource.type === "skill")).toHaveLength(customized ? 2 : 5);
+      expect(await readFile(designEntry, "utf8")).toBe(designBody);
+      expect(await readFile(tokensPath, "utf8")).toBe(tokens);
+      expect(await readFile(personalSkill, "utf8")).toBe("# User-owned Design workflow\n");
       expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
-      await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId });
-      expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
+      if (customized) {
+        expect(await readFile(studioPath, "utf8")).toBe(customizedStudio);
+        for (const id of addedSkills) await expectMissing(join(workspaceRoot, skillDirectory, "skills", id, "SKILL.md"));
+      } else {
+        const preview = await lifecycle.previewPluginPackage({ packageRoot: designRoot, engineId });
+        if (!enabled) {
+          for (const write of preview.writes) await expectMissing(join(workspaceRoot, write.path));
+          await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId: "design-agent", enabled: true });
+        }
+        for (const file of preview.files) {
+          if (!file.path.startsWith("skills/")) continue;
+          const target = join(workspaceRoot, skillDirectory, file.path);
+          if (disabledSkill && file.path === `skills/${disabledSkill}/SKILL.md`) {
+            await expectMissing(target);
+            continue;
+          }
+          const body = await readFile(target, "utf8");
+          expect(body).toBe(await readFile(join(designRoot, file.path), "utf8"));
+          if (!file.path.endsWith("/SKILL.md")) continue;
+          for (const link of body.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+            if (!link[1] || /^https?:/.test(link[1])) continue;
+            const linkedFile = join(dirname(target), link[1]);
+            if (disabledSkill && linkedFile === join(workspaceRoot, skillDirectory, "skills", disabledSkill, "SKILL.md")) {
+              await expectMissing(linkedFile);
+            } else {
+              expect((await stat(linkedFile)).isFile(), `${engineId}: ${link[1]}`).toBe(true);
+            }
+          }
+        }
+        for (const pluginId of ["video-agent", "design-agent"]) {
+          await lifecycle.setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: false });
+          expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
+          await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId });
+          expect(await readFile(sharedSkill, "utf8")).toContain("# Reference context workflow");
+        }
+      }
+    } finally {
+      await server.stop();
     }
   });
 
