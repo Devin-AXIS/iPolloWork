@@ -243,7 +243,7 @@ describe("plugin package manifest", () => {
     }]);
   });
 
-  test("ships current portable Design and PPT references in both skill distributions", async () => {
+  test("ships synchronized Design, PPT and task-scoped Video references across engines", async () => {
     const root = new URL("../../../", import.meta.url);
     const source = ".codex/skills/ipollowork-template-generation/references/";
     const contract = await Bun.file(new URL(`${source}template-generation-contract.md`, root)).text();
@@ -275,11 +275,13 @@ describe("plugin package manifest", () => {
         expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
       }
     }
-    const video = (await Bun.file(new URL(`${source}video.md`, root)).text())
-      .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md");
+    const videoReferences = ["video.md", "video-storyboard.md", "video-compose.md", "video-voiceover.md", "video-soundtrack.md", "video-motion-principles.md", "video-acceptance.md"];
+    const videoBodies = await Promise.all(videoReferences.map(async (name) => [name, (await Bun.file(new URL(`${source}${name}`, root)).text())
+      .replace("template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines", "shared-guidelines.md")]));
+    const video = videoBodies.map(([, body]) => body).join("\n");
     const videoMotionPrinciples = await Bun.file(new URL(`${source}video-motion-principles.md`, root)).text();
     const videoAcceptance = await Bun.file(new URL(`${source}video-acceptance.md`, root)).text();
-    expect(video).toContain("video-acceptance.md` as the single owner");
+    expect(video).toContain("single aggregate project/component/voice delivery gate");
     expect(video).toContain("Shortlist at most three scene bodies");
     expect(video).toContain("point ID → source heading/page/paragraph → frame(s)");
     expect(video).toContain("matching viewpoints and scales");
@@ -290,7 +292,7 @@ describe("plugin package manifest", () => {
     expect(video).toContain("relative energy and information density");
     expect(video).toContain("Submit independent assets as one bounded batch or in parallel");
     expect(video).toContain("media/video_recipe_catalog");
-    expect(video).toContain("all locally installable native and Shotcraft recipes");
+    expect(video).toContain("locally installable native and Shotcraft recipes");
     expect(video).toContain("Continue automatically after the saved script");
     expect(video).toContain("assets/capture-layout.json");
     expect(videoAcceptance).toContain("A preview HTTP success is not proof of having watched it");
@@ -302,20 +304,24 @@ describe("plugin package manifest", () => {
     expect(videoAcceptance).toContain("Render Establish, Develop, and Land samples");
     expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-motion-principles.md", root)).text()).toBe(header + videoMotionPrinciples);
     expect(await Bun.file(new URL("apps/server/bundled-templates/core-v1-video-acceptance.md", root)).text()).toBe(header + videoAcceptance);
-    const videoSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-studio/SKILL.md", root)).text();
-    expect(videoSkill).toContain("Load only applicable sections");
-    expect(videoSkill).toContain("runtime supplies paths, port, selected/default voice");
+    const videoSkillNames = ["ipollowork-video-studio", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-voiceover", "ipollowork-video-soundtrack"];
+    for (const name of videoSkillNames) {
+      const skill = await Bun.file(new URL(`examples/plugin-packages/video-agent/skills/${name}/SKILL.md`, root)).text();
+      expect(await Bun.file(new URL(`.agents/skills/${name}/SKILL.md`, root)).text()).toBe(skill);
+      expect(skill.length).toBeLessThan(2000);
+      for (const link of skill.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+        if (!link[1] || /^https?:/.test(link[1])) continue;
+        expect(await Bun.file(new URL(`examples/plugin-packages/video-agent/skills/${name}/${link[1]}`, root)).exists(), `${name}: ${link[1]}`).toBe(true);
+      }
+    }
     const voiceSkill = await Bun.file(new URL(".agents/skills/ipollowork-video-voiceover/SKILL.md", root)).text();
-    expect(await Bun.file(new URL("examples/plugin-packages/video-agent/skills/ipollowork-video-voiceover/SKILL.md", root)).text()).toBe(voiceSkill);
-    expect(voiceSkill).toContain("../ipollowork-video-studio/references/video.md#narration-captions-and-soundtrack");
+    expect(voiceSkill).toContain("../ipollowork-video-studio/references/video-voiceover.md");
     for (const directory of [".agents/skills/ipollowork-video-studio/", "examples/plugin-packages/video-agent/skills/ipollowork-video-studio/"]) {
-      expect(await Bun.file(new URL(`${directory}SKILL.md`, root)).text()).toBe(videoSkill);
-      for (const [name, body] of [["shared-guidelines.md", shared], ["video.md", video], ["video-motion-principles.md", videoMotionPrinciples], ["video-acceptance.md", videoAcceptance]]) {
-        expect(videoSkill).toContain(`references/${name}`);
+      for (const [name, body] of [["shared-guidelines.md", shared], ...videoBodies]) {
         expect(await Bun.file(new URL(`${directory}references/${name}`, root)).text()).toBe(header + body);
       }
     }
-    for (const body of [video, videoMotionPrinciples, videoAcceptance]) expect(body).not.toMatch(/\p{Script=Han}/u);
+    for (const [, body] of videoBodies) expect(body).not.toMatch(/\p{Script=Han}/u);
     const { previewPluginPackage } = await import("./plugin-package-lifecycle.js");
     const { fileURLToPath } = await import("node:url");
     for (const [engineId, directory] of [["opencode", ".opencode"], ["codex-harness", ".agents"], ["deepseek-harness", ".dsh"]]) {
@@ -323,10 +329,13 @@ describe("plugin package manifest", () => {
         packageRoot: fileURLToPath(new URL("examples/plugin-packages/video-agent/", root)),
         engineId,
       });
-      for (const name of ["shared-guidelines.md", "video.md", "video-motion-principles.md", "video-acceptance.md"]) {
+      for (const name of ["shared-guidelines.md", ...videoReferences]) {
         expect(videoPackage.writes.some((entry) =>
           entry.path === `${directory}/skills/ipollowork-video-studio/references/${name}`
         )).toBe(true);
+      }
+      for (const name of videoSkillNames) {
+        expect(videoPackage.writes.some((entry) => entry.path === `${directory}/skills/${name}/SKILL.md`)).toBe(true);
       }
     }
     const { templateCategorySchema } = await import("@ipollowork/types/templates");
@@ -367,13 +376,13 @@ describe("plugin package manifest", () => {
     expect(video.manifest.name).toBe("iPollo Video");
     expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["file", "file", "skill", "skill"]);
     expect(video.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id))
-      .toEqual(["ipollowork-video-studio", "ipollowork-video-voiceover"]);
+      .toEqual(["ipollowork-video-studio", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"]);
     expect(video.manifest.resources).toContainEqual(expect.objectContaining({ type: "file", path: "skills/ipollowork-video-studio/references" }));
     expect(video.manifest.relatedSkills).toBeUndefined();
     expect(video.manifest.resources.map((resource) => resource.id)).toEqual([
-      "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-voiceover",
+      "video-authoring-references", "ipollowork-video-studio", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack",
     ]);
-    expect(video.manifest.package?.version).toBe("0.3.12");
+    expect(video.manifest.package?.version).toBe("0.3.13");
     expect(design.manifest.defaultEnabled).toBe(true);
     expect(video.manifest.defaultEnabled).toBe(true);
     expect(design.manifest.contributions).toBeUndefined();

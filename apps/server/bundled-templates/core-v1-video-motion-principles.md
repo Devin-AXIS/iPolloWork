@@ -2,7 +2,7 @@
 
 # iPolloWork Video Motion Principles
 
-Read for initial generation or substantial scene redesign; targeted work reads only its affected pattern/schema. Spatial layouts place content; motion gives it a sequence of meaning. Production order, source coverage and assets live in the active Video Studio Skill's `video.md`; verdicts use its `video-acceptance.md` or the actual materialized library's acceptance guide.
+Read for initial generation or substantial scene redesign; targeted work reads only its affected pattern/schema. Spatial layouts place content; motion gives it a sequence of meaning. Source coverage belongs to `ipollowork-video-storyboard`; assembly/assets to `ipollowork-video-compose`. These names identify owners, not prerequisites to reload. Verdicts use the acceptance guide supplied by the active Skill or actual materialized library.
 
 ## Meaning, rhythm and attention
 
@@ -28,7 +28,7 @@ Every full `.scene.clip` has `data-ipw-scene`, stable `id`, frame-aligned `data-
 
 - `component:<registry-id>` covers only its installed native animation interval. `motionContract` supplies declared duration/targets, not invented Establish/Develop/Land timestamps; inspect those in the saved render. Parent host owns the actual clip window through `data-ipw-timing-owner="host"`; inner root carries no competing start/end/duration/track. Give hosts unique composition IDs/literal variables; reinstall stale copied roots with their own clip windows. Native motion may finish earlier while its Land remains visible until host end.
 - `preset:<preset-id>` requires actual `list_motion_presets` for the text/element target and `mutate_motion` with explicit start/end; preserve returned `data-ipw-animation-reference` on the real element.
-- `custom:<specific timeline label>` is a narrowly authored seek-safe treatment when no preset expresses the required motion, with an actual matching reference. Custom scene recipe exceptions still follow video.md; labels alone are not reuse.
+- `custom:<specific timeline label>` is a narrowly authored seek-safe treatment when no preset expresses the required motion, with an actual matching reference. Custom scene recipe exceptions still follow the active Compose recipe policy; labels alone are not reuse.
 - `hold:<reading|emphasis|handoff|outro|media>` declares purposeful stillness of at most four seconds. Split longer static intervals at genuine semantic boundaries, never arbitrary midpoints to satisfy validation. A short native animation cannot claim the remainder of a long scene: add a later meaningful preset/custom beat, split or shorten. If more than two seconds remain after native completion, a later active beat is required rather than stretching entrance motion.
 
 Timing source is `voiceover` for actual speech, `estimated-reading` when a narration script has no usable synthesis, or `visual-cue`, `music`, `media` for genuine drivers. Missing speech does not stop visual work; disclose silent/partial scope. Source beat checks run in the client's aggregate delivery gate, never another model-owned validation loop.
@@ -53,7 +53,7 @@ Choose one primary pattern from the narrative verb; combine only when legible. R
 
 ## Continuity, determinism and editing
 
-Connect developed scenes with continuation or a clear topic/time/location change; strongest transitions serve a real reveal, and the outro settles rather than adds new ideas. Every later scene declares `data-ipw-transition-in`, `data-ipw-transition-duration`, `data-ipw-transition-intent`. Use cut/0, actual supported incoming preset/reference, or the custom handoff schema in video.md. Full windows meet without overlap; transition runs inside incoming Establish from a non-empty base state. Preserve outgoing final meaning, fixed captions/chrome and shared anchors; a transition cannot repair static interiors.
+Connect developed scenes with continuation or a clear topic/time/location change; strongest transitions serve a real reveal, and the outro settles rather than adds new ideas. Every later scene declares `data-ipw-transition-in`, `data-ipw-transition-duration`, `data-ipw-transition-intent`. Use cut/0, actual supported incoming preset/reference, or the active Compose handoff schema. Full windows meet without overlap; transition runs inside incoming Establish from a non-empty base state. Preserve outgoing final meaning, fixed captions/chrome and shared anchors; a transition cannot repair static interiors.
 
 One registered paused project timeline owns motion, explicit intervals and integer-frame boundaries. Define stable before/during/after values for direct/reverse seek, replay and export; no timers, uncontrolled CSS loops, randomness or prior-frame state. Scope selectors to each actual scene. Preserve theme tokens, host timing and stable editable nodes/labels/connectors/measures/groups; repair overflow, duplicate labels and unreadable scale instead of flattening a native explanation into an image.
 

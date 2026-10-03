@@ -821,7 +821,7 @@ describe("plugin package lifecycle", () => {
       await expectMissing(join(workspaceRoot, ".opencode", "skills", "reference-analyzer", "SKILL.md"));
       const installed = await lifecycle.listInstalledPluginPackages({ serverConfig: config });
       expect(installed).toEqual(expect.arrayContaining([
-        expect.objectContaining({ pluginId: "video-agent", version: "0.3.12", enabled }),
+        expect.objectContaining({ pluginId: "video-agent", version: "0.3.13", enabled }),
         expect.objectContaining({ pluginId: "reference-context", enabled: true }),
       ]));
       await lifecycle.uninstallPluginPackage({ serverConfig: config, pluginId: "video-agent" });
@@ -830,11 +830,13 @@ describe("plugin package lifecycle", () => {
   });
 
   test.each(["opencode", "deepseek-harness", "codex-harness"].flatMap((engineId) => [
-    { engineId, enabled: true, customizedSkill: null },
-    { engineId, enabled: false, customizedSkill: null },
-    { engineId, enabled: true, customizedSkill: "ipollowork-video-studio" },
-    { engineId, enabled: true, customizedSkill: "hyperframes-cli" },
-  ]))("upgrades bundled Video rules without losing workspace state (%j)", async ({ engineId, enabled, customizedSkill }) => {
+    { engineId, enabled: true, customizedSkill: null, previousVersion: "0.3.10" },
+    { engineId, enabled: false, customizedSkill: null, previousVersion: "0.3.10" },
+    { engineId, enabled: true, customizedSkill: "ipollowork-video-studio", previousVersion: "0.3.10" },
+    { engineId, enabled: true, customizedSkill: "hyperframes-cli", previousVersion: "0.3.10" },
+    { engineId, enabled: true, customizedSkill: null, previousVersion: "0.3.12" },
+    { engineId, enabled: false, customizedSkill: null, previousVersion: "0.3.12" },
+  ]))("upgrades bundled Video rules without losing workspace state (%j)", async ({ engineId, enabled, customizedSkill, previousVersion }) => {
     const lifecycle = await import("./plugin-package-lifecycle.js");
     const workspaceRoot = await createRoot("ipollowork-video-rules-upgrade-");
     const legacyRoot = await createRoot("ipollowork-video-rules-legacy-");
@@ -848,11 +850,22 @@ describe("plugin package lifecycle", () => {
     const skillRelative = "skills/ipollowork-video-studio/SKILL.md";
     const currentRules = await readFile(join(videoRoot, skillRelative), "utf8");
     const legacyRules = "---\nname: ipollowork-video-studio\ndescription: Legacy video rules\n---\n# Legacy video rules\n";
-    const removedSkills = ["hyperframes", "hyperframes-animation", "hyperframes-cli", "hyperframes-core", "hyperframes-creative", "hyperframes-keyframes", "hyperframes-registry", "media-use", "product-launch-video"];
+    const removedSkills = previousVersion === "0.3.10"
+      ? ["hyperframes", "hyperframes-animation", "hyperframes-cli", "hyperframes-core", "hyperframes-creative", "hyperframes-keyframes", "hyperframes-registry", "media-use", "product-launch-video"]
+      : [];
+    const specialistSkills = ["ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"];
     await cp(videoRoot, legacyRoot, { recursive: true });
     const manifestPath = join(legacyRoot, "ipollowork.plugin.json");
     const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
-    manifest.package.version = "0.3.10";
+    manifest.package.version = previousVersion;
+    manifest.resources = manifest.resources.filter((resource: { id: string }) => !specialistSkills.includes(resource.id));
+    for (const id of specialistSkills) {
+      delete manifest.localization.translations.en.resources[id];
+      await rm(join(legacyRoot, "skills", id), { recursive: true });
+    }
+    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) {
+      await rm(join(legacyRoot, "skills/ipollowork-video-studio/references", `video-${stage}.md`));
+    }
     for (const id of removedSkills) {
       const path = `skills/${id}/SKILL.md`;
       manifest.resources.push({ type: "skill", id, path, required: true });
@@ -888,7 +901,7 @@ describe("plugin package lifecycle", () => {
       const result = await response.json();
       if (customizedSkill) expect(result).toMatchObject({ code: "plugin_package_conflict" });
       expect(await lifecycle.listInstalledPluginPackages({ serverConfig: config })).toEqual(expect.arrayContaining([
-        expect.objectContaining({ pluginId: "video-agent", version: customizedSkill ? "0.3.10" : "0.3.12", enabled }),
+        expect.objectContaining({ pluginId: "video-agent", version: customizedSkill ? previousVersion : "0.3.13", enabled }),
       ]));
       expect(await readFile(videoEntry, "utf8")).toBe(existingVideo);
       expect(await readFile(accountPath, "utf8")).toBe(accountState);
@@ -913,6 +926,15 @@ describe("plugin package lifecycle", () => {
         for (const id of removedSkills) await expectMissing(join(workspaceRoot, skillDirectory, "skills", id, "SKILL.md"));
         const voiceSkill = join(workspaceRoot, skillDirectory, "skills", "ipollowork-video-voiceover", "SKILL.md");
         expect(await readFile(voiceSkill, "utf8")).toContain("# iPolloWork Video Voiceover");
+        for (const id of specialistSkills) {
+          expect(await readFile(join(workspaceRoot, skillDirectory, "skills", id, "SKILL.md"), "utf8"))
+            .toBe(await readFile(join(videoRoot, "skills", id, "SKILL.md"), "utf8"));
+        }
+        for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) {
+          const relativePath = `skills/ipollowork-video-studio/references/video-${stage}.md`;
+          expect(await readFile(join(workspaceRoot, skillDirectory, relativePath), "utf8"))
+            .toBe(await readFile(join(videoRoot, relativePath), "utf8"));
+        }
       }
     } finally { await server.stop(); }
   });
@@ -1824,7 +1846,7 @@ describe("plugin package lifecycle", () => {
           { pluginId: "douyin-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/douyin-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
           { pluginId: "wechat-channels-ops", version: JSON.parse(await readFile(new URL("../../../examples/plugin-packages/wechat-channels-ops/ipollowork.plugin.json", import.meta.url), "utf8")).package.version, installedVersion: null, updateAvailable: false },
           { pluginId: "design-agent", version: "0.3.17", installedVersion: "0.3.17", updateAvailable: false },
-          { pluginId: "video-agent", version: "0.3.12", installedVersion: "0.3.12", updateAvailable: false },
+          { pluginId: "video-agent", version: "0.3.13", installedVersion: "0.3.13", updateAvailable: false },
           { pluginId: "media-studio", version: "1.0.4", installedVersion: "1.0.4", updateAvailable: false },
           { pluginId: "deepseek-harness", version: "0.3.7", installedVersion: null, updateAvailable: false },
         ],
@@ -2048,7 +2070,7 @@ describe("plugin package lifecycle", () => {
       },
       {
         pluginId: "video-agent",
-        version: "0.3.12",
+        version: "0.3.13",
         skillPath: join(workspaceRoot, ".opencode", "skills", "ipollowork-video-studio", "SKILL.md"),
         heading: "# iPolloWork Video Studio",
       },

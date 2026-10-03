@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,6 +30,7 @@ import {
 import { CodexProviderGateway } from "./codex-provider-gateway.js";
 import { deepSeekHarnessProviderCredentials } from "./deepseek-harness-runtime.js";
 import { EnvService } from "./env-file.js";
+import { parseFrontmatter } from "./frontmatter.js";
 import {
   codexHarnessTurnAccessPolicy,
   codexHarnessTurnCollaborationMode,
@@ -258,6 +259,18 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     if (!command) throw new Error("Set IPOLLOWORK_CODEX_CONTEXT_PROOF_CLI to the native Codex binary");
     const root = await mkdtemp(join(tmpdir(), "ipollowork-context-proof-"));
     roots.push(root);
+    await cp(new URL("../../../examples/plugin-packages/video-agent/skills/", import.meta.url), join(root, ".agents", "skills"), { recursive: true });
+    const videoSkills = await Promise.all([
+      "ipollowork-video-studio", "ipollowork-video-storyboard", "ipollowork-video-compose",
+      "ipollowork-video-voiceover", "ipollowork-video-soundtrack",
+    ].map(async (name) => {
+      const path = join(root, ".agents", "skills", name, "SKILL.md");
+      const { data, body } = parseFrontmatter(await readFile(path, "utf8"));
+      if (data.name !== name || typeof data.description !== "string") throw new Error(`Invalid Video Skill metadata: ${name}`);
+      const instructions = body.split(/\n\s*\n/).find((paragraph) => paragraph.trim() && !paragraph.trim().startsWith("#"));
+      if (!instructions) throw new Error(`Missing Video Skill instructions: ${name}`);
+      return { name, description: data.description, path, instructions: instructions.trim() };
+    }));
     const original = `START\n${"旁白🔊\n".repeat(3000)}Video voiceover contract: SYNTHESIZE_REQUIRED\n${"scene detail ".repeat(6000)}END`;
     let capture: (body: unknown) => void = () => undefined;
     const received = new Promise<unknown>((resolve) => { capture = resolve; });
@@ -281,6 +294,14 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
       await runtimeProcess.call("turn/start", { threadId: started.thread.id, input: [{ type: "text", text: "Reply OK.", text_elements: [] }], additionalContext: buildCodexHarnessAdditionalContext(original, []) });
       const body = await received;
       if (!isRecord(body) || !Array.isArray(body.input)) throw new Error("Missing model input");
+      const contextText = body.input.flatMap((message) => isRecord(message) && Array.isArray(message.content) ? message.content : [])
+        .flatMap((content) => isRecord(content) && typeof content.text === "string" ? [content.text] : []).join("\n");
+      for (const skill of videoSkills) {
+        expect(contextText).toContain(skill.name);
+        expect(contextText).toContain(skill.description);
+        expect(contextText).toContain(skill.path);
+        expect(contextText).not.toContain(skill.instructions);
+      }
       const fragments = body.input.flatMap((message) => isRecord(message) && message.role === "developer" && Array.isArray(message.content) ? message.content : [])
         .flatMap((content) => isRecord(content) && typeof content.text === "string" && content.text.startsWith("<ipollowork.runtime.") ? [content.text] : []);
       expect(fragments.length).toBeGreaterThan(1);

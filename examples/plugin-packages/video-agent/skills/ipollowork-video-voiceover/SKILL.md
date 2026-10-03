@@ -1,12 +1,10 @@
 ---
 name: ipollowork-video-voiceover
-description: Add or revise scene-bound narration using the active Video Studio voice contract, measured audio and one client-owned delivery gate.
+description: Add or revise scene-bound narration or speech-linked captions in the active iPolloWork video using actual voice settings, measured audio and alignment.
 ---
 
 # iPolloWork Video Voiceover
 
-Use only for authorized enabled speech or an explicit narration request. Read the exact session `voiceover.json`, saved `STORYBOARD.md`, current entry and injected contract. Respect saved disabled state and pinned/per-frame voices; use actual project/service defaults rather than guessing a provider, model, voice or instruction. Never request chat keys or substitute another TTS/CLI.
+Use for requested new/revised speech or its captions. Existing audio, enabled voice settings and music-only work do not request synthesis. Read [shared session boundaries](../ipollowork-video-studio/references/video.md) once when unknown, affected [Voiceover](../ipollowork-video-studio/references/video-voiceover.md) sections and exact current voiceover.json/storyboard/scene anchors. Respect authorization, saved disabled state and pinned/per-frame voices.
 
-Read only [Narration, captions and soundtrack](../ipollowork-video-studio/references/video.md#narration-captions-and-soundtrack) for synthesis/caption interfaces. Match marked visible transcript to each scene, keep immutable per-scene outputs, use sequential batches of at most three, and apply returned duration/timing/nodes/cumulative shifts once. Preserve prior speech until batch success and preserve music/SFX throughout. A synthesis receipt is unfinished until the exact entry has its actual returned audio/captions and retimed dependencies.
-
-Let source content and measured audio determine shots/duration; examples are not quotas. Pass target duration only for a user request, keep explicit caps and required facts, and use real provider alignment or honest sentence-level captions. Save the composition and let the client's combined project/voice gate run; do not create a second check loop. Without usable speech continue visual work, preserve existing audio and disclose unfinished required narration; never fabricate spoken assets.
+Synthesize through the built-in batch contract; mount actual returned audio/captions and apply measured timing shifts once while preserving prior speech until success and retaining music/SFX. Captions-only work reuses saved alignment. Do not guess provider/voice, fabricate timings or replace the TTS service. Save source for the client's combined gate; disclose unfinished required speech without creating a second check loop.
