@@ -53,9 +53,12 @@ describe("template authoring", () => {
       expect(context).not.toContain("design-slides.md");
     } else if (category === "video") {
       expect(context).toContain("active Video surface contract");
-      expect(context).toContain("Read references/video.md only when that exact file is already present inside the active project");
-      expect(context).toContain("Do not repeat unchanged rule, catalog, capability, or validation reads");
-      expect(context).toContain("continue from the injected contract and copied template");
+      expect(context).toContain("Read ipollowork-video-studio once");
+      expect(context).toContain("references relative to the installed Skill");
+      expect(context).toContain("copied template guides and catalogs only from exact paths inside the active project");
+      expect(context).not.toContain("Read references/video.md only when");
+      expect(context).toContain("Reuse unchanged guidance and completed checks");
+      expect(context).toContain("do not search for missing template files");
       expect(context).not.toContain("design-video.md");
     } else {
       expect(context).toContain(`references/design-${category}.md`);

@@ -2221,6 +2221,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         || issue.code === "invalid_spatial_camera_recipe"
         || (issue.code === "required_animation_missing" && /spatial-camera-suite/i.test(issue.message ?? "")),
       );
+      const needsStoryboardFormatRepair = issues.some(issue => issue.code === "invalid_storyboard_music_plan");
       const needsStoryboardMusicRepair = issues.some(issue =>
         issue.code === "music_plan_missing" || issue.code === "music_plan_conflict"
         || issue.code === "music_asset_missing" || issue.code === "music_asset_mismatch"
@@ -2248,14 +2249,16 @@ export function SessionSurface(props: SessionSurfaceProps) {
           throw new Error(spatialCameraInstallResult.message);
         }
         toast.warning(t("session.video_delivery_repairing"));
-        const repairTargets = needsStoryboardMusicRepair
+        const repairTargets = needsStoryboardMusicRepair || needsStoryboardFormatRepair
           ? `${pending.sourcePath} and its sibling STORYBOARD.md`
           : pending.sourcePath;
         const recoveryInstruction = [
           "The preceding video run ended without satisfying the application's authoritative delivery validation.",
           `Continue editing only ${repairTargets} now. Do not merely plan, summarize, or explain.`,
           "Make the first action of this turn a file edit or required media tool call. Do not emit a progress report before changing the saved artifact.",
-          "The saved STORYBOARD.md is already approved production input. Do not stop for script confirmation; apply its current version to the video now.",
+          needsStoryboardFormatRepair
+            ? "Repair STORYBOARD.md into the native editable format from the current brief and composition, then apply it to the video. Preserve its content, narration and timing; do not stop for another script confirmation."
+            : "The saved STORYBOARD.md is already approved production input. Do not stop for script confirmation; apply its current version to the video now.",
           `Required deliverables: ${JSON.stringify(pending.requirements)}.`,
           ...(needsSpatialCameraRepair ? [
             "For the missing/invalid spatial-camera issue, install `spatial-camera-suite` through media/video_component_install and integrate its returned composition snippet into a focal scene. Set `shotStyle` to one exact supported recipe (graze-face-tour, depth-layer-moves, spotlight-hero-card, runway-ground-skim, steep-tilt-glide), pass the real scene text and a project-local image/video asset path, and preserve the component's seekable camera/depth choreography. Do not satisfy this by adding metadata, ordinary 2D transforms, or a second camera wrapper. Then rerun the aggregate delivery check.",

@@ -2326,7 +2326,14 @@ export async function callMediaExtensionAction(
     const originalHtml = await readFile(source.absolutePath, "utf8");
     const html = repairVideoTimelineRegistry(originalHtml);
     if (html !== originalHtml) await writeFile(source.absolutePath, html, "utf8");
-    const storyboardPlan = await readStoryboardDeliveryPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath);
+    let storyboardIssue: { code: string; message: string } | undefined;
+    const storyboardPlan = await readStoryboardDeliveryPlan(resolveWorkspaceFile(workspace.path, posix.join(sourceDirectory, "STORYBOARD.md")).absolutePath).catch((error: unknown) => {
+      if (!isApiError(error) || error.code !== "invalid_storyboard_music_plan") throw error;
+      // Invalid authored content belongs in the bounded delivery repair pass.
+      // Filesystem, path and authorization failures still abort normally.
+      storyboardIssue = { code: error.code, message: error.message };
+      return undefined;
+    });
     const output = validateVoiceoverTimelineHtml(html, {
       voiceoverAssets,
       sourceDirectory,
@@ -2347,6 +2354,7 @@ export async function callMediaExtensionAction(
       ? await checkVideoComponents(workspace, { sourcePath: source.relativePath, recipesOnly: requirementInput.recipesOnly === true })
       : null;
     const issues = [
+      ...(storyboardIssue ? [storyboardIssue] : []),
       ...output.issues,
       ...await validateVideoScriptAssets(html, dirname(source.absolutePath)),
       ...(storyboardPlan?.music.asset && await musicDuplicatesNarration(

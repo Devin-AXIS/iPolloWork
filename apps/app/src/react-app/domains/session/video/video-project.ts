@@ -10,6 +10,7 @@ import {
   videoProjectEntryPath,
 } from "@ipollowork/video-studio/project";
 import { artifactContentFingerprint } from "../artifacts/artifact-completion";
+import { VIDEO_STORYBOARD_FORMAT_CONTRACT } from "./video-storyboard";
 
 export {
   hyperframesStudioPort,
@@ -270,15 +271,18 @@ export function videoTaskSystemContext(
   const hostManagedExport = options.hostManagedExport || Boolean(options.hostExportOperationKey);
   return [
     "Video task contract:",
-    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once; load only the references needed for this task. The Skill owns creative planning, composition, media, motion and delivery guidance.",
+    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once using its current references. Creation/full regeneration must read its video.md sections Plan content and storyboard, Native editable script, Recipes, components and sequence, and Composition and timing; targeted edits read only affected sections. The Skill owns creative planning.",
     `Own only \`${projectPath}\`. Video Studio displays \`${projectPath}/index.html\` at http://localhost:${hyperframesStudioPort(sessionId)} and hot-reloads saves. Keep STORYBOARD.md, optional SCRIPT.md, assets and renders in this project. Never create or inspect another session's project.`,
-    "Read the current entry before editing and immediately before replacement; merge user edits and preserve the root composition, aspect ratio, editor hooks, variables, tokens and existing media. Save a complete replacement atomically. The app owns Studio and its services; do not install runtimes, start another preview, stop Node processes or run redundant validation/preview tools.",
+    "Read the current entry before editing and immediately before replacement; merge user edits; preserve root/aspect ratio, hooks, variables, tokens and media. Save a complete replacement atomically. The app owns Studio/services; do not install runtimes, start another preview, stop Node processes or duplicate validation.",
     ...(template ? [
       `Template seed: ${JSON.stringify({ id: template.id, title: template.title, entry: `${projectPath}/${template.entry}`, applyChecklist: template.applyChecklist })}. Adapt this visual and runtime seed to the user's content; sample scene counts and timings do not constrain the deliverable. Read ${projectPath}/brief.json and the current entry.`,
       ...(template.layoutLibrary || template.authoringGuide ? [
         `Optional template-local guidance: ${JSON.stringify([...(template.layoutLibrary ? [`${template.layoutLibrary}-video/catalog.md`] : []), ...(template.authoringGuide ? [template.authoringGuide] : [])])}. Read only if that exact project-local file exists; otherwise continue from the seed. Never glob or search a parent directory or workspace-external path for missing guidance.`,
       ] : []),
     ] : ["Use the prepared blank composition unless the user explicitly selected a template." ]),
+    VIDEO_STORYBOARD_FORMAT_CONTRACT,
+    "Creation/structural work: Plan from content, then query media/video_recipe_catalog once for fitting intent/inputs/capacity. Install/mount fitting recipes and their real snippets; when none fits, record the concrete mismatch and author editable custom work. Do not force a match, recipe proportion or scene count. Targeted text/theme edits reuse existing choices.",
+    "Keep design-tokens.css and --ipw-* palette/type tokens, static data-composition-variables with stable IDs, and editable nodes/hooks. Components and custom content inherit the active design system; later theme/token changes preserve variables, media and timeline. Do not bake theme values into every scene or flatten editable content into imagery.",
     options.requireStoryboardReview
       ? `Script review requested: create or update only \`${projectPath}/STORYBOARD.md\`, then wait for the user's review. Do not source or generate media or change index.html in this turn.`
       : "For a finished-video request, continue from the saved storyboard through production. Pause only when the user explicitly requests script review or script-only work; discussions and targeted edits keep their requested scope.",
@@ -289,7 +293,7 @@ export function videoTaskSystemContext(
     ] : [
       `For an explicitly requested export, use the existing media actions: action=video_render_start, args={sourcePath:"${projectDirectory}/index.html",operationKey:"${videoProjectId(sessionId)}:export-1"}, then media.video_render_status with the same identifiers and returned pollAfterMs. Never repeat a start because a wait timed out.`,
     ]),
-    "Export-only requests do not authorize publication. Authorized publication uses the corresponding installed worker and supplied account-specific browser job; reuse its draft, media path and operationKey, and verify the real platform receipt. Never re-submit an uncertain publication or import a failed/cancelled render. Use the installed iPolloWork tools; OpenCode's publication continuation supplies its session-bound tool instructions.",
+    "Export-only requests do not authorize publication. Authorized publishing reuses installed iPolloWork tools, worker, supplied account-specific browser job, draft, media path and operationKey; verify the real receipt. Never re-submit an uncertain publication or import a failed/cancelled render. Follow the supplied session-bound tool instructions.",
     ...(options.includeVoiceover ? [
       `Read ipollowork-video-voiceover once and the current \`${projectPath}/voiceover.json\` and STORYBOARD.md. Use the saved scene/project voice settings and built-in speech_synthesize_workspace_batch defaults; keep assets under \`${projectDirectory}/assets\`. Check media authorization, preserve explicit enabled=false, and finish mounting the returned audio/captions before completion.`,
     ] : [

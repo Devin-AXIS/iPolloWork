@@ -1352,7 +1352,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("single aggregate delivery validator");
     expect(contract).toContain("one bounded repair continuation");
     expect(contract).toContain("requirements");
-    expect(contract.length).toBeLessThan(3500);
+    expect(contract.length).toBeLessThan(4800);
     for (const field of ["data-hf-studio", ".scene.clip", "data-ipw-beats", "data-ipw-caption", "data-ipw-bgm", "data-timeline-role"])
       expect(videoAuthoringGuidance).toContain(field);
   });
@@ -1398,7 +1398,7 @@ describe("HyperFrames Video Studio", () => {
     expect(contract).toContain("video/ses_current_video/assets");
     expect(contract).toContain("preserve explicit enabled=false");
     expect(contract).toContain("finish mounting the returned audio/captions");
-    expect(contract.length).toBeLessThan(3500);
+    expect(contract.length).toBeLessThan(4800);
     for (const field of ["wordTimings", "captionElementsHtml", "audioElementHtml", "timelinePatch", "totalShiftSeconds", "voice_id", "voice_model", "data-ipw-narration-source", "data-ipw-narration-binding", "data-ipw-caption-text", "window.__timelines"])
       expect(videoAuthoringGuidance).toContain(field);
   });

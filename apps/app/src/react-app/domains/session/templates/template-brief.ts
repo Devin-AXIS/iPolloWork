@@ -85,7 +85,6 @@ const CATEGORY_INTENT_PATTERNS: ReadonlyArray<{
 
 const DEFAULT_TEMPLATE_IDS: Partial<Record<TemplateCategory, readonly string[]>> = {
   site: ["ipollowork.html-anything.prototype-web", "ipollowork.html-anything.web-proto-soft"],
-  video: ["ipollowork.html-anything.motion-frames", "ipollowork.hyperframes.release-spotlight"],
   slides: ["ipollowork.pptx-brand-narrative", "ipollowork.html-anything.deck-blueprint"],
   app: ["ipollowork.app-creator-studio"],
   poster: ["ipollowork.html-anything.poster-hero"],
@@ -226,7 +225,8 @@ export function selectConversationTemplate(
   const intent = requestedCategory
     ? { category: requestedCategory, prompt: prompt.trim() }
     : inferConversationTemplateIntent(prompt);
-  if (!intent) return null;
+  // New videos use the content-led scaffold; applying a video template is an explicit UI action.
+  if (!intent || intent.category === "video") return null;
   if (requestsCustomTemplate(intent.prompt)) return null;
   const candidates = catalog.filter((item) => item.installed && item.manifest.category === intent.category);
   if (candidates.length === 0) return null;
