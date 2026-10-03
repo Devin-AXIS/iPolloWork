@@ -148,9 +148,10 @@ describe("artifact file routes", () => {
     const downloaded = await fetch(`${base}/workspace/ws_1/files/raw?path=${path}`, { headers: auth(token) });
     expect(downloaded.headers.get("content-type")).toBe("video/mp4");
     expect((await downloaded.arrayBuffer()).byteLength).toBe(bytes.length);
-    // Legacy JSON binary writes retain their original 5 MB bound.
+    // Legacy JSON binary writes retain their original 5 MB bound, using the
+    // same isolated upload connection as the multipart rejection cases.
     const legacy = await fetch(`${base}/workspace/ws_1/files/raw`, {
-      method: "POST", headers: auth(token), body: JSON.stringify({ path: "large.png", dataBase64: Buffer.from(bytes).toString("base64") }),
+      method: "POST", headers: { ...auth(token), Connection: "close" }, body: JSON.stringify({ path: "large.png", dataBase64: Buffer.from(bytes).toString("base64") }),
     });
     expect(legacy.status).toBe(413);
     await legacy.arrayBuffer();
