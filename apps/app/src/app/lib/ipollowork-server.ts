@@ -641,6 +641,7 @@ export type iPolloWorkUserEnvItem = {
 
 export type iPolloWorkAuthorizationServiceId =
   | "openai-images"
+  | "minimax-video-template"
   | "aliyun-bailian"
   | "volcengine-video"
   | "runninghub-video"

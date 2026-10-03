@@ -12,6 +12,7 @@ import type { ServerConfig } from "./types.js";
 
 export const AUTHORIZATION_SERVICE_IDS = [
   "openai-images",
+  "minimax-video-template",
   "aliyun-bailian",
   "volcengine-video",
   "runninghub-video",
@@ -58,6 +59,16 @@ export type AuthorizationAccess = {
 };
 
 const AUTHORIZATION_SERVICES: readonly AuthorizationServiceDefinition[] = [
+  {
+    id: "minimax-video-template",
+    keys: ["MINIMAX_API_KEY"],
+    category: "media",
+    agent: {
+      capability: "MiniMax video templates",
+      useWhen: "Use when the user explicitly requests a MiniMax Video Agent template and supplies its template ID.",
+      instruction: "Use media/video_template_generate and media/video_template_get with the same region. Template inputs vary by template. The API is deprecated.",
+    },
+  },
   {
     id: "openai-images",
     keys: ["OPENAI_API_KEY"],
@@ -263,6 +274,8 @@ export async function testAuthorizationService(config: ServerConfig, serviceId: 
   }
 
   switch (serviceId) {
+    case "minimax-video-template":
+      return { ok: true, detail: "API key saved. MiniMax permissions and balance are checked when a template task is submitted." };
     case "openai-images":
       return fetchAuthorizationTest("https://api.openai.com/v1/models", { headers: { Authorization: `Bearer ${resolved.values.OPENAI_API_KEY}` } });
     case "aliyun-bailian":
