@@ -1,6 +1,6 @@
 # Article Rules
 
-Use for `article`: editorial pages, long-form reading and WeChat articles. Read `design.md` and shared guidelines first.
+Use for `article`: editorial pages, long-form reading and WeChat articles. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.
 
 ## Reading and editorial structure
 

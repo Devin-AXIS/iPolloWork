@@ -26,12 +26,12 @@ export function templateAuthoringKickoff(category: TemplateCategory, pptxCompati
 
 export function templateTypeRulesInstruction(category: TemplateCategory): string {
   if (category === "slides") {
-    return "For slides, including HTML, follow the iPolloWork Presentations workflow: read shared-guidelines.md, slides-ppt.md and layout.md before editing, and keep the HTML runtime or native PPTX contract.";
+    return "For slides, including HTML, follow ipollowork-presentations for the current task; read only applicable references relative to the installed Skill. Preserve the HTML runtime or native editable PPTX contract.";
   }
   if (category === "video") {
     return "Follow the active Video surface contract. Read ipollowork-video-studio once and load only applicable references relative to the installed Skill. Read copied template guides and catalogs only from exact paths inside the active project; do not search for missing template files. Reuse unchanged guidance and completed checks.";
   }
-  return `Follow the ipollowork-design-studio Skill: before editing, read references/shared-guidelines.md, references/design.md and references/design-${category}.md relative to its current installed location. Apply the same type and asset rules to template application and custom generation; do not load unrelated type references.`;
+  return `Follow ipollowork-design-studio for this ${category} task; read only affected references relative to the installed Skill. The Skill owns creative, layout and media decisions; targeted edits preserve unrelated content and existing assets.`;
 }
 
 function surfaceRules(snapshot: TemplateSessionSnapshot) {

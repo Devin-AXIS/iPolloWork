@@ -383,10 +383,11 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
     );
   }
   if (selectedSourceItem) {
+    const catalogItem = catalogItems.find((item) => item.pluginId === selectedSourceItem.pluginId);
     const localizedManifest = localizePluginPackageManifest(
       selectedSourceItem.manifest,
       locale,
-      catalogItems.find((catalogItem) => catalogItem.pluginId === selectedSourceItem.pluginId)?.manifest.localization,
+      catalogItem?.manifest.localization,
     );
     const item = { ...selectedSourceItem, name: localizedManifest.name, manifest: localizedManifest };
     // This plugin manages multiple accounts in its Studio; keep its manifest
@@ -450,11 +451,22 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
         onBack={() => props.onSelectPlugin(null)}
         action={(
           <div className="flex flex-col items-start gap-2 sm:items-end">
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <div className="flex items-center gap-2 rounded-full border border-green-6 bg-green-2 px-3 py-1.5 text-xs font-medium text-green-11">
                 <CheckCircle2 size={15} />
                 {t("plugin_platform.status.installed")}
+                <span>v{item.version}</span>
               </div>
+              {catalogItem?.updateAvailable ? (
+                <Button
+                  size="sm"
+                  disabled={busyKey !== null}
+                  onClick={() => void installBundledPackage(catalogItem)}
+                >
+                  {busyKey === `catalog:${item.pluginId}` ? <Loader2 size={14} className="animate-spin" /> : null}
+                  {t("plugin_platform.action.update")} · v{catalogItem.version}
+                </Button>
+              ) : null}
               <label className="flex items-center gap-2 text-xs font-medium text-dls-secondary">
                 {busyKey === toggleKey ? <Loader2 size={14} className="animate-spin" /> : null}
                 <span>{t("plugin_platform.enable")}</span>

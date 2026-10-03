@@ -2,7 +2,7 @@
 
 # Card Series Rules
 
-Use for `cards`: social carousels and shareable information card series. Read `design.md` and shared guidelines first.
+Use for `cards`: social carousels and shareable information card series. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.
 
 ## Sequence and capacity
 

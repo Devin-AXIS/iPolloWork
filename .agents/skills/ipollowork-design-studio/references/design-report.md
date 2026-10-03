@@ -2,7 +2,7 @@
 
 # Report Rules
 
-Use for `report`: research, business and data-led documents. Read `design.md` and shared guidelines first.
+Use for `report`: research, business and data-led documents. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.
 
 ## Evidence and reading structure
 

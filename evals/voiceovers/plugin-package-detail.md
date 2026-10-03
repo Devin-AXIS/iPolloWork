@@ -20,6 +20,6 @@
 
 10. I uninstall the developer package, return to the plugin list, and the imported plugin is no longer present in the workspace.
 
-11. I open the updated Video Agent and see two focused skills for video production and voiceover. Creative guidance is read when the task needs it, while media, animation, components, captions, export, and publication remain available.
+11. I open the updated Video Agent and see a short Studio router plus focused storyboard, composition, voiceover and soundtrack skills. Guidance is read when the current task or production stage needs it, while media, animation, components, captions, export, and publication remain available.
 
 12. I open the upgraded Figma plugin and see a clear connection and authorization section for the official Desktop MCP. Clicking connect now waits for the local service and shows either a connected result or an exact Desktop MCP setup message, instead of silently doing nothing or attempting unsupported remote OAuth registration.
