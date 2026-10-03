@@ -138,7 +138,6 @@ import { readSessionType, sessionTypeForTemplate, setSessionType } from "@/react
 import {
   shouldInjectVideoTaskContext,
   readVideoBriefDetails,
-  videoCompositionHasVoiceover,
   videoDeliveryRequirementsForPrompt,
   videoDeliveryIntentForPrompt,
   videoProjectEntryPath,
@@ -1748,15 +1747,9 @@ export function SessionRoute() {
             voiceoverEnabled: voiceover.enabled,
           });
           videoRequirementsBySession.set(sessionId, videoDeliveryRequirements);
-          let includeVoiceoverContext = videoDeliveryRequirements.voiceover
-            || videoPromptRequestsVoiceoverContext(draft.capability?.id, videoPromptText);
-          if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
-            const entryPath = template?.state.entry ?? videoProjectEntryPath(sessionId);
-            const entry = await selectedWorkspaceEndpoint.client
-              .readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, entryPath)
-              .catch(() => null);
-            includeVoiceoverContext = videoCompositionHasVoiceover(entry?.content);
-          }
+          const includeVoiceoverContext = !requiresStoryboardReview && videoPromptRequestsVoiceoverContext(
+            draft.capability?.id, videoPromptText, videoDeliveryRequirements,
+          );
           return videoTaskSystemContext(
             sessionId,
             selectedWorkspaceRoot,

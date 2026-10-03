@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
-const videoSkill = readFileSync(new URL("../../../.codex/skills/ipollowork-template-generation/references/video.md", import.meta.url), "utf8");
+const videoSkill = readFileSync(new URL("../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video-storyboard.md", import.meta.url), "utf8");
+const composeSkill = readFileSync(new URL("../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video-compose.md", import.meta.url), "utf8");
+const voiceoverSkill = readFileSync(new URL("../../../examples/plugin-packages/video-agent/skills/ipollowork-video-studio/references/video-voiceover.md", import.meta.url), "utf8");
 import { ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../../server/src/engine-host-tools";
 import { parseStoryboard } from "../../../vendor/hyperframes/packages/core/src/storyboard/parseStoryboard";
 import { setFrameField, setFrameVoiceover, setStoryboardGlobal } from "../../../vendor/hyperframes/packages/core/src/storyboard/editStoryboard";
@@ -12,7 +14,7 @@ describe("video script contract", () => {
     const context = videoTaskSystemContext("ses_example");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("prepared task contract owns final validation");
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Read ipollowork-video-studio once");
-    for (const text of ["speech_synthesize_workspace_batch", "retry", "TTS"]) expect(videoSkill).toContain(text);
+    for (const text of ["speech_synthesize_workspace_batch", "retry", "TTS"]) expect(voiceoverSkill).toContain(text);
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).not.toContain("Before reporting an editable video complete, run its supplied HyperFrames check");
     expect(context).toContain("single aggregate delivery validator and one bounded repair continuation");
     expect(context.length).toBeLessThan(4500);
@@ -30,19 +32,31 @@ describe("video script contract", () => {
       expect(storyboard.frames).toHaveLength(1);
       expect(storyboard.frames[0]).toMatchObject({ scene: "An idea card becomes a three-step plan; the focus moves to the first task.", durationSeconds: 5, status: "outline" });
       expect(context.length).toBeLessThan(4700);
-      if (requireStoryboardReview) expect(context).toContain("then wait for the user's review");
+      if (requireStoryboardReview) {
+        expect(context).toContain("then wait for the user's review");
+        expect(context).not.toContain("speech_synthesize_workspace_batch");
+      }
     }
     expect(parseStoryboard("## 视觉声音\n| 时间 | 画面 | 旁白 | 声音 |\n| 0–5s | Idea | Begin | Music |\n").frames).toEqual([]);
   });
-  test("creation keeps content-led reuse and editable design-system inputs in the direct contract", () => {
+  test("routes specialist stages while preserving content-led reuse and the direct editability contract", () => {
     const context = videoTaskSystemContext("ses_example");
-    expect(context).toContain("Creation/full regeneration must read");
-    for (const section of ["Plan content and storyboard", "Native editable script", "Recipes, components and sequence", "Composition and timing"]) expect(context).toContain(section);
+    expect(context).toContain("load only the specialist needed by the current task or production stage");
+    for (const stage of ["storyboard", "compose", "voiceover", "soundtrack"]) expect(context).toContain(`ipollowork-video-${stage}`);
+    expect(context).toContain("Do not preload unrelated stages");
+    expect(context).not.toContain("Creation/full regeneration must read");
+    expect(context).not.toContain("video.md sections");
+    expect(videoSkill).toContain("Plan content and storyboard");
+    expect(videoSkill).toContain("Native editable script");
+    expect(composeSkill).toContain("Recipes and components");
+    expect(composeSkill).toContain("Composition and timing");
     expect(context).toContain("Use the prepared blank composition unless the user explicitly selected a template");
-    expect(context.indexOf("Plan from content")).toBeLessThan(context.indexOf("query media/video_recipe_catalog once"));
-    expect(context).toContain("Install/mount fitting recipes and their real snippets");
-    expect(context).toContain("when none fits, record the concrete mismatch and author editable custom work");
-    expect(context).toContain("Do not force a match, recipe proportion or scene count");
+    expect(videoSkill).toContain("content first");
+    expect(composeSkill).toContain("video_recipe_catalog");
+    expect(composeSkill).toContain("Mount returned `instances[].snippet`");
+    expect(composeSkill).toContain("custom_reason");
+    expect(composeSkill).toContain("author editable custom work autonomously");
+    expect(composeSkill).toContain("never distort the content, force a recipe match or impose a component proportion/scene count");
     for (const binding of ["design-tokens.css", "--ipw-*", "data-composition-variables", "stable IDs", "editable nodes/hooks", "inherit the active design system", "theme/token changes preserve variables, media and timeline"]) expect(context).toContain(binding);
   });
   test("the actual agent example parses into editable globals and frame fields", () => {

@@ -56,9 +56,25 @@ export function shouldInjectVideoTaskContext(
   return templateSurface === "video" || (templateSurface == null && cachedSessionType === "video");
 }
 
-export function videoPromptRequestsVoiceoverContext(capabilityId?: string, promptText?: string) {
-  if (capabilityId === "video-voice-reference" || capabilityId === "video-delivery-recovery" || capabilityId === "video-storyboard-regeneration") return true;
-  return /(?:配音|旁白|解说|语音合成|口播|voice[ -]?over|narrat(?:e|ion)|dub(?:bing)?|text[ -]?to[ -]?speech|\btts\b)/i.test(promptText ?? "");
+const VOICEOVER_DISABLED_PATTERN = /(?:不要|不用|无需|不需要|关闭|禁用|去掉|取消)\s*(?:旁白|配音|解说|口播|语音合成|tts)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i;
+const VOICEOVER_PRESERVED_PATTERN = /(?:保留|保持|不改|不修改|不要改|不动|不用改|无需改)\s*(?:现有|已有|原有|原始|当前|原)?的?\s*(?:旁白|配音)|(?:keep|preserve|retain|leave|(?:do not|don't)\s+(?:change|edit|regenerate))\s+(?:the\s+)?(?:(?:existing|current|original)\s+)?(?:voice[ -]?over|narration)(?:\s+unchanged)?/gi;
+
+export function videoPromptRequestsVoiceoverContext(
+  capabilityId?: string,
+  promptText?: string,
+  requirements?: Pick<VideoDeliveryRequirements, "voiceover" | "captions">,
+) {
+  if (videoPromptRequiresStoryboardReview({ promptText })) return false;
+  if (requirements?.captions) return true;
+  const text = promptText ?? "";
+  if (VOICEOVER_DISABLED_PATTERN.test(text)) return false;
+  const narrationText = text.replace(VOICEOVER_PRESERVED_PATTERN, "");
+  const preservesNarration = narrationText !== text;
+  return (capabilityId === "video-voice-reference" && !preservesNarration)
+    || /(?:配音|旁白|解说|语音合成|口播|voice[ -]?over|narrat(?:e|ion)|dub(?:bing)?|text[ -]?to[ -]?speech|\btts\b)/i.test(narrationText)
+    || (requirements?.voiceover === true && !preservesNarration && (
+      capabilityId === "video-storyboard-regeneration" || videoPromptRequestsFinishedVideo(promptText ?? "")
+    ));
 }
 
 const CHINESE_DURATION_VALUES: Record<string, number> = {
@@ -130,7 +146,7 @@ export function videoDeliveryRequirementsForPrompt(input: {
   const targetDurationSeconds = originalDuration != null && !durationChangeRequested
     ? originalDuration
     : requestedVideoDurationSeconds(text) ?? originalDuration;
-  const voiceoverExplicitlyDisabled = /(?:不要|无需|关闭|禁用|去掉)(?:旁白|配音)|(?:no|without|disable|mute)\s+(?:voice[ -]?over|narration|tts)/i.test(text);
+  const voiceoverExplicitlyDisabled = VOICEOVER_DISABLED_PATTERN.test(text);
   const requestsAudio = (terms: RegExp, defaultRequested = false) => {
     let requested = defaultRequested;
     for (const match of text.matchAll(terms)) {
@@ -175,7 +191,8 @@ export function videoPromptRequiresStoryboardReview(input: {
 }) {
   const text = input.promptText ?? "";
   if (/(?:直接|立即|马上|一次性).{0,12}(?:生成|制作|出)(?:成片|视频)|(?:无需|不用|不要|跳过).{0,12}(?:确认|审核|审阅)(?:脚本|分镜)?|\b(?:skip|without)\b.{0,16}\b(?:script|storyboard)\s+(?:review|approval)\b|\bgo straight to (?:production|video)\b/i.test(text)) return false;
-  return /(?:先|首先|只|仅|暂时只).{0,12}(?:看|写|出|做|给我|审核|审阅|确认).{0,8}(?:脚本|分镜|故事板)|(?:脚本|分镜|故事板).{0,12}(?:先给我看|先确认|确认后再|审核后再|审阅后再|暂不制作|不要生成视频)|\b(?:script|storyboard)\s+(?:first|only|for review)\b|\b(?:review|approve)\s+(?:the\s+)?(?:script|storyboard)\s+(?:first|before production)\b/i.test(text);
+  return /(?:先|首先|只|仅|暂时只).{0,12}(?:看|写|出|做|给我|审核|审阅|确认).{0,8}(?:脚本|分镜|故事板)|(?:脚本|分镜|故事板).{0,12}(?:先给我看|先确认|确认后再|审核后再|审阅后再|暂不制作|不要生成视频)|\b(?:script|storyboard)\s+(?:first|only|for review)\b|\b(?:review|approve)\s+(?:the\s+)?(?:script|storyboard)\s+(?:first|before production)\b/i.test(text)
+    || /(?:只|仅|暂时只)\s*(?:给我)?\s*(?:规划|计划)|\b(?:only|just)\s+(?:plan|planning)\b/i.test(text);
 }
 
 export type VideoDeliveryIntent = "export" | "publish-douyin" | "publish-wechat-channels";
@@ -234,11 +251,6 @@ export function unchangedVideoArtifactIssue(beforeFingerprint: string | null, af
   };
 }
 
-export function videoCompositionHasVoiceover(content?: string | null) {
-  if (!content) return false;
-  return /<audio\b[^>]*(?:data-ipw-voiceover\s*=\s*["']true["']|id\s*=\s*["'](?:voiceover|vo-|narration-)|src\s*=\s*["'][^"']*(?:voiceover[-_]|\/audio\/(?:voice|narration)))/i.test(content);
-}
-
 /**
  * The agent's task workspace can be nested below the visible workspace root.
  * Give it the resolved Studio path instead of relying on its current directory
@@ -271,7 +283,7 @@ export function videoTaskSystemContext(
   const hostManagedExport = options.hostManagedExport || Boolean(options.hostExportOperationKey);
   return [
     "Video task contract:",
-    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once using its current references. Creation/full regeneration must read its video.md sections Plan content and storyboard, Native editable script, Recipes, components and sequence, and Composition and timing; targeted edits read only affected sections. The Skill owns creative planning.",
+    "Create or edit an editable HyperFrames composition. Read ipollowork-video-studio once for routing; load only the specialist needed by the current task or production stage: ipollowork-video-storyboard for script/planning, ipollowork-video-compose for composition/visual edits, ipollowork-video-voiceover for requested narration/captions, ipollowork-video-soundtrack for music/SFX. Do not preload unrelated stages. The Skill owns creative planning.",
     `Own only \`${projectPath}\`. Video Studio displays \`${projectPath}/index.html\` at http://localhost:${hyperframesStudioPort(sessionId)} and hot-reloads saves. Keep STORYBOARD.md, optional SCRIPT.md, assets and renders in this project. Never create or inspect another session's project.`,
     "Read the current entry before editing and immediately before replacement; merge user edits; preserve root/aspect ratio, hooks, variables, tokens and media. Save a complete replacement atomically. The app owns Studio/services; do not install runtimes, start another preview, stop Node processes or duplicate validation.",
     ...(template ? [
@@ -281,10 +293,9 @@ export function videoTaskSystemContext(
       ] : []),
     ] : ["Use the prepared blank composition unless the user explicitly selected a template." ]),
     VIDEO_STORYBOARD_FORMAT_CONTRACT,
-    "Creation/structural work: Plan from content, then query media/video_recipe_catalog once for fitting intent/inputs/capacity. Install/mount fitting recipes and their real snippets; when none fits, record the concrete mismatch and author editable custom work. Do not force a match, recipe proportion or scene count. Targeted text/theme edits reuse existing choices.",
     "Keep design-tokens.css and --ipw-* palette/type tokens, static data-composition-variables with stable IDs, and editable nodes/hooks. Components and custom content inherit the active design system; later theme/token changes preserve variables, media and timeline. Do not bake theme values into every scene or flatten editable content into imagery.",
     options.requireStoryboardReview
-      ? `Script review requested: create or update only \`${projectPath}/STORYBOARD.md\`, then wait for the user's review. Do not source or generate media or change index.html in this turn.`
+      ? `Script review requested: load ipollowork-video-storyboard and create or update only \`${projectPath}/STORYBOARD.md\`, then wait for the user's review. Do not source or generate media or change index.html in this turn.`
       : "For a finished-video request, continue from the saved storyboard through production. Pause only when the user explicitly requests script review or script-only work; discussions and targeted edits keep their requested scope.",
     `Delivery requirements: ${JSON.stringify(options.deliveryRequirements ?? { voiceover: false, captions: false, bgm: false, sfx: false, animationReferences: [] })}. These parsed requirements are enforced independently of HTML metadata; preserve them through repairs.`,
     "After saving the completed source, the iPolloWork app runs the single aggregate delivery validator and one bounded repair continuation. Do not duplicate its checks or claim an incomplete stage is finished.",
@@ -294,10 +305,10 @@ export function videoTaskSystemContext(
       `For an explicitly requested export, use the existing media actions: action=video_render_start, args={sourcePath:"${projectDirectory}/index.html",operationKey:"${videoProjectId(sessionId)}:export-1"}, then media.video_render_status with the same identifiers and returned pollAfterMs. Never repeat a start because a wait timed out.`,
     ]),
     "Export-only requests do not authorize publication. Authorized publishing reuses installed iPolloWork tools, worker, supplied account-specific browser job, draft, media path and operationKey; verify the real receipt. Never re-submit an uncertain publication or import a failed/cancelled render. Follow the supplied session-bound tool instructions.",
-    ...(options.includeVoiceover ? [
-      `Read ipollowork-video-voiceover once and the current \`${projectPath}/voiceover.json\` and STORYBOARD.md. Use the saved scene/project voice settings and built-in speech_synthesize_workspace_batch defaults; keep assets under \`${projectDirectory}/assets\`. Check media authorization, preserve explicit enabled=false, and finish mounting the returned audio/captions before completion.`,
+    ...(options.includeVoiceover && !options.requireStoryboardReview ? [
+      `When narration/caption production begins: Read ipollowork-video-voiceover once and the current \`${projectPath}/voiceover.json\` and STORYBOARD.md. For new requested narration or missing narration required by the finished deliverable, use saved scene/project voice settings and built-in speech_synthesize_workspace_batch defaults. Caption-only work reuses existing audio/word timings without resynthesizing; keep assets under \`${projectDirectory}/assets\`. Check media authorization, preserve explicit enabled=false, and finish mounting the returned audio/captions before completion.`,
     ] : [
-      "No new voiceover is required for this turn; preserve existing audio. If requested narration is unavailable, use Video Studio's voice panel and Authorization Center; never request an API key in chat.",
+      "No voiceover Skill preload or new synthesis is needed for the current stage; preserve existing audio. If actual spoken-content edits or a missing-narration repair become necessary later, load ipollowork-video-voiceover at that stage. Unavailable narration uses Video Studio's voice panel and Authorization Center; never request an API key in chat.",
     ]),
   ].join("\n");
 }
