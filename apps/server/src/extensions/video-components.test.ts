@@ -1,10 +1,11 @@
 import { createHash } from "node:crypto";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { attribute, checkVideoComponents, installVideoComponents } from "./video-components.js";
+import { listHyperframesCatalog } from "../hyperframes-catalog.js";
 import { z } from "zod";
 import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
@@ -27,10 +28,13 @@ async function recipeFixture(componentId = "comparison-matrix") {
 
 const roots: string[] = [];
 const originalRegistryRoot = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
+const originalCatalogRoot = process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT;
 
 afterEach(async () => {
   if (originalRegistryRoot === undefined) delete process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
   else process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT = originalRegistryRoot;
+  if (originalCatalogRoot === undefined) delete process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT;
+  else process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = originalCatalogRoot;
   while (roots.length) {
     const root = roots.pop();
     if (root) await rm(root, { recursive: true, force: true });
@@ -60,6 +64,32 @@ async function fixture() {
 }
 
 describe("Video Studio registry component integration", () => {
+  test("installs the same resources exposed by a configured catalog", async () => {
+    const { root, project } = await fixture();
+    const catalog = join(root, "registry");
+    const componentId = "catalog-only-timeline";
+    await mkdir(join(catalog, "blocks"));
+    await rename(join(catalog, "milestone-timeline"), join(catalog, "blocks", componentId));
+    const directory = join(catalog, "blocks", componentId);
+    const manifestPath = join(directory, "registry-item.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    await writeFile(manifestPath, JSON.stringify({ ...manifest, name: componentId, title: "Custom timeline", description: "Configured catalog resource" }));
+    await writeFile(join(catalog, "registry.json"), "{}");
+    delete process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT;
+    process.env.IPOLLOWORK_HYPERFRAMES_CATALOG_ROOT = catalog;
+    const authoredScene = '<section id="authored">Keep authored scene</section>';
+    await writeFile(join(project, "index.html"), `<!doctype html><main data-composition-id="main">${authoredScene}</main>`);
+
+    expect((await listHyperframesCatalog()).map(item => item.name)).toEqual([componentId]);
+    const result = await installVideoComponents({ id: "workspace", path: root }, {
+      sourcePath: "video/session-one/index.html", componentIds: [componentId],
+    });
+    expect(result.components.map(component => component.componentId)).toEqual([componentId]);
+    expect(await readFile(join(project, "compositions", "milestone-timeline.html"), "utf8"))
+      .toContain("Timeline");
+    expect(await readFile(join(project, "index.html"), "utf8"))
+      .toContain(authoredScene);
+  });
   test("rejects unavailable recipe IDs before writing even the valid selections", async () => {
     const { root, project } = await recipeFixture("question-opener");
     const original = await readFile(join(project, "index.html"), "utf8");

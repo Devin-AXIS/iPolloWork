@@ -132,6 +132,7 @@ switch (command) {
   case "check":
     requireCommand("pnpm", "Run: corepack enable");
     await runSequence([
+      [process.execPath, [resolve(root, "scripts", "check-hyperframes-version-sync.mjs")]],
       [process.execPath, [resolve(root, "scripts", "sync-readme-zh-hant.mjs"), "--check"]],
       [pnpm, ["--filter", "@ipollowork/app", "typecheck", ...args]],
       [pnpm, ["--filter", "@ipollowork/desktop", "typecheck:electron", ...args]],
