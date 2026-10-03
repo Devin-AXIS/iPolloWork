@@ -298,7 +298,7 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
   return clients[0] ?? null;
 }
 
-function run(command, args, options = {}) {
+export function run(command, args, options = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd,
@@ -313,7 +313,8 @@ function run(command, args, options = {}) {
     child.stdout?.on("data", (chunk) => { stdout += chunk; });
     child.stderr?.on("data", (chunk) => { stderr += chunk; });
     child.once("error", reject);
-    child.once("exit", (code, signal) => {
+    // Exit can precede the final pipe data; close waits for both output streams.
+    child.once("close", (code, signal) => {
       if (code === 0) {
         resolve({ stdout, stderr });
         return;
