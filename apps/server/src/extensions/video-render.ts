@@ -37,7 +37,7 @@ const receiptSchema = z.object({
   sourceHash: z.string().optional(),
 });
 type Receipt = z.infer<typeof receiptSchema>;
-const preparing = new Set<string>();
+const preparing = new Map<string, Receipt>();
 const RENDER_TIMEOUT_MS = 3 * 60 * 60_000;
 
 /** Snapshot the bounded project, including nested composition/media dependencies, not its generated renders. */
@@ -220,6 +220,20 @@ export async function videoRenderAction(workspace: { id: string; path: string },
   await mkdir(renders, { recursive: true });
   if (!(await realpath(renders)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Render directory escapes workspace");
   const receiptPath = `${renders}/.export-${createHash("sha256").update(input.operationKey).digest("hex")}.json`;
+  const active = preparing.get(receiptPath);
+  if (active) return { ...active, operationKey: input.operationKey, pollAfterMs: 2000 };
+  const readReceipt = async () => {
+    if (!(await realpath(receiptPath)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Export receipt escapes workspace");
+    const text = await readFile(receiptPath, "utf8");
+    const active = preparing.get(receiptPath);
+    if (active) return active;
+    try { return receiptSchema.parse(JSON.parse(text)); }
+    catch (error) {
+      // A read may have captured the exclusive initial write before it finished.
+      if (!(error instanceof SyntaxError)) throw error;
+      return receiptSchema.parse(JSON.parse(await readFile(receiptPath, "utf8")));
+    }
+  };
   const save = async (receipt: Receipt) => {
     const temporaryPath = `${receiptPath}.${process.pid}.${randomUUID()}.tmp`;
     try {
@@ -254,22 +268,22 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     return { ...receipt, ...(pixelReview?.valid === false ? { status: "failed", error: `Video remains a draft: ${pixelReview.issues.map(issue => `${issue.sceneId}: ${issue.code}`).join(", ")}` } : !input.reviewOnly ? { outputPath: relative(root, output).replaceAll(sep, "/"), size } : {}), ...(pixelReview ? { pixelReview } : {}) };
   };
   let receipt: Receipt;
-  try {
-    if (!(await realpath(receiptPath)).startsWith(root + sep)) throw new ApiError(400, "path_escape", "Export receipt escapes workspace");
-    receipt = receiptSchema.parse(JSON.parse(await readFile(receiptPath, "utf8")));
-  }
+  try { receipt = await readReceipt(); }
   catch (error) {
     if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    const active = preparing.get(receiptPath);
+    if (active) return { ...active, operationKey: input.operationKey, pollAfterMs: 2000 };
     if (action !== "video_render_start") throw new ApiError(404, "render_not_found", "No export exists for this operationKey");
     if (preparing.size >= 16) throw new ApiError(429, "render_busy", "Too many exports are preparing");
     receipt = { status: "preparing", startedAt: Date.now(), progress: 0, stage: "Starting bundled Studio" };
+    preparing.set(receiptPath, receipt);
     // Exclusive creation makes retries and concurrent requests reuse one job.
     try { await writeFile(receiptPath, JSON.stringify(receipt), { flag: "wx" }); }
     catch (error) {
-      if (error instanceof Error && "code" in error && error.code === "EEXIST") return { ...receiptSchema.parse(JSON.parse(await readFile(receiptPath, "utf8"))), operationKey: input.operationKey };
+      preparing.delete(receiptPath);
+      if (error instanceof Error && "code" in error && error.code === "EEXIST") return { ...await readReceipt(), operationKey: input.operationKey };
       throw error;
     }
-    preparing.add(receiptPath);
     const initial = receipt;
     void (async () => {
       try {
@@ -293,12 +307,16 @@ export async function videoRenderAction(workspace: { id: string; path: string },
     })().catch(error => console.error("[video-render] receipt persistence failed", error instanceof Error ? error.message : String(error)));
     return { ...receipt, operationKey: input.operationKey, pollAfterMs: 2000 };
   }
+  if (receipt.status === "preparing" && !preparing.has(receiptPath)) {
+    // The owner can finish while a status read still holds its preparing snapshot.
+    receipt = await readReceipt();
+    if (receipt.status === "preparing" && !preparing.has(receiptPath)) {
+      receipt = { ...receipt, status: "failed", error: "Export preparation was interrupted by a service restart. No automatic duplicate was submitted." };
+      await save(receipt);
+    }
+  }
   if (receipt.status === "complete" && (input.review || input.reviewOnly) && (!receipt.pixelReview?.evidence || receipt.sourceHash !== await videoProjectFingerprint(directory))) {
     receipt = { ...receipt, status: "failed", outputPath: undefined, error: "The saved source changed or this older export has no runtime acceptance evidence; review the current draft again." };
-    await save(receipt);
-  }
-  if (receipt.status === "preparing" && !preparing.has(receiptPath)) {
-    receipt = { ...receipt, status: "failed", error: "Export preparation was interrupted by a service restart. No automatic duplicate was submitted." };
     await save(receipt);
   }
   if (receipt.status === "rendering" && receipt.jobId) {
