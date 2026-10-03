@@ -23,6 +23,10 @@ export const MEDIA_EXTENSION_ID = "media";
 
 const DEFAULT_ALIYUN_MEDIA_BASE_URL = "https://dashscope.aliyuncs.com";
 const BAILIAN_REQUEST_TIMEOUT_MS = 90_000;
+const MINIMAX_TEMPLATE_ENDPOINTS: Record<string, string> = {
+  global_en: "https://api.minimax.io/v1/video_template_generation",
+  cn_zh: "https://api.minimaxi.com/v1/video_template_generation",
+};
 const MAX_TRANSLATION_AUDIO_CHARS = 16 * 1024 * 1024;
 const MAX_SYNTHESIZED_AUDIO_BYTES = 50 * 1024 * 1024;
 const MAX_VOICEOVER_BATCH_SCENES = 3;
@@ -1260,6 +1264,39 @@ export const MEDIA_EXTENSION_ACTIONS = [
   },
   {
     extensionId: MEDIA_EXTENSION_ID,
+    action: "video_template_generate",
+    title: "Generate MiniMax template video",
+    description: "Submit a MiniMax Video Agent template task using an explicit template ID. This API is deprecated. Poll video_template_get with the same region and returned taskId.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: { type: "string", enum: Object.keys(MINIMAX_TEMPLATE_ENDPOINTS), description: "MiniMax API region. Defaults to global_en." },
+        templateId: { type: "string", description: "MiniMax template ID. Required inputs depend on the selected template." },
+        textInputs: { type: "array", items: { type: "object", properties: { value: { type: "string" } }, required: ["value"], additionalProperties: false } },
+        mediaInputs: { type: "array", description: "Template image inputs as public URLs or image data URLs.", items: { type: "object", properties: { value: { type: "string" } }, required: ["value"], additionalProperties: false } },
+        callbackUrl: { type: "string", description: "Optional task notification URL with MiniMax challenge verification." },
+      },
+      required: ["templateId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
+    action: "video_template_get",
+    title: "Get MiniMax template video",
+    description: "Query a MiniMax Video Agent template task. Successful video download URLs expire after 9 hours.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        region: { type: "string", enum: Object.keys(MINIMAX_TEMPLATE_ENDPOINTS), description: "Use the same MiniMax API region as the create request." },
+        taskId: { type: "string", description: "Task ID returned by video_template_generate." },
+      },
+      required: ["taskId"],
+      additionalProperties: false,
+    },
+  },
+  {
+    extensionId: MEDIA_EXTENSION_ID,
     action: "video_generate",
     title: "Generate video",
     description: "Submit an asynchronous Wan text or image guided video generation task.",
@@ -2002,6 +2039,69 @@ async function resolveBailianCredentials(authorization: AuthorizationAccess): Pr
   return { apiKey, baseUrl: safeProviderBaseUrl(configuredBaseUrl) };
 }
 
+function miniMaxTemplateInputs(args: JsonRecord, key: string): Array<{ value: string }> | undefined {
+  const inputs = args[key];
+  if (inputs === undefined) return undefined;
+  if (!Array.isArray(inputs)) throw new ApiError(400, "invalid_payload", `${key} must be an array of value objects.`);
+  return inputs.map((input: unknown) => {
+    if (!isRecord(input) || typeof input.value !== "string" || !input.value.trim()) {
+      throw new ApiError(400, "invalid_payload", `${key} entries require a non-empty string value.`);
+    }
+    return { value: input.value };
+  });
+}
+
+async function miniMaxTemplateTask(authorization: AuthorizationAccess, action: string, args: JsonRecord) {
+  const region = readStringField(args, "region") || "global_en";
+  if (!Object.hasOwn(MINIMAX_TEMPLATE_ENDPOINTS, region)) {
+    throw new ApiError(400, "invalid_minimax_region", "MiniMax region must be global_en or cn_zh.");
+  }
+  const url = new URL(MINIMAX_TEMPLATE_ENDPOINTS[region]);
+  let body: JsonRecord | undefined;
+  if (action === "video_template_generate") {
+    const templateId = requireString(args, "templateId");
+    const textInputs = miniMaxTemplateInputs(args, "textInputs");
+    const mediaInputs = miniMaxTemplateInputs(args, "mediaInputs");
+    if (args.callbackUrl !== undefined && typeof args.callbackUrl !== "string") {
+      throw new ApiError(400, "invalid_payload", "callbackUrl must be a string.");
+    }
+    const callbackUrl = readStringField(args, "callbackUrl");
+    body = {
+      template_id: templateId,
+      ...(textInputs === undefined ? {} : { text_inputs: textInputs }),
+      ...(mediaInputs === undefined ? {} : { media_inputs: mediaInputs }),
+      ...(callbackUrl ? { callback_url: callbackUrl } : {}),
+    };
+  } else {
+    url.pathname = "/v1/query/video_template_generation";
+    url.searchParams.set("task_id", requireString(args, "taskId"));
+  }
+  const values = await authorization.read("minimax-video-template");
+  const apiKey = values.MINIMAX_API_KEY?.trim();
+  if (!apiKey) {
+    throw new ApiError(400, "minimax_api_key_missing", "Configure MiniMax video templates in Authorization Center before submitting a task.");
+  }
+  const response = await providerFetch(url, {
+    method: body ? "POST" : "GET",
+    headers: { Authorization: `Bearer ${apiKey}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(90_000),
+    redirect: "error",
+  });
+  const payload: unknown = await response.json().catch(() => null);
+  const baseResponse = readRecord(payload, "base_resp");
+  if (!response.ok || baseResponse.status_code !== 0) {
+    throw new ApiError(502, "minimax_template_request_failed", "MiniMax template request failed. Check the template inputs, account permissions and balance.");
+  }
+  const taskId = readStringField(payload, "task_id");
+  const status = readStringField(payload, "status");
+  const videoUrl = readStringField(payload, "video_url");
+  if (!taskId || (!body && !["Preparing", "Processing", "Success", "Fail"].includes(status)) || (status === "Success" && !videoUrl)) {
+    throw new ApiError(502, "minimax_template_response_invalid", "MiniMax returned an incomplete template task response.");
+  }
+  return { taskId, region, ...(status ? { status } : {}), ...(videoUrl ? { videoUrl } : {}) };
+}
+
 function endpoint(baseUrl: string, path: string): string {
   return `${baseUrl}${path}`;
 }
@@ -2264,6 +2364,10 @@ export async function callMediaExtensionAction(
   args: JsonRecord,
   context: JsonRecord,
 ) {
+  if (action === "video_template_generate" || action === "video_template_get") {
+    const output = await miniMaxTemplateTask(authorization, action, args);
+    return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "minimax", operation: action, taskId: output.taskId, output }, context };
+  }
   if (action === "video_recipe_catalog") {
     const output = await queryVideoRecipeCatalog(args);
     return { ok: true, extensionId: MEDIA_EXTENSION_ID, action, result: { provider: "local", operation: action, output }, context };

@@ -59,6 +59,12 @@ type ServicePresentation = {
 };
 
 const SERVICES: Record<iPolloWorkAuthorizationServiceId, ServicePresentation> = {
+  "minimax-video-template": {
+    icon: Image,
+    titleKey: "settings.authorization.service.minimax_video_template.title",
+    descriptionKey: "settings.authorization.service.minimax_video_template.description",
+    fields: [{ key: "MINIMAX_API_KEY", label: "MiniMax API key", placeholder: "Your MiniMax API key" }],
+  },
   "openai-images": {
     icon: Image,
     titleKey: "settings.authorization.service.openai_images.title",
