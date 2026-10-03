@@ -518,7 +518,7 @@ jobs:
 
       - name: Submit Windows signing request to SignPath
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true' && env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG == ''
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
@@ -530,7 +530,7 @@ jobs:
 
       - name: Submit Windows signing request to SignPath (artifact configuration)
         if: matrix.os_type == 'windows' && env.SIGN_WINDOWS == 'true' && env.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG != ''
-        uses: signpath/github-action-submit-signing-request@v2
+        uses: signpath/github-action-submit-signing-request@v3
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ env.SIGNPATH_ORGANIZATION_ID }}
