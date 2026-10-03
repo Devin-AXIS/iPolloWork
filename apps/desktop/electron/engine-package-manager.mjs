@@ -263,7 +263,8 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
         return null;
       }
     }
-    return await probeRuntime(normalized) ? normalized : null;
+    const version = await probeRuntime(normalized);
+    return version ? { path: normalized, version: typeof version === "string" ? version : null } : null;
   };
   const commandPath = commandOnPath(descriptor.command, {
     env,
@@ -284,7 +285,7 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
   for (const candidate of await codexClientCandidates(platform, env, homeDir)) {
     if (!await pathExists(candidate)) continue;
     const resolved = await resolveCandidate(candidate);
-    if (resolved) clients.push({ path: resolved, version: await probeRuntime(resolved) });
+    if (resolved) clients.push(resolved);
   }
   // Desktop updates leave multiple hash-named builds behind. Directory order
   // (and copy time) does not identify the newest compatible CLI. Probes are cached.
@@ -294,7 +295,7 @@ async function resolveOfficialRuntime(descriptor, { platform, env, homeDir, prob
     if (leftKnown && rightKnown) return compareVersions(right.version, left.version) ?? 0;
     return Number(rightKnown) - Number(leftKnown);
   });
-  return clients[0]?.path ?? null;
+  return clients[0] ?? null;
 }
 
 function run(command, args, options = {}) {
@@ -605,12 +606,14 @@ export function createEnginePackageManager(options) {
     operations.delete(id);
   }
 
-  /** @returns {Promise<{ path: string; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
+  /** @returns {Promise<{ path: string; version: string | null; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; nodePath: string | null } | null>} */
   async function resolveRuntimeSource(descriptor) {
     const override = externalOverrides.get(descriptor.id);
-    if (override && existsSync(override) && await probeRuntime(descriptor, override)) {
+    const overrideVersion = override && existsSync(override) ? await probeRuntime(descriptor, override) : false;
+    if (override && overrideVersion) {
       return {
         path: override,
+        version: typeof overrideVersion === "string" ? overrideVersion : null,
         source: await externalEngineSource(descriptor, override, "custom"),
         nodePath: externalNodePath(descriptor),
       };
@@ -625,8 +628,8 @@ export function createEnginePackageManager(options) {
       homeDir,
       probeRuntime: (candidate) => probeRuntime(descriptor, candidate),
     });
-    if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime)) {
-      return { path: officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };
+    if (officialRuntime && !isWithinManagedPackage(descriptor, officialRuntime.path)) {
+      return { ...officialRuntime, source: "official", nodePath: externalNodePath(descriptor) };
     }
 
     const managedCli = cliPath(descriptor);
@@ -634,6 +637,7 @@ export function createEnginePackageManager(options) {
       const nodePath = managedNodePath(descriptor);
       return {
         path: managedCli,
+        version: descriptor.version,
         source: "downloaded",
         nodePath: nodePath && await pathExists(nodePath) ? nodePath : externalNodePath(descriptor),
       };
@@ -642,19 +646,21 @@ export function createEnginePackageManager(options) {
     return null;
   }
 
-  /** @returns {Promise<{ installed: boolean; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; installedBytes: number | null }>} */
+  /** @returns {Promise<{ installed: boolean; version: string; source: import("@ipollowork/types/desktop-ipc").EnginePackageSource; installedBytes: number | null }>} */
   async function resolveInstalledState(descriptor) {
     const runtime = await resolveRuntimeSource(descriptor);
     if (runtime) {
       const metadata = runtime.source === "downloaded" ? await readJson(metadataPath(descriptor)) : null;
       return {
         installed: true,
+        version: runtime.version ?? descriptor.version,
         source: runtime.source,
         installedBytes: Number.isFinite(metadata?.installedBytes) ? metadata.installedBytes : null,
       };
     }
     return {
       installed: false,
+      version: descriptor.version,
       source: "none",
       installedBytes: null,
     };
@@ -668,7 +674,7 @@ export function createEnginePackageManager(options) {
     const info = {
       id: descriptor.id,
       name: descriptor.name,
-      version: descriptor.version,
+      version: installedState.version,
       status: operation?.status ?? (installedState.installed ? "ready" : "not-installed"),
       source: installedState.source,
       installed: installedState.installed,
@@ -713,7 +719,6 @@ export function createEnginePackageManager(options) {
       const descriptor = descriptorFor(id);
       const skipped = id === skipEngineId || operations.get(id)?.status === "uninstalling";
       const runtime = skipped ? null : await resolveRuntimeSource(descriptor);
-      const resolved = runtime?.path ?? null;
       if (
         cleanupRedundantPackages
         && runtime?.source === "official"
@@ -726,9 +731,9 @@ export function createEnginePackageManager(options) {
           console.warn(`[engine-package] Could not remove redundant ${descriptor.name} package: ${safeErrorMessage(error)}`);
         }
       }
-      if (resolved) {
-        environment[descriptor.environmentKey] = resolved;
-        environment[descriptor.versionEnvironmentKey] = descriptor.version;
+      if (runtime) {
+        environment[descriptor.environmentKey] = runtime.path;
+        environment[descriptor.versionEnvironmentKey] = runtime.version ?? descriptor.version;
       } else {
         delete environment[descriptor.environmentKey];
         delete environment[descriptor.versionEnvironmentKey];

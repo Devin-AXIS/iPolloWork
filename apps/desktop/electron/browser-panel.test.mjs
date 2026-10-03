@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { once } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
@@ -14,7 +15,7 @@ if (!process.versions.electron) {
     try {
       const { default: electron } = await import("electron");
       const env = { ...process.env, IPOLLOWORK_BROWSER_TEST_DATA: directory, ELECTRON_RUN_AS_NODE: undefined };
-      const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000 });
+      const result = await promisify(execFile)(String(electron), [fileURLToPath(import.meta.url)], { env, windowsHide: true, timeout: 40_000, killSignal: "SIGKILL" });
       assert.match(result.stdout, /browser-profile-checks-passed/);
       assert.match(result.stdout, /web-login-no-client-launch-passed/);
     } finally { await rm(directory, { recursive: true, force: true }); }
@@ -60,6 +61,7 @@ if (!process.versions.electron) {
   const address = server.address();
   const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/login`;
   const window = new BrowserWindow({ show: false });
+  await window.loadURL("about:blank");
   const panel = createBrowserPanel({ getWindow: () => window, onDeepLink() {}, listLocalWorkspaces: () => [] });
   const handlers = new Map();
   panel.registerIpc({ handle: (name, fn) => handlers.set(name, fn), on() {} });
@@ -242,11 +244,11 @@ if (!process.versions.electron) {
     const loginReopen = await call('openUrl', url, { profileId: 'plugin:account-a', loginUi: { origin: new URL(url).origin, path: '/login', whenText: '短信登录', selector: '#qr' } });
     assert.equal(loginReopen.tabId, reopened.tabId);
     assert.equal(loginReopen.url, postUrl);
-    const minimized = new Promise(resolve => window.once("minimize", () => resolve(undefined)));
+    const minimized = once(window, "minimize", { signal: AbortSignal.timeout(5000) });
     window.minimize();
     await minimized;
     assert.equal(window.isMinimized(), true);
-    const restored = new Promise(resolve => window.once("restore", () => resolve(undefined)));
+    const restored = once(window, "restore", { signal: AbortSignal.timeout(5000) });
     await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
     await restored;
     assert.equal(window.isMinimized(), false);
@@ -258,7 +260,11 @@ if (!process.versions.electron) {
     process.stderr.write(`${error.stack}\n`);
     process.exitCode = 1;
   } finally {
+    const closing = webContents.getAllWebContents()
+      .filter(item => item !== window.webContents && !item.isDestroyed())
+      .map(item => once(item, "destroyed", { signal: AbortSignal.timeout(5000) }));
     panel.destroy();
+    await Promise.all(closing);
     window.destroy();
     server.close();
     app.exit(Number(process.exitCode) || 0);

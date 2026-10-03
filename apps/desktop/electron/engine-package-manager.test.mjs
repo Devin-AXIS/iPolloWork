@@ -184,6 +184,7 @@ test("prefers an official Codex Harness and removes a redundant downloaded copy"
 
     const beforeStartup = (await manager.list()).find((engine) => engine.id === "codex-harness");
     assert.equal(beforeStartup?.source, "official");
+    assert.equal(beforeStartup?.version, "7.8.9");
     assert.equal(beforeStartup?.canInstall, false);
     assert.equal(beforeStartup?.canUninstall, false);
 
@@ -294,7 +295,7 @@ test(`discovers an official Codex client outside the inherited PATH (${layout})`
       homeDir,
       probeRuntime: async ({ executablePath }) => {
         probedPaths.push(executablePath);
-        return executablePath === resolvedCodexPath;
+        return executablePath === resolvedCodexPath ? "0.159.2" : false;
       },
       fetch: async () => { throw new Error("fixture should not use the network"); },
     });
@@ -302,11 +303,14 @@ test(`discovers an official Codex client outside the inherited PATH (${layout})`
     await manager.applyEnvironment();
     const codex = (await manager.list()).find((engine) => engine.id === "codex-harness");
     assert.equal(codex?.source, "official");
+    assert.equal(codex?.version, "0.159.2");
     assert.equal(codex?.canInstall, false);
     assert.equal(codex?.canUninstall, false);
     assert.equal(environment.IPOLLOWORK_CODEX_CLI, resolvedCodexPath);
+    assert.equal(environment.IPOLLOWORK_CODEX_CLI_VERSION, "0.159.2");
     if (resolvedBlockedCodexPath) assert.ok(probedPaths.includes(resolvedBlockedCodexPath));
     assert.ok(probedPaths.includes(resolvedCodexPath));
+    assert.equal(probedPaths.filter((candidate) => candidate === resolvedCodexPath).length, 1);
   } finally {
     await rm(temporaryRoot, { recursive: true, force: true });
   }
@@ -352,13 +356,15 @@ test("selects the newest runnable cached Codex version, keeps explicit overrides
     };
     const manager = createEnginePackageManager(options);
     await manager.applyEnvironment();
-    await manager.list();
+    assert.equal((await manager.list()).find((engine) => engine.id === "codex-harness")?.version, "0.153.0");
     assert.match(environment.IPOLLOWORK_CODEX_CLI, /222-stable[\\/]codex\.exe$/);
     assert.deepEqual([...probes.values()], [1, 1, 1, 1, 2]);
     const explicit = [...versions.keys()][0];
     const overrideEnv = { ...environment, IPOLLOWORK_CODEX_CLI: explicit };
-    await createEnginePackageManager({ ...options, env: overrideEnv }).applyEnvironment();
+    const overrideManager = createEnginePackageManager({ ...options, env: overrideEnv });
+    await overrideManager.applyEnvironment();
     assert.equal(overrideEnv.IPOLLOWORK_CODEX_CLI, explicit);
+    assert.equal((await overrideManager.list()).find((engine) => engine.id === "codex-harness")?.version, "0.148.0-alpha.15");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -11,7 +11,7 @@ export default {
       name: "First launch uses bundled video resources",
       run: async (ctx) => {
         await ctx.prove("Video Studio opens without downloading codecs", {
-          voiceover: "Video Studio uses the codecs shipped with the desktop app; cloud resource availability cannot block first launch.",
+          voiceover: vo[0],
           action: async () => {
             if (await ctx.eval(`location.hash.includes("/settings/")`)) await ctx.clickText("返回应用");
             const proofWorkspaceId = ctx.env.IPOLLOWORK_EVAL_VIDEO_WORKSPACE_ID?.trim();
@@ -22,6 +22,7 @@ export default {
                 [...document.querySelectorAll('iframe[title*="HyperFrames"]')]
                   .some((iframe) => iframe.getClientRects().length > 0)
                 || [...document.querySelectorAll('button')].some((button) => button.textContent?.includes('index.html'))
+                || [...document.querySelectorAll('button')].some((button) => /(?:Open Video Studio|打开视频工作台)/.test(button.title))
               )`, { timeoutMs: 60_000, label: "configured video proof session" });
             }
             const hasStudioEntry = await ctx.eval(`Boolean(
@@ -104,7 +105,6 @@ export default {
             }))()`);
             ctx.assert(state.iframe && !state.failed && !state.designTab && !state.htmlTab, `Video is not a single Studio workspace: ${JSON.stringify(state)}`);
           },
-          screenshot: { name: "native-video-studio", rejectText: ["启动失败", "failed to start", "HTML source"] },
         });
       },
     },

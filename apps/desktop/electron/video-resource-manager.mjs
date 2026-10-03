@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { chmod, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { DESKTOP_RESOURCE_APP_VERSION } from "./app-version.mjs";
+import { resolveDesktopAppVersion } from "./app-version.mjs";
 
 const require = createRequire(import.meta.url);
 const VIDEO_IDS = ["ffmpeg", "ffprobe"];
@@ -44,6 +45,7 @@ export function createVideoResourceManager({
   env = process.env,
   platform = process.platform,
   probeBinary: verifyBinary = probeBinary,
+  resolveDevelopmentBinary = (id) => require(id === "ffmpeg" ? "@ffmpeg-installer/ffmpeg" : "@ffprobe-installer/ffprobe").path,
 }) {
   let error = null;
   let verified = null;
@@ -51,7 +53,7 @@ export function createVideoResourceManager({
   async function currentPaths() {
     const paths = Object.fromEntries(VIDEO_IDS.map((id) => [id, app.isPackaged
       ? path.join(resourcesPath, "video-codecs", id, platform === "win32" ? `${id}.exe` : id)
-      : require(id === "ffmpeg" ? "@ffmpeg-installer/ffmpeg" : "@ffprobe-installer/ffprobe").path]));
+      : resolveDevelopmentBinary(id)]));
     return Object.values(paths).every(existsSync) ? paths : null;
   }
 
@@ -64,7 +66,15 @@ export function createVideoResourceManager({
       return null;
     }
     try {
-      verified ??= Promise.all(VIDEO_IDS.map((id) => verifyBinary(paths[id], id)));
+      verified ??= Promise.all(VIDEO_IDS.map(async (id) => {
+        // Existing pnpm stores may predate the installer chmod build approval.
+        // Repair only the resolved development package; packaged files stay immutable.
+        if (!app.isPackaged && platform !== "win32") {
+          const file = await stat(paths[id]);
+          if (file.isFile() && !(file.mode & 0o100)) await chmod(paths[id], file.mode | 0o100);
+        }
+        return verifyBinary(paths[id], id);
+      }));
       await verified;
       error = null;
       env.HYPERFRAMES_FFMPEG_PATH = paths.ffmpeg;
@@ -83,7 +93,7 @@ export function createVideoResourceManager({
     return {
       id: "video-codecs",
       name: "FFmpeg / FFprobe 视频编解码组件",
-      version: DESKTOP_RESOURCE_APP_VERSION,
+      version: resolveDesktopAppVersion(app),
       status: paths ? "ready" : "failed",
       source: paths ? "bundled" : "none",
       installed: Boolean(paths),
