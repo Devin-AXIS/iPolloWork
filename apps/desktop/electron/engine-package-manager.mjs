@@ -138,6 +138,7 @@ function looksLikeOfficialRuntime(descriptor, executablePath) {
     return normalizedPath.includes("/node_modules/@deepseek-ai/dsh/");
   }
   return normalizedPath.includes("/node_modules/@openai/codex/")
+    || /\/(?:codex|chatgpt)\.app\/contents\/resources\/codex-cli\/bin\/codex$/.test(normalizedPath)
     || /\/[^/]+\.app\/contents\/resources\/codex(?:\.exe)?$/.test(normalizedPath)
     || normalizedPath.includes("/windowsapps/openai.codex_")
     || /\/appdata\/local\/openai\/codex\/bin\/[^/]+\/codex\.exe$/.test(normalizedPath)
@@ -190,6 +191,8 @@ async function officialGlobalPackageEntrypoints(descriptor, platform, env, homeD
 async function codexClientCandidates(platform, env, homeDir) {
   if (platform === "darwin") {
     return [
+      ...["/Applications", path.join(homeDir, "Applications")].flatMap(root =>
+        ["Codex.app", "ChatGPT.app"].map(app => path.join(root, app, "Contents", "Resources", "codex-cli", "bin", "codex"))),
       "/Applications/Codex.app/Contents/Resources/codex",
       "/Applications/ChatGPT.app/Contents/Resources/codex",
       path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex"),

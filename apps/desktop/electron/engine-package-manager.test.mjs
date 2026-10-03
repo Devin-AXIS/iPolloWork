@@ -240,8 +240,9 @@ test("identifies an official Codex client resource and leaves it externally mana
   }
 });
 
-for (const platform of ["darwin", "linux", "win32"]) {
-test(`discovers an official Codex client outside the inherited PATH (${platform})`, async () => {
+for (const layout of ["darwin", "darwin-current", "linux", "win32"]) {
+const platform = layout === "darwin-current" ? "darwin" : layout;
+test(`discovers an official Codex client outside the inherited PATH (${layout})`, async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-discovery-test-"));
   const homeDir = path.join(temporaryRoot, "home");
   /** @type {NodeJS.ProcessEnv} */
@@ -262,7 +263,9 @@ test(`discovers an official Codex client outside the inherited PATH (${platform}
   const codexPath = platform === "win32"
     ? path.join(environment.LOCALAPPDATA, "OpenAI", "Codex", "bin", "stable", "codex.exe")
     : platform === "darwin"
-      ? path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex")
+      ? layout === "darwin-current"
+        ? path.join(homeDir, "Applications", "ChatGPT.app", "Contents", "Resources", "codex-cli", "bin", "codex")
+        : path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex")
       : path.join(homeDir, ".local", "lib", "node_modules", "@openai", "codex", "bin", "codex.js");
   const probedPaths = [];
 
