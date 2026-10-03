@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { storyboardSettingsAssetSchema, storyboardSettingsRequestSchema, type StoryboardSettingsRequest, type StoryboardSettingsAsset, type StoryboardSettingsFields } from "@ipollowork/types/hyperframes";
 import { VideoStoryboardSettingsDialog } from "./video-storyboard-settings-dialog";
 import { toast } from "@/components/ui/sonner";
-import { currentLocale, localeChangedEvent, t, translationKey } from "@/i18n";
+import { currentLocale, localeChangedEvent, t } from "@/i18n";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
 import {
   videoAvatarContextSchema,
@@ -771,7 +771,7 @@ export function VideoPanel({
           throw error;
         }
         try {
-          await recordStudioHostEdit(translationKey("Apply ", `${theme.name} design system`), {
+          await recordStudioHostEdit(`Apply ${theme.name} design system`, {
             "index.html": {
               before: current.content,
               after: themedHtml,
