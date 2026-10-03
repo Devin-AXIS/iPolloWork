@@ -17,8 +17,14 @@ const stops: Array<() => void | Promise<void>> = [];
 const roots: string[] = [];
 
 afterEach(async () => {
-  while (stops.length) await stops.pop()?.();
-  while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  let phase = "stopping the artifact server";
+  const slowCleanup = setTimeout(() => console.error(`[artifact-test] Cleanup is still ${phase}`), 2000);
+  slowCleanup.unref();
+  try {
+    while (stops.length) await stops.pop()?.();
+    phase = "removing temporary workspaces";
+    while (roots.length) await rm(roots.pop()!, { recursive: true, force: true });
+  } finally { clearTimeout(slowCleanup); }
 });
 
 async function createWorkspaceRoot() {
