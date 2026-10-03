@@ -146,6 +146,7 @@ import {
   videoPromptRequestsVoiceoverContext,
   videoTaskSystemContext,
   videoHostExportOperationKey,
+  type VideoDeliveryRequirements,
 } from "@/react-app/domains/session/video/video-project";
 import { readVideoVoiceoverAvailability } from "@/react-app/domains/session/video/video-voice";
 import { currentHostVideoDelivery, publishHostVideoDelivery, subscribeHostVideoDeliverySettled } from "@/react-app/domains/session/video/video-delivery-coordination";
@@ -1728,6 +1729,7 @@ export function SessionRoute() {
         const hostVideoOperationKey = videoDeliveryIntent && videoTasks.length > 0 && !requiresStoryboardReview
           ? videoHostExportOperationKey(targetSessionId, dispatchOptions?.clientUserMessageId ?? crypto.randomUUID())
           : null;
+        const videoRequirementsBySession = new Map<string, VideoDeliveryRequirements>();
         const videoSystemContexts = await Promise.all(videoTasks.map(async ({ sessionId, template }) => {
           const voiceover = selectedWorkspaceEndpoint
             ? await readVideoVoiceoverAvailability(
@@ -1746,6 +1748,7 @@ export function SessionRoute() {
             voiceoverAvailable: voiceover.configured,
             voiceoverEnabled: voiceover.enabled,
           });
+          videoRequirementsBySession.set(sessionId, videoDeliveryRequirements);
           let includeVoiceoverContext = videoDeliveryRequirements.voiceover
             || videoPromptRequestsVoiceoverContext(draft.capability?.id, videoPromptText);
           if (!includeVoiceoverContext && selectedWorkspaceEndpoint) {
@@ -1841,6 +1844,15 @@ export function SessionRoute() {
         const hostVideoSourcePath = hostVideoTask?.template?.state.entry ?? (hostVideoTask ? videoProjectEntryPath(hostVideoTask.sessionId) : null);
         const hostVideoBaseline = hostVideoSourcePath && automaticTemplateInstruction && selectedWorkspaceEndpoint
           ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(selectedWorkspaceEndpoint.workspaceId, hostVideoSourcePath)).content)
+          : null;
+        const videoDeliveryTask = videoTasks.at(-1) ?? null;
+        const videoDeliverySourcePath = videoDeliveryTask?.template?.state.entry
+          ?? (videoDeliveryTask ? videoProjectEntryPath(videoDeliveryTask.sessionId) : null);
+        const videoDeliveryBaseline = videoDeliverySourcePath && selectedWorkspaceEndpoint
+          ? artifactContentFingerprint((await selectedWorkspaceEndpoint.client.readWorkspaceFile(
+              selectedWorkspaceEndpoint.workspaceId,
+              videoDeliverySourcePath,
+            )).content)
           : null;
         const requiresMediaReview = (entry: string) => Boolean(automaticTemplateInstruction)
           || parts.some(part => part.type === "text" && part.synthetic
@@ -1990,8 +2002,16 @@ export function SessionRoute() {
           dispatched: true,
           sessionId: effectiveSessionId,
           ...(artifactCompletionTargets.length > 0 ? { artifactCompletionTargets } : {}),
-          ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
-            ? { videoDeliveryTarget: { sourcePath: hostVideoSourcePath, intent: videoDeliveryIntent, baselineFingerprint: hostVideoBaseline, operationKey: hostVideoOperationKey } }
+          ...(videoDeliverySourcePath && videoDeliveryTask
+            ? { videoDeliveryTarget: {
+                sourcePath: videoDeliverySourcePath,
+                requirements: videoRequirementsBySession.get(videoDeliveryTask.sessionId)
+                  ?? videoDeliveryRequirementsForPrompt({ promptText: videoPromptText }),
+                baselineFingerprint: videoDeliveryBaseline,
+                ...(hostVideoSourcePath && videoDeliveryIntent && hostVideoOperationKey
+                  ? { intent: videoDeliveryIntent, operationKey: hostVideoOperationKey }
+                  : {}),
+              } }
             : {}),
         };
         } catch (error) {

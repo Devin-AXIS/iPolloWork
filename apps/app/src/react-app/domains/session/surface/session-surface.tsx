@@ -1763,7 +1763,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       if (dispatched && videoDeliveryTarget && !recoveryDraft) {
         const delivery = pendingDelivery ?? {
           sourcePath: videoDeliveryTarget.sourcePath,
-          requirements: videoDeliveryRequirementsForPrompt({
+          requirements: videoDeliveryTarget.requirements ?? videoDeliveryRequirementsForPrompt({
             capabilityId: nextDraft.capability?.id,
             promptText,
             originalBriefText: await readVideoBriefDetails(props.client, props.workspaceId, videoDeliveryTarget.sourcePath),
@@ -1777,18 +1777,21 @@ export function SessionSurface(props: SessionSurfaceProps) {
           recoveryAttempts: 0,
         };
         delivery.sourcePath = videoDeliveryTarget.sourcePath;
+        delivery.requirements = videoDeliveryTarget.requirements ?? delivery.requirements;
         delivery.baselineFingerprint = videoDeliveryTarget.baselineFingerprint;
         delivery.mustChange = videoDeliveryTarget.baselineFingerprint !== null;
-        delivery.hostExport = {
-          operationKey: videoDeliveryTarget.operationKey,
-          intent: videoDeliveryTarget.intent,
-          ready: true,
-          ...(videoDeliveryTarget.intent === "publish-douyin"
-            ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
-            : videoDeliveryTarget.intent === "publish-wechat-channels"
-              ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
-            : {}),
-        };
+        if (videoDeliveryTarget.operationKey && videoDeliveryTarget.intent) {
+          delivery.hostExport = {
+            operationKey: videoDeliveryTarget.operationKey,
+            intent: videoDeliveryTarget.intent,
+            ready: true,
+            ...(videoDeliveryTarget.intent === "publish-douyin"
+              ? { publicationCopy: douyinPublicationCopyForPrompt(promptText) }
+              : videoDeliveryTarget.intent === "publish-wechat-channels"
+                ? { publicationCopy: wechatChannelsPublicationCopyForPrompt(promptText) }
+              : {}),
+          };
+        }
         pendingVideoDeliveryRef.current = delivery;
         setVideoDeliveryRevision((current) => current + 1);
       }

@@ -1,5 +1,7 @@
 # Motion Frames — visual rules and reusable compositions
 
+This seed is cinematic by default: preserve its dark stage, foreground/midground separation, and spatial motion. Replace sample content, but do not flatten the scene into a static card or leave motion as an un-applied CSS loop.
+
 ## Visual rules
 Read `design-tokens.css` and `index.html`. Use the current display/body tokens and aliases, fine linework, grid texture, restrained accent, editorial labels and orbital graphic vocabulary. Reuse the `.chrome`, `.ring`, `.globe`, `.headline` and `.baseline` treatments. Sample wording, orbit count, positioning and eight-second duration are examples. Preserve the composition root, stage dimensions, editable variables and local assets.
 

@@ -3,6 +3,7 @@ import type {
   Part,
   Session,
 } from "@opencode-ai/sdk/v2/client";
+import type { VideoDeliveryRequirements } from "@ipollowork/types/hyperframes-project";
 import type { createClient } from "./lib/opencode";
 import type { OpencodeConfigFile, WorkspaceInfo } from "./lib/desktop-types";
 
@@ -204,7 +205,13 @@ export type PromptDispatchResult = {
   dispatched: boolean;
   sessionId?: string;
   artifactCompletionTargets?: ArtifactCompletionTarget[];
-  videoDeliveryTarget?: { sourcePath: string; intent: "export" | "publish-douyin" | "publish-wechat-channels"; baselineFingerprint: string | null; operationKey: string };
+  videoDeliveryTarget?: {
+    sourcePath: string;
+    requirements?: VideoDeliveryRequirements;
+    baselineFingerprint: string | null;
+    intent?: "export" | "publish-douyin" | "publish-wechat-channels";
+    operationKey?: string;
+  };
 };
 
 export type PromptDispatchOutcome = boolean | PromptDispatchResult;

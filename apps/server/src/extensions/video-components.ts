@@ -736,6 +736,7 @@ function unplannedStillIntervals(
   duration: number,
 ): Array<{ start: number; end: number; duration: number }> {
   const active = beats
+    .filter(beat => !beat.animation.startsWith("hold:"))
     .map(beat => beat.motion)
     .sort((left, right) => left.start - right.start);
   const merged: Array<{ start: number; end: number }> = [];
@@ -863,7 +864,7 @@ export async function checkVideoComponents(workspace: Workspace, raw: unknown) {
         issues.push({
           code: "scene_hold_too_long",
           sceneId,
-          message: `${sceneId} declares a ${interval.duration.toFixed(2)}s intentional hold (${interval.start.toFixed(2)}-${interval.end.toFixed(2)}s). Keep a readable hold at four seconds or less, or split it at a real semantic boundary.`,
+          message: `${sceneId} declares a ${interval.duration.toFixed(2)}s intentional hold (${interval.start.toFixed(2)}-${interval.end.toFixed(2)}s). Keep it to ${MAX_STILL_SECONDS} seconds or less, or split it at a real semantic boundary.`,
         });
         repairPlan.push(repairForStillInterval(sceneId, interval));
       }

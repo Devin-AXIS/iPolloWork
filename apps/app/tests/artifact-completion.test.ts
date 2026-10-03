@@ -82,6 +82,7 @@ describe("artifact completion", () => {
     expect(routeSource).toContain("const hostVideoTask = videoDeliveryIntent");
     expect(routeSource).not.toContain("activeEngineId === DEFAULT_ENGINE_ID && videoDeliveryIntent");
     expect(surfaceSource).toContain("validatePendingArtifactCompletion");
+    expect(surfaceSource).toContain("delivery.requirements = videoDeliveryTarget.requirements");
     expect(surfaceSource).toContain("pending.requestOrdinal");
     expect(surfaceSource).toContain("artifactPathIsWithinDirectory(path, directory)");
     expect(surfaceSource).toContain("artifactCompletionRecoveryInstruction(check)");
