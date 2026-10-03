@@ -242,7 +242,7 @@ if (!process.versions.electron) {
     const loginReopen = await call('openUrl', url, { profileId: 'plugin:account-a', loginUi: { origin: new URL(url).origin, path: '/login', whenText: '短信登录', selector: '#qr' } });
     assert.equal(loginReopen.tabId, reopened.tabId);
     assert.equal(loginReopen.url, postUrl);
-    const minimized = new Promise(resolve => window.once("minimize", resolve));
+    const minimized = new Promise(resolve => window.once("minimize", () => resolve(undefined)));
     window.minimize();
     await minimized;
     assert.equal(window.isMinimized(), true);

@@ -14,7 +14,7 @@ import { toast } from "@/components/ui/sonner";
 import { captureAnalyticsEvent } from "@/app/lib/analytics";
 import { createClient, unwrap } from "@/app/lib/opencode";
 import { isDelegatableExternalAgent, isPluginPackageReady } from "@/app/lib/plugin-package-readiness";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 import type {
   HyperframesAnimationSelection,
   HyperframesCatalogItem,
@@ -996,7 +996,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
       baselineFingerprint: requirement.baselineFingerprint,
       requestOrdinal: requirement.requestOrdinal,
       mustChange: true,
-      recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(`${requirement.sourcePath}:${requirement.requestOrdinal}`) ?? 0,
+      recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(translationKey("", `${requirement.sourcePath}:${requirement.requestOrdinal}`)) ?? 0,
     };
     runActivityObservedRef.current = false;
     setAwaitingAssistantBaseline(requirement.assistantMessageBaseline);
@@ -1320,7 +1320,7 @@ export function SessionSurface(props: SessionSurfaceProps) {
         baselineFingerprint: signal.baselineFingerprint,
         requestOrdinal: Math.max(0, visibleUserRequestCount - 1),
         mustChange: signal.baselineFingerprint !== null,
-        recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(`${signal.sourcePath}:${Math.max(0, visibleUserRequestCount - 1)}`) ?? 0,
+        recoveryAttempts: videoDeliveryRecoveryAttemptsRef.current.get(translationKey("", `${signal.sourcePath}:${Math.max(0, visibleUserRequestCount - 1)}`)) ?? 0,
         hostExport: {
           operationKey: signal.operationKey,
           intent: signal.intent,

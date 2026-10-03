@@ -19,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { currentLocale, t } from "@/i18n";
+import { currentLocale, t, translationKey } from "@/i18n";
 import { CODEX_HARNESS_ENGINE_ID, DEEPSEEK_HARNESS_ENGINE_ID, DEFAULT_ENGINE_ID } from "@ipollowork/types/workspace";
 import type {
   iPolloWorkPluginAuthorizationState,
@@ -950,13 +950,13 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                     <SelectValue>
                       {marketplaceCategory === "all"
                         ? t("plugin_library.all_categories")
-                        : t(`plugin_library.category.${marketplaceCategory}`)}
+                        : t(translationKey("plugin_library.category.", marketplaceCategory))}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent align="end">
                     <SelectItem value="all">{t("plugin_library.all_categories")}</SelectItem>
                     {MARKETPLACE_CATEGORY_IDS.map((categoryId) => (
-                      <SelectItem key={categoryId} value={categoryId}>{t(`plugin_library.category.${categoryId}`)}</SelectItem>
+                      <SelectItem key={categoryId} value={categoryId}>{t(translationKey("plugin_library.category.", categoryId))}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -965,7 +965,7 @@ export const PluginPackagesPanel = forwardRef<PluginPackagesPanelHandle, PluginP
                     <SelectValue>
                       {marketplaceStatus === "all"
                         ? t("plugin_library.all_statuses")
-                        : t(`plugin_library.status_${marketplaceStatus}`)}
+                        : t(translationKey("plugin_library.status_", marketplaceStatus))}
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent align="end">

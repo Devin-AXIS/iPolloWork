@@ -6,7 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { t } from "@/i18n";
+import { t, translationKey } from "@/i18n";
 
 /** One client-owned shell; the Studio remains the canonical Markdown editor. */
 export function VideoStoryboardSettingsDialog({
@@ -77,7 +77,7 @@ export function VideoStoryboardSettingsDialog({
       showCloseButton={!busy}>
       <header className="shrink-0 border-b border-border px-6 py-5 pr-16">
         <DialogDescription className="text-ui-caption">{t("video.script.shot", { frame: String(frameIndex).padStart(2, "0") })} · {title}</DialogDescription>
-        <DialogTitle className="mt-1">{t(`video.script.${kind}_title`)}</DialogTitle>
+        <DialogTitle className="mt-1">{t(translationKey("video.script.", `${kind}_title`))}</DialogTitle>
       </header>
       {kind === "voice" ? voiceContent : <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
         <fieldset disabled={disabled || busy} className="min-w-0 space-y-5">
@@ -85,14 +85,14 @@ export function VideoStoryboardSettingsDialog({
             <section className="space-y-2">
               <h3 className="text-ui-control font-medium">{t("video.script.source")}</h3>
               <Select value={source} onValueChange={value => { if (value) update("asset_source", value); }}>
-                <SelectTrigger className="w-full" aria-label={t("video.script.source")}><SelectValue>{t(`video.script.source_${source}`)}</SelectValue></SelectTrigger>
-                <SelectContent>{["auto", "existing", "generate", "code"].map(value => <SelectItem key={value} value={value}>{t(`video.script.source_${value}`)}</SelectItem>)}</SelectContent>
+                <SelectTrigger className="w-full" aria-label={t("video.script.source")}><SelectValue>{t(translationKey("video.script.source_", source))}</SelectValue></SelectTrigger>
+                <SelectContent>{["auto", "existing", "generate", "code"].map(value => <SelectItem key={value} value={value}>{t(translationKey("video.script.source_", value))}</SelectItem>)}</SelectContent>
               </Select>
             </section>
             {(source === "auto" || source === "generate") && <>
               <section className="space-y-2"><h3 className="text-ui-control font-medium">{t("video.script.media_type")}</h3>
                 <Select value={fields.asset_kind || "auto"} onValueChange={value => { if (value) update("asset_kind", value === "auto" ? "" : value); }}>
-                  <SelectTrigger className="w-full" aria-label={t("video.script.media_type")}><SelectValue>{t(`video.script.media_${fields.asset_kind || "auto"}`)}</SelectValue></SelectTrigger><SelectContent>{["auto", "image", "video"].map(value => <SelectItem key={value} value={value}>{t(`video.script.media_${value}`)}</SelectItem>)}</SelectContent>
+                  <SelectTrigger className="w-full" aria-label={t("video.script.media_type")}><SelectValue>{t(translationKey("video.script.media_", fields.asset_kind || "auto"))}</SelectValue></SelectTrigger><SelectContent>{["auto", "image", "video"].map(value => <SelectItem key={value} value={value}>{t(translationKey("video.script.media_", value))}</SelectItem>)}</SelectContent>
                 </Select>
               </section>
               <section className="space-y-2"><label htmlFor="shot-material-brief" className="text-ui-control font-medium">{t("video.script.brief")}</label>

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { languageFromLocale, preferredLanguage } from "../src/i18n";
+import { languageFromLocale, preferredLanguage, t, translationKey } from "../src/i18n";
 
 describe("browser language detection", () => {
   test("matches supported languages with country and script tags", () => {
@@ -20,4 +20,13 @@ describe("browser language detection", () => {
     expect(preferredLanguage(["de-DE", "fr-CA", "en-US"])).toBe("fr");
     expect(preferredLanguage(["de-DE", "ko-KR"])).toBe("en");
   });
+});
+
+
+test("declared translation families retain locale, interpolation and unknown-value fallback", () => {
+  expect(t(translationKey("work.priority.", "high"), "en")).toBe(t("work.priority.high", "en"));
+  expect(t(translationKey("work.priority.", "high"), "zh")).toBe(t("work.priority.high", "zh"));
+  expect(t(translationKey("templates.brief.reference_unsupported_", "other"), { lng: "en", count: 2 }))
+    .toBe(t("templates.brief.reference_unsupported_other", { lng: "en", count: 2 }));
+  expect(t(translationKey("work.priority.", "unknown"), "en")).toBe("work.priority.unknown");
 });

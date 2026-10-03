@@ -21,7 +21,7 @@ import type {
   iPolloWorkPluginUiResource,
   iPolloWorkServerClient,
 } from "@/app/lib/ipollowork-server";
-import { currentLocale, localeChangedEvent, t } from "@/i18n";
+import { currentLocale, localeChangedEvent, t, translationKey } from "@/i18n";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -514,11 +514,11 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
             void updateLiveField(field.id, value);
           } : undefined}>
           <SelectTrigger size={compactParameters ? "sm" : "default"} className={cn("w-full border-transparent bg-muted shadow-none hover:bg-muted/80", composer && "rounded-[8px] bg-muted text-foreground hover:bg-muted/80", compactParameters && "data-[size=sm]:h-7 w-auto max-w-full gap-1.5 px-2 text-xs font-normal text-foreground")} aria-label={field.label}>
-            <SelectValue>{compactParameters && field.id === "operation" ? <><span className="media-control-full">{t(`media.parameters.operation.${field.value}`)}</span><span className="media-control-short">{t(`media.parameters.operation_short.${field.value}`)}</span></> : field.live ? field.options?.find(option => option.value === field.value)?.label : undefined}</SelectValue>
+            <SelectValue>{compactParameters && field.id === "operation" ? <><span className="media-control-full">{t(translationKey("media.parameters.operation.", field.value))}</span><span className="media-control-short">{t(translationKey("media.parameters.operation_short.", field.value))}</span></> : field.live ? field.options?.find(option => option.value === field.value)?.label : undefined}</SelectValue>
             {compactParameters && field.id === "duration" && Number(field.value) > 0 ? <span>秒</span> : null}
           </SelectTrigger>
           <SelectContent align="start" className={compactParameters ? "media-composer-controls" : undefined}>{field.options?.map(option => (
-            <SelectItem key={option.value} value={option.value} className={compactParameters ? "text-xs font-normal text-foreground" : undefined} disabled={option.disabled}>{compactParameters && field.id === "operation" ? t(`media.parameters.operation.${option.value}`) : option.label}</SelectItem>
+            <SelectItem key={option.value} value={option.value} className={compactParameters ? "text-xs font-normal text-foreground" : undefined} disabled={option.disabled}>{compactParameters && field.id === "operation" ? t(translationKey("media.parameters.operation.", option.value)) : option.label}</SelectItem>
           ))}</SelectContent>
         </Select>
       )}
@@ -580,7 +580,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
         <div className={compactParameters ? "media-composer-footer flex shrink-0 items-center gap-2" : composer ? "flex max-h-[70%] shrink-0 flex-wrap items-end gap-2 overflow-y-auto" : "contents"}>
           <div className={compactParameters ? "flex min-w-0 items-center gap-2 overflow-x-auto [scrollbar-width:none]" : composer ? "flex min-w-0 max-w-full items-end gap-2 overflow-x-auto" : "contents"}>
           {composer && onSwitchMedia && mediaKind ? <Select value={mediaKind} onValueChange={value => { if(value === "image" || value === "video") onSwitchMedia(value); }}>
-            <SelectTrigger size="sm" data-media-type className="data-[size=sm]:h-7 shrink-0 gap-1.5 rounded-lg border-0 bg-muted px-2 text-xs font-normal text-foreground shadow-none" aria-label={t("media.studio.type")}><SelectValue>{t(`media.studio.${mediaKind}`)}</SelectValue></SelectTrigger>
+            <SelectTrigger size="sm" data-media-type className="data-[size=sm]:h-7 shrink-0 gap-1.5 rounded-lg border-0 bg-muted px-2 text-xs font-normal text-foreground shadow-none" aria-label={t("media.studio.type")}><SelectValue>{t(translationKey("media.studio.", mediaKind))}</SelectValue></SelectTrigger>
             <SelectContent><SelectItem value="image">{t("media.studio.image")}</SelectItem><SelectItem value="video">{t("media.studio.video")}</SelectItem></SelectContent>
           </Select> : null}
           {composer ? context.fields.filter(field => !isAdvancedField(field) && field.control !== "image" && field.control !== "textarea" && !outputFields.includes(field)).map(renderField) : null}
@@ -611,7 +611,7 @@ function WorkspaceAppInspector({ context, onClose, onCallTool, onOpenAuthorizati
             </PopoverTrigger>
             <PopoverContent align="start" side="top" className="media-composer-controls max-h-[var(--available-height)] w-[min(360px,calc(100vw-24px))] gap-3 overflow-y-auto rounded-[16px] bg-background p-2.5" aria-label={t("media.parameters.title")} data-testid="media-output-parameters">
               {outputFields.map(field => <fieldset key={field.id} className="min-w-0" disabled={submitting || updating || context.submitDisabled}>
-                <legend className="mb-1.5 text-xs font-normal text-muted-foreground">{field.id === "size" ? field.label : t(`media.parameters.${field.id}`)}</legend>
+                <legend className="mb-1.5 text-xs font-normal text-muted-foreground">{field.id === "size" ? field.label : t(translationKey("media.parameters.", field.id))}</legend>
                 <div className="grid grid-cols-[repeat(auto-fit,minmax(44px,1fr))] gap-1 rounded-lg bg-muted p-1">
                   {field.options?.map(option => <button key={option.value} type="button" title={field.id === "resolution" && ["0.5MP", "1MP"].includes(option.value) ? t("media.parameters.pixels", { value: option.value, count: option.value === "0.5MP" ? 50 : 100 }) : undefined} aria-pressed={field.value === option.value} disabled={option.disabled}
                     className={cn("flex min-h-7 min-w-0 flex-col items-center justify-center gap-0.5 rounded-md px-1 py-1 text-xs font-normal text-foreground transition-colors hover:bg-background/60 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40", field.value === option.value && "bg-background text-foreground")}

@@ -14,6 +14,7 @@ test("packaged codecs work offline without a cloud manifest or user cache", { sk
       await writeFile(path.join(directory, id), `#!/bin/sh\necho '${id} version fixture'\n`);
       await chmod(path.join(directory, id), 0o755);
     }
+    /** @type {NodeJS.ProcessEnv} */
     const env = {};
     const manager = createVideoResourceManager({ app: { isPackaged: true }, resourcesPath: root, env });
     const info = await manager.info();

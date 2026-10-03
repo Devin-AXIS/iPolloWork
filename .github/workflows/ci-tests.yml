@@ -119,6 +119,20 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Provide bundled video codecs to tests
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createRequire } from 'node:module';
+          import { appendFileSync } from 'node:fs';
+          import { dirname } from 'node:path';
+          const require = createRequire(new URL('./apps/desktop/package.json', `file://${process.cwd()}/`));
+          const ffmpeg = require('@ffmpeg-installer/ffmpeg').path;
+          const ffprobe = require('@ffprobe-installer/ffprobe').path;
+          appendFileSync(process.env.GITHUB_ENV, `HYPERFRAMES_FFMPEG_PATH=${ffmpeg}\nHYPERFRAMES_FFPROBE_PATH=${ffprobe}\n`);
+          appendFileSync(process.env.GITHUB_PATH, `${dirname(ffmpeg)}\n${dirname(ffprobe)}\n`);
+          NODE
+
       - name: Run app unit tests
         run: pnpm --filter @ipollowork/app test
 

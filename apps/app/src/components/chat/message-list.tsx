@@ -33,7 +33,7 @@ import { classifyProviderFailure } from "@ipollowork/types/provider-errors"
 import { openDesktopUrl } from "@/app/lib/desktop"
 import { downloadBlobAsFile, downloadTextAsFile } from "@/app/lib/download"
 import { SYNTHETIC_SESSION_ERROR_MESSAGE_PREFIX } from "@/app/types"
-import { t } from "@/i18n"
+import { t, translationKey } from "@/i18n"
 import { ApplyPatchTool } from "@/components/tools/apply-patch"
 import { BashTool } from "@/components/tools/bash"
 import { EditTool } from "@/components/tools/edit"
@@ -1247,7 +1247,7 @@ export function VideoJobStatus({ jobs }: { jobs: import("@ipollowork/types/works
       : job.status === "save_failed" ? "save_failed" : "failed";
     return <div key={job.id} role="status" data-video-job-status={job.status}
       className={cn("mx-auto w-full max-w-[800px] px-0 py-2 text-sm md:px-10", failed ? "text-destructive" : "text-muted-foreground")}>
-      <p>{t(`session.video_job.${label}`)}</p>
+      <p>{t(translationKey("session.video_job.", label))}</p>
       <p className="break-all text-xs">{job.model} · {job.id}</p>
     </div>;
   };

@@ -17,7 +17,7 @@ import {
   type BuiltInWorkspaceEngineId,
 } from "@ipollowork/types/workspace";
 
-import { currentLocale, t } from "../../../../i18n";
+import { currentLocale, t, translationKey } from "../../../../i18n";
 import { downloadTextAsFile } from "@/app/lib/download";
 import { publicAssetUrl } from "../../../../app/lib/public-asset";
 import { IPOLLOWORK_EXTENSION_CATALOG } from "../../../../app/constants";
@@ -1504,7 +1504,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
       toast.warning(
         unsupported.length === 1
           ? t("templates.brief.reference_unsupported_one", { name: unsupported[0]?.name ?? "" })
-          : t("templates.brief.reference_unsupported_many", { count: unsupported.length }),
+          : t("templates.brief.reference_unsupported_other", { count: unsupported.length }),
         { description: t("templates.brief.reference_supported_formats") },
       );
     }
@@ -1621,10 +1621,10 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
               <label className="text-xs font-medium leading-5 text-foreground" htmlFor="custom-template-category">{t("template_market.type_label")}</label>
               <Select value={customCategory} onValueChange={(value) => { if (value) onCustomCategoryChange(value); }}>
                 <SelectTrigger id="custom-template-category" className="h-[34px] w-full rounded-lg border-0 bg-muted/60 dark:bg-muted/60 shadow-none ring-0 focus-visible:ring-2 focus-visible:ring-ring/15 px-2 text-ui-control data-[size=default]:h-[34px]">
-                  <SelectValue>{t(`template_market.category.${customCategory}`)}</SelectValue>
+                  <SelectValue>{t(translationKey("template_market.category.", customCategory))}</SelectValue>
                 </SelectTrigger>
                 <SelectContent positionerClassName="z-[90]">
-                  {CUSTOM_TEMPLATE_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{t(`template_market.category.${category}`)}</SelectItem>)}
+                  {CUSTOM_TEMPLATE_CATEGORIES.map((category) => <SelectItem key={category} value={category}>{t(translationKey("template_market.category.", category))}</SelectItem>)}
                 </SelectContent>
               </Select>
             </section>
@@ -1638,7 +1638,7 @@ export function TemplateApplyDialog({ open, mode, template, customCategory, onCu
           <div id="template-input-panel" role="tabpanel" aria-labelledby={`template-${inputMode}-tab`} className="space-y-4">
           {inputMode === "description" ? <div className="space-y-4">
             {(["title", "audience", "details"] satisfies (keyof TemplateBrief)[]).map(key => <label key={key} className="flex flex-col gap-2 text-xs font-medium text-foreground">
-              <span>{t(`templates.brief.manual_${key}`)}{key !== "details" ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null}</span>
+              <span>{t(translationKey("templates.brief.manual_", key))}{key !== "details" ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null}</span>
               {key === "details" ? <Textarea data-testid="template-description" rows={3} disabled={submitting} value={customBrief.details} onChange={event => { const details = event.currentTarget.value; setCustomBrief(current => ({ ...current, details })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="min-h-[88px] field-sizing-fixed resize-none rounded-xl border-0 bg-muted/60 px-3.5 py-3 text-ui-control font-normal leading-5 shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" /> : <Input data-testid={`template-${key}`} required disabled={submitting} value={customBrief[key]} onChange={event => { const value = event.currentTarget.value; setCustomBrief(current => ({ ...current, [key]: value })); }} placeholder={config.fields.find(field => field.key === key)?.placeholder} className="h-9 rounded-lg border-0 bg-muted/60 px-3.5 text-ui-control font-normal shadow-none focus-visible:ring-2 focus-visible:ring-ring/15" />}
             </label>)}
             </div> : null}
