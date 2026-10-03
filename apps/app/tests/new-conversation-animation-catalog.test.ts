@@ -91,14 +91,14 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("templatesLoading={starterTemplateCatalogLoading}");
     expect(sessionPage).toContain("getTemplateCover={getStarterTemplateCover}");
     expect(sessionPage).toContain("onInstallTemplate={(templateId) => void installStarterTemplate(templateId)}");
-    expect(sessionPage).toContain('surface === "video" ? "video" : "design"');
+    expect(sessionPage).toContain('surface: template.surface');
   });
 
   test("keeps the project-first starter wired to the same workspace tools as New task", () => {
     expect(sessionPage).toContain("const listSkills = useCallback");
-    expect(sessionPage).toContain("const listMcp = useCallback");
-    expect(sessionPage).toContain("const listImportedPlugins = useCallback");
-    expect(sessionPage).toContain("const listExternalAgents = useCallback");
+    expect(sessionPage).toContain("const listPlusMenuData = useCallback");
+    expect(sessionPage).toContain("workspaceClient.listPluginPackages(workspaceId)");
+    expect(sessionPage).toContain("listPlusMenuData={composerTooling.listPlusMenuData}");
     expect(sessionPage).toContain("surface.recentFiles");
     expect(sessionPage).toContain("surface.searchFiles");
     expect(sessionPage).toContain("surface.isRemoteWorkspace");
@@ -106,18 +106,17 @@ describe("new conversation animation catalog", () => {
     expect(sessionPage).toContain("surface.providerConnectedCount");
     expect(sessionPage).toContain("onUploadInboxFiles={composerTooling.onUploadInboxFiles}");
     expect(sessionPage).toContain("listSkills={composerTooling.listSkills}");
-    expect(sessionPage).toContain("listMcp={composerTooling.listMcp}");
-    expect(sessionPage).toContain("listImportedPlugins={composerTooling.listImportedPlugins}");
-    expect(sessionPage).toContain("listExternalAgents={composerTooling.listExternalAgents}");
+    expect(sessionPage).toContain("workspaceClient.listMcp(workspaceId)");
     expect(sessionPage).toContain("topAccessory={starterCapability ? (");
     expect(sessionPage).toContain("<StarterCapabilityChip capability={starterCapability}");
   });
 
-  test("opens a materialized design template in the Design panel", () => {
-    expect(sessionPage).toContain("const autoOpenedDesignTemplateRef = useRef<string | null>(null)");
-    expect(sessionPage).toContain("const templateKey = `${props.selectedSessionId}:${designTemplateEntryPath}`");
-    expect(sessionPage).toContain('sessionSidePanel === "panel" && activePanelTab && activePanelTab.type !== "design"');
-    expect(sessionPage).toContain("openDesignTab(designTemplateEntryPath)");
+  test("opens materialized design templates through the shared root artifact surface", () => {
+    expect(sessionPage).toContain("const hasRootTemplateFocus = currentTemplateSessionData?.sessionId === props.selectedSessionId");
+    expect(sessionPage).toContain("if (!hasRootTemplateFocus) return undefined");
+    expect(sessionPage).toContain("entryPath: designTemplateEntryPath");
+    expect(sessionPage).toContain('type: "design"');
+    expect(sessionPage).toContain("path: entryPath || undefined");
   });
 
   test("does not carry a previous session's template preview into a new task", () => {

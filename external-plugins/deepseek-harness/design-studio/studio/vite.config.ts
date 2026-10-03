@@ -41,8 +41,8 @@ export function createDesignStudioViteConfig(options: DesignStudioViteOptions) {
     resolve: {
       alias: {
         "@": resolve(appRoot, "src"),
+      "@ipollowork/types": resolve(repositoryRoot, "packages/types/src"),
         "@ipollowork/design-studio": resolve(repositoryRoot, "packages/design-studio/src/index.ts"),
-        "@ipollowork/types/templates": resolve(repositoryRoot, "packages/types/src/templates.ts"),
         "react": resolve(appRoot, "node_modules/react"),
         "react-dom": resolve(appRoot, "node_modules/react-dom"),
         "@tanstack/react-query": resolve(appRoot, "node_modules/@tanstack/react-query"),

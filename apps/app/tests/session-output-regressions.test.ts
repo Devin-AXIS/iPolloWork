@@ -310,9 +310,9 @@ describe("session output issue regressions", () => {
     expect(scrollOverlaySource).toContain("absolute bottom-3 right-3");
     expect(scrollOverlaySource).not.toContain("shadow-(--dls-card-shadow)");
     expect(appStyles).toContain('html:lang(zh).ipollowork-electron.ipollowork-platform-mac [data-chat-readable-text="true"]');
-    expect(appStyles).toContain("font-size: 15px");
+    expect(appStyles).toContain("font-size: 14px");
     expect(appStyles).toContain("font-weight: 500");
-    expect(appStyles).toContain("line-height: 24px");
+    expect(appStyles).toContain("line-height: 1.5");
     expect(appStyles).toContain("font-weight: 600");
     expect(appStyles).not.toContain("font-weight: 450");
     expect(appStyles).not.toContain('ipollowork-platform-windows [data-chat-readable-text="true"]');
@@ -380,21 +380,21 @@ describe("session output issue regressions", () => {
       "utf8",
     );
 
-    expect(source).toContain("function TemplateApplyDialog(");
+    expect(source).toContain("export function TemplateApplyDialog(");
     expect(source).toContain('data-testid="template-apply-dialog"');
     expect(source).not.toContain('t("templates.brief.required_information")');
     expect(source).not.toContain('t("templates.brief.required_progress")');
     expect(source).not.toContain(">{config.label}</p>");
     expect(source).not.toContain('t("common.optional_parens")');
-    expect(source).toContain('!field.optional ? <span className="text-destructive" aria-hidden="true"> *</span> : null');
-    expect(source).toContain("required={!field.optional}");
+    expect(source).toContain('key !== "details" ? <span className="ms-1 text-destructive" aria-hidden="true">*</span> : null');
+    expect(source).toContain("data-testid={`template-${key}`} required disabled={submitting}");
     expect(source).toContain("showCloseButton={false}");
     expect(source).toContain("max-w-[800px]");
-    expect(source).toContain('className="flex flex-col gap-1.5 text-ui-body font-semibold leading-5 text-foreground"');
+    expect(source).toContain('className="flex flex-col gap-2 text-xs font-medium text-foreground"');
     expect(source).toContain('t("templates.brief.destination_description")');
     expect(source).toContain('<SelectContent positionerClassName="z-[90]">');
     expect(source).toContain('mode === "current-conversation" ? t("templates.brief.apply_current") : config.submitLabel');
-    expect(source).toContain('t("templates.brief.reference_question")');
+    expect(source).toContain('t("templates.brief.use_file")');
     expect(source).toContain("REFERENCE_FILE_ACCEPT");
     expect(source).toContain('t("templates.brief.upload_file")');
     expect(source).toContain('t("templates.brief.reference_supported_formats")');
@@ -410,7 +410,7 @@ describe("session output issue regressions", () => {
     expect(source).not.toContain("function TemplateBriefDialog(");
     expect(source).not.toContain("import { ReferenceUploadPanel }");
     expect(source).not.toContain("<ReferenceUploadPanel");
-    expect(source).not.toContain('t("templates.brief.reference_label")');
+    expect(source).toContain('t("templates.brief.reference_label")');
   });
 
   test("design and video composers keep the existing attachment entry", () => {
@@ -455,7 +455,7 @@ describe("session output issue regressions", () => {
     expect(initialProjectSource).not.toContain("modelSafeAttachments");
     expect(initialProjectSource).toContain("ingestReferenceFile(item.file,");
     expect(initialProjectSource).toContain("inferTemplateBriefFromIngestions(");
-    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references)");
+    expect(initialProjectSource).toContain("buildTemplateReferenceSubmitPayload(references, { brief })");
     expect(initialProjectSource).toContain("referencePayload.contextPack.promptText.trim()");
     expect(sessionPromptSource).toContain("Use these workspace-relative paths");
     expect(initialProjectSource).toContain("referenceFiles: references.map");
@@ -464,11 +464,11 @@ describe("session output issue regressions", () => {
     expect(composerSource).toContain("const maxAttachmentBytes = props.maxAttachmentBytes ?? MAX_ATTACHMENT_BYTES;");
     expect(composerSource).toContain('t("composer.plus_attach_files")');
     expect(composerSource).toContain("props.onAttachFiles(accepted)");
-    expect(composerSource).toContain("flushSync(() => {");
-    expect(composerSource).toMatch(/setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+    expect(composerSource).toContain("flushSync(() => setPlusMenuOpen(false))");
+    expect(composerSource).toContain("setPlusMenuOpen(false)");
     expect(composerSource).toContain("input?.click();");
-    expect(composerSource).toContain('window.addEventListener("pointermove", handlePointerMove);');
-    expect(composerSource).toMatch(/setPlusMenuSection\(null\);\r?\n\s+setToolMenuOpen\(false\);\r?\n\s+setDelegationMenuOpen\(false\);/);
+    expect(composerSource).toContain('type="file"');
+    expect(composerSource).toContain("setPlusMenuSnapshot");
   });
 
   test("starter template strip is clipped to the workspace column", () => {

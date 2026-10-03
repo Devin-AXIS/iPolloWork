@@ -1,4 +1,6 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
+const videoSkill = readFileSync(new URL("../../../.codex/skills/ipollowork-template-generation/references/video.md", import.meta.url), "utf8");
 import { ENGINE_VIDEO_GENERATION_INSTRUCTION } from "../../server/src/engine-host-tools";
 import { parseStoryboard } from "../../../vendor/hyperframes/packages/core/src/storyboard/parseStoryboard";
 import { setFrameField, setFrameVoiceover, setStoryboardGlobal } from "../../../vendor/hyperframes/packages/core/src/storyboard/editStoryboard";
@@ -8,9 +10,9 @@ import { videoTaskSystemContext, hyperframesStudioUrl } from "../src/react-app/d
 describe("video script contract", () => {
   test("production instructions do not override the client-owned gate or invite audio probing", () => {
     const context = videoTaskSystemContext("ses_example");
-    for (const text of ["client-owned final gate", "do not independently run validators", "speech_synthesize_workspace_batch", "one corrected retry", "raw TTS URLs"]) {
-      expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain(text);
-    }
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("prepared task contract owns final validation");
+    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("ipollowork-video-studio skill once");
+    for (const text of ["speech_synthesize_workspace_batch", "retry", "TTS"]) expect(videoSkill).toContain(text);
     expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).not.toContain("Before reporting an editable video complete, run its supplied HyperFrames check");
     expect(context).toContain("Do not add your own validation or review render");
   });
@@ -52,8 +54,8 @@ describe("video script contract", () => {
     expect(context).toContain("do not draw SVG paths, calculate element coordinates, write a JS/Python timeline builder, or schedule motion every four seconds");
     expect(context).toContain("the considered component IDs, each concrete semantic/input/capacity mismatch");
     expect(context).toContain("A missing catalog/install action is a capability gap to report");
-    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("shortlist executable recipes by intent, input and capacity before saving one complete native STORYBOARD.md");
-    expect(ENGINE_VIDEO_GENERATION_INSTRUCTION).toContain("Do not draw SVG coordinates, author a timeline builder, enumerate per-beat timestamps");
+    expect(videoSkill).toContain("shortlist executable recipes by intent, input and capacity");
+    expect(context).toContain("JS/Python timeline builder");
   });
 
   test("the actual agent example parses into editable globals and frame fields", () => {

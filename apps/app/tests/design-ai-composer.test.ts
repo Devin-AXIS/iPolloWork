@@ -179,7 +179,7 @@ describe("Design AI composer integration", () => {
   test("places the Image Studio inspector below its app canvas", async () => {
     const frameSource = await Bun.file(workspaceAppFrameUrl).text();
 
-    expect(frameSource).toContain('props.surface.pluginId === "image-studio"');
+    expect(frameSource).toContain('engineId === "image-studio"');
     expect(frameSource).toContain('inspectorBelowAppToolbar && inspectorOpen && inspectorContext && "flex-col');
     expect(frameSource).toContain('inspectorBelowAppToolbar ? "w-full flex-1 min-h-0 bg-transparent" : "flex-1"');
     expect(frameSource).toContain('className="z-10 flex shrink-0 justify-center px-4 pb-4"');

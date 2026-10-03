@@ -120,6 +120,7 @@ describe("Design AI message stream", () => {
         voiceId: "longanyang",
         model: "cosyvoice-v3-flash",
         label: "配音 · 龙安阳",
+        rate: 1, pitch: 1, volume: 50, instruction: "",
         partId: "part_animation:voice-reference",
       },
     });

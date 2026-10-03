@@ -134,7 +134,7 @@ describe("shared AI provider preferences", () => {
     expect(settingsRouteSource).toContain("runtimeSource: activeModelProviderSource");
     expect(settingsRouteSource).toContain("connectedProviderIds: providerAuthSnapshot.connectedProviderIds");
     expect(sessionRouteSource).toContain("getRunnableChatModelSnapshot({");
-    expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(accountProviderList)");
+    expect(sessionRouteSource).toContain("getSelectableChatModelSnapshot(accountProviderList, activeEngineId)");
     expect(sessionRouteSource).toContain("runtime: activeProviderList");
     expect(sessionRouteSource).toContain("runtimeSource: activeProviderSource");
     expect(sessionRouteSource).toContain("model: effectiveModel");

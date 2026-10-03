@@ -201,7 +201,7 @@ describe("Composer model and reasoning menu", () => {
     expect(source).toContain("projectAccountProviderConnections(data, connectedProviderIds)");
     expect(source).toContain("filterProviderList(");
     expect(source).toContain("disabledProviderIds = EMPTY_PROVIDER_IDS");
-    expect(source).toContain("getChatModelCatalogEntries(accountData)");
+    expect(source).toContain("getChatModelCatalogEntries(accountData, engineId)");
     expect(source).not.toContain("getEngineChatModelEntries({");
     expect(source).toContain("const runtimePending = runtime === null");
     expect(source).not.toContain('const runtimeReady = runtime?.status === "ready"');
@@ -272,7 +272,7 @@ describe("Composer model and reasoning menu", () => {
     expect(model).not.toContain("await refetch()");
     expect(model).not.toContain("refreshProviderListQueries");
     expect(model).not.toContain("getEngineChatModelEntries({");
-    expect(model).toContain("getChatModelCatalogEntries(catalogValue)");
+    expect(model).toContain("getChatModelCatalogEntries(catalogValue, engineId)");
     expect(model).toContain("useProviderListQuery({");
     expect(model).toContain("projectAccountProviderConnections(");
     expect(model).toContain("catalogQuery.data");
@@ -316,7 +316,8 @@ describe("Composer model and reasoning menu", () => {
     expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) return;");
     expect(composer).toContain("if (props.busy || props.modeSelectionDisabled) setWorkModeOpen(false);");
     expect(composer).toContain("disabled={props.busy || props.modeSelectionDisabled}");
-    expect(composer.match(/"bg-gray-2 text-gray-10"/g)).toHaveLength(2);
+    expect(composer).toContain("aria-pressed={active}");
+    expect(composer).toContain('{active ? <Check className="mt-0.5 size-4 shrink-0 text-gray-11" /> : null}');
     expect(composer).not.toContain("dark:bg-white/15");
     expect(composer).toContain("<ChevronDown");
     expect(composer).toContain("<WorkModeIcon");

@@ -25,12 +25,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": resolve(appRoot, "src"),
+      "@ipollowork/types": resolve(repositoryRoot, "packages/types/src"),
       "@ipollowork/video-studio/bridge": resolve(repositoryRoot, "packages/video-studio/src/bridge.ts"),
       "@ipollowork/video-studio/host": resolve(repositoryRoot, "packages/video-studio/src/host.ts"),
       "@ipollowork/video-studio/project": resolve(repositoryRoot, "packages/video-studio/src/project.ts"),
       "@ipollowork/video-studio": resolve(repositoryRoot, "packages/video-studio/src/index.ts"),
-      "@ipollowork/types/templates": resolve(repositoryRoot, "packages/types/src/templates.ts"),
-      "@ipollowork/types/hyperframes-project": resolve(repositoryRoot, "packages/types/src/hyperframes-project.ts"),
       "react": resolve(appRoot, "node_modules/react"),
       "react-dom": resolve(appRoot, "node_modules/react-dom"),
       "@tanstack/react-query": resolve(appRoot, "node_modules/@tanstack/react-query"),
