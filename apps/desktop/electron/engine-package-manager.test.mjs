@@ -240,7 +240,8 @@ test("identifies an official Codex client resource and leaves it externally mana
   }
 });
 
-test("discovers an official Codex client outside the inherited PATH", async () => {
+for (const platform of ["darwin", "linux", "win32"]) {
+test(`discovers an official Codex client outside the inherited PATH (${platform})`, async () => {
   const temporaryRoot = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-discovery-test-"));
   const homeDir = path.join(temporaryRoot, "home");
   /** @type {NodeJS.ProcessEnv} */
@@ -255,14 +256,14 @@ test("discovers an official Codex client outside the inherited PATH", async () =
   delete environment.IPOLLOWORK_CODEX_CLI;
   delete environment.NPM_CONFIG_PREFIX;
   delete environment.PNPM_HOME;
-  const blockedCodexPath = process.platform === "win32"
+  const blockedCodexPath = platform === "win32"
     ? path.join(environment.ProgramFiles, "WindowsApps", "OpenAI.Codex_1.2.3.0_x64__official", "app", "resources", "codex.exe")
     : null;
-  const codexPath = process.platform === "win32"
+  const codexPath = platform === "win32"
     ? path.join(environment.LOCALAPPDATA, "OpenAI", "Codex", "bin", "stable", "codex.exe")
-    : process.platform === "darwin"
+    : platform === "darwin"
       ? path.join(homeDir, "Applications", "Codex.app", "Contents", "Resources", "codex")
-      : path.join(homeDir, ".local", "bin", "codex");
+      : path.join(homeDir, ".local", "lib", "node_modules", "@openai", "codex", "bin", "codex.js");
   const probedPaths = [];
 
   try {
@@ -283,6 +284,7 @@ test("discovers an official Codex client outside the inherited PATH", async () =
         getVersion() { return "1.0.0"; },
         isPackaged: true,
       },
+      platform,
       desktopRoot: path.join(temporaryRoot, "desktop"),
       versions: { opencode: "1.2.3", deepseekHarness: "4.5.6", codexHarness: "7.8.9" },
       env: environment,
@@ -306,6 +308,8 @@ test("discovers an official Codex client outside the inherited PATH", async () =
     await rm(temporaryRoot, { recursive: true, force: true });
   }
 });
+}
+
 
 test("selects the newest runnable cached Codex version, keeps explicit overrides, and bounds failed probes", { skip: process.platform !== "win32" }, async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), "ipollowork-codex-cache-version-test-"));

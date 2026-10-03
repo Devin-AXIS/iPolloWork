@@ -24,12 +24,12 @@ catalog:
 linkWorkspacePackages: true
 preferWorkspacePackages: true
 allowBuilds:
-  "@ffmpeg-installer/darwin-arm64": false
-  "@ffmpeg-installer/darwin-x64": false
+  "@ffmpeg-installer/darwin-arm64": true
+  "@ffmpeg-installer/darwin-x64": true
   "@ffmpeg-installer/linux-arm64": true
   "@ffmpeg-installer/linux-x64": true
-  "@ffprobe-installer/darwin-arm64": false
-  "@ffprobe-installer/darwin-x64": false
+  "@ffprobe-installer/darwin-arm64": true
+  "@ffprobe-installer/darwin-x64": true
   "@ffprobe-installer/linux-arm64": true
   "@ffprobe-installer/linux-x64": true
   "@whiskeysockets/baileys": true

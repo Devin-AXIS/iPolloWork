@@ -246,7 +246,9 @@ if (!process.versions.electron) {
     window.minimize();
     await minimized;
     assert.equal(window.isMinimized(), true);
+    const restored = new Promise(resolve => window.once("restore", () => resolve(undefined)));
     await call('openUrl', postUrl, { profileId: 'plugin:account-a' });
+    await restored;
     assert.equal(window.isMinimized(), false);
     await assert.rejects(call("openUrl", url, { profileId: "../shared" }), /Invalid browser profile/);
     await assert.rejects(call("openUrl", url, { profileId: "plugin:account-a", taskId: "../shared" }), /Invalid browser task/);

@@ -140,7 +140,23 @@ jobs:
         run: pnpm --filter ipollowork-server test
 
       - name: Run desktop unit tests
-        run: pnpm --filter @ipollowork/desktop test
+        shell: bash
+        run: |
+          if [[ "${RUNNER_OS}" == "Linux" ]]; then
+            sandbox="$(node -e "const path=require('node:path');const electron=require('./apps/desktop/node_modules/electron');process.stdout.write(path.join(path.dirname(electron),'chrome-sandbox'))")"
+            sudo chown root:root "$sandbox"
+            sudo chmod 4755 "$sandbox"
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends openbox
+            xvfb-run -a bash -c '
+              openbox &
+              window_manager=$!
+              trap "kill $window_manager" EXIT
+              pnpm --filter @ipollowork/desktop test
+            '
+          else
+            pnpm --filter @ipollowork/desktop test
+          fi
 
       - name: Typecheck Electron main against the IPC contract
         run: pnpm --filter @ipollowork/desktop typecheck:electron
