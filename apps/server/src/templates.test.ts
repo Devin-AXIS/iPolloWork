@@ -1449,6 +1449,11 @@ test("shared layouts materialize by category without replacing template visual r
       if (manifest.category === "video") {
         expect(await readFile(join(directory, library, "acceptance.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-acceptance.md`), "utf8"));
         expect(await readFile(join(directory, library, "motion-principles.md"), "utf8")).toBe(await readFile(join(bundledTemplatesRoot, `${library}-motion-principles.md`), "utf8"));
+        const motionGuidance = await readFile(join(directory, library, "motion-principles.md"), "utf8");
+        for (const link of motionGuidance.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+          if (!link[1] || /^https?:/.test(link[1])) continue;
+          expect(existsSync(join(directory, library, link[1])), `Materialized motion guide: ${link[1]}`).toBe(true);
+        }
         const motionCatalog = await readFile(join(directory, library, "motion", "catalog.md"), "utf8");
         const motionFiles = [...motionCatalog.matchAll(/^\| `([^`]+\.md)`/gm)].map((match) => match[1]);
         expect(motionFiles).toEqual(videoMotionPatternIds.map((id) => `${id}.md`));
