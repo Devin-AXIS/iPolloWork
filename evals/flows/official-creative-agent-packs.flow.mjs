@@ -1,7 +1,19 @@
+import { readFile } from "node:fs/promises";
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("official-creative-agent-packs");
-const DESIGN_TOGGLE = '[role="switch"][aria-label*="Design Studio"]';
+const [designManifest, videoManifest] = await Promise.all(["design-agent", "video-agent"].map(async (pluginId) =>
+  JSON.parse(await readFile(new URL(`../../examples/plugin-packages/${pluginId}/ipollowork.plugin.json`, import.meta.url), "utf8"))
+));
+const designSkills = designManifest.resources.filter((resource) => resource.type === "skill");
+const designSkillLabels = designSkills.map((resource) => resource.label ?? resource.id);
+const designRouter = designSkills.find((resource) => resource.id === "ipollowork-design-studio");
+const DESIGN_TOGGLE = [
+  designRouter.label,
+  designManifest.localization.translations.en.resources[designRouter.id].label,
+].map((label) => `[role="switch"][aria-label*=${JSON.stringify(label)}]`).join(", ");
+const DESIGN_SKILL_COUNT_ZH = `技能 ${designSkills.length}`;
+const DESIGN_SKILL_COUNT_EN = `Skills ${designSkills.length}`;
 
 let sessionRoute = "";
 let videoSessionRoute = "";
@@ -318,26 +330,26 @@ export default {
             const toolsAvailable = await creativeEntriesAvailable(ctx);
             ctx.assert(toolsAvailable, "Design or Video side panel entry was unavailable after default plugin installation.");
             await openPluginList(ctx);
-            await ctx.waitForText("iPolloWork Design Agent", { timeoutMs: 30_000 });
-            await ctx.waitForText("iPolloWork Video Agent", { timeoutMs: 30_000 });
+            await ctx.waitForText(designManifest.name, { timeoutMs: 30_000 });
+            await ctx.waitForText(videoManifest.name, { timeoutMs: 30_000 });
             const installed = await Promise.all([
-              packageIsInstalled(ctx, "iPolloWork Design Agent"),
-              packageIsInstalled(ctx, "iPolloWork Video Agent"),
+              packageIsInstalled(ctx, designManifest.name),
+              packageIsInstalled(ctx, videoManifest.name),
             ]);
             ctx.assert(installed.every(Boolean), `Creative plugins were not installed by default: ${JSON.stringify(installed)}`);
             await ctx.eval(`(() => {
-              const target = [...document.querySelectorAll('*')].find((entry) => entry.textContent?.trim() === 'iPolloWork Video Agent');
+              const target = [...document.querySelectorAll('*')].find((entry) => entry.textContent?.trim() === ${JSON.stringify(videoManifest.name)});
               target?.scrollIntoView({ block: 'center' });
             })()`);
           },
           assert: async () => {
-            await ctx.expectText("iPolloWork Design Agent");
-            await ctx.expectText("iPolloWork Video Agent");
-            await ctx.expectText("官方");
+            await ctx.expectText(designManifest.name);
+            await ctx.expectText(videoManifest.name);
+            await ctx.expectText("已安装");
           },
           screenshot: {
             name: "official-creative-packages",
-            requireText: ["iPolloWork Design Agent", "iPolloWork Video Agent", "官方"],
+            requireText: [designManifest.name, videoManifest.name, "已安装"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions",
           },
@@ -347,13 +359,13 @@ export default {
     {
       name: "Design plugin manages Agent Skills only",
       run: async (ctx) => {
-        await ctx.prove("Design Agent owns two Skills while the built-in Design workspace remains app-owned", {
+        await ctx.prove(`${designManifest.name} owns ${designSkills.length} category Skills while the built-in Design workspace remains app-owned`, {
           voiceover: vo[1],
           action: async () => {
-            await installPackage(ctx, "iPolloWork Design Agent");
+            await installPackage(ctx, designManifest.name);
             await ctx.navigateHash("/settings/extensions/plugin/design-agent");
             await ctx.waitFor(`
-              document.body.innerText.includes('技能 2') || document.body.innerText.includes('Skills 2')
+              document.body.innerText.includes(${JSON.stringify(DESIGN_SKILL_COUNT_ZH)}) || document.body.innerText.includes(${JSON.stringify(DESIGN_SKILL_COUNT_EN)})
             `, {
               timeoutMs: 30_000,
               label: "Design Agent detail",
@@ -361,15 +373,15 @@ export default {
             await setSkillEnabled(ctx, DESIGN_TOGGLE, false);
           },
           assert: async () => {
-            await ctx.expectText("Design");
-            await ctx.expectText("Design Studio");
-            await ctx.expectText("演示文稿");
+            await ctx.expectText(designManifest.name);
+            await ctx.expectText(DESIGN_SKILL_COUNT_ZH);
+            for (const label of designSkillLabels) await ctx.expectText(label);
             const state = await ctx.eval(`document.querySelector(${JSON.stringify(DESIGN_TOGGLE)})?.getAttribute('aria-checked')`);
-            ctx.assert(state === "false", `Design Studio Skill should be disabled, received ${state}`);
+            ctx.assert(state === "false", `Design routing Skill should be disabled, received ${state}`);
           },
           screenshot: {
             name: "design-agent-skills",
-            requireText: ["iPolloWork Design Agent", "技能 2", "Design Studio", "演示文稿", "卸载插件"],
+            requireText: [designManifest.name, DESIGN_SKILL_COUNT_ZH, ...designSkillLabels, "卸载插件"],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/plugin/design-agent",
           },
@@ -377,9 +389,9 @@ export default {
       },
     },
     {
-      name: "Design Studio still opens with its Skill disabled",
+      name: "Design workspace still opens with its routing Skill disabled",
       run: async (ctx) => {
-        await ctx.prove("The Design workspace remains installed when only its optional Design Studio Skill is disabled", {
+        await ctx.prove("The Design workspace remains installed when only its routing Skill is disabled", {
           voiceover: vo[2],
           action: async () => {
             await ctx.navigateHash(sessionRoute);
@@ -488,15 +500,15 @@ export default {
           voiceover: vo[4],
           action: async () => {
             await openPluginList(ctx);
-            await installPackage(ctx, "iPolloWork Video Agent");
+            await installPackage(ctx, videoManifest.name);
             await ctx.navigateHash("/settings/extensions/plugin/design-agent");
-            await ctx.waitFor(`document.body.innerText.includes('技能 2') || document.body.innerText.includes('Skills 2')`, {
+            await ctx.waitFor(`document.body.innerText.includes(${JSON.stringify(DESIGN_SKILL_COUNT_ZH)}) || document.body.innerText.includes(${JSON.stringify(DESIGN_SKILL_COUNT_EN)})`, {
               timeoutMs: 30_000,
               label: "Design Agent detail restored",
             });
             await setSkillEnabled(ctx, DESIGN_TOGGLE, true);
             const restoredDesignSkill = await ctx.eval(`document.querySelector(${JSON.stringify(DESIGN_TOGGLE)})?.getAttribute('aria-checked')`);
-            ctx.assert(restoredDesignSkill === "true", `Design Studio Skill was not re-enabled: ${restoredDesignSkill}`);
+            ctx.assert(restoredDesignSkill === "true", `Design routing Skill was not re-enabled: ${restoredDesignSkill}`);
             await ctx.navigateHash(videoSessionRoute);
             await ctx.client.send("Page.reload", { ignoreCache: true });
             await ctx.waitFor(`window.__ipolloworkControl.snapshot().route === ${JSON.stringify(videoSessionRoute)}`, {

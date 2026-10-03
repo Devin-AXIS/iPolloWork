@@ -347,8 +347,6 @@ describe("plugin package manifest", () => {
     for (const directory of [".agents/skills/ipollowork-design-studio/", "examples/plugin-packages/design-agent/skills/ipollowork-design-studio/"]) {
       const skill = await Bun.file(new URL(`${directory}SKILL.md`, root)).text();
       expect(skill).toBe(designSkill);
-      expect(skill).toContain("references/shared-guidelines.md");
-      expect(skill).toContain("references/design.md");
       expect(await Bun.file(new URL(`${directory}references/shared-guidelines.md`, root)).text()).toBe(header + shared);
       for (const name of ["design.md", ...categories.map((category) => `design-${category}.md`)]) {
         const body = (await Bun.file(new URL(`${source}${name}`, root)).text())
@@ -374,7 +372,46 @@ describe("plugin package manifest", () => {
     if (!video.success) throw new Error(JSON.stringify(video.issues));
     expect(design.manifest.name).toBe("iPollo Design");
     expect(video.manifest.name).toBe("iPollo Video");
-    expect(design.manifest.resources.map((resource) => resource.type)).toEqual(["file", "file", "skill", "skill"]);
+    const designSkills = design.manifest.resources.filter((resource) => resource.type === "skill");
+    expect(designSkills.map((resource) => resource.id).sort()).toEqual([
+      "ipollowork-design-studio", "ipollowork-presentations", "ipollowork-design-web", "ipollowork-design-graphics", "ipollowork-design-editorial",
+    ].sort());
+    expect(design.manifest.package?.version).toBe("0.3.19");
+    const { previewPluginPackage } = await import("./plugin-package-lifecycle.js");
+    const { parseFrontmatter } = await import("./frontmatter.js");
+    const { validateSkillName, validateDescription } = await import("./validators.js");
+    const { fileURLToPath } = await import("node:url");
+    const { relative } = await import("node:path");
+    const root = new URL("../../../", import.meta.url);
+    const packageUrl = new URL("examples/plugin-packages/design-agent/", root);
+    const packageRoot = fileURLToPath(packageUrl);
+    for (const [engineId, directory] of [["opencode", ".opencode"], ["codex-harness", ".agents"], ["deepseek-harness", ".dsh"]]) {
+      const preview = await previewPluginPackage({ packageRoot, engineId });
+      for (const resource of designSkills) {
+        if (!resource.path) throw new Error(`${resource.id}: Skill entrypoint is missing`);
+        const skillUrl = new URL(resource.path, packageUrl);
+        const text = await Bun.file(skillUrl).text();
+        const { data, body } = parseFrontmatter(text);
+        const { name, description } = data;
+        expect(name).toBe(resource.id);
+        expect(typeof description).toBe("string");
+        if (typeof name !== "string" || typeof description !== "string") throw new Error(`${resource.id}: Invalid Skill metadata`);
+        expect(() => validateSkillName(name)).not.toThrow();
+        expect(() => validateDescription(description)).not.toThrow();
+        expect(body.trim().length).toBeGreaterThan(0);
+        expect(await Bun.file(new URL(`.agents/skills/${resource.id}/SKILL.md`, root)).text()).toBe(text);
+        expect(preview.writes.some((entry) => entry.path === `${directory}/${resource.path}`)).toBe(true);
+        for (const link of text.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+          if (!link[1] || /^https?:/.test(link[1])) continue;
+          const target = new URL(link[1], skillUrl);
+          expect(target.href.startsWith(packageUrl.href), `${resource.id}: ${link[1]}`).toBe(true);
+          expect(await Bun.file(target).exists(), `${resource.id}: ${link[1]}`).toBe(true);
+          const sourcePath = relative(packageRoot, fileURLToPath(target)).replaceAll("\\", "/");
+          expect(preview.files.some((entry) => entry.path === sourcePath), `${resource.id}: unowned ${link[1]}`).toBe(true);
+          expect(preview.writes.some((entry) => entry.path === `${directory}/${sourcePath}`), `${engineId}: ${link[1]}`).toBe(true);
+        }
+      }
+    }
     expect(video.manifest.resources.filter((resource) => resource.type === "skill").map((resource) => resource.id))
       .toEqual(["ipollowork-video-studio", "ipollowork-video-voiceover", "ipollowork-video-storyboard", "ipollowork-video-compose", "ipollowork-video-soundtrack"]);
     expect(video.manifest.resources).toContainEqual(expect.objectContaining({ type: "file", path: "skills/ipollowork-video-studio/references" }));
