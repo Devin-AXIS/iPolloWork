@@ -2,7 +2,7 @@
 
 # Other Design Rules
 
-Use for `other` when no existing category fits the active artifact. Read `design.md` and shared guidelines first. Do not silently change an existing manifest to fit the routing table.
+Use for `other` when no existing category fits the active artifact. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change. Do not silently change an existing manifest to fit the routing table.
 
 ## Establish the contract
 

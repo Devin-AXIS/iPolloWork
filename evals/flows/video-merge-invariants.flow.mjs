@@ -16,6 +16,8 @@ async function verify(ctx, claim, voiceover, packagePath, args) {
       ctx.output(claim, output);
       ctx.assert(/\b0 fail\b/.test(output) || /Test Files\s+1 passed/.test(output),
         "The scoped test must pass without scanning sibling worktrees");
+      ctx.assert(/\b[1-9]\d* pass\b/.test(output) || /Test Files\s+[1-9]\d* passed/.test(output),
+        "The scoped test name must select at least one passing test");
     },
   });
 }
@@ -34,9 +36,9 @@ export default {
       await verify(ctx, "Script and music edits preserve narration without preloading synthesis guidance",
         "只写脚本、改配乐或颜色时，已有旁白只需保留；进入实际配音或字幕阶段才读取对应规则。这里检查应用生成的任务契约，不代表模型创作品质验收。",
         "../../apps/app/", ["test", "tests/video-hyperframes-panel.test.ts", "-t", "loads narration and caption guidance only"]);
-      await verify(ctx, "Three engine projections upgrade old video skills while preserving user artifacts",
-        "临时服务器分别验证 OpenCode、Codex 和 DeepSeek 的旧版升级，五个入口和参考文件完整投影，用户视频、账号和个人技能保持原样。",
-        "../../apps/server/", ["test", "src/plugin-package-lifecycle.test.ts", "-t", "upgrades bundled Video rules"]);
+      await verify(ctx, "Three engine projections refresh updated video skills while preserving user artifacts",
+        "临时服务器分别验证三个引擎的同进程插件刷新，五个入口和参考完整投影；用户视频、账号、个人技能和禁用设置保留，旧包不会自动降级新安装。",
+        "../../apps/server/", ["test", "src/plugin-package-lifecycle.test.ts", "-t", "refreshes changed bundled Video rules"]);
       await verify(ctx, "Rendered delivery rejects stale source and failed runtime evidence",
         "导出回执不能掩盖源文件变更或运行时验收失败。这是隔离的本地渲染测试，不代表平台实发。",
         "../../apps/server/", ["test", "src/extensions/video-render.test.ts", "-t", "runtime acceptance failures"]);

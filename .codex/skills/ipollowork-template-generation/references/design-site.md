@@ -1,6 +1,6 @@
 # Website Rules
 
-Use for `site`: websites, landing pages and portfolios. Read `design.md` and shared guidelines first.
+Use for `site`: websites, landing pages and portfolios. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.
 
 ## Content and layout
 

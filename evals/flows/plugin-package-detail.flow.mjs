@@ -1,10 +1,11 @@
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { storedZip } from "../runner/stored-zip.mjs";
 import { loadVoiceoverParagraphs } from "../runner/voiceover.mjs";
 
 const vo = await loadVoiceoverParagraphs("plugin-package-detail");
+const videoVersion = JSON.parse(await readFile(new URL("../../examples/plugin-packages/video-agent/ipollowork.plugin.json", import.meta.url), "utf8")).package.version;
 const SKILL_TOGGLE = '[role="switch"][aria-label="开关设计转代码"]';
 const IMPORT_FIXTURE = join(tmpdir(), "fraimz-community-notes.ipollowork-plugin");
 
@@ -508,9 +509,9 @@ export default {
       },
     },
     {
-      name: "Use the consolidated Video authoring and voiceover skills",
+      name: "Use the task-scoped Video specialist skills",
       run: async (ctx) => {
-        await ctx.prove("Video exposes two managed skills with on-demand creative guidance", {
+        await ctx.prove("Video exposes five managed skills with on-demand creative guidance", {
           voiceover: vo[10],
           action: async () => {
             await ctx.navigateHash("/settings/extensions");
@@ -527,9 +528,9 @@ export default {
 
             const opened = await ctx.eval(pluginCardActionExpression("iPollo Video", ["打开", "Open"], true));
             ctx.assert(opened, "Could not find the Video Agent detail action");
-            await ctx.waitFor("document.body.innerText.includes('技能 2') && document.body.innerText.includes('Video Studio') && document.body.innerText.includes('视频旁白')", {
+            await ctx.waitFor("document.body.innerText.includes('技能 5') && document.body.innerText.includes('脚本与分镜') && document.body.innerText.includes('画面与动画') && document.body.innerText.includes('配乐与音效')", {
               timeoutMs: 30_000,
-              label: "consolidated Video skills",
+              label: "task-scoped Video skills",
             });
             await ctx.eval(`(() => {
               const heading = [...document.querySelectorAll('h1,h2,h3,h4')].find((node) => node.textContent?.trim() === '技能');
@@ -537,16 +538,19 @@ export default {
             })()`);
           },
           assert: async () => {
-            await ctx.expectText("技能 2");
+            await ctx.expectText("技能 5");
             await ctx.expectText("Video Studio");
             await ctx.expectText("视频旁白");
-            await ctx.expectText("0.3.11");
+            await ctx.expectText("脚本与分镜");
+            await ctx.expectText("画面与动画");
+            await ctx.expectText("配乐与音效");
+            await ctx.expectText(videoVersion);
             await ctx.expectNoText("相关技能 9");
             await ctx.expectNoText("Something went wrong");
           },
           screenshot: {
-            name: "plugin-video-consolidated-skills",
-            requireText: ["技能 2", "Video Studio", "视频旁白", "0.3.11"],
+            name: "plugin-video-specialist-skills",
+            requireText: ["技能 5", "Video Studio", "视频旁白", "脚本与分镜", "画面与动画", "配乐与音效", videoVersion],
             rejectText: ["Something went wrong"],
             hashIncludes: "/settings/extensions/plugin/video-agent",
           },

@@ -1,10 +1,12 @@
 # Slides and Native PPT Rules
 
-Applies to iPolloWork presentations and native editable PPT. Read the [shared guidelines](template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines) first. This reference adds PPT authoring and acceptance requirements; the selected mode, injected session contract and actual export capabilities remain implementation boundaries. For the ten reusable core-v1 structures, read the [layout guide](layout.md), then open only relevant source layouts.
+Applies to iPolloWork presentations and native editable PPT. Consult applicable sections of the [shared guidelines](template-generation-contract.md#ipollowork-shared-creative-and-layout-guidelines) when the task needs creative, media or verification policy. This reference adds PPT authoring and acceptance requirements; the selected mode, injected session contract and actual export capabilities remain implementation boundaries. Read the [layout guide](layout.md) only when selecting or recomposing structures, then open only relevant source layouts.
 
 Status: authoring guidance, not proof of automatic injection into every engine or automated enforcement of every check. Do not claim experience or export verification without performing the relevant rendering and export checks.
 
 ## 1. Determine task scope
+
+Read by scope: copy/selected-object edits use the current source and affected typography/mode rules; theme-only edits use scope, tokens and actual font-fit checks. Neither requires layout catalogs or media guidance for unchanged assets and structure. Creation, narrative rewrites and structural work use the applicable narrative/layout sections and shared creative policy. Asset work uses shared media policy; initial/full authoring plans needs before layout and checks outcomes after placement. A local/theme edit with unchanged media and valid existing assets requires no new media plan or generation request. Read acceptance guidance when delivering; preserve host gates and reuse completed checks unless their inputs change.
 
 | Task | Allowed changes | Preserve |
 | --- | --- | --- |
@@ -55,6 +57,8 @@ Use the selected catalog/local source as the capacity owner. Trial the longest t
 ## 5. Theme and assets
 
 Native editable PPT can contain `data-pptx-image` objects. Editability covers supported properties such as position and size; every image pixel need not become a vector object. Do not omit appropriate imagery to guarantee editability. Routine supporting imagery follows the shared automatic-selection policy: use a suitable authorized saved preference or `defaultModel`, and ask only when the user requests a choice or provider, cost or capability differences materially affect the task. Multiple available models alone must not leave an image-dependent page pending or cause a downgrade to shapes.
+
+A text-only attachment or geometric template example is not an instruction to omit imagery. Use the active image-generation Skill or exposed action even when Image Studio is closed, and verify saved files and placement. Generated illustrations cannot replace real evidence. Saved custom templates, editable uploads, screenshot-only references and fully custom briefs supply different evidence; follow the shared source/layout-freedom rules without claiming unsupported import or export fidelity.
 
 - Retain a selected template's visual identity unless restyling is explicitly requested; a changed audience alone is not authorization.
 - Use current semantic tokens and preserve the `design-tokens.css` contract. Do not restore sample colors, add inline theme overrides or import another global theme.

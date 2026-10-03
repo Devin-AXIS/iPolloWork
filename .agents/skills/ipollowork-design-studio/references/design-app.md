@@ -2,7 +2,7 @@
 
 # Application Interface Rules
 
-Use for `app`: screens, dashboards and interactive prototypes. Read `design.md` and shared guidelines first.
+Use for `app`: screens, dashboards and interactive prototypes. Follow this installed Skill's task scope; consult only applicable shared sections and type rules for the requested change.
 
 ## Tasks and structure
 

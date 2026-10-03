@@ -4,6 +4,8 @@ This guide describes the ten reusable structures currently in the iPolloWork PPT
 
 Start with `../core-v1-index.md` beside the session's category directory for shared relationships and type routing. This guide supplies PPT-specific fit and adaptation; shared creative/media policy remains in the shared guidelines.
 
+Use this guide when choosing or recomposing layouts. Copy, selected-object and theme-only edits do not need a library read for unchanged structure. Consult the selection map and only candidate-specific sections, not every layout; reuse prior guidance until the task requires a different structure.
+
 ## Locate the source
 
 For a session that declares `layoutLibrary: "core-v1"`, the server materializes `core-v1-slides/` beside `brief.json`. This directory contains the quick index `catalog.md`, this `layout.md`, `shared-contract.md`, `shared.css` and the ten HTML files below. Resolve those files from the current session, not from the installed Skill's `references/` directory. A Skill-packaged copy of this guide is documentation, not a second copy of the HTML library.

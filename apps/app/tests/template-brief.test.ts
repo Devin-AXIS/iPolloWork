@@ -27,6 +27,8 @@ import {
   templateBriefUserMessage,
 } from "../src/react-app/domains/session/templates/template-brief";
 
+const designMediaPolicy = readFileSync(new URL("../../../examples/plugin-packages/design-agent/skills/ipollowork-design-studio/references/shared-guidelines.md", import.meta.url), "utf8");
+
 function catalogItem(input: {
   id: string;
   category: TemplateCategory;
@@ -78,7 +80,7 @@ describe("template brief", () => {
         briefPath: "design/test/brief.json",
       });
       if (category === "slides") {
-        expect(prompt).toContain("iPolloWork Presentations workflow");
+        expect(prompt).toContain("ipollowork-presentations for the current task");
         expect(prompt).not.toContain("design-slides.md");
       } else if (category === "video") {
         expect(prompt).toContain("active Video surface contract");
@@ -89,9 +91,10 @@ describe("template brief", () => {
         expect(prompt).toContain("workspace-external directory");
         expect(prompt).not.toContain("design-video.md");
       } else {
-        expect(prompt).toContain(`references/design-${category}.md`);
-        expect(prompt).toContain("references/shared-guidelines.md");
-        expect(prompt).toContain("media/artifact_media_review phase=plan");
+        expect(prompt).toContain(`ipollowork-design-studio for this ${category} task`);
+        expect(prompt).toContain("read only affected references");
+        expect(prompt).toContain("owning Skill's media plan/check and acceptance protocol");
+        expect(prompt).not.toContain("media/artifact_media_review phase=plan");
         expect(prompt).not.toContain("slides-ppt.md");
       }
     }
@@ -231,19 +234,20 @@ describe("template brief", () => {
     });
 
     // Includes bounded layer selection and rendering rules; layout sources stay on disk.
-    // The slide media gate includes the automatic multi-model selection protocol.
+    // The owning Skill holds media decisions; the task contract retains the exact source and client acceptance boundary.
     expect(prompt.length).toBeLessThan(5_000);
     expect(prompt).toContain("Read `design/ses_morrow/brief.json`");
     expect(prompt).toContain("Edit/save target files now");
     expect(prompt).toContain("Deliver files, not just a plan or confirmation");
     expect(prompt).toContain("native editable PPTX contract");
-    expect(prompt).toContain("Before layout, call media/artifact_media_review phase=plan");
-    expect(prompt).toContain("Before final call phase=check");
-    expect(prompt).toContain("original generationPath");
-    expect(prompt).toContain("Routine media auto-selects a saved preference or defaultModel");
-    expect(prompt).toContain("multiple authorized models alone never require a question/pending asset");
-    expect(prompt).toContain("Resolve pending/missing assets");
-    expect(prompt).toContain("continue the file without opening settings");
+    expect(prompt).toContain('sourcePath="design/ses_morrow/entry.html"');
+    expect(prompt).toContain("owning Skill's media plan/check and acceptance protocol");
+    expect(prompt).toContain("media/artifact_preview_review once");
+    expect(prompt).toContain("it is the only preview/batch check");
+    expect(prompt).not.toContain("Routine media auto-selects");
+    for (const rule of ['phase="plan"', 'phase="check"', "generationPath", "defaultModel", "never leave an asset pending solely because multiple models exist", "Pending or missing items must be resolved", "do not open settings"]) {
+      expect(designMediaPolicy).toContain(rule);
+    }
   });
 
   test("recognizes explicit creative deliverables but leaves explanatory questions as normal chat", () => {
@@ -481,8 +485,9 @@ test("routes every slide template through presentation rules and the default lay
     briefPath: "design/ses_legacy/brief.json",
   });
 
-  expect(prompt).toContain("iPolloWork Presentations workflow");
-  expect(prompt).toContain("shared-guidelines.md, slides-ppt.md and layout.md");
+  expect(prompt).toContain("ipollowork-presentations for the current task");
+  expect(prompt).toContain("read only applicable references");
+  expect(prompt).not.toContain("shared-guidelines.md, slides-ppt.md and layout.md");
   expect(prompt).toContain("core-v1-slides/catalog.md");
   expect(prompt).toContain("write a new layout");
 });
@@ -567,7 +572,7 @@ test("shared layouts provide structure while the selected template owns visual r
   const prompt = templateBriefPrompt({ template: { category: "site", title: "Example", applyChecklist: ["Replace sample copy"], layoutLibrary: "core-v1" }, entryPath: "design/example/entry.html", briefPath: "design/example/brief.json" });
   expect(prompt).toContain("core-v1-site/catalog.md");
   expect(prompt).toContain("core-v1-site/shared-contract.md");
-  expect(prompt).toContain("Retain active tokens");
+  expect(prompt).toContain("retain active tokens");
   expect(prompt).toContain("content topic is not permission to change theme");
   expect(prompt).toContain("isolated final characters");
 });
@@ -586,8 +591,10 @@ test("artifact delivery reads the shared slide layout library", () => {
     briefPath: "design/example/brief.json",
   });
   expect(prompt).toContain("core-v1-slides/catalog.md");
-  expect(prompt).toContain("Select by type then content relationship");
-  expect(prompt).toContain("reuse fitting global/local structures");
+  expect(prompt).toContain("For layout creation or restructuring");
+  expect(prompt).toContain("select only needed source and runtime contracts");
+  expect(prompt).toContain("Reuse fitting global/local structures");
+  expect(prompt).toContain("Targeted edits reuse existing choices");
 });
 
 test("unified layout index routes template and custom tasks to only their active type", () => {

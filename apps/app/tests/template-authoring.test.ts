@@ -49,7 +49,9 @@ describe("template authoring", () => {
   test.each(templateCategorySchema.options)("routes %s authoring to its installed type rules", (category) => {
     const context = templateAuthoringSystemContext(snapshot({ ...manifest, category, surface: category === "video" ? "video" : "design" }));
     if (category === "slides") {
-      expect(context).toContain("shared-guidelines.md, slides-ppt.md and layout.md");
+      expect(context).toContain("follow ipollowork-presentations for the current task");
+      expect(context).toContain("read only applicable references");
+      expect(context).not.toContain("shared-guidelines.md, slides-ppt.md and layout.md");
       expect(context).not.toContain("design-slides.md");
     } else if (category === "video") {
       expect(context).toContain("active Video surface contract");
@@ -61,8 +63,9 @@ describe("template authoring", () => {
       expect(context).toContain("do not search for missing template files");
       expect(context).not.toContain("design-video.md");
     } else {
-      expect(context).toContain(`references/design-${category}.md`);
-      expect(context).toContain("references/shared-guidelines.md");
+      expect(context).toContain(`Follow ipollowork-design-studio for this ${category} task`);
+      expect(context).toContain("read only affected references relative to the installed Skill");
+      expect(context).not.toContain("references/shared-guidelines.md");
       if (category === "poster" || category === "cards") expect(context).toContain("scale fixed-canvas previews without reflowing");
     }
   });

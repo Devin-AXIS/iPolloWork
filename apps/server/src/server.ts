@@ -673,12 +673,13 @@ function pluginPackageEngineState(workspace: WorkspaceInfo, manifest: PluginPack
   };
 }
 
-async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<void> {
+async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise<boolean> {
   const workspaces = config.workspaces.filter((workspace) => workspace.workspaceType === "local");
   const installWorkspace = workspaces[0];
-  if (!installWorkspace) return;
+  if (!installWorkspace) return true;
 
   const logger = createServerLogger(config);
+  let prepared = true;
   const installedById = new Map(
     (await listInstalledPluginPackages({ serverConfig: config })).map((item) => [item.pluginId, item]),
   );
@@ -702,7 +703,7 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
           serverConfig: config,
           packageRoot,
         });
-      } else if (installed.version !== preview.manifest.package?.version) {
+      } else if (pluginPackageVersionChange(installed.version, preview.manifest.package?.version ?? installed.version) === "upgrade") {
         await updatePluginPackage({
           serverConfig: config,
           packageRoot,
@@ -712,6 +713,11 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         await setPluginPackageEnabled({ serverConfig: config, pluginId, enabled: true });
       }
     } catch (error) {
+      // User-owned projection conflicts and immutable version changes need an
+      // explicit resolution. Incomplete bundles and transient I/O may recover.
+      if (!isApiError(error) || !["plugin_package_conflict", "plugin_package_version_changed"].includes(error.code)) {
+        prepared = false;
+      }
       logger.log("warn", `Default plugin package could not be prepared: ${pluginId}`, {
         pluginId,
         error: error instanceof Error ? error.message : String(error),
@@ -727,12 +733,14 @@ async function ensureDefaultBundledPluginPackages(config: ServerConfig): Promise
         workspaceRoot: workspace.path,
       });
     } catch (error) {
+      if (!isApiError(error) || error.code !== "plugin_package_conflict") prepared = false;
       logger.log("warn", `Plugin package projection could not be reconciled: ${workspace.id}`, {
         workspaceId: workspace.id,
         error: error instanceof Error ? error.message : String(error),
       });
     }
   }
+  return prepared;
 }
 
 export async function startServer(config: ServerConfig): Promise<ServeResult> {
@@ -1564,13 +1572,32 @@ function createRoutes(
 ): Route[] {
   const routes: Route[] = [];
   let defaultPluginPreparation: Promise<void> | null = null;
+  let preparedDefaultPluginFingerprint: string | null = null;
+  let defaultPluginPreparationRetryAt = 0;
   const prepareDefaultPlugins = () => {
     if (!defaultPluginPreparation) {
-      defaultPluginPreparation = ensureDefaultBundledPluginPackages(config)
-        .catch((error) => {
-          defaultPluginPreparation = null;
-          throw error;
-        });
+      defaultPluginPreparation = (async () => {
+        // Read only the four manifest versions/roots on refresh. Package scans
+        // and global projection run again only when bundled versions change.
+        const manifests = await Promise.all(defaultBundledPluginPackageIds.map(async (pluginId) => {
+          try {
+            const root = await resolveBundledPluginPackageRoot(pluginId);
+            const manifest: unknown = JSON.parse(await readFile(join(root, "ipollowork.plugin.json"), "utf8"));
+            const version = isRecord(manifest) && isRecord(manifest.package) ? manifest.package.version : null;
+            return [pluginId, root, typeof version === "string" ? version : null];
+          } catch {
+            return [pluginId, null, null];
+          }
+        }));
+        const fingerprint = JSON.stringify(manifests);
+        if (fingerprint === preparedDefaultPluginFingerprint
+          && (!defaultPluginPreparationRetryAt || Date.now() < defaultPluginPreparationRetryAt)) return;
+        const prepared = await ensureDefaultBundledPluginPackages(config);
+        preparedDefaultPluginFingerprint = fingerprint;
+        defaultPluginPreparationRetryAt = prepared ? 0 : Date.now() + 5_000;
+      })().finally(() => {
+        defaultPluginPreparation = null;
+      });
     }
     return defaultPluginPreparation;
   };

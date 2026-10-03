@@ -437,7 +437,7 @@ describe("workspace lifecycle registry", () => {
     expect(response.status).toBe(201);
     const skill = await readFile(join(workspaceRoot, ".agents", "skills", "ipollowork-presentations", "SKILL.md"), "utf8");
     expect(skill).toContain("media/artifact_preview_review");
-    expect(skill).toContain("sole preview and whole-deck batch-acceptance entry");
+    expect(skill).toBe(await readFile(new URL("../../../examples/plugin-packages/design-agent/skills/ipollowork-presentations/SKILL.md", import.meta.url), "utf8"));
   });
 
   test("registers a workspace without replacing a conflicting user Skill", async () => {
