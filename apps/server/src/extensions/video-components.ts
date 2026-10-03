@@ -2,12 +2,12 @@ import { existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { copyFile, mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, posix, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import sharp from "sharp";
 import { hyperframesEffectVariableSchema, hyperframesMotionRecipeSchema, hyperframesVideoInstanceSchema, hyperframesPageCaptureSchema } from "@ipollowork/types/hyperframes";
 
 import { ApiError } from "../errors.js";
+import { resolveHyperframesRegistryRoot } from "../hyperframes-catalog.js";
 import { resolveWorkspaceFile } from "./storage.js";
 
 const componentIdSchema = z.string().regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/u);
@@ -314,19 +314,11 @@ type Repair = {
 };
 
 function registryRoot(): string {
-  const configured = process.env.IPOLLOWORK_HYPERFRAMES_REGISTRY_ROOT?.trim();
-  const cli = process.env.HYPERFRAMES_CLI_PATH?.trim();
-  const current = dirname(fileURLToPath(import.meta.url));
-  const candidates = [
-    configured,
-    cli ? resolve(dirname(cli), "../../../registry/blocks") : undefined,
-    resolve(current, "../../../../vendor/hyperframes/registry/blocks"),
-  ].filter((candidate): candidate is string => Boolean(candidate));
-  const available = candidates.find(candidate => existsSync(candidate));
+  const available = resolveHyperframesRegistryRoot("blocks");
   if (!available) {
     throw new ApiError(503, "video_component_registry_unavailable", "The bundled HyperFrames component registry is unavailable. Restart the complete iPolloWork client before retrying.");
   }
-  return resolve(available);
+  return available;
 }
 
 function safeRegistryPath(root: string, relativePath: string, field: "path" | "target"): string {

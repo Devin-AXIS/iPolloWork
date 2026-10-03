@@ -246,6 +246,7 @@ function stageBundledOpenCodeRuntime() {
   );
 }
 
+run(nodeCmd, [resolve(repoRoot, "scripts", "check-hyperframes-version-sync.mjs")], repoRoot);
 assertServerRuntimeDependencies({ serverPackagePath, desktopPackagePath });
 run(pnpmCmd, ["--filter", "@ipollowork/app", "typecheck"], repoRoot);
 run(nodeCmd, [resolve(__dirname, "prepare-sidecar.mjs"), "--force", "--outdir", electronSidecarDir], desktopRoot);

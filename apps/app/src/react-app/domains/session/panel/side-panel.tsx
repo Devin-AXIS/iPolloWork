@@ -55,12 +55,12 @@ import {
 import { useControlAction, type iPolloWorkControlAction } from "../../../shell/control/control-provider";
 import type { OpenTarget } from "../artifacts/open-target";
 import { useSidePanelTabs } from "./use-side-panel-tabs";
-import { DesignPanel } from "../design/design-panel";
+import { DesignPanel } from "../design/public";
 import { relativeDesignMediaPath, replaceDesignMedia } from "../design/design-media";
 import { MediaWorkbench } from "@/react-app/plugin-ui/media-workbench";
 import { getReactQueryClient } from "@/react-app/infra/query-client";
 import type { DesignAiSelectionContext } from "@ipollowork/design-studio";
-import { VideoPanel } from "../video/video-panel";
+import { VideoPanel } from "../video/public";
 import { WorkspaceAppFrame, type WorkspaceAppModelContext, type WorkspaceAppMessageResult } from "@/react-app/plugin-ui/workspace-app-frame";
 import { isMediaStudioPlugin, mediaStudioEngine } from "@/react-app/plugin-ui/plugin-ui-contributions";
 import { MarbleAvatar } from "@/react-app/design-system/marble-avatar";
